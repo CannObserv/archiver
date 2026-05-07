@@ -1,0 +1,44 @@
+{
+  "artifacts": [
+    {
+      "name": "agents-guide",
+      "path": "./AGENTS.md",
+      "description": "Authoritative project guide for agents and contributors. Project overview (canonical InfoItem + InfoSpec registry), full src/ layout, env vars (ARCHIVER_DATABASE_URL, ARCHIVER_API_KEY, TEST_DATABASE_URL), server lifecycle (port 8020=systemd, 8021=dev), commit conventions, mirrored content-acquisition code obligations vs. watcher, Phase 3a authoring tools (validate_info_spec, find_info_item, fetch_and_render, preview_extraction, propose_selectors, atomic create_info_item)."
+    },
+    {
+      "name": "readme",
+      "path": "./README.md",
+      "description": "Top-level README. Brief description of the Archiver service — sibling to watcher and notifier, consumed via archiver-client SDK. Run-locally / tests / SDK regeneration commands. Extraction history (from watcher#149) and pointer to the InfoSource trajectory research doc."
+    },
+    {
+      "name": "skills-doc",
+      "path": "./docs/SKILLS.md",
+      "description": "Agent skills index. Catalogues the skills under skills/ (agentskills.io) and .claude/skills/ (Claude Code). Local overrides table, vendor submodule reference, SocratiCode workflow, linked-projects config (watcher+notifier)."
+    },
+    {
+      "name": "design-and-plans",
+      "path": "./docs/plans/",
+      "description": "Archive of design and implementation plan documents. Captures the 'why' behind each phase: Phase 1 plan (information service foundation), Information Source Specifications design, Phase 3a plan (authoring tools — validate, fetch_and_render, preview_extraction, propose_selectors, atomic create_info_item)."
+    },
+    {
+      "name": "research-trajectory",
+      "path": "./docs/research/",
+      "description": "Trajectory research. 2026-05-06-archiver-information-model.md describes the eventual evolution from the current InfoItem ↔ InfoSpec model (Phase 1–3a) to a content-addressed InfoSource + SourceSpec + SourceRevision model. The 'v2' anchor — implement deliberately, not in passing."
+    },
+    {
+      "name": "alembic-migrations",
+      "path": "./alembic/versions/",
+      "description": "Database schema history as Alembic migrations (canonical source of truth — no separate schema.sql). Current migrations: create_info_specs (info_specs table — InfoSpec primary records linked to InfoItems by info_item_id) and create_info_items (info_items table — the canonical Information Item registry)."
+    },
+    {
+      "name": "info-spec-schema",
+      "path": "./src/core/info_spec_schema/v1.json",
+      "description": "InfoSpec JSON Schema v1 — the public data contract. Defines the structure validated by /tools/validate-info-spec and accepted by /info-items (initial_info_spec) and /info-items/{id}/info-specs. Authoritative for InfoSpec field names, types, and constraints; consumed by the archiver-client SDK and any author tooling."
+    },
+    {
+      "name": "systemd-unit",
+      "path": "./deploy/archiver.service",
+      "description": "Production systemd service unit for the Archiver API. Defines how the live service on port 8020 is launched, restarted, and which env files it loads (/etc/archiver/.env)."
+    }
+  ]
+}
