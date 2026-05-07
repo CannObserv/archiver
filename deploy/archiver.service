@@ -1,0 +1,26 @@
+[Unit]
+Description=Archiver service — Cannabis Observer information registry
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/archiver
+
+# Create runtime dir (runs as root before User= takes effect with + prefix)
+ExecStartPre=+/bin/bash -c 'mkdir -p /run/archiver && chown exedev:exedev /run/archiver'
+
+# Write current git SHA to a runtime env file before starting
+ExecStartPre=/bin/bash -c 'echo BUILD_ID=$(git rev-parse --short HEAD) > /run/archiver/build-id'
+
+# Load BUILD_ID, then service-specific secrets, then optional repo-local overrides
+EnvironmentFile=-/run/archiver/build-id
+EnvironmentFile=/etc/archiver/.env
+EnvironmentFile=-/home/exedev/archiver/.env
+
+ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8020
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
