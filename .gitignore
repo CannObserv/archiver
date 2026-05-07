@@ -7,5 +7,5 @@ __pycache__/
 .coverage
 htmlcov/
 *.egg-info/
-.socraticodecontextartifacts.json
 .worktrees/
+.claude/settings.local.json
