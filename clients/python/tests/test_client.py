@@ -9,7 +9,7 @@ from archiver_client import (
     ValidationError,
 )
 
-BASE_URL = "http://information.test"
+BASE_URL = "http://archiver.test"
 
 
 def _info_item_payload(info_item_id: str = "01HZZ00000000000000000000A") -> dict:

@@ -1,5 +1,7 @@
 # Information Service Phase 3a — Authoring Tools Implementation Plan
 
+> **HISTORICAL — pre-extraction.** This plan describes work executed in 2026-05 inside the watcher repo (paths refer to `src/information/`, `clients/python/src/information_client/`, etc.). The service was extracted to its own repo at `/home/exedev/archiver` on 2026-05-07 under watcher#149 — see `docs/plans/2026-05-06-archiver-extraction-design.md` (in the watcher repo) for the extraction. The SDK package is now `archiver_client`. Kept for trajectory context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the authoring-tool surface to the Information service so Claude (or a human operator) can compose and validate Information Items + InfoSpecs end-to-end without touching the database or Watcher: `validate_info_spec`, `find_info_item`, atomic `create_info_item` (with optional initial InfoSpec), `fetch_and_render`, `preview_extraction`, `propose_selectors`. Each tool is a FastAPI route on the Information service (port 8020) and a corresponding ergonomic wrapper on the `information_client` SDK.

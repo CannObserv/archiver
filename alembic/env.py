@@ -8,6 +8,7 @@ import asyncio
 import os
 from logging.config import fileConfig
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
@@ -78,18 +79,22 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection) -> None:
-    # Ensure the schema exists before alembic tries to create its version table
-    # there. Commit explicitly so this DDL is not folded into alembic's own
-    # transaction (which would prevent the migration commits from landing).
-    connection.exec_driver_sql(f"CREATE SCHEMA IF NOT EXISTS {INFORMATION_SCHEMA}")
-    connection.commit()
     context.configure(connection=connection, **_common_configure_kwargs())
     with context.begin_transaction():
         context.run_migrations()
 
 
+async def _ensure_schema(engine) -> None:
+    """Create the target schema if missing, in its own AUTOCOMMIT connection
+    so the DDL lands independently of alembic's transaction below."""
+    autocommit = engine.execution_options(isolation_level="AUTOCOMMIT")
+    async with autocommit.connect() as conn:
+        await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {INFORMATION_SCHEMA}"))
+
+
 async def run_migrations_online() -> None:
     connectable = create_async_engine(get_url())
+    await _ensure_schema(connectable)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()

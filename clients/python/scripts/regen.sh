@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate clients/python/src/archiver_client/generated/ from the Information
+# Regenerate clients/python/src/archiver_client/generated/ from the Archiver
 # service's OpenAPI schema. Idempotent — safe to run repeatedly.
 set -euo pipefail
 
@@ -8,9 +8,9 @@ SDK_DIR="${REPO_ROOT}/clients/python"
 GEN_DIR="${SDK_DIR}/src/archiver_client/generated"
 
 cd "${REPO_ROOT}"
-TMP_SPEC="$(mktemp -t information-openapi-XXXXXX.json)"
+TMP_SPEC="$(mktemp -t archiver-openapi-XXXXXX.json)"
 trap 'rm -f "${TMP_SPEC}"' EXIT
-uv run python scripts/dump_openapi_information.py > "${TMP_SPEC}"
+uv run python scripts/dump_openapi.py > "${TMP_SPEC}"
 
 cd "${SDK_DIR}"
 rm -rf "${GEN_DIR}"

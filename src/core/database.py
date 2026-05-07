@@ -36,7 +36,7 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         url = get_database_url()
         _engine = create_async_engine(url, echo=False)
-        logger.info("information db engine created", extra={"url": url.split("@")[-1]})
+        logger.info("archiver db engine created", extra={"url": url.split("@")[-1]})
     return _engine
 
 

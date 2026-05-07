@@ -8,9 +8,17 @@ OpenAPI schema, pinned 1:1 with server version.
 In the consuming repo's `pyproject.toml`:
 
 ```toml
+[project]
+dependencies = [
+    "archiver-client",
+]
+
 [tool.uv.sources]
-archiver-client = { path = "../watcher/clients/python", editable = true }
+archiver-client = { path = "/home/exedev/archiver/clients/python", editable = true }
 ```
+
+(Watcher and Replicator both pin via the absolute path on this VM. Once the
+service relocates off-VM the SDK publishes to a real index.)
 
 ## Usage
 

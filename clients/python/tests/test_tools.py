@@ -5,7 +5,7 @@ import pytest
 import respx
 from archiver_client.generated.types import UNSET
 
-BASE_URL = "http://information.test"
+BASE_URL = "http://archiver.test"
 
 VALID_DOC = {
     "schema_version": 1,

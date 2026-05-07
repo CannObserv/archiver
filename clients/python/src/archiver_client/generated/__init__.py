@@ -1,4 +1,4 @@
-"""A client library for accessing information"""
+"""A client library for accessing archiver"""
 
 from .client import AuthenticatedClient, Client
 

@@ -1,9 +1,9 @@
-"""Test fixtures for information-client."""
+"""Test fixtures for archiver-client."""
 
 import pytest
 from archiver_client import ArchiverClient
 
-BASE_URL = "http://information.test"
+BASE_URL = "http://archiver.test"
 API_KEY = "test-key"
 
 

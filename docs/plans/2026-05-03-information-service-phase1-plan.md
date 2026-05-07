@@ -1,5 +1,7 @@
 # Information Service Phase 1 Implementation Plan
 
+> **HISTORICAL — pre-extraction.** This plan describes work executed in 2026-05 inside the watcher repo (paths refer to `/home/exedev/watcher/.worktrees/...`, `src/information/`, `alembic_information.ini`, etc.). The service was extracted to its own repo at `/home/exedev/archiver` on 2026-05-07 under watcher#149 — see `docs/plans/2026-05-06-archiver-extraction-design.md` (in the watcher repo) for the extraction. Code paths in this document are watcher-rooted and no longer match the current archiver layout (`src/information/api/main.py` → `src/api/main.py`, etc.). Kept for trajectory context, not as a current spec.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up a minimal FastAPI **Information service** prototype on port 8020 that owns the canonical registry of Information Items + Information Source Specifications (InfoSpecs), with priority-ordered InfoSpecs and a JSON-Schema-validated immutable document body.

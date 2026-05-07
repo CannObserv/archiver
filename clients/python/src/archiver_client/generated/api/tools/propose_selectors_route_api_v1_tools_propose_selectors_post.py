@@ -70,9 +70,13 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: ProposeSelectorsRequest,
 ) -> Response[HTTPValidationError | list[SelectorCandidateOut]]:
-    """Propose Selectors Route
+    r"""Propose Selectors Route
 
      Suggest CSS selector candidates for content matching ``description``.
+
+    v1 returns CSS selectors only — pair with ``extraction.algorithm: \"css\"``
+    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match
@@ -106,9 +110,13 @@ def sync(
     client: AuthenticatedClient,
     body: ProposeSelectorsRequest,
 ) -> HTTPValidationError | list[SelectorCandidateOut] | None:
-    """Propose Selectors Route
+    r"""Propose Selectors Route
 
      Suggest CSS selector candidates for content matching ``description``.
+
+    v1 returns CSS selectors only — pair with ``extraction.algorithm: \"css\"``
+    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match
@@ -137,9 +145,13 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: ProposeSelectorsRequest,
 ) -> Response[HTTPValidationError | list[SelectorCandidateOut]]:
-    """Propose Selectors Route
+    r"""Propose Selectors Route
 
      Suggest CSS selector candidates for content matching ``description``.
+
+    v1 returns CSS selectors only — pair with ``extraction.algorithm: \"css\"``
+    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match
@@ -171,9 +183,13 @@ async def asyncio(
     client: AuthenticatedClient,
     body: ProposeSelectorsRequest,
 ) -> HTTPValidationError | list[SelectorCandidateOut] | None:
-    """Propose Selectors Route
+    r"""Propose Selectors Route
 
      Suggest CSS selector candidates for content matching ``description``.
+
+    v1 returns CSS selectors only — pair with ``extraction.algorithm: \"css\"``
+    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match

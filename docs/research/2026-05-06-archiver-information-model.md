@@ -102,23 +102,23 @@ InfoItemReplicationSpec
   replication_spec_id:  ULID        (foreign reference into Replicator's registry)
   activated_at:         datetime
   deactivated_at:       datetime | NULL   (NULL = currently active)
-  resolved_path:        str | NULL        (actual storage path used under this spec)
+  public_url:           str | NULL        (provider-native public URL written back by Replicator)
 ```
 
 **Why a join table:**
 - History is implicit — deactivated rows (`deactivated_at IS NOT NULL`) are the full audit trail, queryable by time range or by spec.
-- "Two active specs targeting the same provider" is handled naturally: two rows with independent ULIDs and independent `resolved_path` values. No special-casing required; the rows are distinguished by their own identity.
+- "Two active specs targeting the same provider" is handled naturally: two rows with independent ULIDs and independent `public_url` values. No special-casing required; the rows are distinguished by their own identity.
 - Provider-agnostic: the table has no concept of backend. Provider details live in the `ReplicationSpec` record in Replicator's registry.
 
 **Common queries:**
 - Active specs for an item: `WHERE info_item_id = X AND deactivated_at IS NULL`
 - Full spec history for an item: `WHERE info_item_id = X ORDER BY activated_at`
-- What path did spec S store content at: `resolved_path` on the relevant row
+- Public URL for content stored under spec S: `public_url` on the relevant row
 - Which items use spec S: `WHERE replication_spec_id = S`
 
-**`resolved_path`:** When Replicator executes a replication job, it writes the rendered storage path back to this field. This is the ground truth for locating replicated content — independent of any future template changes. If a spec is later deactivated and replaced, the old row retains the path where content was stored under the old spec, enabling future migration tooling to find and move that content.
+**`public_url`:** When Replicator executes a replication job, it writes the provider-native public URL back to this field (e.g., a GCS object URL, a Google Drive sharing link, an Internet Archive item URL). This is the ground truth for locating replicated content — sufficient to find the record on the provider's administrative side and matching the shape of the WordPress Replications table (label + URL) that downstream display depends on. If a spec is later deactivated and replaced, the old row retains its `public_url`, enabling future migration tooling to locate and move previously replicated content.
 
-**Note on granularity:** This design records one resolved path per spec assignment. If an item's content is updated over time (new `SourceRevision`s captured), Replicator re-executes against the same active spec and may write to the same path (overwrite) or a new one. A separate replication event log (one row per execution) is a future option if per-execution audit detail becomes necessary — not required for the initial design.
+**Note on granularity:** This design records one `public_url` per spec assignment. If an item's content is updated over time (new `SourceRevision`s captured), Replicator re-executes and overwrites `public_url` on the active assignment row. A separate replication event log (one row per execution) is a future option if per-execution audit detail becomes necessary — not required for the initial design.
 
 ---
 

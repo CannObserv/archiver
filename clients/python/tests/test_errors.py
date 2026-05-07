@@ -48,7 +48,7 @@ def test_503_returns_server_error():
     assert isinstance(err, ServerError)
 
 
-def test_unknown_status_returns_base_information_error():
+def test_unknown_status_returns_base_archiver_error():
     err = error_from_response(418, b"teapot")
     assert type(err) is InformationError
     assert err.status_code == 418

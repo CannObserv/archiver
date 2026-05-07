@@ -2,6 +2,7 @@
 title: Information Source Specifications & Watcher Boundary Realignment
 date: 2026-05-03
 status: approved (design)
+note: HISTORICAL — pre-extraction. Service was extracted from watcher to /home/exedev/archiver on 2026-05-07 (watcher#149). Internal paths in this doc reference the original in-tree location (src/information/). Kept for design rationale.
 ---
 
 # Information Source Specifications & Watcher Boundary Realignment

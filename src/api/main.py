@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.http_fetcher.aclose()
 
 
-app = FastAPI(title="information", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="archiver", version="0.1.0", lifespan=lifespan)
 
 v1_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 v1_router.include_router(info_items_router)

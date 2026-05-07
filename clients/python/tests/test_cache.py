@@ -5,7 +5,7 @@ import pytest
 import respx
 from archiver_client import ArchiverClient, NotFound
 
-BASE_URL = "http://information.test"
+BASE_URL = "http://archiver.test"
 
 
 def _spec_payload(info_spec_id: str = "01HZZ00000000000000000000B") -> dict:
