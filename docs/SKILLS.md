@@ -93,7 +93,7 @@ This project is indexed with SocratiCode. Always use its MCP tools to explore th
 
 ### Linked Projects
 
-Cross-project search to the sister repos is enabled via `SOCRATICODE_LINKED_PROJECTS=/home/exedev/watcher:/home/exedev/notifier` in `.claude/settings.local.json` (gitignored — per-instance config, not a project commitment). The value may be relative (resolved from the project root) or absolute; absolute is recommended since the MCP server's CWD isn't guaranteed across hosts. Pass `includeLinked: true` on `codebase_search` to fan out across all indexes; results carry a `[archiver]` / `[watcher]` / `[notifier]` label.
+Cross-project search to the sister repos is enabled via `SOCRATICODE_LINKED_PROJECTS=/home/exedev/watcher,/home/exedev/notifier` in `.claude/settings.local.json` (gitignored — per-instance config, not a project commitment). **Paths are comma-separated** (not colon-separated PATH-style — the plugin splits on `,` only; a colon-joined value is parsed as a single literal path and silently resolves to nothing). Values may be relative (resolved from the project root) or absolute; absolute is recommended since the MCP server's CWD isn't guaranteed across hosts. Pass `includeLinked: true` on `codebase_search` to fan out across all indexes; results carry a `[archiver]` / `[watcher]` / `[notifier]` label.
 
 Watcher is archiver's primary consumer (via the `archiver-client` SDK installed as a path dependency in watcher). When changing public schemas or the API contract, search the linked watcher index for callers before merging.
 
