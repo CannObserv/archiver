@@ -83,7 +83,7 @@ An `InfoItem` is the semantic layer — it represents what a piece of content *m
 - Semantic metadata (title, type, domain associations)
 - `source_revisions` — list of `SourceRevision` ULID references
 - `replication_fields` — JSONB bag of namespaced, typed fields (see below)
-- Replication spec assignments are managed via a separate join table (see `InfoItemReplicationSpec` below), not as a field on `InfoItem` itself.
+- Replication spec assignments are managed via a separate join table (see `InfoItemRepSpec` below), not as a field on `InfoItem` itself.
 
 **An Item references multiple Sources:** Keeping Items semantically narrow is the operator's responsibility. Grouping across Items remains possible through Information Sets (out of scope for this change).
 
@@ -91,15 +91,15 @@ An `InfoItem` is the semantic layer — it represents what a piece of content *m
 
 ---
 
-## InfoItem ↔ ReplicationSpec Assignments (`InfoItemReplicationSpec`)
+## InfoItem ↔ RepSpec Assignments (`InfoItemRepSpec`)
 
-The relationship between an `InfoItem` and a `ReplicationSpec` is a first-class record with its own lifecycle. This is modeled as a join table with **effective dating** rather than a flat list on the item.
+The relationship between an `InfoItem` and a `RepSpec` is a first-class record with its own lifecycle. This is modeled as a join table with **effective dating** rather than a flat list on the item.
 
 ```
-InfoItemReplicationSpec
+InfoItemRepSpec
   id:                   ULID        (own identity)
   info_item_id:         → InfoItem
-  replication_spec_id:  ULID        (foreign reference into Replicator's registry)
+  rep_spec_id:          ULID        (foreign reference into Replicator's registry)
   activated_at:         datetime
   deactivated_at:       datetime | NULL   (NULL = currently active)
   public_url:           str | NULL        (provider-native public URL written back by Replicator)
@@ -108,13 +108,13 @@ InfoItemReplicationSpec
 **Why a join table:**
 - History is implicit — deactivated rows (`deactivated_at IS NOT NULL`) are the full audit trail, queryable by time range or by spec.
 - "Two active specs targeting the same provider" is handled naturally: two rows with independent ULIDs and independent `public_url` values. No special-casing required; the rows are distinguished by their own identity.
-- Provider-agnostic: the table has no concept of backend. Provider details live in the `ReplicationSpec` record in Replicator's registry.
+- Provider-agnostic: the table has no concept of backend. Provider details live in the `RepSpec` record in Replicator's registry.
 
 **Common queries:**
 - Active specs for an item: `WHERE info_item_id = X AND deactivated_at IS NULL`
 - Full spec history for an item: `WHERE info_item_id = X ORDER BY activated_at`
 - Public URL for content stored under spec S: `public_url` on the relevant row
-- Which items use spec S: `WHERE replication_spec_id = S`
+- Which items use spec S: `WHERE rep_spec_id = S`
 
 **`public_url`:** When Replicator executes a replication job, it writes the provider-native public URL back to this field (e.g., a GCS object URL, a Google Drive sharing link, an Internet Archive item URL). This is the ground truth for locating replicated content — sufficient to find the record on the provider's administrative side and matching the shape of the WordPress Replications table (label + URL) that downstream display depends on. If a spec is later deactivated and replaced, the old row retains its `public_url`, enabling future migration tooling to locate and move previously replicated content.
 
