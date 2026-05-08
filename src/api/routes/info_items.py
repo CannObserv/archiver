@@ -7,12 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.api.deps import get_db_session
+from src.api.deps import get_db_session, require_api_key
 from src.api.schemas.info_item import (
     InfoItemCreate,
     InfoItemOut,
     InfoItemRepSpecCreate,
     InfoItemRepSpecOut,
+    InfoItemRepSpecPublicUrlPatch,
     InfoItemSourceCreate,
     InfoItemSourceOut,
     InfoItemSourceRevisionCreate,
@@ -347,3 +348,39 @@ async def deactivate_rep_spec_assignment(
     assignment.deactivated_at = datetime.now(UTC)
     await session.flush()
     await session.commit()
+
+
+@router.patch(
+    "/{info_item_id}/rep-spec-assignments/{assignment_id}",
+    response_model=InfoItemRepSpecOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def patch_rep_spec_assignment_public_url(
+    info_item_id: ULIDStr,
+    assignment_id: ULIDStr,
+    body: InfoItemRepSpecPublicUrlPatch,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemRepSpecOut:
+    """Write a provider-native public URL back to a RepSpec assignment.
+
+    Called by Replicator after a successful replication job. Works on both
+    active and deactivated rows (history preservation). Returns 404 if the
+    assignment doesn't exist or doesn't belong to the given InfoItem.
+    """
+    try:
+        assign_ulid = ULID.from_str(assignment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assignment_id is not a valid ULID")
+
+    assignment = await session.get(InfoItemRepSpec, assign_ulid)
+    if assignment is None or str(assignment.info_item_id) != info_item_id:
+        raise HTTPException(
+            status_code=404,
+            detail="rep_spec_assignment not found for this info_item",
+        )
+
+    assignment.public_url = body.public_url
+    await session.flush()
+    await session.commit()
+    await session.refresh(assignment)
+    return info_item_rep_spec_to_out(assignment)

@@ -34,6 +34,20 @@ class InfoItemRepSpecCreate(BaseModel):
     )
 
 
+class InfoItemRepSpecPublicUrlPatch(BaseModel):
+    """Request body for PATCH /info-items/{id}/rep-spec-assignments/{assignment_id}.
+
+    Writes the provider-native public URL back to an assignment row (active or
+    deactivated). Called by Replicator after a successful replication job.
+    """
+
+    model_config = {"extra": "forbid"}
+    public_url: str = Field(
+        min_length=1,
+        description="Provider-native public URL of the replicated artefact.",
+    )
+
+
 class InfoItemSourceRevisionCreate(BaseModel):
     """Request body for POST /info-items/{id}/source-revisions."""
 

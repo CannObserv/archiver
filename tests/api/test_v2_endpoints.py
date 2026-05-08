@@ -5,6 +5,7 @@ Covers:
 - POST /info-items/{id}/rep-spec-assignments
 - POST /info-items/{id}/source-revisions
 - DELETE /info-items/{id}/rep-spec-assignments/{assignment_id}
+- PATCH /info-items/{id}/rep-spec-assignments/{assignment_id}
 """
 
 from datetime import UTC, datetime
@@ -413,3 +414,121 @@ async def test_deactivate_rep_spec_assignment_requires_api_key(
         f"/api/v1/info-items/{item_id}/rep-spec-assignments/{assignment_id}",
     )
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# PATCH /info-items/{id}/rep-spec-assignments/{assignment_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_rep_spec_assignment_public_url_active(
+    client, info_item, rep_spec_assignment
+):
+    """Set public_url on an active assignment row."""
+    item_id = str(info_item.info_item_id)
+    assignment_id = str(rep_spec_assignment.id)
+    url = "https://storage.googleapis.com/bucket/co/test.json"
+
+    response = await client.patch(
+        f"/api/v1/info-items/{item_id}/rep-spec-assignments/{assignment_id}",
+        headers=HEADERS,
+        json={"public_url": url},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == assignment_id
+    assert body["public_url"] == url
+    assert body["deactivated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_rep_spec_assignment_public_url_deactivated(
+    client, info_item, rep_spec_assignment
+):
+    """Set public_url on a deactivated row — history preservation."""
+    item_id = str(info_item.info_item_id)
+    assignment_id = str(rep_spec_assignment.id)
+
+    # Deactivate first
+    del_resp = await client.delete(
+        f"/api/v1/info-items/{item_id}/rep-spec-assignments/{assignment_id}",
+        headers=HEADERS,
+    )
+    assert del_resp.status_code == 204
+
+    # PATCH the now-deactivated row
+    url = "https://storage.googleapis.com/bucket/co/test-archived.json"
+    response = await client.patch(
+        f"/api/v1/info-items/{item_id}/rep-spec-assignments/{assignment_id}",
+        headers=HEADERS,
+        json={"public_url": url},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["public_url"] == url
+    assert body["deactivated_at"] is not None  # still deactivated
+
+
+@pytest.mark.asyncio
+async def test_patch_rep_spec_assignment_unknown_id_returns_404(client, info_item):
+    """Unknown assignment_id → 404."""
+    item_id = str(info_item.info_item_id)
+    fake_id = "01HZZZZZZZZZZZZZZZZZZZZZZZ"
+
+    response = await client.patch(
+        f"/api/v1/info-items/{item_id}/rep-spec-assignments/{fake_id}",
+        headers=HEADERS,
+        json={"public_url": "https://storage.googleapis.com/bucket/x.json"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_rep_spec_assignment_wrong_item_returns_404(
+    client, session, rep_spec_assignment
+):
+    """Assignment exists but belongs to a different info_item_id → 404."""
+    other_item = InfoItem(name="other-item", rep_fields={})
+    session.add(other_item)
+    await session.flush()
+    other_item_id = str(other_item.info_item_id)
+    assignment_id = str(rep_spec_assignment.id)
+
+    response = await client.patch(
+        f"/api/v1/info-items/{other_item_id}/rep-spec-assignments/{assignment_id}",
+        headers=HEADERS,
+        json={"public_url": "https://storage.googleapis.com/bucket/x.json"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_rep_spec_assignment_requires_api_key(
+    client, info_item, rep_spec_assignment
+):
+    """Missing X-API-Key → 403."""
+    item_id = str(info_item.info_item_id)
+    assignment_id = str(rep_spec_assignment.id)
+
+    response = await client.patch(
+        f"/api/v1/info-items/{item_id}/rep-spec-assignments/{assignment_id}",
+        json={"public_url": "https://storage.googleapis.com/bucket/x.json"},
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patch_rep_spec_assignment_missing_public_url_returns_422(
+    client, info_item, rep_spec_assignment
+):
+    """Empty body / missing public_url → 422 (Pydantic validation)."""
+    item_id = str(info_item.info_item_id)
+    assignment_id = str(rep_spec_assignment.id)
+
+    response = await client.patch(
+        f"/api/v1/info-items/{item_id}/rep-spec-assignments/{assignment_id}",
+        headers=HEADERS,
+        json={},
+    )
+    assert response.status_code == 422
