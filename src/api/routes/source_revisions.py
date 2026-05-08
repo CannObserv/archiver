@@ -15,6 +15,7 @@ from src.api.schemas.source_revision import (
     SourceRevisionOut,
 )
 from src.api.serializers import source_revision_to_out
+from src.core.changes.payloads import SourceRevisionCapturedEvent
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
 
 router = APIRouter(prefix="/source-revisions", tags=["source-revisions"])
@@ -89,15 +90,14 @@ async def create_source_revision(
             )
         )
         info_item_ids = [str(iid) for iid in item_ids_result.scalars()]
-        payload = {
-            "event_type": "source_revision_captured",
-            "occurred_at": datetime.now(UTC).isoformat(),
-            "info_source_id": str(row.info_source_id),
-            "source_revision_id": str(row.source_revision_id),
-            "content_fingerprint": row.content_fingerprint,
-            "info_item_ids": info_item_ids,
-        }
-        session.add(ChangesOutboxRow(topic="info.changes", payload=payload))
+        event = SourceRevisionCapturedEvent(
+            occurred_at=datetime.now(UTC),
+            info_source_id=str(row.info_source_id),
+            source_revision_id=str(row.source_revision_id),
+            content_fingerprint=row.content_fingerprint,
+            info_item_ids=info_item_ids,
+        )
+        session.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
 
     await session.commit()
     return source_revision_to_out(row)
