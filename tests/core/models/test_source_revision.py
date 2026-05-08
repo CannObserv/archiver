@@ -1,0 +1,74 @@
+"""SourceRevision model tests."""
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from src.core.models import InfoSource, SourceRevision
+
+
+@pytest.fixture
+async def root_source(session):
+    src = InfoSource(
+        source_spec={
+            "schema_version": 1,
+            "target": {"url": "https://example.com/p"},
+            "extraction": {"algorithm": "full_page"},
+            "fingerprint": {},
+        },
+        schema_version=1,
+    )
+    session.add(src)
+    await session.flush()
+    return src
+
+
+@pytest.mark.asyncio
+async def test_source_revision_round_trip(session, root_source):
+    rev = SourceRevision(
+        info_source_id=root_source.info_source_id,
+        content_fingerprint="sha256:" + "a" * 64,
+        captured_at=datetime.now(UTC),
+        content_size_bytes=1234,
+        content_media_type="text/html",
+    )
+    session.add(rev)
+    await session.commit()
+    await session.refresh(rev)
+    assert str(rev.source_revision_id)
+    assert rev.content_cache_uri is None
+    assert rev.content_cache_expires_at is None
+
+
+@pytest.mark.asyncio
+async def test_dedup_via_unique_constraint(session, root_source):
+    fp = "sha256:" + "b" * 64
+    a = SourceRevision(
+        info_source_id=root_source.info_source_id,
+        content_fingerprint=fp,
+        captured_at=datetime.now(UTC),
+    )
+    b = SourceRevision(
+        info_source_id=root_source.info_source_id,
+        content_fingerprint=fp,
+        captured_at=datetime.now(UTC) + timedelta(seconds=1),
+    )
+    session.add_all([a, b])
+    with pytest.raises(IntegrityError):
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_cache_fields_optional(session, root_source):
+    rev = SourceRevision(
+        info_source_id=root_source.info_source_id,
+        content_fingerprint="sha256:" + "c" * 64,
+        captured_at=datetime.now(UTC),
+        content_cache_uri="file:///var/cache/archiver/01HZZ.bin",
+        content_cache_expires_at=datetime.now(UTC) + timedelta(seconds=600),
+    )
+    session.add(rev)
+    await session.commit()
+    await session.refresh(rev)
+    assert rev.content_cache_uri.startswith("file://")

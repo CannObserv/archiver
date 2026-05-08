@@ -4,5 +4,6 @@ from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
 from src.core.models.info_item import InfoItem
 from src.core.models.info_source import InfoSource
 from src.core.models.info_spec import InfoSpec
+from src.core.models.source_revision import SourceRevision
 
-__all__ = ["Base", "InfoItem", "InfoSource", "InfoSpec", "TimestampMixin", "ULIDType", "generate_ulid"]
+__all__ = ["Base", "InfoItem", "InfoSource", "InfoSpec", "SourceRevision", "TimestampMixin", "ULIDType", "generate_ulid"]
