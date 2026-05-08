@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://watcher.exe.xyz/schemas/rep-spec/providers/ia/v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "collection": {"type": "string"},
+    "mediatype": {"type": "string"},
+    "license": {"type": "string"}
+  }
+}

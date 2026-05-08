@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://watcher.exe.xyz/schemas/rep-spec/providers/gcs/v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "storage_class": {"enum": ["STANDARD", "NEARLINE", "COLDLINE", "ARCHIVE"]},
+    "cache_control": {"type": "string"},
+    "content_disposition": {"type": "string"}
+  }
+}

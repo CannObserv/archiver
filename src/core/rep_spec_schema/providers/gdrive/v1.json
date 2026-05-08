@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://watcher.exe.xyz/schemas/rep-spec/providers/gdrive/v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "folder_id": {"type": "string"},
+    "mime_type_override": {"type": "string"}
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://watcher.exe.xyz/schemas/rep-spec/v1.json",
+  "title": "Replication Specification v1 (envelope)",
+  "type": "object",
+  "required": ["provider", "credentials_alias", "path_template", "required_fields"],
+  "additionalProperties": false,
+  "properties": {
+    "provider": {"enum": ["gcs", "gdrive", "ia"]},
+    "credentials_alias": {"type": "string", "minLength": 1},
+    "path_template": {"type": "string", "minLength": 1},
+    "required_fields": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"},
+      "uniqueItems": true
+    },
+    "object_options": {"type": "object"}
+  }
+}
