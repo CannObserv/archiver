@@ -20,3 +20,21 @@ async def test_info_item_round_trip(session):
     assert fetched.description == "Roster page"
     assert fetched.owner == "greg"
     assert str(fetched.info_item_id)  # ULID generated
+
+
+@pytest.mark.asyncio
+async def test_info_item_has_rep_fields_default_empty(session):
+    item = InfoItem(name="t")
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    assert item.rep_fields == {}
+
+
+@pytest.mark.asyncio
+async def test_info_item_rep_fields_round_trips_nested_json(session):
+    item = InfoItem(name="t", rep_fields={"org": {"acronym": "wslcb"}})
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    assert item.rep_fields == {"org": {"acronym": "wslcb"}}

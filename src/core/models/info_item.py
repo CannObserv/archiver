@@ -1,6 +1,7 @@
 """Information Item — the stable, externally-named target being tracked."""
 
 from sqlalchemy import String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
 
@@ -17,3 +18,9 @@ class InfoItem(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    rep_fields: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default="{}",
+        default=dict,
+    )
