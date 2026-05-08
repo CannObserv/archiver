@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/tools/validate-info-spec."""
+"""Tests for v2 validate-* and resolve-rep-fields tool endpoints."""
 
 import pytest
 
@@ -10,20 +10,24 @@ def _set_api_key(monkeypatch):
     monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
 
 
-VALID_SPEC = {
+# ---------------------------------------------------------------------------
+# POST /api/v1/tools/validate-source-spec
+# ---------------------------------------------------------------------------
+
+VALID_SOURCE_SPEC = {
     "schema_version": 1,
     "target": {"url": "https://example.com"},
     "extraction": {"algorithm": "full_page"},
-    "fingerprint": {"algorithm": "simhash"},
+    "fingerprint": {},
 }
 
 
 @pytest.mark.asyncio
-async def test_validate_info_spec_valid_returns_200_valid_true(client):
+async def test_validate_source_spec_valid_returns_200_valid_true(client):
     response = await client.post(
-        "/api/v1/tools/validate-info-spec",
+        "/api/v1/tools/validate-source-spec",
         headers=HEADERS,
-        json={"document": VALID_SPEC},
+        json={"document": VALID_SOURCE_SPEC},
     )
     assert response.status_code == 200
     body = response.json()
@@ -31,11 +35,11 @@ async def test_validate_info_spec_valid_returns_200_valid_true(client):
 
 
 @pytest.mark.asyncio
-async def test_validate_info_spec_invalid_returns_200_valid_false(client):
-    bad = dict(VALID_SPEC)
-    bad.pop("fingerprint")
+async def test_validate_source_spec_invalid_returns_200_valid_false(client):
+    bad = dict(VALID_SOURCE_SPEC)
+    bad.pop("extraction")  # missing required field
     response = await client.post(
-        "/api/v1/tools/validate-info-spec",
+        "/api/v1/tools/validate-source-spec",
         headers=HEADERS,
         json={"document": bad},
     )
@@ -50,35 +54,13 @@ async def test_validate_info_spec_invalid_returns_200_valid_false(client):
 
 
 @pytest.mark.asyncio
-async def test_validate_info_spec_unsupported_schema_version(client):
+async def test_validate_source_spec_css_without_selector(client):
     response = await client.post(
-        "/api/v1/tools/validate-info-spec",
-        headers=HEADERS,
-        json={"document": {**VALID_SPEC, "schema_version": 99}},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["valid"] is False
-    assert any("schema_version" in e["message"] for e in body["errors"])
-
-
-@pytest.mark.asyncio
-async def test_validate_info_spec_requires_api_key(client):
-    response = await client.post(
-        "/api/v1/tools/validate-info-spec",
-        json={"document": VALID_SPEC},
-    )
-    assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_validate_info_spec_css_without_selector(client):
-    response = await client.post(
-        "/api/v1/tools/validate-info-spec",
+        "/api/v1/tools/validate-source-spec",
         headers=HEADERS,
         json={
             "document": {
-                **VALID_SPEC,
+                **VALID_SOURCE_SPEC,
                 "extraction": {"algorithm": "css"},
             }
         },
@@ -86,3 +68,167 @@ async def test_validate_info_spec_css_without_selector(client):
     assert response.status_code == 200
     body = response.json()
     assert body["valid"] is False
+
+
+@pytest.mark.asyncio
+async def test_validate_source_spec_requires_api_key(client):
+    response = await client.post(
+        "/api/v1/tools/validate-source-spec",
+        json={"document": VALID_SOURCE_SPEC},
+    )
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/tools/validate-rep-spec
+# ---------------------------------------------------------------------------
+
+VALID_REP_SPEC = {
+    "provider": "gcs",
+    "credentials_alias": "default",
+    "path_template": "gs://bucket/{gcs.object_name}",
+    "required_fields": ["gcs.object_name"],
+}
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_spec_valid_returns_200_valid_true(client):
+    response = await client.post(
+        "/api/v1/tools/validate-rep-spec",
+        headers=HEADERS,
+        json={"document": VALID_REP_SPEC},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["valid"] is True
+    assert body["errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_spec_unknown_provider_returns_error(client):
+    bad = {**VALID_REP_SPEC, "provider": "unknown_provider_xyz"}
+    response = await client.post(
+        "/api/v1/tools/validate-rep-spec",
+        headers=HEADERS,
+        json={"document": bad},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["valid"] is False
+    assert any("unknown provider" in e["message"] for e in body["errors"])
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_spec_requires_api_key(client):
+    response = await client.post(
+        "/api/v1/tools/validate-rep-spec",
+        json={"document": VALID_REP_SPEC},
+    )
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/tools/validate-rep-fields
+# ---------------------------------------------------------------------------
+
+VALID_BAG = {"gcs": {"object_name": "co/active-licenses"}}
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_fields_valid_bag_returns_200_valid_true(client):
+    response = await client.post(
+        "/api/v1/tools/validate-rep-fields",
+        headers=HEADERS,
+        json={"bag": VALID_BAG},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["valid"] is True
+    assert body["errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_fields_with_required_fields_present(client):
+    response = await client.post(
+        "/api/v1/tools/validate-rep-fields",
+        headers=HEADERS,
+        json={"bag": VALID_BAG, "required_fields": ["gcs.object_name"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["valid"] is True
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_fields_missing_required_field_returns_errors(client):
+    response = await client.post(
+        "/api/v1/tools/validate-rep-fields",
+        headers=HEADERS,
+        json={"bag": {}, "required_fields": ["gcs.object_name"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["valid"] is False
+    assert len(body["errors"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_fields_requires_api_key(client):
+    response = await client.post(
+        "/api/v1/tools/validate-rep-fields",
+        json={"bag": VALID_BAG},
+    )
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/tools/resolve-rep-fields
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_rep_fields_adds_slug_companions(client):
+    response = await client.post(
+        "/api/v1/tools/resolve-rep-fields",
+        headers=HEADERS,
+        json={"bag": {"gcs": {"object_name": "co/active licenses"}}},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "bag" in body
+    assert body["bag"]["gcs"]["object_name_slug"] == "co_active_licenses"
+
+
+@pytest.mark.asyncio
+async def test_resolve_rep_fields_acronym_or_title_derived(client):
+    response = await client.post(
+        "/api/v1/tools/resolve-rep-fields",
+        headers=HEADERS,
+        json={"bag": {"org": {"acronym": "CDPHE", "title": "Colorado Dept"}}},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["bag"]["org"]["acronym_or_title"] == "CDPHE"
+    assert body["bag"]["org"]["acronym_or_title_slug"] == "cdphe"
+
+
+@pytest.mark.asyncio
+async def test_resolve_rep_fields_idempotent_existing_slugs(client):
+    """Pre-existing _slug keys are not overwritten."""
+    response = await client.post(
+        "/api/v1/tools/resolve-rep-fields",
+        headers=HEADERS,
+        json={"bag": {"gcs": {"object_name": "foo", "object_name_slug": "my-custom-slug"}}},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["bag"]["gcs"]["object_name_slug"] == "my-custom-slug"
+
+
+@pytest.mark.asyncio
+async def test_resolve_rep_fields_requires_api_key(client):
+    response = await client.post(
+        "/api/v1/tools/resolve-rep-fields",
+        json={"bag": {}},
+    )
+    assert response.status_code == 403

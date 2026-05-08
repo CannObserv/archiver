@@ -13,6 +13,38 @@ class RepSpecAssignmentCreate(BaseModel):
     activated_at: datetime | None = Field(default=None)
 
 
+# ---------------------------------------------------------------------------
+# Sub-resource create bodies (used by assignment routes)
+# ---------------------------------------------------------------------------
+
+
+class InfoItemSourceCreate(BaseModel):
+    """Request body for POST /info-items/{id}/info-sources."""
+
+    info_source_id: str = Field(min_length=1, description="ULID of an existing InfoSource.")
+    role: str = Field(min_length=1, max_length=50, description="Role label, e.g. 'primary'.")
+
+
+class InfoItemRepSpecCreate(BaseModel):
+    """Request body for POST /info-items/{id}/rep-spec-assignments."""
+
+    rep_spec_id: str = Field(min_length=1, description="ULID of an existing RepSpec.")
+    activated_at: datetime | None = Field(
+        default=None, description="Effective date; defaults to now() when omitted."
+    )
+
+
+class InfoItemSourceRevisionCreate(BaseModel):
+    """Request body for POST /info-items/{id}/source-revisions."""
+
+    source_revision_id: str = Field(
+        min_length=1, description="ULID of an existing SourceRevision."
+    )
+    bound_at: datetime | None = Field(
+        default=None, description="Bind timestamp; defaults to now() when omitted."
+    )
+
+
 class InfoItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
@@ -52,6 +84,14 @@ class InfoItemRepSpecOut(BaseModel):
     activated_at: datetime
     deactivated_at: datetime | None
     public_url: str | None
+
+
+class InfoItemSourceRevisionOut(BaseModel):
+    """Projection of an info_item_source_revisions row."""
+
+    info_item_id: str
+    source_revision_id: str
+    bound_at: datetime
 
 
 class InfoItemOut(BaseModel):

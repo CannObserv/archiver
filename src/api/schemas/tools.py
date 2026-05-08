@@ -5,31 +5,113 @@ from typing import Any
 from pydantic import BaseModel, Field, HttpUrl
 
 
-class ValidateInfoSpecRequest(BaseModel):
-    """Request body for POST /api/v1/tools/validate-info-spec."""
-
-    document: dict[str, Any] = Field(
-        description="The InfoSpec document to validate against the v1 JSON Schema."
-    )
-
-
-class ValidationIssueOut(BaseModel):
+class ValidationErrorOut(BaseModel):
     """Single validation problem with a structured path + message."""
 
-    path: list[str | int] = Field(
-        description="JSON path to the offending field, as a list of segments."
-    )
+    path: str = Field(description="JSON Pointer path to the offending field.")
     message: str = Field(description="Human-readable error message from the validator.")
 
 
-class ValidateInfoSpecResult(BaseModel):
-    """Response body for POST /api/v1/tools/validate-info-spec."""
+# ---------------------------------------------------------------------------
+# validate-source-spec
+# ---------------------------------------------------------------------------
+
+
+class ValidateSourceSpecRequest(BaseModel):
+    """Request body for POST /api/v1/tools/validate-source-spec."""
+
+    document: dict[str, Any] = Field(
+        description="The SourceSpec document to validate against the v1 JSON Schema."
+    )
+
+
+class ValidateSourceSpecResponse(BaseModel):
+    """Response body for POST /api/v1/tools/validate-source-spec."""
 
     valid: bool = Field(description="True iff the document passed schema validation.")
-    errors: list[ValidationIssueOut] = Field(
+    errors: list[ValidationErrorOut] = Field(
         default_factory=list,
         description="Per-field validation issues; empty when ``valid`` is True.",
     )
+
+
+# ---------------------------------------------------------------------------
+# validate-rep-spec
+# ---------------------------------------------------------------------------
+
+
+class ValidateRepSpecRequest(BaseModel):
+    """Request body for POST /api/v1/tools/validate-rep-spec."""
+
+    document: dict[str, Any] = Field(
+        description="The RepSpec document to validate against the v1 JSON Schema."
+    )
+
+
+class ValidateRepSpecResponse(BaseModel):
+    """Response body for POST /api/v1/tools/validate-rep-spec."""
+
+    valid: bool = Field(description="True iff the document passed schema validation.")
+    errors: list[ValidationErrorOut] = Field(
+        default_factory=list,
+        description="Per-field validation issues; empty when ``valid`` is True.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# validate-rep-fields
+# ---------------------------------------------------------------------------
+
+
+class ValidateRepFieldsRequest(BaseModel):
+    """Request body for POST /api/v1/tools/validate-rep-fields."""
+
+    bag: dict[str, Any] = Field(
+        description="The rep_fields bag to validate."
+    )
+    required_fields: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional list of 'ns.key' paths that must be present and non-null. "
+            "When omitted, only the bag's shape is validated."
+        ),
+    )
+
+
+class ValidateRepFieldsResponse(BaseModel):
+    """Response body for POST /api/v1/tools/validate-rep-fields."""
+
+    valid: bool = Field(description="True iff the bag passed validation.")
+    errors: list[ValidationErrorOut] = Field(
+        default_factory=list,
+        description="Per-field validation issues; empty when ``valid`` is True.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# resolve-rep-fields
+# ---------------------------------------------------------------------------
+
+
+class ResolveRepFieldsRequest(BaseModel):
+    """Request body for POST /api/v1/tools/resolve-rep-fields."""
+
+    bag: dict[str, Any] = Field(
+        description="Raw rep_fields bag to enrich with slug companions."
+    )
+
+
+class ResolveRepFieldsResponse(BaseModel):
+    """Response body for POST /api/v1/tools/resolve-rep-fields."""
+
+    bag: dict[str, Any] = Field(
+        description="The slug-enriched bag after resolution."
+    )
+
+
+# ---------------------------------------------------------------------------
+# fetch-and-render
+# ---------------------------------------------------------------------------
 
 
 class FetchAndRenderRequest(BaseModel):
@@ -70,15 +152,19 @@ class FetchAndRenderResult(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# preview-extraction
+# ---------------------------------------------------------------------------
+
+
 class PreviewExtractionRequest(BaseModel):
     """Request body for POST /api/v1/tools/preview-extraction."""
 
-    url: HttpUrl = Field(description="Target URL to fetch and extract from.")
-    document: dict[str, Any] = Field(
+    source_spec: dict[str, Any] = Field(
         description=(
-            "Candidate InfoSpec document. Validated against the v1 schema before "
-            "any fetch is attempted; a validation failure returns 422 with the "
-            "per-field issue list and no fetch is performed."
+            "Candidate SourceSpec document. Must include target.url. Validated "
+            "against the v1 schema before any fetch is attempted; a validation "
+            "failure returns 422 with the per-field issue list."
         )
     )
 
@@ -109,6 +195,11 @@ class PreviewExtractionResult(BaseModel):
             "sha256 → 64-char hex; simhash → decimal int as a string."
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# propose-selectors
+# ---------------------------------------------------------------------------
 
 
 class ProposeSelectorsRequest(BaseModel):

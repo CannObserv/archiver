@@ -1,8 +1,8 @@
 """Authoring tool endpoints under /api/v1/tools/*.
 
 Non-mutating helpers that an LLM agent (or human operator) calls while
-composing Information Items + InfoSpecs. Mutating CRUD lives on the existing
-/api/v1/info-items and /api/v1/info-items/{id}/info-specs routes.
+composing Information Items + SourceSpecs. Mutating CRUD lives on the existing
+/api/v1/info-items and sub-resource routes.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,44 +17,105 @@ from src.api.schemas.tools import (
     PreviewExtractionRequest,
     PreviewExtractionResult,
     ProposeSelectorsRequest,
+    ResolveRepFieldsRequest,
+    ResolveRepFieldsResponse,
     SelectorCandidateOut,
-    ValidateInfoSpecRequest,
-    ValidateInfoSpecResult,
-    ValidationIssueOut,
+    ValidateRepFieldsRequest,
+    ValidateRepFieldsResponse,
+    ValidateRepSpecRequest,
+    ValidateRepSpecResponse,
+    ValidateSourceSpecRequest,
+    ValidateSourceSpecResponse,
+    ValidationErrorOut,
 )
 from src.api.serializers import info_item_to_out
-from src.core.info_spec_schema import (
-    InfoSpecValidationError,
-    validate_info_spec_with_errors,
+from src.core.rep_fields_schema.validator import (
+    validate_rep_fields,
+    validate_rep_fields_against_spec,
 )
+from src.core.rep_spec_schema.validator import validate_rep_spec
+from src.core.source_spec_schema.validator import validate_source_spec
 from src.core.tools.fetch_and_render import (
     HttpFetcherProtocol,
     fetch_and_render,
 )
 from src.core.tools.find_info_item import find_info_item
 from src.core.tools.preview_extraction import (
+    SourceSpecValidationError,
     TargetUnreachableError,
     preview_extraction,
 )
 from src.core.tools.propose_selectors import propose_selectors
+from src.core.tools.resolve_rep_fields import resolve_rep_fields
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
 
-@router.post("/validate-info-spec", response_model=ValidateInfoSpecResult)
-async def validate_info_spec_route(body: ValidateInfoSpecRequest) -> ValidateInfoSpecResult:
-    """Validate an InfoSpec document against the v1 JSON Schema.
+@router.post("/validate-source-spec", response_model=ValidateSourceSpecResponse)
+async def validate_source_spec_route(
+    body: ValidateSourceSpecRequest,
+) -> ValidateSourceSpecResponse:
+    """Validate a SourceSpec document against the v1 JSON Schema.
 
     Always returns 200 — the response body's ``valid`` flag carries the
     validation outcome, and ``errors`` carries field-level issues. This
     differs from create/patch routes (which return 422 on invalid input);
     here, validation IS the purpose, so the result is the response.
     """
-    issues = validate_info_spec_with_errors(body.document)
-    return ValidateInfoSpecResult(
-        valid=len(issues) == 0,
-        errors=[ValidationIssueOut(path=i.path, message=i.message) for i in issues],
+    ok, errors = validate_source_spec(body.document)
+    return ValidateSourceSpecResponse(
+        valid=ok,
+        errors=[ValidationErrorOut(path=e["path"], message=e["message"]) for e in errors],
     )
+
+
+@router.post("/validate-rep-spec", response_model=ValidateRepSpecResponse)
+async def validate_rep_spec_route(
+    body: ValidateRepSpecRequest,
+) -> ValidateRepSpecResponse:
+    """Validate a RepSpec document against the v1 envelope + provider sub-schema.
+
+    Always returns 200 — the response body's ``valid`` flag carries the
+    validation outcome, and ``errors`` carries field-level issues.
+    """
+    ok, errors = validate_rep_spec(body.document)
+    return ValidateRepSpecResponse(
+        valid=ok,
+        errors=[ValidationErrorOut(path=e["path"], message=e["message"]) for e in errors],
+    )
+
+
+@router.post("/validate-rep-fields", response_model=ValidateRepFieldsResponse)
+async def validate_rep_fields_route(
+    body: ValidateRepFieldsRequest,
+) -> ValidateRepFieldsResponse:
+    """Validate a rep_fields bag against the v1 schema and optional required_fields list.
+
+    When ``required_fields`` is supplied, also checks that every 'ns.key' path
+    resolves to a non-null value in the bag. Always returns 200 — validation is
+    the purpose.
+    """
+    if body.required_fields is not None:
+        ok, errors = validate_rep_fields_against_spec(body.bag, body.required_fields)
+    else:
+        ok, errors = validate_rep_fields(body.bag)
+    return ValidateRepFieldsResponse(
+        valid=ok,
+        errors=[ValidationErrorOut(path=e["path"], message=e["message"]) for e in errors],
+    )
+
+
+@router.post("/resolve-rep-fields", response_model=ResolveRepFieldsResponse)
+async def resolve_rep_fields_route(
+    body: ResolveRepFieldsRequest,
+) -> ResolveRepFieldsResponse:
+    """Enrich a raw rep_fields bag with slug companions and acronym_or_title derivations.
+
+    Idempotent: existing ``_slug`` keys are preserved. Unknown namespaces and
+    non-string values pass through unchanged.
+    """
+    resolved = resolve_rep_fields(body.bag)
+    return ResolveRepFieldsResponse(bag=resolved)
 
 
 @router.get("/find-info-items", response_model=list[InfoItemOut])
@@ -82,7 +143,7 @@ async def fetch_and_render_route(
 ) -> FetchAndRenderResult:
     """Fetch a target URL and return its body + headers for downstream tools.
 
-    Use during InfoSpec authoring to inspect what the extractor will see (e.g.
+    Use during SourceSpec authoring to inspect what the extractor will see (e.g.
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
@@ -106,29 +167,27 @@ async def preview_extraction_route(
     body: PreviewExtractionRequest,
     fetcher: HttpFetcherProtocol = Depends(get_http_fetcher),
 ) -> PreviewExtractionResult:
-    """Validate, fetch, extract, and fingerprint with a candidate InfoSpec.
+    """Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_info_spec`` + ``fetch_and_render`` + the HTML extractor
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting via ``create_info_spec``
-    or ``create_info_item(initial_info_spec=…)``.
+    spec yields the expected content before persisting.
+
+    The URL is read from ``source_spec["target"]["url"]``.
 
     Returns 422 with structured errors on schema validation failure
     (``error: "validation_failed"``) or target unreachability
     (``error: "target_unreachable"``).
     """
     try:
-        result = await preview_extraction(fetcher, str(body.url), body.document)
-    except InfoSpecValidationError as e:
-        # The exception carries the structured per-field issue list directly,
-        # so we render the route's contract (list of {path, message}) without
-        # re-running the validator.
+        result = await preview_extraction(fetcher, body.source_spec)
+    except SourceSpecValidationError as e:
         raise HTTPException(
             status_code=422,
             detail={
                 "error": "validation_failed",
-                "errors": [{"path": i.path, "message": i.message} for i in e.issues]
-                or [{"path": [], "message": str(e)}],
+                "errors": [{"path": err["path"], "message": err["message"]} for err in e.errors]
+                or [{"path": "", "message": str(e)}],
             },
         ) from e
     except TargetUnreachableError as e:
@@ -162,13 +221,13 @@ async def propose_selectors_route(
     """Suggest CSS selector candidates for content matching ``description``.
 
     v1 returns CSS selectors only — pair with ``extraction.algorithm: "css"``
-    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    in the resulting SourceSpec. XPath / JSONPath / regex / full_page proposers
     are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match
     set returns ``[]``. Operators always verify the chosen selector via
-    ``preview_extraction`` before persisting an InfoSpec.
+    ``preview_extraction`` before persisting a SourceSpec.
     """
     candidates = await propose_selectors(fetcher, str(body.url), body.description, top_k=body.top_k)
     return [
