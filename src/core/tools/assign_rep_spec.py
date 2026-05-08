@@ -1,0 +1,72 @@
+"""assign_rep_spec — bind a RepSpec to an InfoItem with effective dating."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from ulid import ULID
+
+from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
+from src.core.rep_fields_schema.validator import validate_rep_fields_against_spec
+
+
+class AssignmentError(Exception):
+    """Base class for assign_rep_spec failures."""
+
+
+class InfoItemNotFoundError(AssignmentError):
+    """The given info_item_id does not exist."""
+
+
+class RepSpecNotFoundError(AssignmentError):
+    """The given rep_spec_id does not exist."""
+
+
+class RepFieldsIncompleteError(AssignmentError):
+    """The InfoItem.rep_fields does not satisfy the RepSpec's required_fields."""
+
+    def __init__(self, missing: list[dict]) -> None:
+        self.missing = missing
+        super().__init__(f"rep_fields incomplete: {missing}")
+
+
+async def assign_rep_spec(
+    db: AsyncSession,
+    *,
+    info_item_id: ULID,
+    rep_spec_id: ULID,
+    activated_at: datetime | None = None,
+) -> InfoItemRepSpec:
+    """Create a new InfoItemRepSpec assignment.
+
+    Validates that:
+    - the InfoItem exists
+    - the RepSpec exists
+    - the InfoItem.rep_fields satisfies the RepSpec.document.required_fields list
+      (per src.core.rep_fields_schema.validator.validate_rep_fields_against_spec)
+
+    On success returns the persisted assignment row (active, public_url=None).
+    Caller is responsible for committing the session.
+    """
+    item = await db.get(InfoItem, info_item_id)
+    if item is None:
+        raise InfoItemNotFoundError(str(info_item_id))
+
+    spec = await db.get(RepSpec, rep_spec_id)
+    if spec is None:
+        raise RepSpecNotFoundError(str(rep_spec_id))
+
+    required_fields = (spec.document or {}).get("required_fields", [])
+    ok, errors = validate_rep_fields_against_spec(item.rep_fields or {}, required_fields)
+    if not ok:
+        raise RepFieldsIncompleteError(errors)
+
+    assignment = InfoItemRepSpec(
+        info_item_id=info_item_id,
+        rep_spec_id=rep_spec_id,
+        activated_at=activated_at or datetime.now(UTC),
+    )
+    db.add(assignment)
+    await db.flush()
+    return assignment
