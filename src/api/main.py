@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, FastAPI
 from src.api.deps import require_api_key
 from src.api.routes.health import router as health_router
 from src.api.routes.info_items import router as info_items_router
-from src.api.routes.info_specs import router as info_specs_router
 from src.api.routes.tools import router as tools_router
 from src.core.fetchers.http import HttpFetcher
 from src.core.logging import configure_logging, get_logger
@@ -36,7 +35,6 @@ app = FastAPI(title="archiver", version="0.1.0", lifespan=lifespan)
 
 v1_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 v1_router.include_router(info_items_router)
-v1_router.include_router(info_specs_router)
 v1_router.include_router(tools_router)
 
 app.include_router(v1_router)

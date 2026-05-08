@@ -62,24 +62,3 @@ def info_item_to_out(
         info_item_rep_specs=[info_item_rep_spec_to_out(r) for r in (rep_specs or [])],
     )
 
-
-# ---------------------------------------------------------------------------
-# Legacy serialiser — kept for info_specs.py (B11 will remove this).
-# Importing InfoSpec only when called so that a missing model does not break
-# application startup when info_specs routes are still present.
-# ---------------------------------------------------------------------------
-
-
-def info_spec_to_out(spec):  # type: ignore[no-untyped-def]
-    """Serialise an InfoSpec ORM row (legacy; removed in B11)."""
-    from src.api.schemas.info_spec import InfoSpecOut  # noqa: PLC0415
-
-    return InfoSpecOut(
-        info_spec_id=str(spec.info_spec_id),
-        info_item_id=str(spec.info_item_id),
-        schema_version=spec.schema_version,
-        document=spec.document,
-        priority=spec.priority,
-        active=spec.active,
-        created_at=spec.created_at,
-    )
