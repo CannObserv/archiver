@@ -1,5 +1,7 @@
 """POST /source-revisions and PATCH /source-revisions/{id} route handlers."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -13,7 +15,7 @@ from src.api.schemas.source_revision import (
     SourceRevisionOut,
 )
 from src.api.serializers import source_revision_to_out
-from src.core.models import InfoSource, SourceRevision
+from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
 
 router = APIRouter(prefix="/source-revisions", tags=["source-revisions"])
 
@@ -73,8 +75,29 @@ async def create_source_revision(
         )
         row = existing.scalar_one()
         response.status_code = status.HTTP_200_OK
+        inserted = False
     else:
         response.status_code = status.HTTP_201_CREATED
+        inserted = True
+
+    if inserted:
+        # Query active info_item_ids bound to this source
+        item_ids_result = await session.execute(
+            select(InfoItemSource.info_item_id).where(
+                InfoItemSource.info_source_id == row.info_source_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+        info_item_ids = [str(iid) for iid in item_ids_result.scalars()]
+        payload = {
+            "event_type": "source_revision_captured",
+            "occurred_at": datetime.now(UTC).isoformat(),
+            "info_source_id": str(row.info_source_id),
+            "source_revision_id": str(row.source_revision_id),
+            "content_fingerprint": row.content_fingerprint,
+            "info_item_ids": info_item_ids,
+        }
+        session.add(ChangesOutboxRow(topic="info.changes", payload=payload))
 
     await session.commit()
     return source_revision_to_out(row)

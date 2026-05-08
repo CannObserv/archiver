@@ -18,11 +18,21 @@ PATCH covers:
 13. Empty body {} → 200, no changes
 14. Unknown source_revision_id → 404
 15. Missing X-API-Key → 403
+
+Outbox covers:
+16. New revision → outbox row exists with correct payload shape
+17. Duplicate POST → no new outbox row
+18. info_item_ids reflects active bindings
+19. Deactivated bindings excluded from info_item_ids
+20. No bindings → empty list, still emits
 """
 
-import pytest
+from datetime import UTC, datetime
 
-from src.core.models import InfoSource
+import pytest
+from sqlalchemy import func, select
+
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -412,3 +422,202 @@ async def test_patch_missing_api_key_returns_403(client, info_source):
         json={"content_cache_uri": None},
     )
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Helpers for outbox tests
+# ---------------------------------------------------------------------------
+
+
+async def _outbox_count(session) -> int:
+    """Return total number of changes_outbox rows visible in this session."""
+    result = await session.execute(select(func.count()).select_from(ChangesOutboxRow))
+    return result.scalar_one()
+
+
+async def _make_info_item(session) -> InfoItem:
+    item = InfoItem(name="test-item")
+    session.add(item)
+    await session.flush()
+    return item
+
+
+async def _bind_item_to_source(
+    session, item: InfoItem, source: InfoSource, *, deactivated: bool = False
+) -> InfoItemSource:
+    binding = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        role="primary",
+    )
+    if deactivated:
+        binding.deactivated_at = datetime.now(UTC)
+    session.add(binding)
+    await session.flush()
+    return binding
+
+
+# ---------------------------------------------------------------------------
+# Test 16: New revision → outbox row exists with correct payload shape
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_new_revision_writes_outbox_row(client, session, info_source):
+    source_id = str(info_source.info_source_id)
+
+    resp = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": source_id,
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+        },
+    )
+    assert resp.status_code == 201
+    rev_id = resp.json()["source_revision_id"]
+
+    count = await _outbox_count(session)
+    assert count == 1
+
+    result = await session.execute(select(ChangesOutboxRow))
+    row = result.scalar_one()
+    assert row.topic == "info.changes"
+    payload = row.payload
+    assert payload["event_type"] == "source_revision_captured"
+    assert payload["info_source_id"] == source_id
+    assert payload["source_revision_id"] == rev_id
+    assert payload["content_fingerprint"] == FP_VALID
+    assert isinstance(payload["info_item_ids"], list)
+    assert "occurred_at" in payload
+
+
+# ---------------------------------------------------------------------------
+# Test 17: Duplicate POST → no new outbox row
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_duplicate_post_does_not_write_second_outbox_row(client, session, info_source):
+    payload = {
+        "info_source_id": str(info_source.info_source_id),
+        "content_fingerprint": FP_VALID,
+        "captured_at": "2026-05-08T12:00:00.000000Z",
+    }
+
+    r1 = await client.post("/api/v1/source-revisions", headers=HEADERS, json=payload)
+    assert r1.status_code == 201
+    assert await _outbox_count(session) == 1
+
+    r2 = await client.post("/api/v1/source-revisions", headers=HEADERS, json=payload)
+    assert r2.status_code == 200
+    # Still only one outbox row — idempotent no-op must not write a second
+    assert await _outbox_count(session) == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 18: info_item_ids reflects active bindings
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_outbox_payload_includes_active_info_item_ids(client, session, info_source):
+    item1 = await _make_info_item(session)
+    item2 = await _make_info_item(session)
+    # Give each a distinct role so the unique-primary-per-item constraint doesn't fire
+    binding1 = InfoItemSource(
+        info_item_id=item1.info_item_id,
+        info_source_id=info_source.info_source_id,
+        role="primary",
+    )
+    binding2 = InfoItemSource(
+        info_item_id=item2.info_item_id,
+        info_source_id=info_source.info_source_id,
+        role="primary",
+    )
+    session.add_all([binding1, binding2])
+    await session.flush()
+
+    resp = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+        },
+    )
+    assert resp.status_code == 201
+
+    result = await session.execute(select(ChangesOutboxRow))
+    row = result.scalar_one()
+    item_ids = set(row.payload["info_item_ids"])
+    assert str(item1.info_item_id) in item_ids
+    assert str(item2.info_item_id) in item_ids
+    assert len(item_ids) == 2
+
+
+# ---------------------------------------------------------------------------
+# Test 19: Deactivated bindings excluded from info_item_ids
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_outbox_payload_excludes_deactivated_bindings(client, session, info_source):
+    active_item = await _make_info_item(session)
+    inactive_item = await _make_info_item(session)
+
+    binding_active = InfoItemSource(
+        info_item_id=active_item.info_item_id,
+        info_source_id=info_source.info_source_id,
+        role="primary",
+    )
+    session.add(binding_active)
+    await session.flush()
+
+    await _bind_item_to_source(session, inactive_item, info_source, deactivated=True)
+
+    resp = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+        },
+    )
+    assert resp.status_code == 201
+
+    result = await session.execute(select(ChangesOutboxRow))
+    row = result.scalar_one()
+    item_ids = row.payload["info_item_ids"]
+    assert str(active_item.info_item_id) in item_ids
+    assert str(inactive_item.info_item_id) not in item_ids
+    assert len(item_ids) == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 20: No bindings → empty info_item_ids list, still emits outbox row
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_outbox_payload_empty_list_when_no_bindings(client, session, info_source):
+    resp = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+        },
+    )
+    assert resp.status_code == 201
+
+    count = await _outbox_count(session)
+    assert count == 1
+
+    result = await session.execute(select(ChangesOutboxRow))
+    row = result.scalar_one()
+    assert row.payload["info_item_ids"] == []
