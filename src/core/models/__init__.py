@@ -1,6 +1,7 @@
 """Archiver service ORM models."""
 
 from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
+from src.core.models.changes_outbox import ChangesOutboxRow
 from src.core.models.info_item import InfoItem
 from src.core.models.info_item_rep_spec import InfoItemRepSpec
 from src.core.models.info_item_source import InfoItemSource
@@ -11,6 +12,7 @@ from src.core.models.source_revision import SourceRevision
 
 __all__ = [
     "Base",
+    "ChangesOutboxRow",
     "InfoItem",
     "InfoItemRepSpec",
     "InfoItemSource",
