@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://watcher.exe.xyz/schemas/source-spec/v1.json",
+  "title": "Source Specification v1",
+  "type": "object",
+  "required": ["schema_version", "extraction", "fingerprint"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "target": {
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {"type": "string", "format": "uri"},
+        "fragment": {"type": "string"},
+        "fetch": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "render": {"type": "boolean"},
+            "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 300}
+          }
+        },
+        "url_canonicalization": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "strip_query_keys": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "extraction": {
+      "type": "object",
+      "required": ["algorithm"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {"enum": ["css", "xpath", "jsonpath", "regex", "full_page"]},
+        "selector": {"type": "string"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"algorithm": {"const": "full_page"}}},
+          "then": {"not": {"required": ["selector"]}},
+          "else": {"required": ["selector"]}
+        }
+      ]
+    },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+  }
+}
