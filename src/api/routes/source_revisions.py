@@ -1,4 +1,4 @@
-"""POST /source-revisions — idempotent SourceRevision write path."""
+"""POST /source-revisions and PATCH /source-revisions/{id} route handlers."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.api.schemas.source_revision import SourceRevisionCreate, SourceRevisionOut
+from src.api.schemas.source_revision import (
+    SourceRevisionCachePatch,
+    SourceRevisionCreate,
+    SourceRevisionOut,
+)
 from src.api.serializers import source_revision_to_out
 from src.core.models import InfoSource, SourceRevision
 
@@ -74,3 +78,36 @@ async def create_source_revision(
 
     await session.commit()
     return source_revision_to_out(row)
+
+
+@router.patch("/{source_revision_id}", response_model=SourceRevisionOut)
+async def patch_source_revision(
+    source_revision_id: str,
+    body: SourceRevisionCachePatch,
+    session: AsyncSession = Depends(get_db_session),
+) -> SourceRevisionOut:
+    """Partially update cache fields on an existing SourceRevision.
+
+    Only fields present in the request body are applied; omitted fields are
+    left untouched.  Sending ``null`` explicitly clears the field.
+
+    Raises:
+        404: ``source_revision_id`` does not reference a known SourceRevision.
+        422: ``source_revision_id`` is not a valid ULID.
+    """
+    try:
+        rev_ulid = ULID.from_str(source_revision_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="source_revision_id is not a valid ULID")
+
+    rev = await session.get(SourceRevision, rev_ulid)
+    if rev is None:
+        raise HTTPException(status_code=404, detail="source_revision not found")
+
+    updates = body.model_dump(exclude_unset=True)
+    for k, v in updates.items():
+        setattr(rev, k, v)
+
+    await session.commit()
+    await session.refresh(rev)
+    return source_revision_to_out(rev)

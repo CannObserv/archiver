@@ -1,6 +1,6 @@
-"""Tests for POST /api/v1/source-revisions (idempotent).
+"""Tests for POST /api/v1/source-revisions (idempotent) and PATCH /{id}.
 
-Covers:
+POST covers:
 1. Happy insert → 201, fields round-trip
 2. Idempotent re-POST → 200, same source_revision_id
 3. Different fingerprint, same source → 201, new source_revision_id
@@ -10,6 +10,14 @@ Covers:
 7. Missing X-API-Key → 403
 8. Cache fields populate → response carries them back
 9. Optional fields default to None
+
+PATCH covers:
+10. Clear both cache fields (explicit null) → 200, both NULL
+11. Clear only one field → 200, other field retained
+12. Update to a non-null value → 200, new value set
+13. Empty body {} → 200, no changes
+14. Unknown source_revision_id → 404
+15. Missing X-API-Key → 403
 """
 
 import pytest
@@ -259,3 +267,148 @@ async def test_optional_fields_default_to_none(client, info_source):
     assert body["content_media_type"] is None
     assert body["content_cache_uri"] is None
     assert body["content_cache_expires_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# Helpers — create a revision with cache fields set
+# ---------------------------------------------------------------------------
+
+
+async def _create_rev_with_cache(client, info_source) -> dict:
+    """POST a SourceRevision with both cache fields populated; return body."""
+    resp = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+            "content_cache_uri": "file:///data/cache/rev.html",
+            "content_cache_expires_at": "2026-06-01T00:00:00.000000Z",
+        },
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Test 10: Clear both cache fields → 200, both NULL in response
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_clear_both_cache_fields(client, info_source):
+    created = await _create_rev_with_cache(client, info_source)
+    rev_id = created["source_revision_id"]
+
+    response = await client.patch(
+        f"/api/v1/source-revisions/{rev_id}",
+        headers=HEADERS,
+        json={"content_cache_uri": None, "content_cache_expires_at": None},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source_revision_id"] == rev_id
+    assert body["content_cache_uri"] is None
+    assert body["content_cache_expires_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# Test 11: Clear only one field; other is retained
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_clear_one_field_retains_other(client, info_source):
+    created = await _create_rev_with_cache(client, info_source)
+    rev_id = created["source_revision_id"]
+    original_expires = created["content_cache_expires_at"]
+    assert original_expires is not None
+
+    response = await client.patch(
+        f"/api/v1/source-revisions/{rev_id}",
+        headers=HEADERS,
+        json={"content_cache_uri": None},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["content_cache_uri"] is None
+    # content_cache_expires_at must be unchanged
+    assert body["content_cache_expires_at"] == original_expires
+
+
+# ---------------------------------------------------------------------------
+# Test 12: Update to a non-null value → 200, new value set
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_update_to_new_value(client, info_source):
+    created = await _create_rev_with_cache(client, info_source)
+    rev_id = created["source_revision_id"]
+    new_uri = "file:///data/cache/updated.html"
+
+    response = await client.patch(
+        f"/api/v1/source-revisions/{rev_id}",
+        headers=HEADERS,
+        json={"content_cache_uri": new_uri},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["content_cache_uri"] == new_uri
+    # expires_at retained
+    assert body["content_cache_expires_at"] == created["content_cache_expires_at"]
+
+
+# ---------------------------------------------------------------------------
+# Test 13: Empty body → 200, no changes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_empty_body_no_changes(client, info_source):
+    created = await _create_rev_with_cache(client, info_source)
+    rev_id = created["source_revision_id"]
+
+    response = await client.patch(
+        f"/api/v1/source-revisions/{rev_id}",
+        headers=HEADERS,
+        json={},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    # All fields unchanged
+    assert body["content_cache_uri"] == created["content_cache_uri"]
+    assert body["content_cache_expires_at"] == created["content_cache_expires_at"]
+
+
+# ---------------------------------------------------------------------------
+# Test 14: Unknown source_revision_id → 404
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_unknown_id_returns_404(client):
+    response = await client.patch(
+        "/api/v1/source-revisions/01HZZZZZZZZZZZZZZZZZZZZZZZ",
+        headers=HEADERS,
+        json={"content_cache_uri": None},
+    )
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Test 15: Missing X-API-Key → 403
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_missing_api_key_returns_403(client, info_source):
+    created = await _create_rev_with_cache(client, info_source)
+    rev_id = created["source_revision_id"]
+
+    response = await client.patch(
+        f"/api/v1/source-revisions/{rev_id}",
+        json={"content_cache_uri": None},
+    )
+    assert response.status_code == 403

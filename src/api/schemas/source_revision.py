@@ -1,4 +1,4 @@
-"""Pydantic schemas for SourceRevision create / read."""
+"""Pydantic schemas for SourceRevision create / read / patch."""
 
 import re
 from datetime import datetime
@@ -39,3 +39,17 @@ class SourceRevisionOut(BaseModel):
     content_media_type: str | None
     content_cache_uri: str | None
     content_cache_expires_at: datetime | None
+
+
+class SourceRevisionCachePatch(BaseModel):
+    """Request body for PATCH /source-revisions/{id}.
+
+    Both fields are optional (omitting leaves the DB column untouched).
+    Supplying ``null`` explicitly clears the field.
+    Use ``model_dump(exclude_unset=True)`` to distinguish omitted from null.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    content_cache_uri: str | None = None
+    content_cache_expires_at: datetime | None = None
