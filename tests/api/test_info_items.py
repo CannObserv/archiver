@@ -23,6 +23,10 @@ async def test_create_info_item(client):
     assert body["owner"] == "greg"
     assert body["description"] is None
     assert len(body["info_item_id"]) == 26  # ULID length
+    # v2 shape: empty lists when no source/rep-spec supplied
+    assert body["info_item_sources"] == []
+    assert body["info_item_rep_specs"] == []
+    assert body["rep_fields"] == {}
 
 
 @pytest.mark.asyncio

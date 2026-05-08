@@ -6,19 +6,52 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class RepSpecAssignmentCreate(BaseModel):
+    """One rep_spec assignment to atomically attach to a new InfoItem."""
+
+    rep_spec_id: str = Field(min_length=1)
+    activated_at: datetime | None = Field(default=None)
+
+
 class InfoItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     owner: str | None = Field(default=None, max_length=200)
-    initial_info_spec: dict[str, Any] | None = Field(
+    rep_fields: dict[str, Any] = Field(default_factory=dict)
+    initial_source_spec: dict[str, Any] | None = Field(
         default=None,
         description=(
-            "Optional InfoSpec document to atomically create alongside the new "
-            "InfoItem at priority=1, active=True. Validated against the v1 "
-            "schema before either row is written; on validation failure neither "
-            "InfoItem nor InfoSpec is persisted."
+            "Optional SourceSpec document to atomically create alongside the new "
+            "InfoItem (role='primary'). Validated before any row is written; on "
+            "validation failure neither InfoItem nor InfoSource is persisted."
         ),
     )
+    initial_rep_spec_assignments: list[RepSpecAssignmentCreate] = Field(
+        default_factory=list,
+        description=(
+            "Optional list of RepSpec assignments to atomically create alongside "
+            "the new InfoItem. Each rep_spec_id must reference an existing RepSpec. "
+            "rep_fields are validated against each RepSpec's required_fields."
+        ),
+    )
+
+
+class InfoItemSourceOut(BaseModel):
+    """Light projection of an info_item_sources row."""
+
+    info_source_id: str
+    role: str
+    created_at: datetime
+
+
+class InfoItemRepSpecOut(BaseModel):
+    """Projection of an info_item_rep_specs row."""
+
+    id: str
+    rep_spec_id: str
+    activated_at: datetime
+    deactivated_at: datetime | None
+    public_url: str | None
 
 
 class InfoItemOut(BaseModel):
@@ -26,15 +59,8 @@ class InfoItemOut(BaseModel):
     name: str
     description: str | None
     owner: str | None
+    rep_fields: dict[str, Any]
     created_at: datetime
     updated_at: datetime
-
-
-class InfoItemWithSpecOut(InfoItemOut):
-    """InfoItem creation response that may carry the atomically-created spec ID.
-
-    Returned by ``POST /api/v1/info-items``. ``info_spec_id`` is populated only
-    when the request supplied ``initial_info_spec``; otherwise it is ``null``.
-    """
-
-    info_spec_id: str | None = None
+    info_item_sources: list[InfoItemSourceOut] = Field(default_factory=list)
+    info_item_rep_specs: list[InfoItemRepSpecOut] = Field(default_factory=list)
