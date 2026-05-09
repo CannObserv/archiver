@@ -6,20 +6,20 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.info_item_create import InfoItemCreate
-from ...models.info_item_out import InfoItemOut
+from ...models.validate_rep_fields_request import ValidateRepFieldsRequest
+from ...models.validate_rep_fields_response import ValidateRepFieldsResponse
 from ...types import Response
 
 
 def _get_kwargs(
     *,
-    body: InfoItemCreate,
+    body: ValidateRepFieldsRequest,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/api/v1/info-items",
+        "url": "/api/v1/tools/validate-rep-fields",
     }
 
     _kwargs["json"] = body.to_dict()
@@ -32,11 +32,11 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | InfoItemOut | None:
-    if response.status_code == 201:
-        response_201 = InfoItemOut.from_dict(response.json())
+) -> HTTPValidationError | ValidateRepFieldsResponse | None:
+    if response.status_code == 200:
+        response_200 = ValidateRepFieldsResponse.from_dict(response.json())
 
-        return response_201
+        return response_200
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -51,7 +51,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | InfoItemOut]:
+) -> Response[HTTPValidationError | ValidateRepFieldsResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -63,26 +63,25 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> Response[HTTPValidationError | InfoItemOut]:
-    """Create Info Item
+    body: ValidateRepFieldsRequest,
+) -> Response[HTTPValidationError | ValidateRepFieldsResponse]:
+    """Validate Rep Fields Route
 
-     Create an InfoItem.
+     Validate a rep_fields bag against the v1 schema and optional required_fields list.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
-    binding) and ``initial_rep_spec_assignments`` (creates effective-dated
-    RepSpec assignments). All writes are a single transaction; any validation
-    or lookup failure rolls back the whole thing.
+    When ``required_fields`` is supplied, also checks that every 'ns.key' path
+    resolves to a non-null value in the bag. Always returns 200 — validation is
+    the purpose.
 
     Args:
-        body (InfoItemCreate):
+        body (ValidateRepFieldsRequest): Request body for POST /api/v1/tools/validate-rep-fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoItemOut]
+        Response[HTTPValidationError | ValidateRepFieldsResponse]
     """
 
     kwargs = _get_kwargs(
@@ -99,26 +98,25 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> HTTPValidationError | InfoItemOut | None:
-    """Create Info Item
+    body: ValidateRepFieldsRequest,
+) -> HTTPValidationError | ValidateRepFieldsResponse | None:
+    """Validate Rep Fields Route
 
-     Create an InfoItem.
+     Validate a rep_fields bag against the v1 schema and optional required_fields list.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
-    binding) and ``initial_rep_spec_assignments`` (creates effective-dated
-    RepSpec assignments). All writes are a single transaction; any validation
-    or lookup failure rolls back the whole thing.
+    When ``required_fields`` is supplied, also checks that every 'ns.key' path
+    resolves to a non-null value in the bag. Always returns 200 — validation is
+    the purpose.
 
     Args:
-        body (InfoItemCreate):
+        body (ValidateRepFieldsRequest): Request body for POST /api/v1/tools/validate-rep-fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoItemOut
+        HTTPValidationError | ValidateRepFieldsResponse
     """
 
     return sync_detailed(
@@ -130,26 +128,25 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> Response[HTTPValidationError | InfoItemOut]:
-    """Create Info Item
+    body: ValidateRepFieldsRequest,
+) -> Response[HTTPValidationError | ValidateRepFieldsResponse]:
+    """Validate Rep Fields Route
 
-     Create an InfoItem.
+     Validate a rep_fields bag against the v1 schema and optional required_fields list.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
-    binding) and ``initial_rep_spec_assignments`` (creates effective-dated
-    RepSpec assignments). All writes are a single transaction; any validation
-    or lookup failure rolls back the whole thing.
+    When ``required_fields`` is supplied, also checks that every 'ns.key' path
+    resolves to a non-null value in the bag. Always returns 200 — validation is
+    the purpose.
 
     Args:
-        body (InfoItemCreate):
+        body (ValidateRepFieldsRequest): Request body for POST /api/v1/tools/validate-rep-fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoItemOut]
+        Response[HTTPValidationError | ValidateRepFieldsResponse]
     """
 
     kwargs = _get_kwargs(
@@ -164,26 +161,25 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> HTTPValidationError | InfoItemOut | None:
-    """Create Info Item
+    body: ValidateRepFieldsRequest,
+) -> HTTPValidationError | ValidateRepFieldsResponse | None:
+    """Validate Rep Fields Route
 
-     Create an InfoItem.
+     Validate a rep_fields bag against the v1 schema and optional required_fields list.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
-    binding) and ``initial_rep_spec_assignments`` (creates effective-dated
-    RepSpec assignments). All writes are a single transaction; any validation
-    or lookup failure rolls back the whole thing.
+    When ``required_fields`` is supplied, also checks that every 'ns.key' path
+    resolves to a non-null value in the bag. Always returns 200 — validation is
+    the purpose.
 
     Args:
-        body (InfoItemCreate):
+        body (ValidateRepFieldsRequest): Request body for POST /api/v1/tools/validate-rep-fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoItemOut
+        HTTPValidationError | ValidateRepFieldsResponse
     """
 
     return (

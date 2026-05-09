@@ -7,31 +7,40 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.info_spec_out import InfoSpecOut
+from ...models.info_item_rep_spec_create import InfoItemRepSpecCreate
+from ...models.info_item_rep_spec_out import InfoItemRepSpecOut
 from ...types import Response
 
 
 def _get_kwargs(
     info_item_id: str,
+    *,
+    body: InfoItemRepSpecCreate,
 ) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
-        "method": "get",
-        "url": "/api/v1/info-items/{info_item_id}/primary-info-spec".format(
+        "method": "post",
+        "url": "/api/v1/info-items/{info_item_id}/rep-spec-assignments".format(
             info_item_id=quote(str(info_item_id), safe=""),
         ),
     }
 
+    _kwargs["json"] = body.to_dict()
+
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | InfoSpecOut | None:
-    if response.status_code == 200:
-        response_200 = InfoSpecOut.from_dict(response.json())
+) -> HTTPValidationError | InfoItemRepSpecOut | None:
+    if response.status_code == 201:
+        response_201 = InfoItemRepSpecOut.from_dict(response.json())
 
-        return response_200
+        return response_201
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -46,7 +55,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | InfoSpecOut]:
+) -> Response[HTTPValidationError | InfoItemRepSpecOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -59,26 +68,34 @@ def sync_detailed(
     info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> Response[HTTPValidationError | InfoSpecOut]:
-    """Get Primary Info Spec
+    body: InfoItemRepSpecCreate,
+) -> Response[HTTPValidationError | InfoItemRepSpecOut]:
+    """Add Rep Spec Assignment
 
-     Return the lowest-priority active InfoSpec for the InfoItem.
+     Assign a RepSpec to an InfoItem with effective dating.
 
-    Hot path for consumer services (Watcher, Archive).
+    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
+    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+
+    Error responses:
+    - 404: InfoItem or RepSpec not found
+    - 422: rep_fields incomplete (missing required fields)
 
     Args:
         info_item_id (str):
+        body (InfoItemRepSpecCreate): Request body for POST /info-items/{id}/rep-spec-assignments.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoSpecOut]
+        Response[HTTPValidationError | InfoItemRepSpecOut]
     """
 
     kwargs = _get_kwargs(
         info_item_id=info_item_id,
+        body=body,
     )
 
     response = client.get_httpx_client().request(
@@ -92,27 +109,35 @@ def sync(
     info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> HTTPValidationError | InfoSpecOut | None:
-    """Get Primary Info Spec
+    body: InfoItemRepSpecCreate,
+) -> HTTPValidationError | InfoItemRepSpecOut | None:
+    """Add Rep Spec Assignment
 
-     Return the lowest-priority active InfoSpec for the InfoItem.
+     Assign a RepSpec to an InfoItem with effective dating.
 
-    Hot path for consumer services (Watcher, Archive).
+    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
+    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+
+    Error responses:
+    - 404: InfoItem or RepSpec not found
+    - 422: rep_fields incomplete (missing required fields)
 
     Args:
         info_item_id (str):
+        body (InfoItemRepSpecCreate): Request body for POST /info-items/{id}/rep-spec-assignments.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoSpecOut
+        HTTPValidationError | InfoItemRepSpecOut
     """
 
     return sync_detailed(
         info_item_id=info_item_id,
         client=client,
+        body=body,
     ).parsed
 
 
@@ -120,26 +145,34 @@ async def asyncio_detailed(
     info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> Response[HTTPValidationError | InfoSpecOut]:
-    """Get Primary Info Spec
+    body: InfoItemRepSpecCreate,
+) -> Response[HTTPValidationError | InfoItemRepSpecOut]:
+    """Add Rep Spec Assignment
 
-     Return the lowest-priority active InfoSpec for the InfoItem.
+     Assign a RepSpec to an InfoItem with effective dating.
 
-    Hot path for consumer services (Watcher, Archive).
+    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
+    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+
+    Error responses:
+    - 404: InfoItem or RepSpec not found
+    - 422: rep_fields incomplete (missing required fields)
 
     Args:
         info_item_id (str):
+        body (InfoItemRepSpecCreate): Request body for POST /info-items/{id}/rep-spec-assignments.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoSpecOut]
+        Response[HTTPValidationError | InfoItemRepSpecOut]
     """
 
     kwargs = _get_kwargs(
         info_item_id=info_item_id,
+        body=body,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -151,27 +184,35 @@ async def asyncio(
     info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> HTTPValidationError | InfoSpecOut | None:
-    """Get Primary Info Spec
+    body: InfoItemRepSpecCreate,
+) -> HTTPValidationError | InfoItemRepSpecOut | None:
+    """Add Rep Spec Assignment
 
-     Return the lowest-priority active InfoSpec for the InfoItem.
+     Assign a RepSpec to an InfoItem with effective dating.
 
-    Hot path for consumer services (Watcher, Archive).
+    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
+    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+
+    Error responses:
+    - 404: InfoItem or RepSpec not found
+    - 422: rep_fields incomplete (missing required fields)
 
     Args:
         info_item_id (str):
+        body (InfoItemRepSpecCreate): Request body for POST /info-items/{id}/rep-spec-assignments.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoSpecOut
+        HTTPValidationError | InfoItemRepSpecOut
     """
 
     return (
         await asyncio_detailed(
             info_item_id=info_item_id,
             client=client,
+            body=body,
         )
     ).parsed

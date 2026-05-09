@@ -6,12 +6,12 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="InfoSpecCreateDocument")
+T = TypeVar("T", bound="ResolveRepFieldsRequestBag")
 
 
 @_attrs_define
-class InfoSpecCreateDocument:
-    """ """
+class ResolveRepFieldsRequestBag:
+    """Raw rep_fields bag to enrich with slug companions."""
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -25,10 +25,10 @@ class InfoSpecCreateDocument:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        info_spec_create_document = cls()
+        resolve_rep_fields_request_bag = cls()
 
-        info_spec_create_document.additional_properties = d
-        return info_spec_create_document
+        resolve_rep_fields_request_bag.additional_properties = d
+        return resolve_rep_fields_request_bag
 
     @property
     def additional_keys(self) -> list[str]:

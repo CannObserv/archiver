@@ -1,35 +1,31 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="ValidationIssueOut")
+T = TypeVar("T", bound="ValidationErrorOut")
 
 
 @_attrs_define
-class ValidationIssueOut:
+class ValidationErrorOut:
     """Single validation problem with a structured path + message.
 
     Attributes:
         message (str): Human-readable error message from the validator.
-        path (list[int | str]): JSON path to the offending field, as a list of segments.
+        path (str): JSON Pointer path to the offending field.
     """
 
     message: str
-    path: list[int | str]
+    path: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         message = self.message
 
-        path = []
-        for path_item_data in self.path:
-            path_item: int | str
-            path_item = path_item_data
-            path.append(path_item)
+        path = self.path
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -47,24 +43,15 @@ class ValidationIssueOut:
         d = dict(src_dict)
         message = d.pop("message")
 
-        path = []
-        _path = d.pop("path")
-        for path_item_data in _path:
+        path = d.pop("path")
 
-            def _parse_path_item(data: object) -> int | str:
-                return cast(int | str, data)
-
-            path_item = _parse_path_item(path_item_data)
-
-            path.append(path_item)
-
-        validation_issue_out = cls(
+        validation_error_out = cls(
             message=message,
             path=path,
         )
 
-        validation_issue_out.additional_properties = d
-        return validation_issue_out
+        validation_error_out.additional_properties = d
+        return validation_error_out
 
     @property
     def additional_keys(self) -> list[str]:

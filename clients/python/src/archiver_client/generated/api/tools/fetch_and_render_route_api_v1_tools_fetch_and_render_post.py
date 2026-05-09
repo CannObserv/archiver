@@ -69,7 +69,7 @@ def sync_detailed(
 
      Fetch a target URL and return its body + headers for downstream tools.
 
-    Use during InfoSpec authoring to inspect what the extractor will see (e.g.
+    Use during SourceSpec authoring to inspect what the extractor will see (e.g.
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
@@ -105,7 +105,7 @@ def sync(
 
      Fetch a target URL and return its body + headers for downstream tools.
 
-    Use during InfoSpec authoring to inspect what the extractor will see (e.g.
+    Use during SourceSpec authoring to inspect what the extractor will see (e.g.
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
@@ -136,7 +136,7 @@ async def asyncio_detailed(
 
      Fetch a target URL and return its body + headers for downstream tools.
 
-    Use during InfoSpec authoring to inspect what the extractor will see (e.g.
+    Use during SourceSpec authoring to inspect what the extractor will see (e.g.
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
@@ -170,7 +170,7 @@ async def asyncio(
 
      Fetch a target URL and return its body + headers for downstream tools.
 
-    Use during InfoSpec authoring to inspect what the extractor will see (e.g.
+    Use during SourceSpec authoring to inspect what the extractor will see (e.g.
     pipe the body into ``propose_selectors`` or ``preview_extraction``). Body
     payloads larger than 5 MiB are truncated; ``truncated`` flags the case.
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.

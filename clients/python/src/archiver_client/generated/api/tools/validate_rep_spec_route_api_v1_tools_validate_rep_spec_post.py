@@ -1,35 +1,40 @@
 from http import HTTPStatus
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.info_item_out import InfoItemOut
+from ...models.validate_rep_spec_request import ValidateRepSpecRequest
+from ...models.validate_rep_spec_response import ValidateRepSpecResponse
 from ...types import Response
 
 
 def _get_kwargs(
-    info_item_id: str,
+    *,
+    body: ValidateRepSpecRequest,
 ) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
-        "method": "get",
-        "url": "/api/v1/info-items/{info_item_id}".format(
-            info_item_id=quote(str(info_item_id), safe=""),
-        ),
+        "method": "post",
+        "url": "/api/v1/tools/validate-rep-spec",
     }
 
+    _kwargs["json"] = body.to_dict()
+
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | InfoItemOut | None:
+) -> HTTPValidationError | ValidateRepSpecResponse | None:
     if response.status_code == 200:
-        response_200 = InfoItemOut.from_dict(response.json())
+        response_200 = ValidateRepSpecResponse.from_dict(response.json())
 
         return response_200
 
@@ -46,7 +51,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | InfoItemOut]:
+) -> Response[HTTPValidationError | ValidateRepSpecResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -56,27 +61,30 @@ def _build_response(
 
 
 def sync_detailed(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> Response[HTTPValidationError | InfoItemOut]:
-    """Get Info Item
+    body: ValidateRepSpecRequest,
+) -> Response[HTTPValidationError | ValidateRepSpecResponse]:
+    """Validate Rep Spec Route
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Validate a RepSpec document against the v1 envelope + provider sub-schema.
+
+    Always returns 200 — the response body's ``valid`` flag carries the
+    validation outcome, and ``errors`` carries field-level issues.
 
     Args:
-        info_item_id (str):
+        body (ValidateRepSpecRequest): Request body for POST /api/v1/tools/validate-rep-spec.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoItemOut]
+        Response[HTTPValidationError | ValidateRepSpecResponse]
     """
 
     kwargs = _get_kwargs(
-        info_item_id=info_item_id,
+        body=body,
     )
 
     response = client.get_httpx_client().request(
@@ -87,53 +95,59 @@ def sync_detailed(
 
 
 def sync(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> HTTPValidationError | InfoItemOut | None:
-    """Get Info Item
+    body: ValidateRepSpecRequest,
+) -> HTTPValidationError | ValidateRepSpecResponse | None:
+    """Validate Rep Spec Route
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Validate a RepSpec document against the v1 envelope + provider sub-schema.
+
+    Always returns 200 — the response body's ``valid`` flag carries the
+    validation outcome, and ``errors`` carries field-level issues.
 
     Args:
-        info_item_id (str):
+        body (ValidateRepSpecRequest): Request body for POST /api/v1/tools/validate-rep-spec.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoItemOut
+        HTTPValidationError | ValidateRepSpecResponse
     """
 
     return sync_detailed(
-        info_item_id=info_item_id,
         client=client,
+        body=body,
     ).parsed
 
 
 async def asyncio_detailed(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> Response[HTTPValidationError | InfoItemOut]:
-    """Get Info Item
+    body: ValidateRepSpecRequest,
+) -> Response[HTTPValidationError | ValidateRepSpecResponse]:
+    """Validate Rep Spec Route
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Validate a RepSpec document against the v1 envelope + provider sub-schema.
+
+    Always returns 200 — the response body's ``valid`` flag carries the
+    validation outcome, and ``errors`` carries field-level issues.
 
     Args:
-        info_item_id (str):
+        body (ValidateRepSpecRequest): Request body for POST /api/v1/tools/validate-rep-spec.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoItemOut]
+        Response[HTTPValidationError | ValidateRepSpecResponse]
     """
 
     kwargs = _get_kwargs(
-        info_item_id=info_item_id,
+        body=body,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -142,28 +156,31 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> HTTPValidationError | InfoItemOut | None:
-    """Get Info Item
+    body: ValidateRepSpecRequest,
+) -> HTTPValidationError | ValidateRepSpecResponse | None:
+    """Validate Rep Spec Route
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Validate a RepSpec document against the v1 envelope + provider sub-schema.
+
+    Always returns 200 — the response body's ``valid`` flag carries the
+    validation outcome, and ``errors`` carries field-level issues.
 
     Args:
-        info_item_id (str):
+        body (ValidateRepSpecRequest): Request body for POST /api/v1/tools/validate-rep-spec.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoItemOut
+        HTTPValidationError | ValidateRepSpecResponse
     """
 
     return (
         await asyncio_detailed(
-            info_item_id=info_item_id,
             client=client,
+            body=body,
         )
     ).parsed

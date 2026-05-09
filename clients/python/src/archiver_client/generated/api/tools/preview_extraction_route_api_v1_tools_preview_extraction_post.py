@@ -67,12 +67,13 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | PreviewExtractionResult]:
     r"""Preview Extraction Route
 
-     Validate, fetch, extract, and fingerprint with a candidate InfoSpec.
+     Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_info_spec`` + ``fetch_and_render`` + the HTML extractor
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting via ``create_info_spec``
-    or ``create_info_item(initial_info_spec=…)``.
+    spec yields the expected content before persisting.
+
+    The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
     Returns 422 with structured errors on schema validation failure
     (``error: \"validation_failed\"``) or target unreachability
@@ -107,12 +108,13 @@ def sync(
 ) -> HTTPValidationError | PreviewExtractionResult | None:
     r"""Preview Extraction Route
 
-     Validate, fetch, extract, and fingerprint with a candidate InfoSpec.
+     Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_info_spec`` + ``fetch_and_render`` + the HTML extractor
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting via ``create_info_spec``
-    or ``create_info_item(initial_info_spec=…)``.
+    spec yields the expected content before persisting.
+
+    The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
     Returns 422 with structured errors on schema validation failure
     (``error: \"validation_failed\"``) or target unreachability
@@ -142,12 +144,13 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | PreviewExtractionResult]:
     r"""Preview Extraction Route
 
-     Validate, fetch, extract, and fingerprint with a candidate InfoSpec.
+     Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_info_spec`` + ``fetch_and_render`` + the HTML extractor
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting via ``create_info_spec``
-    or ``create_info_item(initial_info_spec=…)``.
+    spec yields the expected content before persisting.
+
+    The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
     Returns 422 with structured errors on schema validation failure
     (``error: \"validation_failed\"``) or target unreachability
@@ -180,12 +183,13 @@ async def asyncio(
 ) -> HTTPValidationError | PreviewExtractionResult | None:
     r"""Preview Extraction Route
 
-     Validate, fetch, extract, and fingerprint with a candidate InfoSpec.
+     Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_info_spec`` + ``fetch_and_render`` + the HTML extractor
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting via ``create_info_spec``
-    or ``create_info_item(initial_info_spec=…)``.
+    spec yields the expected content before persisting.
+
+    The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
     Returns 422 with structured errors on schema validation failure
     (``error: \"validation_failed\"``) or target unreachability

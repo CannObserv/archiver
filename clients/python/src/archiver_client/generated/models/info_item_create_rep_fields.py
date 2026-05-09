@@ -6,11 +6,11 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="InfoItemCreateInitialInfoSpecType0")
+T = TypeVar("T", bound="InfoItemCreateRepFields")
 
 
 @_attrs_define
-class InfoItemCreateInitialInfoSpecType0:
+class InfoItemCreateRepFields:
     """ """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -25,10 +25,10 @@ class InfoItemCreateInitialInfoSpecType0:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        info_item_create_initial_info_spec_type_0 = cls()
+        info_item_create_rep_fields = cls()
 
-        info_item_create_initial_info_spec_type_0.additional_properties = d
-        return info_item_create_initial_info_spec_type_0
+        info_item_create_rep_fields.additional_properties = d
+        return info_item_create_rep_fields
 
     @property
     def additional_keys(self) -> list[str]:

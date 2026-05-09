@@ -1,5 +1,5 @@
 from http import HTTPStatus
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 import httpx
@@ -7,18 +7,19 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.info_item_out import InfoItemOut
 from ...types import Response
 
 
 def _get_kwargs(
     info_item_id: str,
+    assignment_id: str,
 ) -> dict[str, Any]:
 
     _kwargs: dict[str, Any] = {
-        "method": "get",
-        "url": "/api/v1/info-items/{info_item_id}".format(
+        "method": "delete",
+        "url": "/api/v1/info-items/{info_item_id}/rep-spec-assignments/{assignment_id}".format(
             info_item_id=quote(str(info_item_id), safe=""),
+            assignment_id=quote(str(assignment_id), safe=""),
         ),
     }
 
@@ -27,11 +28,10 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | InfoItemOut | None:
-    if response.status_code == 200:
-        response_200 = InfoItemOut.from_dict(response.json())
-
-        return response_200
+) -> Any | HTTPValidationError | None:
+    if response.status_code == 204:
+        response_204 = cast(Any, None)
+        return response_204
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -46,7 +46,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | InfoItemOut]:
+) -> Response[Any | HTTPValidationError]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -57,26 +57,32 @@ def _build_response(
 
 def sync_detailed(
     info_item_id: str,
+    assignment_id: str,
     *,
     client: AuthenticatedClient,
-) -> Response[HTTPValidationError | InfoItemOut]:
-    """Get Info Item
+) -> Response[Any | HTTPValidationError]:
+    """Deactivate Rep Spec Assignment
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Deactivate a RepSpec assignment by setting ``deactivated_at = now()``.
+
+    Returns 204 on success. Returns 404 if the assignment doesn't exist or
+    does not belong to the given InfoItem.
 
     Args:
         info_item_id (str):
+        assignment_id (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoItemOut]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
         info_item_id=info_item_id,
+        assignment_id=assignment_id,
     )
 
     response = client.get_httpx_client().request(
@@ -88,52 +94,64 @@ def sync_detailed(
 
 def sync(
     info_item_id: str,
+    assignment_id: str,
     *,
     client: AuthenticatedClient,
-) -> HTTPValidationError | InfoItemOut | None:
-    """Get Info Item
+) -> Any | HTTPValidationError | None:
+    """Deactivate Rep Spec Assignment
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Deactivate a RepSpec assignment by setting ``deactivated_at = now()``.
+
+    Returns 204 on success. Returns 404 if the assignment doesn't exist or
+    does not belong to the given InfoItem.
 
     Args:
         info_item_id (str):
+        assignment_id (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoItemOut
+        Any | HTTPValidationError
     """
 
     return sync_detailed(
         info_item_id=info_item_id,
+        assignment_id=assignment_id,
         client=client,
     ).parsed
 
 
 async def asyncio_detailed(
     info_item_id: str,
+    assignment_id: str,
     *,
     client: AuthenticatedClient,
-) -> Response[HTTPValidationError | InfoItemOut]:
-    """Get Info Item
+) -> Response[Any | HTTPValidationError]:
+    """Deactivate Rep Spec Assignment
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Deactivate a RepSpec assignment by setting ``deactivated_at = now()``.
+
+    Returns 204 on success. Returns 404 if the assignment doesn't exist or
+    does not belong to the given InfoItem.
 
     Args:
         info_item_id (str):
+        assignment_id (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoItemOut]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
         info_item_id=info_item_id,
+        assignment_id=assignment_id,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -143,27 +161,33 @@ async def asyncio_detailed(
 
 async def asyncio(
     info_item_id: str,
+    assignment_id: str,
     *,
     client: AuthenticatedClient,
-) -> HTTPValidationError | InfoItemOut | None:
-    """Get Info Item
+) -> Any | HTTPValidationError | None:
+    """Deactivate Rep Spec Assignment
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Deactivate a RepSpec assignment by setting ``deactivated_at = now()``.
+
+    Returns 204 on success. Returns 404 if the assignment doesn't exist or
+    does not belong to the given InfoItem.
 
     Args:
         info_item_id (str):
+        assignment_id (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoItemOut
+        Any | HTTPValidationError
     """
 
     return (
         await asyncio_detailed(
             info_item_id=info_item_id,
+            assignment_id=assignment_id,
             client=client,
         )
     ).parsed

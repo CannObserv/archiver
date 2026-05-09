@@ -6,29 +6,52 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="ValidateInfoSpecRequestDocument")
+T = TypeVar("T", bound="InfoItemSourceCreate")
 
 
 @_attrs_define
-class ValidateInfoSpecRequestDocument:
-    """The InfoSpec document to validate against the v1 JSON Schema."""
+class InfoItemSourceCreate:
+    """Request body for POST /info-items/{id}/info-sources.
 
+    Attributes:
+        info_source_id (str): ULID of an existing InfoSource.
+        role (str): Role label, e.g. 'primary'.
+    """
+
+    info_source_id: str
+    role: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        info_source_id = self.info_source_id
+
+        role = self.role
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
+        field_dict.update(
+            {
+                "info_source_id": info_source_id,
+                "role": role,
+            }
+        )
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        validate_info_spec_request_document = cls()
+        info_source_id = d.pop("info_source_id")
 
-        validate_info_spec_request_document.additional_properties = d
-        return validate_info_spec_request_document
+        role = d.pop("role")
+
+        info_item_source_create = cls(
+            info_source_id=info_source_id,
+            role=role,
+        )
+
+        info_item_source_create.additional_properties = d
+        return info_item_source_create
 
     @property
     def additional_keys(self) -> list[str]:

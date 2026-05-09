@@ -7,33 +7,31 @@ from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 if TYPE_CHECKING:
-    from ..models.preview_extraction_request_source_spec import PreviewExtractionRequestSourceSpec
+    from ..models.resolve_rep_fields_request_bag import ResolveRepFieldsRequestBag
 
 
-T = TypeVar("T", bound="PreviewExtractionRequest")
+T = TypeVar("T", bound="ResolveRepFieldsRequest")
 
 
 @_attrs_define
-class PreviewExtractionRequest:
-    """Request body for POST /api/v1/tools/preview-extraction.
+class ResolveRepFieldsRequest:
+    """Request body for POST /api/v1/tools/resolve-rep-fields.
 
     Attributes:
-        source_spec (PreviewExtractionRequestSourceSpec): Candidate SourceSpec document. Must include target.url.
-            Validated against the v1 schema before any fetch is attempted; a validation failure returns 422 with the per-
-            field issue list.
+        bag (ResolveRepFieldsRequestBag): Raw rep_fields bag to enrich with slug companions.
     """
 
-    source_spec: PreviewExtractionRequestSourceSpec
+    bag: ResolveRepFieldsRequestBag
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        source_spec = self.source_spec.to_dict()
+        bag = self.bag.to_dict()
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "source_spec": source_spec,
+                "bag": bag,
             }
         )
 
@@ -41,19 +39,17 @@ class PreviewExtractionRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.preview_extraction_request_source_spec import (
-            PreviewExtractionRequestSourceSpec,
-        )
+        from ..models.resolve_rep_fields_request_bag import ResolveRepFieldsRequestBag
 
         d = dict(src_dict)
-        source_spec = PreviewExtractionRequestSourceSpec.from_dict(d.pop("source_spec"))
+        bag = ResolveRepFieldsRequestBag.from_dict(d.pop("bag"))
 
-        preview_extraction_request = cls(
-            source_spec=source_spec,
+        resolve_rep_fields_request = cls(
+            bag=bag,
         )
 
-        preview_extraction_request.additional_properties = d
-        return preview_extraction_request
+        resolve_rep_fields_request.additional_properties = d
+        return resolve_rep_fields_request
 
     @property
     def additional_keys(self) -> list[str]:

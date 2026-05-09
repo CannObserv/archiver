@@ -75,13 +75,13 @@ def sync_detailed(
      Suggest CSS selector candidates for content matching ``description``.
 
     v1 returns CSS selectors only — pair with ``extraction.algorithm: \"css\"``
-    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    in the resulting SourceSpec. XPath / JSONPath / regex / full_page proposers
     are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match
     set returns ``[]``. Operators always verify the chosen selector via
-    ``preview_extraction`` before persisting an InfoSpec.
+    ``preview_extraction`` before persisting a SourceSpec.
 
     Args:
         body (ProposeSelectorsRequest): Request body for POST /api/v1/tools/propose-selectors.
@@ -115,13 +115,13 @@ def sync(
      Suggest CSS selector candidates for content matching ``description``.
 
     v1 returns CSS selectors only — pair with ``extraction.algorithm: \"css\"``
-    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    in the resulting SourceSpec. XPath / JSONPath / regex / full_page proposers
     are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match
     set returns ``[]``. Operators always verify the chosen selector via
-    ``preview_extraction`` before persisting an InfoSpec.
+    ``preview_extraction`` before persisting a SourceSpec.
 
     Args:
         body (ProposeSelectorsRequest): Request body for POST /api/v1/tools/propose-selectors.
@@ -150,13 +150,13 @@ async def asyncio_detailed(
      Suggest CSS selector candidates for content matching ``description``.
 
     v1 returns CSS selectors only — pair with ``extraction.algorithm: \"css\"``
-    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    in the resulting SourceSpec. XPath / JSONPath / regex / full_page proposers
     are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match
     set returns ``[]``. Operators always verify the chosen selector via
-    ``preview_extraction`` before persisting an InfoSpec.
+    ``preview_extraction`` before persisting a SourceSpec.
 
     Args:
         body (ProposeSelectorsRequest): Request body for POST /api/v1/tools/propose-selectors.
@@ -188,13 +188,13 @@ async def asyncio(
      Suggest CSS selector candidates for content matching ``description``.
 
     v1 returns CSS selectors only — pair with ``extraction.algorithm: \"css\"``
-    in the resulting InfoSpec. XPath / JSONPath / regex / full_page proposers
+    in the resulting SourceSpec. XPath / JSONPath / regex / full_page proposers
     are on the roadmap; track via #148.
 
     Heuristic v1: substring match + specificity + text-length proximity +
     volatility penalty (hash-looking class names get demoted). Empty match
     set returns ``[]``. Operators always verify the chosen selector via
-    ``preview_extraction`` before persisting an InfoSpec.
+    ``preview_extraction`` before persisting a SourceSpec.
 
     Args:
         body (ProposeSelectorsRequest): Request body for POST /api/v1/tools/propose-selectors.

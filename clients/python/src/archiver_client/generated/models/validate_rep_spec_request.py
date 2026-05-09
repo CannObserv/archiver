@@ -7,33 +7,31 @@ from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 if TYPE_CHECKING:
-    from ..models.preview_extraction_request_source_spec import PreviewExtractionRequestSourceSpec
+    from ..models.validate_rep_spec_request_document import ValidateRepSpecRequestDocument
 
 
-T = TypeVar("T", bound="PreviewExtractionRequest")
+T = TypeVar("T", bound="ValidateRepSpecRequest")
 
 
 @_attrs_define
-class PreviewExtractionRequest:
-    """Request body for POST /api/v1/tools/preview-extraction.
+class ValidateRepSpecRequest:
+    """Request body for POST /api/v1/tools/validate-rep-spec.
 
     Attributes:
-        source_spec (PreviewExtractionRequestSourceSpec): Candidate SourceSpec document. Must include target.url.
-            Validated against the v1 schema before any fetch is attempted; a validation failure returns 422 with the per-
-            field issue list.
+        document (ValidateRepSpecRequestDocument): The RepSpec document to validate against the v1 JSON Schema.
     """
 
-    source_spec: PreviewExtractionRequestSourceSpec
+    document: ValidateRepSpecRequestDocument
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        source_spec = self.source_spec.to_dict()
+        document = self.document.to_dict()
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "source_spec": source_spec,
+                "document": document,
             }
         )
 
@@ -41,19 +39,17 @@ class PreviewExtractionRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.preview_extraction_request_source_spec import (
-            PreviewExtractionRequestSourceSpec,
-        )
+        from ..models.validate_rep_spec_request_document import ValidateRepSpecRequestDocument
 
         d = dict(src_dict)
-        source_spec = PreviewExtractionRequestSourceSpec.from_dict(d.pop("source_spec"))
+        document = ValidateRepSpecRequestDocument.from_dict(d.pop("document"))
 
-        preview_extraction_request = cls(
-            source_spec=source_spec,
+        validate_rep_spec_request = cls(
+            document=document,
         )
 
-        preview_extraction_request.additional_properties = d
-        return preview_extraction_request
+        validate_rep_spec_request.additional_properties = d
+        return validate_rep_spec_request
 
     @property
     def additional_keys(self) -> list[str]:

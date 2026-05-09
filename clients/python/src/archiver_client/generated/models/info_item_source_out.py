@@ -1,39 +1,45 @@
 from __future__ import annotations
 
+import datetime
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import Any, TypeVar
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
+from dateutil.parser import isoparse
 
-if TYPE_CHECKING:
-    from ..models.preview_extraction_request_source_spec import PreviewExtractionRequestSourceSpec
-
-
-T = TypeVar("T", bound="PreviewExtractionRequest")
+T = TypeVar("T", bound="InfoItemSourceOut")
 
 
 @_attrs_define
-class PreviewExtractionRequest:
-    """Request body for POST /api/v1/tools/preview-extraction.
+class InfoItemSourceOut:
+    """Light projection of an info_item_sources row.
 
     Attributes:
-        source_spec (PreviewExtractionRequestSourceSpec): Candidate SourceSpec document. Must include target.url.
-            Validated against the v1 schema before any fetch is attempted; a validation failure returns 422 with the per-
-            field issue list.
+        created_at (datetime.datetime):
+        info_source_id (str):
+        role (str):
     """
 
-    source_spec: PreviewExtractionRequestSourceSpec
+    created_at: datetime.datetime
+    info_source_id: str
+    role: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        source_spec = self.source_spec.to_dict()
+        created_at = self.created_at.isoformat()
+
+        info_source_id = self.info_source_id
+
+        role = self.role
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "source_spec": source_spec,
+                "created_at": created_at,
+                "info_source_id": info_source_id,
+                "role": role,
             }
         )
 
@@ -41,19 +47,21 @@ class PreviewExtractionRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.preview_extraction_request_source_spec import (
-            PreviewExtractionRequestSourceSpec,
-        )
-
         d = dict(src_dict)
-        source_spec = PreviewExtractionRequestSourceSpec.from_dict(d.pop("source_spec"))
+        created_at = isoparse(d.pop("created_at"))
 
-        preview_extraction_request = cls(
-            source_spec=source_spec,
+        info_source_id = d.pop("info_source_id")
+
+        role = d.pop("role")
+
+        info_item_source_out = cls(
+            created_at=created_at,
+            info_source_id=info_source_id,
+            role=role,
         )
 
-        preview_extraction_request.additional_properties = d
-        return preview_extraction_request
+        info_item_source_out.additional_properties = d
+        return info_item_source_out
 
     @property
     def additional_keys(self) -> list[str]:

@@ -1,40 +1,31 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-from ..types import UNSET, Unset
-
 if TYPE_CHECKING:
-    from ..models.info_spec_create_document import InfoSpecCreateDocument
+    from ..models.validate_source_spec_request_document import ValidateSourceSpecRequestDocument
 
 
-T = TypeVar("T", bound="InfoSpecCreate")
+T = TypeVar("T", bound="ValidateSourceSpecRequest")
 
 
 @_attrs_define
-class InfoSpecCreate:
-    """
+class ValidateSourceSpecRequest:
+    """Request body for POST /api/v1/tools/validate-source-spec.
+
     Attributes:
-        document (InfoSpecCreateDocument):
-        priority (int | None | Unset):
+        document (ValidateSourceSpecRequestDocument): The SourceSpec document to validate against the v1 JSON Schema.
     """
 
-    document: InfoSpecCreateDocument
-    priority: int | None | Unset = UNSET
+    document: ValidateSourceSpecRequestDocument
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         document = self.document.to_dict()
-
-        priority: int | None | Unset
-        if isinstance(self.priority, Unset):
-            priority = UNSET
-        else:
-            priority = self.priority
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -43,34 +34,22 @@ class InfoSpecCreate:
                 "document": document,
             }
         )
-        if priority is not UNSET:
-            field_dict["priority"] = priority
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.info_spec_create_document import InfoSpecCreateDocument
+        from ..models.validate_source_spec_request_document import ValidateSourceSpecRequestDocument
 
         d = dict(src_dict)
-        document = InfoSpecCreateDocument.from_dict(d.pop("document"))
+        document = ValidateSourceSpecRequestDocument.from_dict(d.pop("document"))
 
-        def _parse_priority(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        priority = _parse_priority(d.pop("priority", UNSET))
-
-        info_spec_create = cls(
+        validate_source_spec_request = cls(
             document=document,
-            priority=priority,
         )
 
-        info_spec_create.additional_properties = d
-        return info_spec_create
+        validate_source_spec_request.additional_properties = d
+        return validate_source_spec_request
 
     @property
     def additional_keys(self) -> list[str]:

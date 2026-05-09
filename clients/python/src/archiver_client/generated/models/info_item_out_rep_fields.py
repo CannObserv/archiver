@@ -6,15 +6,12 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="PreviewExtractionRequestDocument")
+T = TypeVar("T", bound="InfoItemOutRepFields")
 
 
 @_attrs_define
-class PreviewExtractionRequestDocument:
-    """Candidate InfoSpec document. Validated against the v1 schema before any fetch is attempted; a validation failure
-    returns 422 with the per-field issue list and no fetch is performed.
-
-    """
+class InfoItemOutRepFields:
+    """ """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -28,10 +25,10 @@ class PreviewExtractionRequestDocument:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        preview_extraction_request_document = cls()
+        info_item_out_rep_fields = cls()
 
-        preview_extraction_request_document.additional_properties = d
-        return preview_extraction_request_document
+        info_item_out_rep_fields.additional_properties = d
+        return info_item_out_rep_fields
 
     @property
     def additional_keys(self) -> list[str]:

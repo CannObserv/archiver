@@ -9,23 +9,23 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.validation_issue_out import ValidationIssueOut
+    from ..models.validation_error_out import ValidationErrorOut
 
 
-T = TypeVar("T", bound="ValidateInfoSpecResult")
+T = TypeVar("T", bound="ValidateRepSpecResponse")
 
 
 @_attrs_define
-class ValidateInfoSpecResult:
-    """Response body for POST /api/v1/tools/validate-info-spec.
+class ValidateRepSpecResponse:
+    """Response body for POST /api/v1/tools/validate-rep-spec.
 
     Attributes:
         valid (bool): True iff the document passed schema validation.
-        errors (list[ValidationIssueOut] | Unset): Per-field validation issues; empty when ``valid`` is True.
+        errors (list[ValidationErrorOut] | Unset): Per-field validation issues; empty when ``valid`` is True.
     """
 
     valid: bool
-    errors: list[ValidationIssueOut] | Unset = UNSET
+    errors: list[ValidationErrorOut] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,27 +52,27 @@ class ValidateInfoSpecResult:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.validation_issue_out import ValidationIssueOut
+        from ..models.validation_error_out import ValidationErrorOut
 
         d = dict(src_dict)
         valid = d.pop("valid")
 
         _errors = d.pop("errors", UNSET)
-        errors: list[ValidationIssueOut] | Unset = UNSET
+        errors: list[ValidationErrorOut] | Unset = UNSET
         if _errors is not UNSET:
             errors = []
             for errors_item_data in _errors:
-                errors_item = ValidationIssueOut.from_dict(errors_item_data)
+                errors_item = ValidationErrorOut.from_dict(errors_item_data)
 
                 errors.append(errors_item)
 
-        validate_info_spec_result = cls(
+        validate_rep_spec_response = cls(
             valid=valid,
             errors=errors,
         )
 
-        validate_info_spec_result.additional_properties = d
-        return validate_info_spec_result
+        validate_rep_spec_response.additional_properties = d
+        return validate_rep_spec_response
 
     @property
     def additional_keys(self) -> list[str]:

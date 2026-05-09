@@ -1,35 +1,40 @@
 from http import HTTPStatus
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.info_item_out import InfoItemOut
+from ...models.resolve_rep_fields_request import ResolveRepFieldsRequest
+from ...models.resolve_rep_fields_response import ResolveRepFieldsResponse
 from ...types import Response
 
 
 def _get_kwargs(
-    info_item_id: str,
+    *,
+    body: ResolveRepFieldsRequest,
 ) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
-        "method": "get",
-        "url": "/api/v1/info-items/{info_item_id}".format(
-            info_item_id=quote(str(info_item_id), safe=""),
-        ),
+        "method": "post",
+        "url": "/api/v1/tools/resolve-rep-fields",
     }
 
+    _kwargs["json"] = body.to_dict()
+
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | InfoItemOut | None:
+) -> HTTPValidationError | ResolveRepFieldsResponse | None:
     if response.status_code == 200:
-        response_200 = InfoItemOut.from_dict(response.json())
+        response_200 = ResolveRepFieldsResponse.from_dict(response.json())
 
         return response_200
 
@@ -46,7 +51,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | InfoItemOut]:
+) -> Response[HTTPValidationError | ResolveRepFieldsResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -56,27 +61,30 @@ def _build_response(
 
 
 def sync_detailed(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> Response[HTTPValidationError | InfoItemOut]:
-    """Get Info Item
+    body: ResolveRepFieldsRequest,
+) -> Response[HTTPValidationError | ResolveRepFieldsResponse]:
+    """Resolve Rep Fields Route
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Enrich a raw rep_fields bag with slug companions and acronym_or_title derivations.
+
+    Idempotent: existing ``_slug`` keys are preserved. Unknown namespaces and
+    non-string values pass through unchanged.
 
     Args:
-        info_item_id (str):
+        body (ResolveRepFieldsRequest): Request body for POST /api/v1/tools/resolve-rep-fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoItemOut]
+        Response[HTTPValidationError | ResolveRepFieldsResponse]
     """
 
     kwargs = _get_kwargs(
-        info_item_id=info_item_id,
+        body=body,
     )
 
     response = client.get_httpx_client().request(
@@ -87,53 +95,59 @@ def sync_detailed(
 
 
 def sync(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> HTTPValidationError | InfoItemOut | None:
-    """Get Info Item
+    body: ResolveRepFieldsRequest,
+) -> HTTPValidationError | ResolveRepFieldsResponse | None:
+    """Resolve Rep Fields Route
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Enrich a raw rep_fields bag with slug companions and acronym_or_title derivations.
+
+    Idempotent: existing ``_slug`` keys are preserved. Unknown namespaces and
+    non-string values pass through unchanged.
 
     Args:
-        info_item_id (str):
+        body (ResolveRepFieldsRequest): Request body for POST /api/v1/tools/resolve-rep-fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoItemOut
+        HTTPValidationError | ResolveRepFieldsResponse
     """
 
     return sync_detailed(
-        info_item_id=info_item_id,
         client=client,
+        body=body,
     ).parsed
 
 
 async def asyncio_detailed(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> Response[HTTPValidationError | InfoItemOut]:
-    """Get Info Item
+    body: ResolveRepFieldsRequest,
+) -> Response[HTTPValidationError | ResolveRepFieldsResponse]:
+    """Resolve Rep Fields Route
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Enrich a raw rep_fields bag with slug companions and acronym_or_title derivations.
+
+    Idempotent: existing ``_slug`` keys are preserved. Unknown namespaces and
+    non-string values pass through unchanged.
 
     Args:
-        info_item_id (str):
+        body (ResolveRepFieldsRequest): Request body for POST /api/v1/tools/resolve-rep-fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | InfoItemOut]
+        Response[HTTPValidationError | ResolveRepFieldsResponse]
     """
 
     kwargs = _get_kwargs(
-        info_item_id=info_item_id,
+        body=body,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -142,28 +156,31 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-) -> HTTPValidationError | InfoItemOut | None:
-    """Get Info Item
+    body: ResolveRepFieldsRequest,
+) -> HTTPValidationError | ResolveRepFieldsResponse | None:
+    """Resolve Rep Fields Route
 
-     Fetch a single InfoItem by ID (no related rows populated).
+     Enrich a raw rep_fields bag with slug companions and acronym_or_title derivations.
+
+    Idempotent: existing ``_slug`` keys are preserved. Unknown namespaces and
+    non-string values pass through unchanged.
 
     Args:
-        info_item_id (str):
+        body (ResolveRepFieldsRequest): Request body for POST /api/v1/tools/resolve-rep-fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | InfoItemOut
+        HTTPValidationError | ResolveRepFieldsResponse
     """
 
     return (
         await asyncio_detailed(
-            info_item_id=info_item_id,
             client=client,
+            body=body,
         )
     ).parsed
