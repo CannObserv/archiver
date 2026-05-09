@@ -51,9 +51,7 @@ class InfoItemRepSpecPublicUrlPatch(BaseModel):
 class InfoItemSourceRevisionCreate(BaseModel):
     """Request body for POST /info-items/{id}/source-revisions."""
 
-    source_revision_id: str = Field(
-        min_length=1, description="ULID of an existing SourceRevision."
-    )
+    source_revision_id: str = Field(min_length=1, description="ULID of an existing SourceRevision.")
     bound_at: datetime | None = Field(
         default=None, description="Bind timestamp; defaults to now() when omitted."
     )

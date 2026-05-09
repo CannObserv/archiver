@@ -34,8 +34,11 @@ def canonicalize_url(url: str, *, strip_query_keys: list[str] | None = None) -> 
 
     query = parts.query
     if strip_query_keys:
-        keep = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
-                if k not in strip_query_keys]
+        keep = [
+            (k, v)
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k not in strip_query_keys
+        ]
         query = urlencode(keep)
 
     return urlunsplit((scheme, netloc, canonical_path, query, ""))

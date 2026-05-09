@@ -24,10 +24,12 @@ def validate_source_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
     """Schema-validate a SourceSpec document. Returns (ok, errors)."""
     errors: list[ValidationError] = []
     for err in _validator().iter_errors(doc):
-        errors.append({
-            "path": "/" + "/".join(str(p) for p in err.absolute_path),
-            "message": err.message,
-        })
+        errors.append(
+            {
+                "path": "/" + "/".join(str(p) for p in err.absolute_path),
+                "message": err.message,
+            }
+        )
     return (len(errors) == 0, errors)
 
 

@@ -24,10 +24,12 @@ def validate_rep_fields(bag: dict) -> tuple[bool, list[ValidationError]]:
     """Schema-validate the bag's namespacing convention only."""
     errors: list[ValidationError] = []
     for err in _validator().iter_errors(bag):
-        errors.append({
-            "path": "/" + "/".join(str(p) for p in err.absolute_path),
-            "message": err.message,
-        })
+        errors.append(
+            {
+                "path": "/" + "/".join(str(p) for p in err.absolute_path),
+                "message": err.message,
+            }
+        )
     return (len(errors) == 0, errors)
 
 
@@ -40,17 +42,21 @@ def validate_rep_fields_against_spec(
     for path in required_fields:
         ns, _, key = path.partition(".")
         if not ns or not key:
-            errors.append({
-                "path": f"/{path}",
-                "message": f"required_fields entry {path!r} is malformed (expect 'ns.key')",
-            })
+            errors.append(
+                {
+                    "path": f"/{path}",
+                    "message": f"required_fields entry {path!r} is malformed (expect 'ns.key')",
+                }
+            )
             ok = False
             continue
         ns_dict = bag.get(ns)
         if not isinstance(ns_dict, dict) or key not in ns_dict or ns_dict.get(key) is None:
-            errors.append({
-                "path": f"/{ns}/{key}",
-                "message": f"required field {path} missing or null",
-            })
+            errors.append(
+                {
+                    "path": f"/{ns}/{key}",
+                    "message": f"required field {path} missing or null",
+                }
+            )
             ok = False
     return ok, errors

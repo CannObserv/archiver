@@ -23,9 +23,7 @@ class ChangesOutboxRow(Base):
 
     __tablename__ = "changes_outbox"
 
-    id: Mapped[ULID] = mapped_column(
-        ULIDType(), primary_key=True, default=generate_ulid
-    )
+    id: Mapped[ULID] = mapped_column(ULIDType(), primary_key=True, default=generate_ulid)
     topic: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -33,9 +31,7 @@ class ChangesOutboxRow(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
-    published_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     bus_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Failure counter only — the publisher increments this on a failed XADD,
     # not on success. A successfully-published row has publish_attempts == 0.

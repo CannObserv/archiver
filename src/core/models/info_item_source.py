@@ -37,9 +37,7 @@ class InfoItemSource(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
-    deactivated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(

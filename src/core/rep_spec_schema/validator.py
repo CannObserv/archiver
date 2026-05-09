@@ -37,24 +37,30 @@ def validate_rep_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
     """
     errors: list[ValidationError] = []
     for err in _envelope().iter_errors(doc):
-        errors.append({
-            "path": "/" + "/".join(str(p) for p in err.absolute_path),
-            "message": err.message,
-        })
+        errors.append(
+            {
+                "path": "/" + "/".join(str(p) for p in err.absolute_path),
+                "message": err.message,
+            }
+        )
 
     provider = doc.get("provider")
     if provider:
         sub = _provider_validator(provider)
         if sub is None:
-            errors.append({
-                "path": "/provider",
-                "message": f"unknown provider: {provider!r}",
-            })
+            errors.append(
+                {
+                    "path": "/provider",
+                    "message": f"unknown provider: {provider!r}",
+                }
+            )
         else:
             for err in sub.iter_errors(doc.get("object_options", {})):
-                errors.append({
-                    "path": "/object_options/" + "/".join(str(p) for p in err.absolute_path),
-                    "message": err.message,
-                })
+                errors.append(
+                    {
+                        "path": "/object_options/" + "/".join(str(p) for p in err.absolute_path),
+                        "message": err.message,
+                    }
+                )
 
     return (len(errors) == 0, errors)

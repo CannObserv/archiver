@@ -199,9 +199,13 @@ Full skill reference: `docs/SKILLS.md`. Cross-project search to the sister `watc
 ```bash
 uv sync                                      # install deps
 uv run pytest                                # tests
-uv run ruff check .                          # lint
+uv run ruff check .                          # lint (also ruff format .)
 uv run alembic upgrade head                  # apply migrations
 uv run alembic revision --autogenerate -m "description"
+
+# Pre-commit hooks (one-time per clone, then runs on each git commit):
+uv run pre-commit install                    # install the hook
+uv run pre-commit run --all-files            # manual sweep across the repo
 ```
 
 ## Conventions

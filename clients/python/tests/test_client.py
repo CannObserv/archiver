@@ -73,6 +73,7 @@ def _info_source_out_payload() -> dict:
 
 # --- InfoItem endpoints ---
 
+
 @pytest.mark.asyncio
 async def test_create_info_item(client):
     with respx.mock:
@@ -151,6 +152,7 @@ async def test_get_info_item_422_raises_validation_error(client):
 
 # --- RepSpec assignment endpoints ---
 
+
 @pytest.mark.asyncio
 async def test_assign_rep_spec(client):
     with respx.mock:
@@ -183,9 +185,7 @@ async def test_deactivate_rep_spec_assignment_404_raises_not_found(client):
             f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/rep-spec-assignments/missing"
         ).mock(return_value=httpx.Response(404, json={"detail": "not found"}))
         with pytest.raises(NotFound):
-            await client.deactivate_rep_spec_assignment(
-                "01HZZ00000000000000000000A", "missing"
-            )
+            await client.deactivate_rep_spec_assignment("01HZZ00000000000000000000A", "missing")
 
 
 @pytest.mark.asyncio
@@ -206,12 +206,13 @@ async def test_set_public_url(client):
 
 # --- InfoSource binding ---
 
+
 @pytest.mark.asyncio
 async def test_add_info_source(client):
     with respx.mock:
-        respx.post(
-            f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/info-sources"
-        ).mock(return_value=httpx.Response(201, json=_info_source_out_payload()))
+        respx.post(f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/info-sources").mock(
+            return_value=httpx.Response(201, json=_info_source_out_payload())
+        )
         out = await client.add_info_source(
             "01HZZ00000000000000000000A",
             "01HZZ00000000000000000000F",
@@ -223,9 +224,11 @@ async def test_add_info_source(client):
 
 # --- SourceRevision endpoints ---
 
+
 @pytest.mark.asyncio
 async def test_post_source_revision(client):
     import datetime
+
     with respx.mock:
         respx.post(f"{BASE_URL}/api/v1/source-revisions").mock(
             return_value=httpx.Response(201, json=_source_revision_payload())
@@ -244,9 +247,9 @@ async def test_patch_source_revision_cache(client):
     payload = _source_revision_payload()
     payload["content_cache_uri"] = "s3://bucket/key"
     with respx.mock:
-        respx.patch(
-            f"{BASE_URL}/api/v1/source-revisions/01HZZ00000000000000000000E"
-        ).mock(return_value=httpx.Response(200, json=payload))
+        respx.patch(f"{BASE_URL}/api/v1/source-revisions/01HZZ00000000000000000000E").mock(
+            return_value=httpx.Response(200, json=payload)
+        )
         out = await client.patch_source_revision_cache(
             "01HZZ00000000000000000000E",
             content_cache_uri="s3://bucket/key",
@@ -255,6 +258,7 @@ async def test_patch_source_revision_cache(client):
 
 
 # --- Bind revision ---
+
 
 @pytest.mark.asyncio
 async def test_bind_revision(client):

@@ -73,6 +73,7 @@ def _parse_validation_result(body: dict[str, Any]) -> ValidationResult:
 
 # --- Authoring tool functions ---
 
+
 async def validate_source_spec(
     client_facade: ArchiverClient, document: dict[str, Any]
 ) -> ValidationResult:
@@ -103,22 +104,16 @@ async def validate_rep_fields(
     payload: dict[str, Any] = {"bag": bag}
     if required_fields is not None:
         payload["required_fields"] = required_fields
-    body = await _post_json(
-        client_facade, "/api/v1/tools/validate-rep-fields", payload
-    )
+    body = await _post_json(client_facade, "/api/v1/tools/validate-rep-fields", payload)
     return _parse_validation_result(body)
 
 
-async def resolve_rep_fields(
-    client_facade: ArchiverClient, bag: dict[str, Any]
-) -> dict[str, Any]:
+async def resolve_rep_fields(client_facade: ArchiverClient, bag: dict[str, Any]) -> dict[str, Any]:
     """Enrich a raw rep_fields bag with slug companions.
 
     Returns the resolved bag dict (the ``bag`` key from the response body).
     """
-    body = await _post_json(
-        client_facade, "/api/v1/tools/resolve-rep-fields", {"bag": bag}
-    )
+    body = await _post_json(client_facade, "/api/v1/tools/resolve-rep-fields", {"bag": bag})
     return dict(body.get("bag", {}))
 
 

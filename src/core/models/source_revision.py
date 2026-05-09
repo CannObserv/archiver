@@ -30,9 +30,7 @@ class SourceRevision(Base):
         nullable=False,
     )
     content_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
-    captured_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     content_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     content_media_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     content_cache_uri: Mapped[str | None] = mapped_column(Text, nullable=True)

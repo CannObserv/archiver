@@ -36,6 +36,7 @@ def _info_item_payload(info_item_id: str, name: str) -> dict:
 
 # --- validate_source_spec ---
 
+
 @pytest.mark.asyncio
 async def test_validate_source_spec_valid(client):
     with respx.mock:
@@ -56,9 +57,7 @@ async def test_validate_source_spec_invalid_returns_structured_errors(client):
                 200,
                 json={
                     "valid": False,
-                    "errors": [
-                        {"path": ["target"], "message": "'target' is required"}
-                    ],
+                    "errors": [{"path": ["target"], "message": "'target' is required"}],
                 },
             )
         )
@@ -81,6 +80,7 @@ async def test_validate_source_spec_sends_document_in_body(client):
 
 
 # --- validate_rep_spec ---
+
 
 @pytest.mark.asyncio
 async def test_validate_rep_spec_valid(client):
@@ -111,6 +111,7 @@ async def test_validate_rep_spec_invalid(client):
 
 
 # --- validate_rep_fields ---
+
 
 @pytest.mark.asyncio
 async def test_validate_rep_fields_valid(client):
@@ -150,6 +151,7 @@ async def test_validate_rep_fields_sends_bag(client):
 
 # --- resolve_rep_fields ---
 
+
 @pytest.mark.asyncio
 async def test_resolve_rep_fields_returns_enriched_bag(client):
     with respx.mock:
@@ -182,6 +184,7 @@ async def test_resolve_rep_fields_sends_bag(client):
 
 
 # --- find_info_item ---
+
 
 @pytest.mark.asyncio
 async def test_find_info_item_returns_typed_list(client):
@@ -225,6 +228,7 @@ async def test_find_info_item_empty_result(client):
 
 # --- create_info_item with initial_source_spec ---
 
+
 @pytest.mark.asyncio
 async def test_create_info_item_with_source_spec_sends_initial_source_spec(client):
     with respx.mock:
@@ -255,6 +259,7 @@ async def test_create_info_item_without_source_spec(client):
 
 # --- fetch_and_render ---
 
+
 @pytest.mark.asyncio
 async def test_fetch_and_render_returns_typed_result(client):
     with respx.mock:
@@ -280,6 +285,7 @@ async def test_fetch_and_render_returns_typed_result(client):
 
 
 # --- preview_extraction (v2: source_spec key) ---
+
 
 @pytest.mark.asyncio
 async def test_preview_extraction_returns_typed_result(client):
@@ -333,6 +339,7 @@ async def test_preview_extraction_sends_source_spec_key(client):
 
 
 # --- propose_selectors ---
+
 
 @pytest.mark.asyncio
 async def test_propose_selectors_returns_typed_candidates(client):

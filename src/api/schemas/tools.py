@@ -66,9 +66,7 @@ class ValidateRepSpecResponse(BaseModel):
 class ValidateRepFieldsRequest(BaseModel):
     """Request body for POST /api/v1/tools/validate-rep-fields."""
 
-    bag: dict[str, Any] = Field(
-        description="The rep_fields bag to validate."
-    )
+    bag: dict[str, Any] = Field(description="The rep_fields bag to validate.")
     required_fields: list[str] | None = Field(
         default=None,
         description=(
@@ -96,17 +94,13 @@ class ValidateRepFieldsResponse(BaseModel):
 class ResolveRepFieldsRequest(BaseModel):
     """Request body for POST /api/v1/tools/resolve-rep-fields."""
 
-    bag: dict[str, Any] = Field(
-        description="Raw rep_fields bag to enrich with slug companions."
-    )
+    bag: dict[str, Any] = Field(description="Raw rep_fields bag to enrich with slug companions.")
 
 
 class ResolveRepFieldsResponse(BaseModel):
     """Response body for POST /api/v1/tools/resolve-rep-fields."""
 
-    bag: dict[str, Any] = Field(
-        description="The slug-enriched bag after resolution."
-    )
+    bag: dict[str, Any] = Field(description="The slug-enriched bag after resolution.")
 
 
 # ---------------------------------------------------------------------------

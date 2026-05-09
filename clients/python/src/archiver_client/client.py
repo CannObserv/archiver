@@ -150,9 +150,7 @@ class ArchiverClient:
             body.initial_rep_spec_assignments = [
                 RepSpecAssignmentCreate.from_dict(a) for a in initial_rep_spec_assignments
             ]
-        response = await _create_info_item.asyncio_detailed(
-            client=self._gen_client, body=body
-        )
+        response = await _create_info_item.asyncio_detailed(client=self._gen_client, body=body)
         return _unwrap(response)
 
     async def list_info_items(self) -> list[InfoItemOut]:
@@ -189,9 +187,7 @@ class ArchiverClient:
         )
         return _unwrap(response)
 
-    async def deactivate_rep_spec_assignment(
-        self, info_item_id: str, assignment_id: str
-    ) -> None:
+    async def deactivate_rep_spec_assignment(self, info_item_id: str, assignment_id: str) -> None:
         """Deactivate (soft-delete) a RepSpec assignment."""
         response = await _deactivate_rep_spec.asyncio_detailed(
             client=self._gen_client,
@@ -262,18 +258,12 @@ class ArchiverClient:
             info_source_id=info_source_id,
             content_fingerprint=content_fingerprint,
             captured_at=captured_at,
-            content_cache_uri=(
-                content_cache_uri if content_cache_uri is not None else UNSET
-            ),
+            content_cache_uri=(content_cache_uri if content_cache_uri is not None else UNSET),
             content_cache_expires_at=(
                 content_cache_expires_at if content_cache_expires_at is not None else UNSET
             ),
-            content_media_type=(
-                content_media_type if content_media_type is not None else UNSET
-            ),
-            content_size_bytes=(
-                content_size_bytes if content_size_bytes is not None else UNSET
-            ),
+            content_media_type=(content_media_type if content_media_type is not None else UNSET),
+            content_size_bytes=(content_size_bytes if content_size_bytes is not None else UNSET),
         )
         response = await _create_source_revision.asyncio_detailed(
             client=self._gen_client, body=body

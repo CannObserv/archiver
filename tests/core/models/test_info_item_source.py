@@ -54,18 +54,20 @@ async def test_round_trip(session, item, make_source):
 async def test_one_active_primary_per_item(session, item, make_source):
     s1 = await make_source("https://example.com/a")
     s2 = await make_source("https://example.com/b")
-    session.add_all([
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=s1.info_source_id,
-            role="primary",
-        ),
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=s2.info_source_id,
-            role="primary",
-        ),
-    ])
+    session.add_all(
+        [
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=s1.info_source_id,
+                role="primary",
+            ),
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=s2.info_source_id,
+                role="primary",
+            ),
+        ]
+    )
     with pytest.raises(IntegrityError):
         await session.commit()
 
@@ -101,16 +103,18 @@ async def test_secondary_role_unconstrained(session, item, make_source):
     """
     s1 = await make_source("https://example.com/a")
     s2 = await make_source("https://example.com/b")
-    session.add_all([
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=s1.info_source_id,
-            role="secondary",
-        ),
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=s2.info_source_id,
-            role="secondary",
-        ),
-    ])
+    session.add_all(
+        [
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=s1.info_source_id,
+                role="secondary",
+            ),
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=s2.info_source_id,
+                role="secondary",
+            ),
+        ]
+    )
     await session.commit()  # should not raise

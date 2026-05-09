@@ -14,10 +14,7 @@ from src.core.tools.preview_extraction import (
 )
 
 HTML_FIXTURE = (
-    b"<html><body>"
-    b"<div class='target'>kept content</div>"
-    b"<div>dropped content</div>"
-    b"</body></html>"
+    b"<html><body><div class='target'>kept content</div><div>dropped content</div></body></html>"
 )
 
 VALID_FULL_PAGE_SOURCE_SPEC = {
@@ -105,7 +102,7 @@ class TestPreviewExtractionCssSelector:
     @pytest.mark.asyncio
     async def test_fingerprint_hex_part_is_64_chars(self):
         result = await preview_extraction(_stub_fetcher(), VALID_CSS_SOURCE_SPEC)
-        hex_part = result.computed_fingerprint[len("sha256:"):]
+        hex_part = result.computed_fingerprint[len("sha256:") :]
         assert len(hex_part) == 64
 
 
@@ -175,6 +172,9 @@ class TestPreviewExtractionUrlFromSpec:
                     fetcher_used="http",
                 )
 
-        spec = {**VALID_FULL_PAGE_SOURCE_SPEC, "target": {"url": "https://specific.example.com/path"}}
+        spec = {
+            **VALID_FULL_PAGE_SOURCE_SPEC,
+            "target": {"url": "https://specific.example.com/path"},
+        }
         await preview_extraction(_CaptureFetcher(), spec)
         assert received_urls == ["https://specific.example.com/path"]

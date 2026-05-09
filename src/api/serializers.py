@@ -82,4 +82,3 @@ def info_item_to_out(
         info_item_sources=[info_item_source_to_out(s) for s in (sources or [])],
         info_item_rep_specs=[info_item_rep_spec_to_out(r) for r in (rep_specs or [])],
     )
-

@@ -21,9 +21,7 @@ class RepSpec(Base):
 
     __tablename__ = "rep_specs"
 
-    rep_spec_id: Mapped[ULID] = mapped_column(
-        ULIDType(), primary_key=True, default=generate_ulid
-    )
+    rep_spec_id: Mapped[ULID] = mapped_column(ULIDType(), primary_key=True, default=generate_ulid)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)

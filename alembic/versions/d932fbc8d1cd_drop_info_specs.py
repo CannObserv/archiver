@@ -27,6 +27,4 @@ def downgrade() -> None:
 
     Restore from the prior migration if you really need to revert.
     """
-    raise NotImplementedError(
-        "Phase 4 cutover is one-way; restore from prior migration if needed"
-    )
+    raise NotImplementedError("Phase 4 cutover is one-way; restore from prior migration if needed")

@@ -58,9 +58,7 @@ async def create_source_revision(
             content_cache_uri=body.content_cache_uri,
             content_cache_expires_at=body.content_cache_expires_at,
         )
-        .on_conflict_do_nothing(
-            index_elements=["info_source_id", "content_fingerprint"]
-        )
+        .on_conflict_do_nothing(index_elements=["info_source_id", "content_fingerprint"])
         .returning(SourceRevision)
     )
     result = await session.execute(stmt)

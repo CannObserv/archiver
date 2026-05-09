@@ -34,9 +34,7 @@ def test_uppercase_top_level_rejected():
 
 def test_required_fields_all_present():
     """All required fields resolve to non-null values → ok."""
-    ok, errors = validate_rep_fields_against_spec(
-        {"org": {"acronym": "x"}}, ["org.acronym"]
-    )
+    ok, errors = validate_rep_fields_against_spec({"org": {"acronym": "x"}}, ["org.acronym"])
     assert ok is True
     assert errors == []
 
@@ -50,9 +48,7 @@ def test_required_field_missing():
 
 def test_required_field_present_but_null():
     """Field present but null counts as missing."""
-    ok, errors = validate_rep_fields_against_spec(
-        {"org": {"acronym": None}}, ["org.acronym"]
-    )
+    ok, errors = validate_rep_fields_against_spec({"org": {"acronym": None}}, ["org.acronym"])
     assert ok is False
     assert len(errors) > 0
 

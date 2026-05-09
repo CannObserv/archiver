@@ -20,9 +20,7 @@ class InfoItemRepSpec(Base):
 
     __tablename__ = "info_item_rep_specs"
 
-    id: Mapped[ULID] = mapped_column(
-        ULIDType(), primary_key=True, default=generate_ulid
-    )
+    id: Mapped[ULID] = mapped_column(ULIDType(), primary_key=True, default=generate_ulid)
     info_item_id: Mapped[ULID] = mapped_column(
         ULIDType(),
         ForeignKey("information.info_items.info_item_id", ondelete="CASCADE"),
@@ -34,9 +32,7 @@ class InfoItemRepSpec(Base):
         nullable=False,
     )
     activated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    deactivated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     public_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (

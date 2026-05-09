@@ -224,9 +224,7 @@ async def test_add_rep_spec_assignment_missing_spec_returns_404(client, info_ite
 
 
 @pytest.mark.asyncio
-async def test_add_rep_spec_assignment_incomplete_rep_fields_returns_422(
-    client, session, rep_spec
-):
+async def test_add_rep_spec_assignment_incomplete_rep_fields_returns_422(client, session, rep_spec):
     """InfoItem with empty rep_fields fails required_fields check → 422."""
     # Create item with empty rep_fields (doesn't satisfy gcs.object_name required)
     item = InfoItem(name="empty-fields-item", rep_fields={})
@@ -359,9 +357,7 @@ async def rep_spec_assignment(session, info_item, rep_spec) -> InfoItemRepSpec:
 
 
 @pytest.mark.asyncio
-async def test_deactivate_rep_spec_assignment_happy_path(
-    client, info_item, rep_spec_assignment
-):
+async def test_deactivate_rep_spec_assignment_happy_path(client, info_item, rep_spec_assignment):
     item_id = str(info_item.info_item_id)
     assignment_id = str(rep_spec_assignment.id)
 
@@ -422,9 +418,7 @@ async def test_deactivate_rep_spec_assignment_requires_api_key(
 
 
 @pytest.mark.asyncio
-async def test_patch_rep_spec_assignment_public_url_active(
-    client, info_item, rep_spec_assignment
-):
+async def test_patch_rep_spec_assignment_public_url_active(client, info_item, rep_spec_assignment):
     """Set public_url on an active assignment row."""
     item_id = str(info_item.info_item_id)
     assignment_id = str(rep_spec_assignment.id)
@@ -504,9 +498,7 @@ async def test_patch_rep_spec_assignment_wrong_item_returns_404(
 
 
 @pytest.mark.asyncio
-async def test_patch_rep_spec_assignment_requires_api_key(
-    client, info_item, rep_spec_assignment
-):
+async def test_patch_rep_spec_assignment_requires_api_key(client, info_item, rep_spec_assignment):
     """Missing X-API-Key → 403."""
     item_id = str(info_item.info_item_id)
     assignment_id = str(rep_spec_assignment.id)

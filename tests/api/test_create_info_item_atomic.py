@@ -102,18 +102,14 @@ async def test_create_with_source_spec_populates_info_item_sources(client, sessi
     assert binding_count == 1
 
     binding = (
-        await session.execute(
-            select(InfoItemSource).where(InfoItemSource.info_item_id == item_id)
-        )
+        await session.execute(select(InfoItemSource).where(InfoItemSource.info_item_id == item_id))
     ).scalar_one()
     assert binding.role == "primary"
 
     # InfoSource row should exist with the canonicalized URL
     info_source = (
         await session.execute(
-            select(InfoSource).where(
-                InfoSource.info_source_id == binding.info_source_id
-            )
+            select(InfoSource).where(InfoSource.info_source_id == binding.info_source_id)
         )
     ).scalar_one()
     assert info_source.url == "https://example.com/licenses"
@@ -134,9 +130,7 @@ async def test_create_with_rep_spec_assignment(client, session, rep_spec_row):
         json={
             "name": "with-rep-spec",
             "rep_fields": {"gcs": {"object_name": "co/active-licenses"}},
-            "initial_rep_spec_assignments": [
-                {"rep_spec_id": rep_spec_id}
-            ],
+            "initial_rep_spec_assignments": [{"rep_spec_id": rep_spec_id}],
         },
     )
     assert response.status_code == 201
@@ -150,9 +144,7 @@ async def test_create_with_rep_spec_assignment(client, session, rep_spec_row):
     # DB round-trip
     item_id = body["info_item_id"]
     airs_count = await session.scalar(
-        select(func.count(InfoItemRepSpec.id)).where(
-            InfoItemRepSpec.info_item_id == item_id
-        )
+        select(func.count(InfoItemRepSpec.id)).where(InfoItemRepSpec.info_item_id == item_id)
     )
     assert airs_count == 1
 
@@ -191,7 +183,7 @@ async def test_create_with_bad_source_spec_returns_422_no_rows(client, session):
     """source_spec missing target.url → 422; no InfoItem persisted."""
     bad_spec = {
         "schema_version": 1,
-        "target": {},   # missing url
+        "target": {},  # missing url
         "extraction": {"algorithm": "full_page"},
         "fingerprint": {"algorithm": "simhash"},
     }
@@ -223,9 +215,7 @@ async def test_create_with_nonexistent_rep_spec_returns_404_no_rows(client, sess
     assert response.status_code == 404
 
     item_count = await session.scalar(
-        select(func.count(InfoItem.info_item_id)).where(
-            InfoItem.name == "should-not-exist-2"
-        )
+        select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "should-not-exist-2")
     )
     assert item_count == 0
 
@@ -249,8 +239,6 @@ async def test_create_with_rep_fields_missing_required_returns_422_no_rows(
     assert response.status_code == 422
 
     item_count = await session.scalar(
-        select(func.count(InfoItem.info_item_id)).where(
-            InfoItem.name == "should-not-exist-3"
-        )
+        select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "should-not-exist-3")
     )
     assert item_count == 0
