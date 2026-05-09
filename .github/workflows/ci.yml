@@ -26,7 +26,7 @@ jobs:
         run: uv python install 3.12
 
       - name: uv sync
-        run: uv sync --all-extras
+        run: uv sync --group dev
 
       - name: ruff check
         run: uv run ruff check .
@@ -69,7 +69,10 @@ jobs:
         run: uv python install 3.12
 
       - name: uv sync
-        run: uv sync --all-extras
+        run: uv sync --group dev
+
+      - name: alembic upgrade head
+        run: uv run alembic upgrade head
 
       - name: pytest
         run: uv run pytest -v

@@ -7,19 +7,23 @@
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+    rev: v0.15.12
     hooks:
       - id: ruff
         name: ruff check
         args: [--fix]
+        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/)
       - id: ruff-format
         name: ruff format
+        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/)
       - id: end-of-file-fixer
+        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/)
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict
