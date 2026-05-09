@@ -18,16 +18,22 @@ from archiver_client.errors import (
     ValidationError,
 )
 from archiver_client.generated.models.info_item_out import InfoItemOut
-from archiver_client.generated.models.info_spec_out import InfoSpecOut
+from archiver_client.generated.models.info_item_rep_spec_out import InfoItemRepSpecOut
+from archiver_client.generated.models.info_item_source_out import InfoItemSourceOut
+from archiver_client.generated.models.info_item_source_revision_out import InfoItemSourceRevisionOut
+from archiver_client.generated.models.source_revision_out import SourceRevisionOut
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "AuthError",
     "DEFAULT_FETCH_RENDER",
     "DEFAULT_FETCH_TIMEOUT_SECONDS",
     "InfoItemOut",
-    "InfoSpecOut",
+    "InfoItemRepSpecOut",
+    "InfoItemSourceOut",
+    "InfoItemSourceRevisionOut",
+    "SourceRevisionOut",
     "ArchiverClient",
     "InformationError",
     "NotFound",

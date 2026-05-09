@@ -1,12 +1,9 @@
 """Hand-written wrappers for /api/v1/tools/* endpoints.
 
-Mixed into ``ArchiverClient`` via subclassing in ``client.py``. These
+Mixed into ``ArchiverClient`` via composition in ``client.py``. These
 endpoints are reached via the generated client's underlying httpx instance
-so we don't have to wait on a regen cycle for each new tool.
-
-Once ``clients/python/regen.sh`` regenerates the generated package against
-the live OpenAPI spec, these wrappers can be tightened to use the typed
-generated bindings; until then, we work with plain dicts.
+so callers get a stable high-level API regardless of openapi-python-client
+regen cycles.
 """
 
 from __future__ import annotations
@@ -31,7 +28,7 @@ class ValidationIssue:
 
 @dataclass(frozen=True)
 class ValidationResult:
-    """Outcome of a ``validate_info_spec`` call."""
+    """Outcome of a validate_* call."""
 
     valid: bool
     errors: list[ValidationIssue]
@@ -43,7 +40,7 @@ async def _post_json(
     """Send a JSON POST through the generated client's httpx instance.
 
     Returns the parsed JSON body on 2xx; raises a typed ``ArchiverClientError``
-    subclass otherwise (mirrors the ``_unwrap`` helper used by generated calls).
+    subclass otherwise.
     """
     httpx_client = client_facade._gen_client.get_async_httpx_client()
     response = await httpx_client.post(path, json=body)
@@ -61,6 +58,84 @@ async def _get_json(
     if 200 <= response.status_code < 300:
         return response.json()
     raise error_from_response(int(response.status_code), response.content)
+
+
+def _parse_validation_result(body: dict[str, Any]) -> ValidationResult:
+    """Shared parser for validate_* responses (same shape for all three endpoints)."""
+    return ValidationResult(
+        valid=bool(body["valid"]),
+        errors=[
+            ValidationIssue(path=list(e["path"]), message=str(e["message"]))
+            for e in body.get("errors", [])
+        ],
+    )
+
+
+# --- Authoring tool functions ---
+
+async def validate_source_spec(
+    client_facade: ArchiverClient, document: dict[str, Any]
+) -> ValidationResult:
+    """Validate a SourceSpec document against the v1 JSON Schema."""
+    body = await _post_json(
+        client_facade, "/api/v1/tools/validate-source-spec", {"document": document}
+    )
+    return _parse_validation_result(body)
+
+
+async def validate_rep_spec(
+    client_facade: ArchiverClient, document: dict[str, Any]
+) -> ValidationResult:
+    """Validate a RepSpec document against the v1 JSON Schema."""
+    body = await _post_json(
+        client_facade, "/api/v1/tools/validate-rep-spec", {"document": document}
+    )
+    return _parse_validation_result(body)
+
+
+async def validate_rep_fields(
+    client_facade: ArchiverClient,
+    bag: dict[str, Any],
+    *,
+    required_fields: list[str] | None = None,
+) -> ValidationResult:
+    """Validate a rep_fields bag; optionally check required 'ns.key' paths."""
+    payload: dict[str, Any] = {"bag": bag}
+    if required_fields is not None:
+        payload["required_fields"] = required_fields
+    body = await _post_json(
+        client_facade, "/api/v1/tools/validate-rep-fields", payload
+    )
+    return _parse_validation_result(body)
+
+
+async def resolve_rep_fields(
+    client_facade: ArchiverClient, bag: dict[str, Any]
+) -> dict[str, Any]:
+    """Enrich a raw rep_fields bag with slug companions.
+
+    Returns the resolved bag dict (the ``bag`` key from the response body).
+    """
+    body = await _post_json(
+        client_facade, "/api/v1/tools/resolve-rep-fields", {"bag": bag}
+    )
+    return dict(body.get("bag", {}))
+
+
+async def find_info_item(
+    client_facade: ArchiverClient, query: str, *, limit: int = 20
+) -> list[InfoItemOut]:
+    """Search Information Items by name + description (case-insensitive substring).
+
+    Returns a list of ``InfoItemOut`` instances so callers get the same typed
+    shape as ``list_info_items``. Use before ``create_info_item`` to dedupe.
+    """
+    body = await _get_json(
+        client_facade,
+        "/api/v1/tools/find-info-items",
+        params={"q": query, "limit": limit},
+    )
+    return [InfoItemOut.from_dict(item) for item in body]
 
 
 @dataclass(frozen=True)
@@ -120,8 +195,7 @@ async def propose_selectors(
     """Return ranked selector candidates for ``description`` on ``url``.
 
     Empty match set returns ``[]``. Always pair with ``preview_extraction``
-    against the chosen candidate before persisting an InfoSpec — the ranker
-    is heuristic and meant to narrow the search space, not to finalise.
+    against the chosen candidate before persisting a SourceSpec.
     """
     body = await _post_json(
         client_facade,
@@ -161,19 +235,18 @@ class PreviewExtractionResult:
 
 async def preview_extraction(
     client_facade: ArchiverClient,
-    url: str,
-    document: dict[str, Any],
+    source_spec: dict[str, Any],
 ) -> PreviewExtractionResult:
-    """Validate, fetch, extract, and fingerprint with a candidate InfoSpec.
+    """Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    On schema validation failure or target unreachability, the underlying
-    HTTPException is surfaced as an ``ArchiverClientError`` subclass with
-    the structured ``detail`` body intact.
+    Accepts a SourceSpec document dict (v2 shape). On schema validation failure
+    or target unreachability, the underlying HTTPException is surfaced as an
+    ``ArchiverClientError`` subclass with the structured ``detail`` body intact.
     """
     body = await _post_json(
         client_facade,
         "/api/v1/tools/preview-extraction",
-        {"url": url, "document": document},
+        {"source_spec": source_spec},
     )
     return PreviewExtractionResult(
         chunks=[
@@ -189,88 +262,4 @@ async def preview_extraction(
         total_chars=int(body["total_chars"]),
         fingerprint_algorithm=str(body["fingerprint_algorithm"]),
         computed_fingerprint=str(body["computed_fingerprint"]),
-    )
-
-
-@dataclass(frozen=True)
-class InfoItemWithSpecResult:
-    """``create_info_item`` response when ``initial_info_spec`` was supplied.
-
-    Carries both the new ``info_item_id`` and the freshly-created
-    ``info_spec_id`` so the caller can immediately reference the primary spec
-    without a second round-trip.
-    """
-
-    info_item_id: str
-    info_spec_id: str
-    name: str
-    description: str | None
-    owner: str | None
-
-
-async def create_info_item_atomic(
-    client_facade: ArchiverClient,
-    *,
-    name: str,
-    description: str | None = None,
-    owner: str | None = None,
-    initial_info_spec: dict[str, Any],
-) -> InfoItemWithSpecResult:
-    """Create an InfoItem and its primary InfoSpec in one transaction.
-
-    Use this when you've already authored both the InfoItem metadata and the
-    initial InfoSpec document (e.g. via ``validate_info_spec`` /
-    ``preview_extraction``). On schema validation failure, neither row is
-    persisted; an ``ArchiverClientError`` subclass is raised instead.
-    """
-    body: dict[str, Any] = {"name": name, "initial_info_spec": initial_info_spec}
-    if description is not None:
-        body["description"] = description
-    if owner is not None:
-        body["owner"] = owner
-    payload = await _post_json(client_facade, "/api/v1/info-items", body)
-    return InfoItemWithSpecResult(
-        info_item_id=str(payload["info_item_id"]),
-        info_spec_id=str(payload["info_spec_id"]),
-        name=str(payload["name"]),
-        description=payload.get("description"),
-        owner=payload.get("owner"),
-    )
-
-
-async def find_info_item(
-    client_facade: ArchiverClient, query: str, *, limit: int = 20
-) -> list[InfoItemOut]:
-    """Search Information Items by name + description (case-insensitive substring).
-
-    Returns a list of ``InfoItemOut`` instances (the generated model) so callers
-    get the same typed shape as ``list_info_items``. Use before ``create_info_item``
-    to dedupe against existing entries.
-    """
-    body = await _get_json(
-        client_facade,
-        "/api/v1/tools/find-info-items",
-        params={"q": query, "limit": limit},
-    )
-    return [InfoItemOut.from_dict(item) for item in body]
-
-
-async def validate_info_spec(
-    client_facade: ArchiverClient, document: dict[str, Any]
-) -> ValidationResult:
-    """Validate an InfoSpec document against the v1 JSON Schema.
-
-    Always returns a result; ``valid=False`` carries per-field issues. Use this
-    while authoring an InfoSpec to see what's wrong before calling
-    ``create_info_spec`` (which would otherwise return 422).
-    """
-    body = await _post_json(
-        client_facade, "/api/v1/tools/validate-info-spec", {"document": document}
-    )
-    return ValidationResult(
-        valid=bool(body["valid"]),
-        errors=[
-            ValidationIssue(path=list(e["path"]), message=str(e["message"]))
-            for e in body.get("errors", [])
-        ],
     )

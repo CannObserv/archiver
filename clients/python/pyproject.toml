@@ -30,6 +30,13 @@ asyncio_default_test_loop_scope = "session"
 [tool.hatch.build.targets.wheel]
 packages = ["src/archiver_client"]
 
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+# Generated endpoint module names exceed 100 chars; no way to shorten import aliases.
+"src/archiver_client/client.py" = ["E501"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
