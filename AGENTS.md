@@ -75,6 +75,12 @@ docs/                          Reference docs (SKILLS) + plans/ + research/
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
 skills-vendor/                 Git submodules for external skill repos
 .claude/skills/                Claude Code skill discovery (symlinks → ../../skills/<name>)
+.github/workflows/             CI — lint job (ruff check + ruff format --check) and
+                               test job (Postgres service container, alembic upgrade,
+                               pytest). Triggers on push/PR to main.
+.pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks.
+                               Run `uv run pre-commit install` once per clone; CI
+                               enforces the same checks server-side.
 ```
 
 ## Mirrored content-acquisition code
@@ -206,6 +212,8 @@ uv run alembic revision --autogenerate -m "description"
 # Pre-commit hooks (one-time per clone, then runs on each git commit):
 uv run pre-commit install                    # install the hook
 uv run pre-commit run --all-files            # manual sweep across the repo
+
+# CI mirrors these checks; failing tests/lint locally also fails CI on push/PR.
 ```
 
 ## Conventions
