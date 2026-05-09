@@ -4,6 +4,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import version as _package_version
 
 from fastapi import APIRouter, Depends, FastAPI
 from redis.asyncio import Redis as RedisAsync
@@ -81,7 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.http_fetcher.aclose()
 
 
-app = FastAPI(title="archiver", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="archiver", version=_package_version("archiver"), lifespan=lifespan)
 
 v1_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 v1_router.include_router(info_items_router)
