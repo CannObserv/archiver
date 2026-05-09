@@ -8,11 +8,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from src.api.deps import get_db_session
+from src.api.main import app
 from src.core.models import Base
-
-# NOTE: src.api.main and src.api.deps are imported lazily inside the `client`
-# fixture to avoid an ImportError during collection when the API layer is
-# intentionally broken mid-refactor (e.g. sub-phase 4b).
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if not TEST_DATABASE_URL:
@@ -62,10 +60,6 @@ async def session(test_engine) -> AsyncGenerator[AsyncSession]:
 
 @pytest.fixture
 async def client(test_engine, session) -> AsyncGenerator[AsyncClient]:
-    # Lazy imports so collection succeeds when the API layer is mid-refactor.
-    from src.api.deps import get_db_session  # noqa: E402
-    from src.api.main import app  # noqa: E402
-
     async def _override_session():
         yield session
 

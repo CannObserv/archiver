@@ -19,7 +19,7 @@ class AuthError(InformationError):
 
 
 class NotFound(InformationError):
-    """404 — InfoItem or InfoSpec missing."""
+    """404 — referenced entity (InfoItem, InfoSource, RepSpec, assignment, …) missing."""
 
 
 class ValidationError(InformationError):
