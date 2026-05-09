@@ -50,7 +50,11 @@ from src.core.tools.bind_revision import (
     SourceRevisionNotFoundError,
     bind_revision,
 )
-from src.core.url_canonicalization import canonicalize_url
+from src.core.tools.create_info_source import (
+    DuplicateUrlError,
+    InvalidSourceSpecError,
+    create_info_source,
+)
 
 router = APIRouter(prefix="/info-items", tags=["info-items"])
 
@@ -66,7 +70,10 @@ async def create_info_item(
     RepSpec assignments). All writes are a single transaction; any validation
     or lookup failure rolls back the whole thing.
     """
-    # --- 1. Validate initial_source_spec ---
+    # --- 1. Pre-validate initial_source_spec ---
+    # Pre-flight check: keeps the all-or-nothing contract for POST /info-items
+    # by failing fast before the InfoItem flush. create_info_source revalidates
+    # (and applies canonicalization + duplicate-URL check) at insert time.
     if body.initial_source_spec is not None:
         ok, errors = validate_root_source_spec(body.initial_source_spec)
         if not ok:
@@ -116,26 +123,22 @@ async def create_info_item(
     # --- 4. Insert InfoSource + InfoItemSource ---
     new_sources: list[InfoItemSource] = []
     if body.initial_source_spec is not None:
-        source_spec_doc: dict = dict(body.initial_source_spec)
-
-        # Canonicalize target.url before storing
-        raw_url: str | None = source_spec_doc.get("target", {}).get("url")
-        if raw_url:
-            strip_keys: list[str] = (
-                source_spec_doc.get("target", {})
-                .get("url_canonicalization", {})
-                .get("strip_query_keys", [])
+        try:
+            info_source = await create_info_source(session, source_spec=body.initial_source_spec)
+        except InvalidSourceSpecError as e:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "invalid source_spec", "errors": e.errors},
             )
-            canonical = canonicalize_url(raw_url, strip_query_keys=strip_keys or None)
-            source_spec_doc["target"] = dict(source_spec_doc["target"])
-            source_spec_doc["target"]["url"] = canonical
-
-        info_source = InfoSource(
-            source_spec=source_spec_doc,
-            schema_version=source_spec_doc.get("schema_version", 1),
-        )
-        session.add(info_source)
-        await session.flush()  # populate info_source.info_source_id
+        except DuplicateUrlError as e:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "an InfoSource already exists for this URL",
+                    "url": e.url,
+                    "existing_info_source_id": str(e.existing_info_source_id),
+                },
+            )
 
         binding = InfoItemSource(
             info_item_id=item.info_item_id,

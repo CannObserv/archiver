@@ -71,6 +71,25 @@ def _info_source_out_payload() -> dict:
     }
 
 
+def _top_info_source_payload(
+    info_source_id: str = "01HZZ00000000000000000000F",
+    parent: str | None = None,
+    url: str | None = "https://example.com/p",
+) -> dict:
+    return {
+        "info_source_id": info_source_id,
+        "parent_info_source_id": parent,
+        "source_spec": {
+            "schema_version": 1,
+            "extraction": {"algorithm": "full_page"},
+            "fingerprint": {},
+        },
+        "schema_version": 1,
+        "url": url,
+        "created_at": _TS,
+    }
+
+
 # --- InfoItem endpoints ---
 
 
@@ -272,3 +291,88 @@ async def test_bind_revision(client):
         )
     assert out.source_revision_id == "01HZZ00000000000000000000E"
     assert out.info_item_id == "01HZZ00000000000000000000A"
+
+
+# --- Top-level InfoSource endpoints ---
+
+
+@pytest.mark.asyncio
+async def test_create_info_source_root(client):
+    with respx.mock:
+        route = respx.post(f"{BASE_URL}/api/v1/info-sources").mock(
+            return_value=httpx.Response(201, json=_top_info_source_payload()),
+        )
+        out = await client.create_info_source(
+            {
+                "schema_version": 1,
+                "target": {"url": "https://example.com/p"},
+                "extraction": {"algorithm": "full_page"},
+                "fingerprint": {},
+            }
+        )
+    sent_body = route.calls[0].request.read()
+    assert b'"source_spec"' in sent_body
+    assert b'"parent_info_source_id"' not in sent_body
+    assert out.url == "https://example.com/p"
+    assert out.parent_info_source_id is None
+
+
+@pytest.mark.asyncio
+async def test_create_info_source_fragment(client):
+    parent_id = "01HZZ00000000000000000000P"
+    with respx.mock:
+        route = respx.post(f"{BASE_URL}/api/v1/info-sources").mock(
+            return_value=httpx.Response(
+                201,
+                json=_top_info_source_payload(parent=parent_id, url=None),
+            ),
+        )
+        out = await client.create_info_source(
+            {
+                "schema_version": 1,
+                "extraction": {"algorithm": "css", "selector": "#x"},
+                "fingerprint": {},
+            },
+            parent_info_source_id=parent_id,
+        )
+    sent_body = route.calls[0].request.read()
+    assert parent_id.encode() in sent_body
+    assert out.parent_info_source_id == parent_id
+    assert out.url is None
+
+
+@pytest.mark.asyncio
+async def test_get_info_source(client):
+    with respx.mock:
+        respx.get(f"{BASE_URL}/api/v1/info-sources/01HZZ00000000000000000000F").mock(
+            return_value=httpx.Response(200, json=_top_info_source_payload())
+        )
+        out = await client.get_info_source("01HZZ00000000000000000000F")
+    assert out.info_source_id == "01HZZ00000000000000000000F"
+
+
+@pytest.mark.asyncio
+async def test_list_info_sources_no_filter(client):
+    with respx.mock:
+        route = respx.get(f"{BASE_URL}/api/v1/info-sources").mock(
+            return_value=httpx.Response(200, json=[_top_info_source_payload()])
+        )
+        out = await client.list_info_sources()
+    assert len(out) == 1
+    # No query string when filter is omitted
+    assert b"parent_info_source_id" not in route.calls[0].request.url.query
+
+
+@pytest.mark.asyncio
+async def test_list_info_sources_filter_by_parent(client):
+    parent_id = "01HZZ00000000000000000000P"
+    with respx.mock:
+        route = respx.get(f"{BASE_URL}/api/v1/info-sources").mock(
+            return_value=httpx.Response(
+                200, json=[_top_info_source_payload(parent=parent_id, url=None)]
+            )
+        )
+        out = await client.list_info_sources(parent_info_source_id=parent_id)
+    assert len(out) == 1
+    assert out[0].parent_info_source_id == parent_id
+    assert parent_id.encode() in route.calls[0].request.url.query

@@ -16,7 +16,9 @@
 # 12.  PATCH public_url on assignment → 200, verify field written
 # 13.  bind_revision — POST /info-items/{id}/source-revisions → 201
 # 14.  PATCH source-revision cache fields → 200, verify NULLs
-# 15.  Cleanup — DELETE smoke rows from DB
+# 15.  POST /info-sources fragment under the smoke root → 201, then verify via
+#       GET /info-sources/{id} and GET /info-sources?parent_info_source_id=...
+# 16.  Cleanup — DELETE smoke rows from DB
 #
 # Requires:
 #   - Archiver dev server on $ARCHIVER_URL (default http://127.0.0.1:8021).
@@ -42,7 +44,7 @@ SMOKE_URL="https://example.com/smoke/$$"
 FINGERPRINT_A="sha256:$(python3 -c "print('a'*64)")"
 FINGERPRINT_B="sha256:$(python3 -c "print('b'*64)")"
 
-TOTAL_STEPS=15
+TOTAL_STEPS=16
 
 # ---- helpers ----------------------------------------------------------------
 
@@ -257,8 +259,31 @@ assert_eq "$(echo "$RESP" | jq -r .content_cache_uri)" "null" "content_cache_uri
 assert_eq "$(echo "$RESP" | jq -r .content_cache_expires_at)" "null" "content_cache_expires_at"
 echo "  ok"
 
-# 15. Cleanup — remove smoke rows to keep the DB tidy
-step 15 "Cleanup (DELETE smoke rows)"
+# 15. POST /info-sources fragment under the smoke root, then verify via GETs
+step 15 "POST /info-sources (fragment under smoke root → 201) + GET round-trip"
+FRAGMENT_DOC='{"schema_version":1,"extraction":{"algorithm":"css","selector":"#smoke-fragment"},"fingerprint":{}}'
+RESP=$(call POST /api/v1/info-sources \
+    "$(jq -nc --arg parent "$INFO_SOURCE_ID" --argjson spec "$FRAGMENT_DOC" \
+       '{source_spec: $spec, parent_info_source_id: $parent}')")
+FRAGMENT_ID=$(echo "$RESP" | jq -r .info_source_id)
+assert_nonempty "$FRAGMENT_ID" "fragment info_source_id"
+assert_eq "$(echo "$RESP" | jq -r .parent_info_source_id)" "$INFO_SOURCE_ID" "parent_info_source_id"
+assert_eq "$(echo "$RESP" | jq -r .url)" "null" "fragment url is null"
+
+# GET /info-sources/{id} round-trip
+RESP=$(call GET "/api/v1/info-sources/${FRAGMENT_ID}")
+assert_eq "$(echo "$RESP" | jq -r .info_source_id)" "$FRAGMENT_ID" "round-trip id"
+
+# GET /info-sources?parent_info_source_id=... should include the fragment
+RESP=$(call GET "/api/v1/info-sources?parent_info_source_id=${INFO_SOURCE_ID}")
+COUNT=$(echo "$RESP" | jq "[.[] | select(.info_source_id == \"$FRAGMENT_ID\")] | length")
+assert_eq "$COUNT" "1" "fragment found in parent-filtered list"
+echo "  ok (fragment_id=$FRAGMENT_ID)"
+
+# 16. Cleanup — remove smoke rows to keep the DB tidy
+step 16 "Cleanup (DELETE smoke rows)"
+psql "$PSQL_URL" -q -c "
+    DELETE FROM information.info_sources WHERE info_source_id = '$FRAGMENT_ID'" 2>&1
 psql "$PSQL_URL" -q -c "
     DELETE FROM information.info_items WHERE name = '$SMOKE_NAME'" 2>&1
 psql "$PSQL_URL" -q -c "

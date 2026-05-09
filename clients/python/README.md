@@ -5,8 +5,9 @@ SourceRevision, RepSpec, assignments). Generated from the service's
 OpenAPI schema with hand-written ergonomic wrappers on `ArchiverClient`,
 pinned 1:1 with server version.
 
-Currently at **v1.0** (Phase 4 cutover); v0.x clients targeted the now-retired
-InfoSpec model and are not compatible.
+Currently at **v1.1** (adds top-level `/info-sources` create + read; backwards
+compatible with v1.0). v0.x clients targeted the now-retired InfoSpec model
+and are not compatible.
 
 ## Install (path dependency, prototype phase)
 

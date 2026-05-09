@@ -40,3 +40,17 @@ def validate_root_source_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
         errs.append({"path": "/target/url", "message": "root source requires target.url"})
         ok = False
     return ok, errs
+
+
+def validate_fragment_source_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
+    """Validate a SourceSpec doc that must be a fragment (must NOT carry target).
+
+    Fragments inherit URL/fetch semantics from their parent InfoSource. Carrying
+    a ``target`` block of their own would bypass the page-once cascade and
+    create ambiguity about which URL is authoritative.
+    """
+    ok, errs = validate_source_spec(doc)
+    if "target" in doc:
+        errs.append({"path": "/target/url", "message": "fragment source must not carry target.url"})
+        ok = False
+    return ok, errs

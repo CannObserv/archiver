@@ -18,6 +18,10 @@ from .info_item_source_create import InfoItemSourceCreate
 from .info_item_source_out import InfoItemSourceOut
 from .info_item_source_revision_create import InfoItemSourceRevisionCreate
 from .info_item_source_revision_out import InfoItemSourceRevisionOut
+from .info_source_create import InfoSourceCreate
+from .info_source_create_source_spec import InfoSourceCreateSourceSpec
+from .info_source_out import InfoSourceOut
+from .info_source_out_source_spec import InfoSourceOutSourceSpec
 from .preview_extraction_request import PreviewExtractionRequest
 from .preview_extraction_request_source_spec import PreviewExtractionRequestSourceSpec
 from .preview_extraction_result import PreviewExtractionResult
@@ -63,6 +67,10 @@ __all__ = (
     "InfoItemSourceOut",
     "InfoItemSourceRevisionCreate",
     "InfoItemSourceRevisionOut",
+    "InfoSourceCreate",
+    "InfoSourceCreateSourceSpec",
+    "InfoSourceOut",
+    "InfoSourceOutSourceSpec",
     "PreviewExtractionRequest",
     "PreviewExtractionRequestSourceSpec",
     "PreviewExtractionResult",

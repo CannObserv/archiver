@@ -45,6 +45,15 @@ from archiver_client.generated.api.info_items import (
 from archiver_client.generated.api.info_items import (
     patch_rep_spec_assignment_public_url_api_v1_info_items_info_item_id_rep_spec_assignments_assignment_id_patch as _patch_rep_spec_url,
 )
+from archiver_client.generated.api.info_sources import (
+    create_info_source_route_api_v1_info_sources_post as _create_info_source,
+)
+from archiver_client.generated.api.info_sources import (
+    get_info_source_api_v1_info_sources_info_source_id_get as _get_info_source,
+)
+from archiver_client.generated.api.info_sources import (
+    list_info_sources_api_v1_info_sources_get as _list_info_sources,
+)
 from archiver_client.generated.api.source_revisions import (
     create_source_revision_api_v1_source_revisions_post as _create_source_revision,
 )
@@ -71,6 +80,11 @@ from archiver_client.generated.models.info_item_source_revision_create import (
 from archiver_client.generated.models.info_item_source_revision_out import (
     InfoItemSourceRevisionOut,
 )
+from archiver_client.generated.models.info_source_create import InfoSourceCreate
+from archiver_client.generated.models.info_source_create_source_spec import (
+    InfoSourceCreateSourceSpec,
+)
+from archiver_client.generated.models.info_source_out import InfoSourceOut
 from archiver_client.generated.models.rep_spec_assignment_create import RepSpecAssignmentCreate
 from archiver_client.generated.models.source_revision_cache_patch import SourceRevisionCachePatch
 from archiver_client.generated.models.source_revision_create import SourceRevisionCreate
@@ -218,6 +232,48 @@ class ArchiverClient:
         body = InfoItemSourceCreate(info_source_id=info_source_id, role=role)
         response = await _add_info_source.asyncio_detailed(
             client=self._gen_client, info_item_id=info_item_id, body=body
+        )
+        return _unwrap(response)
+
+    # --- Top-level InfoSource endpoints ---
+
+    async def create_info_source(
+        self,
+        source_spec: dict,
+        *,
+        parent_info_source_id: str | None = None,
+    ) -> InfoSourceOut:
+        """Author a new InfoSource (root or fragment).
+
+        Pass ``parent_info_source_id`` to create a fragment under a root
+        InfoSource. Without it, the source is created as a root and
+        ``source_spec`` must carry ``target.url``.
+        """
+        body = InfoSourceCreate(
+            source_spec=InfoSourceCreateSourceSpec.from_dict(source_spec),
+            parent_info_source_id=(
+                parent_info_source_id if parent_info_source_id is not None else UNSET
+            ),
+        )
+        response = await _create_info_source.asyncio_detailed(client=self._gen_client, body=body)
+        return _unwrap(response)
+
+    async def get_info_source(self, info_source_id: str) -> InfoSourceOut:
+        """Fetch a single InfoSource by ID."""
+        response = await _get_info_source.asyncio_detailed(
+            client=self._gen_client, info_source_id=info_source_id
+        )
+        return _unwrap(response)
+
+    async def list_info_sources(
+        self, *, parent_info_source_id: str | None = None
+    ) -> list[InfoSourceOut]:
+        """List InfoSources, optionally filtered to fragments under a parent."""
+        response = await _list_info_sources.asyncio_detailed(
+            client=self._gen_client,
+            parent_info_source_id=(
+                parent_info_source_id if parent_info_source_id is not None else UNSET
+            ),
         )
         return _unwrap(response)
 
