@@ -37,6 +37,8 @@ class ChangesOutboxRow(Base):
         DateTime(timezone=True), nullable=True
     )
     bus_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Failure counter only — the publisher increments this on a failed XADD,
+    # not on success. A successfully-published row has publish_attempts == 0.
     publish_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0", default=0
     )

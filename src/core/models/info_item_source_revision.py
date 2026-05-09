@@ -28,7 +28,7 @@ class InfoItemSourceRevision(Base):
 
     __table_args__ = (
         Index(
-            "ix_iisr_item_bound_desc",
+            "ix_iisr_item_bound",
             "info_item_id",
             "bound_at",
         ),

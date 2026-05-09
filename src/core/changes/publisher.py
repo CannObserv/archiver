@@ -65,7 +65,6 @@ async def drain_once(
                     msg_id = msg_id.decode()
                 row.published_at = datetime.now(UTC)
                 row.bus_message_id = msg_id
-                row.publish_attempts = (row.publish_attempts or 0) + 1
                 row.last_error = None
             except Exception as exc:
                 row.publish_attempts = (row.publish_attempts or 0) + 1

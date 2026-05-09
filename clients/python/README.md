@@ -1,7 +1,12 @@
 # archiver-client
 
-Async Python SDK for the Archiver service. Generated from the service's
-OpenAPI schema, pinned 1:1 with server version.
+Async Python SDK for the Archiver service (v2 model — InfoItem, InfoSource,
+SourceRevision, RepSpec, assignments). Generated from the service's
+OpenAPI schema with hand-written ergonomic wrappers on `ArchiverClient`,
+pinned 1:1 with server version.
+
+Currently at **v1.0** (Phase 4 cutover); v0.x clients targeted the now-retired
+InfoSpec model and are not compatible.
 
 ## Install (path dependency, prototype phase)
 
@@ -26,8 +31,31 @@ service relocates off-VM the SDK publishes to a real index.)
 from archiver_client import ArchiverClient
 
 async with ArchiverClient(base_url="http://localhost:8020", api_key="...") as client:
-    spec = await client.get_primary_info_spec("01HZZZ...")
-    print(spec.document)
+    # Atomically create an InfoItem with a root InfoSource
+    item = await client.create_info_item(
+        name="WSLCB board meeting agenda 2026-04-15",
+        rep_fields={
+            "org": {"acronym": "WSLCB", "title": "Washington State Liquor and Cannabis Board"},
+            "event": {"date_segment": "2026_04_15", "year": "2026"},
+            "file": {"label": "Agenda", "ext": "pdf"},
+        },
+        initial_source_spec={
+            "schema_version": 1,
+            "target": {"url": "https://lcb.wa.gov/board/2026-04-15/agenda.pdf"},
+            "extraction": {"algorithm": "full_page"},
+            "fingerprint": {},
+        },
+    )
+
+    # Validate a candidate SourceSpec before binding it
+    ok, errors = await client.validate_source_spec({...})
+
+    # Record a content-addressed snapshot (idempotent on (source_id, fingerprint))
+    rev = await client.post_source_revision(
+        info_source_id=item.info_item_sources[0].info_source_id,
+        content_fingerprint="sha256:" + "a" * 64,
+        captured_at="2026-05-09T12:00:00Z",
+    )
 ```
 
 ## Regenerate after a server schema change

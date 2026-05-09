@@ -4,9 +4,14 @@ Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrif
 
 ## Project Overview
 
-Canonical registry of **Information Items** and **Information Source Specifications** (InfoSpecs) for the Cannabis Observer ecosystem. FastAPI + PostgreSQL service consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus two Item↔X join tables (`info_item_sources`, `info_item_source_revisions`). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces a Redis Stream (`info.changes`) via an internal outbox publisher.
 
-Trajectory anchor: `docs/research/2026-05-06-archiver-information-model.md` describes the eventual evolution to an `InfoSource` + `SourceRevision` content-addressed model. Current state implements the Phase 1–3a `InfoItem ↔ InfoSpec` model.
+Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
+
+- `docs/plans/2026-05-08-archiver-v2-architecture-design.md`
+- `docs/plans/2026-05-08-phase-4-archiver-v2-implementation.md`
+
+The earlier `InfoItem ↔ InfoSpec` Phase 1–3a model is gone — `info_specs` table dropped, `info_spec_schema` package deleted, all SDK methods retired. The 2026-05-06 trajectory research doc remains as historical context.
 
 ## Development Methodology
 
@@ -43,17 +48,33 @@ Prefetch query (run via `ToolSearch` once per session if the SessionStart remind
 ## Project Layout
 
 ```
-src/api/         FastAPI routes, deps, schemas, serializers
-src/core/        Domain — models, tools, info_spec_schema, plus mirrored content-acquisition primitives
-clients/python/  archiver_client SDK (generated + hand-written wrappers)
-alembic/         Migration root (information schema scoped within the archiver database)
-tests/           Mirrors src/ structure
-scripts/         dump_openapi.py + smoke_phase3a.sh
-deploy/          Systemd unit (archiver.service)
-docs/            Reference docs (SKILLS) + plans/ + research/
-skills/          Agent skills (committed overrides + symlinks → skills-vendor/)
-skills-vendor/   Git submodules for external skill repos
-.claude/skills/  Claude Code skill discovery (symlinks → ../../skills/<name>)
+src/api/                       FastAPI routes, deps, schemas, serializers
+src/core/                      Domain logic
+  models/                      ORM (info_item, info_source, source_revision,
+                               info_item_source, info_item_source_revision,
+                               rep_spec, info_item_rep_spec, changes_outbox)
+  source_spec_schema/          SourceSpec JSON Schema v1 + validator
+  rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
+                               (providers/{gcs,gdrive,ia}/v1.json)
+  rep_fields_schema/           rep_fields meta-schema + validator
+  changes/                     Outbox publisher (background asyncio task) +
+                               typed Pydantic event payloads
+  tools/                       Authoring helpers (assign_rep_spec, bind_revision,
+                               resolve_rep_fields, preview_extraction, etc.)
+  fetchers/, extractors/,
+  simhash.py, extraction_defaults.py, logging.py
+                               Mirrored from watcher (see "Mirrored content-acquisition code")
+  url_canonicalization.py      Write-time URL normalization for info_sources
+clients/python/                archiver_client SDK v1.x (generated + hand-written wrappers)
+alembic/                       Migration root (information schema scoped within the archiver database)
+tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
+                               (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
+scripts/                       dump_openapi.py + smoke_phase4.sh
+deploy/                        Systemd unit (archiver.service)
+docs/                          Reference docs (SKILLS) + plans/ + research/
+skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
+skills-vendor/                 Git submodules for external skill repos
+.claude/skills/                Claude Code skill discovery (symlinks → ../../skills/<name>)
 ```
 
 ## Mirrored content-acquisition code
@@ -100,24 +121,49 @@ export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)
 ```
 
 **Key variables:**
-- `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`)
-- `ARCHIVER_API_KEY` — required X-API-Key for all routes outside `/healthz` and `/openapi.json`
-- `TEST_DATABASE_URL` — separate test DB
+- `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
+- `ARCHIVER_API_KEY` — required `X-API-Key` for all routes outside `/health` and `/openapi.json`.
+- `TEST_DATABASE_URL` — separate test DB.
+- `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis).
+- `WATCHER_CACHE_DIR`, `WATCHER_CACHE_TTL_SECONDS`, `WATCHER_CACHE_SWEEP_INTERVAL_SECONDS` — Watcher-side, not Archiver-side; documented here because the `content_cache_uri` lifecycle protocol they govern is a registry contract (see design doc Section 2).
 
-## Authoring tools (Phase 3a)
+## Authoring tools + assignment endpoints (v2)
 
-The Archiver service exposes authoring helpers under `/api/v1/tools/*`. Same `X-API-Key` auth as CRUD. Each route has an ergonomic SDK wrapper on `ArchiverClient`.
+The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v1.x).
 
-| Tool | HTTP | SDK method | Use when |
-|---|---|---|---|
-| `validate_info_spec` | `POST /tools/validate-info-spec` | `validate_info_spec(doc)` | Schema-validate a candidate InfoSpec. |
-| `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` | Dedupe before creating a new InfoItem. |
-| `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)` | Inspect what the extractor will see. HTTP-only in v1. |
-| `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(url, doc)` | Dry-run validate + fetch + extract + fingerprint. |
-| `propose_selectors` | `POST /tools/propose-selectors` | `propose_selectors(url, description, top_k=5)` | Heuristic CSS selector ranking. |
-| `create_info_item` (atomic) | `POST /info-items` w/ `initial_info_spec` | `create_info_item(..., initial_info_spec=doc)` | Mutating. Atomically create InfoItem + primary InfoSpec. |
+**Read-only tools:**
 
-Smoke: `bash scripts/smoke_phase3a.sh` exercises the authoring loop end-to-end against the live service.
+| Tool | HTTP | SDK method |
+|---|---|---|
+| `validate_source_spec` | `POST /tools/validate-source-spec` | `validate_source_spec(doc)` |
+| `validate_rep_spec` | `POST /tools/validate-rep-spec` | `validate_rep_spec(doc)` |
+| `validate_rep_fields` | `POST /tools/validate-rep-fields` | `validate_rep_fields(bag, required_fields=None)` |
+| `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |
+| `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` |
+| `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)` |
+| `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(source_spec)` |
+| `propose_selectors` | `POST /tools/propose-selectors` | `propose_selectors(url, description, top_k=5)` |
+
+**Mutating endpoints:**
+
+| Endpoint | HTTP | SDK method |
+|---|---|---|
+| Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_source_spec=None, initial_rep_spec_assignments=None, rep_fields=None)` |
+| Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id, role)` |
+| Assign a RepSpec | `POST /info-items/{id}/rep-spec-assignments` | `assign_rep_spec(info_item_id, rep_spec_id, activated_at=None)` |
+| Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
+| Public-URL writeback | `PATCH /info-items/{id}/rep-spec-assignments/{aid}` | `set_public_url(info_item_id, assignment_id, public_url)` |
+| Bind a SourceRevision | `POST /info-items/{id}/source-revisions` | `bind_revision(info_item_id, source_revision_id, bound_at=None)` |
+| Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
+| Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
+
+**Known v1 gaps** (tracked as follow-up issues):
+- No `POST /rep-specs` — RepSpecs must be inserted out-of-band (`psql`); see #10. Phase 6 prereq.
+- No top-level `POST /info-sources` — fragment InfoSource creation requires direct DB insert; see #9. Phase 5 prereq.
+
+**Change-bus producer:** New `SourceRevision` inserts write a row to `information.changes_outbox` in the same transaction. The publisher background task drains the outbox to the Redis Stream `info.changes` (event type `source_revision_captured`, payload typed by `src.core.changes.payloads.SourceRevisionCapturedEvent`). Publisher only starts when `ARCHIVER_REDIS_URL` is set.
+
+**Smoke:** `bash scripts/smoke_phase4.sh` exercises the v2 authoring loop end-to-end against the dev server (port 8021). Step 9 (Redis stream check) is skipped unless `ARCHIVER_REDIS_URL` is set.
 
 ## Agent Skills
 
@@ -185,4 +231,15 @@ Entry points only: call `configure_logging()` once.
 
 ## Vocabulary
 
-Terminology preserved from the original Information service rename — the data model identifiers (`InfoItem`, `info_item_id`, `InfoSpec`, `info_spec_id`, table names, route paths, stream topics) stay verbatim. The "Archiver" rename is service-name-only. The `InfoSource` / `SourceSpec` / `SourceRevision` evolution lives in `docs/research/2026-05-06-archiver-information-model.md` — implement as a deliberate v2 effort, not in passing.
+Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
+
+- **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
+- **`InfoSource`** (`info_sources`) — physical layer; either URL-keyed (root) or `parent_info_source_id`-keyed (fragment) per XOR check constraint. SourceSpec lives in the JSONB `source_spec` column.
+- **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`.
+- **`InfoItemSource`** (`info_item_sources`) — operator-declared item↔source binding with `role` and effective dating.
+- **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.
+- **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
+- **`InfoItemRepSpec`** (`info_item_rep_specs`) — effective-dated assignment + `public_url` writeback target.
+- **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
+
+The Phase 1–3a `InfoSpec` model has been retired. Avoid any new references to `info_spec*` outside historical alembic migration files. The "Archiver" rename was service-name-only; `info_*` table prefix and `information` schema preserved per design decision.

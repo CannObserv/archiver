@@ -114,7 +114,7 @@ async def test_drain_single_row(session_factory, fake_redis):
     assert refreshed is not None
     assert refreshed.published_at is not None
     assert refreshed.bus_message_id is not None
-    assert refreshed.publish_attempts == 1
+    assert refreshed.publish_attempts == 0  # success path doesn't increment failure counter
     assert refreshed.last_error is None
 
 
@@ -187,7 +187,7 @@ async def test_already_published_rows_skipped(session_factory, fake_redis):
         old = await s.get(ChangesOutboxRow, already_published.id)
         new = await s.get(ChangesOutboxRow, pending.id)
     assert old.publish_attempts == 0
-    assert new.publish_attempts == 1
+    assert new.publish_attempts == 0  # success path doesn't increment failure counter
 
 
 @pytest.mark.asyncio
