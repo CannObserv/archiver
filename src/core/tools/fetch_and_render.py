@@ -1,4 +1,4 @@
-"""Fetch a URL and return rendered body + headers for InfoSpec authoring.
+"""Fetch a URL and return rendered body + headers for SourceSpec authoring.
 
 v1 supports HTTP-only fetches via ``HttpFetcher``. Playwright-based rendering
 is wired in once #3 lands; until then ``render=True`` raises NotImplementedError.

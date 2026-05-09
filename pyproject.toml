@@ -48,7 +48,7 @@ filterwarnings = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = ["skills-vendor/", "alembic/versions/", "clients/python/src/archiver_client/generated/"]
+exclude = ["skills-vendor/", "clients/python/src/archiver_client/generated/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]

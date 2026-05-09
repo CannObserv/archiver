@@ -1,4 +1,4 @@
-"""Heuristic selector proposal for InfoSpec authoring.
+"""Heuristic selector proposal for SourceSpec authoring.
 
 v1 ranks DOM elements whose visible text contains the supplied description
 (case-insensitive substring) by:
@@ -109,7 +109,7 @@ async def propose_selectors(
     """Fetch ``url`` and return up to ``top_k`` ranked selector candidates.
 
     Empty match set returns ``[]`` (not an error). Operators always verify the
-    chosen selector via ``preview_extraction`` before persisting an InfoSpec.
+    chosen selector via ``preview_extraction`` before persisting a SourceSpec.
     """
     if not description:
         return []
