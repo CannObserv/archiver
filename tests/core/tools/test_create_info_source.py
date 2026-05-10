@@ -6,8 +6,11 @@ URL canonicalization, and duplicate-URL handling.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.models import InfoSource
@@ -206,3 +209,70 @@ async def test_db_round_trip(session):
         )
     ).scalar_one()
     assert fetched.url == "https://example.com/x"
+
+
+# ---------------------------------------------------------------------------
+# Concurrency — verifies the INSERT...ON CONFLICT path under real parallel
+# transactions (not the same-session SELECT-then-INSERT shortcut).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_concurrent_root_creates_resolve_to_one_winner(test_engine):
+    """Two parallel ``create_info_source`` calls for the same URL — one wins,
+    one raises ``DuplicateUrlError``.
+
+    This bypasses the savepoint-based ``session`` fixture and uses two real
+    ``AsyncSession`` instances on distinct connections so that PG actually
+    serialises both INSERTs at the ``uq_info_sources_url`` constraint. Without
+    the ON CONFLICT clause this used to surface as ``IntegrityError`` (500);
+    the fix returns a typed ``DuplicateUrlError`` (409) for the loser.
+    """
+    factory = async_sessionmaker(bind=test_engine, expire_on_commit=False)
+    race_url = "https://race.example.com/concurrent"
+
+    async def race() -> tuple[str, ULID]:
+        async with factory() as s:
+            try:
+                src = await create_info_source(
+                    s,
+                    source_spec={
+                        "schema_version": 1,
+                        "target": {"url": race_url},
+                        "extraction": {"algorithm": "full_page"},
+                        "fingerprint": {},
+                    },
+                )
+                await s.commit()
+                return ("won", src.info_source_id)
+            except DuplicateUrlError as e:
+                await s.rollback()
+                return ("lost", e.existing_info_source_id)
+
+    try:
+        results = await asyncio.gather(race(), race())
+        outcomes = sorted(r[0] for r in results)
+        assert outcomes == ["lost", "won"], f"unexpected outcomes: {outcomes}"
+
+        winner_id = next(r[1] for r in results if r[0] == "won")
+        loser_existing = next(r[1] for r in results if r[0] == "lost")
+        assert loser_existing == winner_id, (
+            "loser's existing_info_source_id must point at the winner's row"
+        )
+
+        # And the DB has exactly one row at that URL.
+        async with factory() as s:
+            count = await s.scalar(
+                select(InfoSource)
+                .where(InfoSource.url == race_url)
+                .with_only_columns(InfoSource.info_source_id)
+            )
+            assert count == winner_id
+    finally:
+        # Clean up — the savepoint fixture isn't in play, so we delete by URL.
+        async with factory() as cleanup:
+            await cleanup.execute(
+                text("DELETE FROM information.info_sources WHERE url = :u"),
+                {"u": race_url},
+            )
+            await cleanup.commit()

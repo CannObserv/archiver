@@ -100,7 +100,8 @@ async def create_info_source(
     # constraint instead of leaking IntegrityError.
     target = dict(spec_doc.get("target", {}))
     raw_url: str = target["url"]
-    strip_keys: list[str] = target.get("url_canonicalization", {}).get("strip_query_keys") or []
+    canon_cfg: dict = target.get("url_canonicalization") or {}
+    strip_keys: list[str] = canon_cfg.get("strip_query_keys") or []
     canonical = canonicalize_url(raw_url, strip_query_keys=strip_keys or None)
     target["url"] = canonical
     spec_doc["target"] = target
@@ -124,7 +125,14 @@ async def create_info_source(
     # row and surface the typed error.
     existing = (
         await db.execute(select(InfoSource).where(InfoSource.url == canonical))
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if existing is None:
+        # ON CONFLICT fired but the row is no longer there — a concurrent
+        # DELETE raced our insert. The window is narrow (FK from
+        # info_item_sources prevents deleting a bound root) but possible for
+        # an unbound root. Surface a base CreateInfoSourceError so the route
+        # maps it to a clean 5xx instead of a NoResultFound traceback.
+        raise CreateInfoSourceError(f"conflict row vanished after insert: url={canonical!r}")
     raise DuplicateUrlError(
         existing_info_source_id=existing.info_source_id,
         url=canonical,
