@@ -9,6 +9,7 @@ lockstep across both entry points.
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -82,28 +83,49 @@ async def create_info_source(
 
     spec_doc: dict = dict(source_spec)
 
-    if parent_info_source_id is None:
-        target = dict(spec_doc.get("target", {}))
-        raw_url: str = target["url"]
-        strip_keys: list[str] = target.get("url_canonicalization", {}).get("strip_query_keys") or []
-        canonical = canonicalize_url(raw_url, strip_query_keys=strip_keys or None)
-        target["url"] = canonical
-        spec_doc["target"] = target
+    if parent_info_source_id is not None:
+        # Fragments don't carry a URL; nothing to canonicalize, and the only
+        # uniqueness constraint (uq_info_sources_url) doesn't apply.
+        src = InfoSource(
+            source_spec=spec_doc,
+            schema_version=spec_doc["schema_version"],
+            parent_info_source_id=parent_info_source_id,
+        )
+        db.add(src)
+        await db.flush()
+        return src
 
-        existing = (
-            await db.execute(select(InfoSource).where(InfoSource.url == canonical))
-        ).scalar_one_or_none()
-        if existing is not None:
-            raise DuplicateUrlError(
-                existing_info_source_id=existing.info_source_id,
-                url=canonical,
-            )
+    # Root path — canonicalize URL, then INSERT ... ON CONFLICT DO NOTHING so
+    # concurrent writers race safely against the uq_info_sources_url
+    # constraint instead of leaking IntegrityError.
+    target = dict(spec_doc.get("target", {}))
+    raw_url: str = target["url"]
+    strip_keys: list[str] = target.get("url_canonicalization", {}).get("strip_query_keys") or []
+    canonical = canonicalize_url(raw_url, strip_query_keys=strip_keys or None)
+    target["url"] = canonical
+    spec_doc["target"] = target
 
-    src = InfoSource(
-        source_spec=spec_doc,
-        schema_version=spec_doc.get("schema_version", 1),
-        parent_info_source_id=parent_info_source_id,
+    stmt = (
+        pg_insert(InfoSource)
+        .values(
+            source_spec=spec_doc,
+            schema_version=spec_doc["schema_version"],
+            parent_info_source_id=None,
+        )
+        .on_conflict_do_nothing(constraint="uq_info_sources_url")
+        .returning(InfoSource)
     )
-    db.add(src)
-    await db.flush()
-    return src
+    inserted = (await db.execute(stmt)).scalar_one_or_none()
+    if inserted is not None:
+        return inserted
+
+    # Conflict — the winning INSERT is committed (or visible at READ COMMITTED
+    # after ON CONFLICT serialises on the constraint). Look up the existing
+    # row and surface the typed error.
+    existing = (
+        await db.execute(select(InfoSource).where(InfoSource.url == canonical))
+    ).scalar_one()
+    raise DuplicateUrlError(
+        existing_info_source_id=existing.info_source_id,
+        url=canonical,
+    )

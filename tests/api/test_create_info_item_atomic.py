@@ -179,6 +179,38 @@ async def test_create_with_explicit_activated_at(client, session, rep_spec_row):
 
 
 @pytest.mark.asyncio
+async def test_create_with_duplicate_initial_source_url_returns_409(client, session):
+    """Second InfoItem whose initial_source_spec.target.url already exists → 409.
+
+    The first call canonicalizes + persists the InfoSource; the second hits the
+    uq_info_sources_url constraint via INSERT ... ON CONFLICT DO NOTHING and
+    surfaces 409 (not 500). The second InfoItem must not be persisted.
+    """
+    first = await client.post(
+        "/api/v1/info-items",
+        headers=HEADERS,
+        json={"name": "first-with-source", "initial_source_spec": VALID_SOURCE_SPEC},
+    )
+    assert first.status_code == 201, first.text
+    first_source_id = first.json()["info_item_sources"][0]["info_source_id"]
+
+    second = await client.post(
+        "/api/v1/info-items",
+        headers=HEADERS,
+        json={"name": "second-collides", "initial_source_spec": VALID_SOURCE_SPEC},
+    )
+    assert second.status_code == 409
+    detail = second.json()["detail"]
+    assert detail["existing_info_source_id"] == first_source_id
+    assert detail["url"] == "https://example.com/licenses"
+
+    second_item_count = await session.scalar(
+        select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "second-collides")
+    )
+    assert second_item_count == 0
+
+
+@pytest.mark.asyncio
 async def test_create_with_bad_source_spec_returns_422_no_rows(client, session):
     """source_spec missing target.url → 422; no InfoItem persisted."""
     bad_spec = {

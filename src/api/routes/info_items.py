@@ -34,7 +34,6 @@ from src.core.models import (
     RepSpec,
 )
 from src.core.rep_fields_schema.validator import validate_rep_fields_against_spec
-from src.core.source_spec_schema.validator import validate_root_source_spec
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError as AssignInfoItemNotFoundError,
 )
@@ -70,19 +69,7 @@ async def create_info_item(
     RepSpec assignments). All writes are a single transaction; any validation
     or lookup failure rolls back the whole thing.
     """
-    # --- 1. Pre-validate initial_source_spec ---
-    # Pre-flight check: keeps the all-or-nothing contract for POST /info-items
-    # by failing fast before the InfoItem flush. create_info_source revalidates
-    # (and applies canonicalization + duplicate-URL check) at insert time.
-    if body.initial_source_spec is not None:
-        ok, errors = validate_root_source_spec(body.initial_source_spec)
-        if not ok:
-            raise HTTPException(
-                status_code=422,
-                detail={"message": "invalid source_spec", "errors": errors},
-            )
-
-    # --- 2. Look up RepSpecs + validate rep_fields against required_fields ---
+    # --- 1. Look up RepSpecs + validate rep_fields against required_fields ---
     rep_spec_rows: list[RepSpec] = []
     for assignment in body.initial_rep_spec_assignments:
         result = await session.execute(
@@ -110,18 +97,10 @@ async def create_info_item(
                     },
                 )
 
-    # --- 3. Insert InfoItem ---
-    item = InfoItem(
-        name=body.name,
-        description=body.description,
-        owner=body.owner,
-        rep_fields=body.rep_fields,
-    )
-    session.add(item)
-    await session.flush()  # populate item.info_item_id
-
-    # --- 4. Insert InfoSource + InfoItemSource ---
-    new_sources: list[InfoItemSource] = []
+    # --- 2. Create InfoSource (if requested) BEFORE inserting the InfoItem.
+    # Surfacing duplicate-URL collisions as 409 here keeps the all-or-nothing
+    # contract: no InfoItem row is flushed when the InfoSource insert fails.
+    info_source: InfoSource | None = None
     if body.initial_source_spec is not None:
         try:
             info_source = await create_info_source(session, source_spec=body.initial_source_spec)
@@ -140,6 +119,18 @@ async def create_info_item(
                 },
             )
 
+    # --- 3. Insert InfoItem + binding ---
+    item = InfoItem(
+        name=body.name,
+        description=body.description,
+        owner=body.owner,
+        rep_fields=body.rep_fields,
+    )
+    session.add(item)
+    await session.flush()  # populate item.info_item_id
+
+    new_sources: list[InfoItemSource] = []
+    if info_source is not None:
         binding = InfoItemSource(
             info_item_id=item.info_item_id,
             info_source_id=info_source.info_source_id,
@@ -149,7 +140,7 @@ async def create_info_item(
         await session.flush()
         new_sources.append(binding)
 
-    # --- 5. Insert InfoItemRepSpec rows ---
+    # --- 4. Insert InfoItemRepSpec rows ---
     new_rep_specs: list[InfoItemRepSpec] = []
     for assignment, rep_spec in zip(body.initial_rep_spec_assignments, rep_spec_rows):
         activated_at = assignment.activated_at or datetime.now(UTC)

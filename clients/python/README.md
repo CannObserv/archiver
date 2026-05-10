@@ -64,3 +64,30 @@ async with ArchiverClient(base_url="http://localhost:8020", api_key="...") as cl
 ```bash
 bash clients/python/scripts/regen.sh
 ```
+
+## Changelog
+
+### v1.1 (2026-05-10)
+
+Additive over v1.0 — every v1.0 method retains its signature and return type.
+
+**New SDK methods:**
+- `create_info_source(source_spec, *, parent_info_source_id=None) -> InfoSourceOut`
+- `get_info_source(info_source_id) -> InfoSourceOut`
+- `list_info_sources(*, parent_info_source_id=None) -> list[InfoSourceOut]`
+
+**New typed export:** `InfoSourceOut`.
+
+**Implicit server behaviour change:** `POST /info-items` with an
+`initial_source_spec.target.url` that already has an InfoSource row now
+returns **409 Conflict** (with `existing_info_source_id` and `url` in
+`detail`). Previously the duplicate would surface as a 500
+`IntegrityError`. SDK callers that pattern-match on status codes (Watcher
+retry logic in particular) should treat 409 as "InfoSource already
+exists; bind via `add_info_source` instead of recreating."
+
+### v1.0 (2026-05-09)
+
+Phase 4 cutover. Replaces the retired v0.x `InfoSpec` model with the
+`InfoItem`/`InfoSource`/`SourceRevision`/`RepSpec` v2 model. Not
+compatible with v0.x clients.
