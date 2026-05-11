@@ -23,7 +23,7 @@
 # Requires:
 #   - Archiver dev server on $ARCHIVER_URL (default http://127.0.0.1:8021).
 #   - ARCHIVER_API_KEY and ARCHIVER_DATABASE_URL in env.
-#   - jq, curl, psql, uv (for ULID generation).
+#   - jq, curl, psql.
 #   - No internet egress needed — all source specs are validated only (no fetch).
 
 set -euo pipefail
