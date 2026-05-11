@@ -67,6 +67,36 @@ bash clients/python/scripts/regen.sh
 
 ## Changelog
 
+### v1.2 (2026-05-11)
+
+**Breaking** — list endpoints now return a `Page` envelope instead of a bare list.
+
+**Changed SDK signatures:**
+- `list_info_items(*, limit=None, offset=None) -> PageInfoItemOut`
+- `list_info_sources(*, parent_info_source_id=None, limit=None, offset=None) -> PageInfoSourceOut`
+
+Both envelopes carry `items`, `has_more`, `limit`, `offset`. `limit` defaults to
+100 server-side (max 500); `offset` defaults to 0. Pass `None` from the SDK to
+accept server defaults. `has_more` is derived via a `limit+1` probe — no total
+count is computed. Ordering is stable across pages via a unique tiebreaker on
+the row id, so offset-paged iteration is safe.
+
+**New typed exports:** `PageInfoItemOut`, `PageInfoSourceOut`.
+
+**Migration for callers:**
+```python
+# v1.1
+items = await client.list_info_items()
+for it in items: ...
+
+# v1.2
+page = await client.list_info_items()
+for it in page.items: ...
+while page.has_more:
+    page = await client.list_info_items(offset=page.offset + page.limit)
+    for it in page.items: ...
+```
+
 ### v1.1 (2026-05-10)
 
 Additive over v1.0 — every v1.0 method retains its signature and return type.
@@ -74,7 +104,7 @@ Additive over v1.0 — every v1.0 method retains its signature and return type.
 **New SDK methods:**
 - `create_info_source(source_spec, *, parent_info_source_id=None) -> InfoSourceOut`
 - `get_info_source(info_source_id) -> InfoSourceOut`
-- `list_info_sources(*, parent_info_source_id=None) -> list[InfoSourceOut]`
+- `list_info_sources(*, parent_info_source_id=None) -> list[InfoSourceOut]` *(return shape updated to `PageInfoSourceOut` in v1.2)*
 
 **New typed export:** `InfoSourceOut`.
 

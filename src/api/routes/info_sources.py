@@ -15,6 +15,7 @@ from ulid import ULID
 
 from src.api.deps import get_db_session
 from src.api.schemas.info_source import InfoSourceCreate, InfoSourceOut
+from src.api.schemas.pagination import Page
 from src.api.schemas.types import ULIDStr
 from src.api.serializers import info_source_to_out
 from src.core.models import InfoSource
@@ -90,25 +91,37 @@ async def create_info_source_route(
     return info_source_to_out(src)
 
 
-@router.get("", response_model=list[InfoSourceOut])
+@router.get("", response_model=Page[InfoSourceOut])
 async def list_info_sources(
     parent_info_source_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db_session),
-) -> list[InfoSourceOut]:
-    """List InfoSources, optionally filtered to fragments under a parent.
+) -> Page[InfoSourceOut]:
+    """List InfoSources with offset pagination, optionally filtered by parent.
 
-    Without ``parent_info_source_id`` returns all rows. With it, returns only
-    fragments whose ``parent_info_source_id`` matches.
+    Returns at most ``limit`` rows per call. Without ``parent_info_source_id``
+    pages across the whole table; with it, restricts to fragments whose
+    ``parent_info_source_id`` matches. ``has_more`` is derived via a
+    ``limit+1`` probe; no total count is computed.
     """
-    stmt = select(InfoSource).order_by(InfoSource.created_at)
+    stmt = select(InfoSource).order_by(InfoSource.created_at, InfoSource.info_source_id)
     if parent_info_source_id is not None:
         try:
             parent_ulid = ULID.from_str(parent_info_source_id)
         except ValueError:
             raise HTTPException(status_code=422, detail="parent_info_source_id is not a valid ULID")
         stmt = stmt.where(InfoSource.parent_info_source_id == parent_ulid)
+    stmt = stmt.offset(offset).limit(limit + 1)
     rows = (await session.execute(stmt)).scalars().all()
-    return [info_source_to_out(s) for s in rows]
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return Page[InfoSourceOut](
+        items=[info_source_to_out(s) for s in rows],
+        has_more=has_more,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{info_source_id}", response_model=InfoSourceOut)

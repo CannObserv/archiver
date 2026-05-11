@@ -121,15 +121,45 @@ async def test_list_info_items(client):
         respx.get(f"{BASE_URL}/api/v1/info-items").mock(
             return_value=httpx.Response(
                 200,
-                json=[
-                    _info_item_payload("01HZZ00000000000000000000A"),
-                    _info_item_payload("01HZZ00000000000000000000B"),
-                ],
+                json={
+                    "items": [
+                        _info_item_payload("01HZZ00000000000000000000A"),
+                        _info_item_payload("01HZZ00000000000000000000B"),
+                    ],
+                    "has_more": False,
+                    "limit": 100,
+                    "offset": 0,
+                },
             )
         )
         out = await client.list_info_items()
-    assert len(out) == 2
-    assert out[0].name == "X"
+    assert out.has_more is False
+    assert out.limit == 100
+    assert out.offset == 0
+    assert len(out.items) == 2
+    assert out.items[0].name == "X"
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_forwards_pagination_params(client):
+    with respx.mock:
+        route = respx.get(f"{BASE_URL}/api/v1/info-items").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [_info_item_payload("01HZZ00000000000000000000A")],
+                    "has_more": True,
+                    "limit": 1,
+                    "offset": 2,
+                },
+            )
+        )
+        out = await client.list_info_items(limit=1, offset=2)
+    assert route.calls.last.request.url.params.get("limit") == "1"
+    assert route.calls.last.request.url.params.get("offset") == "2"
+    assert out.has_more is True
+    assert out.limit == 1
+    assert out.offset == 2
 
 
 @pytest.mark.asyncio
@@ -355,10 +385,21 @@ async def test_get_info_source(client):
 async def test_list_info_sources_no_filter(client):
     with respx.mock:
         route = respx.get(f"{BASE_URL}/api/v1/info-sources").mock(
-            return_value=httpx.Response(200, json=[_top_info_source_payload()])
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [_top_info_source_payload()],
+                    "has_more": False,
+                    "limit": 100,
+                    "offset": 0,
+                },
+            )
         )
         out = await client.list_info_sources()
-    assert len(out) == 1
+    assert out.has_more is False
+    assert out.limit == 100
+    assert out.offset == 0
+    assert len(out.items) == 1
     # No query string when filter is omitted
     assert b"parent_info_source_id" not in route.calls[0].request.url.query
 
@@ -369,10 +410,36 @@ async def test_list_info_sources_filter_by_parent(client):
     with respx.mock:
         route = respx.get(f"{BASE_URL}/api/v1/info-sources").mock(
             return_value=httpx.Response(
-                200, json=[_top_info_source_payload(parent=parent_id, url=None)]
+                200,
+                json={
+                    "items": [_top_info_source_payload(parent=parent_id, url=None)],
+                    "has_more": False,
+                    "limit": 100,
+                    "offset": 0,
+                },
             )
         )
         out = await client.list_info_sources(parent_info_source_id=parent_id)
-    assert len(out) == 1
-    assert out[0].parent_info_source_id == parent_id
+    assert len(out.items) == 1
+    assert out.items[0].parent_info_source_id == parent_id
     assert parent_id.encode() in route.calls[0].request.url.query
+
+
+@pytest.mark.asyncio
+async def test_list_info_sources_forwards_pagination_params(client):
+    with respx.mock:
+        route = respx.get(f"{BASE_URL}/api/v1/info-sources").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [_top_info_source_payload()],
+                    "has_more": True,
+                    "limit": 1,
+                    "offset": 4,
+                },
+            )
+        )
+        out = await client.list_info_sources(limit=1, offset=4)
+    assert route.calls.last.request.url.params.get("limit") == "1"
+    assert route.calls.last.request.url.params.get("offset") == "4"
+    assert out.has_more is True

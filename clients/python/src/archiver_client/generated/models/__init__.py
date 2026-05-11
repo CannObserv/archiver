@@ -22,6 +22,8 @@ from .info_source_create import InfoSourceCreate
 from .info_source_create_source_spec import InfoSourceCreateSourceSpec
 from .info_source_out import InfoSourceOut
 from .info_source_out_source_spec import InfoSourceOutSourceSpec
+from .page_info_item_out import PageInfoItemOut
+from .page_info_source_out import PageInfoSourceOut
 from .preview_extraction_request import PreviewExtractionRequest
 from .preview_extraction_request_source_spec import PreviewExtractionRequestSourceSpec
 from .preview_extraction_result import PreviewExtractionResult
@@ -71,6 +73,8 @@ __all__ = (
     "InfoSourceCreateSourceSpec",
     "InfoSourceOut",
     "InfoSourceOutSourceSpec",
+    "PageInfoItemOut",
+    "PageInfoSourceOut",
     "PreviewExtractionRequest",
     "PreviewExtractionRequestSourceSpec",
     "PreviewExtractionResult",

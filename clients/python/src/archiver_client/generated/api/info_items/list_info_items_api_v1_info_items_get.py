@@ -5,15 +5,29 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.info_item_out import InfoItemOut
-from ...types import Response
+from ...models.http_validation_error import HTTPValidationError
+from ...models.page_info_item_out import PageInfoItemOut
+from ...types import UNSET, Response, Unset
 
 
-def _get_kwargs() -> dict[str, Any]:
+def _get_kwargs(
+    *,
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> dict[str, Any]:
+
+    params: dict[str, Any] = {}
+
+    params["limit"] = limit
+
+    params["offset"] = offset
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/api/v1/info-items",
+        "params": params,
     }
 
     return _kwargs
@@ -21,16 +35,16 @@ def _get_kwargs() -> dict[str, Any]:
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> list[InfoItemOut] | None:
+) -> HTTPValidationError | PageInfoItemOut | None:
     if response.status_code == 200:
-        response_200 = []
-        _response_200 = response.json()
-        for response_200_item_data in _response_200:
-            response_200_item = InfoItemOut.from_dict(response_200_item_data)
-
-            response_200.append(response_200_item)
+        response_200 = PageInfoItemOut.from_dict(response.json())
 
         return response_200
+
+    if response.status_code == 422:
+        response_422 = HTTPValidationError.from_dict(response.json())
+
+        return response_422
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -40,7 +54,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[list[InfoItemOut]]:
+) -> Response[HTTPValidationError | PageInfoItemOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -52,20 +66,31 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-) -> Response[list[InfoItemOut]]:
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> Response[HTTPValidationError | PageInfoItemOut]:
     """List Info Items
 
-     List all InfoItems (no related rows populated).
+     List InfoItems with offset pagination (no related rows populated).
+
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+
+    Args:
+        limit (int | Unset):  Default: 100.
+        offset (int | Unset):  Default: 0.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[list[InfoItemOut]]
+        Response[HTTPValidationError | PageInfoItemOut]
     """
 
-    kwargs = _get_kwargs()
+    kwargs = _get_kwargs(
+        limit=limit,
+        offset=offset,
+    )
 
     response = client.get_httpx_client().request(
         **kwargs,
@@ -77,41 +102,62 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-) -> list[InfoItemOut] | None:
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> HTTPValidationError | PageInfoItemOut | None:
     """List Info Items
 
-     List all InfoItems (no related rows populated).
+     List InfoItems with offset pagination (no related rows populated).
+
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+
+    Args:
+        limit (int | Unset):  Default: 100.
+        offset (int | Unset):  Default: 0.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        list[InfoItemOut]
+        HTTPValidationError | PageInfoItemOut
     """
 
     return sync_detailed(
         client=client,
+        limit=limit,
+        offset=offset,
     ).parsed
 
 
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-) -> Response[list[InfoItemOut]]:
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> Response[HTTPValidationError | PageInfoItemOut]:
     """List Info Items
 
-     List all InfoItems (no related rows populated).
+     List InfoItems with offset pagination (no related rows populated).
+
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+
+    Args:
+        limit (int | Unset):  Default: 100.
+        offset (int | Unset):  Default: 0.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[list[InfoItemOut]]
+        Response[HTTPValidationError | PageInfoItemOut]
     """
 
-    kwargs = _get_kwargs()
+    kwargs = _get_kwargs(
+        limit=limit,
+        offset=offset,
+    )
 
     response = await client.get_async_httpx_client().request(**kwargs)
 
@@ -121,21 +167,31 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-) -> list[InfoItemOut] | None:
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> HTTPValidationError | PageInfoItemOut | None:
     """List Info Items
 
-     List all InfoItems (no related rows populated).
+     List InfoItems with offset pagination (no related rows populated).
+
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+
+    Args:
+        limit (int | Unset):  Default: 100.
+        offset (int | Unset):  Default: 0.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        list[InfoItemOut]
+        HTTPValidationError | PageInfoItemOut
     """
 
     return (
         await asyncio_detailed(
             client=client,
+            limit=limit,
+            offset=offset,
         )
     ).parsed

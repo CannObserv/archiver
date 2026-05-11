@@ -48,4 +48,55 @@ async def test_get_info_item_404(client):
 async def test_list_info_items_empty(client):
     response = await client.get("/api/v1/info-items", headers=HEADERS)
     assert response.status_code == 200
-    assert response.json() == []
+    body = response.json()
+    assert body == {"items": [], "has_more": False, "limit": 100, "offset": 0}
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_envelope_with_rows(client):
+    for n in ("a", "b", "c"):
+        await client.post("/api/v1/info-items", headers=HEADERS, json={"name": n})
+
+    response = await client.get("/api/v1/info-items", headers=HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 100
+    assert body["offset"] == 0
+    assert body["has_more"] is False
+    assert len(body["items"]) == 3
+    assert [it["name"] for it in body["items"]] == ["a", "b", "c"]
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_pagination_pages_correctly(client):
+    for n in ("a", "b", "c", "d", "e"):
+        await client.post("/api/v1/info-items", headers=HEADERS, json={"name": n})
+
+    p1 = (await client.get("/api/v1/info-items?limit=2&offset=0", headers=HEADERS)).json()
+    p2 = (await client.get("/api/v1/info-items?limit=2&offset=2", headers=HEADERS)).json()
+    p3 = (await client.get("/api/v1/info-items?limit=2&offset=4", headers=HEADERS)).json()
+
+    assert [it["name"] for it in p1["items"]] == ["a", "b"]
+    assert p1["has_more"] is True
+    assert [it["name"] for it in p2["items"]] == ["c", "d"]
+    assert p2["has_more"] is True
+    assert [it["name"] for it in p3["items"]] == ["e"]
+    assert p3["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_limit_too_high_returns_422(client):
+    resp = await client.get("/api/v1/info-items?limit=501", headers=HEADERS)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_limit_zero_returns_422(client):
+    resp = await client.get("/api/v1/info-items?limit=0", headers=HEADERS)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_negative_offset_returns_422(client):
+    resp = await client.get("/api/v1/info-items?offset=-1", headers=HEADERS)
+    assert resp.status_code == 422

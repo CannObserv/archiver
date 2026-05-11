@@ -85,6 +85,8 @@ from archiver_client.generated.models.info_source_create_source_spec import (
     InfoSourceCreateSourceSpec,
 )
 from archiver_client.generated.models.info_source_out import InfoSourceOut
+from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
+from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
 from archiver_client.generated.models.rep_spec_assignment_create import RepSpecAssignmentCreate
 from archiver_client.generated.models.source_revision_cache_patch import SourceRevisionCachePatch
 from archiver_client.generated.models.source_revision_create import SourceRevisionCreate
@@ -167,9 +169,24 @@ class ArchiverClient:
         response = await _create_info_item.asyncio_detailed(client=self._gen_client, body=body)
         return _unwrap(response)
 
-    async def list_info_items(self) -> list[InfoItemOut]:
-        """List all InfoItems."""
-        response = await _list_info_items.asyncio_detailed(client=self._gen_client)
+    async def list_info_items(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> PageInfoItemOut:
+        """List InfoItems as a paginated envelope.
+
+        ``limit`` and ``offset`` are forwarded to the server when set; omit to
+        accept server defaults (limit=100, offset=0). Server caps ``limit`` at
+        500. The returned ``PageInfoItemOut`` carries ``items``, ``has_more``,
+        ``limit``, and ``offset``.
+        """
+        response = await _list_info_items.asyncio_detailed(
+            client=self._gen_client,
+            limit=UNSET if limit is None else limit,
+            offset=UNSET if offset is None else offset,
+        )
         return _unwrap(response)
 
     async def get_info_item(self, info_item_id: str) -> InfoItemOut:
@@ -266,14 +283,25 @@ class ArchiverClient:
         return _unwrap(response)
 
     async def list_info_sources(
-        self, *, parent_info_source_id: str | None = None
-    ) -> list[InfoSourceOut]:
-        """List InfoSources, optionally filtered to fragments under a parent."""
+        self,
+        *,
+        parent_info_source_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> PageInfoSourceOut:
+        """List InfoSources as a paginated envelope.
+
+        With ``parent_info_source_id`` set, restricts to fragments under that
+        parent. ``limit``/``offset`` are forwarded when set; omit to accept
+        server defaults (limit=100, offset=0). Server caps ``limit`` at 500.
+        """
         response = await _list_info_sources.asyncio_detailed(
             client=self._gen_client,
             parent_info_source_id=(
                 parent_info_source_id if parent_info_source_id is not None else UNSET
             ),
+            limit=UNSET if limit is None else limit,
+            offset=UNSET if offset is None else offset,
         )
         return _unwrap(response)
 

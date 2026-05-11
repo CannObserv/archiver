@@ -53,8 +53,10 @@ class InfoSource(Base):
         ),
         UniqueConstraint("url", name="uq_info_sources_url"),
         Index(
-            "ix_info_sources_parent",
+            "ix_info_sources_parent_created",
             "parent_info_source_id",
+            "created_at",
+            "info_source_id",
             postgresql_where="parent_info_source_id IS NOT NULL",
         ),
         {"schema": "information"},

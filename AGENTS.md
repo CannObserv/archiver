@@ -158,7 +158,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id, role)` |
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(source_spec, parent_info_source_id=None)` |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
-| List InfoSources (filter by parent) | `GET /info-sources?parent_info_source_id=…` | `list_info_sources(parent_info_source_id=None)` |
+| List InfoSources (filter by parent, paginated) | `GET /info-sources?parent_info_source_id=…&limit=&offset=` | `list_info_sources(parent_info_source_id=None, limit=None, offset=None)` |
 | Assign a RepSpec | `POST /info-items/{id}/rep-spec-assignments` | `assign_rep_spec(info_item_id, rep_spec_id, activated_at=None)` |
 | Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
 | Public-URL writeback | `PATCH /info-items/{id}/rep-spec-assignments/{aid}` | `set_public_url(info_item_id, assignment_id, public_url)` |
@@ -167,6 +167,8 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
 `POST /info-sources` returns 409 Conflict (with the existing row's id) on duplicate URL; 422 on invalid source_spec or fragment-of-fragment chains; 404 on unknown parent. Fragments require a root parent (no chains). v1.1 SDK adds the three `*_info_source` methods; existing v1.0 methods are unchanged.
+
+**Pagination (v1.2):** `GET /info-items` and `GET /info-sources` return a `Page` envelope — `{items, has_more, limit, offset}`. Both accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` return `PageInfoItemOut` / `PageInfoSourceOut`; pass `limit`/`offset` to forward to the server. Breaking change vs. v1.1, which returned bare lists.
 
 **Known v1 gaps** (tracked as follow-up issues):
 - No `POST /rep-specs` — RepSpecs must be inserted out-of-band (`psql`); see #10. Phase 6 prereq.

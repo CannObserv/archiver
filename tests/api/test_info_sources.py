@@ -269,7 +269,11 @@ async def test_list_returns_all_when_no_filter(client):
 
     resp = await client.get("/api/v1/info-sources", headers=HEADERS)
     assert resp.status_code == 200
-    ids = {row["info_source_id"] for row in resp.json()}
+    body = resp.json()
+    assert body["limit"] == 100
+    assert body["offset"] == 0
+    assert body["has_more"] is False
+    ids = {row["info_source_id"] for row in body["items"]}
     assert a.json()["info_source_id"] in ids
     assert b.json()["info_source_id"] in ids
 
@@ -305,11 +309,92 @@ async def test_list_filter_by_parent_returns_only_fragments(client):
         headers=HEADERS,
     )
     assert resp.status_code == 200
-    ids = {row["info_source_id"] for row in resp.json()}
+    body = resp.json()
+    ids = {row["info_source_id"] for row in body["items"]}
     assert ids == {frag1.json()["info_source_id"], frag2.json()["info_source_id"]}
     # neither root must appear in fragment-filtered results
     assert root_a_id not in ids
     assert root_b.json()["info_source_id"] not in ids
+
+
+@pytest.mark.asyncio
+async def test_list_pagination_pages_correctly(client):
+    ids = []
+    for path in ("a", "b", "c", "d", "e"):
+        resp = await client.post(
+            "/api/v1/info-sources",
+            headers=HEADERS,
+            json={"source_spec": _root_doc(f"https://example.com/{path}")},
+        )
+        ids.append(resp.json()["info_source_id"])
+
+    p1 = (await client.get("/api/v1/info-sources?limit=2&offset=0", headers=HEADERS)).json()
+    p2 = (await client.get("/api/v1/info-sources?limit=2&offset=2", headers=HEADERS)).json()
+    p3 = (await client.get("/api/v1/info-sources?limit=2&offset=4", headers=HEADERS)).json()
+
+    assert [r["info_source_id"] for r in p1["items"]] == ids[0:2]
+    assert p1["has_more"] is True
+    assert p1["limit"] == 2
+    assert p1["offset"] == 0
+    assert [r["info_source_id"] for r in p2["items"]] == ids[2:4]
+    assert p2["has_more"] is True
+    assert [r["info_source_id"] for r in p3["items"]] == ids[4:5]
+    assert p3["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_pagination_composes_with_parent_filter(client):
+    root = await client.post(
+        "/api/v1/info-sources",
+        headers=HEADERS,
+        json={"source_spec": _root_doc("https://example.com/root-p")},
+    )
+    root_id = root.json()["info_source_id"]
+
+    frag_ids = []
+    for _ in range(3):
+        resp = await client.post(
+            "/api/v1/info-sources",
+            headers=HEADERS,
+            json={"source_spec": _fragment_doc(), "parent_info_source_id": root_id},
+        )
+        frag_ids.append(resp.json()["info_source_id"])
+
+    p1 = (
+        await client.get(
+            f"/api/v1/info-sources?parent_info_source_id={root_id}&limit=2&offset=0",
+            headers=HEADERS,
+        )
+    ).json()
+    p2 = (
+        await client.get(
+            f"/api/v1/info-sources?parent_info_source_id={root_id}&limit=2&offset=2",
+            headers=HEADERS,
+        )
+    ).json()
+
+    assert [r["info_source_id"] for r in p1["items"]] == frag_ids[0:2]
+    assert p1["has_more"] is True
+    assert [r["info_source_id"] for r in p2["items"]] == frag_ids[2:3]
+    assert p2["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_limit_too_high_returns_422(client):
+    resp = await client.get("/api/v1/info-sources?limit=501", headers=HEADERS)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_limit_zero_returns_422(client):
+    resp = await client.get("/api/v1/info-sources?limit=0", headers=HEADERS)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_negative_offset_returns_422(client):
+    resp = await client.get("/api/v1/info-sources?offset=-1", headers=HEADERS)
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

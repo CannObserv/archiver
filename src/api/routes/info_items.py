@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
@@ -19,6 +19,7 @@ from src.api.schemas.info_item import (
     InfoItemSourceRevisionCreate,
     InfoItemSourceRevisionOut,
 )
+from src.api.schemas.pagination import Page
 from src.api.schemas.types import ULIDStr
 from src.api.serializers import (
     info_item_rep_spec_to_out,
@@ -159,13 +160,31 @@ async def create_info_item(
     return info_item_to_out(item, sources=new_sources, rep_specs=new_rep_specs)
 
 
-@router.get("", response_model=list[InfoItemOut])
+@router.get("", response_model=Page[InfoItemOut])
 async def list_info_items(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db_session),
-) -> list[InfoItemOut]:
-    """List all InfoItems (no related rows populated)."""
-    result = await session.execute(select(InfoItem).order_by(InfoItem.created_at))
-    return [info_item_to_out(item) for item in result.scalars().all()]
+) -> Page[InfoItemOut]:
+    """List InfoItems with offset pagination (no related rows populated).
+
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    """
+    stmt = (
+        select(InfoItem)
+        .order_by(InfoItem.created_at, InfoItem.info_item_id)
+        .offset(offset)
+        .limit(limit + 1)
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return Page[InfoItemOut](
+        items=[info_item_to_out(item) for item in rows],
+        has_more=has_more,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{info_item_id}", response_model=InfoItemOut)

@@ -275,8 +275,9 @@ RESP=$(call GET "/api/v1/info-sources/${FRAGMENT_ID}")
 assert_eq "$(echo "$RESP" | jq -r .info_source_id)" "$FRAGMENT_ID" "round-trip id"
 
 # GET /info-sources?parent_info_source_id=... should include the fragment
+# v1.2 envelope: response is {"items": [...], "has_more": ..., "limit": ..., "offset": ...}
 RESP=$(call GET "/api/v1/info-sources?parent_info_source_id=${INFO_SOURCE_ID}")
-COUNT=$(echo "$RESP" | jq "[.[] | select(.info_source_id == \"$FRAGMENT_ID\")] | length")
+COUNT=$(echo "$RESP" | jq "[.items[] | select(.info_source_id == \"$FRAGMENT_ID\")] | length")
 assert_eq "$COUNT" "1" "fragment found in parent-filtered list"
 echo "  ok (fragment_id=$FRAGMENT_ID)"
 
