@@ -241,7 +241,7 @@ async def test_add_rep_spec_assignment_incomplete_rep_fields_returns_422(client,
     assert response.status_code == 422
     body = response.json()
     assert "missing" in body["detail"]
-    assert any("gcs.object_name" in m["message"] for m in body["detail"]["missing"])
+    assert any(m["path"] == "/gcs/object_name" for m in body["detail"]["missing"])
 
 
 @pytest.mark.asyncio
