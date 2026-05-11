@@ -15,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.models import RepSpec
 from src.core.rep_spec_schema.validator import ValidationError, validate_rep_spec
 
+# Pinned to the envelope at src/core/rep_spec_schema/v1.json. When a v2.json
+# envelope ships, bump both in lockstep — the validator selects the envelope
+# by filename, but doesn't expose a version constant we can import.
 CURRENT_SCHEMA_VERSION = 1
 
 

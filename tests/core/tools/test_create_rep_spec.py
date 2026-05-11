@@ -66,5 +66,9 @@ async def test_create_rep_spec_rejects_invalid_provider_sub_schema(session):
 async def test_create_rep_spec_provider_mismatch_with_document_is_rejected(session):
     """If the request says provider=gcs but the document says provider=gdrive, reject."""
     bad = _gcs_doc() | {"provider": "gdrive"}
-    with pytest.raises(InvalidRepSpecError):
+    with pytest.raises(InvalidRepSpecError) as exc:
         await create_rep_spec(session, provider="gcs", name="x", document=bad)
+    mismatch_errors = [e for e in exc.value.errors if e["path"] == "/provider"]
+    assert mismatch_errors, "expected an error at path /provider"
+    assert "'gcs'" in mismatch_errors[0]["message"]
+    assert "'gdrive'" in mismatch_errors[0]["message"]
