@@ -11,7 +11,7 @@
 #  7.  POST /source-revisions — synthetic fingerprint → 201, capture ID
 #  8.  POST /source-revisions again — same fingerprint → 200 (idempotent)
 #  9.  Redis check — XLEN info.changes ≥ 1 (skipped when ARCHIVER_REDIS_URL unset)
-# 10.  Insert RepSpec via psql — no POST /rep-specs endpoint; direct DB insert
+# 10.  POST /rep-specs → 201, capture rep_spec_id
 # 11.  assign_rep_spec — POST /info-items/{id}/rep-spec-assignments → 201
 # 12.  PATCH public_url on assignment → 200, verify field written
 # 13.  bind_revision — POST /info-items/{id}/source-revisions → 201
@@ -208,19 +208,11 @@ else
     fi
 fi
 
-# 10. Insert RepSpec via psql — no POST /rep-specs endpoint exists; RepSpecs are
-#     managed out-of-band (registry seeding). Direct DB insert is the workaround.
-step 10 "Insert RepSpec via psql (no POST /rep-specs endpoint)"
-REP_SPEC_ID=$(uv run python -c "from ulid import ULID; print(str(ULID()))")
-psql "$PSQL_URL" -q -c "
-    INSERT INTO information.rep_specs (rep_spec_id, provider, name, schema_version, document)
-    VALUES (
-        '$REP_SPEC_ID',
-        'gcs',
-        'smoke-gcs-$$',
-        1,
-        '$REP_SPEC_DOC'::jsonb
-    )" 2>&1
+# 10. POST /rep-specs — create RepSpec via new endpoint
+step 10 "POST /rep-specs (create RepSpec via new endpoint)"
+RESP=$(call POST /api/v1/rep-specs \
+    "{\"provider\": \"gcs\", \"name\": \"smoke-gcs-$$\", \"document\": $REP_SPEC_DOC}")
+REP_SPEC_ID=$(echo "$RESP" | jq -r .rep_spec_id)
 assert_nonempty "$REP_SPEC_ID" "rep_spec_id"
 echo "  ok (rep_spec_id=$REP_SPEC_ID)"
 
@@ -301,5 +293,4 @@ echo "  rep_spec_id=$REP_SPEC_ID"
 echo "  assignment_id=$ASSIGNMENT_ID"
 echo
 echo "Notes:"
-echo "  Step 10: No POST /rep-specs endpoint; RepSpec inserted via psql."
 echo "  Step  9: Redis check skipped when ARCHIVER_REDIS_URL unset."
