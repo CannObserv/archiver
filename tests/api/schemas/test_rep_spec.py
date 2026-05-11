@@ -1,5 +1,7 @@
 """Schema-level tests for RepSpecCreate/RepSpecOut."""
 
+from datetime import datetime
+
 import pytest
 from pydantic import ValidationError
 
@@ -38,6 +40,11 @@ def test_rep_spec_create_rejects_empty_name():
         RepSpecCreate(provider="gcs", name="", document=_gcs_doc())
 
 
+def test_rep_spec_create_rejects_empty_provider():
+    with pytest.raises(ValidationError):
+        RepSpecCreate(provider="", name="x", document=_gcs_doc())
+
+
 def test_rep_spec_out_round_trip():
     out = RepSpecOut(
         rep_spec_id="01J0000000000000000000000A",
@@ -47,4 +54,9 @@ def test_rep_spec_out_round_trip():
         document=_gcs_doc(),
         created_at="2026-05-11T00:00:00Z",  # pydantic accepts ISO 8601
     )
+    assert out.rep_spec_id == "01J0000000000000000000000A"
     assert out.provider == "gcs"
+    assert out.name == "x"
+    assert out.schema_version == 1
+    assert out.document == _gcs_doc()
+    assert isinstance(out.created_at, datetime)
