@@ -159,6 +159,9 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(source_spec, parent_info_source_id=None)` |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
 | List InfoSources (filter by parent, paginated) | `GET /info-sources?parent_info_source_id=…&limit=&offset=` | `list_info_sources(parent_info_source_id=None, limit=None, offset=None)` |
+| Author a RepSpec | `POST /rep-specs` | `create_rep_spec(provider, name, document)` |
+| Get a RepSpec | `GET /rep-specs/{id}` | `get_rep_spec(id)` |
+| List RepSpecs (filter by provider, paginated) | `GET /rep-specs?provider=…&limit=&offset=` | `list_rep_specs(provider=None, limit=None, offset=None)` |
 | Assign a RepSpec | `POST /info-items/{id}/rep-spec-assignments` | `assign_rep_spec(info_item_id, rep_spec_id, activated_at=None)` |
 | Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
 | Public-URL writeback | `PATCH /info-items/{id}/rep-spec-assignments/{aid}` | `set_public_url(info_item_id, assignment_id, public_url)` |
@@ -168,10 +171,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 
 `POST /info-sources` returns 409 Conflict (with the existing row's id) on duplicate URL; 422 on invalid source_spec or fragment-of-fragment chains; 404 on unknown parent. Fragments require a root parent (no chains). v1.1 SDK adds the three `*_info_source` methods; existing v1.0 methods are unchanged.
 
-**Pagination (v1.2):** `GET /info-items` and `GET /info-sources` return a `Page` envelope — `{items, has_more, limit, offset}`. Both accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` return `PageInfoItemOut` / `PageInfoSourceOut`; pass `limit`/`offset` to forward to the server. Breaking change vs. v1.1, which returned bare lists.
-
-**Known v1 gaps** (tracked as follow-up issues):
-- No `POST /rep-specs` — RepSpecs must be inserted out-of-band (`psql`); see #10. Phase 6 prereq.
+**Pagination (v1.2+):** `GET /info-items`, `GET /info-sources`, and `GET /rep-specs` return a `Page` envelope — `{items, has_more, limit, offset}`. All accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` / `list_rep_specs` return `PageInfoItemOut` / `PageInfoSourceOut` / `PageRepSpecOut`; pass `limit`/`offset` to forward to the server. v1.2 was a breaking change vs. v1.1, which returned bare lists; v1.3 added `/rep-specs` additively.
 
 **Change-bus producer:** New `SourceRevision` inserts write a row to `information.changes_outbox` in the same transaction. The publisher background task drains the outbox to the Redis Stream `info.changes` (event type `source_revision_captured`, payload typed by `src.core.changes.payloads.SourceRevisionCapturedEvent`). Publisher only starts when `ARCHIVER_REDIS_URL` is set.
 
