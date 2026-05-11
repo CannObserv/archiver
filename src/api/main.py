@@ -14,6 +14,7 @@ from src.api.deps import require_api_key
 from src.api.routes.health import router as health_router
 from src.api.routes.info_items import router as info_items_router
 from src.api.routes.info_sources import router as info_sources_router
+from src.api.routes.rep_specs import router as rep_specs_router
 from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
 from src.core.changes import publisher as outbox_publisher
@@ -88,6 +89,7 @@ app = FastAPI(title="archiver", version=_package_version("archiver"), lifespan=l
 v1_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 v1_router.include_router(info_items_router)
 v1_router.include_router(info_sources_router)
+v1_router.include_router(rep_specs_router)
 v1_router.include_router(source_revisions_router)
 v1_router.include_router(tools_router)
 

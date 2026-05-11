@@ -11,6 +11,7 @@ from src.api.schemas.info_item import (
     InfoItemSourceRevisionOut,  # noqa: F401  (re-exported for route modules)
 )
 from src.api.schemas.info_source import InfoSourceOut
+from src.api.schemas.rep_spec import RepSpecOut
 from src.api.schemas.source_revision import SourceRevisionOut
 from src.core.models import (
     InfoItem,
@@ -18,6 +19,7 @@ from src.core.models import (
     InfoItemSource,
     InfoItemSourceRevision,
     InfoSource,
+    RepSpec,
     SourceRevision,
 )
 
@@ -78,6 +80,18 @@ def source_revision_to_out(rev: SourceRevision) -> SourceRevisionOut:
         content_media_type=rev.content_media_type,
         content_cache_uri=rev.content_cache_uri,
         content_cache_expires_at=rev.content_cache_expires_at,
+    )
+
+
+def rep_spec_to_out(spec: RepSpec) -> RepSpecOut:
+    """Serialise a RepSpec ORM row."""
+    return RepSpecOut(
+        rep_spec_id=str(spec.rep_spec_id),
+        provider=spec.provider,
+        name=spec.name,
+        schema_version=spec.schema_version,
+        document=spec.document,
+        created_at=spec.created_at,
     )
 
 
