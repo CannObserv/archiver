@@ -6,25 +6,25 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.page_info_source_out import PageInfoSourceOut
+from ...models.page_rep_spec_out import PageRepSpecOut
 from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     *,
-    parent_info_source_id: None | str | Unset = UNSET,
+    provider: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
 
-    json_parent_info_source_id: None | str | Unset
-    if isinstance(parent_info_source_id, Unset):
-        json_parent_info_source_id = UNSET
+    json_provider: None | str | Unset
+    if isinstance(provider, Unset):
+        json_provider = UNSET
     else:
-        json_parent_info_source_id = parent_info_source_id
-    params["parent_info_source_id"] = json_parent_info_source_id
+        json_provider = provider
+    params["provider"] = json_provider
 
     params["limit"] = limit
 
@@ -34,7 +34,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/info-sources",
+        "url": "/api/v1/rep-specs",
         "params": params,
     }
 
@@ -43,9 +43,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | PageInfoSourceOut | None:
+) -> HTTPValidationError | PageRepSpecOut | None:
     if response.status_code == 200:
-        response_200 = PageInfoSourceOut.from_dict(response.json())
+        response_200 = PageRepSpecOut.from_dict(response.json())
 
         return response_200
 
@@ -62,7 +62,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | PageInfoSourceOut]:
+) -> Response[HTTPValidationError | PageRepSpecOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,21 +74,19 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    parent_info_source_id: None | str | Unset = UNSET,
+    provider: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
-) -> Response[HTTPValidationError | PageInfoSourceOut]:
-    """List Info Sources
+) -> Response[HTTPValidationError | PageRepSpecOut]:
+    """List Rep Specs
 
-     List InfoSources with offset pagination, optionally filtered by parent.
+     List RepSpecs with offset pagination, optionally filtered by provider.
 
-    Returns at most ``limit`` rows per call. Without ``parent_info_source_id``
-    pages across the whole table; with it, restricts to fragments whose
-    ``parent_info_source_id`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Ordering is stable on ``(created_at, rep_spec_id)``.
 
     Args:
-        parent_info_source_id (None | str | Unset):
+        provider (None | str | Unset):
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -97,11 +95,11 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | PageInfoSourceOut]
+        Response[HTTPValidationError | PageRepSpecOut]
     """
 
     kwargs = _get_kwargs(
-        parent_info_source_id=parent_info_source_id,
+        provider=provider,
         limit=limit,
         offset=offset,
     )
@@ -116,21 +114,19 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    parent_info_source_id: None | str | Unset = UNSET,
+    provider: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
-) -> HTTPValidationError | PageInfoSourceOut | None:
-    """List Info Sources
+) -> HTTPValidationError | PageRepSpecOut | None:
+    """List Rep Specs
 
-     List InfoSources with offset pagination, optionally filtered by parent.
+     List RepSpecs with offset pagination, optionally filtered by provider.
 
-    Returns at most ``limit`` rows per call. Without ``parent_info_source_id``
-    pages across the whole table; with it, restricts to fragments whose
-    ``parent_info_source_id`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Ordering is stable on ``(created_at, rep_spec_id)``.
 
     Args:
-        parent_info_source_id (None | str | Unset):
+        provider (None | str | Unset):
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -139,12 +135,12 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | PageInfoSourceOut
+        HTTPValidationError | PageRepSpecOut
     """
 
     return sync_detailed(
         client=client,
-        parent_info_source_id=parent_info_source_id,
+        provider=provider,
         limit=limit,
         offset=offset,
     ).parsed
@@ -153,21 +149,19 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    parent_info_source_id: None | str | Unset = UNSET,
+    provider: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
-) -> Response[HTTPValidationError | PageInfoSourceOut]:
-    """List Info Sources
+) -> Response[HTTPValidationError | PageRepSpecOut]:
+    """List Rep Specs
 
-     List InfoSources with offset pagination, optionally filtered by parent.
+     List RepSpecs with offset pagination, optionally filtered by provider.
 
-    Returns at most ``limit`` rows per call. Without ``parent_info_source_id``
-    pages across the whole table; with it, restricts to fragments whose
-    ``parent_info_source_id`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Ordering is stable on ``(created_at, rep_spec_id)``.
 
     Args:
-        parent_info_source_id (None | str | Unset):
+        provider (None | str | Unset):
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -176,11 +170,11 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | PageInfoSourceOut]
+        Response[HTTPValidationError | PageRepSpecOut]
     """
 
     kwargs = _get_kwargs(
-        parent_info_source_id=parent_info_source_id,
+        provider=provider,
         limit=limit,
         offset=offset,
     )
@@ -193,21 +187,19 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    parent_info_source_id: None | str | Unset = UNSET,
+    provider: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
-) -> HTTPValidationError | PageInfoSourceOut | None:
-    """List Info Sources
+) -> HTTPValidationError | PageRepSpecOut | None:
+    """List Rep Specs
 
-     List InfoSources with offset pagination, optionally filtered by parent.
+     List RepSpecs with offset pagination, optionally filtered by provider.
 
-    Returns at most ``limit`` rows per call. Without ``parent_info_source_id``
-    pages across the whole table; with it, restricts to fragments whose
-    ``parent_info_source_id`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Ordering is stable on ``(created_at, rep_spec_id)``.
 
     Args:
-        parent_info_source_id (None | str | Unset):
+        provider (None | str | Unset):
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -216,13 +208,13 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | PageInfoSourceOut
+        HTTPValidationError | PageRepSpecOut
     """
 
     return (
         await asyncio_detailed(
             client=client,
-            parent_info_source_id=parent_info_source_id,
+            provider=provider,
             limit=limit,
             offset=offset,
         )

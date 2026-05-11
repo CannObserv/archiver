@@ -22,9 +22,11 @@ from archiver_client.generated.models.info_item_rep_spec_out import InfoItemRepS
 from archiver_client.generated.models.info_item_source_out import InfoItemSourceOut
 from archiver_client.generated.models.info_item_source_revision_out import InfoItemSourceRevisionOut
 from archiver_client.generated.models.info_source_out import InfoSourceOut
+from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
+from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
 
-__version__ = "1.1.0"
+__version__ = "1.3.0"
 
 __all__ = [
     "AuthError",
@@ -35,6 +37,8 @@ __all__ = [
     "InfoItemSourceOut",
     "InfoItemSourceRevisionOut",
     "InfoSourceOut",
+    "PageRepSpecOut",
+    "RepSpecOut",
     "SourceRevisionOut",
     "ArchiverClient",
     "InformationError",

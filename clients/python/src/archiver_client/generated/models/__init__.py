@@ -24,11 +24,16 @@ from .info_source_out import InfoSourceOut
 from .info_source_out_source_spec import InfoSourceOutSourceSpec
 from .page_info_item_out import PageInfoItemOut
 from .page_info_source_out import PageInfoSourceOut
+from .page_rep_spec_out import PageRepSpecOut
 from .preview_extraction_request import PreviewExtractionRequest
 from .preview_extraction_request_source_spec import PreviewExtractionRequestSourceSpec
 from .preview_extraction_result import PreviewExtractionResult
 from .propose_selectors_request import ProposeSelectorsRequest
 from .rep_spec_assignment_create import RepSpecAssignmentCreate
+from .rep_spec_create import RepSpecCreate
+from .rep_spec_create_document import RepSpecCreateDocument
+from .rep_spec_out import RepSpecOut
+from .rep_spec_out_document import RepSpecOutDocument
 from .resolve_rep_fields_request import ResolveRepFieldsRequest
 from .resolve_rep_fields_request_bag import ResolveRepFieldsRequestBag
 from .resolve_rep_fields_response import ResolveRepFieldsResponse
@@ -75,11 +80,16 @@ __all__ = (
     "InfoSourceOutSourceSpec",
     "PageInfoItemOut",
     "PageInfoSourceOut",
+    "PageRepSpecOut",
     "PreviewExtractionRequest",
     "PreviewExtractionRequestSourceSpec",
     "PreviewExtractionResult",
     "ProposeSelectorsRequest",
     "RepSpecAssignmentCreate",
+    "RepSpecCreate",
+    "RepSpecCreateDocument",
+    "RepSpecOut",
+    "RepSpecOutDocument",
     "ResolveRepFieldsRequest",
     "ResolveRepFieldsRequestBag",
     "ResolveRepFieldsResponse",

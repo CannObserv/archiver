@@ -54,6 +54,15 @@ from archiver_client.generated.api.info_sources import (
 from archiver_client.generated.api.info_sources import (
     list_info_sources_api_v1_info_sources_get as _list_info_sources,
 )
+from archiver_client.generated.api.rep_specs import (
+    create_rep_spec_route_api_v1_rep_specs_post as _create_rep_spec,
+)
+from archiver_client.generated.api.rep_specs import (
+    get_rep_spec_api_v1_rep_specs_rep_spec_id_get as _get_rep_spec,
+)
+from archiver_client.generated.api.rep_specs import (
+    list_rep_specs_api_v1_rep_specs_get as _list_rep_specs,
+)
 from archiver_client.generated.api.source_revisions import (
     create_source_revision_api_v1_source_revisions_post as _create_source_revision,
 )
@@ -87,6 +96,10 @@ from archiver_client.generated.models.info_source_create_source_spec import (
 from archiver_client.generated.models.info_source_out import InfoSourceOut
 from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
 from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
+from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
+from archiver_client.generated.models.rep_spec_create import RepSpecCreate
+from archiver_client.generated.models.rep_spec_create_document import RepSpecCreateDocument
+from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.rep_spec_assignment_create import RepSpecAssignmentCreate
 from archiver_client.generated.models.source_revision_cache_patch import SourceRevisionCachePatch
 from archiver_client.generated.models.source_revision_create import SourceRevisionCreate
@@ -237,6 +250,56 @@ class ArchiverClient:
             info_item_id=info_item_id,
             assignment_id=assignment_id,
             body=body,
+        )
+        return _unwrap(response)
+
+    # --- RepSpec endpoints ---
+
+    async def create_rep_spec(
+        self,
+        *,
+        provider: str,
+        name: str,
+        document: dict,
+    ) -> RepSpecOut:
+        """Author a new RepSpec.
+
+        Validates against the v1 envelope + per-provider sub-schema server-side.
+        Raises ``ValidationError`` if either fails. Returns the persisted row.
+        """
+        body = RepSpecCreate(
+            provider=provider,
+            name=name,
+            document=RepSpecCreateDocument.from_dict(document),
+        )
+        response = await _create_rep_spec.asyncio_detailed(client=self._gen_client, body=body)
+        return _unwrap(response)
+
+    async def get_rep_spec(self, rep_spec_id: str) -> RepSpecOut:
+        """Fetch a single RepSpec by ID."""
+        response = await _get_rep_spec.asyncio_detailed(
+            client=self._gen_client, rep_spec_id=rep_spec_id
+        )
+        return _unwrap(response)
+
+    async def list_rep_specs(
+        self,
+        *,
+        provider: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> PageRepSpecOut:
+        """List RepSpecs as a paginated envelope.
+
+        ``provider`` restricts to a single provider key. ``limit``/``offset`` are
+        forwarded when set; omit to accept server defaults (limit=100, offset=0).
+        Server caps ``limit`` at 500.
+        """
+        response = await _list_rep_specs.asyncio_detailed(
+            client=self._gen_client,
+            provider=provider if provider is not None else UNSET,
+            limit=UNSET if limit is None else limit,
+            offset=UNSET if offset is None else offset,
         )
         return _unwrap(response)
 
