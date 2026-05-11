@@ -194,6 +194,7 @@ async def test_list_filters_by_provider(client):
     resp = await client.get("/api/v1/rep-specs?provider=gdrive", headers=HEADERS)
     assert resp.status_code == 200
     body = resp.json()
+    assert len(body["items"]) == 1  # exactly one gdrive row was created
     assert all(item["provider"] == "gdrive" for item in body["items"])
 
 
@@ -212,10 +213,49 @@ async def test_list_pagination_has_more_flips_at_limit(client):
 
     resp2 = await client.get("/api/v1/rep-specs?limit=2&offset=2", headers=HEADERS)
     body2 = resp2.json()
+    assert len(body2["items"]) == 1  # the third item is on page 2
     assert body2["has_more"] is False
 
 
 @pytest.mark.asyncio
 async def test_list_requires_api_key(client):
     resp = await client.get("/api/v1/rep-specs")  # no headers
-    assert resp.status_code in (401, 403)
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_post_requires_api_key(client):
+    resp = await client.post(
+        "/api/v1/rep-specs",
+        json={"provider": "gcs", "name": "x", "document": _gcs_doc()},
+    )  # no headers
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_requires_api_key(client):
+    resp = await client.get("/api/v1/rep-specs/01J0000000000000000000000Z")
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/rep-specs — query-param bounds
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_limit_too_high_returns_422(client):
+    resp = await client.get("/api/v1/rep-specs?limit=501", headers=HEADERS)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_limit_zero_returns_422(client):
+    resp = await client.get("/api/v1/rep-specs?limit=0", headers=HEADERS)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_negative_offset_returns_422(client):
+    resp = await client.get("/api/v1/rep-specs?offset=-1", headers=HEADERS)
+    assert resp.status_code == 422
