@@ -39,8 +39,8 @@ async def create_source_revision(
     # --- Validate info_source_id references an existing InfoSource ---
     try:
         source_ulid = ULID.from_str(body.info_source_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="info_source_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="info_source_id is not a valid ULID") from e
 
     source = await session.get(InfoSource, source_ulid)
     if source is None:
@@ -118,8 +118,8 @@ async def patch_source_revision(
     """
     try:
         rev_ulid = ULID.from_str(source_revision_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="source_revision_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="source_revision_id is not a valid ULID") from e
 
     rev = await session.get(SourceRevision, rev_ulid)
     if rev is None:

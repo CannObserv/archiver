@@ -55,8 +55,10 @@ async def create_info_source_route(
     if body.parent_info_source_id is not None:
         try:
             parent_ulid = ULID.from_str(body.parent_info_source_id)
-        except ValueError:
-            raise HTTPException(status_code=422, detail="parent_info_source_id is not a valid ULID")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=422, detail="parent_info_source_id is not a valid ULID"
+            ) from e
 
     try:
         src = await create_info_source(
@@ -68,14 +70,14 @@ async def create_info_source_route(
         raise HTTPException(
             status_code=422,
             detail={"message": "invalid source_spec", "errors": e.errors},
-        )
-    except ParentNotFoundError:
-        raise HTTPException(status_code=404, detail="parent InfoSource not found")
-    except ParentMustBeRootError:
+        ) from e
+    except ParentNotFoundError as e:
+        raise HTTPException(status_code=404, detail="parent InfoSource not found") from e
+    except ParentMustBeRootError as e:
         raise HTTPException(
             status_code=422,
             detail="parent_info_source_id must reference a root InfoSource",
-        )
+        ) from e
     except DuplicateUrlError as e:
         raise HTTPException(
             status_code=409,
@@ -84,7 +86,7 @@ async def create_info_source_route(
                 "url": e.url,
                 "existing_info_source_id": str(e.existing_info_source_id),
             },
-        )
+        ) from e
 
     await session.commit()
     await session.refresh(src)
@@ -109,8 +111,10 @@ async def list_info_sources(
     if parent_info_source_id is not None:
         try:
             parent_ulid = ULID.from_str(parent_info_source_id)
-        except ValueError:
-            raise HTTPException(status_code=422, detail="parent_info_source_id is not a valid ULID")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=422, detail="parent_info_source_id is not a valid ULID"
+            ) from e
         stmt = stmt.where(InfoSource.parent_info_source_id == parent_ulid)
     stmt = stmt.offset(offset).limit(limit + 1)
     rows = (await session.execute(stmt)).scalars().all()

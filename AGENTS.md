@@ -253,6 +253,7 @@ Entry points only: call `configure_logging()` once.
 - Test structure mirrors source (`src/foo.py` → `tests/test_foo.py`)
 - Explicit imports only
 - Small, focused functions
+- Translated exceptions chain via `raise HTTPException(...) from e` (capture the source with `as e`). Ruff `B904` enforces this in CI.
 
 ## Vocabulary
 

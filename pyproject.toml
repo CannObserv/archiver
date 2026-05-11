@@ -52,6 +52,7 @@ exclude = ["skills-vendor/", "clients/python/src/archiver_client/generated/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
+extend-select = ["B904"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]

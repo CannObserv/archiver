@@ -109,7 +109,7 @@ async def create_info_item(
             raise HTTPException(
                 status_code=422,
                 detail={"message": "invalid source_spec", "errors": e.errors},
-            )
+            ) from e
         except DuplicateUrlError as e:
             raise HTTPException(
                 status_code=409,
@@ -118,7 +118,7 @@ async def create_info_item(
                     "url": e.url,
                     "existing_info_source_id": str(e.existing_info_source_id),
                 },
-            )
+            ) from e
 
     # --- 3. Insert InfoItem + binding ---
     item = InfoItem(
@@ -225,8 +225,8 @@ async def add_info_source(
 
     try:
         source_ulid = ULID.from_str(body.info_source_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="info_source_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="info_source_id is not a valid ULID") from e
 
     source = await session.get(InfoSource, source_ulid)
     if source is None:
@@ -265,13 +265,13 @@ async def add_rep_spec_assignment(
     """
     try:
         item_ulid = ULID.from_str(info_item_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="info_item_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="info_item_id is not a valid ULID") from e
 
     try:
         spec_ulid = ULID.from_str(body.rep_spec_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="rep_spec_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="rep_spec_id is not a valid ULID") from e
 
     try:
         assignment = await assign_rep_spec(
@@ -280,15 +280,15 @@ async def add_rep_spec_assignment(
             rep_spec_id=spec_ulid,
             activated_at=body.activated_at,
         )
-    except AssignInfoItemNotFoundError:
-        raise HTTPException(status_code=404, detail="InfoItem not found")
-    except RepSpecNotFoundError:
-        raise HTTPException(status_code=404, detail="RepSpec not found")
+    except AssignInfoItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail="InfoItem not found") from e
+    except RepSpecNotFoundError as e:
+        raise HTTPException(status_code=404, detail="RepSpec not found") from e
     except RepFieldsIncompleteError as e:
         raise HTTPException(
             status_code=422,
             detail={"detail": {"missing": e.missing}},
-        )
+        ) from e
 
     await session.commit()
     return info_item_rep_spec_to_out(assignment)
@@ -311,13 +311,13 @@ async def bind_source_revision(
     """
     try:
         item_ulid = ULID.from_str(info_item_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="info_item_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="info_item_id is not a valid ULID") from e
 
     try:
         rev_ulid = ULID.from_str(body.source_revision_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="source_revision_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="source_revision_id is not a valid ULID") from e
 
     try:
         binding = await bind_revision(
@@ -326,10 +326,10 @@ async def bind_source_revision(
             source_revision_id=rev_ulid,
             bound_at=body.bound_at,
         )
-    except BindInfoItemNotFoundError:
-        raise HTTPException(status_code=404, detail="InfoItem not found")
-    except SourceRevisionNotFoundError:
-        raise HTTPException(status_code=404, detail="SourceRevision not found")
+    except BindInfoItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail="InfoItem not found") from e
+    except SourceRevisionNotFoundError as e:
+        raise HTTPException(status_code=404, detail="SourceRevision not found") from e
 
     await session.commit()
     return info_item_source_revision_to_out(binding)
@@ -351,8 +351,8 @@ async def deactivate_rep_spec_assignment(
     """
     try:
         assign_ulid = ULID.from_str(assignment_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="assignment_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="assignment_id is not a valid ULID") from e
 
     assignment = await session.get(InfoItemRepSpec, assign_ulid)
     if assignment is None or str(assignment.info_item_id) != info_item_id:
@@ -382,8 +382,8 @@ async def patch_rep_spec_assignment_public_url(
     """
     try:
         assign_ulid = ULID.from_str(assignment_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="assignment_id is not a valid ULID")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail="assignment_id is not a valid ULID") from e
 
     assignment = await session.get(InfoItemRepSpec, assign_ulid)
     if assignment is None or str(assignment.info_item_id) != info_item_id:
