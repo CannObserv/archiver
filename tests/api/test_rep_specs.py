@@ -108,6 +108,11 @@ async def test_post_returns_422_on_provider_mismatch(client):
         json={"provider": "gcs", "name": "x", "document": bad},
     )
     assert resp.status_code == 422
+    body = resp.json()
+    mismatch_errors = [e for e in body["detail"]["errors"] if e["path"] == "/provider"]
+    assert mismatch_errors, "expected an error at path /provider"
+    assert "'gcs'" in mismatch_errors[0]["message"]
+    assert "'gdrive'" in mismatch_errors[0]["message"]
 
 
 @pytest.mark.asyncio
@@ -258,4 +263,10 @@ async def test_list_limit_zero_returns_422(client):
 @pytest.mark.asyncio
 async def test_list_negative_offset_returns_422(client):
     resp = await client.get("/api/v1/rep-specs?offset=-1", headers=HEADERS)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_empty_provider_returns_422(client):
+    resp = await client.get("/api/v1/rep-specs?provider=", headers=HEADERS)
     assert resp.status_code == 422

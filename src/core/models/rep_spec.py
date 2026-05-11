@@ -34,5 +34,6 @@ class RepSpec(Base):
 
     __table_args__ = (
         Index("ix_rep_specs_provider", "provider"),
+        Index("ix_rep_specs_created_at_id", "created_at", "rep_spec_id"),
         {"schema": "information"},
     )

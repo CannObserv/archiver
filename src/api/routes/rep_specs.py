@@ -35,8 +35,14 @@ async def create_rep_spec_route(
     sub-schema. ``body.provider`` and ``document['provider']`` must agree.
 
     Error responses:
-    - 422: document fails envelope or provider sub-schema validation, or the
-           request-level ``provider`` disagrees with ``document.provider``.
+    - 422 (schema validation): document fails envelope or provider sub-schema
+           validation, or the request-level ``provider`` disagrees with
+           ``document.provider``. Body is
+           ``{"detail": {"message": "invalid rep_spec",
+           "errors": [{"path": ..., "message": ...}]}}``.
+    - 422 (body validation): Pydantic-level errors (missing/extra/wrong-type
+           fields) use the FastAPI default shape — ``detail`` is a list of
+           ``{loc, msg, type}`` entries. See #15 for normalization plans.
     """
     try:
         spec = await create_rep_spec(
@@ -58,7 +64,7 @@ async def create_rep_spec_route(
 
 @router.get("", response_model=Page[RepSpecOut])
 async def list_rep_specs(
-    provider: str | None = Query(default=None, max_length=50),
+    provider: str | None = Query(default=None, min_length=1, max_length=50),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db_session),

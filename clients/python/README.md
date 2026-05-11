@@ -76,7 +76,7 @@ Additive over v1.2 — backwards compatible.
 - `get_rep_spec(rep_spec_id) -> RepSpecOut`
 - `list_rep_specs(*, provider=None, limit=None, offset=None) -> PageRepSpecOut`
 
-**New typed export:** `PageRepSpecOut`.
+**New typed exports:** `RepSpecOut`, `PageRepSpecOut`.
 
 ### v1.2 (2026-05-11)
 
