@@ -204,6 +204,13 @@ Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code). L
 
 Full skill reference: `docs/SKILLS.md`. Cross-project search to the sister `watcher` and `notifier` indexes requires a per-instance `.claude/settings.local.json` (gitignored) — see "Linked Projects" in `docs/SKILLS.md`.
 
+## SessionStart Hooks
+
+`.claude/settings.json` wires two `SessionStart` hooks (see `.claude/hooks/`):
+
+- `socraticode-reminder.sh` — prints the deferred-tool prefetch query for SocratiCode MCP tools.
+- `skills-submodule-update.sh` — once-per-day refresh of `skills-vendor/gregoryfoster-skills` and `skills-vendor/obra-superpowers`. Lock file: `.git/skills-update-YYYYMMDD`. Log: `.git/skills-update.log` (auto-rotates at 64 KiB → last 200 lines). **Auto-commits only on `main`** with `chore: update skills submodules` — feature branches fetch but don't commit. Network failures are logged and don't block session start. Mirror of watcher's hook (CannObserv/watcher#153 → CannObserv/archiver#8).
+
 ## Common Commands
 
 ```bash
