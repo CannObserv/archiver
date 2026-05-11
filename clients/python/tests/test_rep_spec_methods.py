@@ -54,7 +54,7 @@ async def test_get_rep_spec(client):
 @pytest.mark.asyncio
 async def test_list_rep_specs_with_provider_filter(client):
     with respx.mock:
-        respx.get(f"{BASE_URL}/api/v1/rep-specs").mock(
+        route = respx.get(f"{BASE_URL}/api/v1/rep-specs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -69,3 +69,8 @@ async def test_list_rep_specs_with_provider_filter(client):
     assert page.has_more is False
     assert page.limit == 10
     assert len(page.items) == 1
+
+    sent = route.calls.last.request.url
+    assert sent.params.get("provider") == "gcs"
+    assert sent.params.get("limit") == "10"
+    assert sent.params.get("offset") == "0"

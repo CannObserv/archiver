@@ -67,6 +67,17 @@ bash clients/python/scripts/regen.sh
 
 ## Changelog
 
+### v1.3 (2026-05-11)
+
+Additive over v1.2 — backwards compatible.
+
+**New SDK methods:**
+- `create_rep_spec(provider, name, document) -> RepSpecOut`
+- `get_rep_spec(rep_spec_id) -> RepSpecOut`
+- `list_rep_specs(*, provider=None, limit=None, offset=None) -> PageRepSpecOut`
+
+**New typed export:** `PageRepSpecOut`.
+
 ### v1.2 (2026-05-11)
 
 **Breaking** — list endpoints now return a `Page` envelope instead of a bare list.

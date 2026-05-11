@@ -97,10 +97,10 @@ from archiver_client.generated.models.info_source_out import InfoSourceOut
 from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
 from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
 from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
+from archiver_client.generated.models.rep_spec_assignment_create import RepSpecAssignmentCreate
 from archiver_client.generated.models.rep_spec_create import RepSpecCreate
 from archiver_client.generated.models.rep_spec_create_document import RepSpecCreateDocument
 from archiver_client.generated.models.rep_spec_out import RepSpecOut
-from archiver_client.generated.models.rep_spec_assignment_create import RepSpecAssignmentCreate
 from archiver_client.generated.models.source_revision_cache_patch import SourceRevisionCachePatch
 from archiver_client.generated.models.source_revision_create import SourceRevisionCreate
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
