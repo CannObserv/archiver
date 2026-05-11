@@ -287,7 +287,7 @@ async def add_rep_spec_assignment(
     except RepFieldsIncompleteError as e:
         raise HTTPException(
             status_code=422,
-            detail={"detail": {"missing": e.missing}},
+            detail={"missing": e.missing},
         ) from e
 
     await session.commit()
