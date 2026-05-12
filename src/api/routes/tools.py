@@ -27,7 +27,6 @@ from src.api.schemas.tools import (
     ValidateRepSpecResponse,
     ValidateSourceSpecRequest,
     ValidateSourceSpecResponse,
-    ValidationErrorOut,
 )
 from src.api.serializers import info_item_to_out
 from src.core.rep_fields_schema.validator import (
@@ -52,7 +51,11 @@ from src.core.tools.resolve_rep_fields import resolve_rep_fields
 router = APIRouter(prefix="/tools", tags=["tools"])
 
 
-@router.post("/validate-source-spec", response_model=ValidateSourceSpecResponse)
+@router.post(
+    "/validate-source-spec",
+    response_model=ValidateSourceSpecResponse,
+    response_model_exclude_none=True,
+)
 async def validate_source_spec_route(
     body: ValidateSourceSpecRequest,
 ) -> ValidateSourceSpecResponse:
@@ -66,11 +69,15 @@ async def validate_source_spec_route(
     ok, errors = validate_source_spec(body.document)
     return ValidateSourceSpecResponse(
         valid=ok,
-        errors=[ValidationErrorOut(path=e["path"], message=e["message"]) for e in errors],
+        errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
     )
 
 
-@router.post("/validate-rep-spec", response_model=ValidateRepSpecResponse)
+@router.post(
+    "/validate-rep-spec",
+    response_model=ValidateRepSpecResponse,
+    response_model_exclude_none=True,
+)
 async def validate_rep_spec_route(
     body: ValidateRepSpecRequest,
 ) -> ValidateRepSpecResponse:
@@ -82,11 +89,15 @@ async def validate_rep_spec_route(
     ok, errors = validate_rep_spec(body.document)
     return ValidateRepSpecResponse(
         valid=ok,
-        errors=[ValidationErrorOut(path=e["path"], message=e["message"]) for e in errors],
+        errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
     )
 
 
-@router.post("/validate-rep-fields", response_model=ValidateRepFieldsResponse)
+@router.post(
+    "/validate-rep-fields",
+    response_model=ValidateRepFieldsResponse,
+    response_model_exclude_none=True,
+)
 async def validate_rep_fields_route(
     body: ValidateRepFieldsRequest,
 ) -> ValidateRepFieldsResponse:
@@ -102,7 +113,7 @@ async def validate_rep_fields_route(
         ok, errors = validate_rep_fields(body.bag)
     return ValidateRepFieldsResponse(
         valid=ok,
-        errors=[ValidationErrorOut(path=e["path"], message=e["message"]) for e in errors],
+        errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
     )
 
 

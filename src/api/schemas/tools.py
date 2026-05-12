@@ -4,13 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl
 
-
-class ValidationErrorOut(BaseModel):
-    """Single validation problem with a structured path + message."""
-
-    path: str = Field(description="JSON Pointer path to the offending field.")
-    message: str = Field(description="Human-readable error message from the validator.")
-
+from src.api.errors import FieldError
 
 # ---------------------------------------------------------------------------
 # validate-source-spec
@@ -29,7 +23,7 @@ class ValidateSourceSpecResponse(BaseModel):
     """Response body for POST /api/v1/tools/validate-source-spec."""
 
     valid: bool = Field(description="True iff the document passed schema validation.")
-    errors: list[ValidationErrorOut] = Field(
+    errors: list[FieldError] = Field(
         default_factory=list,
         description="Per-field validation issues; empty when ``valid`` is True.",
     )
@@ -52,7 +46,7 @@ class ValidateRepSpecResponse(BaseModel):
     """Response body for POST /api/v1/tools/validate-rep-spec."""
 
     valid: bool = Field(description="True iff the document passed schema validation.")
-    errors: list[ValidationErrorOut] = Field(
+    errors: list[FieldError] = Field(
         default_factory=list,
         description="Per-field validation issues; empty when ``valid`` is True.",
     )
@@ -80,7 +74,7 @@ class ValidateRepFieldsResponse(BaseModel):
     """Response body for POST /api/v1/tools/validate-rep-fields."""
 
     valid: bool = Field(description="True iff the bag passed validation.")
-    errors: list[ValidationErrorOut] = Field(
+    errors: list[FieldError] = Field(
         default_factory=list,
         description="Per-field validation issues; empty when ``valid`` is True.",
     )
