@@ -23,6 +23,8 @@ from archiver_client.generated.models.info_item_rep_spec_out import InfoItemRepS
 from archiver_client.generated.models.info_item_source_out import InfoItemSourceOut
 from archiver_client.generated.models.info_item_source_revision_out import InfoItemSourceRevisionOut
 from archiver_client.generated.models.info_source_out import InfoSourceOut
+from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
+from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
 from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
 from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
@@ -42,6 +44,8 @@ __all__ = [
     "InfoSourceOut",
     "InformationError",
     "NotFound",
+    "PageInfoItemOut",
+    "PageInfoSourceOut",
     "PageRepSpecOut",
     "RepSpecOut",
     "ServerError",
