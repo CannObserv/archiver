@@ -29,7 +29,7 @@ from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
 from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 __all__ = [
     "ArchiverClient",

@@ -10,6 +10,16 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v2.0.1 (2026-05-12)
+
+[sdk] **Bug fix** — `ValidationIssue.path` returned by `validate_source_spec`,
+`validate_rep_spec`, and `validate_rep_fields` is now a JSON-Pointer string
+(e.g. `"/target"`), matching the server's `FieldError.path` contract.
+Previously the parser ran `list(...)` over the server's string and emitted a
+character-split list (`['/', 't', 'a', ...]`). The dataclass field type
+changed from `list[str | int]` to `str`. `ValidationIssue` is not in
+`__all__`, so impact on typed consumers is minimal. See archiver#17.
+
 ## v2.0.0 (2026-05-12)
 
 [both] **Breaking** — all error response bodies now use a unified envelope

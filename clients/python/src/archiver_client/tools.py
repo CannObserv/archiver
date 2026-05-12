@@ -20,9 +20,14 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ValidationIssue:
-    """One validation problem with a structured path + message."""
+    """One validation problem with a JSON-Pointer path + message.
 
-    path: list[str | int]
+    ``path`` mirrors the server's ``FieldError.path`` verbatim — a
+    JSON-Pointer string like ``"/document/target"`` (or ``""`` for
+    document-level errors).
+    """
+
+    path: str
     message: str
 
 
@@ -65,7 +70,7 @@ def _parse_validation_result(body: dict[str, Any]) -> ValidationResult:
     return ValidationResult(
         valid=bool(body["valid"]),
         errors=[
-            ValidationIssue(path=list(e["path"]), message=str(e["message"]))
+            ValidationIssue(path=str(e["path"]), message=str(e["message"]))
             for e in body.get("errors", [])
         ],
     )

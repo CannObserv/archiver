@@ -51,20 +51,22 @@ async def test_validate_source_spec_valid(client):
 
 @pytest.mark.asyncio
 async def test_validate_source_spec_invalid_returns_structured_errors(client):
+    """Server emits ``path`` as a JSON-Pointer string; SDK must surface it verbatim."""
     with respx.mock:
         respx.post(f"{BASE_URL}/api/v1/tools/validate-source-spec").mock(
             return_value=httpx.Response(
                 200,
                 json={
                     "valid": False,
-                    "errors": [{"path": ["target"], "message": "'target' is required"}],
+                    "errors": [{"path": "/target", "message": "'target' is required"}],
                 },
             )
         )
         result = await client.validate_source_spec({})
     assert result.valid is False
     assert len(result.errors) == 1
-    assert result.errors[0].path == ["target"]
+    assert result.errors[0].path == "/target"
+    assert isinstance(result.errors[0].path, str)
 
 
 @pytest.mark.asyncio
@@ -101,7 +103,7 @@ async def test_validate_rep_spec_invalid(client):
                 200,
                 json={
                     "valid": False,
-                    "errors": [{"path": ["format"], "message": "'format' is required"}],
+                    "errors": [{"path": "/format", "message": "'format' is required"}],
                 },
             )
         )
