@@ -6,11 +6,11 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="ValidationErrorContext")
+T = TypeVar("T", bound="ErrorEnvelopeDataType0")
 
 
 @_attrs_define
-class ValidationErrorContext:
+class ErrorEnvelopeDataType0:
     """ """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -25,10 +25,10 @@ class ValidationErrorContext:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        validation_error_context = cls()
+        error_envelope_data_type_0 = cls()
 
-        validation_error_context.additional_properties = d
-        return validation_error_context
+        error_envelope_data_type_0.additional_properties = d
+        return error_envelope_data_type_0
 
     @property
     def additional_keys(self) -> list[str]:

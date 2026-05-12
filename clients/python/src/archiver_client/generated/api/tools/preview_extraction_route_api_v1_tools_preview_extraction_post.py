@@ -5,7 +5,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.http_validation_error import HTTPValidationError
+from ...models.envelope_response import EnvelopeResponse
 from ...models.preview_extraction_request import PreviewExtractionRequest
 from ...models.preview_extraction_result import PreviewExtractionResult
 from ...types import Response
@@ -32,16 +32,46 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | PreviewExtractionResult | None:
+) -> EnvelopeResponse | PreviewExtractionResult | None:
     if response.status_code == 200:
         response_200 = PreviewExtractionResult.from_dict(response.json())
 
         return response_200
 
+    if response.status_code == 400:
+        response_400 = EnvelopeResponse.from_dict(response.json())
+
+        return response_400
+
+    if response.status_code == 401:
+        response_401 = EnvelopeResponse.from_dict(response.json())
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = EnvelopeResponse.from_dict(response.json())
+
+        return response_403
+
+    if response.status_code == 404:
+        response_404 = EnvelopeResponse.from_dict(response.json())
+
+        return response_404
+
+    if response.status_code == 409:
+        response_409 = EnvelopeResponse.from_dict(response.json())
+
+        return response_409
+
     if response.status_code == 422:
-        response_422 = HTTPValidationError.from_dict(response.json())
+        response_422 = EnvelopeResponse.from_dict(response.json())
 
         return response_422
+
+    if response.status_code == 500:
+        response_500 = EnvelopeResponse.from_dict(response.json())
+
+        return response_500
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -51,7 +81,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | PreviewExtractionResult]:
+) -> Response[EnvelopeResponse | PreviewExtractionResult]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -64,7 +94,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
-) -> Response[HTTPValidationError | PreviewExtractionResult]:
+) -> Response[EnvelopeResponse | PreviewExtractionResult]:
     r"""Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
@@ -75,9 +105,8 @@ def sync_detailed(
 
     The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
-    Returns 422 with structured errors on schema validation failure
-    (``error: \"validation_failed\"``) or target unreachability
-    (``error: \"target_unreachable\"``).
+    Returns 422 with the standard error envelope; ``code`` on each FieldError
+    disambiguates (``target_unreachable``, etc.).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -87,7 +116,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | PreviewExtractionResult]
+        Response[EnvelopeResponse | PreviewExtractionResult]
     """
 
     kwargs = _get_kwargs(
@@ -105,7 +134,7 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
-) -> HTTPValidationError | PreviewExtractionResult | None:
+) -> EnvelopeResponse | PreviewExtractionResult | None:
     r"""Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
@@ -116,9 +145,8 @@ def sync(
 
     The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
-    Returns 422 with structured errors on schema validation failure
-    (``error: \"validation_failed\"``) or target unreachability
-    (``error: \"target_unreachable\"``).
+    Returns 422 with the standard error envelope; ``code`` on each FieldError
+    disambiguates (``target_unreachable``, etc.).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -128,7 +156,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | PreviewExtractionResult
+        EnvelopeResponse | PreviewExtractionResult
     """
 
     return sync_detailed(
@@ -141,7 +169,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
-) -> Response[HTTPValidationError | PreviewExtractionResult]:
+) -> Response[EnvelopeResponse | PreviewExtractionResult]:
     r"""Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
@@ -152,9 +180,8 @@ async def asyncio_detailed(
 
     The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
-    Returns 422 with structured errors on schema validation failure
-    (``error: \"validation_failed\"``) or target unreachability
-    (``error: \"target_unreachable\"``).
+    Returns 422 with the standard error envelope; ``code`` on each FieldError
+    disambiguates (``target_unreachable``, etc.).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -164,7 +191,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | PreviewExtractionResult]
+        Response[EnvelopeResponse | PreviewExtractionResult]
     """
 
     kwargs = _get_kwargs(
@@ -180,7 +207,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
-) -> HTTPValidationError | PreviewExtractionResult | None:
+) -> EnvelopeResponse | PreviewExtractionResult | None:
     r"""Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
@@ -191,9 +218,8 @@ async def asyncio(
 
     The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
-    Returns 422 with structured errors on schema validation failure
-    (``error: \"validation_failed\"``) or target unreachability
-    (``error: \"target_unreachable\"``).
+    Returns 422 with the standard error envelope; ``code`` on each FieldError
+    disambiguates (``target_unreachable``, etc.).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -203,7 +229,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | PreviewExtractionResult
+        EnvelopeResponse | PreviewExtractionResult
     """
 
     return (

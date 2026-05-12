@@ -1,38 +1,41 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="ValidationErrorOut")
+if TYPE_CHECKING:
+    from ..models.error_envelope import ErrorEnvelope
+
+
+T = TypeVar("T", bound="EnvelopeResponse")
 
 
 @_attrs_define
-class ValidationErrorOut:
-    """Single validation problem with a structured path + message.
+class EnvelopeResponse:
+    """Outer ``{"detail": ErrorEnvelope}`` wrapper for OpenAPI docs.
 
-    Attributes:
-        message (str): Human-readable error message from the validator.
-        path (str): JSON Pointer path to the offending field.
+    Public name (no leading underscore) so ``openapi-python-client`` generates a
+    cleanly-named SDK model — the class name is what surfaces in
+    ``components/schemas`` and feeds the SDK code generator.
+
+        Attributes:
+            detail (ErrorEnvelope): Unified error response body.
     """
 
-    message: str
-    path: str
+    detail: ErrorEnvelope
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        message = self.message
-
-        path = self.path
+        detail = self.detail.to_dict()
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "message": message,
-                "path": path,
+                "detail": detail,
             }
         )
 
@@ -40,18 +43,17 @@ class ValidationErrorOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.error_envelope import ErrorEnvelope
+
         d = dict(src_dict)
-        message = d.pop("message")
+        detail = ErrorEnvelope.from_dict(d.pop("detail"))
 
-        path = d.pop("path")
-
-        validation_error_out = cls(
-            message=message,
-            path=path,
+        envelope_response = cls(
+            detail=detail,
         )
 
-        validation_error_out.additional_properties = d
-        return validation_error_out
+        envelope_response.additional_properties = d
+        return envelope_response
 
     @property
     def additional_keys(self) -> list[str]:

@@ -173,7 +173,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 
 **Pagination:** `GET /info-items`, `GET /info-sources`, and `GET /rep-specs` return a `Page` envelope — `{items, has_more, limit, offset}`. All accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` / `list_rep_specs` return `PageInfoItemOut` / `PageInfoSourceOut` / `PageRepSpecOut`; pass `limit`/`offset` to forward to the server.
 
-**SDK version history:** v1.1 returned bare lists from list endpoints. v1.2 was a breaking change that introduced the `Page` envelope on `/info-items` and `/info-sources`. v1.3 added `/rep-specs` (POST/GET/list) additively.
+**SDK version history:** v1.1 returned bare lists from list endpoints. v1.2 was a breaking change that introduced the `Page` envelope on `/info-items` and `/info-sources`. v1.3 added `/rep-specs` (POST/GET/list) additively. v2.0 was a breaking change that introduced the unified error envelope (`{detail: {kind, message, errors[], data}}`) for every non-2xx response.
 
 **Change-bus producer:** New `SourceRevision` inserts write a row to `information.changes_outbox` in the same transaction. The publisher background task drains the outbox to the Redis Stream `info.changes` (event type `source_revision_captured`, payload typed by `src.core.changes.payloads.SourceRevisionCapturedEvent`). Publisher only starts when `ARCHIVER_REDIS_URL` is set.
 
@@ -256,6 +256,19 @@ Entry points only: call `configure_logging()` once.
 - Explicit imports only
 - Small, focused functions
 - Translated exceptions chain via `raise HTTPException(...) from e` (capture the source with `as e`). Ruff `B904` enforces this in CI.
+
+**Error envelope:** Every non-2xx response uses one shape, defined by
+`ErrorEnvelope` in `src/api/errors.py`:
+
+```json
+{"detail": {"kind": "lookup", "message": "...", "errors": [...], "data": {...}}}
+```
+
+Routes raise via `raise_envelope(status, kind, message, ...)` or `raise_422(...)`
+(in `src/api/errors.py`), never via `HTTPException` directly. The global
+exception handlers in `register_error_handlers(app)` wrap any FastAPI-raised
+HTTPException (unmatched route 404, 405) or uncaught Exception (500) into the
+envelope. See archiver#15.
 
 ## Vocabulary
 

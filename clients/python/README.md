@@ -5,9 +5,10 @@ SourceRevision, RepSpec, assignments). Generated from the service's
 OpenAPI schema with hand-written ergonomic wrappers on `ArchiverClient`,
 pinned 1:1 with server version.
 
-Currently at **v1.3** (adds RepSpec authoring — `create_rep_spec`,
-`get_rep_spec`, `list_rep_specs`; backwards compatible with v1.2).
-v0.x clients targeted the now-retired InfoSpec model and are not compatible.
+Currently at **v2.0** (breaking — unified error envelope for every non-2xx
+response; `InformationError` subclasses surface `.kind`, `.message`,
+`.errors`, `.data`). v0.x clients targeted the now-retired InfoSpec model
+and are not compatible.
 
 ## Install (path dependency, prototype phase)
 
@@ -66,6 +67,13 @@ bash clients/python/scripts/regen.sh
 ```
 
 ## Changelog
+
+### v2.0 (2026-05-12)
+
+**Breaking** — all error response bodies now use a unified envelope shape
+(`{detail: {kind, message, errors[], data}}`). `InformationError`
+subclasses surface `.kind`, `.message`, `.errors`, `.data` parsed from the
+envelope. See archiver#15.
 
 ### v1.3 (2026-05-11)
 

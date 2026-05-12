@@ -202,19 +202,22 @@ async def test_get_info_item_401_raises_auth_error(client):
 
 @pytest.mark.asyncio
 async def test_get_info_item_422_raises_validation_error(client):
-    # Note: the generated parser for this route still deserializes 422 bodies
-    # via HTTPValidationError.from_dict (FastAPI's legacy list-of-errors shape).
-    # Task 13's regen against the new OpenAPI (with ErrorEnvelope as the 4xx
-    # response model) will replace that parser; at that point this mock body
-    # should become {"detail": {"kind": "domain", "message": "...", "errors": [...]}}.
     with respx.mock:
         respx.get(f"{BASE_URL}/api/v1/info-items/bad-id").mock(
             return_value=httpx.Response(
                 422,
                 json={
-                    "detail": [
-                        {"loc": ["path", "info_item_id"], "msg": "invalid", "type": "value_error"}
-                    ]
+                    "detail": {
+                        "kind": "domain",
+                        "message": "info_item_id is not a valid ULID",
+                        "errors": [
+                            {
+                                "path": "/info_item_id",
+                                "message": "not a valid ULID",
+                                "code": "invalid_ulid",
+                            }
+                        ],
+                    }
                 },
             )
         )

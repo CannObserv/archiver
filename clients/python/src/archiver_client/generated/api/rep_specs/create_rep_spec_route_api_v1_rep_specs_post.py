@@ -5,7 +5,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.http_validation_error import HTTPValidationError
+from ...models.envelope_response import EnvelopeResponse
 from ...models.rep_spec_create import RepSpecCreate
 from ...models.rep_spec_out import RepSpecOut
 from ...types import Response
@@ -32,16 +32,46 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | RepSpecOut | None:
+) -> EnvelopeResponse | RepSpecOut | None:
     if response.status_code == 201:
         response_201 = RepSpecOut.from_dict(response.json())
 
         return response_201
 
+    if response.status_code == 400:
+        response_400 = EnvelopeResponse.from_dict(response.json())
+
+        return response_400
+
+    if response.status_code == 401:
+        response_401 = EnvelopeResponse.from_dict(response.json())
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = EnvelopeResponse.from_dict(response.json())
+
+        return response_403
+
+    if response.status_code == 404:
+        response_404 = EnvelopeResponse.from_dict(response.json())
+
+        return response_404
+
+    if response.status_code == 409:
+        response_409 = EnvelopeResponse.from_dict(response.json())
+
+        return response_409
+
     if response.status_code == 422:
-        response_422 = HTTPValidationError.from_dict(response.json())
+        response_422 = EnvelopeResponse.from_dict(response.json())
 
         return response_422
+
+    if response.status_code == 500:
+        response_500 = EnvelopeResponse.from_dict(response.json())
+
+        return response_500
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -51,7 +81,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | RepSpecOut]:
+) -> Response[EnvelopeResponse | RepSpecOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -64,7 +94,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: RepSpecCreate,
-) -> Response[HTTPValidationError | RepSpecOut]:
+) -> Response[EnvelopeResponse | RepSpecOut]:
     """Create Rep Spec Route
 
      Author a new RepSpec.
@@ -73,9 +103,9 @@ def sync_detailed(
     validated against the v1 envelope and the matching per-provider
     sub-schema. ``body.provider`` and ``document['provider']`` must agree.
 
-    Error responses:
-    - 422: document fails envelope or provider sub-schema validation, or the
-           request-level ``provider`` disagrees with ``document.provider``.
+    Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
+    ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
+    issues.
 
     Args:
         body (RepSpecCreate): Request body for POST /rep-specs.
@@ -89,7 +119,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | RepSpecOut]
+        Response[EnvelopeResponse | RepSpecOut]
     """
 
     kwargs = _get_kwargs(
@@ -107,7 +137,7 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: RepSpecCreate,
-) -> HTTPValidationError | RepSpecOut | None:
+) -> EnvelopeResponse | RepSpecOut | None:
     """Create Rep Spec Route
 
      Author a new RepSpec.
@@ -116,9 +146,9 @@ def sync(
     validated against the v1 envelope and the matching per-provider
     sub-schema. ``body.provider`` and ``document['provider']`` must agree.
 
-    Error responses:
-    - 422: document fails envelope or provider sub-schema validation, or the
-           request-level ``provider`` disagrees with ``document.provider``.
+    Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
+    ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
+    issues.
 
     Args:
         body (RepSpecCreate): Request body for POST /rep-specs.
@@ -132,7 +162,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | RepSpecOut
+        EnvelopeResponse | RepSpecOut
     """
 
     return sync_detailed(
@@ -145,7 +175,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: RepSpecCreate,
-) -> Response[HTTPValidationError | RepSpecOut]:
+) -> Response[EnvelopeResponse | RepSpecOut]:
     """Create Rep Spec Route
 
      Author a new RepSpec.
@@ -154,9 +184,9 @@ async def asyncio_detailed(
     validated against the v1 envelope and the matching per-provider
     sub-schema. ``body.provider`` and ``document['provider']`` must agree.
 
-    Error responses:
-    - 422: document fails envelope or provider sub-schema validation, or the
-           request-level ``provider`` disagrees with ``document.provider``.
+    Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
+    ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
+    issues.
 
     Args:
         body (RepSpecCreate): Request body for POST /rep-specs.
@@ -170,7 +200,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | RepSpecOut]
+        Response[EnvelopeResponse | RepSpecOut]
     """
 
     kwargs = _get_kwargs(
@@ -186,7 +216,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: RepSpecCreate,
-) -> HTTPValidationError | RepSpecOut | None:
+) -> EnvelopeResponse | RepSpecOut | None:
     """Create Rep Spec Route
 
      Author a new RepSpec.
@@ -195,9 +225,9 @@ async def asyncio(
     validated against the v1 envelope and the matching per-provider
     sub-schema. ``body.provider`` and ``document['provider']`` must agree.
 
-    Error responses:
-    - 422: document fails envelope or provider sub-schema validation, or the
-           request-level ``provider`` disagrees with ``document.provider``.
+    Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
+    ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
+    issues.
 
     Args:
         body (RepSpecCreate): Request body for POST /rep-specs.
@@ -211,7 +241,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | RepSpecOut
+        EnvelopeResponse | RepSpecOut
     """
 
     return (
