@@ -110,6 +110,8 @@ async def test_validate_rep_spec_invalid(client):
         result = await client.validate_rep_spec({})
     assert result.valid is False
     assert result.errors[0].message == "'format' is required"
+    assert result.errors[0].path == "/format"
+    assert isinstance(result.errors[0].path, str)
 
 
 # --- validate_rep_fields ---
