@@ -270,6 +270,36 @@ exception handlers in `register_error_handlers(app)` wrap any FastAPI-raised
 HTTPException (unmatched route 404, 405) or uncaught Exception (500) into the
 envelope. See archiver#15.
 
+Examples:
+
+```python
+from src.api.errors import FieldError, raise_422, raise_envelope
+
+# Plain lookup
+raise_envelope(404, "lookup", "InfoItem not found")
+
+# Schema-validator translation (preserve cause for ruff B904)
+except InvalidRepSpecError as e:
+    raise_422("invalid rep_spec", errors=e.errors, source_exc=e)
+
+# Conflict with structured payload
+raise_envelope(409, "conflict", "duplicate URL",
+               data={"existing_info_source_id": str(existing.id)},
+               source_exc=e)
+
+# Domain error with field-level code
+raise_envelope(422, "domain", "info_item_id is not a valid ULID",
+               errors=[FieldError(path="/info_item_id",
+                                  message="not a valid ULID",
+                                  code="invalid_ulid")],
+               source_exc=e)
+```
+
+`kind` is one of: `body` (Pydantic body validation), `schema` (envelope/JSON-schema
+validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachable),
+`lookup` (404), `conflict` (409), `auth` (401/403), `unimplemented` (501/405),
+`server` (5xx).  Always pass `source_exc=e` from inside `except X as e:` blocks.
+
 ## Vocabulary
 
 Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
