@@ -5,10 +5,11 @@ composing Information Items + SourceSpecs. Mutating CRUD lives on the existing
 /api/v1/info-items and sub-resource routes.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session, get_http_fetcher
+from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_item import InfoItemOut
 from src.api.schemas.tools import (
     ChunkPreviewOut,
@@ -149,7 +150,7 @@ async def fetch_and_render_route(
     ``render=True`` returns 501 until the Playwright fetcher (#3) lands.
     """
     if body.render:
-        raise HTTPException(status_code=501, detail="Playwright fetcher not yet integrated (#3)")
+        raise_envelope(501, "unimplemented", "Playwright fetcher not yet integrated (#3)")
     result = await fetch_and_render(fetcher, str(body.url), render=False)
     return FetchAndRenderResult(
         url=result.url,
@@ -175,26 +176,26 @@ async def preview_extraction_route(
 
     The URL is read from ``source_spec["target"]["url"]``.
 
-    Returns 422 with structured errors on schema validation failure
-    (``error: "validation_failed"``) or target unreachability
-    (``error: "target_unreachable"``).
+    Returns 422 with the standard error envelope; ``code`` on each FieldError
+    disambiguates (``target_unreachable``, etc.).
     """
     try:
         result = await preview_extraction(fetcher, body.source_spec)
     except SourceSpecValidationError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error": "validation_failed",
-                "errors": [{"path": err["path"], "message": err["message"]} for err in e.errors]
-                or [{"path": "", "message": str(e)}],
-            },
-        ) from e
+        raise_422(
+            "source_spec validation failed",
+            kind="schema",
+            errors=[FieldError(path=err["path"] or "", message=err["message"]) for err in e.errors]
+            or [FieldError(path="", message=str(e))],
+            source_exc=e,
+        )
     except TargetUnreachableError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={"error": "target_unreachable", "message": str(e)},
-        ) from e
+        raise_422(
+            str(e),
+            kind="domain",
+            errors=[FieldError(path="/target/url", message=str(e), code="target_unreachable")],
+            source_exc=e,
+        )
 
     return PreviewExtractionResult(
         chunks=[

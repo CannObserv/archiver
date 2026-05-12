@@ -96,9 +96,13 @@ async def test_preview_extraction_invalid_spec_returns_422_with_errors(client):
     )
     assert response.status_code == 422
     detail = response.json()["detail"]
-    assert detail["error"] == "validation_failed"
+    assert detail["kind"] == "schema"
+    assert detail["message"] == "source_spec validation failed"
     assert isinstance(detail["errors"], list)
     assert len(detail["errors"]) >= 1
+    for err in detail["errors"]:
+        assert "path" in err
+        assert "message" in err
 
 
 @pytest.mark.asyncio
@@ -113,7 +117,9 @@ async def test_preview_extraction_unreachable_target_returns_422_target_unreacha
     )
     assert response.status_code == 422
     detail = response.json()["detail"]
-    assert detail["error"] == "target_unreachable"
+    assert detail["kind"] == "domain"
+    assert detail["errors"][0]["code"] == "target_unreachable"
+    assert detail["errors"][0]["path"] == "/target/url"
 
 
 @pytest.mark.asyncio

@@ -79,7 +79,9 @@ async def test_fetch_and_render_render_true_returns_501(client):
         json={"url": "https://example.com", "render": True},
     )
     assert response.status_code == 501
-    assert "Playwright" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["kind"] == "unimplemented"
+    assert "Playwright" in detail["message"]
 
 
 @pytest.mark.asyncio
