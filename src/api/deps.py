@@ -3,10 +3,11 @@
 import os
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.errors import raise_envelope
 from src.core.database import get_session_factory
 from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
@@ -41,7 +42,7 @@ def require_api_key(raw_key: str | None = Depends(api_key_header)) -> None:
     Raises 403 when the header is absent and 401 when it is present but invalid.
     """
     if raw_key is None:
-        raise HTTPException(status_code=403, detail="Not authenticated")
+        raise_envelope(403, "auth", "Not authenticated")
     expected = os.environ.get("ARCHIVER_API_KEY")
     if not expected or raw_key != expected:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise_envelope(401, "auth", "Invalid API key")
