@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 Kind = Literal[
@@ -56,3 +57,43 @@ class ErrorEnvelope(BaseModel):
         default=None,
         description="Optional kind-specific structured payload (e.g. conflict id).",
     )
+
+
+def raise_envelope(
+    status_code: int,
+    kind: Kind,
+    message: str,
+    *,
+    errors: list[dict[str, Any]] | list[FieldError] | None = None,
+    data: dict[str, Any] | None = None,
+    source_exc: BaseException | None = None,
+) -> None:
+    """Raise an HTTPException whose ``detail`` is a serialized ErrorEnvelope.
+
+    Pass ``source_exc`` (typically the ``e`` from an ``except X as e`` block)
+    to preserve exception chaining (ruff B904).  Construct ``errors`` as either
+    dicts or ``FieldError`` instances — both round-trip through Pydantic.
+    """
+    field_errors: list[FieldError] = []
+    if errors:
+        for item in errors:
+            field_errors.append(item if isinstance(item, FieldError) else FieldError(**item))
+
+    env = ErrorEnvelope(kind=kind, message=message, errors=field_errors, data=data)
+    detail = env.model_dump(exclude_none=True)
+
+    if source_exc is not None:
+        raise HTTPException(status_code=status_code, detail=detail) from source_exc
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
+def raise_422(
+    message: str,
+    *,
+    kind: Kind = "schema",
+    errors: list[dict[str, Any]] | list[FieldError] | None = None,
+    data: dict[str, Any] | None = None,
+    source_exc: BaseException | None = None,
+) -> None:
+    """Shorthand for the common 422 case.  Defaults to ``kind='schema'``."""
+    raise_envelope(422, kind, message, errors=errors, data=data, source_exc=source_exc)

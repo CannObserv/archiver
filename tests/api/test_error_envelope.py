@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError as PydanticValidationError
 
-from src.api.errors import ErrorEnvelope, FieldError
+from src.api.errors import ErrorEnvelope, FieldError, raise_422, raise_envelope
 
 
 def test_field_error_minimal():
@@ -55,3 +56,50 @@ def test_envelope_with_data():
 def test_envelope_rejects_unknown_kind():
     with pytest.raises(PydanticValidationError):
         ErrorEnvelope(kind="not-a-real-kind", message="x")
+
+
+def test_raise_envelope_raises_http_exception_with_envelope_detail():
+    with pytest.raises(HTTPException) as exc_info:
+        raise_envelope(404, "lookup", "InfoItem not found")
+    exc = exc_info.value
+    assert exc.status_code == 404
+    assert exc.detail == {"kind": "lookup", "message": "InfoItem not found", "errors": []}
+
+
+def test_raise_envelope_preserves_cause_via_source_exc():
+    """raise_envelope must chain via `from source_exc` so ruff B904 is satisfied."""
+    src = ValueError("bad ulid")
+    with pytest.raises(HTTPException) as exc_info:
+        raise_envelope(422, "domain", "info_item_id is not a valid ULID", source_exc=src)
+    assert exc_info.value.__cause__ is src
+
+
+def test_raise_envelope_with_errors_and_data():
+    fes = [{"path": "/foo", "message": "required", "code": "required"}]
+    with pytest.raises(HTTPException) as exc_info:
+        raise_envelope(
+            409,
+            "conflict",
+            "duplicate",
+            errors=fes,
+            data={"existing_id": "01HXX..."},
+        )
+    detail = exc_info.value.detail
+    assert detail["errors"] == fes
+    assert detail["data"] == {"existing_id": "01HXX..."}
+
+
+def test_raise_422_is_shorthand_for_kind_schema():
+    """raise_422 defaults kind to 'schema'; can be overridden."""
+    with pytest.raises(HTTPException) as exc_info:
+        raise_422("invalid rep_spec", errors=[{"path": "/x", "message": "bad"}])
+    detail = exc_info.value.detail
+    assert exc_info.value.status_code == 422
+    assert detail["kind"] == "schema"
+    assert detail["message"] == "invalid rep_spec"
+
+
+def test_raise_422_kind_override():
+    with pytest.raises(HTTPException) as exc_info:
+        raise_422("rep_fields incomplete", kind="domain", errors=[{"path": "/", "message": "x"}])
+    assert exc_info.value.detail["kind"] == "domain"
