@@ -18,7 +18,7 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.core.logging import get_logger
@@ -40,7 +40,7 @@ Kind = Literal[
 class FieldError(BaseModel):
     """Single field-level validation problem."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = {"extra": "forbid"}
 
     path: str = Field(description="JSON-Pointer style path to the offending field.")
     message: str = Field(description="Human-readable error message.")
@@ -53,7 +53,7 @@ class FieldError(BaseModel):
 class ErrorEnvelope(BaseModel):
     """Unified error response body."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = {"extra": "forbid"}
 
     kind: Kind = Field(description="Discriminator for client-side switching.")
     message: str = Field(description="Human-readable summary; safe to surface to users.")
