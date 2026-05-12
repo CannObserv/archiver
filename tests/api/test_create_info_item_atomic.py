@@ -275,7 +275,7 @@ async def test_create_with_rep_fields_missing_required_returns_422_no_rows(
     assert detail["kind"] == "domain"
     assert detail["message"].startswith("rep_fields does not satisfy RepSpec")
     assert detail["data"]["rep_spec_id"] == rep_spec_id
-    assert detail["errors"], "expected at least one field-level error"
+    assert len(detail["errors"]) >= 1, "expected at least one field-level error"
     assert all(err["code"] == "rep_fields_incomplete" for err in detail["errors"])
 
     item_count = await session.scalar(
