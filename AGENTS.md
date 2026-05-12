@@ -69,7 +69,9 @@ clients/python/                archiver_client SDK v1.x (generated + hand-writte
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
-scripts/                       dump_openapi.py + smoke_phase4.sh
+scripts/                       dump_openapi.py + smoke_phase4.sh +
+                               check_changelog_on_push.sh (pre-push guard;
+                               wired via .pre-commit-config.yaml)
 deploy/                        Systemd unit (archiver.service)
 docs/                          Reference docs (SKILLS) + plans/ + research/
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)

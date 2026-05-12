@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same PR; never cancel runs on main (keep
+# CI signal for every commit that lands on the protected branch).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint:
     name: lint
@@ -99,7 +105,9 @@ jobs:
           PUSH_AFTER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          PATTERN='^(#[0-9]+ )?(feat|fix)(\([^)]+\))?:'
+          # Mirror of scripts/check_changelog_on_push.sh PATTERN — keep in sync.
+          # Accepts feat[!]:, fix[!]:, with optional (scope) and `#<n> ` prefix.
+          PATTERN='^(#[0-9]+ )?(feat|fix)(\([^)]+\))?!?:'
           ZERO=0000000000000000000000000000000000000000
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then

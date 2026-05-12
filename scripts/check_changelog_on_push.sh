@@ -9,17 +9,19 @@
 set -euo pipefail
 
 ZERO=0000000000000000000000000000000000000000
-PATTERN='^(#[0-9]+ )?(feat|fix)(\([^)]+\))?:'
+# Accepts: feat:, fix:, feat(scope):, fix(scope):, feat!:, fix!:,
+# feat(scope)!:, and the same with an optional `#<n> ` issue prefix.
+PATTERN='^(#[0-9]+ )?(feat|fix)(\([^)]+\))?!?:'
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   [[ "$remote_ref" == "refs/heads/main" ]] || continue
   [[ "$local_sha"  == "$ZERO" ]] && continue          # branch delete
-
   if [[ "$remote_sha" == "$ZERO" ]]; then
-    range="$local_sha"                                # new ref; inspect full history of tip
-  else
-    range="${remote_sha}..${local_sha}"
+    echo "new ref to refs/heads/main; skipping changelog check" >&2
+    continue
   fi
+
+  range="${remote_sha}..${local_sha}"
 
   msgs=$(git log --format=%s "$range" 2>/dev/null || true)
   [[ -n "$msgs" ]] || continue
