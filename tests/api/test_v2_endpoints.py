@@ -129,6 +129,9 @@ async def test_add_info_source_missing_item_returns_404(client, info_source):
         json={"info_source_id": source_id, "role": "supplemental"},
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "InfoItem not found"
 
 
 @pytest.mark.asyncio
@@ -142,6 +145,9 @@ async def test_add_info_source_missing_source_returns_404(client, info_item):
         json={"info_source_id": fake_source_id, "role": "primary"},
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "InfoSource not found"
 
 
 @pytest.mark.asyncio
@@ -208,6 +214,9 @@ async def test_add_rep_spec_assignment_missing_item_returns_404(client, rep_spec
         json={"rep_spec_id": spec_id},
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "InfoItem not found"
 
 
 @pytest.mark.asyncio
@@ -221,6 +230,9 @@ async def test_add_rep_spec_assignment_missing_spec_returns_404(client, info_ite
         json={"rep_spec_id": fake_spec},
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "RepSpec not found"
 
 
 @pytest.mark.asyncio
@@ -239,9 +251,11 @@ async def test_add_rep_spec_assignment_incomplete_rep_fields_returns_422(client,
         json={"rep_spec_id": spec_id},
     )
     assert response.status_code == 422
-    body = response.json()
-    assert "missing" in body["detail"]
-    assert any(m["path"] == "/gcs/object_name" for m in body["detail"]["missing"])
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"] == "rep_fields incomplete"
+    assert any(e["path"] == "/gcs/object_name" for e in detail["errors"])
+    assert all(e["code"] == "rep_fields_incomplete" for e in detail["errors"])
 
 
 @pytest.mark.asyncio
@@ -312,6 +326,9 @@ async def test_bind_source_revision_missing_item_returns_404(client, source_revi
         json={"source_revision_id": rev_id},
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "InfoItem not found"
 
 
 @pytest.mark.asyncio
@@ -325,6 +342,9 @@ async def test_bind_source_revision_missing_revision_returns_404(client, info_it
         json={"source_revision_id": fake_rev},
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "SourceRevision not found"
 
 
 @pytest.mark.asyncio
@@ -379,6 +399,9 @@ async def test_deactivate_rep_spec_assignment_missing_returns_404(client, info_i
         headers=HEADERS,
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "Assignment not found"
 
 
 @pytest.mark.asyncio
@@ -477,6 +500,9 @@ async def test_patch_rep_spec_assignment_unknown_id_returns_404(client, info_ite
         json={"public_url": "https://storage.googleapis.com/bucket/x.json"},
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "rep_spec_assignment not found for this info_item"
 
 
 @pytest.mark.asyncio

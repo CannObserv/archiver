@@ -201,8 +201,10 @@ async def test_create_with_duplicate_initial_source_url_returns_409(client, sess
     )
     assert second.status_code == 409
     detail = second.json()["detail"]
-    assert detail["existing_info_source_id"] == first_source_id
-    assert detail["url"] == "https://example.com/licenses"
+    assert detail["kind"] == "conflict"
+    assert detail["message"] == "an InfoSource already exists for this URL"
+    assert detail["data"]["existing_info_source_id"] == first_source_id
+    assert detail["data"]["url"] == "https://example.com/licenses"
 
     second_item_count = await session.scalar(
         select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "second-collides")

@@ -42,6 +42,9 @@ async def test_get_info_item(client):
 async def test_get_info_item_404(client):
     response = await client.get("/api/v1/info-items/01HZZZZZZZZZZZZZZZZZZZZZZZ", headers=HEADERS)
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "InfoItem not found"
 
 
 @pytest.mark.asyncio
