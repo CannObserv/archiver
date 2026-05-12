@@ -203,6 +203,33 @@ async def test_unknown_info_source_returns_404(client):
         },
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "info_source not found"
+
+
+# ---------------------------------------------------------------------------
+# Test 6b: Malformed info_source_id ULID in body → 422 with envelope
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_invalid_info_source_id_ulid_returns_422(client):
+    response = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": "not-a-ulid",
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+        },
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"] == "info_source_id is not a valid ULID"
+    assert detail["errors"][0]["path"] == "/info_source_id"
+    assert detail["errors"][0]["code"] == "invalid_ulid"
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +432,29 @@ async def test_patch_unknown_id_returns_404(client):
         json={"content_cache_uri": None},
     )
     assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "source_revision not found"
+
+
+# ---------------------------------------------------------------------------
+# Test 14b: Malformed source_revision_id path param → 422 with envelope
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_invalid_ulid_returns_422(client):
+    response = await client.patch(
+        "/api/v1/source-revisions/not-a-ulid",
+        headers=HEADERS,
+        json={"content_cache_uri": None},
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"] == "source_revision_id is not a valid ULID"
+    assert detail["errors"][0]["path"] == "/source_revision_id"
+    assert detail["errors"][0]["code"] == "invalid_ulid"
 
 
 # ---------------------------------------------------------------------------

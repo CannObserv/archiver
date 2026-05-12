@@ -2,13 +2,14 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
+from src.api.errors import FieldError, raise_envelope
 from src.api.schemas.source_revision import (
     SourceRevisionCachePatch,
     SourceRevisionCreate,
@@ -40,11 +41,19 @@ async def create_source_revision(
     try:
         source_ulid = ULID.from_str(body.info_source_id)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail="info_source_id is not a valid ULID") from e
+        raise_envelope(
+            422,
+            "domain",
+            "info_source_id is not a valid ULID",
+            errors=[
+                FieldError(path="/info_source_id", message="not a valid ULID", code="invalid_ulid")
+            ],
+            source_exc=e,
+        )
 
     source = await session.get(InfoSource, source_ulid)
     if source is None:
-        raise HTTPException(status_code=404, detail="info_source not found")
+        raise_envelope(404, "lookup", "info_source not found")
 
     # --- Upsert via INSERT … ON CONFLICT DO NOTHING … RETURNING ---
     stmt = (
@@ -119,11 +128,21 @@ async def patch_source_revision(
     try:
         rev_ulid = ULID.from_str(source_revision_id)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail="source_revision_id is not a valid ULID") from e
+        raise_envelope(
+            422,
+            "domain",
+            "source_revision_id is not a valid ULID",
+            errors=[
+                FieldError(
+                    path="/source_revision_id", message="not a valid ULID", code="invalid_ulid"
+                )
+            ],
+            source_exc=e,
+        )
 
     rev = await session.get(SourceRevision, rev_ulid)
     if rev is None:
-        raise HTTPException(status_code=404, detail="source_revision not found")
+        raise_envelope(404, "lookup", "source_revision not found")
 
     updates = body.model_dump(exclude_unset=True)
     for k, v in updates.items():
