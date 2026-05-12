@@ -4,6 +4,8 @@ import httpx
 import pytest
 import respx
 
+from archiver_client import FieldError
+
 BASE_URL = "http://archiver.test"
 
 _TS = "2026-05-04T00:00:00Z"
@@ -67,6 +69,51 @@ async def test_validate_source_spec_invalid_returns_structured_errors(client):
     assert len(result.errors) == 1
     assert result.errors[0].path == "/target"
     assert isinstance(result.errors[0].path, str)
+    assert isinstance(result.errors[0], FieldError)
+
+
+@pytest.mark.asyncio
+async def test_validate_source_spec_preserves_code(client):
+    """Server's ``FieldError.code`` is optional but, when set, must round-trip to the SDK."""
+    with respx.mock:
+        respx.post(f"{BASE_URL}/api/v1/tools/validate-source-spec").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "valid": False,
+                    "errors": [
+                        {
+                            "path": "/target",
+                            "message": "'target' is required",
+                            "code": "required",
+                        }
+                    ],
+                },
+            )
+        )
+        result = await client.validate_source_spec({})
+    assert result.errors[0].code == "required"
+
+
+@pytest.mark.asyncio
+async def test_validate_source_spec_handles_missing_code(client):
+    """``code`` is optional; absence must not crash the parser."""
+    with respx.mock:
+        respx.post(f"{BASE_URL}/api/v1/tools/validate-source-spec").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "valid": False,
+                    "errors": [{"path": "/target", "message": "'target' is required"}],
+                },
+            )
+        )
+        result = await client.validate_source_spec({})
+    fe = result.errors[0]
+    assert fe.path == "/target"
+    assert fe.message == "'target' is required"
+    # generated dataclass uses UNSET sentinel for absent optionals; not equal to "required"
+    assert fe.code != "required"
 
 
 @pytest.mark.asyncio
