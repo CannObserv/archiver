@@ -103,3 +103,10 @@ def test_raise_422_kind_override():
     with pytest.raises(HTTPException) as exc_info:
         raise_422("rep_fields incomplete", kind="domain", errors=[{"path": "/", "message": "x"}])
     assert exc_info.value.detail["kind"] == "domain"
+
+
+def test_raise_422_preserves_cause_via_source_exc():
+    src = ValueError("bad provider")
+    with pytest.raises(HTTPException) as exc_info:
+        raise_422("invalid rep_spec", source_exc=src)
+    assert exc_info.value.__cause__ is src
