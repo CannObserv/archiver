@@ -11,6 +11,7 @@ from redis.asyncio import Redis as RedisAsync
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.api.deps import require_api_key
+from src.api.errors import register_error_handlers
 from src.api.routes.health import router as health_router
 from src.api.routes.info_items import router as info_items_router
 from src.api.routes.info_sources import router as info_sources_router
@@ -85,6 +86,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="archiver", version=_package_version("archiver"), lifespan=lifespan)
+register_error_handlers(app)
 
 v1_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 v1_router.include_router(info_items_router)
