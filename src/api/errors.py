@@ -12,6 +12,7 @@ contract.
 
 from __future__ import annotations
 
+import http
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
@@ -22,7 +23,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.core.logging import get_logger
 
-_logger = get_logger(__name__)
+logger = get_logger(__name__)
 
 Kind = Literal[
     "body",
@@ -175,7 +176,13 @@ async def _http_exception_handler(_: Request, exc: StarletteHTTPException) -> JS
         # Already envelope-shaped — pass through verbatim.
         return JSONResponse(status_code=exc.status_code, content={"detail": detail})
 
-    message = detail if isinstance(detail, str) else "error"
+    if isinstance(detail, str):
+        message = detail
+    else:
+        try:
+            message = http.HTTPStatus(exc.status_code).phrase
+        except ValueError:
+            message = "error"
     env = ErrorEnvelope(kind=_kind_for_status(exc.status_code), message=message, errors=[])
     return JSONResponse(
         status_code=exc.status_code, content={"detail": env.model_dump(exclude_none=True)}
@@ -187,7 +194,7 @@ async def _unhandled_exception_handler(_: Request, exc: Exception) -> JSONRespon
 
     Never leak ``str(exc)`` into the response — diagnostics live in logs only.
     """
-    _logger.exception("Unhandled exception in request handler", exc_info=exc)
+    logger.exception("Unhandled exception in request handler", exc_info=exc)
     env = ErrorEnvelope(kind="server", message="internal server error", errors=[])
     return JSONResponse(status_code=500, content={"detail": env.model_dump(exclude_none=True)})
 

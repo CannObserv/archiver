@@ -102,3 +102,42 @@ def test_unhandled_exception_becomes_kind_server_500():
         "message": "internal server error",
         "errors": [],
     }
+
+
+def test_handler_handles_bare_string_422_falls_back_to_kind_body():
+    """A route raising HTTPException(status_code=422, detail='...') falls into the
+    fallback branch — _kind_for_status maps 422 to 'body' when the route didn't
+    set its own kind."""
+    app = FastAPI()
+    register_error_handlers(app)
+    router = APIRouter()
+
+    @router.get("/raise-bare-422")
+    def _raise_bare_422():
+        raise HTTPException(status_code=422, detail="explicit bare string at 422")
+
+    app.include_router(router)
+    client = TestClient(app, raise_server_exceptions=False)
+    r = client.get("/raise-bare-422")
+    assert r.status_code == 422
+    assert r.json()["detail"]["kind"] == "body"
+    assert r.json()["detail"]["message"] == "explicit bare string at 422"
+
+
+def test_handler_handles_non_string_non_envelope_detail():
+    """Non-dict non-string detail (e.g. a list) falls back to the HTTPStatus phrase."""
+    app = FastAPI()
+    register_error_handlers(app)
+    router = APIRouter()
+
+    @router.get("/raise-list-detail")
+    def _raise_list_detail():
+        raise HTTPException(status_code=404, detail=["unexpected", "list"])
+
+    app.include_router(router)
+    client = TestClient(app, raise_server_exceptions=False)
+    r = client.get("/raise-list-detail")
+    assert r.status_code == 404
+    body = r.json()
+    assert body["detail"]["kind"] == "lookup"
+    assert body["detail"]["message"] == "Not Found"  # http.HTTPStatus(404).phrase
