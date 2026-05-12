@@ -7,12 +7,13 @@ config, author a new RepSpec and reassign affected InfoItems via the existing
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
+from src.api.errors import raise_422, raise_envelope
 from src.api.schemas.pagination import Page
 from src.api.schemas.rep_spec import RepSpecCreate, RepSpecOut
 from src.api.schemas.types import ULIDStr
@@ -34,15 +35,9 @@ async def create_rep_spec_route(
     validated against the v1 envelope and the matching per-provider
     sub-schema. ``body.provider`` and ``document['provider']`` must agree.
 
-    Error responses:
-    - 422 (schema validation): document fails envelope or provider sub-schema
-           validation, or the request-level ``provider`` disagrees with
-           ``document.provider``. Body is
-           ``{"detail": {"message": "invalid rep_spec",
-           "errors": [{"path": ..., "message": ...}]}}``.
-    - 422 (body validation): Pydantic-level errors (missing/extra/wrong-type
-           fields) use the FastAPI default shape — ``detail`` is a list of
-           ``{loc, msg, type}`` entries. See #15 for normalization plans.
+    Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
+    ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
+    issues.
     """
     try:
         spec = await create_rep_spec(
@@ -52,10 +47,7 @@ async def create_rep_spec_route(
             document=body.document,
         )
     except InvalidRepSpecError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "invalid rep_spec", "errors": e.errors},
-        ) from e
+        raise_422("invalid rep_spec", kind="schema", errors=e.errors, source_exc=e)
 
     await session.commit()
     await session.refresh(spec)
@@ -97,5 +89,5 @@ async def get_rep_spec(
     """Fetch a single RepSpec by ID."""
     spec = await session.get(RepSpec, ULID.from_str(rep_spec_id))
     if spec is None:
-        raise HTTPException(status_code=404, detail="RepSpec not found")
+        raise_envelope(404, "lookup", "RepSpec not found")
     return rep_spec_to_out(spec)

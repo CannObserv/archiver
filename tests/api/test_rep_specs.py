@@ -69,9 +69,10 @@ async def test_post_returns_422_on_missing_envelope_field(client):
         json={"provider": "gcs", "name": "x", "document": bad},
     )
     assert resp.status_code == 422, resp.text
-    body = resp.json()
-    assert body["detail"]["message"] == "invalid rep_spec"
-    assert any("path_template" in e["message"] for e in body["detail"]["errors"])
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert detail["message"] == "invalid rep_spec"
+    assert any("path_template" in e["message"] for e in detail["errors"])
 
 
 @pytest.mark.asyncio
@@ -95,8 +96,10 @@ async def test_post_returns_422_on_bad_provider_sub_schema(client):
         json={"provider": "gcs", "name": "x", "document": bad},
     )
     assert resp.status_code == 422
-    body = resp.json()
-    assert any("object_options" in e["path"] for e in body["detail"]["errors"])
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert detail["message"] == "invalid rep_spec"
+    assert any("object_options" in e["path"] for e in detail["errors"])
 
 
 @pytest.mark.asyncio
@@ -108,8 +111,10 @@ async def test_post_returns_422_on_provider_mismatch(client):
         json={"provider": "gcs", "name": "x", "document": bad},
     )
     assert resp.status_code == 422
-    body = resp.json()
-    mismatch_errors = [e for e in body["detail"]["errors"] if e["path"] == "/provider"]
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert detail["message"] == "invalid rep_spec"
+    mismatch_errors = [e for e in detail["errors"] if e["path"] == "/provider"]
     assert mismatch_errors, "expected an error at path /provider"
     assert "'gcs'" in mismatch_errors[0]["message"]
     assert "'gdrive'" in mismatch_errors[0]["message"]
@@ -153,6 +158,9 @@ async def test_get_returns_200_for_existing(client):
 async def test_get_returns_404_for_unknown_id(client):
     resp = await client.get("/api/v1/rep-specs/01J0000000000000000000000Z", headers=HEADERS)
     assert resp.status_code == 404
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "RepSpec not found"
 
 
 @pytest.mark.asyncio
