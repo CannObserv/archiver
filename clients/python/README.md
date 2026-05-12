@@ -73,7 +73,9 @@ bash clients/python/scripts/regen.sh
 **Breaking** — all error response bodies now use a unified envelope shape
 (`{detail: {kind, message, errors[], data}}`). `InformationError`
 subclasses surface `.kind`, `.message`, `.errors`, `.data` parsed from the
-envelope. See archiver#15.
+envelope. New `Conflict` subclass of `InformationError` is raised for 409
+responses; inspect `.data` (e.g. `existing_info_source_id`) for the bind
+target. See archiver#15.
 
 ### v1.3 (2026-05-11)
 

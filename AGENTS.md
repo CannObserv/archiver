@@ -279,6 +279,8 @@ from src.api.errors import FieldError, raise_422, raise_envelope
 raise_envelope(404, "lookup", "InfoItem not found")
 
 # Schema-validator translation (preserve cause for ruff B904)
+try:
+    spec = await create_rep_spec(session, ...)
 except InvalidRepSpecError as e:
     raise_422("invalid rep_spec", errors=e.errors, source_exc=e)
 
