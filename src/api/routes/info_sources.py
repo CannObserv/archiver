@@ -49,7 +49,7 @@ async def create_info_source_route(
            or the path-shape ULID is malformed.
     - 404: ``parent_info_source_id`` references no existing InfoSource.
     - 409: a root with the same canonicalized URL already exists. The response
-           body's ``existing_info_source_id`` is the row the operator should
+           body's ``data.existing_info_source_id`` is the row the operator should
            bind to instead.
     """
     parent_ulid: ULID | None = None
