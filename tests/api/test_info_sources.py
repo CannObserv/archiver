@@ -88,7 +88,9 @@ async def test_post_root_without_url_returns_422(client):
     )
     assert resp.status_code == 422
     detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
     assert detail["message"] == "invalid source_spec"
+    assert isinstance(detail["errors"], list)
     assert any(e["path"] == "/target/url" for e in detail["errors"])
 
 
@@ -111,6 +113,8 @@ async def test_post_fragment_with_target_url_returns_422(client):
     )
     assert resp.status_code == 422
     detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert detail["message"] == "invalid source_spec"
     assert any(e["path"] == "/target/url" for e in detail["errors"])
 
 
@@ -125,7 +129,9 @@ async def test_post_fragment_with_unknown_parent_returns_404(client):
         },
     )
     assert resp.status_code == 404
-    assert "parent" in resp.json()["detail"].lower()
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "parent InfoSource not found"
 
 
 @pytest.mark.asyncio
@@ -151,7 +157,11 @@ async def test_post_fragment_with_fragment_parent_returns_422(client):
         json={"source_spec": _fragment_doc(), "parent_info_source_id": frag_id},
     )
     assert resp.status_code == 422
-    assert "root" in resp.json()["detail"].lower()
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"] == "parent_info_source_id must reference a root InfoSource"
+    assert detail["errors"][0]["path"] == "/parent_info_source_id"
+    assert detail["errors"][0]["code"] == "parent_must_be_root"
 
 
 @pytest.mark.asyncio
@@ -170,8 +180,10 @@ async def test_post_duplicate_url_returns_409_with_existing_id(client):
     )
     assert second.status_code == 409
     detail = second.json()["detail"]
-    assert detail["existing_info_source_id"] == first_id
-    assert detail["url"] == "https://example.com/p"
+    assert detail["kind"] == "conflict"
+    assert detail["message"] == "an InfoSource already exists for this URL"
+    assert detail["data"]["existing_info_source_id"] == first_id
+    assert detail["data"]["url"] == "https://example.com/p"
 
 
 @pytest.mark.asyncio
@@ -185,6 +197,11 @@ async def test_post_invalid_parent_id_returns_422(client):
         },
     )
     assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"] == "parent_info_source_id is not a valid ULID"
+    assert detail["errors"][0]["path"] == "/parent_info_source_id"
+    assert detail["errors"][0]["code"] == "invalid_ulid"
 
 
 @pytest.mark.asyncio
@@ -235,6 +252,9 @@ async def test_get_by_id_unknown_returns_404(client):
         headers=HEADERS,
     )
     assert resp.status_code == 404
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "lookup"
+    assert detail["message"] == "InfoSource not found"
 
 
 @pytest.mark.asyncio
@@ -404,6 +424,11 @@ async def test_list_filter_by_invalid_parent_id_returns_422(client):
         headers=HEADERS,
     )
     assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"] == "parent_info_source_id is not a valid ULID"
+    assert detail["errors"][0]["path"] == "/parent_info_source_id"
+    assert detail["errors"][0]["code"] == "invalid_ulid"
 
 
 @pytest.mark.asyncio

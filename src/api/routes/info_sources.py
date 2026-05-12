@@ -8,12 +8,13 @@ Watcher Phase 5 for fragment authoring under a shared root.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
+from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_source import InfoSourceCreate, InfoSourceOut
 from src.api.schemas.pagination import Page
 from src.api.schemas.types import ULIDStr
@@ -56,9 +57,19 @@ async def create_info_source_route(
         try:
             parent_ulid = ULID.from_str(body.parent_info_source_id)
         except ValueError as e:
-            raise HTTPException(
-                status_code=422, detail="parent_info_source_id is not a valid ULID"
-            ) from e
+            raise_envelope(
+                422,
+                "domain",
+                "parent_info_source_id is not a valid ULID",
+                errors=[
+                    FieldError(
+                        path="/parent_info_source_id",
+                        message="not a valid ULID",
+                        code="invalid_ulid",
+                    )
+                ],
+                source_exc=e,
+            )
 
     try:
         src = await create_info_source(
@@ -67,26 +78,31 @@ async def create_info_source_route(
             parent_info_source_id=parent_ulid,
         )
     except InvalidSourceSpecError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "invalid source_spec", "errors": e.errors},
-        ) from e
+        raise_422("invalid source_spec", kind="schema", errors=e.errors, source_exc=e)
     except ParentNotFoundError as e:
-        raise HTTPException(status_code=404, detail="parent InfoSource not found") from e
+        raise_envelope(404, "lookup", "parent InfoSource not found", source_exc=e)
     except ParentMustBeRootError as e:
-        raise HTTPException(
-            status_code=422,
-            detail="parent_info_source_id must reference a root InfoSource",
-        ) from e
+        raise_envelope(
+            422,
+            "domain",
+            "parent_info_source_id must reference a root InfoSource",
+            errors=[
+                FieldError(
+                    path="/parent_info_source_id",
+                    message="must reference a root InfoSource",
+                    code="parent_must_be_root",
+                )
+            ],
+            source_exc=e,
+        )
     except DuplicateUrlError as e:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": "an InfoSource already exists for this URL",
-                "url": e.url,
-                "existing_info_source_id": str(e.existing_info_source_id),
-            },
-        ) from e
+        raise_envelope(
+            409,
+            "conflict",
+            "an InfoSource already exists for this URL",
+            data={"url": e.url, "existing_info_source_id": str(e.existing_info_source_id)},
+            source_exc=e,
+        )
 
     await session.commit()
     await session.refresh(src)
@@ -112,9 +128,19 @@ async def list_info_sources(
         try:
             parent_ulid = ULID.from_str(parent_info_source_id)
         except ValueError as e:
-            raise HTTPException(
-                status_code=422, detail="parent_info_source_id is not a valid ULID"
-            ) from e
+            raise_envelope(
+                422,
+                "domain",
+                "parent_info_source_id is not a valid ULID",
+                errors=[
+                    FieldError(
+                        path="/parent_info_source_id",
+                        message="not a valid ULID",
+                        code="invalid_ulid",
+                    )
+                ],
+                source_exc=e,
+            )
         stmt = stmt.where(InfoSource.parent_info_source_id == parent_ulid)
     stmt = stmt.offset(offset).limit(limit + 1)
     rows = (await session.execute(stmt)).scalars().all()
@@ -136,5 +162,5 @@ async def get_info_source(
     """Fetch a single InfoSource by ID."""
     src = await session.get(InfoSource, ULID.from_str(info_source_id))
     if src is None:
-        raise HTTPException(status_code=404, detail="InfoSource not found")
+        raise_envelope(404, "lookup", "InfoSource not found")
     return info_source_to_out(src)
