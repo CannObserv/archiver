@@ -12,6 +12,7 @@ from archiver_client.defaults import (
 )
 from archiver_client.errors import (
     AuthError,
+    Conflict,
     InformationError,
     NotFound,
     ServerError,
@@ -26,10 +27,12 @@ from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
 from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
 
-__version__ = "1.3.0"
+__version__ = "2.0.0"
 
 __all__ = [
+    "ArchiverClient",
     "AuthError",
+    "Conflict",
     "DEFAULT_FETCH_RENDER",
     "DEFAULT_FETCH_TIMEOUT_SECONDS",
     "InfoItemOut",
@@ -37,13 +40,12 @@ __all__ = [
     "InfoItemSourceOut",
     "InfoItemSourceRevisionOut",
     "InfoSourceOut",
-    "PageRepSpecOut",
-    "RepSpecOut",
-    "SourceRevisionOut",
-    "ArchiverClient",
     "InformationError",
     "NotFound",
+    "PageRepSpecOut",
+    "RepSpecOut",
     "ServerError",
+    "SourceRevisionOut",
     "ValidationError",
     "fetch_render",
     "fetch_timeout_seconds",

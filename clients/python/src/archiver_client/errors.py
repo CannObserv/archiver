@@ -50,6 +50,14 @@ class ValidationError(InformationError):
     """422 — request body or path didn't validate."""
 
 
+class Conflict(InformationError):
+    """409 — duplicate resource (e.g. existing InfoSource for the same URL).
+
+    Inspect ``.data`` for the existing-row pointer; e.g.
+    ``data["existing_info_source_id"]`` on a duplicate-URL conflict.
+    """
+
+
 class ServerError(InformationError):
     """5xx from the Archiver service."""
 
@@ -88,6 +96,8 @@ def error_from_response(status: int, body: bytes) -> InformationError:
         return AuthError(message, **common)
     if status == 404:
         return NotFound(message, **common)
+    if status == 409:
+        return Conflict(message, **common)
     if status == 422:
         return ValidationError(message, **common)
     if 500 <= status < 600:

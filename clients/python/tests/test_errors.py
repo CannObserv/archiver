@@ -6,6 +6,7 @@ import json
 
 from archiver_client.errors import (
     AuthError,
+    Conflict,
     InformationError,
     NotFound,
     ServerError,
@@ -54,9 +55,9 @@ def test_409_conflict_envelope_populates_data():
         data={"existing_info_source_id": "01HXX..."},
     )
     err = error_from_response(409, body)
-    assert isinstance(
-        err, InformationError
-    )  # 409 maps to base class (or Conflict subclass if added)
+    assert isinstance(err, Conflict)
+    assert isinstance(err, InformationError)  # Conflict inherits from the base class
+    assert err.status_code == 409
     assert err.kind == "conflict"
     assert err.data == {"existing_info_source_id": "01HXX..."}
 
