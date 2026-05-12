@@ -173,7 +173,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 
 **Pagination:** `GET /info-items`, `GET /info-sources`, and `GET /rep-specs` return a `Page` envelope — `{items, has_more, limit, offset}`. All accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` / `list_rep_specs` return `PageInfoItemOut` / `PageInfoSourceOut` / `PageRepSpecOut`; pass `limit`/`offset` to forward to the server.
 
-**SDK version history:** v1.1 returned bare lists from list endpoints. v1.2 was a breaking change that introduced the `Page` envelope on `/info-items` and `/info-sources`. v1.3 added `/rep-specs` (POST/GET/list) additively. v2.0 was a breaking change that introduced the unified error envelope (`{detail: {kind, message, errors[], data}}`) for every non-2xx response.
+**SDK version history:** see [CHANGELOG.md](CHANGELOG.md).
 
 **Change-bus producer:** New `SourceRevision` inserts write a row to `information.changes_outbox` in the same transaction. The publisher background task drains the outbox to the Redis Stream `info.changes` (event type `source_revision_captured`, payload typed by `src.core.changes.payloads.SourceRevisionCapturedEvent`). Publisher only starts when `ARCHIVER_REDIS_URL` is set.
 
@@ -239,6 +239,14 @@ uv run pre-commit run --all-files            # manual sweep across the repo
 [type]: <description>                # without issue
 ```
 Types: feat, fix, refactor, docs, test, chore.
+
+**Changelog:** Update `CHANGELOG.md` at the repo root whenever a relevant
+change merges to `main` — new endpoints, new SDK methods or types,
+behaviour changes, breaking changes, public-surface fixes. Skip for
+internal refactors, test-only changes, and docs-only changes. Tag each
+entry `[service]`, `[sdk]`, or `[both]` per the format header in
+`CHANGELOG.md`. The SDK README links here; do not maintain a second
+changelog there.
 
 **Logging:**
 ```python
