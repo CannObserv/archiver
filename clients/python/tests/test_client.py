@@ -166,7 +166,16 @@ async def test_list_info_items_forwards_pagination_params(client):
 async def test_get_info_item_404_raises_not_found(client):
     with respx.mock:
         respx.get(f"{BASE_URL}/api/v1/info-items/missing").mock(
-            return_value=httpx.Response(404, json={"detail": "not found"})
+            return_value=httpx.Response(
+                404,
+                json={
+                    "detail": {
+                        "kind": "lookup",
+                        "message": "InfoItem not found",
+                        "errors": [],
+                    }
+                },
+            )
         )
         with pytest.raises(NotFound):
             await client.get_info_item("missing")
@@ -176,7 +185,16 @@ async def test_get_info_item_404_raises_not_found(client):
 async def test_get_info_item_401_raises_auth_error(client):
     with respx.mock:
         respx.get(f"{BASE_URL}/api/v1/info-items/x").mock(
-            return_value=httpx.Response(401, json={"detail": "Unauthorized"})
+            return_value=httpx.Response(
+                401,
+                json={
+                    "detail": {
+                        "kind": "auth",
+                        "message": "Invalid API key",
+                        "errors": [],
+                    }
+                },
+            )
         )
         with pytest.raises(AuthError):
             await client.get_info_item("x")
@@ -184,6 +202,11 @@ async def test_get_info_item_401_raises_auth_error(client):
 
 @pytest.mark.asyncio
 async def test_get_info_item_422_raises_validation_error(client):
+    # Note: the generated parser for this route still deserializes 422 bodies
+    # via HTTPValidationError.from_dict (FastAPI's legacy list-of-errors shape).
+    # Task 13's regen against the new OpenAPI (with ErrorEnvelope as the 4xx
+    # response model) will replace that parser; at that point this mock body
+    # should become {"detail": {"kind": "domain", "message": "...", "errors": [...]}}.
     with respx.mock:
         respx.get(f"{BASE_URL}/api/v1/info-items/bad-id").mock(
             return_value=httpx.Response(
@@ -232,7 +255,18 @@ async def test_deactivate_rep_spec_assignment_404_raises_not_found(client):
     with respx.mock:
         respx.delete(
             f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/rep-spec-assignments/missing"
-        ).mock(return_value=httpx.Response(404, json={"detail": "not found"}))
+        ).mock(
+            return_value=httpx.Response(
+                404,
+                json={
+                    "detail": {
+                        "kind": "lookup",
+                        "message": "RepSpec assignment not found",
+                        "errors": [],
+                    }
+                },
+            )
+        )
         with pytest.raises(NotFound):
             await client.deactivate_rep_spec_assignment("01HZZ00000000000000000000A", "missing")
 
