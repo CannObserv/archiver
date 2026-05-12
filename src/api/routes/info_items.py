@@ -93,7 +93,14 @@ async def create_info_item(
                 raise_422(
                     f"rep_fields does not satisfy RepSpec {assignment.rep_spec_id!r}",
                     kind="domain",
-                    errors=errors,
+                    errors=[
+                        FieldError(
+                            path=e.get("path", ""),
+                            message=e.get("message", "missing"),
+                            code="rep_fields_incomplete",
+                        )
+                        for e in errors
+                    ],
                     data={"rep_spec_id": str(assignment.rep_spec_id)},
                 )
 

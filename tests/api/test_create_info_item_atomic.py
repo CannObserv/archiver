@@ -271,6 +271,12 @@ async def test_create_with_rep_fields_missing_required_returns_422_no_rows(
         },
     )
     assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"].startswith("rep_fields does not satisfy RepSpec")
+    assert detail["data"]["rep_spec_id"] == rep_spec_id
+    assert detail["errors"], "expected at least one field-level error"
+    assert all(err["code"] == "rep_fields_incomplete" for err in detail["errors"])
 
     item_count = await session.scalar(
         select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "should-not-exist-3")
