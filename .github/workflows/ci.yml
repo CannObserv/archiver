@@ -76,3 +76,58 @@ jobs:
 
       - name: pytest
         run: uv run pytest -v
+
+  changelog:
+    name: changelog
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: require CHANGELOG.md on feat/fix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_HAS_OPT_OUT: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          PATTERN='^(#[0-9]+ )?(feat|fix)(\([^)]+\))?:'
+          ZERO=0000000000000000000000000000000000000000
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            if [[ "$PR_HAS_OPT_OUT" == "true" ]]; then
+              echo "no-changelog label set; skipping"
+              exit 0
+            fi
+            base="$PR_BASE_SHA"
+            head="$PR_HEAD_SHA"
+            msgs="$(git log --format=%s "$base..$head"; printf '%s\n' "$PR_TITLE")"
+          else
+            base="$PUSH_BEFORE_SHA"
+            head="$PUSH_AFTER_SHA"
+            if [[ "$base" == "$ZERO" || -z "$base" ]]; then
+              echo "no prior SHA on push (initial or force-with-lease edge); skipping"
+              exit 0
+            fi
+            msgs="$(git log --format=%s "$base..$head")"
+          fi
+
+          if echo "$msgs" | grep -Eq "$PATTERN"; then
+            if ! git diff --name-only "$base" "$head" | grep -qx 'CHANGELOG.md'; then
+              echo "::error::feat/fix change without CHANGELOG.md update."
+              echo "Offending subjects:"
+              echo "$msgs" | grep -E "$PATTERN" | sed 's/^/  - /'
+              echo
+              echo "Update CHANGELOG.md, or apply the 'no-changelog' label (PR only)."
+              exit 1
+            fi
+          fi
+          echo "changelog check OK"

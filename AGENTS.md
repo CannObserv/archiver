@@ -75,12 +75,18 @@ docs/                          Reference docs (SKILLS) + plans/ + research/
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
 skills-vendor/                 Git submodules for external skill repos
 .claude/skills/                Claude Code skill discovery (symlinks → ../../skills/<name>)
-.github/workflows/             CI — lint job (ruff check + ruff format --check) and
+.github/workflows/             CI — lint job (ruff check + ruff format --check),
                                test job (Postgres service container, alembic upgrade,
-                               pytest). Triggers on push/PR to main.
-.pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks.
-                               Run `uv run pre-commit install` once per clone; CI
-                               enforces the same checks server-side.
+                               pytest), and changelog job (feat/fix changes must
+                               touch CHANGELOG.md; opt out via `no-changelog` PR
+                               label). Triggers on push/PR to main.
+.pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks
+                               (pre-commit stage), plus a pre-push guard
+                               (scripts/check_changelog_on_push.sh) that mirrors
+                               the CI changelog check before the push leaves the
+                               clone. Run `uv run pre-commit install` once per
+                               clone — installs both pre-commit and pre-push
+                               hook types via default_install_hook_types.
 ```
 
 ## Mirrored content-acquisition code
