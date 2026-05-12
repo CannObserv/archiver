@@ -3,9 +3,10 @@
 #
 # Wired via .pre-commit-config.yaml (stages: [pre-push]). Git pipes one line per
 # ref being pushed on stdin: "<local_ref> <local_sha> <remote_ref> <remote_sha>".
-# Only refs targeting refs/heads/main are inspected. Commit subjects matching
-# `[#<n> ]feat|fix[(scope)]:` require CHANGELOG.md to be touched in the same
-# range. Bypass with `git push --no-verify` if genuinely trivial.
+# Only refs targeting refs/heads/main are inspected. See PATTERN below for the
+# recognized commit-subject shapes; if any match in the push range, CHANGELOG.md
+# must be touched somewhere in the same range. Bypass with `git push
+# --no-verify` if genuinely trivial.
 set -euo pipefail
 
 ZERO=0000000000000000000000000000000000000000

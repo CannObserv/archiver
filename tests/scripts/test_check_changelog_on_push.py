@@ -54,7 +54,7 @@ def commit(repo: Path, subject: str, files: dict[str, str] | None = None) -> str
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
         _git(repo, "add", name)
-    _git(repo, "commit", "-q", "-m", subject, "--no-verify", "--allow-empty")
+    _git(repo, "commit", "-q", "-m", subject, "--no-verify")
     return _git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
@@ -159,6 +159,18 @@ def test_feat_scope_bang_marker_triggers(repo: Path) -> None:
 
     assert result.returncode == 1
     assert "feat(api)!: rename resource" in result.stderr
+
+
+def test_fix_bang_marker_triggers(repo: Path) -> None:
+    """`fix!:` is matched; pinned alongside the feat!: case so the alternation
+    in the regex can't silently regress for one branch but not the other."""
+    base = commit(repo, "chore: seed")
+    head = commit(repo, "fix!: incompatible default-value change")
+
+    result = run_script(repo, push_line(head, base))
+
+    assert result.returncode == 1
+    assert "fix!: incompatible default-value change" in result.stderr
 
 
 # ---------------------------------------------------------------------------
