@@ -52,8 +52,8 @@ async with ArchiverClient(base_url="http://localhost:8020", api_key="...") as cl
     # Validate a candidate SourceSpec before binding it
     result = await client.validate_source_spec({...})
     if not result.valid:
-        for issue in result.errors:
-            print(f"{issue.path}: {issue.message}")
+        for err in result.errors:  # err: archiver_client.FieldError
+            print(f"{err.path}: {err.message}")
 
     # Record a content-addressed snapshot (idempotent on (source_id, fingerprint))
     rev = await client.post_source_revision(

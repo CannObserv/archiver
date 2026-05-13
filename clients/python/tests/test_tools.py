@@ -5,6 +5,7 @@ import pytest
 import respx
 
 from archiver_client import FieldError
+from archiver_client.generated.types import UNSET
 
 BASE_URL = "http://archiver.test"
 
@@ -112,8 +113,9 @@ async def test_validate_source_spec_handles_missing_code(client):
     fe = result.errors[0]
     assert fe.path == "/target"
     assert fe.message == "'target' is required"
-    # generated dataclass uses UNSET sentinel for absent optionals; not equal to "required"
-    assert fe.code != "required"
+    # Generated dataclass uses UNSET sentinel for absent optionals — pin to that
+    # rather than `is None`; the field type is ``None | str | Unset``.
+    assert fe.code is UNSET
 
 
 @pytest.mark.asyncio
