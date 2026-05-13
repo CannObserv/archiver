@@ -18,6 +18,7 @@ from archiver_client.errors import (
     ServerError,
     ValidationError,
 )
+from archiver_client.generated.models.field_error import FieldError
 from archiver_client.generated.models.info_item_out import InfoItemOut
 from archiver_client.generated.models.info_item_rep_spec_out import InfoItemRepSpecOut
 from archiver_client.generated.models.info_item_source_out import InfoItemSourceOut
@@ -28,8 +29,9 @@ from archiver_client.generated.models.page_info_source_out import PageInfoSource
 from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
 from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
+from archiver_client.tools import ValidationResult
 
-__version__ = "2.0.1"
+__version__ = "2.1.0"
 
 __all__ = [
     "ArchiverClient",
@@ -37,6 +39,7 @@ __all__ = [
     "Conflict",
     "DEFAULT_FETCH_RENDER",
     "DEFAULT_FETCH_TIMEOUT_SECONDS",
+    "FieldError",
     "InfoItemOut",
     "InfoItemRepSpecOut",
     "InfoItemSourceOut",
@@ -51,6 +54,7 @@ __all__ = [
     "ServerError",
     "SourceRevisionOut",
     "ValidationError",
+    "ValidationResult",
     "fetch_render",
     "fetch_timeout_seconds",
 ]

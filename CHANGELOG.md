@@ -10,6 +10,21 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v2.1.0 (2026-05-12)
+
+[sdk] **Breaking (semi-private)** — the hand-written `ValidationIssue`
+dataclass returned by `validate_source_spec`, `validate_rep_spec`, and
+`validate_rep_fields` is replaced by the generated `FieldError` model
+(`archiver_client.FieldError`). The two had the same shape on the wire,
+but `ValidationIssue` silently dropped the server's optional `code`
+field; the generated `FieldError` surfaces it. `ValidationIssue` was
+never in `__all__`, so direct typed-import callers should be rare —
+those that exist must rename to `FieldError`.
+
+**New public exports:** `FieldError`, `ValidationResult`. Both now live
+in `archiver_client.__all__` so consumers can type-annotate validate-tool
+results directly. See archiver#19.
+
 ## v2.0.1 (2026-05-12)
 
 [sdk] **Bug fix** — `ValidationIssue.path` returned by `validate_source_spec`,

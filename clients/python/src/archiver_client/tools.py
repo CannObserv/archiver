@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from archiver_client.errors import error_from_response
+from archiver_client.generated.models.field_error import FieldError
 from archiver_client.generated.models.info_item_out import InfoItemOut
 
 if TYPE_CHECKING:
@@ -19,24 +20,17 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class ValidationIssue:
-    """One validation problem with a JSON-Pointer path + message.
+class ValidationResult:
+    """Outcome of a validate_* call.
 
-    ``path`` mirrors the server's ``FieldError.path`` verbatim — a
-    JSON-Pointer string like ``"/document/target"`` (or ``""`` for
-    document-level errors).
+    ``errors`` carries the generated ``FieldError`` model (``path``,
+    ``message``, optional ``code``) — the same shape the server emits in
+    the unified ErrorEnvelope, so consumers can branch on ``code`` when
+    set.
     """
 
-    path: str
-    message: str
-
-
-@dataclass(frozen=True)
-class ValidationResult:
-    """Outcome of a validate_* call."""
-
     valid: bool
-    errors: list[ValidationIssue]
+    errors: list[FieldError]
 
 
 async def _post_json(
@@ -69,10 +63,7 @@ def _parse_validation_result(body: dict[str, Any]) -> ValidationResult:
     """Shared parser for validate_* responses (same shape for all three endpoints)."""
     return ValidationResult(
         valid=bool(body["valid"]),
-        errors=[
-            ValidationIssue(path=str(e["path"]), message=str(e["message"]))
-            for e in body.get("errors", [])
-        ],
+        errors=[FieldError.from_dict(e) for e in body.get("errors", [])],
     )
 
 
