@@ -31,7 +31,7 @@ from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
 from archiver_client.tools import ValidationResult
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 __all__ = [
     "ArchiverClient",

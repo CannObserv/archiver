@@ -51,22 +51,66 @@ async def create_source_revision(
             source_exc=e,
         )
 
+    # --- Validate optional client-supplied source_revision_id ---
+    rev_ulid: ULID | None = None
+    if body.source_revision_id is not None:
+        try:
+            rev_ulid = ULID.from_str(body.source_revision_id)
+        except ValueError as e:
+            raise_envelope(
+                422,
+                "domain",
+                "source_revision_id is not a valid ULID",
+                errors=[
+                    FieldError(
+                        path="/source_revision_id",
+                        message="not a valid ULID",
+                        code="invalid_ulid",
+                    )
+                ],
+                source_exc=e,
+            )
+
     source = await session.get(InfoSource, source_ulid)
     if source is None:
         raise_envelope(404, "lookup", "info_source not found")
 
+    # --- Reject ULID collisions against a different (source, fingerprint) ---
+    # Idempotent-match cases (same ULID, same pair) fall through to the
+    # ON CONFLICT path below.
+    if rev_ulid is not None:
+        existing = await session.get(SourceRevision, rev_ulid)
+        if existing is not None and (
+            existing.info_source_id != source_ulid
+            or existing.content_fingerprint != body.content_fingerprint
+        ):
+            raise_envelope(
+                409,
+                "conflict",
+                "source_revision_id already in use for a different "
+                "(info_source_id, content_fingerprint) pair",
+                data={
+                    "existing_info_source_id": str(existing.info_source_id),
+                    "existing_content_fingerprint": existing.content_fingerprint,
+                },
+            )
+
     # --- Upsert via INSERT … ON CONFLICT DO NOTHING … RETURNING ---
+    insert_values: dict = {
+        "info_source_id": source_ulid,
+        "content_fingerprint": body.content_fingerprint,
+        "captured_at": body.captured_at,
+        "content_size_bytes": body.content_size_bytes,
+        "content_media_type": body.content_media_type,
+        "content_cache_uri": body.content_cache_uri,
+        "content_cache_expires_at": body.content_cache_expires_at,
+    }
+    if rev_ulid is not None:
+        insert_values["source_revision_id"] = rev_ulid
+
     stmt = (
         pg_insert(SourceRevision)
-        .values(
-            info_source_id=source_ulid,
-            content_fingerprint=body.content_fingerprint,
-            captured_at=body.captured_at,
-            content_size_bytes=body.content_size_bytes,
-            content_media_type=body.content_media_type,
-            content_cache_uri=body.content_cache_uri,
-            content_cache_expires_at=body.content_cache_expires_at,
-        )
+        .values(**insert_values)
         .on_conflict_do_nothing(index_elements=["info_source_id", "content_fingerprint"])
         .returning(SourceRevision)
     )

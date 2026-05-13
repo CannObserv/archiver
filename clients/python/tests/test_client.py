@@ -329,6 +329,26 @@ async def test_post_source_revision(client):
 
 
 @pytest.mark.asyncio
+async def test_post_source_revision_with_client_supplied_ulid(client):
+    """Client-supplied source_revision_id is forwarded in the request body."""
+    import datetime
+    import json
+
+    with respx.mock:
+        route = respx.post(f"{BASE_URL}/api/v1/source-revisions").mock(
+            return_value=httpx.Response(201, json=_source_revision_payload())
+        )
+        await client.post_source_revision(
+            info_source_id="01HZZ00000000000000000000F",
+            content_fingerprint="sha256:abc",
+            captured_at=datetime.datetime(2026, 5, 4, tzinfo=datetime.UTC),
+            source_revision_id="01JV0000000000000000000000",
+        )
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["source_revision_id"] == "01JV0000000000000000000000"
+
+
+@pytest.mark.asyncio
 async def test_patch_source_revision_cache(client):
     payload = _source_revision_payload()
     payload["content_cache_uri"] = "s3://bucket/key"

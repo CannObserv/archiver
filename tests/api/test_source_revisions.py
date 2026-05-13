@@ -671,3 +671,135 @@ async def test_outbox_payload_empty_list_when_no_bindings(client, session, info_
     result = await session.execute(select(ChangesOutboxRow))
     row = result.scalar_one()
     assert row.payload["info_item_ids"] == []
+
+
+# ---------------------------------------------------------------------------
+# Client-supplied source_revision_id (v2.2.0)
+# ---------------------------------------------------------------------------
+#
+# Watcher pre-allocates the SourceRevision's ULID so it can write the
+# content_cache_uri scratch file as `<source_revision_id>.bin` BEFORE the POST
+# round-trips. Server honors a supplied ULID when present; idempotency on
+# (info_source_id, content_fingerprint) still wins on re-POST.
+
+
+_CLIENT_ULID = "01JV0000000000000000000000"  # any well-formed ULID
+_CLIENT_ULID_ALT = "01JV0000000000000000000001"
+
+
+@pytest.mark.asyncio
+async def test_client_supplied_ulid_honored_on_insert(client, info_source):
+    """Server uses the client-supplied source_revision_id on a fresh insert."""
+    response = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+            "source_revision_id": _CLIENT_ULID,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["source_revision_id"] == _CLIENT_ULID
+
+
+@pytest.mark.asyncio
+async def test_client_supplied_ulid_idempotent_match(client, info_source):
+    """Re-POST with the same supplied ULID and same (source, fingerprint) → 200."""
+    payload = {
+        "info_source_id": str(info_source.info_source_id),
+        "content_fingerprint": FP_VALID,
+        "captured_at": "2026-05-08T12:00:00.000000Z",
+        "source_revision_id": _CLIENT_ULID,
+    }
+    r1 = await client.post("/api/v1/source-revisions", headers=HEADERS, json=payload)
+    r2 = await client.post("/api/v1/source-revisions", headers=HEADERS, json=payload)
+    assert r1.status_code == 201
+    assert r2.status_code == 200
+    assert r1.json()["source_revision_id"] == _CLIENT_ULID
+    assert r2.json()["source_revision_id"] == _CLIENT_ULID
+
+
+@pytest.mark.asyncio
+async def test_client_supplied_ulid_idempotency_returns_existing_id(client, info_source):
+    """Re-POST with a different supplied ULID still matches on (source, fingerprint).
+
+    Idempotency wins. The server returns the EXISTING revision's id,
+    ignoring the second client-supplied ULID. Watcher's responsibility to
+    reconcile its scratch filename if the response carries a different id.
+    """
+    base = {
+        "info_source_id": str(info_source.info_source_id),
+        "content_fingerprint": FP_VALID,
+        "captured_at": "2026-05-08T12:00:00.000000Z",
+    }
+    r1 = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={**base, "source_revision_id": _CLIENT_ULID},
+    )
+    r2 = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={**base, "source_revision_id": _CLIENT_ULID_ALT},
+    )
+    assert r1.status_code == 201
+    assert r2.status_code == 200
+    assert r1.json()["source_revision_id"] == _CLIENT_ULID
+    assert r2.json()["source_revision_id"] == _CLIENT_ULID  # NOT _CLIENT_ULID_ALT
+
+
+@pytest.mark.asyncio
+async def test_client_supplied_ulid_collision_with_different_pair_returns_409(client, info_source):
+    """Supplied ULID already used by a different (source, fingerprint) → 409."""
+    # First, claim the ULID for one (source, fingerprint).
+    r1 = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+            "source_revision_id": _CLIENT_ULID,
+        },
+    )
+    assert r1.status_code == 201
+
+    # Re-use the SAME ULID with a DIFFERENT fingerprint → 409.
+    r2 = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID_2,
+            "captured_at": "2026-05-08T13:00:00.000000Z",
+            "source_revision_id": _CLIENT_ULID,
+        },
+    )
+    assert r2.status_code == 409
+    detail = r2.json()["detail"]
+    assert detail["kind"] == "conflict"
+    assert detail["data"]["existing_info_source_id"] == str(info_source.info_source_id)
+    assert detail["data"]["existing_content_fingerprint"] == FP_VALID
+
+
+@pytest.mark.asyncio
+async def test_client_supplied_ulid_invalid_format_returns_422(client, info_source):
+    """Supplied source_revision_id that isn't a valid ULID → 422 with envelope."""
+    response = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+            "source_revision_id": "not-a-ulid",
+        },
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert detail["message"] == "source_revision_id is not a valid ULID"
+    assert detail["errors"][0]["path"] == "/source_revision_id"
+    assert detail["errors"][0]["code"] == "invalid_ulid"

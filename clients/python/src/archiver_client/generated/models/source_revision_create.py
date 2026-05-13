@@ -17,14 +17,23 @@ T = TypeVar("T", bound="SourceRevisionCreate")
 class SourceRevisionCreate:
     """Request body for POST /source-revisions.
 
-    Attributes:
-        captured_at (datetime.datetime):
-        content_fingerprint (str):
-        info_source_id (str):
-        content_cache_expires_at (datetime.datetime | None | Unset):
-        content_cache_uri (None | str | Unset):
-        content_media_type (None | str | Unset):
-        content_size_bytes (int | None | Unset):
+    ``source_revision_id`` is optional and may be supplied by the client
+    (e.g. Watcher) so the scratch file at ``content_cache_uri`` can be
+    written under its final filename BEFORE the POST round-trips. When
+    omitted, the server allocates a ULID. Idempotency on
+    ``(info_source_id, content_fingerprint)`` still wins on re-POST —
+    a client-supplied ULID is honored on fresh inserts only; existing
+    rows are returned as-is.
+
+        Attributes:
+            captured_at (datetime.datetime):
+            content_fingerprint (str):
+            info_source_id (str):
+            content_cache_expires_at (datetime.datetime | None | Unset):
+            content_cache_uri (None | str | Unset):
+            content_media_type (None | str | Unset):
+            content_size_bytes (int | None | Unset):
+            source_revision_id (None | str | Unset):
     """
 
     captured_at: datetime.datetime
@@ -34,6 +43,7 @@ class SourceRevisionCreate:
     content_cache_uri: None | str | Unset = UNSET
     content_media_type: None | str | Unset = UNSET
     content_size_bytes: int | None | Unset = UNSET
+    source_revision_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -69,6 +79,12 @@ class SourceRevisionCreate:
         else:
             content_size_bytes = self.content_size_bytes
 
+        source_revision_id: None | str | Unset
+        if isinstance(self.source_revision_id, Unset):
+            source_revision_id = UNSET
+        else:
+            source_revision_id = self.source_revision_id
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -86,6 +102,8 @@ class SourceRevisionCreate:
             field_dict["content_media_type"] = content_media_type
         if content_size_bytes is not UNSET:
             field_dict["content_size_bytes"] = content_size_bytes
+        if source_revision_id is not UNSET:
+            field_dict["source_revision_id"] = source_revision_id
 
         return field_dict
 
@@ -144,6 +162,15 @@ class SourceRevisionCreate:
 
         content_size_bytes = _parse_content_size_bytes(d.pop("content_size_bytes", UNSET))
 
+        def _parse_source_revision_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        source_revision_id = _parse_source_revision_id(d.pop("source_revision_id", UNSET))
+
         source_revision_create = cls(
             captured_at=captured_at,
             content_fingerprint=content_fingerprint,
@@ -152,6 +179,7 @@ class SourceRevisionCreate:
             content_cache_uri=content_cache_uri,
             content_media_type=content_media_type,
             content_size_bytes=content_size_bytes,
+            source_revision_id=source_revision_id,
         )
 
         source_revision_create.additional_properties = d

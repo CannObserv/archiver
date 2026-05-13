@@ -395,16 +395,27 @@ class ArchiverClient:
         content_fingerprint: str,
         captured_at: datetime.datetime,
         *,
+        source_revision_id: str | None = None,
         content_cache_uri: str | None = None,
         content_cache_expires_at: datetime.datetime | None = None,
         content_media_type: str | None = None,
         content_size_bytes: int | None = None,
     ) -> SourceRevisionOut:
-        """Record a new SourceRevision (Watcher write path)."""
+        """Record a new SourceRevision (Watcher write path).
+
+        ``source_revision_id`` may be pre-allocated by the caller so the
+        scratch file at ``content_cache_uri`` can be written under its
+        final filename before the POST round-trips. Idempotency on
+        ``(info_source_id, content_fingerprint)`` still wins on re-POST —
+        the server returns the existing row's id, which may differ from
+        the client-supplied value. A supplied ULID that's already bound
+        to a different (source, fingerprint) pair raises ``Conflict``.
+        """
         body = SourceRevisionCreate(
             info_source_id=info_source_id,
             content_fingerprint=content_fingerprint,
             captured_at=captured_at,
+            source_revision_id=(source_revision_id if source_revision_id is not None else UNSET),
             content_cache_uri=(content_cache_uri if content_cache_uri is not None else UNSET),
             content_cache_expires_at=(
                 content_cache_expires_at if content_cache_expires_at is not None else UNSET

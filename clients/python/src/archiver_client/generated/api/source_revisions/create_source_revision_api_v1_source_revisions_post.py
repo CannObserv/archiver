@@ -109,6 +109,14 @@ def sync_detailed(
     Args:
         body (SourceRevisionCreate): Request body for POST /source-revisions.
 
+            ``source_revision_id`` is optional and may be supplied by the client
+            (e.g. Watcher) so the scratch file at ``content_cache_uri`` can be
+            written under its final filename BEFORE the POST round-trips. When
+            omitted, the server allocates a ULID. Idempotency on
+            ``(info_source_id, content_fingerprint)`` still wins on re-POST —
+            a client-supplied ULID is honored on fresh inserts only; existing
+            rows are returned as-is.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -147,6 +155,14 @@ def sync(
     Args:
         body (SourceRevisionCreate): Request body for POST /source-revisions.
 
+            ``source_revision_id`` is optional and may be supplied by the client
+            (e.g. Watcher) so the scratch file at ``content_cache_uri`` can be
+            written under its final filename BEFORE the POST round-trips. When
+            omitted, the server allocates a ULID. Idempotency on
+            ``(info_source_id, content_fingerprint)`` still wins on re-POST —
+            a client-supplied ULID is honored on fresh inserts only; existing
+            rows are returned as-is.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -179,6 +195,14 @@ async def asyncio_detailed(
 
     Args:
         body (SourceRevisionCreate): Request body for POST /source-revisions.
+
+            ``source_revision_id`` is optional and may be supplied by the client
+            (e.g. Watcher) so the scratch file at ``content_cache_uri`` can be
+            written under its final filename BEFORE the POST round-trips. When
+            omitted, the server allocates a ULID. Idempotency on
+            ``(info_source_id, content_fingerprint)`` still wins on re-POST —
+            a client-supplied ULID is honored on fresh inserts only; existing
+            rows are returned as-is.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -215,6 +239,14 @@ async def asyncio(
 
     Args:
         body (SourceRevisionCreate): Request body for POST /source-revisions.
+
+            ``source_revision_id`` is optional and may be supplied by the client
+            (e.g. Watcher) so the scratch file at ``content_cache_uri`` can be
+            written under its final filename BEFORE the POST round-trips. When
+            omitted, the server allocates a ULID. Idempotency on
+            ``(info_source_id, content_fingerprint)`` still wins on re-POST —
+            a client-supplied ULID is honored on fresh inserts only; existing
+            rows are returned as-is.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

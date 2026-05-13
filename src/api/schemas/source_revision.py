@@ -9,11 +9,21 @@ _FP_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class SourceRevisionCreate(BaseModel):
-    """Request body for POST /source-revisions."""
+    """Request body for POST /source-revisions.
+
+    ``source_revision_id`` is optional and may be supplied by the client
+    (e.g. Watcher) so the scratch file at ``content_cache_uri`` can be
+    written under its final filename BEFORE the POST round-trips. When
+    omitted, the server allocates a ULID. Idempotency on
+    ``(info_source_id, content_fingerprint)`` still wins on re-POST —
+    a client-supplied ULID is honored on fresh inserts only; existing
+    rows are returned as-is.
+    """
 
     info_source_id: str
     content_fingerprint: str
     captured_at: datetime
+    source_revision_id: str | None = None
     content_size_bytes: int | None = None
     content_media_type: str | None = None
     content_cache_uri: str | None = None

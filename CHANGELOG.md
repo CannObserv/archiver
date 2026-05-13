@@ -10,6 +10,29 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v2.2.0 (2026-05-13)
+
+[both] Additive, non-breaking — `POST /source-revisions` now accepts an
+optional `source_revision_id` in the request body. Watcher uses this to
+pre-allocate the ULID so it can write the `content_cache_uri` scratch
+file under its final `<source_revision_id>.bin` filename BEFORE the
+POST round-trips (rather than holding bytes in memory or in a relational
+column until the server returns an id).
+
+Idempotency on `(info_source_id, content_fingerprint)` still wins on
+re-POST — when an existing row matches, the server returns that row's id
+and ignores the client-supplied value. A supplied ULID that's already
+bound to a *different* `(info_source_id, content_fingerprint)` pair
+returns **409 Conflict** with `data.existing_info_source_id` and
+`data.existing_content_fingerprint` for triage.
+
+**New SDK kwarg:**
+- `post_source_revision(..., source_revision_id=None)` — pass-through to
+  the body field. Default `None` preserves prior behavior (server
+  allocates).
+
+See CannObserv/watcher#156.
+
 ## v2.1.0 (2026-05-12)
 
 [sdk] **Breaking (semi-private)** — the hand-written `ValidationIssue`
