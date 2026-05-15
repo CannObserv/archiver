@@ -22,9 +22,10 @@ PATCH covers:
 Outbox covers:
 16. New revision → outbox row exists with correct payload shape
 17. Duplicate POST → no new outbox row
-18. info_item_ids reflects active bindings
-19. Deactivated bindings excluded from info_item_ids
+18. bindings reflects active (info_item_id, role) pairs
+19. Deactivated bindings excluded from bindings
 20. No bindings → empty list, still emits
+21. Fragment role propagated in bindings
 """
 
 from datetime import UTC, datetime
@@ -498,7 +499,7 @@ async def _bind_item_to_source(
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=source.info_source_id,
-        role="primary",
+        role=None,
     )
     if deactivated:
         binding.deactivated_at = datetime.now(UTC)
@@ -539,7 +540,7 @@ async def test_new_revision_writes_outbox_row(client, session, info_source):
     assert payload["info_source_id"] == source_id
     assert payload["source_revision_id"] == rev_id
     assert payload["content_fingerprint"] == FP_VALID
-    assert isinstance(payload["info_item_ids"], list)
+    assert isinstance(payload["bindings"], list)
     assert "occurred_at" in payload
 
 
@@ -567,26 +568,28 @@ async def test_duplicate_post_does_not_write_second_outbox_row(client, session, 
 
 
 # ---------------------------------------------------------------------------
-# Test 18: info_item_ids reflects active bindings
+# Test 18: bindings reflects active (info_item_id, role) pairs
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_outbox_payload_includes_active_info_item_ids(client, session, info_source):
+async def test_outbox_payload_includes_active_bindings(client, session, info_source):
     item1 = await _make_info_item(session)
     item2 = await _make_info_item(session)
-    # Give each a distinct role so the unique-primary-per-item constraint doesn't fire
-    binding1 = InfoItemSource(
-        info_item_id=item1.info_item_id,
-        info_source_id=info_source.info_source_id,
-        role="primary",
+    session.add_all(
+        [
+            InfoItemSource(
+                info_item_id=item1.info_item_id,
+                info_source_id=info_source.info_source_id,
+                role=None,
+            ),
+            InfoItemSource(
+                info_item_id=item2.info_item_id,
+                info_source_id=info_source.info_source_id,
+                role=None,
+            ),
+        ]
     )
-    binding2 = InfoItemSource(
-        info_item_id=item2.info_item_id,
-        info_source_id=info_source.info_source_id,
-        role="primary",
-    )
-    session.add_all([binding1, binding2])
     await session.flush()
 
     resp = await client.post(
@@ -602,14 +605,15 @@ async def test_outbox_payload_includes_active_info_item_ids(client, session, inf
 
     result = await session.execute(select(ChangesOutboxRow))
     row = result.scalar_one()
-    item_ids = set(row.payload["info_item_ids"])
-    assert str(item1.info_item_id) in item_ids
-    assert str(item2.info_item_id) in item_ids
-    assert len(item_ids) == 2
+    bindings = row.payload["bindings"]
+    ids = {b["info_item_id"] for b in bindings}
+    roles = {b["role"] for b in bindings}
+    assert {str(item1.info_item_id), str(item2.info_item_id)} == ids
+    assert roles == {None}
 
 
 # ---------------------------------------------------------------------------
-# Test 19: Deactivated bindings excluded from info_item_ids
+# Test 19: Deactivated bindings excluded from bindings
 # ---------------------------------------------------------------------------
 
 
@@ -618,12 +622,13 @@ async def test_outbox_payload_excludes_deactivated_bindings(client, session, inf
     active_item = await _make_info_item(session)
     inactive_item = await _make_info_item(session)
 
-    binding_active = InfoItemSource(
-        info_item_id=active_item.info_item_id,
-        info_source_id=info_source.info_source_id,
-        role="primary",
+    session.add(
+        InfoItemSource(
+            info_item_id=active_item.info_item_id,
+            info_source_id=info_source.info_source_id,
+            role=None,
+        )
     )
-    session.add(binding_active)
     await session.flush()
 
     await _bind_item_to_source(session, inactive_item, info_source, deactivated=True)
@@ -641,14 +646,15 @@ async def test_outbox_payload_excludes_deactivated_bindings(client, session, inf
 
     result = await session.execute(select(ChangesOutboxRow))
     row = result.scalar_one()
-    item_ids = row.payload["info_item_ids"]
+    bindings = row.payload["bindings"]
+    item_ids = {b["info_item_id"] for b in bindings}
     assert str(active_item.info_item_id) in item_ids
     assert str(inactive_item.info_item_id) not in item_ids
-    assert len(item_ids) == 1
+    assert len(bindings) == 1
 
 
 # ---------------------------------------------------------------------------
-# Test 20: No bindings → empty info_item_ids list, still emits outbox row
+# Test 20: No bindings → empty bindings list, still emits outbox row
 # ---------------------------------------------------------------------------
 
 
@@ -670,7 +676,75 @@ async def test_outbox_payload_empty_list_when_no_bindings(client, session, info_
 
     result = await session.execute(select(ChangesOutboxRow))
     row = result.scalar_one()
-    assert row.payload["info_item_ids"] == []
+    assert row.payload["bindings"] == []
+
+
+# ---------------------------------------------------------------------------
+# Test 21: Fragment role propagated in bindings
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_outbox_payload_carries_fragment_role(client, session):
+    """Cross-check / sub_aspect roles are included in bindings; consumers filter."""
+    # Create root InfoSource
+    root_source = InfoSource(
+        source_spec={
+            "schema_version": 1,
+            "target": {"url": "https://example.com/fragment-role-root"},
+            "extraction": {"algorithm": "full_page"},
+            "fingerprint": {},
+        },
+        schema_version=1,
+    )
+    session.add(root_source)
+    await session.flush()
+
+    # Create fragment InfoSource (parent = root); no target.url → url col stays NULL
+    fragment_source = InfoSource(
+        parent_info_source_id=root_source.info_source_id,
+        source_spec={
+            "schema_version": 1,
+            "extraction": {"algorithm": "css", "selector": ".sub-section"},
+            "fingerprint": {},
+        },
+        schema_version=1,
+    )
+    session.add(fragment_source)
+    await session.flush()
+
+    # Create an InfoItem and bind the fragment with role='sub_aspect'
+    item = InfoItem(name="fragment-role-test-item")
+    session.add(item)
+    await session.flush()
+
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=fragment_source.info_source_id,
+            role="sub_aspect",
+        )
+    )
+    await session.flush()
+
+    # POST a revision against the FRAGMENT source
+    resp = await client.post(
+        "/api/v1/source-revisions",
+        headers=HEADERS,
+        json={
+            "info_source_id": str(fragment_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": "2026-05-08T12:00:00.000000Z",
+        },
+    )
+    assert resp.status_code == 201
+
+    result = await session.execute(select(ChangesOutboxRow))
+    row = result.scalar_one()
+    bindings = row.payload["bindings"]
+    assert len(bindings) == 1
+    assert bindings[0]["info_item_id"] == str(item.info_item_id)
+    assert bindings[0]["role"] == "sub_aspect"
 
 
 # ---------------------------------------------------------------------------
