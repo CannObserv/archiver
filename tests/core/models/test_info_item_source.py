@@ -41,17 +41,18 @@ async def test_round_trip(session, item, make_source):
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=src.info_source_id,
-        role="primary",
+        role=None,
     )
     session.add(binding)
     await session.commit()
     await session.refresh(binding)
     assert binding.deactivated_at is None
-    assert binding.role == "primary"
+    assert binding.role is None
 
 
 @pytest.mark.asyncio
-async def test_one_active_primary_per_item(session, item, make_source):
+async def test_one_active_root_per_item(session, item, make_source):
+    """Two active NULL-role bindings on the same item violate the unique index."""
     s1 = await make_source("https://example.com/a")
     s2 = await make_source("https://example.com/b")
     session.add_all(
@@ -59,12 +60,12 @@ async def test_one_active_primary_per_item(session, item, make_source):
             InfoItemSource(
                 info_item_id=item.info_item_id,
                 info_source_id=s1.info_source_id,
-                role="primary",
+                role=None,
             ),
             InfoItemSource(
                 info_item_id=item.info_item_id,
                 info_source_id=s2.info_source_id,
-                role="primary",
+                role=None,
             ),
         ]
     )
@@ -73,13 +74,13 @@ async def test_one_active_primary_per_item(session, item, make_source):
 
 
 @pytest.mark.asyncio
-async def test_deactivated_primary_allows_new_primary(session, item, make_source):
+async def test_deactivated_root_allows_new_root(session, item, make_source):
     s1 = await make_source("https://example.com/a")
     s2 = await make_source("https://example.com/b")
     old = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=s1.info_source_id,
-        role="primary",
+        role=None,
         deactivated_at=datetime.now(UTC),
     )
     session.add(old)
@@ -87,7 +88,7 @@ async def test_deactivated_primary_allows_new_primary(session, item, make_source
     new = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=s2.info_source_id,
-        role="primary",
+        role=None,
     )
     session.add(new)
     await session.commit()  # should not raise
@@ -96,10 +97,26 @@ async def test_deactivated_primary_allows_new_primary(session, item, make_source
 
 
 @pytest.mark.asyncio
-async def test_secondary_role_unconstrained(session, item, make_source):
-    """Multiple active 'secondary' bindings on the same item are allowed.
+async def test_role_check_constraint_rejects_bogus_value(session, item, make_source):
+    """CHECK constraint blocks any role outside {NULL, cross_check, sub_aspect}."""
+    src = await make_source("https://example.com/x")
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=src.info_source_id,
+            role="primary",  # no longer valid
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await session.commit()
 
-    The partial unique index only constrains role='primary'.
+
+@pytest.mark.asyncio
+async def test_fragment_roles_accepted(session, item, make_source):
+    """Both cross_check and sub_aspect are allowed at the schema level.
+
+    Shape consistency (role ↔ fragment InfoSource) is enforced in the app
+    layer, not the DB — see tests/core/tools/test_bind_info_source.py.
     """
     s1 = await make_source("https://example.com/a")
     s2 = await make_source("https://example.com/b")
@@ -108,13 +125,13 @@ async def test_secondary_role_unconstrained(session, item, make_source):
             InfoItemSource(
                 info_item_id=item.info_item_id,
                 info_source_id=s1.info_source_id,
-                role="secondary",
+                role="cross_check",
             ),
             InfoItemSource(
                 info_item_id=item.info_item_id,
                 info_source_id=s2.info_source_id,
-                role="secondary",
+                role="sub_aspect",
             ),
         ]
     )
-    await session.commit()  # should not raise
+    await session.commit()  # both should persist
