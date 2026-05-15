@@ -89,7 +89,7 @@ async def test_create_with_source_spec_populates_info_item_sources(client, sessi
     assert body["name"] == "with-source"
     assert len(body["info_item_sources"]) == 1
     src_out = body["info_item_sources"][0]
-    assert src_out["role"] == "primary"
+    assert src_out["role"] is None
     assert len(src_out["info_source_id"]) == 26  # ULID
 
     # DB round-trip: exactly one InfoSource + one InfoItemSource
@@ -104,7 +104,7 @@ async def test_create_with_source_spec_populates_info_item_sources(client, sessi
     binding = (
         await session.execute(select(InfoItemSource).where(InfoItemSource.info_item_id == item_id))
     ).scalar_one()
-    assert binding.role == "primary"
+    assert binding.role is None
 
     # InfoSource row should exist with the canonicalized URL
     info_source = (
