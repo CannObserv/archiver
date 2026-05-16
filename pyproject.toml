@@ -1,6 +1,6 @@
 [project]
 name = "archiver"
-version = "3.0.0"
+version = "3.1.0"
 description = "Cannabis Observer Archiver service — central registry for Information Items, Information Sources, Source Revisions, and Replication Specifications."
 readme = "README.md"
 requires-python = ">=3.12"
