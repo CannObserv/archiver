@@ -110,7 +110,7 @@ async def test_source_revision_post_to_redis_stream(
     assert payload["info_source_id"] == info_source_id
     assert payload["source_revision_id"] == source_revision_id
     assert payload["content_fingerprint"] == FINGERPRINT
-    assert info_item_id in payload["info_item_ids"]
+    assert any(b["info_item_id"] == info_item_id for b in payload["bindings"])
 
     # ------------------------------------------------------------------
     # Step 4: Build a publisher session_factory bound to the SAME

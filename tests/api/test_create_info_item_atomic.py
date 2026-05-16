@@ -2,7 +2,7 @@
 
 Covers:
 - name-only create (no source_spec, no assignments) → empty arrays
-- create with valid initial_source_spec → info_item_sources populated, role='primary'
+- create with valid initial_source_spec → info_item_sources populated, role=None
 - create with rep_fields + initial_rep_spec_assignments → assignments created
 - create with bad source_spec (missing url) → 422, no InfoItem persisted
 - create with non-existent rep_spec_id → 404, no InfoItem persisted
@@ -78,7 +78,7 @@ async def test_create_name_only_returns_empty_arrays(client):
 
 @pytest.mark.asyncio
 async def test_create_with_source_spec_populates_info_item_sources(client, session):
-    """Valid initial_source_spec → one info_item_sources entry, role='primary'."""
+    """Valid initial_source_spec → one info_item_sources entry, role=None."""
     response = await client.post(
         "/api/v1/info-items",
         headers=HEADERS,
