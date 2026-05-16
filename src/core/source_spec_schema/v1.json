@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://watcher.exe.xyz/schemas/source-spec/v1.json",
   "title": "Source Specification v1",
+  "description": "Defines how to fetch and extract a slice of content. An InfoItem is a fetch group: exactly one URL is fetched (the primary's URL) and exactly one content-kind is produced (HTML or JSON). Every InfoSource bound to the InfoItem — primary, cross_check, sub_aspect — has its extraction.algorithm evaluated against the primary's fetched bytes. Fragment extractions are NOT chained off primary's extracted output. Consequently, all bindings on an InfoItem must use algorithms in the same content-kind family (HTML/text: css|xpath|regex|full_page; JSON: jsonpath); the Archiver rejects mixed-family bindings at bind time.",
   "type": "object",
   "required": ["schema_version", "extraction", "fingerprint"],
   "additionalProperties": false,
