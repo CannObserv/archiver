@@ -21,8 +21,9 @@ def test_json_family_member():
 
 
 def test_unknown_algorithm_raises():
-    with pytest.raises(UnknownAlgorithmError):
+    with pytest.raises(UnknownAlgorithmError) as exc_info:
         family_for("xqilla")
+    assert isinstance(exc_info.value.__cause__, KeyError)
 
 
 def test_taxonomy_covers_every_algorithm_in_the_schema():
