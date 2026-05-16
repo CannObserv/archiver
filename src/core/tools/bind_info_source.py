@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import FragmentRole, InfoItem, InfoItemSource, InfoSource
+from src.core.source_spec_schema.families import Family, family_for
 
 
 class InfoItemNotFoundError(Exception):
@@ -47,6 +48,26 @@ class FragmentParentMismatchError(Exception):
         )
 
 
+class AlgorithmFamilyMismatchError(Exception):
+    """Fragment's extraction algorithm belongs to a different content-kind
+    family than the InfoItem's active root binding's algorithm.
+
+    Every fragment's extraction runs against the root's fetched bytes (the
+    "InfoItem = fetch group" invariant; see
+    ``src/core/source_spec_schema/v1.json`` description). A jsonpath
+    selector evaluated against HTML bytes silently misextracts, and
+    vice-versa — hence the bind-time rejection.
+    """
+
+    def __init__(self, *, expected_family: Family, actual_algorithm: str):
+        self.expected_family = expected_family
+        self.actual_algorithm = actual_algorithm
+        super().__init__(
+            f"fragment algorithm {actual_algorithm!r} does not match the "
+            f"InfoItem's primary algorithm family {expected_family!r}"
+        )
+
+
 async def bind_info_source(
     db: AsyncSession,
     *,
@@ -77,19 +98,37 @@ async def bind_info_source(
     # 2. Fragment-shares-root: fragment's parent must equal the InfoItem's
     # currently-active NULL-role binding's info_source_id.
     if not source_is_root:
-        active_root_id = await db.scalar(
-            select(InfoItemSource.info_source_id).where(
-                InfoItemSource.info_item_id == info_item_id,
-                InfoItemSource.role.is_(None),
-                InfoItemSource.deactivated_at.is_(None),
+        active_root = (
+            await db.execute(
+                select(InfoSource)
+                .join(
+                    InfoItemSource,
+                    InfoItemSource.info_source_id == InfoSource.info_source_id,
+                )
+                .where(
+                    InfoItemSource.info_item_id == info_item_id,
+                    InfoItemSource.role.is_(None),
+                    InfoItemSource.deactivated_at.is_(None),
+                )
             )
-        )
-        if active_root_id is None:
+        ).scalar_one_or_none()
+        if active_root is None:
             raise ActiveRootMissingError(str(info_item_id))
-        if active_root_id != source.parent_info_source_id:
+        if active_root.info_source_id != source.parent_info_source_id:
             raise FragmentParentMismatchError(
-                expected_root_id=active_root_id,
+                expected_root_id=active_root.info_source_id,
                 actual_parent_id=source.parent_info_source_id,
+            )
+
+        # 3. Algorithm-family compatibility (archiver#22). The active root's
+        # algorithm establishes the fetch group's content kind; this fragment
+        # must agree.
+        expected_family = family_for(active_root.source_spec["extraction"]["algorithm"])
+        actual_algorithm = source.source_spec["extraction"]["algorithm"]
+        if family_for(actual_algorithm) != expected_family:
+            raise AlgorithmFamilyMismatchError(
+                expected_family=expected_family,
+                actual_algorithm=actual_algorithm,
             )
 
     binding = InfoItemSource(
