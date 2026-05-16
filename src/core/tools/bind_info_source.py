@@ -4,8 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.models import InfoItem, InfoItemSource, InfoSource
-from src.core.models.info_item_source import FragmentRole
+from src.core.models import FragmentRole, InfoItem, InfoItemSource, InfoSource
 
 
 class InfoItemNotFoundError(Exception):

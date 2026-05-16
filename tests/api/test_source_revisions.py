@@ -611,6 +611,11 @@ async def test_outbox_payload_includes_active_bindings(client, session, info_sou
     assert {str(item1.info_item_id), str(item2.info_item_id)} == ids
     assert roles == {None}
 
+    # Bindings are emitted in deterministic info_item_id order so downstream
+    # snapshot-style consumers (e.g. Replicator diff tests) aren't flaky.
+    ids_in_order = [b["info_item_id"] for b in bindings]
+    assert ids_in_order == sorted(ids_in_order)
+
 
 # ---------------------------------------------------------------------------
 # Test 19: Deactivated bindings excluded from bindings

@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from src.core.models.info_item_source import FragmentRole
+from src.core.models import FragmentRole
 
 
 class RepSpecAssignmentCreate(BaseModel):
