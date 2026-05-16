@@ -7,6 +7,8 @@ from pydantic import ValidationError
 
 from src.core.changes.payloads import SourceRevisionCapturedEvent
 
+SAMPLE_BINDING = {"info_item_id": "01HZZ000000000000000000003", "role": None}
+
 
 def _sample() -> dict:
     return {
@@ -15,7 +17,7 @@ def _sample() -> dict:
         "info_source_id": "01HZZ000000000000000000001",
         "source_revision_id": "01HZZ000000000000000000002",
         "content_fingerprint": "sha256:" + "a" * 64,
-        "info_item_ids": ["01HZZ000000000000000000003"],
+        "bindings": [SAMPLE_BINDING],
     }
 
 
@@ -24,7 +26,7 @@ def test_round_trip():
     dumped = ev.model_dump(mode="json")
     assert dumped["event_type"] == "source_revision_captured"
     assert dumped["info_source_id"] == "01HZZ000000000000000000001"
-    assert dumped["info_item_ids"] == ["01HZZ000000000000000000003"]
+    assert dumped["bindings"] == [SAMPLE_BINDING]
 
 
 def test_round_trip_through_json():
@@ -46,11 +48,11 @@ def test_extra_fields_rejected():
         SourceRevisionCapturedEvent.model_validate(bad)
 
 
-def test_empty_info_item_ids_allowed():
+def test_empty_bindings_allowed():
     """Watcher may produce a revision before any item binds — empty list valid."""
-    minimal = _sample() | {"info_item_ids": []}
+    minimal = _sample() | {"bindings": []}
     ev = SourceRevisionCapturedEvent.model_validate(minimal)
-    assert ev.info_item_ids == []
+    assert ev.bindings == []
 
 
 def test_default_event_type():

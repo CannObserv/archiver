@@ -65,7 +65,7 @@ src/core/                      Domain logic
   simhash.py, extraction_defaults.py, logging.py
                                Mirrored from watcher (see "Mirrored content-acquisition code")
   url_canonicalization.py      Write-time URL normalization for info_sources
-clients/python/                archiver_client SDK v1.x (generated + hand-written wrappers)
+clients/python/                archiver_client SDK v3.x (generated + hand-written wrappers)
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
@@ -143,7 +143,7 @@ export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)
 
 ## Authoring tools + assignment endpoints (v2)
 
-The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v1.x).
+The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v3.x; see [CHANGELOG.md](CHANGELOG.md) for version history).
 
 **Read-only tools:**
 
@@ -163,7 +163,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Endpoint | HTTP | SDK method |
 |---|---|---|
 | Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_source_spec=None, initial_rep_spec_assignments=None, rep_fields=None)` |
-| Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id, role)` |
+| Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id, role=None)` |
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(source_spec, parent_info_source_id=None)` |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
 | List InfoSources (filter by parent, paginated) | `GET /info-sources?parent_info_source_id=…&limit=&offset=` | `list_info_sources(parent_info_source_id=None, limit=None, offset=None)` |
@@ -177,7 +177,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
-`POST /info-sources` returns 409 Conflict (with the existing row's id) on duplicate URL; 422 on invalid source_spec or fragment-of-fragment chains; 404 on unknown parent. Fragments require a root parent (no chains). v1.1 SDK adds the three `*_info_source` methods; existing v1.0 methods are unchanged.
+`POST /info-sources` returns 409 Conflict (with the existing row's id) on duplicate URL; 422 on invalid source_spec or fragment-of-fragment chains; 404 on unknown parent. Fragments require a root parent (no chains).
 
 **Pagination:** `GET /info-items`, `GET /info-sources`, and `GET /rep-specs` return a `Page` envelope — `{items, has_more, limit, offset}`. All accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` / `list_rep_specs` return `PageInfoItemOut` / `PageInfoSourceOut` / `PageRepSpecOut`; pass `limit`/`offset` to forward to the server.
 
@@ -325,7 +325,20 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
 - **`InfoSource`** (`info_sources`) — physical layer; either URL-keyed (root) or `parent_info_source_id`-keyed (fragment) per XOR check constraint. SourceSpec lives in the JSONB `source_spec` column.
 - **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`.
-- **`InfoItemSource`** (`info_item_sources`) — operator-declared item↔source binding with `role` and effective dating.
+- **`InfoItemSource`** (`info_item_sources`) — operator-declared
+  item↔source binding. The primary binding is implicit: at most one
+  active row per InfoItem has `role IS NULL`, and its underlying
+  InfoSource is root-shaped. Fragment bindings carry
+  `role IN ('cross_check', 'sub_aspect')` and their underlying
+  InfoSource's `parent_info_source_id` must equal the primary's
+  `info_source_id`.
+
+| Role | Meaning | Shape constraint |
+|---|---|---|
+| `NULL` (primary) | Canonical content selector for the InfoItem. One active per InfoItem. | Root-shaped (URL non-null). |
+| `cross_check` | Same content as primary via a different selector. Watcher uses for selector-rot detection. | Fragment-shaped; parent equals active root binding's source. |
+| `sub_aspect` | Different content area of the same fetched page. Operator-watchable from Watcher. | Fragment-shaped; parent equals active root binding's source. |
+
 - **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
 - **`InfoItemRepSpec`** (`info_item_rep_specs`) — effective-dated assignment + `public_url` writeback target.

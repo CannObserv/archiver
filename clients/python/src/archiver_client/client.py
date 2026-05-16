@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import datetime
 from types import TracebackType
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -306,10 +306,22 @@ class ArchiverClient:
     # --- InfoSource binding ---
 
     async def add_info_source(
-        self, info_item_id: str, info_source_id: str, role: str
+        self,
+        info_item_id: str,
+        info_source_id: str,
+        role: Literal["cross_check", "sub_aspect"] | None = None,
     ) -> InfoItemSourceOut:
-        """Declare an InfoItem → InfoSource binding with the given role."""
-        body = InfoItemSourceCreate(info_source_id=info_source_id, role=role)
+        """Bind an InfoSource to an InfoItem.
+
+        ``role`` is ``None`` (default) for a root-shaped InfoSource — the
+        InfoItem's primary, exactly one active per InfoItem. Pass
+        ``'cross_check'`` or ``'sub_aspect'`` for a fragment-shaped
+        InfoSource that shares the primary's root.
+        """
+        body = InfoItemSourceCreate(
+            info_source_id=info_source_id,
+            role=role if role is not None else UNSET,
+        )
         response = await _add_info_source.asyncio_detailed(
             client=self._gen_client, info_item_id=info_item_id, body=body
         )

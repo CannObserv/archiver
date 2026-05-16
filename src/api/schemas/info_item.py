@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from src.core.models import FragmentRole
+
 
 class RepSpecAssignmentCreate(BaseModel):
     """One rep_spec assignment to atomically attach to a new InfoItem."""
@@ -22,7 +24,14 @@ class InfoItemSourceCreate(BaseModel):
     """Request body for POST /info-items/{id}/info-sources."""
 
     info_source_id: str = Field(min_length=1, description="ULID of an existing InfoSource.")
-    role: str = Field(min_length=1, max_length=50, description="Role label, e.g. 'primary'.")
+    role: FragmentRole | None = Field(
+        default=None,
+        description=(
+            "Binding role. ``null`` (default) for root-shaped InfoSources (the "
+            "InfoItem's primary). ``'cross_check'`` or ``'sub_aspect'`` for "
+            "fragment-shaped InfoSources sharing the primary's root."
+        ),
+    )
 
 
 class InfoItemRepSpecCreate(BaseModel):
@@ -66,8 +75,9 @@ class InfoItemCreate(BaseModel):
         default=None,
         description=(
             "Optional SourceSpec document to atomically create alongside the new "
-            "InfoItem (role='primary'). Validated before any row is written; on "
-            "validation failure neither InfoItem nor InfoSource is persisted."
+            "InfoItem as the primary (NULL-role) binding. Validated before any row "
+            "is written; on validation failure neither InfoItem nor InfoSource is "
+            "persisted."
         ),
     )
     initial_rep_spec_assignments: list[RepSpecAssignmentCreate] = Field(
@@ -84,7 +94,7 @@ class InfoItemSourceOut(BaseModel):
     """Light projection of an info_item_sources row."""
 
     info_source_id: str
-    role: str
+    role: str | None
     created_at: datetime
 
 

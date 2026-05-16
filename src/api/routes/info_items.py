@@ -44,6 +44,18 @@ from src.core.tools.assign_rep_spec import (
     RepSpecNotFoundError,
     assign_rep_spec,
 )
+from src.core.tools.bind_info_source import (
+    ActiveRootMissingError,
+    FragmentParentMismatchError,
+    RoleShapeMismatchError,
+    bind_info_source,
+)
+from src.core.tools.bind_info_source import (
+    InfoItemNotFoundError as BindIIS_InfoItemNotFoundError,
+)
+from src.core.tools.bind_info_source import (
+    InfoSourceNotFoundError as BindIIS_InfoSourceNotFoundError,
+)
 from src.core.tools.bind_revision import (
     InfoItemNotFoundError as BindInfoItemNotFoundError,
 )
@@ -137,7 +149,7 @@ async def create_info_item(
         binding = InfoItemSource(
             info_item_id=item.info_item_id,
             info_source_id=info_source.info_source_id,
-            role="primary",
+            role=None,
         )
         session.add(binding)
         await session.flush()
@@ -216,14 +228,25 @@ async def add_info_source(
     body: InfoItemSourceCreate,
     session: AsyncSession = Depends(get_db_session),
 ) -> InfoItemSourceOut:
-    """Declare a binding between an InfoItem and an existing InfoSource.
+    """Bind an existing InfoSource to an InfoItem.
 
-    Looks up both entities; returns 404 if either doesn't exist. The binding
-    is a new ``info_item_sources`` row with the requested role.
+    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
+    primary; at most one active per InfoItem) or one of
+    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
+    whose parent equals the InfoItem's active root binding's source.
     """
-    item = await session.get(InfoItem, ULID.from_str(info_item_id))
-    if item is None:
-        raise_envelope(404, "lookup", "InfoItem not found")
+    try:
+        item_ulid = ULID.from_str(info_item_id)
+    except ValueError as e:
+        raise_envelope(
+            422,
+            "domain",
+            "info_item_id is not a valid ULID",
+            errors=[
+                FieldError(path="/info_item_id", message="not a valid ULID", code="invalid_ulid")
+            ],
+            source_exc=e,
+        )
 
     try:
         source_ulid = ULID.from_str(body.info_source_id)
@@ -233,28 +256,67 @@ async def add_info_source(
             "domain",
             "info_source_id is not a valid ULID",
             errors=[
-                FieldError(
-                    path="/info_source_id",
-                    message="not a valid ULID",
-                    code="invalid_ulid",
-                )
+                FieldError(path="/info_source_id", message="not a valid ULID", code="invalid_ulid")
             ],
             source_exc=e,
         )
 
-    source = await session.get(InfoSource, source_ulid)
-    if source is None:
-        raise_envelope(404, "lookup", "InfoSource not found")
+    try:
+        binding = await bind_info_source(
+            session,
+            info_item_id=item_ulid,
+            info_source_id=source_ulid,
+            role=body.role,
+        )
+    except BindIIS_InfoItemNotFoundError as e:
+        raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
+    except BindIIS_InfoSourceNotFoundError as e:
+        raise_envelope(404, "lookup", "InfoSource not found", source_exc=e)
+    except RoleShapeMismatchError as e:
+        raise_envelope(
+            422,
+            "domain",
+            f"role {e.role!r} is not valid for "
+            f"{'root' if e.source_is_root else 'fragment'}-shaped InfoSource",
+            errors=[
+                FieldError(path="/role", message="role/shape mismatch", code="role_shape_mismatch")
+            ],
+            source_exc=e,
+        )
+    except ActiveRootMissingError as e:
+        raise_envelope(
+            422,
+            "domain",
+            "cannot bind a fragment-role InfoSource before an active root binding exists",
+            errors=[
+                FieldError(
+                    path="/info_source_id",
+                    message="InfoItem has no active root binding",
+                    code="active_root_missing",
+                )
+            ],
+            source_exc=e,
+        )
+    except FragmentParentMismatchError as e:
+        raise_envelope(
+            422,
+            "domain",
+            "fragment's parent does not match the InfoItem's active root binding",
+            errors=[
+                FieldError(
+                    path="/info_source_id",
+                    message="fragment parent != active root source",
+                    code="fragment_parent_mismatch",
+                )
+            ],
+            data={
+                "expected_root_info_source_id": str(e.expected_root_id),
+                "actual_parent_info_source_id": str(e.actual_parent_id),
+            },
+            source_exc=e,
+        )
 
-    binding = InfoItemSource(
-        info_item_id=item.info_item_id,
-        info_source_id=source.info_source_id,
-        role=body.role,
-    )
-    session.add(binding)
-    await session.flush()
     await session.commit()
-
     return info_item_source_to_out(binding)
 
 

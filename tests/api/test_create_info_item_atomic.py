@@ -2,7 +2,7 @@
 
 Covers:
 - name-only create (no source_spec, no assignments) → empty arrays
-- create with valid initial_source_spec → info_item_sources populated, role='primary'
+- create with valid initial_source_spec → info_item_sources populated, role=None
 - create with rep_fields + initial_rep_spec_assignments → assignments created
 - create with bad source_spec (missing url) → 422, no InfoItem persisted
 - create with non-existent rep_spec_id → 404, no InfoItem persisted
@@ -78,7 +78,7 @@ async def test_create_name_only_returns_empty_arrays(client):
 
 @pytest.mark.asyncio
 async def test_create_with_source_spec_populates_info_item_sources(client, session):
-    """Valid initial_source_spec → one info_item_sources entry, role='primary'."""
+    """Valid initial_source_spec → one info_item_sources entry, role=None."""
     response = await client.post(
         "/api/v1/info-items",
         headers=HEADERS,
@@ -89,7 +89,7 @@ async def test_create_with_source_spec_populates_info_item_sources(client, sessi
     assert body["name"] == "with-source"
     assert len(body["info_item_sources"]) == 1
     src_out = body["info_item_sources"][0]
-    assert src_out["role"] == "primary"
+    assert src_out["role"] is None
     assert len(src_out["info_source_id"]) == 26  # ULID
 
     # DB round-trip: exactly one InfoSource + one InfoItemSource
@@ -104,7 +104,7 @@ async def test_create_with_source_spec_populates_info_item_sources(client, sessi
     binding = (
         await session.execute(select(InfoItemSource).where(InfoItemSource.info_item_id == item_id))
     ).scalar_one()
-    assert binding.role == "primary"
+    assert binding.role is None
 
     # InfoSource row should exist with the canonicalized URL
     info_source = (

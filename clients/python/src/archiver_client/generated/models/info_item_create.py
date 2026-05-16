@@ -29,8 +29,8 @@ class InfoItemCreate:
             atomically create alongside the new InfoItem. Each rep_spec_id must reference an existing RepSpec. rep_fields
             are validated against each RepSpec's required_fields.
         initial_source_spec (InfoItemCreateInitialSourceSpecType0 | None | Unset): Optional SourceSpec document to
-            atomically create alongside the new InfoItem (role='primary'). Validated before any row is written; on
-            validation failure neither InfoItem nor InfoSource is persisted.
+            atomically create alongside the new InfoItem as the primary (NULL-role) binding. Validated before any row is
+            written; on validation failure neither InfoItem nor InfoSource is persisted.
         owner (None | str | Unset):
         rep_fields (InfoItemCreateRepFields | Unset):
     """

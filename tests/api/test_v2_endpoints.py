@@ -109,12 +109,12 @@ async def test_add_info_source_happy_path(client, info_item, info_source):
     response = await client.post(
         f"/api/v1/info-items/{item_id}/info-sources",
         headers=HEADERS,
-        json={"info_source_id": source_id, "role": "primary"},
+        json={"info_source_id": source_id, "role": None},
     )
     assert response.status_code == 201
     body = response.json()
     assert body["info_source_id"] == source_id
-    assert body["role"] == "primary"
+    assert body["role"] is None
     assert "created_at" in body
 
 
@@ -126,7 +126,7 @@ async def test_add_info_source_missing_item_returns_404(client, info_source):
     response = await client.post(
         f"/api/v1/info-items/{fake_item_id}/info-sources",
         headers=HEADERS,
-        json={"info_source_id": source_id, "role": "supplemental"},
+        json={"info_source_id": source_id, "role": None},
     )
     assert response.status_code == 404
     detail = response.json()["detail"]
@@ -142,7 +142,7 @@ async def test_add_info_source_missing_source_returns_404(client, info_item):
     response = await client.post(
         f"/api/v1/info-items/{item_id}/info-sources",
         headers=HEADERS,
-        json={"info_source_id": fake_source_id, "role": "primary"},
+        json={"info_source_id": fake_source_id, "role": None},
     )
     assert response.status_code == 404
     detail = response.json()["detail"]
@@ -157,7 +157,7 @@ async def test_add_info_source_requires_api_key(client, info_item, info_source):
 
     response = await client.post(
         f"/api/v1/info-items/{item_id}/info-sources",
-        json={"info_source_id": source_id, "role": "primary"},
+        json={"info_source_id": source_id, "role": None},
     )
     assert response.status_code == 403
 
