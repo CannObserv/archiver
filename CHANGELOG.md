@@ -10,7 +10,7 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
-## Unreleased
+## v3.1.0 (2026-05-16)
 
 [service] **Performance** — `find_info_item` (`GET /api/v1/tools/find-info-items`)
 substring search is now backed by PostgreSQL `pg_trgm` GIN indexes on
@@ -18,8 +18,6 @@ substring search is now backed by PostgreSQL `pg_trgm` GIN indexes on
 `ILIKE '%q%'` queries stay sub-linear as the catalog grows
 (archiver#23). The migration enables the `pg_trgm` extension. Apply with
 `uv run alembic upgrade head`; no SDK changes.
-
-## v3.1.0 (2026-05-16)
 
 [both] **Behaviour change** — cross-family extraction algorithm bindings
 are now rejected at bind time (archiver#22). The Archiver codifies the

@@ -19,9 +19,11 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # find_info_item runs ILIKE '%q%' across info_items.name + description; without
-    # trigram indexes the planner falls back to sequential scans (archiver#23).
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+    # find_info_item runs ILIKE '%q%' across info_items.name + description;
+    # without trigram indexes the planner falls back to sequential scans.
+    # Pin pg_trgm to public so the operator class is reachable regardless of
+    # the session search_path.
+    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public")
     op.create_index(
         "ix_info_items_name_trgm",
         "info_items",
