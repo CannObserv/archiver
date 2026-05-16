@@ -31,6 +31,8 @@ async def test_engine():
     async with engine.begin() as conn:
         # Ensure the information schema exists before create_all binds tables to it.
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS information"))
+        # Required for the GIN trigram indexes on info_items.
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(Base.metadata.create_all)
     yield engine
     async with engine.begin() as conn:

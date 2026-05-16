@@ -1,6 +1,6 @@
 """Information Item — the stable, externally-named target being tracked."""
 
-from sqlalchemy import String
+from sqlalchemy import Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
@@ -12,7 +12,6 @@ class InfoItem(Base, TimestampMixin):
     """An Information Item — one specific thing being tracked."""
 
     __tablename__ = "info_items"
-    __table_args__ = {"schema": "information"}
 
     info_item_id: Mapped[ULID] = mapped_column(ULIDType(), primary_key=True, default=generate_ulid)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -23,4 +22,20 @@ class InfoItem(Base, TimestampMixin):
         nullable=False,
         server_default="{}",
         default=dict,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_info_items_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_info_items_description_trgm",
+            "description",
+            postgresql_using="gin",
+            postgresql_ops={"description": "gin_trgm_ops"},
+        ),
+        {"schema": "information"},
     )

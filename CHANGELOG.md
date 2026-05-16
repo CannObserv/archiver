@@ -12,6 +12,13 @@ test-only changes, and docs-only changes do not need entries.
 
 ## v3.1.0 (2026-05-16)
 
+[service] **Performance** — `find_info_item` (`GET /api/v1/tools/find-info-items`)
+substring search is now backed by PostgreSQL `pg_trgm` GIN indexes on
+`information.info_items(name)` and `(description)`, so case-insensitive
+`ILIKE '%q%'` queries stay sub-linear as the catalog grows
+(archiver#23). The migration enables the `pg_trgm` extension. Apply with
+`uv run alembic upgrade head`; no SDK changes.
+
 [both] **Behaviour change** — cross-family extraction algorithm bindings
 are now rejected at bind time (archiver#22). The Archiver codifies the
 "InfoItem = fetch group" invariant: every InfoSource bound to an InfoItem
