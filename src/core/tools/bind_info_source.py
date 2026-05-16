@@ -1,12 +1,11 @@
 """Bind an InfoSource to an InfoItem with cross-table shape/root validation."""
 
-from __future__ import annotations
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models.info_item_source import FragmentRole
 
 
 class InfoItemNotFoundError(Exception):
@@ -54,7 +53,7 @@ async def bind_info_source(
     *,
     info_item_id: ULID,
     info_source_id: ULID,
-    role: str | None,
+    role: FragmentRole | None,
 ) -> InfoItemSource:
     """Persist a new ``info_item_sources`` row after validating shape + root invariants.
 

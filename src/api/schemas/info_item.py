@@ -1,9 +1,11 @@
 """Pydantic IO schemas for InfoItem endpoints."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
+
+from src.core.models.info_item_source import FragmentRole
 
 
 class RepSpecAssignmentCreate(BaseModel):
@@ -22,7 +24,7 @@ class InfoItemSourceCreate(BaseModel):
     """Request body for POST /info-items/{id}/info-sources."""
 
     info_source_id: str = Field(min_length=1, description="ULID of an existing InfoSource.")
-    role: Literal["cross_check", "sub_aspect"] | None = Field(
+    role: FragmentRole | None = Field(
         default=None,
         description=(
             "Binding role. ``null`` (default) for root-shaped InfoSources (the "

@@ -110,7 +110,10 @@ async def test_source_revision_post_to_redis_stream(
     assert payload["info_source_id"] == info_source_id
     assert payload["source_revision_id"] == source_revision_id
     assert payload["content_fingerprint"] == FINGERPRINT
-    assert any(b["info_item_id"] == info_item_id for b in payload["bindings"])
+    matching = [b for b in payload["bindings"] if b["info_item_id"] == info_item_id]
+    assert matching, f"expected a binding for {info_item_id} in {payload['bindings']!r}"
+    # initial_source_spec creates a root binding → role is NULL.
+    assert matching[0]["role"] is None
 
     # ------------------------------------------------------------------
     # Step 4: Build a publisher session_factory bound to the SAME
