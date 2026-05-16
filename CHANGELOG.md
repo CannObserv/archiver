@@ -10,6 +10,46 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v3.1.0 (2026-05-16)
+
+[both] **Behaviour change** — cross-family extraction algorithm bindings
+are now rejected at bind time (archiver#22). The Archiver codifies the
+"InfoItem = fetch group" invariant: every InfoSource bound to an InfoItem
+(primary, cross_check, sub_aspect) has its `extraction.algorithm`
+evaluated against the primary's fetched bytes — no chaining off primary's
+extracted output. Mixed content-kind families silently misextract and are
+now rejected.
+
+**Content-kind families:**
+- `html_text` — `css`, `xpath`, `regex`, `full_page`
+- `json` — `jsonpath`
+
+`regex` lives in `html_text` because the dominant production use is
+regex-against-HTML; `full_page` lives in `html_text` because the natural
+whole-document JSON extraction is `jsonpath: $`. Both are revisitable if
+new use-cases emerge.
+
+**Wire-format:** A cross-family bind attempt now returns `422 domain`
+with `errors[0].code = "algorithm_family_mismatch"`,
+`errors[0].path = "/extraction/algorithm"`, and structured
+`data = {"expected_family": "...", "actual_algorithm": "..."}` so clients
+can render a useful message without parsing the human-readable string.
+
+**Docs (L1):**
+- `src/core/source_spec_schema/v1.json` declares the cascade contract at
+  the top level in its `description`.
+- `AGENTS.md` (symlinked from `CLAUDE.md`) Vocabulary section anchors the
+  fetch group invariant on `InfoItem` and points at the enforcement
+  modules.
+
+**SDK:** No code changes. OpenAPI response model is unchanged (errors
+flow through the existing `ErrorEnvelope`). Version is bumped 1:1 with
+the service per the pinning policy; no regen required.
+
+See archiver#22 and watcher's InfoItem-first design
+(`CannObserv/watcher/docs/plans/2026-05-15-watched-item-infoitem-first-design.md`)
+for the downstream consumer (selector-rot detection).
+
 ## v3.0.0 (2026-05-16)
 
 [both] **Breaking** — `info_item_sources.role` semantics are refactored
