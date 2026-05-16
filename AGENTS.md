@@ -325,7 +325,20 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
 - **`InfoSource`** (`info_sources`) — physical layer; either URL-keyed (root) or `parent_info_source_id`-keyed (fragment) per XOR check constraint. SourceSpec lives in the JSONB `source_spec` column.
 - **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`.
-- **`InfoItemSource`** (`info_item_sources`) — operator-declared item↔source binding with `role` and effective dating.
+- **`InfoItemSource`** (`info_item_sources`) — operator-declared
+  item↔source binding. The primary binding is implicit: at most one
+  active row per InfoItem has `role IS NULL`, and its underlying
+  InfoSource is root-shaped. Fragment bindings carry
+  `role IN ('cross_check', 'sub_aspect')` and their underlying
+  InfoSource's `parent_info_source_id` must equal the primary's
+  `info_source_id`.
+
+| Role | Meaning | Shape constraint |
+|---|---|---|
+| `NULL` (primary) | Canonical content selector for the InfoItem. One active per InfoItem. | Root-shaped (URL non-null). |
+| `cross_check` | Same content as primary via a different selector. Watcher uses for selector-rot detection. | Fragment-shaped; parent equals active root binding's source. |
+| `sub_aspect` | Different content area of the same fetched page. Operator-watchable from Watcher. | Fragment-shaped; parent equals active root binding's source. |
+
 - **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
 - **`InfoItemRepSpec`** (`info_item_rep_specs`) — effective-dated assignment + `public_url` writeback target.

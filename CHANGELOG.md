@@ -10,6 +10,47 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v3.0.0 (2026-05-16)
+
+[both] **Breaking** — `info_item_sources.role` semantics are refactored
+(archiver#21). The primary binding is now implicit: the unique active
+root-shaped (URL-bearing) binding on an InfoItem is its primary by
+construction, with `role IS NULL`. `role` is reserved for fragment-shaped
+bindings and takes one of `'cross_check'` (same content, different
+selector — used for selector-rot detection) or `'sub_aspect'` (different
+content area on the same fetched page — operator-watchable).
+
+The `'primary'` and `'secondary'` role strings are removed. Callers that
+sent `role='primary'` get a 422 with `kind=body` (Pydantic Literal
+rejection); callers that omitted `role` previously got a 422 (it was
+required) and now succeed (defaults to `null`).
+
+**Schema enforcement:**
+- DB: `CHECK (role IS NULL OR role IN ('cross_check', 'sub_aspect'))`
+  and unique active root binding per InfoItem
+  (`uq_info_item_sources_active_root`).
+- App: `bind_info_source` validates shape consistency (NULL ↔ root,
+  fragment role ↔ fragment source) and that fragment bindings share
+  the InfoItem's active root.
+
+**Change-bus payload reshaped.** `SourceRevisionCapturedEvent.info_item_ids:
+list[str]` is replaced by `bindings: list[InfoItemBinding]` where each
+binding carries `{info_item_id, role}`. Consumers filter on `role` per
+their semantics (Replicator typically wants `role IS NULL` only).
+
+**SDK changes:**
+- `add_info_source(info_item_id, info_source_id, role=None)` — `role` is
+  now optional. Type is `Literal['cross_check', 'sub_aspect'] | None`.
+- Regenerated models: `InfoItemSourceCreate.role` and
+  `InfoItemSourceOut.role` are nullable; create-side enforces the enum.
+
+**Migration:** Single Alembic revision normalizes existing
+`role='primary'` rows to NULL, swaps the partial-unique index, and adds
+the CHECK constraint. Pre-prod (no live data), so no compatibility shim.
+
+See archiver#21 and CannObserv/watcher#157 (Watch reshape that this
+unblocks).
+
 ## v2.2.0 (2026-05-13)
 
 [both] Additive, non-breaking — `POST /source-revisions` now accepts an
