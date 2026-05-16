@@ -145,6 +145,10 @@ async def create_info_item(
     session.add(item)
     await session.flush()  # populate item.info_item_id
 
+    # Atomic-create only supports a single initial_source_spec (becomes the
+    # NULL-role / root binding). If initial fragment specs are added later,
+    # they must run through bind_info_source for the family-compatibility
+    # check (archiver#22).
     new_sources: list[InfoItemSource] = []
     if info_source is not None:
         binding = InfoItemSource(
