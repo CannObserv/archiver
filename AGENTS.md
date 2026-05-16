@@ -323,6 +323,13 @@ validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachab
 Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
 
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
+  **Fetch group invariant:** exactly one URL is fetched (the primary's URL) and exactly one
+  content-kind is produced (HTML/text or JSON). Every InfoSource bound to this InfoItem —
+  primary, cross_check, sub_aspect — has its `extraction.algorithm` run against the primary's
+  fetched bytes (no chaining off primary's extracted output). The Archiver enforces this at
+  bind time by rejecting cross-family algorithm bindings (`{css,xpath,regex,full_page}` ≠
+  `{jsonpath}`); see `src/core/source_spec_schema/families.py` and
+  `src/core/tools/bind_info_source.py::AlgorithmFamilyMismatchError`.
 - **`InfoSource`** (`info_sources`) — physical layer; either URL-keyed (root) or `parent_info_source_id`-keyed (fragment) per XOR check constraint. SourceSpec lives in the JSONB `source_spec` column.
 - **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`.
 - **`InfoItemSource`** (`info_item_sources`) — operator-declared
