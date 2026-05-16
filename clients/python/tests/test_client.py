@@ -66,7 +66,7 @@ def _source_revision_binding_payload() -> dict:
 def _info_source_out_payload() -> dict:
     return {
         "info_source_id": "01HZZ00000000000000000000F",
-        "role": "primary",
+        "role": None,
         "created_at": _TS,
     }
 
@@ -302,9 +302,8 @@ async def test_add_info_source(client):
         out = await client.add_info_source(
             "01HZZ00000000000000000000A",
             "01HZZ00000000000000000000F",
-            "primary",
         )
-    assert out.role == "primary"
+    assert out.role is None
     assert out.info_source_id == "01HZZ00000000000000000000F"
 
 

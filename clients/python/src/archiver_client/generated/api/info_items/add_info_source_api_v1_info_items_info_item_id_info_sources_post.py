@@ -102,10 +102,12 @@ def sync_detailed(
 ) -> Response[EnvelopeResponse | InfoItemSourceOut]:
     """Add Info Source
 
-     Declare a binding between an InfoItem and an existing InfoSource.
+     Bind an existing InfoSource to an InfoItem.
 
-    Looks up both entities; returns 404 if either doesn't exist. The binding
-    is a new ``info_item_sources`` row with the requested role.
+    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
+    primary; at most one active per InfoItem) or one of
+    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
+    whose parent equals the InfoItem's active root binding's source.
 
     Args:
         info_item_id (str):
@@ -139,10 +141,12 @@ def sync(
 ) -> EnvelopeResponse | InfoItemSourceOut | None:
     """Add Info Source
 
-     Declare a binding between an InfoItem and an existing InfoSource.
+     Bind an existing InfoSource to an InfoItem.
 
-    Looks up both entities; returns 404 if either doesn't exist. The binding
-    is a new ``info_item_sources`` row with the requested role.
+    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
+    primary; at most one active per InfoItem) or one of
+    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
+    whose parent equals the InfoItem's active root binding's source.
 
     Args:
         info_item_id (str):
@@ -171,10 +175,12 @@ async def asyncio_detailed(
 ) -> Response[EnvelopeResponse | InfoItemSourceOut]:
     """Add Info Source
 
-     Declare a binding between an InfoItem and an existing InfoSource.
+     Bind an existing InfoSource to an InfoItem.
 
-    Looks up both entities; returns 404 if either doesn't exist. The binding
-    is a new ``info_item_sources`` row with the requested role.
+    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
+    primary; at most one active per InfoItem) or one of
+    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
+    whose parent equals the InfoItem's active root binding's source.
 
     Args:
         info_item_id (str):
@@ -206,10 +212,12 @@ async def asyncio(
 ) -> EnvelopeResponse | InfoItemSourceOut | None:
     """Add Info Source
 
-     Declare a binding between an InfoItem and an existing InfoSource.
+     Bind an existing InfoSource to an InfoItem.
 
-    Looks up both entities; returns 404 if either doesn't exist. The binding
-    is a new ``info_item_sources`` row with the requested role.
+    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
+    primary; at most one active per InfoItem) or one of
+    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
+    whose parent equals the InfoItem's active root binding's source.
 
     Args:
         info_item_id (str):
