@@ -34,6 +34,23 @@ def _fragment_doc() -> dict:
     }
 
 
+def _root_json_doc(url: str) -> dict:
+    return {
+        "schema_version": 1,
+        "target": {"url": url},
+        "extraction": {"algorithm": "jsonpath", "selector": "$"},
+        "fingerprint": {},
+    }
+
+
+def _fragment_jsonpath_doc() -> dict:
+    return {
+        "schema_version": 1,
+        "extraction": {"algorithm": "jsonpath", "selector": "$.items[*]"},
+        "fingerprint": {},
+    }
+
+
 @pytest.fixture
 async def item(session):
     obj = InfoItem(name="t")
@@ -42,8 +59,14 @@ async def item(session):
     return obj
 
 
-async def _make_source(session, *, url=None, parent_id=None):
-    if url is not None:
+async def _make_source(session, *, url=None, parent_id=None, doc=None):
+    if doc is not None:
+        src = InfoSource(
+            source_spec=doc,
+            schema_version=1,
+            parent_info_source_id=parent_id,
+        )
+    elif url is not None:
         src = InfoSource(source_spec=_root_doc(url), schema_version=1)
     else:
         src = InfoSource(
@@ -204,3 +227,83 @@ async def test_unknown_info_item_returns_404(client, session):
         json={"info_source_id": str(src.info_source_id)},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cross_family_jsonpath_under_html_returns_422_domain(client, session, item):
+    """jsonpath fragment under full_page (html_text) primary → 422 domain."""
+    root = await _make_source(session, url="https://example.com/a")  # full_page
+    frag = await _make_source(session, parent_id=root.info_source_id, doc=_fragment_jsonpath_doc())
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=root.info_source_id, role=None
+        )
+    )
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(frag.info_source_id), "role": "cross_check"},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "domain"
+    err = detail["errors"][0]
+    assert err["code"] == "algorithm_family_mismatch"
+    assert err["path"] == "/extraction/algorithm"
+    # Structured data lets clients render a useful message
+    assert detail["data"]["expected_family"] == "html_text"
+    assert detail["data"]["actual_algorithm"] == "jsonpath"
+
+
+@pytest.mark.asyncio
+async def test_cross_family_css_under_jsonpath_returns_422_domain(client, session, item):
+    """css fragment under jsonpath primary → 422 domain (other direction)."""
+    root = await _make_source(session, doc=_root_json_doc("https://example.com/api"))
+    frag = await _make_source(session, parent_id=root.info_source_id)  # css default
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=root.info_source_id, role=None
+        )
+    )
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(frag.info_source_id), "role": "sub_aspect"},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "domain"
+    err = detail["errors"][0]
+    assert err["code"] == "algorithm_family_mismatch"
+    assert err["path"] == "/extraction/algorithm"
+    assert detail["data"]["expected_family"] == "json"
+    assert detail["data"]["actual_algorithm"] == "css"
+
+
+@pytest.mark.asyncio
+async def test_same_family_fragment_still_binds_201(client, session, item):
+    """xpath fragment under full_page primary — both html_text → 201."""
+    root = await _make_source(session, url="https://example.com/a")  # full_page
+    xpath_doc = {
+        "schema_version": 1,
+        "extraction": {"algorithm": "xpath", "selector": "//div[@id='agenda']"},
+        "fingerprint": {},
+    }
+    frag = await _make_source(session, parent_id=root.info_source_id, doc=xpath_doc)
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=root.info_source_id, role=None
+        )
+    )
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(frag.info_source_id), "role": "cross_check"},
+    )
+    assert resp.status_code == 201

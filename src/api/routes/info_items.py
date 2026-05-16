@@ -46,6 +46,7 @@ from src.core.tools.assign_rep_spec import (
 )
 from src.core.tools.bind_info_source import (
     ActiveRootMissingError,
+    AlgorithmFamilyMismatchError,
     FragmentParentMismatchError,
     RoleShapeMismatchError,
     bind_info_source,
@@ -312,6 +313,27 @@ async def add_info_source(
             data={
                 "expected_root_info_source_id": str(e.expected_root_id),
                 "actual_parent_info_source_id": str(e.actual_parent_id),
+            },
+            source_exc=e,
+        )
+    except AlgorithmFamilyMismatchError as e:
+        raise_envelope(
+            422,
+            "domain",
+            "fragment algorithm does not match the InfoItem's primary algorithm family",
+            errors=[
+                FieldError(
+                    path="/extraction/algorithm",
+                    message=(
+                        f"algorithm {e.actual_algorithm!r} is in a different "
+                        f"content-kind family than the primary ({e.expected_family!r})"
+                    ),
+                    code="algorithm_family_mismatch",
+                )
+            ],
+            data={
+                "expected_family": e.expected_family,
+                "actual_algorithm": e.actual_algorithm,
             },
             source_exc=e,
         )
