@@ -185,6 +185,18 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 
 **Change-bus producer:** New `SourceRevision` inserts write a row to `information.changes_outbox` in the same transaction. The publisher background task drains the outbox to the Redis Stream `info.changes` (event type `source_revision_captured`, payload typed by `src.core.changes.payloads.SourceRevisionCapturedEvent`). Publisher only starts when `ARCHIVER_REDIS_URL` is set.
 
+**Bus event versioning convention.** Every bus event payload carries
+`schema_version: int` (start at `1`, monotonic). Bump only on *incompatible*
+reshapes — field removal, type change, semantic redefinition. Additive
+fields are not a bump; consumers must tolerate them. Apply the same
+convention to any future event type added to `info.changes`.
+
+Consumer rule: parsers must accept extra fields. With a Pydantic model,
+use `ConfigDict(extra="ignore")` (or `model_construct`) on the
+consumer-side mirror so additive producer fields do not raise
+`ValidationError`. Branch on `schema_version` before destructuring when
+the version is one the consumer recognises differently.
+
 **Smoke:** `bash scripts/smoke_phase4.sh` exercises the v2 authoring loop end-to-end against the dev server (port 8021). Step 9 (Redis stream check) is skipped unless `ARCHIVER_REDIS_URL` is set.
 
 ## Agent Skills

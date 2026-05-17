@@ -23,10 +23,16 @@ class SourceRevisionCapturedEvent(BaseModel):
     ``bindings[*].role`` per their semantics (e.g. Replicator typically
     cares only about ``role IS NULL``; selector-rot tooling cares about
     ``role == 'cross_check'``).
+
+    ``schema_version`` is the wire-format version for this event type. Bump it
+    only on incompatible reshapes (field removal, type change, semantic
+    redefinition). Additive fields do not require a bump — consumers must
+    parse with extra-field tolerance per the convention in AGENTS.md.
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    schema_version: int = 1
     event_type: Literal["source_revision_captured"] = "source_revision_captured"
     occurred_at: datetime
     info_source_id: str

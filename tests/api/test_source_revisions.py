@@ -537,6 +537,7 @@ async def test_new_revision_writes_outbox_row(client, session, info_source):
     assert row.topic == "info.changes"
     payload = row.payload
     assert payload["event_type"] == "source_revision_captured"
+    assert payload["schema_version"] == 1
     assert payload["info_source_id"] == source_id
     assert payload["source_revision_id"] == rev_id
     assert payload["content_fingerprint"] == FP_VALID

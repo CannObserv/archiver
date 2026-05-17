@@ -67,3 +67,17 @@ def test_construct_with_datetime_obj():
     payload = _sample() | {"occurred_at": datetime(2026, 5, 8, 12, 0, tzinfo=UTC)}
     ev = SourceRevisionCapturedEvent.model_validate(payload)
     assert ev.occurred_at.tzinfo is not None
+
+
+def test_schema_version_defaults_to_1():
+    """Producer omits schema_version; model defaults to 1 and includes it on dump."""
+    ev = SourceRevisionCapturedEvent.model_validate(_sample())
+    assert ev.schema_version == 1
+    assert ev.model_dump(mode="json")["schema_version"] == 1
+
+
+def test_schema_version_accepts_explicit_value():
+    """Future bump (e.g. 2) is accepted without ValidationError."""
+    payload = _sample() | {"schema_version": 2}
+    ev = SourceRevisionCapturedEvent.model_validate(payload)
+    assert ev.schema_version == 2
