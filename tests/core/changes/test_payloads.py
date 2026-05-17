@@ -76,8 +76,21 @@ def test_schema_version_defaults_to_1():
     assert ev.model_dump(mode="json")["schema_version"] == 1
 
 
-def test_schema_version_accepts_explicit_value():
-    """Future bump (e.g. 2) is accepted without ValidationError."""
+def test_schema_version_is_writable_for_forward_versions():
+    """The model accepts forward version numbers on the wire (e.g. 2) without
+    raising. It does NOT magically know how to parse a v2 shape — consumers
+    must gate destructuring on ``schema_version`` themselves before assuming
+    a shape. This test only asserts the field is a writable int."""
     payload = _sample() | {"schema_version": 2}
     ev = SourceRevisionCapturedEvent.model_validate(payload)
     assert ev.schema_version == 2
+
+
+def test_schema_version_round_trips_through_json_for_non_default_value():
+    """A non-default ``schema_version`` survives serialize → parse intact, so a
+    future bump cannot be silently normalized away by Pydantic."""
+    payload = _sample() | {"schema_version": 7}
+    ev = SourceRevisionCapturedEvent.model_validate(payload)
+    j = ev.model_dump_json()
+    parsed = SourceRevisionCapturedEvent.model_validate_json(j)
+    assert parsed.schema_version == 7

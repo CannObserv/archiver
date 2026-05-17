@@ -28,6 +28,10 @@ class SourceRevisionCapturedEvent(BaseModel):
     only on incompatible reshapes (field removal, type change, semantic
     redefinition). Additive fields do not require a bump — consumers must
     parse with extra-field tolerance per the convention in AGENTS.md.
+
+    Producer keeps ``extra="forbid"`` to catch typos at emit time; consumer
+    mirrors switch to ``extra="ignore"`` per AGENTS.md so additive producer
+    fields do not raise ``ValidationError``.
     """
 
     model_config = ConfigDict(extra="forbid")
