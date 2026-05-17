@@ -10,6 +10,24 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v3.2.0 (2026-05-16)
+
+[service] **Bus event versioning** — `SourceRevisionCapturedEvent` now
+carries `schema_version: int = 1` on the wire (archiver#24). The field
+is producer-emitted and consumer-readable; future incompatible reshapes
+bump this monotonically rather than requiring downstream consumers to
+infer the shape from field presence. Additive fields do not require a
+bump.
+
+The convention applies to all current and future event types on
+`info.changes`: every payload carries `schema_version`, and consumers
+must parse with extra-field tolerance (`ConfigDict(extra="ignore")` for
+Pydantic mirrors). See AGENTS.md "Bus event versioning convention".
+
+No SDK change — the SDK does not consume `info.changes`. SDK version
+is bumped 1:1 with the service per the pinning policy; no regen
+required.
+
 ## v3.1.0 (2026-05-16)
 
 [service] **Performance** — `find_info_item` (`GET /api/v1/tools/find-info-items`)
