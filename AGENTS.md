@@ -205,9 +205,9 @@ Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code). L
 
 | Skill | Triggers / when to invoke |
 |---|---|
-| `reviewing-code-claude` | CR, code review |
-| `reviewing-architecture-claude` | AR, architecture review |
-| `shipping-work-claude` | ship it, push GH, close GH, wrap up |
+| `reviewing-code-python-fastapi` | CR, code review |
+| `reviewing-architecture` | AR, architecture review |
+| `shipping-work-python-fastapi` | ship it, push GH, close GH, wrap up |
 | `brainstorming` | brainstorm, design this, let's design |
 | `writing-plans` | write plan, implementation plan |
 | `writing-skills` | write skill, new skill, author skill |
@@ -220,9 +220,8 @@ Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code). L
 | `using-git-worktrees` | feature work needing isolation (dev port 8021) |
 | `finishing-a-development-branch` | merge/ship a feature branch |
 | `requesting-code-review` / `receiving-code-review` | CR handoff between agents |
-| `init-project-fastapi-claude` | bootstrapping a new FastAPI project |
-| `managing-skills-claude` | add skill repo, manage external skills |
-| `orchestrating-issue-backlog-claude` | backlog grooming, issue triage |
+| `managing-skills` | add skill repo, manage external skills |
+| `orchestrating-issue-backlog` | backlog grooming, issue triage |
 | `using-superpowers` | meta — when to invoke superpowers skills |
 | `socraticode` (codebase MCP) | see **Code Exploration Policy** above |
 
