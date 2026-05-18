@@ -52,7 +52,9 @@ def get_url() -> str:
     if not url:
         raise RuntimeError(
             "Set ARCHIVER_DATABASE_URL or DATABASE_URL before running alembic. "
-            "Load env: export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)"
+            "Load env: set -a; "
+            "[ -f /etc/archiver/.env ] && . /etc/archiver/.env; "
+            "[ -f .env ] && . .env; set +a"
         )
     return url
 

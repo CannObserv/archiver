@@ -16,7 +16,9 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if not TEST_DATABASE_URL:
     raise RuntimeError(
         "TEST_DATABASE_URL is not set. "
-        "Load env: export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)"
+        "Load env: set -a; "
+        "[ -f /etc/archiver/.env ] && . /etc/archiver/.env; "
+        "[ -f .env ] && . .env; set +a"
     )
 
 

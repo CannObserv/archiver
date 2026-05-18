@@ -29,8 +29,12 @@
 set -euo pipefail
 
 # Load env: prod (/etc/archiver/.env) overlaid with repo-local .env.
-# shellcheck disable=SC2046
-export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)
+# `set -a; source; set +a` handles whitespace/quotes/`=` correctly,
+# unlike the broken `export $(cat | xargs)` pattern.
+set -a
+[ -f /etc/archiver/.env ] && . /etc/archiver/.env
+[ -f .env ] && . .env
+set +a
 
 ARCHIVER_URL="${ARCHIVER_URL:-http://127.0.0.1:8021}"
 API_KEY="${ARCHIVER_API_KEY:?ARCHIVER_API_KEY must be set}"

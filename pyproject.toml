@@ -44,6 +44,9 @@ asyncio_default_test_loop_scope = "session"
 filterwarnings = [
     "error::DeprecationWarning",
 ]
+markers = [
+    "integration: cross-component flow requiring TEST_DATABASE_URL + fakeredis; excluded from pre-ship via `-m \"not integration\"`, exercised separately in CI",
+]
 
 [tool.ruff]
 line-length = 100

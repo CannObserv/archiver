@@ -80,8 +80,11 @@ jobs:
       - name: alembic upgrade head
         run: uv run alembic upgrade head
 
-      - name: pytest
-        run: uv run pytest -v
+      - name: pytest (default, excludes integration)
+        run: uv run pytest -v -m "not integration"
+
+      - name: pytest (integration)
+        run: uv run pytest -v -m integration
 
   changelog:
     name: changelog

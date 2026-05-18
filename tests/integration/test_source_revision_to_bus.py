@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.core.changes.publisher import drain_once
 from src.core.models import ChangesOutboxRow
 
+pytestmark = pytest.mark.integration
+
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 VALID_SOURCE_SPEC = {

@@ -7,7 +7,10 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 ## Run locally
 
 ```bash
-export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)
+set -a
+[ -f /etc/archiver/.env ] && . /etc/archiver/.env
+[ -f .env ] && . .env
+set +a
 uv sync
 uv run alembic upgrade head
 uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload
@@ -18,7 +21,10 @@ Production listens on **port 8020** under `archiver.service`. The dev server use
 ## Tests
 
 ```bash
-export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)
+set -a
+[ -f /etc/archiver/.env ] && . /etc/archiver/.env
+[ -f .env ] && . .env
+set +a
 uv run pytest
 ```
 
