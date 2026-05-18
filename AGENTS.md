@@ -119,7 +119,10 @@ After committing to `main`: `sudo systemctl restart archiver`. After DB model ch
 Dev server (port 8021):
 
 ```bash
-export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)
+set -a
+[ -f /etc/archiver/.env ] && . /etc/archiver/.env
+[ -f .env ] && . .env
+set +a
 uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload
 ```
 
@@ -131,8 +134,13 @@ Two env files load in order (later overrides earlier):
 2. `.env` (repo root, git-ignored) — dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit.
 
 ```bash
-export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)
+set -a
+[ -f /etc/archiver/.env ] && . /etc/archiver/.env
+[ -f .env ] && . .env
+set +a
 ```
+
+> Use `set -a; . <file>; set +a` (POSIX-portable source via `.`) rather than `export $(cat <file> | xargs)`. The xargs form silently breaks for values containing spaces, quotes, newlines, or embedded `=` — and produces hard-to-diagnose failures later when those env vars are read.
 
 **Key variables:**
 - `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
