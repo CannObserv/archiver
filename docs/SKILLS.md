@@ -24,7 +24,7 @@ Init after cloning: `git submodule update --init --recursive`
 
 Submodule freshness auto-enforced by `UserPromptSubmit` hook in `.claude/settings.json`. Force-refresh: `git submodule update --remote --merge skills-vendor/gregoryfoster-skills skills-vendor/obra-superpowers`
 
-To add a new external skill repo: follow the `managing-skills-claude` skill.
+To add a new external skill repo: follow the `managing-skills` skill.
 
 ## Skill Sources
 
@@ -44,11 +44,11 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 
 | Skill | Override reason |
 |---|---|
-| `reviewing-code-claude` | FastAPI-specific review dimensions; ruff lint check; TDD discipline; Iron Law + rationalization-prevention table; Phase 3.5 verification gate |
-| `shipping-work-claude` | `uv run pytest --no-cov` + `uv run ruff check` in pre-ship.sh; `#<n> [type]: <desc>` commit convention; Iron Law + HARD-GATE on partial issue closure |
+| `shipping-work-python-fastapi` | Thin override — sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor |
 | `brainstorming` | Project conventions (docs/plans/ path, commit format); invokes using-git-worktrees after design approval; FastAPI stack context; proactive-suggestion mode |
-| `writing-plans` | Plans saved to `docs/plans/` (vendor default is `docs/superpowers/plans/`) |
-| `using-git-worktrees` | Archiver-specific dev port (8021) and env file (`/etc/archiver/.env`); systemd `archiver.service` on 8020 |
+| `using-git-worktrees` | Archiver-specific dev port (8021) and env file (`/etc/archiver/.env`); auto-starts uvicorn on 8021; systemd `archiver.service` on 8020 |
+
+`reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) — no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
 
 Edits to mirrored content-acquisition modules (`src/core/fetchers/`, `src/core/extractors/`, `src/core/simhash.py`, `src/core/extraction_defaults.py`, `src/core/logging.py`) trigger a watcher mirror obligation — see `AGENTS.md` "Mirrored content-acquisition code" before shipping.
 
