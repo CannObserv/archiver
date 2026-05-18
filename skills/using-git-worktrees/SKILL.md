@@ -5,7 +5,7 @@ metadata:
   author: gregoryfoster
   version: "1.0"
   overrides: gregoryfoster-skills/using-git-worktrees
-  override-reason: "Archiver-specific operations — dev server auto-starts on port 8021 (8020 belongs to systemd archiver.service), and worktree setup sources /etc/archiver/.env + .env via `set -a; source; set +a` (not the broken `export $(cat | xargs)` pattern)."
+  override-reason: "Archiver-specific operations — dev server auto-starts on port 8021 (8020 belongs to systemd archiver.service), and worktree setup sources /etc/archiver/.env + .env via `set -a; . <file>; set +a` (not the broken `export $(cat | xargs)` pattern)."
 ---
 
 # Using Git Worktrees
@@ -123,11 +123,11 @@ fi
 Run tests to ensure worktree starts clean:
 
 ```bash
-# Source env files via `set -a; source; set +a` (handles whitespace,
+# Source env files via `set -a; . <file>; set +a` (handles whitespace,
 # quotes, and `=` correctly — unlike the broken `export $(cat | xargs)`
 # pattern). Existence guards keep this safe when one file is absent.
-[ -f /etc/archiver/.env ] && { set -a; source /etc/archiver/.env; set +a; }
-[ -f .env ] && { set -a; source .env; set +a; }
+[ -f /etc/archiver/.env ] && { set -a; . /etc/archiver/.env; set +a; }
+[ -f .env ] && { set -a; . .env; set +a; }
 uv run pytest --no-cov
 ```
 
@@ -145,9 +145,9 @@ active, 8021 should not be running.
 lsof -ti :8021 | xargs -r kill -9 2>/dev/null
 
 # Start dev server from the worktree, backgrounded with reload.
-# Source env files via `set -a; source; set +a` (whitespace/quote-safe).
-[ -f /etc/archiver/.env ] && { set -a; source /etc/archiver/.env; set +a; }
-[ -f .env ] && { set -a; source .env; set +a; }
+# Source env files via `set -a; . <file>; set +a` (whitespace/quote-safe).
+[ -f /etc/archiver/.env ] && { set -a; . /etc/archiver/.env; set +a; }
+[ -f .env ] && { set -a; . .env; set +a; }
 uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload &
 
 # Verify port is bound

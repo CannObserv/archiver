@@ -7,7 +7,7 @@ metadata:
   version: "1.2-archiver"
   triggers: ship it, push GH, close GH, wrap up
   overrides: gregoryfoster-skills/shipping-work-python-fastapi
-  override-reason: "Sources /etc/archiver/.env and $PROJECT_ROOT/.env before delegating to upstream pre-ship; fixes broken `export $(cat … | xargs)` env-loading pattern via `set -a; source; set +a`."
+  override-reason: "Sources /etc/archiver/.env and $PROJECT_ROOT/.env before delegating to upstream pre-ship; fixes broken `export $(cat … | xargs)` env-loading pattern via `set -a; . <file>; set +a`."
 ---
 
 # Shipping Work — Python/FastAPI — archiver
@@ -161,5 +161,5 @@ If nothing applies, omit this step entirely.
 
 - If `gh` CLI hits errors (e.g., Projects API changes), use `--json` flag workarounds as needed
 - AGENTS.md is authoritative for commit conventions — read it before committing if unsure
-- The archiver wrapper sources `/etc/archiver/.env` and `$PROJECT_ROOT/.env` with `set -a; source; set +a` (NOT the broken `export $(cat | xargs)` pattern that fails on whitespace/quotes/`=`)
+- The archiver wrapper sources `/etc/archiver/.env` and `$PROJECT_ROOT/.env` with `set -a; . <file>; set +a` (NOT the broken `export $(cat | xargs)` pattern that fails on whitespace/quotes/`=`)
 - The upstream `pre-ship.sh` auto-derives its per-SHA stamp prefix from `$(basename "$(git rev-parse --show-toplevel)")` → `archiver-tests-clean-<sha>` — no hardcoded literal in the wrapper

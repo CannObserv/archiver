@@ -6,14 +6,14 @@
 set -euo pipefail
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 
-# Use `set -a; source; set +a` instead of `export $(cat | xargs)` to handle
+# Use `set -a; . <file>; set +a` instead of `export $(cat | xargs)` to handle
 # values containing spaces, quotes, newlines, or `=` correctly. Existence
 # guards prevent failure when only one (or neither) env file is present.
 if [[ -f /etc/archiver/.env ]]; then
-  set -a; source /etc/archiver/.env; set +a
+  set -a; . /etc/archiver/.env; set +a
 fi
 if [[ -f "$PROJECT_ROOT/.env" ]]; then
-  set -a; source "$PROJECT_ROOT/.env"; set +a
+  set -a; . "$PROJECT_ROOT/.env"; set +a
 fi
 
 exec bash "$PROJECT_ROOT/skills-vendor/gregoryfoster-skills/skills/shipping-work-python-fastapi/scripts/pre-ship.sh" "$@"
