@@ -210,12 +210,19 @@ async def list_info_items(
 async def get_info_item(
     info_item_id: ULIDStr, session: AsyncSession = Depends(get_db_session)
 ) -> InfoItemOut:
-    """Fetch a single InfoItem by ID (no related rows populated)."""
+    """Fetch a single InfoItem by ID, including active info_item_sources bindings."""
     result = await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
     item = result.scalar_one_or_none()
     if item is None:
         raise_envelope(404, "lookup", "InfoItem not found")
-    return info_item_to_out(item)
+    sources_result = await session.execute(
+        select(InfoItemSource).where(
+            InfoItemSource.info_item_id == item.info_item_id,
+            InfoItemSource.deactivated_at.is_(None),
+        )
+    )
+    sources = list(sources_result.scalars().all())
+    return info_item_to_out(item, sources=sources)
 
 
 # ---------------------------------------------------------------------------

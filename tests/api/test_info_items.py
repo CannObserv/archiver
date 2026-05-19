@@ -39,6 +39,38 @@ async def test_get_info_item(client):
 
 
 @pytest.mark.asyncio
+async def test_get_info_item_returns_active_bindings(client):
+    """GET /info-items/{id} must populate info_item_sources with active bindings."""
+    item_id = (
+        await client.post("/api/v1/info-items", headers=HEADERS, json={"name": "Bound"})
+    ).json()["info_item_id"]
+    source_id = (
+        await client.post(
+            "/api/v1/info-sources",
+            headers=HEADERS,
+            json={
+                "source_spec": {
+                    "target": {"url": "https://example.com"},
+                    "extraction": {"algorithm": "css", "selector": "body"},
+                    "fingerprint": {},
+                    "schema_version": 1,
+                }
+            },
+        )
+    ).json()["info_source_id"]
+    bind = await client.post(
+        f"/api/v1/info-items/{item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": source_id},
+    )
+    assert bind.status_code == 201
+    body = (await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)).json()
+    assert len(body["info_item_sources"]) == 1
+    assert body["info_item_sources"][0]["info_source_id"] == source_id
+    assert body["info_item_sources"][0]["role"] is None  # primary
+
+
+@pytest.mark.asyncio
 async def test_get_info_item_404(client):
     response = await client.get("/api/v1/info-items/01HZZZZZZZZZZZZZZZZZZZZZZZ", headers=HEADERS)
     assert response.status_code == 404
