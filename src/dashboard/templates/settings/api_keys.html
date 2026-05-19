@@ -27,10 +27,10 @@
   {# Create form #}
   <div class="filter-card">
     <form method="POST" action="/dashboard/settings/api-keys" class="inline-form">
-      <label for="key-label" class="label">New key label</label>
+      <label for="key-label" class="form-label">New key label</label>
       <div style="display:flex;gap:var(--space-2);align-items:flex-end;">
         <input id="key-label" type="text" name="label"
-               class="input" placeholder="e.g. Watcher production"
+               class="form-input" placeholder="e.g. Watcher production"
                required maxlength="200" style="flex:1;">
         <button type="submit" class="btn btn--primary">Create key</button>
       </div>

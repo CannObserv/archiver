@@ -95,6 +95,8 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 
 ### Forms
 - `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`.
+- `.form-input--error` / `.form-select--error` / `.form-textarea--error` — red border on invalid field.
+- `.form-input--inline` — compact width-auto variant for in-table rename inputs.
 - `.filter-card` — flex wrapper for filter controls.
 
 ### Navigation

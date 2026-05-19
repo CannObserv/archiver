@@ -11,10 +11,10 @@
   <form class="filter-card" method="GET" action="/dashboard/info-items/"
         aria-label="Search Information Items">
     <div style="display:flex;gap:var(--space-2);align-items:flex-end;">
-      <label for="name-search" class="label" style="flex:0 0 auto;">Search by name</label>
+      <label for="name-search" class="form-label" style="flex:0 0 auto;">Search by name</label>
       <input id="name-search" type="search" name="name_contains"
              value="{{ name_contains }}"
-             class="input" placeholder="Enter name…" style="flex:1;"
+             class="form-input" placeholder="Enter name…" style="flex:1;"
              aria-label="Name filter">
       <button type="submit" class="btn">Search</button>
       {% if name_contains %}

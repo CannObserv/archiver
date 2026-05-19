@@ -123,15 +123,15 @@
               action="/dashboard/info-items/{{ item.info_item_id }}/bind-source"
               style="display:flex;flex-direction:column;gap:var(--space-2);">
           <div>
-            <label for="bind-source-id" class="label">Information Source ID</label>
+            <label for="bind-source-id" class="form-label">Information Source ID</label>
             <input id="bind-source-id" type="text" name="info_source_id"
-                   class="input" placeholder="01ABCDE…" required
+                   class="form-input" placeholder="01ABCDE…" required
                    aria-describedby="bind-source-hint">
             <p class="text-small text-muted" id="bind-source-hint">ULID of an existing Information Source.</p>
           </div>
           <div>
-            <label for="bind-source-role" class="label">Role</label>
-            <select id="bind-source-role" name="role" class="input">
+            <label for="bind-source-role" class="form-label">Role</label>
+            <select id="bind-source-role" name="role" class="form-select">
               <option value="">primary (null)</option>
               <option value="cross_check">cross_check</option>
               <option value="sub_aspect">sub_aspect</option>
@@ -176,9 +176,9 @@
               action="/dashboard/info-items/{{ item.info_item_id }}/assign-rep-spec"
               style="display:flex;gap:var(--space-2);align-items:flex-end;">
           <div style="flex:1;">
-            <label for="assign-rs-id" class="label">Rep Spec ID</label>
+            <label for="assign-rs-id" class="form-label">Rep Spec ID</label>
             <input id="assign-rs-id" type="text" name="rep_spec_id"
-                   class="input" placeholder="01ABCDE…" required>
+                   class="form-input" placeholder="01ABCDE…" required>
           </div>
           <button type="submit" class="btn btn--primary btn--sm">Assign</button>
         </form>
@@ -231,9 +231,9 @@
               action="/dashboard/info-items/{{ item.info_item_id }}/bind-revision"
               style="display:flex;gap:var(--space-2);align-items:flex-end;">
           <div style="flex:1;">
-            <label for="bind-rev-id" class="label">Source Revision ID</label>
+            <label for="bind-rev-id" class="form-label">Source Revision ID</label>
             <input id="bind-rev-id" type="text" name="source_revision_id"
-                   class="input" placeholder="01ABCDE…" required>
+                   class="form-input" placeholder="01ABCDE…" required>
           </div>
           <button type="submit" class="btn btn--primary btn--sm">Bind</button>
         </form>

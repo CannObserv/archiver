@@ -24,33 +24,33 @@
       <h2 style="margin-top:0;">1. Basics</h2>
 
       <div style="margin-bottom:var(--space-3);">
-        <label for="item-name" class="label">Name <span aria-hidden="true">*</span></label>
+        <label for="item-name" class="form-label">Name <span aria-hidden="true">*</span></label>
         <input id="item-name" type="text" name="name" x-model="name"
-               class="input" :class="{ 'input--error': errors.name }"
+               class="form-input" :class="{ 'form-input--error': errors.name }"
                maxlength="200" required autocomplete="off"
                aria-required="true">
         {% if errors.name %}<p class="alert alert--error">{{ errors.name }}</p>{% endif %}
       </div>
 
       <div style="margin-bottom:var(--space-3);">
-        <label for="item-description" class="label">Description</label>
+        <label for="item-description" class="form-label">Description</label>
         <textarea id="item-description" name="description" x-model="description"
-                  class="input" rows="3" maxlength="2000"></textarea>
+                  class="form-textarea" rows="3" maxlength="2000"></textarea>
       </div>
 
       <div style="margin-bottom:var(--space-3);">
-        <label for="item-owner" class="label">Owner</label>
+        <label for="item-owner" class="form-label">Owner</label>
         <input id="item-owner" type="text" name="owner" x-model="owner"
-               class="input" maxlength="200" autocomplete="off">
+               class="form-input" maxlength="200" autocomplete="off">
       </div>
 
       <div style="margin-bottom:var(--space-3);">
-        <label for="rep-fields" class="label">Rep Fields (JSON object)</label>
+        <label for="rep-fields" class="form-label">Rep Fields (JSON object)</label>
         <div x-data="jsonFieldEditor('repFieldsRaw', 'rep_fields_error')">
-          <textarea id="rep-fields" class="input code-block"
+          <textarea id="rep-fields" class="form-textarea code-block"
                     x-model="raw"
                     @blur="formatAndValidate()"
-                    :class="{ 'input--error': hasError }"
+                    :class="{ 'form-textarea--error': hasError }"
                     rows="4"
                     aria-describedby="rep-fields-hint"
                     placeholder="{}"></textarea>
@@ -79,12 +79,12 @@
       </p>
 
       <div style="margin-bottom:var(--space-3);">
-        <label for="source-spec" class="label">SourceSpec JSON</label>
+        <label for="source-spec" class="form-label">SourceSpec JSON</label>
         <div x-data="jsonFieldEditor('sourceSpecRaw', 'source_spec_error')">
-          <textarea id="source-spec" class="input code-block"
+          <textarea id="source-spec" class="form-textarea code-block"
                     x-model="raw"
                     @blur="formatAndValidate()"
-                    :class="{ 'input--error': hasError }"
+                    :class="{ 'form-textarea--error': hasError }"
                     rows="8"
                     placeholder='{"schema_version":1,"target":{"url":"https://..."},"extraction":{"algorithm":"css","selector":"h1"},"fingerprint":{}}'></textarea>
           <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>

@@ -671,6 +671,21 @@ p:last-child { margin-bottom: 0; }
   color: var(--color-danger);
   margin-top: var(--space-1);
 }
+.form-input--error,
+.form-select--error,
+.form-textarea--error {
+  border-color: var(--color-danger);
+}
+.form-input--error:focus,
+.form-select--error:focus,
+.form-textarea--error:focus {
+  box-shadow: 0 0 0 3px rgb(var(--color-danger-rgb, 220 53 69) / 0.2);
+}
+.form-input--inline {
+  width: auto;
+  min-height: unset;
+  padding: var(--space-1) var(--space-2);
+}
 
 /* ─── Pagination ─────────────────────────────────────────────────────────── */
 .pagination {
