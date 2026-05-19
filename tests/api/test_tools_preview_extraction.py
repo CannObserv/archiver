@@ -28,11 +28,6 @@ HTML_FIXTURE = (
 )
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 def _stub_fetcher(content: bytes = HTML_FIXTURE, *, raise_exc: Exception | None = None):
     class _Stub:
         async def fetch(self, url: str, config: dict | None = None):

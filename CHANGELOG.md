@@ -10,6 +10,17 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v3.4.0 (2026-05-19)
+
+[service] **API key auth migrated from env-var to DB** — `require_api_key`
+now validates `X-API-Key` against SHA-256 hashes stored in
+`information.api_keys` instead of the `ARCHIVER_API_KEY` env var
+(archiver#29). **Deployment note:** the env var is no longer read; operators
+must seed at least one `api_keys` row before upgrading or all API calls will
+return 401. `last_used_at` is updated on each successful auth. New
+`GET/POST/DELETE/PATCH /dashboard/settings/api-keys` routes let dashboard
+users manage their keys.
+
 ## v3.3.0 (2026-05-19)
 
 [service] **Admin dashboard — Epic 1 foundation** — New `/dashboard/` route family

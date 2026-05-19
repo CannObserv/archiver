@@ -47,11 +47,6 @@ async def _bind(client, item_id: str, source_id: str) -> None:
     assert resp.status_code == 201
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 @pytest.mark.asyncio
 async def test_create_info_item(client):
     response = await client.post(

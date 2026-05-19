@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
+from src.api.errors import raise_422, raise_envelope
 from src.core.models import ApiKey, AppUser
 from src.dashboard.deps import generate_api_key, get_dashboard_user
 
@@ -27,8 +28,6 @@ async def _get_user_keys(session: AsyncSession, user: AppUser) -> list[ApiKey]:
 
 async def _resolve_key(key_id: str, user: AppUser, session: AsyncSession) -> ApiKey:
     """Fetch an ApiKey by id, raising 404 if absent or owned by a different user."""
-    from src.api.errors import raise_envelope
-
     try:
         uid = ULID.from_str(key_id)
     except Exception as e:
@@ -62,8 +61,6 @@ async def settings_create_api_key(
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Create a new API key; returns the page with the raw key shown once."""
-    from src.api.errors import raise_422
-
     label = label.strip()
     if not label:
         raise_422("label is required")
@@ -108,8 +105,6 @@ async def settings_rename_api_key(
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Rename one of the current user's API keys; returns updated row fragment."""
-    from src.api.errors import raise_422
-
     label = label.strip()
     if not label:
         raise_422("label is required")

@@ -9,11 +9,6 @@ from src.core.fetchers.base import FetchResult
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 def _stub_fetcher(content: bytes):
     class _Stub:
         async def fetch(self, url: str, config: dict | None = None):

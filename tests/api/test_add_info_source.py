@@ -12,11 +12,6 @@ from src.core.models import InfoItem, InfoItemSource, InfoSource
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 def _root_doc(url: str) -> dict:
     return {
         "schema_version": 1,

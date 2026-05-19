@@ -1,7 +1,6 @@
 """Dashboard-specific FastAPI dependencies."""
 
 import hashlib
-import os
 import secrets
 from urllib.parse import quote
 
@@ -62,13 +61,3 @@ def generate_api_key() -> tuple[str, str, str]:
     key_prefix = raw_key[:8]
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
     return raw_key, key_prefix, key_hash
-
-
-def hash_api_key(raw_key: str) -> str:
-    """Return SHA-256 hex digest of a raw API key."""
-    return hashlib.sha256(raw_key.encode()).hexdigest()
-
-
-def get_api_key_env() -> str | None:
-    """Return the legacy ARCHIVER_API_KEY env var (used until Epic 2 migration)."""
-    return os.environ.get("ARCHIVER_API_KEY")

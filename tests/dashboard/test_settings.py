@@ -7,7 +7,6 @@ from src.core.models import ApiKey, AppUser
 from src.dashboard.deps import generate_api_key
 
 _HEADERS = {"X-ExeDev-UserID": "ext-settings", "X-ExeDev-Email": "settings@example.com"}
-_OTHER_HEADERS = {"X-ExeDev-UserID": "ext-other", "X-ExeDev-Email": "other@example.com"}
 _URL = "/dashboard/settings/api-keys"
 
 

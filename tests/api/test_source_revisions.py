@@ -42,11 +42,6 @@ FP_VALID = "sha256:" + "a" * 64
 FP_VALID_2 = "sha256:" + "b" * 64
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 @pytest.fixture
 async def info_source(session) -> InfoSource:
     """Root InfoSource for source-revision tests."""

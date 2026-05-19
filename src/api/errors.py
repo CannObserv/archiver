@@ -13,7 +13,7 @@ contract.
 from __future__ import annotations
 
 import http
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -86,7 +86,7 @@ def raise_envelope(
     errors: list[dict[str, Any]] | list[FieldError] | None = None,
     data: dict[str, Any] | None = None,
     source_exc: BaseException | None = None,
-) -> None:
+) -> NoReturn:
     """Raise an HTTPException whose ``detail`` is a serialized ErrorEnvelope.
 
     Pass ``source_exc`` (typically the ``e`` from an ``except X as e`` block)
@@ -113,7 +113,7 @@ def raise_422(
     errors: list[dict[str, Any]] | list[FieldError] | None = None,
     data: dict[str, Any] | None = None,
     source_exc: BaseException | None = None,
-) -> None:
+) -> NoReturn:
     """Shorthand for the common 422 case.  Defaults to ``kind='schema'``."""
     raise_envelope(422, kind, message, errors=errors, data=data, source_exc=source_exc)
 
