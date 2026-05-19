@@ -182,9 +182,13 @@ Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment u
 - Bound Information Items — table of active `info_item_sources` bindings (item name link, role badge, bound date).
 - Revision History — last 50 `source_revisions` ordered by `captured_at desc` (fingerprint truncated, captured date, cache status pill).
 
-### Information Source Revisions (`/dashboard/source-revisions/`)  *(Epic 5)*
-- **List:** filter by Information Source; columns: fingerprint (truncated), captured_at, cache status (`.status-pill--*`).
-- **Detail:** full fingerprint, captured_at, `content_cache_uri` + expiry, bound Information Items. PATCH form for cache field clearing.
+### Information Source Revisions (`/dashboard/source-revisions/`)  *(Epic 5 — implemented)*
+
+**GET `/dashboard/source-revisions/`** — paginated list ordered by `captured_at desc`. Optional `info_source_id` filter (ULID). Columns: truncated fingerprint (link to detail), source URL (link to InfoSource detail), captured date, cache status pill (`.status-pill--cached` / `.status-pill--expired` / `.status-pill--missing`).
+
+**GET `/dashboard/source-revisions/{id}`** — detail page. Shows full fingerprint, source link, captured_at, size, media type, cache status + URI + expiry. Danger-zone form for cache clearing (shown only when `content_cache_uri` is set). Bound Information Items table.
+
+**POST `/dashboard/source-revisions/{id}/clear-cache`** — sets `content_cache_uri = NULL` and `content_cache_expires_at = NULL`. Redirects 303 to detail. No request body required.
 
 ### Replication Specifications (`/dashboard/rep-specs/`)  *(Epic 6)*
 - **List:** paginated; filter by provider.

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Information Source Revisions{% endblock %}
+
+{% block content %}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Information Source Revisions</h1>
+  </div>
+
+  {# Filter #}
+  <div class="filter-card">
+    <form method="GET" action="/dashboard/source-revisions/"
+          style="display:flex;gap:var(--space-2);align-items:flex-end;flex-wrap:wrap;">
+      <div>
+        <label for="src-filter" class="form-label">Filter by Information Source ID</label>
+        <input id="src-filter" type="text" name="info_source_id"
+               value="{{ info_source_id or '' }}"
+               class="form-input" placeholder="01ABCDE…">
+      </div>
+      <button type="submit" class="btn btn--ghost btn--sm">Filter</button>
+      {% if info_source_id %}
+      <a href="/dashboard/source-revisions/" class="btn btn--ghost btn--sm">Clear</a>
+      {% endif %}
+    </form>
+    {% if filter_source %}
+    <p class="text-small text-muted" style="margin-top:var(--space-2);">
+      Showing revisions for
+      <a href="/dashboard/info-sources/{{ filter_source.info_source_id }}">
+        <code>{{ filter_source.url or filter_source.info_source_id }}</code>
+      </a>
+    </p>
+    {% endif %}
+  </div>
+
+  {% if revisions %}
+  <table class="data-table" aria-label="Information Source Revisions">
+    <thead>
+      <tr>
+        <th class="data-table__th">Fingerprint</th>
+        <th class="data-table__th">Source</th>
+        <th class="data-table__th">Captured</th>
+        <th class="data-table__th">Cache</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rev in revisions %}
+      {% set src = sources_by_id.get(rev.info_source_id) %}
+      <tr>
+        <td class="data-table__cell">
+          <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
+            <code class="text-small">{{ rev.content_fingerprint[:24] }}…</code>
+          </a>
+        </td>
+        <td class="data-table__cell">
+          {% if src %}
+          <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
+             class="text-small">{{ src.url or rev.info_source_id }}</a>
+          {% else %}
+          <span class="text-muted text-small">{{ rev.info_source_id }}</span>
+          {% endif %}
+        </td>
+        <td class="data-table__cell data-table__cell--muted">
+          {{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}
+        </td>
+        <td class="data-table__cell">
+          {% if rev.content_cache_uri %}
+            {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
+            <span class="status-pill status-pill--expired">expired</span>
+            {% else %}
+            <span class="status-pill status-pill--cached">cached</span>
+            {% endif %}
+          {% else %}
+          <span class="status-pill status-pill--missing">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# Pagination #}
+  <div class="pagination" style="margin-top:var(--space-3);">
+    {% if offset > 0 %}
+    <a href="/dashboard/source-revisions/?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}{% if info_source_id %}&info_source_id={{ info_source_id }}{% endif %}"
+       class="btn btn--ghost btn--sm">← Previous</a>
+    {% endif %}
+    {% if has_more %}
+    <a href="/dashboard/source-revisions/?offset={{ offset + limit }}&limit={{ limit }}{% if info_source_id %}&info_source_id={{ info_source_id }}{% endif %}"
+       class="btn btn--ghost btn--sm">Next →</a>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <p class="text-muted">No revisions found.</p>
+  {% endif %}
+</div>
+{% endblock %}

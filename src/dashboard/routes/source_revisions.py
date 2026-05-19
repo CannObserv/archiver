@@ -1,0 +1,180 @@
+"""Dashboard — Information Source Revisions (list, detail, cache-clear)."""
+
+from datetime import UTC, datetime
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from ulid import ULID
+
+from src.api.deps import get_db_session
+from src.api.errors import raise_envelope
+from src.core.models import (
+    InfoItem,
+    InfoItemSourceRevision,
+    InfoSource,
+    SourceRevision,
+)
+from src.dashboard.deps import get_dashboard_user
+
+router = APIRouter(prefix="/dashboard/source-revisions", tags=["dashboard-source-revisions"])
+
+_templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+
+
+async def _resolve_revision(rev_id: str, session: AsyncSession) -> SourceRevision:
+    """Fetch SourceRevision by ULID string or raise 404."""
+    try:
+        uid = ULID.from_str(rev_id)
+    except Exception as e:
+        raise_envelope(404, "lookup", "Information Source Revision not found", source_exc=e)
+    rev = await session.get(SourceRevision, uid)
+    if rev is None:
+        raise_envelope(404, "lookup", "Information Source Revision not found")
+    return rev
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/source-revisions/
+# ---------------------------------------------------------------------------
+
+
+@router.get("/", response_class=HTMLResponse)
+async def list_source_revisions(
+    request: Request,
+    info_source_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Paginated list; optional filter by info_source_id."""
+    stmt = select(SourceRevision).order_by(
+        SourceRevision.captured_at.desc(), SourceRevision.source_revision_id
+    )
+    filter_source: InfoSource | None = None
+    if info_source_id:
+        try:
+            src_ulid = ULID.from_str(info_source_id)
+        except Exception:
+            src_ulid = None
+        if src_ulid is not None:
+            filter_source = await session.get(InfoSource, src_ulid)
+            stmt = stmt.where(SourceRevision.info_source_id == src_ulid)
+    stmt = stmt.offset(offset).limit(limit + 1)
+
+    rows = list((await session.execute(stmt)).scalars().all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    # Batch-load InfoSources for display
+    source_ids = list({r.info_source_id for r in rows})
+    sources_by_id: dict[ULID, InfoSource] = {}
+    if source_ids:
+        src_rows = list(
+            (
+                await session.execute(
+                    select(InfoSource).where(InfoSource.info_source_id.in_(source_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        sources_by_id = {s.info_source_id: s for s in src_rows}
+
+    now = datetime.now(UTC)
+    return _templates.TemplateResponse(
+        request,
+        "source_revisions/list.html",
+        {
+            "user": user,
+            "revisions": rows,
+            "sources_by_id": sources_by_id,
+            "filter_source": filter_source,
+            "info_source_id": info_source_id,
+            "has_more": has_more,
+            "limit": limit,
+            "offset": offset,
+            "now": now,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/source-revisions/{id}
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{rev_id}", response_class=HTMLResponse)
+async def detail_source_revision(
+    rev_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Detail: fingerprint, source link, cache info, bound items."""
+    rev = await _resolve_revision(rev_id, session)
+
+    source = await session.get(InfoSource, rev.info_source_id)
+
+    # Bound InfoItems via info_item_source_revisions
+    iisr_rows = list(
+        (
+            await session.execute(
+                select(InfoItemSourceRevision).where(
+                    InfoItemSourceRevision.source_revision_id == rev.source_revision_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    item_ids = [r.info_item_id for r in iisr_rows]
+    items_by_id: dict[ULID, InfoItem] = {}
+    if item_ids:
+        item_rows = list(
+            (await session.execute(select(InfoItem).where(InfoItem.info_item_id.in_(item_ids))))
+            .scalars()
+            .all()
+        )
+        items_by_id = {i.info_item_id: i for i in item_rows}
+
+    now = datetime.now(UTC)
+    return _templates.TemplateResponse(
+        request,
+        "source_revisions/detail.html",
+        {
+            "user": user,
+            "rev": rev,
+            "source": source,
+            "iisr_rows": iisr_rows,
+            "items_by_id": items_by_id,
+            "now": now,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /dashboard/source-revisions/{id}/clear-cache
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{rev_id}/clear-cache")
+async def clear_revision_cache(
+    rev_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Clear content_cache_uri and content_cache_expires_at."""
+    rev = await _resolve_revision(rev_id, session)
+    rev.content_cache_uri = None
+    rev.content_cache_expires_at = None
+    await session.commit()
+    return RedirectResponse(
+        url=f"/dashboard/source-revisions/{rev.source_revision_id}",
+        status_code=303,
+    )
