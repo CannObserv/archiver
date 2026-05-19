@@ -32,9 +32,7 @@ async def get_dashboard_user(
     external_id = request.headers.get("X-ExeDev-UserID")
     email = request.headers.get("X-ExeDev-Email")
     if not external_id or not email:
-        path = request.url.path
-        qs = request.url.query
-        target = f"{path}?{qs}" if qs else path
+        target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         raise DashboardAuthRequired(redirect_to=f"/__exe.dev/login?redirect={quote(target)}")
 
     result = await session.execute(select(AppUser).where(AppUser.external_id == external_id))

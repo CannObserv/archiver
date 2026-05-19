@@ -1,10 +1,7 @@
 /*jslint browser, module */
 /**
  * Dashboard entry point.
- * Configures HTMX and registers Alpine.js components via the alpine:init event
- * so they are available before Alpine walks the initial DOM. The CDN bundle
- * (alpine.min.js) calls Alpine.start() internally; we must not call it again.
- * Loaded as type="module" so it executes after all deferred scripts.
+ * Configures HTMX and registers Alpine.js data components via the alpine:init event.
  */
 
 /**
