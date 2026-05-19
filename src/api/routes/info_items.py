@@ -201,9 +201,6 @@ async def list_info_items(
     has_more = len(rows) > limit
     rows = rows[:limit]
 
-    if not rows:
-        return Page[InfoItemOut](items=[], has_more=False, limit=limit, offset=offset)
-
     item_ids = [r.info_item_id for r in rows]
 
     sources_rows = (

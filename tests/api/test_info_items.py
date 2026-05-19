@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from ulid import ULID
 
 from src.core.models import InfoItemRepSpec, InfoItemSource, RepSpec
 
@@ -191,8 +192,6 @@ async def test_get_info_item_excludes_deactivated_source_binding(client, session
     await _bind(client, item_id, source_id)
 
     # Deactivate the binding directly in the DB.
-    from ulid import ULID
-
     binding = await session.get(
         InfoItemSource,
         (ULID.from_str(item_id), ULID.from_str(source_id)),
@@ -207,8 +206,6 @@ async def test_get_info_item_excludes_deactivated_source_binding(client, session
 @pytest.mark.asyncio
 async def test_get_info_item_returns_active_rep_spec_assignments(client, session):
     """GET /info-items/{id} must populate info_item_rep_specs for active assignments."""
-    from ulid import ULID
-
     item_id = await _make_item(client)
 
     rep_spec = RepSpec(
@@ -243,8 +240,6 @@ async def test_get_info_item_returns_active_rep_spec_assignments(client, session
 @pytest.mark.asyncio
 async def test_get_info_item_excludes_deactivated_rep_spec_assignment(client, session):
     """A deactivated info_item_rep_specs row must not appear in GET /info-items/{id}."""
-    from ulid import ULID
-
     item_id = await _make_item(client)
 
     rep_spec = RepSpec(
@@ -291,8 +286,6 @@ async def test_list_info_items_populates_sources(client, session):
 @pytest.mark.asyncio
 async def test_list_info_items_excludes_deactivated_source_binding(client, session):
     """GET /info-items must exclude deactivated info_item_sources rows."""
-    from ulid import ULID
-
     item_id = await _make_item(client, "ListedDeact")
     source_id = await _make_source(client, "https://example.com/deact")
     await _bind(client, item_id, source_id)
