@@ -138,8 +138,9 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 ## Page Inventory
 
-### Home (`/dashboard/`)  *(Epic 7)*
-Summary counts (InfoItems, InfoSources, RepSpecs, SourceRevisions). Recent SourceRevision captures (last 10). Service health indicator.
+### Home (`/dashboard/`)  *(Epic 7 — implemented)*
+
+**GET `/dashboard/`** — summary dashboard. Four count tiles (Information Items, Information Sources, Replication Specifications, Source Revisions), each a link to the respective list page. Service health indicator loaded via `hx-get="/health" hx-trigger="load"` (non-blocking, shows "checking…" badge until HTMX fires). Recent captures table: last 10 SourceRevisions ordered by `captured_at desc`, with fingerprint link and source URL.
 
 ### Information Items (`/dashboard/info-items/`)  *(Epic 3 — implemented)*
 

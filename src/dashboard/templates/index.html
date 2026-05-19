@@ -4,8 +4,84 @@
 
 {% block content %}
 <div class="entity-section">
-  <h1>Dashboard</h1>
-  <p class="text-muted">Welcome to the Cannabis Observer Archiver admin dashboard.</p>
-  <p>Summary statistics and recent activity will appear here in Epic 7.</p>
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Dashboard</h1>
+  </div>
+
+  {# Summary counts #}
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--space-3);margin-bottom:var(--space-4);">
+
+    <a href="/dashboard/info-items/" class="entity-card" style="text-decoration:none;">
+      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Information Items</p>
+      <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ item_count }}</p>
+    </a>
+
+    <a href="/dashboard/info-sources/" class="entity-card" style="text-decoration:none;">
+      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Information Sources</p>
+      <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ source_count }}</p>
+    </a>
+
+    <a href="/dashboard/rep-specs/" class="entity-card" style="text-decoration:none;">
+      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Replication Specifications</p>
+      <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ rep_spec_count }}</p>
+    </a>
+
+    <a href="/dashboard/source-revisions/" class="entity-card" style="text-decoration:none;">
+      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Source Revisions</p>
+      <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ revision_count }}</p>
+    </a>
+
+  </div>
+
+  {# Service health — loaded client-side via HTMX so it doesn't block page render #}
+  <div class="filter-card" style="margin-bottom:var(--space-4);">
+    <span class="text-small text-muted" style="margin-right:var(--space-2);">Service health:</span>
+    <span id="health-indicator"
+          hx-get="/health"
+          hx-trigger="load"
+          hx-swap="innerHTML">
+      <span class="badge">checking…</span>
+    </span>
+  </div>
+
+  {# Recent revisions #}
+  <h2 style="margin-bottom:var(--space-2);">Recent Captures</h2>
+  {% if recent_revisions %}
+  <table class="data-table" aria-label="Recent revision captures">
+    <thead>
+      <tr>
+        <th class="data-table__th">Revision</th>
+        <th class="data-table__th">Source</th>
+        <th class="data-table__th">Captured</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rev in recent_revisions %}
+      {% set src = sources_by_id.get(rev.info_source_id) %}
+      <tr>
+        <td class="data-table__cell">
+          <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
+            <code class="text-small">{{ rev.content_fingerprint[:20] }}…</code>
+          </a>
+        </td>
+        <td class="data-table__cell">
+          {% if src %}
+          <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
+             class="text-small">{{ src.url or rev.info_source_id }}</a>
+          {% else %}
+          <span class="text-muted text-small">{{ rev.info_source_id }}</span>
+          {% endif %}
+        </td>
+        <td class="data-table__cell data-table__cell--muted">
+          {{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No revision captures yet.</p>
+  {% endif %}
+
 </div>
 {% endblock %}
