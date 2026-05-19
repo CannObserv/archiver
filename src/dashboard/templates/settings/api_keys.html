@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}API Keys{% endblock %}
+
+{% block content %}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">API Keys</h1>
+  </div>
+
+  {# One-time raw key reveal — shown only immediately after creation. #}
+  {% if new_raw_key %}
+  <div x-data="apiKeyReveal" x-init="open('{{ new_raw_key }}')"
+       class="alert alert--success" data-key-reveal-modal tabindex="-1"
+       role="region" aria-label="New API key">
+    <p class="alert__title">New API key — copy it now. It will not be shown again.</p>
+    <div class="code-block" style="display:flex;align-items:center;gap:var(--space-2);">
+      <code x-text="rawKey" style="flex:1;word-break:break-all;"></code>
+      <button type="button" class="btn btn--sm btn--ghost"
+              @click="copy()"
+              :aria-label="copied ? 'Copied' : 'Copy key'">
+        <span x-text="copied ? '✓ Copied' : 'Copy'"></span>
+      </button>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Create form #}
+  <div class="filter-card">
+    <form method="POST" action="/dashboard/settings/api-keys" class="inline-form">
+      <label for="key-label" class="label">New key label</label>
+      <div style="display:flex;gap:var(--space-2);align-items:flex-end;">
+        <input id="key-label" type="text" name="label"
+               class="input" placeholder="e.g. Watcher production"
+               required maxlength="200" style="flex:1;">
+        <button type="submit" class="btn btn--primary">Create key</button>
+      </div>
+    </form>
+  </div>
+
+  {# Key list #}
+  {% if keys %}
+  <table class="data-table" aria-label="API keys">
+    <thead>
+      <tr>
+        <th class="data-table__th">Prefix</th>
+        <th class="data-table__th">Label</th>
+        <th class="data-table__th">Last used</th>
+        <th class="data-table__th"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for key in keys %}
+      {% include "settings/_api_key_row.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No API keys yet. Create one above.</p>
+  {% endif %}
+</div>
+{% endblock %}

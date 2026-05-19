@@ -76,7 +76,7 @@ Reveal-once modal for newly created API keys.
 - `open(key)` — set `rawKey`, open the modal, focus the first focusable element.
 - `copy()` — write `rawKey` to clipboard, set `copied = true` for 2 s.
 
-**Usage:** Triggered by server response after successful key creation (HTMX `HX-Trigger: {"openKeyReveal": {"key": "co_..."}}` or injected via the route response template).
+**Usage:** Included via `x-data="apiKeyReveal" x-init="open('{{ new_raw_key }}')"` on the reveal section returned by `POST /dashboard/settings/api-keys`. The raw key is embedded server-side in the one-time render; it is not stored client-side beyond the DOM lifetime.
 
 ---
 
@@ -108,5 +108,14 @@ Summary counts (InfoItems, InfoSources, RepSpecs, SourceRevisions). Recent Sourc
 - **Detail:** document JSON display; active assignments (with public_url writeback status).
 - **Create:** provider selector + document editor + live validation.
 
-### Settings — API Keys (`/dashboard/settings/api-keys`)  *(Epic 2)*
-List user's keys (prefix, label, last_used_at); create (raw key shown once in `apiKeyReveal` modal); rename; delete.
+### Settings — API Keys (`/dashboard/settings/api-keys`)  *(Epic 2 — implemented)*
+
+**GET** — list current user's keys (prefix, label, last_used_at columns); create form.
+
+**POST** — create new key (`label` form field required). Returns the full page with `new_raw_key` in template context so the `apiKeyReveal` component shows the raw key once. After navigation, the raw key is gone.
+
+**DELETE `/dashboard/settings/api-keys/{id}`** — HTMX delete; response replaces the `<tr id="key-row-{id}">` with empty (removes row). Returns 404 if key belongs to a different user.
+
+**PATCH `/dashboard/settings/api-keys/{id}`** — rename label (`label` form field). Returns `settings/_api_key_row.html` fragment replacing the existing row. Returns 404 if key belongs to a different user.
+
+Partial template: `settings/_api_key_row.html` — reusable `<tr>` fragment used both in list and as PATCH response.

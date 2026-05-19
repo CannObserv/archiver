@@ -9,6 +9,7 @@ from starlette.requests import Request
 
 from src.dashboard.deps import DashboardAuthRequired
 from src.dashboard.routes.index import router as index_router
+from src.dashboard.routes.settings import router as settings_router
 
 
 async def _dashboard_auth_redirect(
@@ -27,3 +28,4 @@ def register_dashboard(app: FastAPI) -> None:
     )
     app.add_exception_handler(DashboardAuthRequired, _dashboard_auth_redirect)
     app.include_router(index_router)
+    app.include_router(settings_router)
