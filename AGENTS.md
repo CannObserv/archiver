@@ -275,6 +275,8 @@ entry `[service]`, `[sdk]`, or `[both]` per the format header in
 `CHANGELOG.md`. The SDK README links here; do not maintain a second
 changelog there.
 
+**Dashboard living docs:** `docs/STYLE.md` and `docs/UI.md` must be updated in the same commit as any change to `src/dashboard/static/dashboard.css`, a JS module under `src/dashboard/static/`, a Jinja2 template in `src/dashboard/templates/`, or a new dashboard route. Failure to update them is a CR blocker.
+
 **Logging:**
 ```python
 from src.core.logging import get_logger

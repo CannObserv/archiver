@@ -3,6 +3,15 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
+name = "aiofiles"
+version = "24.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/03/a88171e277e8caa88a4c77808c20ebb04ba74cc4681bf1e9416c862de237/aiofiles-24.1.0.tar.gz", hash = "sha256:22a075c9e5a3810f0c2e48f3008c94d68c65d763b9b03857924c99e57355166c", size = 30247, upload-time = "2024-06-24T11:02:03.584Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a5/45/30bb92d442636f570cb5651bc661f52b610e2eec3f891a5dc3a4c3667db0/aiofiles-24.1.0-py3-none-any.whl", hash = "sha256:b4ec55f4195e3eb5d7abd1bf7e061763e864dd4954231fb8539a0ef8bb8260e5", size = 15896, upload-time = "2024-06-24T11:02:01.529Z" },
+]
+
+[[package]]
 name = "alembic"
 version = "1.18.4"
 source = { registry = "https://pypi.org/simple" }
@@ -52,6 +61,7 @@ name = "archiver"
 version = "3.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiofiles" },
     { name = "alembic" },
     { name = "archiver-client" },
     { name = "asyncpg" },
@@ -59,11 +69,13 @@ dependencies = [
     { name = "fastapi" },
     { name = "html5lib" },
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "jsonschema" },
     { name = "lxml" },
     { name = "openpyxl" },
     { name = "pypdf" },
     { name = "python-json-logger" },
+    { name = "python-multipart" },
     { name = "python-ulid" },
     { name = "redis", extra = ["hiredis"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -84,6 +96,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiofiles", specifier = ">=24.1.0,<25" },
     { name = "alembic", specifier = ">=1.15.0,<2" },
     { name = "archiver-client", editable = "clients/python" },
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
@@ -91,11 +104,13 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0,<1" },
     { name = "html5lib", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.28.0,<1" },
+    { name = "jinja2", specifier = ">=3.1.0,<4" },
     { name = "jsonschema", specifier = ">=4.21.0,<5" },
     { name = "lxml", specifier = ">=5.0,<7" },
     { name = "openpyxl", specifier = ">=3.1.0,<4" },
     { name = "pypdf", specifier = ">=5.0,<7" },
     { name = "python-json-logger", specifier = ">=4.0.0,<5" },
+    { name = "python-multipart", specifier = ">=0.0.9,<1" },
     { name = "python-ulid", specifier = ">=3.0.0,<4" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0,<3" },
@@ -1050,6 +1065,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f7/ff/3cc9165fd44106973cd7ac9facb674a65ed853494592541d339bdc9a30eb/python_json_logger-4.1.0.tar.gz", hash = "sha256:b396b9e3ed782b09ff9d6e4f1683d46c83ad0d35d2e407c09a9ebbf038f88195", size = 17573, upload-time = "2026-03-29T04:39:56.805Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/27/be/0631a861af4d1c875f096c07d34e9a63639560a717130e7a87cbc82b7e3f/python_json_logger-4.1.0-py3-none-any.whl", hash = "sha256:132994765cf75bf44554be9aa49b06ef2345d23661a96720262716438141b6b2", size = 15021, upload-time = "2026-03-29T04:39:55.266Z" },
+]
+
+[[package]]
+name = "python-multipart"
+version = "0.0.29"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/fe/70bd71a6738b09a0bdf6480ca6436b167469ca4578b2a0efbe390b4b0e70/python_multipart-0.0.29.tar.gz", hash = "sha256:643e93849196645e2dbdd81a0f8829a23123ad7f797a84a364c6fb3563f18904", size = 45678, upload-time = "2026-05-17T17:29:47.654Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/cb/769cfc37177252872a45a71f3fbdde9d51b471a3f3c14bfe95dde3407386/python_multipart-0.0.29-py3-none-any.whl", hash = "sha256:2ddcc971cef266225f54f552d8fa10bcfbb1f14446caec199060daac59ff2d69", size = 29640, upload-time = "2026-05-17T17:29:45.69Z" },
 ]
 
 [[package]]

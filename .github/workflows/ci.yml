@@ -40,6 +40,21 @@ jobs:
       - name: ruff format --check
         run: uv run ruff format --check .
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: npm install
+        run: npm install
+
+      - name: npm run lint
+        run: npm run lint
+
+      - name: npm test
+        run: npm test
+
   test:
     name: test
     runs-on: ubuntu-latest

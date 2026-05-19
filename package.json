@@ -1,0 +1,16 @@
+{
+  "name": "archiver-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "npx eslint src/dashboard/static tests/js"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "happy-dom": "latest",
+    "vitest": "latest"
+  }
+}
