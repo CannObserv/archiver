@@ -18,8 +18,10 @@ from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
+    InfoItemSourceRevision,
     InfoSource,
     RepSpec,
+    SourceRevision,
 )
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError as AssignItemNotFoundError,
@@ -194,7 +196,6 @@ async def list_info_items(
 async def new_info_item_form(
     request: Request,
     user=Depends(get_dashboard_user),
-    session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Render the multi-step create wizard."""
     return _templates.TemplateResponse(
@@ -364,8 +365,6 @@ async def detail_info_item(
             rep_specs_by_id[rs.rep_spec_id] = rs
 
     # Revision history (last 50)
-    from src.core.models import InfoItemSourceRevision, SourceRevision
-
     iisr_rows = list(
         (
             await session.execute(
@@ -546,12 +545,13 @@ async def deactivate_rep_spec_assignment(
 ) -> Response:
     """Deactivate a RepSpec assignment (HTMX — removes row)."""
     try:
+        item_ulid = ULID.from_str(item_id)
         aid_ulid = ULID.from_str(aid)
     except Exception as e:
         raise_envelope(404, "lookup", "Assignment not found", source_exc=e)
 
     assignment = await session.get(InfoItemRepSpec, aid_ulid)
-    if assignment is None or str(assignment.info_item_id) != item_id:
+    if assignment is None or assignment.info_item_id != item_ulid:
         raise_envelope(404, "lookup", "Assignment not found")
 
     assignment.deactivated_at = datetime.now(UTC)
@@ -576,12 +576,13 @@ async def set_assignment_public_url(
 ) -> HTMLResponse:
     """Write a public URL back to a RepSpec assignment; returns an updated row fragment."""
     try:
+        item_ulid = ULID.from_str(item_id)
         aid_ulid = ULID.from_str(aid)
     except Exception as e:
         raise_envelope(404, "lookup", "Assignment not found", source_exc=e)
 
     assignment = await session.get(InfoItemRepSpec, aid_ulid)
-    if assignment is None or str(assignment.info_item_id) != item_id:
+    if assignment is None or assignment.info_item_id != item_ulid:
         raise_envelope(404, "lookup", "Assignment not found")
 
     rs = await session.get(RepSpec, assignment.rep_spec_id)

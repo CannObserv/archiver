@@ -29,7 +29,6 @@
                class="input" :class="{ 'input--error': errors.name }"
                maxlength="200" required autocomplete="off"
                aria-required="true">
-        <p x-show="errors.name" class="alert alert--error" x-text="errors.name" role="alert"></p>
         {% if errors.name %}<p class="alert alert--error">{{ errors.name }}</p>{% endif %}
       </div>
 
@@ -96,7 +95,6 @@
 
       <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
         <button type="button" class="btn btn--ghost" @click="step = 1">← Back</button>
-        <button type="button" class="btn btn--ghost" @click="nextStep()">Skip →</button>
         <button type="button" class="btn btn--primary" @click="nextStep()">Next →</button>
       </div>
     </div>
