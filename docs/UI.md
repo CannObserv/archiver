@@ -80,7 +80,43 @@ Reveal-once modal for newly created API keys.
 
 ---
 
-*(Sections for infoItemWizard, jsonFieldEditor, sourceSpecEditor, repSpecEditor will be added in Epics 3–6.)*
+### `infoItemWizard`
+
+Multi-step create form for Information Items.
+
+**State:**
+- `step: number` — current step (1 = Basics, 2 = Source, 3 = Review).
+- `name: string`, `description: string`, `owner: string` — form field values.
+- `repFieldsRaw: string` — raw JSON string for `rep_fields` (written by nested `jsonFieldEditor`).
+- `sourceSpecRaw: string` — raw JSON string for `source_spec` (written by nested `jsonFieldEditor`).
+
+**Methods:**
+- `nextStep()` — advance to next step; step 1 guards that `name` is non-empty.
+- `prepareSubmit()` — called on form submit; no-op (jsonFieldEditor writes directly into root props on blur).
+
+**Usage:** `x-data="infoItemWizard"` on the outer `<div>`. Nested `jsonFieldEditor` components read/write `$root.repFieldsRaw` and `$root.sourceSpecRaw`. Hidden `<input>` elements bind via `:value` to these root properties so the standard form POST captures the current JSON.
+
+---
+
+### `jsonFieldEditor`
+
+Textarea-based JSON object editor with format-on-blur and inline validation.
+
+**Parameters (factory args):**
+- `rootProp: string` — name of a property on `$root` to write the formatted JSON string into on each valid blur.
+- `_errorKey: string` — reserved for API symmetry; error state is component-local.
+
+**State:**
+- `raw: string` — raw textarea value.
+- `hasError: boolean` — true when the current value is not a valid JSON object.
+- `errorMsg: string` — human-readable parse error.
+
+**Methods:**
+- `formatAndValidate()` — called on `@blur`. Parses `raw`, pretty-prints valid objects, writes into `$root[rootProp]`, sets `hasError`/`errorMsg`.
+
+**Usage:** `x-data="jsonFieldEditor('repFieldsRaw', 'rep_fields_error')"` on a wrapper element containing the `<textarea x-model="raw" @blur="formatAndValidate()">`.
+
+---
 
 ---
 
@@ -89,10 +125,32 @@ Reveal-once modal for newly created API keys.
 ### Home (`/dashboard/`)  *(Epic 7)*
 Summary counts (InfoItems, InfoSources, RepSpecs, SourceRevisions). Recent SourceRevision captures (last 10). Service health indicator.
 
-### Information Items (`/dashboard/info-items/`)  *(Epic 3)*
-- **List:** paginated; `name_contains` search; columns: name, primary source URL, active rep spec count, created_at.
-- **Detail:** header + three tabs — Sources (bind/deactivate), Replication Specs (assign/deactivate/set-public-url), Revision History.
-- **Create:** multi-step form (name/description/owner/rep_fields → optional SourceSpec → optional RepSpec assignments).
+### Information Items (`/dashboard/info-items/`)  *(Epic 3 — implemented)*
+
+**GET `/dashboard/info-items/`** — paginated list with optional `name_contains` search. Columns: name (link to detail), primary source URL, active rep spec count, created_at.
+
+**GET `/dashboard/info-items/new`** — three-step `infoItemWizard` form. Step 1: name/description/owner/rep_fields (`jsonFieldEditor`). Step 2: optional SourceSpec JSON (`jsonFieldEditor`). Step 3: review and submit.
+
+**POST `/dashboard/info-items/new`** — creates InfoItem (and optionally an initial InfoSource binding). Redirects 303 to detail on success. Returns 422 with re-rendered form on validation error.
+
+**GET `/dashboard/info-items/{id}`** — detail page. Header shows name, description, owner, rep_fields. Three Alpine.js tabs (client-side state):
+- *Sources* — table of active `info_item_sources` bindings + bind-source form.
+- *Replication Specs* — table of active `info_item_rep_specs` assignments + assign form.
+- *Revision History* — last 50 `info_item_source_revisions` ordered by `bound_at desc`.
+
+**POST `/dashboard/info-items/{id}/bind-source`** — binds an existing InfoSource (form fields: `info_source_id`, `role`). Redirects 303 to detail `?tab=sources`.
+
+**DELETE `/dashboard/info-items/{id}/info-sources/{source_id}`** — HTMX delete; sets `deactivated_at = now()`. Response replaces `<tr id="source-row-{source_id}">` with empty (removes row).
+
+**POST `/dashboard/info-items/{id}/assign-rep-spec`** — assigns a RepSpec (form field: `rep_spec_id`). Redirects 303 to detail `?tab=repspecs`.
+
+**DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** — HTMX delete; sets `deactivated_at = now()`. Removes `<tr id="rs-row-{aid}">`.
+
+**PATCH `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/public-url`** — sets `public_url` on an assignment (form field: `public_url`). Returns `info_items/_rep_spec_row.html` fragment replacing the row.
+
+**POST `/dashboard/info-items/{id}/bind-revision`** — binds a SourceRevision (form field: `source_revision_id`). Redirects 303 to detail `?tab=revisions`.
+
+Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment used in detail list and as PATCH public-url response.
 
 ### Information Sources (`/dashboard/info-sources/`)  *(Epic 4)*
 - **List:** paginated; filter by shape (root/fragment); URL search.

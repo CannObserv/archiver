@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}New Information Item{% endblock %}
+
+{% block content %}
+<div class="entity-section" x-data="infoItemWizard">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">New Information Item</h1>
+  </div>
+
+  {# Step indicator #}
+  <div class="detail-grid" style="margin-bottom:var(--space-4);" aria-label="Progress steps">
+    <span :class="{ 'badge--info': step === 1, 'badge--success': step > 1 }"
+          class="badge">1. Basics</span>
+    <span :class="{ 'badge--info': step === 2, 'badge--success': step > 2 }"
+          class="badge">2. Source (optional)</span>
+    <span :class="{ 'badge--info': step === 3 }"
+          class="badge">3. Review &amp; Create</span>
+  </div>
+
+  <form method="POST" action="/dashboard/info-items/new" @submit="prepareSubmit()">
+
+    {# Step 1: Basics #}
+    <div x-show="step === 1" class="filter-card">
+      <h2 style="margin-top:0;">1. Basics</h2>
+
+      <div style="margin-bottom:var(--space-3);">
+        <label for="item-name" class="label">Name <span aria-hidden="true">*</span></label>
+        <input id="item-name" type="text" name="name" x-model="name"
+               class="input" :class="{ 'input--error': errors.name }"
+               maxlength="200" required autocomplete="off"
+               aria-required="true">
+        <p x-show="errors.name" class="alert alert--error" x-text="errors.name" role="alert"></p>
+        {% if errors.name %}<p class="alert alert--error">{{ errors.name }}</p>{% endif %}
+      </div>
+
+      <div style="margin-bottom:var(--space-3);">
+        <label for="item-description" class="label">Description</label>
+        <textarea id="item-description" name="description" x-model="description"
+                  class="input" rows="3" maxlength="2000"></textarea>
+      </div>
+
+      <div style="margin-bottom:var(--space-3);">
+        <label for="item-owner" class="label">Owner</label>
+        <input id="item-owner" type="text" name="owner" x-model="owner"
+               class="input" maxlength="200" autocomplete="off">
+      </div>
+
+      <div style="margin-bottom:var(--space-3);">
+        <label for="rep-fields" class="label">Rep Fields (JSON object)</label>
+        <div x-data="jsonFieldEditor('repFieldsRaw', 'rep_fields_error')">
+          <textarea id="rep-fields" class="input code-block"
+                    x-model="raw"
+                    @blur="formatAndValidate()"
+                    :class="{ 'input--error': hasError }"
+                    rows="4"
+                    aria-describedby="rep-fields-hint"
+                    placeholder="{}"></textarea>
+          <p class="text-small text-muted" id="rep-fields-hint">
+            Arbitrary key-value pairs. Must be a JSON object.
+          </p>
+          <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>
+        </div>
+        <input type="hidden" name="rep_fields" :value="$root.repFieldsRaw">
+        {% if errors.rep_fields %}<p class="alert alert--error">{{ errors.rep_fields }}</p>{% endif %}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
+        <a href="/dashboard/info-items/" class="btn btn--ghost">Cancel</a>
+        <button type="button" class="btn btn--primary" @click="nextStep()"
+                :disabled="!name.trim()">Next →</button>
+      </div>
+    </div>
+
+    {# Step 2: Optional Source Spec #}
+    <div x-show="step === 2" class="filter-card">
+      <h2 style="margin-top:0;">2. Initial Information Source (optional)</h2>
+      <p class="text-muted">
+        Paste a SourceSpec JSON document to create and bind a primary Information Source.
+        Leave blank to skip — you can bind sources from the detail page.
+      </p>
+
+      <div style="margin-bottom:var(--space-3);">
+        <label for="source-spec" class="label">SourceSpec JSON</label>
+        <div x-data="jsonFieldEditor('sourceSpecRaw', 'source_spec_error')">
+          <textarea id="source-spec" class="input code-block"
+                    x-model="raw"
+                    @blur="formatAndValidate()"
+                    :class="{ 'input--error': hasError }"
+                    rows="8"
+                    placeholder='{"schema_version":1,"target":{"url":"https://..."},"extraction":{"algorithm":"css","selector":"h1"},"fingerprint":{}}'></textarea>
+          <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>
+        </div>
+        <input type="hidden" name="source_spec" :value="$root.sourceSpecRaw">
+        {% if errors.source_spec %}<p class="alert alert--error">{{ errors.source_spec }}</p>{% endif %}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
+        <button type="button" class="btn btn--ghost" @click="step = 1">← Back</button>
+        <button type="button" class="btn btn--ghost" @click="nextStep()">Skip →</button>
+        <button type="button" class="btn btn--primary" @click="nextStep()">Next →</button>
+      </div>
+    </div>
+
+    {# Step 3: Review & Submit #}
+    <div x-show="step === 3" class="filter-card">
+      <h2 style="margin-top:0;">3. Review &amp; Create</h2>
+
+      <dl class="detail-grid">
+        <dt>Name</dt>
+        <dd x-text="name"></dd>
+        <dt>Description</dt>
+        <dd x-text="description || '—'"></dd>
+        <dt>Owner</dt>
+        <dd x-text="owner || '—'"></dd>
+        <dt>Rep Fields</dt>
+        <dd><code x-text="$root.repFieldsRaw || '{}'"></code></dd>
+        <dt>Source Spec</dt>
+        <dd>
+          <span x-show="!$root.sourceSpecRaw || !$root.sourceSpecRaw.trim()" class="text-muted">None</span>
+          <code x-show="$root.sourceSpecRaw && $root.sourceSpecRaw.trim()"
+                x-text="$root.sourceSpecRaw" style="word-break:break-all;"></code>
+        </dd>
+      </dl>
+
+      <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
+        <button type="button" class="btn btn--ghost" @click="step = 2">← Back</button>
+        <button type="submit" class="btn btn--primary">Create Information Item</button>
+      </div>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

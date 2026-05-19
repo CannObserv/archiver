@@ -19,9 +19,10 @@ function configureHtmx() {
 
 // Register Alpine components via alpine:init so they are present before the
 // DOM walk. The CDN build fires alpine:init during Alpine.start(); registering
-// here (rather than after start()) ensures x-data="apiKeyReveal" elements in
-// the initial HTML are initialised correctly.
+// here (rather than after start()) ensures x-data components in the initial
+// HTML are initialised correctly.
 document.addEventListener("alpine:init", function () {
+
     /**
      * API key reveal modal — shows the raw key once after creation.
      * @returns {object} Alpine component data.
@@ -48,6 +49,81 @@ document.addEventListener("alpine:init", function () {
                     self.copied = true;
                     setTimeout(function () { self.copied = false; }, 2000);
                 });
+            }
+        };
+    });
+
+    /**
+     * JSON textarea editor — format on blur, validate, expose via a named root property.
+     *
+     * Usage: x-data="jsonFieldEditor('myProp', 'myProp_error')" on a wrapper element.
+     * The parent component (e.g. infoItemWizard) must define ``this.$root.myProp`` for
+     * the hidden form input to read from.
+     *
+     * @param {string} rootProp   Name of the property on $root to write the validated JSON into.
+     * @param {string} _errorKey  Unused — kept for API symmetry; error state is local.
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("jsonFieldEditor", function (rootProp, _errorKey) {
+        return {
+            raw: "",
+            hasError: false,
+            errorMsg: "",
+
+            formatAndValidate: function () {
+                var trimmed = this.raw.trim();
+                if (!trimmed) {
+                    this.hasError = false;
+                    this.errorMsg = "";
+                    if (this.$root && rootProp) { this.$root[rootProp] = ""; }
+                    return;
+                }
+                try {
+                    var parsed = JSON.parse(trimmed);
+                    if (typeof parsed !== "object" || Array.isArray(parsed)) {
+                        this.hasError = true;
+                        this.errorMsg = "Must be a JSON object (not an array or scalar).";
+                        return;
+                    }
+                    this.raw = JSON.stringify(parsed, null, 2);
+                    this.hasError = false;
+                    this.errorMsg = "";
+                    if (this.$root && rootProp) { this.$root[rootProp] = this.raw; }
+                } catch (err) {
+                    this.hasError = true;
+                    this.errorMsg = "Invalid JSON: " + err.message;
+                }
+            }
+        };
+    });
+
+    /**
+     * Multi-step Information Item create wizard.
+     *
+     * Manages step navigation and exposes rep_fields / source_spec JSON strings
+     * for nested jsonFieldEditor components to write into.  A single ``<form>``
+     * wraps all steps; hidden inputs read from these properties on submit.
+     *
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("infoItemWizard", function () {
+        return {
+            step: 1,
+            name: "",
+            description: "",
+            owner: "",
+            repFieldsRaw: "{}",
+            sourceSpecRaw: "",
+
+            nextStep: function () {
+                if (this.step === 1 && !this.name.trim()) { return; }
+                if (this.step < 3) { this.step += 1; }
+            },
+
+            /** Sync hidden input values before form submits. */
+            prepareSubmit: function () {
+                // jsonFieldEditor components write into $root.repFieldsRaw /
+                // sourceSpecRaw already via formatAndValidate; nothing extra needed.
             }
         };
     });
