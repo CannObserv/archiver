@@ -185,9 +185,11 @@ async def list_info_items(
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db_session),
 ) -> Page[InfoItemOut]:
-    """List InfoItems with offset pagination (no related rows populated).
+    """List InfoItems with offset pagination, including active sources and rep_spec assignments.
 
     ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Active ``info_item_sources`` and ``info_item_rep_specs`` are batch-loaded in
+    two additional queries (not N+1).
     """
     stmt = (
         select(InfoItem)
@@ -195,11 +197,56 @@ async def list_info_items(
         .offset(offset)
         .limit(limit + 1)
     )
-    rows = (await session.execute(stmt)).scalars().all()
+    rows = list((await session.execute(stmt)).scalars().all())
     has_more = len(rows) > limit
     rows = rows[:limit]
+
+    if not rows:
+        return Page[InfoItemOut](items=[], has_more=False, limit=limit, offset=offset)
+
+    item_ids = [r.info_item_id for r in rows]
+
+    sources_rows = (
+        (
+            await session.execute(
+                select(InfoItemSource).where(
+                    InfoItemSource.info_item_id.in_(item_ids),
+                    InfoItemSource.deactivated_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    sources_by_item: dict = {}
+    for s in sources_rows:
+        sources_by_item.setdefault(s.info_item_id, []).append(s)
+
+    rep_specs_rows = (
+        (
+            await session.execute(
+                select(InfoItemRepSpec).where(
+                    InfoItemRepSpec.info_item_id.in_(item_ids),
+                    InfoItemRepSpec.deactivated_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    rep_specs_by_item: dict = {}
+    for r in rep_specs_rows:
+        rep_specs_by_item.setdefault(r.info_item_id, []).append(r)
+
     return Page[InfoItemOut](
-        items=[info_item_to_out(item) for item in rows],
+        items=[
+            info_item_to_out(
+                item,
+                sources=sources_by_item.get(item.info_item_id, []),
+                rep_specs=rep_specs_by_item.get(item.info_item_id, []),
+            )
+            for item in rows
+        ],
         has_more=has_more,
         limit=limit,
         offset=offset,
@@ -210,19 +257,36 @@ async def list_info_items(
 async def get_info_item(
     info_item_id: ULIDStr, session: AsyncSession = Depends(get_db_session)
 ) -> InfoItemOut:
-    """Fetch a single InfoItem by ID, including active info_item_sources bindings."""
+    """Fetch a single InfoItem by ID, including active sources and rep_spec assignments."""
     result = await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
     item = result.scalar_one_or_none()
     if item is None:
         raise_envelope(404, "lookup", "InfoItem not found")
-    sources_result = await session.execute(
-        select(InfoItemSource).where(
-            InfoItemSource.info_item_id == item.info_item_id,
-            InfoItemSource.deactivated_at.is_(None),
+    sources = list(
+        (
+            await session.execute(
+                select(InfoItemSource).where(
+                    InfoItemSource.info_item_id == item.info_item_id,
+                    InfoItemSource.deactivated_at.is_(None),
+                )
+            )
         )
+        .scalars()
+        .all()
     )
-    sources = list(sources_result.scalars().all())
-    return info_item_to_out(item, sources=sources)
+    rep_specs = list(
+        (
+            await session.execute(
+                select(InfoItemRepSpec).where(
+                    InfoItemRepSpec.info_item_id == item.info_item_id,
+                    InfoItemRepSpec.deactivated_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return info_item_to_out(item, sources=sources, rep_specs=rep_specs)
 
 
 # ---------------------------------------------------------------------------

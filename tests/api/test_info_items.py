@@ -1,8 +1,49 @@
 """InfoItem CRUD route tests."""
 
+from datetime import UTC, datetime
+
 import pytest
 
+from src.core.models import InfoItemRepSpec, InfoItemSource, RepSpec
+
 HEADERS = {"X-API-Key": "test-secret-key"}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _root_spec(url: str = "https://example.com") -> dict:
+    return {
+        "source_spec": {
+            "schema_version": 1,
+            "target": {"url": url},
+            "extraction": {"algorithm": "css", "selector": "body"},
+            "fingerprint": {},
+        }
+    }
+
+
+async def _make_item(client, name: str = "Item") -> str:
+    return (await client.post("/api/v1/info-items", headers=HEADERS, json={"name": name})).json()[
+        "info_item_id"
+    ]
+
+
+async def _make_source(client, url: str = "https://example.com") -> str:
+    return (
+        await client.post("/api/v1/info-sources", headers=HEADERS, json=_root_spec(url))
+    ).json()["info_source_id"]
+
+
+async def _bind(client, item_id: str, source_id: str) -> None:
+    resp = await client.post(
+        f"/api/v1/info-items/{item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": source_id},
+    )
+    assert resp.status_code == 201
 
 
 @pytest.fixture(autouse=True)
@@ -135,3 +176,134 @@ async def test_list_info_items_limit_zero_returns_422(client):
 async def test_list_info_items_negative_offset_returns_422(client):
     resp = await client.get("/api/v1/info-items?offset=-1", headers=HEADERS)
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Deactivated binding exclusion (finding #5) + rep_specs population (finding #2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_info_item_excludes_deactivated_source_binding(client, session):
+    """A deactivated info_item_sources row must not appear in GET /info-items/{id}."""
+    item_id = await _make_item(client)
+    source_id = await _make_source(client)
+    await _bind(client, item_id, source_id)
+
+    # Deactivate the binding directly in the DB.
+    from ulid import ULID
+
+    binding = await session.get(
+        InfoItemSource,
+        (ULID.from_str(item_id), ULID.from_str(source_id)),
+    )
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+
+    body = (await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)).json()
+    assert body["info_item_sources"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_info_item_returns_active_rep_spec_assignments(client, session):
+    """GET /info-items/{id} must populate info_item_rep_specs for active assignments."""
+    from ulid import ULID
+
+    item_id = await _make_item(client)
+
+    rep_spec = RepSpec(
+        provider="gcs",
+        name="test-rep",
+        schema_version=1,
+        document={
+            "schema_version": 1,
+            "provider": "gcs",
+            "credentials_alias": "default",
+            "path_template": "gs://bucket/{info_item_id}",
+            "required_fields": [],
+        },
+    )
+    session.add(rep_spec)
+    await session.flush()
+
+    assignment = InfoItemRepSpec(
+        info_item_id=ULID.from_str(item_id),
+        rep_spec_id=rep_spec.rep_spec_id,
+        activated_at=datetime.now(UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    body = (await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)).json()
+    assert len(body["info_item_rep_specs"]) == 1
+    assert body["info_item_rep_specs"][0]["rep_spec_id"] == str(rep_spec.rep_spec_id)
+    assert body["info_item_rep_specs"][0]["deactivated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_info_item_excludes_deactivated_rep_spec_assignment(client, session):
+    """A deactivated info_item_rep_specs row must not appear in GET /info-items/{id}."""
+    from ulid import ULID
+
+    item_id = await _make_item(client)
+
+    rep_spec = RepSpec(
+        provider="gcs",
+        name="test-rep-deact",
+        schema_version=1,
+        document={
+            "schema_version": 1,
+            "provider": "gcs",
+            "credentials_alias": "default",
+            "path_template": "gs://bucket/{info_item_id}",
+            "required_fields": [],
+        },
+    )
+    session.add(rep_spec)
+    await session.flush()
+
+    assignment = InfoItemRepSpec(
+        info_item_id=ULID.from_str(item_id),
+        rep_spec_id=rep_spec.rep_spec_id,
+        activated_at=datetime.now(UTC),
+        deactivated_at=datetime.now(UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    body = (await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)).json()
+    assert body["info_item_rep_specs"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_populates_sources(client, session):
+    """GET /info-items must populate info_item_sources for all returned items."""
+    item_id = await _make_item(client, "Listed")
+    source_id = await _make_source(client)
+    await _bind(client, item_id, source_id)
+
+    body = (await client.get("/api/v1/info-items", headers=HEADERS)).json()
+    item_out = next(i for i in body["items"] if i["info_item_id"] == item_id)
+    assert len(item_out["info_item_sources"]) == 1
+    assert item_out["info_item_sources"][0]["info_source_id"] == source_id
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_excludes_deactivated_source_binding(client, session):
+    """GET /info-items must exclude deactivated info_item_sources rows."""
+    from ulid import ULID
+
+    item_id = await _make_item(client, "ListedDeact")
+    source_id = await _make_source(client, "https://example.com/deact")
+    await _bind(client, item_id, source_id)
+
+    binding = await session.get(
+        InfoItemSource,
+        (ULID.from_str(item_id), ULID.from_str(source_id)),
+    )
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+
+    body = (await client.get("/api/v1/info-items", headers=HEADERS)).json()
+    item_out = next(i for i in body["items"] if i["info_item_id"] == item_id)
+    assert item_out["info_item_sources"] == []

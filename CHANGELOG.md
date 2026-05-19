@@ -12,6 +12,13 @@ test-only changes, and docs-only changes do not need entries.
 
 ## v3.2.0 (2026-05-16)
 
+[service] **GET /info-items and GET /info-items/{id} now populate sub-resources** —
+Both endpoints previously returned `info_item_sources: []` and
+`info_item_rep_specs: []` regardless of bound state (archiver#26). Both fields
+now reflect active (non-deactivated) rows. The list endpoint uses two batched
+`IN` queries rather than per-item lookups. Callers that relied on the empty
+arrays as a sentinel should switch to checking the returned values directly.
+
 [service] **Bus event versioning** — `SourceRevisionCapturedEvent` now
 carries `schema_version: int = 1` on the wire (archiver#24). The field
 is producer-emitted and consumer-readable; future incompatible reshapes
