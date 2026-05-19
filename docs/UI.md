@@ -190,10 +190,25 @@ Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment u
 
 **POST `/dashboard/source-revisions/{id}/clear-cache`** — sets `content_cache_uri = NULL` and `content_cache_expires_at = NULL`. Redirects 303 to detail. No request body required.
 
-### Replication Specifications (`/dashboard/rep-specs/`)  *(Epic 6)*
-- **List:** paginated; filter by provider.
-- **Detail:** document JSON display; active assignments (with public_url writeback status).
-- **Create:** provider selector + document editor + live validation.
+### Replication Specifications (`/dashboard/rep-specs/`)  *(Epic 6 — implemented)*
+
+**GET `/dashboard/rep-specs/`** — paginated list. Optional `provider` filter (enum: `gcs` / `gdrive` / `ia`). Columns: name (link to detail), provider badge, created_at.
+
+**GET `/dashboard/rep-specs/new`** — create form. Provider `<select>`, name text input, document JSON textarea (`repSpecEditor` Alpine component with validate-on-blur). Returns 200 with errors dict on validation failure.
+
+**POST `/dashboard/rep-specs/new`** — form fields: `provider`, `name`, `document` (JSON string). Calls `create_rep_spec` tool. Redirects 303 to detail on success. Re-renders form with errors on missing provider, missing name, invalid JSON, or `InvalidRepSpecError`.
+
+**GET `/dashboard/rep-specs/{id}`** — detail page. Header: name, provider badge, rep_spec_id, created_at. Document JSON in `<pre class="code-block">`. Active assignments table (item name link, activated_at, public_url).
+
+### `repSpecEditor` Alpine Component
+
+Single-field document editor with client-side JSON parse validation on blur.
+
+**State:** `provider: string`, `raw: string`, `hasError: boolean`, `errorMsg: string`.
+
+**Methods:** `validate()` — called on `@blur`; attempts `JSON.parse(raw)`, sets `hasError`/`errorMsg`.
+
+**Usage:** `x-data="repSpecEditor"` on the create form wrapper. Provider `<select x-model="provider">` drives `provider` state for optional template reactions.
 
 ### Settings — API Keys (`/dashboard/settings/api-keys`)  *(Epic 2 — implemented)*
 

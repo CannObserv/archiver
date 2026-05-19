@@ -11,6 +11,7 @@ from src.dashboard.deps import DashboardAuthRequired
 from src.dashboard.routes.index import router as index_router
 from src.dashboard.routes.info_items import router as info_items_router
 from src.dashboard.routes.info_sources import router as info_sources_router
+from src.dashboard.routes.rep_specs import router as rep_specs_router
 from src.dashboard.routes.settings import router as settings_router
 from src.dashboard.routes.source_revisions import router as source_revisions_router
 
@@ -33,5 +34,6 @@ def register_dashboard(app: FastAPI) -> None:
     app.include_router(index_router)
     app.include_router(info_items_router)
     app.include_router(info_sources_router)
+    app.include_router(rep_specs_router)
     app.include_router(source_revisions_router)
     app.include_router(settings_router)

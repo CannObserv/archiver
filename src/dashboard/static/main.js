@@ -98,6 +98,38 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * RepSpec document editor — format on blur, client-side JSON parse validation.
+     * Tracks selected provider so templates can react to it.
+     *
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("repSpecEditor", function () {
+        return {
+            provider: "",
+            raw: "",
+            hasError: false,
+            errorMsg: "",
+
+            validate: function () {
+                var trimmed = this.raw.trim();
+                if (!trimmed) {
+                    this.hasError = false;
+                    this.errorMsg = "";
+                    return;
+                }
+                try {
+                    JSON.parse(trimmed);
+                    this.hasError = false;
+                    this.errorMsg = "";
+                } catch (err) {
+                    this.hasError = true;
+                    this.errorMsg = "Invalid JSON: " + err.message;
+                }
+            }
+        };
+    });
+
+    /**
      * SourceSpec JSON editor — format on blur, client-side JSON parse validation.
      *
      * Provides ``hasError`` / ``errorMsg`` for inline feedback. The textarea
