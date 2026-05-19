@@ -1,8 +1,10 @@
 /*jslint browser, module */
 /**
  * Dashboard entry point.
- * Configures HTMX and bootstraps Alpine.js component registry.
- * Loaded as type="module" so it runs after all deferred scripts.
+ * Configures HTMX and registers Alpine.js components via the alpine:init event
+ * so they are available before Alpine walks the initial DOM. The CDN bundle
+ * (alpine.min.js) calls Alpine.start() internally; we must not call it again.
+ * Loaded as type="module" so it executes after all deferred scripts.
  */
 
 /**
@@ -18,13 +20,11 @@ function configureHtmx() {
     window.htmx.config.includeIndicatorStyles = false; // we style our own spinners
 }
 
-/**
- * Register Alpine.js data components.
- * Components are registered before Alpine.start() so templates can use them.
- */
-function registerAlpineComponents() {
-    if (typeof window.Alpine === "undefined") { return; }
-
+// Register Alpine components via alpine:init so they are present before the
+// DOM walk. The CDN build fires alpine:init during Alpine.start(); registering
+// here (rather than after start()) ensures x-data="apiKeyReveal" elements in
+// the initial HTML are initialised correctly.
+document.addEventListener("alpine:init", function () {
     /**
      * API key reveal modal — shows the raw key once after creation.
      * @returns {object} Alpine component data.
@@ -54,9 +54,6 @@ function registerAlpineComponents() {
             }
         };
     });
-
-    window.Alpine.start();
-}
+});
 
 configureHtmx();
-registerAlpineComponents();

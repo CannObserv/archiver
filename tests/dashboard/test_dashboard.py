@@ -1,6 +1,9 @@
 """Dashboard foundation tests — index route, auth redirect, user upsert."""
 
 import pytest
+from sqlalchemy import select
+
+from src.core.models import AppUser
 
 
 @pytest.mark.asyncio
@@ -36,10 +39,6 @@ async def test_dashboard_index_authenticated_returns_200(client):
 
 @pytest.mark.asyncio
 async def test_dashboard_index_creates_app_user(client, session):
-    from sqlalchemy import select
-
-    from src.core.models import AppUser
-
     await client.get(
         "/dashboard/",
         headers={
@@ -56,10 +55,6 @@ async def test_dashboard_index_creates_app_user(client, session):
 
 @pytest.mark.asyncio
 async def test_dashboard_index_updates_email_on_change(client, session):
-    from sqlalchemy import select
-
-    from src.core.models import AppUser
-
     # First request — creates user
     await client.get(
         "/dashboard/",

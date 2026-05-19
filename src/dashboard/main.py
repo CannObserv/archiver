@@ -5,12 +5,15 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
 
 from src.dashboard.deps import DashboardAuthRequired
 from src.dashboard.routes.index import router as index_router
 
 
-async def _dashboard_auth_redirect(request, exc: DashboardAuthRequired) -> RedirectResponse:
+async def _dashboard_auth_redirect(
+    request: Request, exc: DashboardAuthRequired
+) -> RedirectResponse:
     return RedirectResponse(url=exc.redirect_to, status_code=307)
 
 

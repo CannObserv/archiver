@@ -10,6 +10,16 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v3.3.0 (2026-05-19)
+
+[service] **Admin dashboard — Epic 1 foundation** — New `/dashboard/` route family
+(archiver#28). Adds `information.app_users` and `information.api_keys` tables;
+`AppUser` is upserted on every dashboard request from `X-ExeDev-UserID` /
+`X-ExeDev-Email` proxy headers. Unauthenticated requests redirect 307 to
+`/__exe.dev/login`. The dashboard shell (HTMX 2.0.8 + Alpine.js 3.x, CO purple
+design-token CSS) is live at `/dashboard/`. No API contract changes; no SDK
+changes.
+
 ## v3.2.0 (2026-05-16)
 
 [service] **GET /info-items and GET /info-items/{id} now populate sub-resources** —
