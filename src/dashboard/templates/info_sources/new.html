@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}New Information Source{% endblock %}
+
+{% block content %}
+<div class="entity-section" x-data="sourceSpecEditor">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">New Information Source</h1>
+  </div>
+
+  {% if conflict_id %}
+  <div class="alert alert--error" role="alert">
+    An Information Source with this URL already exists.
+    <a href="/dashboard/info-sources/{{ conflict_id }}">View existing source →</a>
+  </div>
+  {% endif %}
+
+  <div class="filter-card">
+    <form method="POST" action="/dashboard/info-sources/new"
+          style="display:flex;flex-direction:column;gap:var(--space-3);">
+
+      <div>
+        <label for="source-spec" class="form-label">
+          SourceSpec JSON <span aria-hidden="true">*</span>
+        </label>
+        <textarea id="source-spec" name="source_spec"
+                  class="form-textarea code-block"
+                  :class="{ 'form-textarea--error': hasError }"
+                  x-model="raw"
+                  @blur="validate()"
+                  rows="12"
+                  aria-describedby="source-spec-hint"
+                  placeholder='{"schema_version":1,"target":{"url":"https://..."},"extraction":{"algorithm":"full_page"},"fingerprint":{}}'
+                  required>{{ source_spec_raw }}</textarea>
+        <p class="text-small text-muted" id="source-spec-hint">
+          Root source: include <code>target.url</code>.
+          Fragment: omit <code>target.url</code> and set <code>parent_info_source_id</code> below.
+        </p>
+        <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>
+        {% if errors.source_spec %}
+        <p class="alert alert--error">{{ errors.source_spec }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label for="parent-id" class="form-label">Parent Information Source ID (fragments only)</label>
+        <input id="parent-id" type="text" name="parent_info_source_id"
+               class="form-input" placeholder="01ABCDE… (leave blank for root)"
+               autocomplete="off">
+        <p class="text-small text-muted">ULID of a root InfoSource. Required for fragments; omit for root.</p>
+        {% if errors.parent_info_source_id %}
+        <p class="alert alert--error">{{ errors.parent_info_source_id }}</p>
+        {% endif %}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
+        <a href="/dashboard/info-sources/" class="btn btn--ghost">Cancel</a>
+        <button type="submit" class="btn btn--primary">Create Information Source</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

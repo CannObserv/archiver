@@ -98,6 +98,40 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * SourceSpec JSON editor — format on blur, client-side JSON parse validation.
+     *
+     * Provides ``hasError`` / ``errorMsg`` for inline feedback. The textarea
+     * ``name="source_spec"`` is submitted directly with the form (no hidden input
+     * needed — single field, not nested).
+     *
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("sourceSpecEditor", function () {
+        return {
+            raw: "",
+            hasError: false,
+            errorMsg: "",
+
+            validate: function () {
+                var trimmed = this.raw.trim();
+                if (!trimmed) {
+                    this.hasError = false;
+                    this.errorMsg = "";
+                    return;
+                }
+                try {
+                    JSON.parse(trimmed);
+                    this.hasError = false;
+                    this.errorMsg = "";
+                } catch (err) {
+                    this.hasError = true;
+                    this.errorMsg = "Invalid JSON: " + err.message;
+                }
+            }
+        };
+    });
+
+    /**
      * Multi-step Information Item create wizard.
      *
      * Manages step navigation and exposes rep_fields / source_spec JSON strings

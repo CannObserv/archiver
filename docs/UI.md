@@ -98,6 +98,22 @@ Multi-step create form for Information Items.
 
 ---
 
+### `sourceSpecEditor`
+
+Single-field SourceSpec JSON editor with client-side JSON parse validation on blur.
+
+**State:**
+- `raw: string` — raw textarea value (bound via `x-model`).
+- `hasError: boolean` — true when the current value is not valid JSON.
+- `errorMsg: string` — human-readable parse error.
+
+**Methods:**
+- `validate()` — called on `@blur`. Attempts `JSON.parse(raw)`; sets `hasError`/`errorMsg`.
+
+**Usage:** `x-data="sourceSpecEditor"` on the outer `<div>` wrapping the create form. The `<textarea name="source_spec" x-model="raw" @blur="validate()">` submits directly as a form field — no hidden input needed.
+
+---
+
 ### `jsonFieldEditor`
 
 Textarea-based JSON object editor with format-on-blur and inline validation.
@@ -152,10 +168,19 @@ Summary counts (InfoItems, InfoSources, RepSpecs, SourceRevisions). Recent Sourc
 
 Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment used in detail list and as PATCH public-url response.
 
-### Information Sources (`/dashboard/info-sources/`)  *(Epic 4)*
-- **List:** paginated; filter by shape (root/fragment); URL search.
-- **Detail:** SourceSpec JSON display; parent link if fragment; bound Information Items; revision list.
-- **Create:** SourceSpec editor with live validate-on-blur.
+### Information Sources (`/dashboard/info-sources/`)  *(Epic 4 — implemented)*
+
+**GET `/dashboard/info-sources/`** — paginated list. Query params: `shape` (`root` / `fragment` / omit for all), `url_contains` (ilike filter on `url` column), `limit`, `offset`.
+
+**GET `/dashboard/info-sources/new`** — create form. `sourceSpecEditor` Alpine component wraps the SourceSpec JSON textarea: validates JSON on blur, shows inline error. Also accepts optional `parent_info_source_id` field for fragments.
+
+**POST `/dashboard/info-sources/new`** — form fields: `source_spec` (JSON string), `parent_info_source_id` (ULID, optional). Calls `create_info_source` tool. Redirects 303 to detail on success. Re-renders form with `errors` dict on `InvalidSourceSpecError`, `ParentNotFoundError`, `ParentMustBeRootError`. Shows conflict alert + link to existing source on `DuplicateUrlError`.
+
+**GET `/dashboard/info-sources/{id}`** — detail page. Sections:
+- Header: shape badge (`root` / `fragment`), `info_source_id`, created_at. Parent link if fragment (links to parent's detail).
+- SourceSpec JSON — displayed in `<pre class="code-block">`.
+- Bound Information Items — table of active `info_item_sources` bindings (item name link, role badge, bound date).
+- Revision History — last 50 `source_revisions` ordered by `captured_at desc` (fingerprint truncated, captured date, cache status pill).
 
 ### Information Source Revisions (`/dashboard/source-revisions/`)  *(Epic 5)*
 - **List:** filter by Information Source; columns: fingerprint (truncated), captured_at, cache status (`.status-pill--*`).
