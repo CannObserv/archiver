@@ -9,7 +9,7 @@
 
   {# One-time raw key reveal — shown only immediately after creation. #}
   {% if new_raw_key %}
-  <div x-data="apiKeyReveal" x-init="open('{{ new_raw_key }}')"
+  <div x-data="apiKeyReveal" x-init="rawKey = '{{ new_raw_key }}'"
        class="alert alert--success" data-key-reveal-modal tabindex="-1"
        role="region" aria-label="New API key">
     <p class="alert__title">New API key — copy it now. It will not be shown again.</p>

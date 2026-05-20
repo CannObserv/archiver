@@ -32,16 +32,6 @@ document.addEventListener("alpine:init", function () {
             rawKey: "",
             copied: false,
 
-            /** @param {string} key */
-            open: function (key) {
-                this.rawKey = key;
-                this.copied = false;
-                this.$nextTick(function () {
-                    var el = document.querySelector("[data-key-reveal-modal]");
-                    if (el) { el.focus(); }
-                });
-            },
-
             copy: function () {
                 var self = this;
                 if (!navigator.clipboard) { return; }
