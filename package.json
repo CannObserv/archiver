@@ -6,7 +6,10 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "npx eslint src/dashboard/static tests/js"
+    "lint": "npx eslint src/dashboard/static tests/js",
+    "lint:js": "npm run lint",
+    "format:js:check": "echo 'No JS formatter configured (Prettier not adopted)' && exit 0",
+    "test:js": "npm run test"
   },
   "devDependencies": {
     "@eslint/js": "latest",
