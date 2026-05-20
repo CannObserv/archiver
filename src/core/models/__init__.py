@@ -1,5 +1,7 @@
 """Archiver service ORM models."""
 
+from src.core.models.api_key import ApiKey
+from src.core.models.app_user import AppUser
 from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
 from src.core.models.changes_outbox import ChangesOutboxRow
 from src.core.models.info_item import InfoItem
@@ -12,6 +14,8 @@ from src.core.models.source_revision import SourceRevision
 
 __all__ = [
     "FRAGMENT_ROLES",
+    "ApiKey",
+    "AppUser",
     "Base",
     "ChangesOutboxRow",
     "FragmentRole",

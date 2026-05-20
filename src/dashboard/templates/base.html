@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Archiver{% endblock %} — Cannabis Observer</title>
+  {# FOUC prevention: apply saved theme before stylesheet paint #}
+  <script>
+    (function () {
+      var s = localStorage.getItem('co-color-scheme');
+      if (s === 'dark') document.documentElement.classList.add('dark');
+      else if (s === 'light') document.documentElement.classList.add('light');
+    }());
+  </script>
+  <link rel="stylesheet" href="{{ request.url_for('dashboard-static', path='dashboard.css') }}">
+  <script src="{{ request.url_for('dashboard-static', path='dark-mode.js') }}" defer></script>
+  <script src="{{ request.url_for('dashboard-static', path='vendor/htmx.min.js') }}" defer></script>
+  <script src="{{ request.url_for('dashboard-static', path='vendor/alpine.min.js') }}" defer></script>
+  <script src="{{ request.url_for('dashboard-static', path='main.js') }}" type="module"></script>
+</head>
+<body hx-boost="true">
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <header class="topbar" role="banner">
+    <a href="/dashboard/" class="topbar__brand">Archiver</a>
+    <nav class="topbar__actions" aria-label="User actions">
+      <span class="topbar__user" aria-label="Signed in as {{ user.email }}">{{ user.email }}</span>
+      <button class="btn btn--ghost theme-toggle" data-theme-toggle aria-label="Toggle colour scheme">&#9680;</button>
+      <form method="POST" action="/__exe.dev/logout">
+        <button type="submit" class="btn btn--ghost">Sign out</button>
+      </form>
+    </nav>
+  </header>
+
+  <div class="admin-layout">
+    <nav class="sidebar" aria-label="Main navigation">
+      <ul class="sidebar__nav" role="list">
+        <li>
+          <a href="/dashboard/" class="sidebar__link{% if request.url.path == '/dashboard/' %} sidebar__link--active{% endif %}"
+             {% if request.url.path == '/dashboard/' %}aria-current="page"{% endif %}>
+            Home
+          </a>
+        </li>
+        <li>
+          <a href="/dashboard/info-items/" class="sidebar__link{% if request.url.path.startswith('/dashboard/info-items') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/info-items') %}aria-current="page"{% endif %}>
+            Information Items
+          </a>
+        </li>
+        <li>
+          <a href="/dashboard/info-sources/" class="sidebar__link{% if request.url.path.startswith('/dashboard/info-sources') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/info-sources') %}aria-current="page"{% endif %}>
+            Information Sources
+          </a>
+        </li>
+        <li>
+          <a href="/dashboard/source-revisions/" class="sidebar__link{% if request.url.path.startswith('/dashboard/source-revisions') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/source-revisions') %}aria-current="page"{% endif %}>
+            Information Source Revisions
+          </a>
+        </li>
+        <li>
+          <a href="/dashboard/rep-specs/" class="sidebar__link{% if request.url.path.startswith('/dashboard/rep-specs') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/rep-specs') %}aria-current="page"{% endif %}>
+            Replication Specifications
+          </a>
+        </li>
+        <li class="sidebar__section-label">Settings</li>
+        <li>
+          <a href="/dashboard/settings/api-keys" class="sidebar__link{% if request.url.path.startswith('/dashboard/settings') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/settings') %}aria-current="page"{% endif %}>
+            API Keys
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <main id="main-content" class="main-content" role="main">
+      {# Flash region — populated by flash.js on HX-Trigger showFlash events #}
+      <div id="flash-region" aria-live="polite" aria-atomic="true"></div>
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

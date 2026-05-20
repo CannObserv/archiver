@@ -1,0 +1,510 @@
+"""Tests for /dashboard/info-items/ routes."""
+
+import json
+
+import pytest
+from sqlalchemy import select
+
+from src.core.models import (
+    InfoItem,
+    InfoItemRepSpec,
+    InfoItemSource,
+    InfoItemSourceRevision,
+    InfoSource,
+    RepSpec,
+    SourceRevision,
+)
+
+_HEADERS = {"X-ExeDev-UserID": "ext-items", "X-ExeDev-Email": "items@example.com"}
+_LIST_URL = "/dashboard/info-items/"
+_NEW_URL = "/dashboard/info-items/new"
+
+
+def _root_doc(url: str) -> dict:
+    return {
+        "schema_version": 1,
+        "target": {"url": url},
+        "extraction": {"algorithm": "full_page"},
+        "fingerprint": {},
+    }
+
+
+def _make_item(name: str = "Test Item", **kw) -> InfoItem:
+    return InfoItem(name=name, **kw)
+
+
+def _make_source(url: str = "https://example.com/page") -> InfoSource:
+    return InfoSource(source_spec=_root_doc(url), schema_version=1)
+
+
+def _make_rep_spec(name: str = "Test Spec") -> RepSpec:
+    return RepSpec(
+        provider="gcs",
+        name=name,
+        schema_version=1,
+        document={
+            "provider": "gcs",
+            "version": 1,
+            "credentials_alias": "default",
+            "bucket": "test-bucket",
+            "path_template": "items/{info_item_id}.json",
+            "required_fields": [],
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/info-items/
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_unauthenticated_redirects(client):
+    r = await client.get(_LIST_URL, follow_redirects=False)
+    assert r.status_code == 307
+
+
+@pytest.mark.asyncio
+async def test_list_empty_returns_200(client):
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+
+
+@pytest.mark.asyncio
+async def test_list_shows_item_names(client, session):
+    item = _make_item("Visible Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Visible Item" in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_name_contains_filter(client, session):
+    session.add(_make_item("Alpha Canary"))
+    session.add(_make_item("Beta Kestrel"))
+    await session.flush()
+
+    r = await client.get(_LIST_URL + "?name_contains=Canary", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Alpha Canary" in r.text
+    assert "Beta Kestrel" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_shows_primary_url(client, session):
+    item = _make_item("URL Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/url-item")
+    session.add(source)
+    await session.flush()
+    binding = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        role=None,
+    )
+    session.add(binding)
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert "https://example.com/url-item" in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/info-items/new
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_new_unauthenticated_redirects(client):
+    r = await client.get(_NEW_URL, follow_redirects=False)
+    assert r.status_code == 307
+
+
+@pytest.mark.asyncio
+async def test_new_returns_form(client):
+    r = await client.get(_NEW_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+
+
+# ---------------------------------------------------------------------------
+# POST /dashboard/info-items/new
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_minimal_redirects_to_detail(client, session):
+    r = await client.post(
+        _NEW_URL,
+        data={"name": "Created Item", "rep_fields": "{}"},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303)
+    assert "/dashboard/info-items/" in r.headers["location"]
+
+    result = await session.execute(select(InfoItem).where(InfoItem.name == "Created Item"))
+    assert result.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_create_unauthenticated_redirects(client):
+    r = await client.post(
+        _NEW_URL,
+        data={"name": "x"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 307
+
+
+@pytest.mark.asyncio
+async def test_create_missing_name_returns_error(client):
+    r = await client.post(
+        _NEW_URL,
+        data={"name": "", "rep_fields": "{}"},
+        headers=_HEADERS,
+    )
+    assert r.status_code in (200, 422)  # re-renders form with error
+
+
+@pytest.mark.asyncio
+async def test_create_with_source_spec_creates_binding(client, session):
+    source_spec = json.dumps(
+        {
+            "schema_version": 1,
+            "target": {"url": "https://example.com/new-item-src"},
+            "extraction": {"algorithm": "full_page"},
+            "fingerprint": {},
+        }
+    )
+    r = await client.post(
+        _NEW_URL,
+        data={"name": "Item With Source", "rep_fields": "{}", "source_spec": source_spec},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303)
+
+    result = await session.execute(select(InfoItem).where(InfoItem.name == "Item With Source"))
+    item = result.scalar_one()
+    bindings = (
+        (
+            await session.execute(
+                select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(bindings) == 1
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/info-items/{item_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_detail_unauthenticated_redirects(client, session):
+    item = _make_item("Auth Detail Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", follow_redirects=False)
+    assert r.status_code == 307
+
+
+@pytest.mark.asyncio
+async def test_detail_not_found_returns_404(client):
+    from ulid import ULID
+
+    fake_id = str(ULID())
+    r = await client.get(f"/dashboard/info-items/{fake_id}", headers=_HEADERS)
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_detail_returns_200_with_name(client, session):
+    item = _make_item("Detail Canary")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Detail Canary" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_shows_active_source_binding(client, session):
+    item = _make_item("Tabbed Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/tabbed")
+    session.add(source)
+    await session.flush()
+    binding = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        role=None,
+    )
+    session.add(binding)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "https://example.com/tabbed" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_shows_active_rep_spec_assignment(client, session):
+    from datetime import UTC, datetime
+
+    item = _make_item("Rep Spec Item")
+    session.add(item)
+    await session.flush()
+    rs = _make_rep_spec("My Spec")
+    session.add(rs)
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=rs.rep_spec_id,
+        activated_at=datetime.now(UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "My Spec" in r.text
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/bind-source
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bind_source_creates_binding(client, session):
+    item = _make_item("Bind Source Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/bind-src")
+    session.add(source)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/bind-source",
+        data={"info_source_id": str(source.info_source_id), "role": ""},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303)
+
+    result = await session.execute(
+        select(InfoItemSource).where(
+            InfoItemSource.info_item_id == item.info_item_id,
+            InfoItemSource.info_source_id == source.info_source_id,
+        )
+    )
+    assert result.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_bind_source_unknown_item_returns_404(client):
+    from ulid import ULID
+
+    fake_id = str(ULID())
+    r = await client.post(
+        f"/dashboard/info-items/{fake_id}/bind-source",
+        data={"info_source_id": str(ULID()), "role": ""},
+        headers=_HEADERS,
+    )
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /{item_id}/info-sources/{source_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deactivate_source_binding(client, session):
+    item = _make_item("Deact Source Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/deact-src")
+    session.add(source)
+    await session.flush()
+    binding = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        role=None,
+    )
+    session.add(binding)
+    await session.flush()
+
+    r = await client.delete(
+        f"/dashboard/info-items/{item.info_item_id}/info-sources/{source.info_source_id}",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+
+    await session.refresh(binding)
+    assert binding.deactivated_at is not None
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/assign-rep-spec
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_assign_rep_spec_creates_assignment(client, session):
+    item = _make_item("Assign RS Item")
+    session.add(item)
+    await session.flush()
+    rs = _make_rep_spec()
+    session.add(rs)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
+        data={"rep_spec_id": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303)
+
+    result = await session.execute(
+        select(InfoItemRepSpec).where(
+            InfoItemRepSpec.info_item_id == item.info_item_id,
+        )
+    )
+    assert result.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_assign_rep_spec_unknown_item_returns_404(client):
+    from ulid import ULID
+
+    fake_id = str(ULID())
+    r = await client.post(
+        f"/dashboard/info-items/{fake_id}/assign-rep-spec",
+        data={"rep_spec_id": str(ULID())},
+        headers=_HEADERS,
+    )
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /{item_id}/rep-spec-assignments/{aid}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deactivate_rep_spec_assignment(client, session):
+    from datetime import UTC, datetime
+
+    item = _make_item("Deact RS Item")
+    session.add(item)
+    await session.flush()
+    rs = _make_rep_spec()
+    session.add(rs)
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=rs.rep_spec_id,
+        activated_at=datetime.now(UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.delete(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+
+    await session.refresh(assignment)
+    assert assignment.deactivated_at is not None
+
+
+# ---------------------------------------------------------------------------
+# PATCH /{item_id}/rep-spec-assignments/{aid}/public-url
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_set_public_url_returns_fragment(client, session):
+    from datetime import UTC, datetime
+
+    item = _make_item("Pub URL Item")
+    session.add(item)
+    await session.flush()
+    rs = _make_rep_spec("Pub URL Spec")
+    session.add(rs)
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=rs.rep_spec_id,
+        activated_at=datetime.now(UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/public-url",
+        data={"public_url": "https://storage.example.com/item.json"},
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "https://storage.example.com/item.json" in r.text
+
+    await session.refresh(assignment)
+    assert assignment.public_url == "https://storage.example.com/item.json"
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/bind-revision
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bind_revision_creates_binding(client, session):
+    from datetime import UTC, datetime
+
+    item = _make_item("Rev Bind Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/rev-bind")
+    session.add(source)
+    await session.flush()
+    rev = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:aabbcc",
+        captured_at=datetime.now(UTC),
+    )
+    session.add(rev)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/bind-revision",
+        data={"source_revision_id": str(rev.source_revision_id)},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303)
+
+    result = await session.execute(
+        select(InfoItemSourceRevision).where(
+            InfoItemSourceRevision.info_item_id == item.info_item_id,
+            InfoItemSourceRevision.source_revision_id == rev.source_revision_id,
+        )
+    )
+    assert result.scalar_one_or_none() is not None

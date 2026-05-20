@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Replication Specifications{% endblock %}
+
+{% block content %}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Replication Specifications</h1>
+    <a href="/dashboard/rep-specs/new" class="btn btn--primary btn--sm">New Spec</a>
+  </div>
+
+  {# Filter #}
+  <div class="filter-card">
+    <form method="GET" action="/dashboard/rep-specs/"
+          style="display:flex;gap:var(--space-2);align-items:flex-end;flex-wrap:wrap;">
+      <div>
+        <label for="provider-filter" class="form-label">Provider</label>
+        <select id="provider-filter" name="provider" class="form-select">
+          <option value="">All providers</option>
+          {% for p in providers %}
+          <option value="{{ p }}" {% if provider == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn--ghost btn--sm">Filter</button>
+      {% if provider %}
+      <a href="/dashboard/rep-specs/" class="btn btn--ghost btn--sm">Clear</a>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if specs %}
+  <table class="data-table" aria-label="Replication Specifications">
+    <thead>
+      <tr>
+        <th class="data-table__th">Name</th>
+        <th class="data-table__th">Provider</th>
+        <th class="data-table__th">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for spec in specs %}
+      <tr>
+        <td class="data-table__cell">
+          <a href="/dashboard/rep-specs/{{ spec.rep_spec_id }}">{{ spec.name }}</a>
+        </td>
+        <td class="data-table__cell">
+          <span class="badge badge--sm">{{ spec.provider }}</span>
+        </td>
+        <td class="data-table__cell data-table__cell--muted">
+          {{ spec.created_at.strftime('%Y-%m-%d') }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# Pagination #}
+  <div class="pagination" style="margin-top:var(--space-3);">
+    {% if offset > 0 %}
+    <a href="/dashboard/rep-specs/?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}{% if provider %}&provider={{ provider }}{% endif %}"
+       class="btn btn--ghost btn--sm">← Previous</a>
+    {% endif %}
+    {% if has_more %}
+    <a href="/dashboard/rep-specs/?offset={{ offset + limit }}&limit={{ limit }}{% if provider %}&provider={{ provider }}{% endif %}"
+       class="btn btn--ghost btn--sm">Next →</a>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <p class="text-muted">No Replication Specifications found.</p>
+  {% endif %}
+</div>
+{% endblock %}

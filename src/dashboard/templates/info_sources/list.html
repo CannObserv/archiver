@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Information Sources{% endblock %}
+
+{% block content %}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Information Sources</h1>
+    <a href="/dashboard/info-sources/new" class="btn btn--primary btn--sm">New Source</a>
+  </div>
+
+  {# Filters #}
+  <div class="filter-card">
+    <form method="GET" action="/dashboard/info-sources/"
+          style="display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:flex-end;">
+      <div>
+        <label for="url-search" class="form-label">URL contains</label>
+        <input id="url-search" type="text" name="url_contains"
+               value="{{ url_contains or '' }}"
+               class="form-input" placeholder="https://…">
+      </div>
+      <div>
+        <label for="shape-filter" class="form-label">Shape</label>
+        <select id="shape-filter" name="shape" class="form-select">
+          <option value="">All</option>
+          <option value="root" {% if shape == 'root' %}selected{% endif %}>Root</option>
+          <option value="fragment" {% if shape == 'fragment' %}selected{% endif %}>Fragment</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn--ghost btn--sm">Filter</button>
+      {% if shape or url_contains %}
+      <a href="/dashboard/info-sources/" class="btn btn--ghost btn--sm">Clear</a>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if sources %}
+  <table class="data-table" aria-label="Information Sources">
+    <thead>
+      <tr>
+        <th class="data-table__th">ID</th>
+        <th class="data-table__th">URL / Shape</th>
+        <th class="data-table__th">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for src in sources %}
+      <tr>
+        <td class="data-table__cell">
+          <a href="/dashboard/info-sources/{{ src.info_source_id }}">
+            <code class="text-small">{{ src.info_source_id }}</code>
+          </a>
+        </td>
+        <td class="data-table__cell">
+          {% if src.url %}
+          <code class="text-small">{{ src.url }}</code>
+          {% else %}
+          <span class="badge badge--sm text-muted">fragment</span>
+          <a href="/dashboard/info-sources/{{ src.parent_info_source_id }}"
+             class="text-small text-muted">
+            parent: {{ src.parent_info_source_id }}
+          </a>
+          {% endif %}
+        </td>
+        <td class="data-table__cell data-table__cell--muted">
+          {{ src.created_at.strftime('%Y-%m-%d') }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# Pagination #}
+  <div class="pagination" style="margin-top:var(--space-3);">
+    {% if offset > 0 %}
+    <a href="/dashboard/info-sources/?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}{% if shape %}&shape={{ shape }}{% endif %}{% if url_contains %}&url_contains={{ url_contains | urlencode }}{% endif %}"
+       class="btn btn--ghost btn--sm">← Previous</a>
+    {% endif %}
+    {% if has_more %}
+    <a href="/dashboard/info-sources/?offset={{ offset + limit }}&limit={{ limit }}{% if shape %}&shape={{ shape }}{% endif %}{% if url_contains %}&url_contains={{ url_contains | urlencode }}{% endif %}"
+       class="btn btn--ghost btn--sm">Next →</a>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <p class="text-muted">No Information Sources found.</p>
+  {% endif %}
+</div>
+{% endblock %}

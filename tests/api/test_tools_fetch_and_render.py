@@ -10,11 +10,6 @@ from src.core.tools.fetch_and_render import HttpFetcherProtocol
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 def _override_with_response(response: httpx.Response) -> None:
     """Inject a stub HttpFetcher that returns ``response`` for any URL."""
 

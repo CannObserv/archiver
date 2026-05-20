@@ -5,11 +5,6 @@ import pytest
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 async def _seed(client, name: str, description: str | None = None) -> str:
     body = {"name": name}
     if description is not None:

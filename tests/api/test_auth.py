@@ -3,11 +3,6 @@
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 @pytest.mark.asyncio
 async def test_missing_key_returns_403(client):
     response = await client.get("/api/v1/info-items")

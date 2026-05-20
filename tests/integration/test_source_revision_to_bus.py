@@ -34,11 +34,6 @@ VALID_SOURCE_SPEC = {
 FINGERPRINT = "sha256:" + "a" * 64
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 @pytest.fixture
 async def fake_redis():
     """In-process FakeRedis async client with stream support."""

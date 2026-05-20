@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrif
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus two Item↔X join tables (`info_item_sources`, `info_item_source_revisions`). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces a Redis Stream (`info.changes`) via an internal outbox publisher.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus two Item↔X join tables (`info_item_sources`, `info_item_source_revisions`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces a Redis Stream (`info.changes`) via an internal outbox publisher.
 
 Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
 
@@ -49,6 +49,7 @@ Prefetch query (run via `ToolSearch` once per session if the SessionStart remind
 
 ```
 src/api/                       FastAPI routes, deps, schemas, serializers
+src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, static/, deps.py)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, info_item_source_revision,
@@ -274,6 +275,8 @@ internal refactors, test-only changes, and docs-only changes. Tag each
 entry `[service]`, `[sdk]`, or `[both]` per the format header in
 `CHANGELOG.md`. The SDK README links here; do not maintain a second
 changelog there.
+
+**Dashboard living docs:** `docs/STYLE.md` and `docs/UI.md` must be updated in the same commit as any change to `src/dashboard/static/dashboard.css`, a JS module under `src/dashboard/static/`, a Jinja2 template in `src/dashboard/templates/`, or a new dashboard route. Failure to update them is a CR blocker.
 
 **Logging:**
 ```python

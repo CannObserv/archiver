@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.name }}{% endblock %}
+
+{% block content %}
+<div class="entity-section">
+
+  {# Header #}
+  <div class="entity-card">
+    <div class="entity-card__header">
+      <div>
+        <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
+          <a href="/dashboard/rep-specs/" class="text-muted text-small">Replication Specifications</a>
+          <span aria-hidden="true"> / </span>
+        </nav>
+        <h1 class="entity-card__title">{{ spec.name }}</h1>
+        <p class="entity-card__id text-small text-muted">{{ spec.rep_spec_id }}</p>
+      </div>
+    </div>
+
+    <dl class="detail-grid">
+      <dt>Provider</dt>
+      <dd><span class="badge badge--info">{{ spec.provider }}</span></dd>
+      <dt>Created</dt>
+      <dd class="text-muted">{{ spec.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+    </dl>
+  </div>
+
+  {# Document JSON #}
+  <div class="entity-card" style="margin-top:var(--space-3);">
+    <h2 style="margin-top:0;">Document</h2>
+    <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ doc_json }}</code></pre>
+  </div>
+
+  {# Active Assignments #}
+  <div style="margin-top:var(--space-3);">
+    <h2>Active Assignments</h2>
+    {% if assignments %}
+    <table class="data-table" aria-label="Active assignments">
+      <thead>
+        <tr>
+          <th class="data-table__th">Information Item</th>
+          <th class="data-table__th">Activated</th>
+          <th class="data-table__th">Public URL</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for assignment in assignments %}
+        {% set item = items_by_id.get(assignment.info_item_id) %}
+        <tr>
+          <td class="data-table__cell">
+            {% if item %}
+            <a href="/dashboard/info-items/{{ assignment.info_item_id }}">{{ item.name }}</a>
+            {% else %}
+            <span class="text-muted">{{ assignment.info_item_id }}</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ assignment.activated_at.strftime('%Y-%m-%d') }}
+          </td>
+          <td class="data-table__cell">
+            {% if assignment.public_url %}
+            <a href="{{ assignment.public_url }}" target="_blank" rel="noopener noreferrer"
+               class="text-small">{{ assignment.public_url }}</a>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No active assignments.</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

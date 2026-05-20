@@ -22,6 +22,7 @@ from src.core.changes import publisher as outbox_publisher
 from src.core.database import get_engine
 from src.core.fetchers.http import HttpFetcher
 from src.core.logging import configure_logging, get_logger
+from src.dashboard.main import register_dashboard
 
 configure_logging()
 logger = get_logger(__name__)
@@ -109,3 +110,4 @@ v1_router.include_router(tools_router)
 
 app.include_router(v1_router)
 app.include_router(health_router)
+register_dashboard(app)

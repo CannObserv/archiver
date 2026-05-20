@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Revision {{ rev.content_fingerprint[:16] }}…{% endblock %}
+
+{% block content %}
+<div class="entity-section">
+
+  {# Header #}
+  <div class="entity-card">
+    <div class="entity-card__header">
+      <div>
+        <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
+          <a href="/dashboard/source-revisions/" class="text-muted text-small">
+            Information Source Revisions
+          </a>
+          <span aria-hidden="true"> / </span>
+        </nav>
+        <h1 class="entity-card__title">
+          <code class="text-small">{{ rev.content_fingerprint }}</code>
+        </h1>
+        <p class="entity-card__id text-small text-muted">{{ rev.source_revision_id }}</p>
+      </div>
+    </div>
+
+    <dl class="detail-grid">
+      <dt>Information Source</dt>
+      <dd>
+        {% if source %}
+        <a href="/dashboard/info-sources/{{ rev.info_source_id }}">
+          <code class="text-small">{{ source.url or rev.info_source_id }}</code>
+        </a>
+        {% else %}
+        <span class="text-muted">{{ rev.info_source_id }}</span>
+        {% endif %}
+      </dd>
+      <dt>Captured</dt>
+      <dd class="text-muted">{{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+      {% if rev.content_size_bytes %}
+      <dt>Size</dt>
+      <dd class="text-muted">{{ rev.content_size_bytes | filesizeformat }}</dd>
+      {% endif %}
+      {% if rev.content_media_type %}
+      <dt>Media Type</dt>
+      <dd><code>{{ rev.content_media_type }}</code></dd>
+      {% endif %}
+      <dt>Cache</dt>
+      <dd>
+        {% if rev.content_cache_uri %}
+          {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
+          <span class="status-pill status-pill--expired">expired</span>
+          {% else %}
+          <span class="status-pill status-pill--cached">cached</span>
+          {% endif %}
+          <code class="text-small" style="margin-left:var(--space-2);">{{ rev.content_cache_uri }}</code>
+          {% if rev.content_cache_expires_at %}
+          <span class="text-small text-muted">
+            (expires {{ rev.content_cache_expires_at.strftime('%Y-%m-%d %H:%M UTC') }})
+          </span>
+          {% endif %}
+        {% else %}
+        <span class="status-pill status-pill--missing">not cached</span>
+        {% endif %}
+      </dd>
+    </dl>
+
+    {% if rev.content_cache_uri %}
+    <div class="danger-zone" style="margin-top:var(--space-3);">
+      <h3 style="margin-top:0;">Clear Cache Fields</h3>
+      <p class="text-small text-muted">
+        Removes <code>content_cache_uri</code> and <code>content_cache_expires_at</code>.
+        Use when the cached content is stale or the URI is no longer valid.
+      </p>
+      <form method="POST"
+            action="/dashboard/source-revisions/{{ rev.source_revision_id }}/clear-cache">
+        <button type="submit" class="btn btn--danger btn--sm"
+                onclick="return confirm('Clear cache fields for this revision?')">
+          Clear Cache
+        </button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  {# Bound Information Items #}
+  <div style="margin-top:var(--space-3);">
+    <h2>Bound Information Items</h2>
+    {% if iisr_rows %}
+    <table class="data-table" aria-label="Bound Information Items">
+      <thead>
+        <tr>
+          <th class="data-table__th">Item</th>
+          <th class="data-table__th">Bound</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for iisr in iisr_rows %}
+        {% set item = items_by_id.get(iisr.info_item_id) %}
+        <tr>
+          <td class="data-table__cell">
+            {% if item %}
+            <a href="/dashboard/info-items/{{ iisr.info_item_id }}">{{ item.name }}</a>
+            {% else %}
+            <span class="text-muted">{{ iisr.info_item_id }}</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ iisr.bound_at.strftime('%Y-%m-%d %H:%M') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No Information Items bound to this revision.</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

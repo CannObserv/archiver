@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}New Replication Specification{% endblock %}
+
+{% block content %}
+<div class="entity-section" x-data='repSpecEditor({{ document_raw | tojson }}, {{ (selected_provider or "") | tojson }})'>
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">New Replication Specification</h1>
+  </div>
+
+  <div class="filter-card">
+    <form method="POST" action="/dashboard/rep-specs/new"
+          style="display:flex;flex-direction:column;gap:var(--space-3);">
+
+      <div>
+        <label for="spec-provider" class="form-label">
+          Provider <span aria-hidden="true">*</span>
+        </label>
+        <select id="spec-provider" name="provider" class="form-select"
+                x-model="provider" required>
+          <option value="">— Select provider —</option>
+          {% for p in providers %}
+          <option value="{{ p }}"
+            {% if selected_provider == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+        {% if errors.provider %}
+        <p class="alert alert--error">{{ errors.provider }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label for="spec-name" class="form-label">
+          Name <span aria-hidden="true">*</span>
+        </label>
+        <input id="spec-name" type="text" name="name"
+               value="{{ name_value or '' }}"
+               class="form-input" maxlength="200" required autocomplete="off">
+        {% if errors.name %}
+        <p class="alert alert--error">{{ errors.name }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label for="spec-document" class="form-label">
+          Document JSON <span aria-hidden="true">*</span>
+        </label>
+        <textarea id="spec-document" name="document"
+                  class="form-textarea code-block"
+                  :class="{ 'form-textarea--error': hasError }"
+                  x-model="raw"
+                  @blur="validate()"
+                  rows="14"
+                  aria-describedby="doc-hint"
+                  required>{{ document_raw }}</textarea>
+        <p class="text-small text-muted" id="doc-hint">
+          Must conform to the RepSpec v1 envelope schema for the selected provider.
+        </p>
+        <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>
+        {% if errors.document %}
+        <p class="alert alert--error">{{ errors.document }}</p>
+        {% endif %}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
+        <a href="/dashboard/rep-specs/" class="btn btn--ghost">Cancel</a>
+        <button type="submit" class="btn btn--primary">Create Replication Specification</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

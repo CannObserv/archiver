@@ -1,0 +1,35 @@
+{# Partial: single rep-spec assignment row — returned by PATCH public-url. #}
+<tr id="rs-row-{{ assignment.id }}">
+  <td class="data-table__cell">
+    {% if rep_spec %}
+    <a href="/dashboard/rep-specs/{{ assignment.rep_spec_id }}">{{ rep_spec.name }}</a>
+    <span class="badge badge--sm text-muted" style="margin-left:var(--space-1);">{{ rep_spec.provider }}</span>
+    {% else %}
+    <span class="text-muted">{{ assignment.rep_spec_id }}</span>
+    {% endif %}
+  </td>
+  <td class="data-table__cell data-table__cell--muted">
+    {{ assignment.activated_at.strftime('%Y-%m-%d') }}
+  </td>
+  <td class="data-table__cell">
+    <form hx-patch="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}/public-url"
+          hx-target="#rs-row-{{ assignment.id }}" hx-swap="outerHTML"
+          class="inline-rename-form">
+      <input type="text" name="public_url"
+             value="{{ assignment.public_url or '' }}"
+             class="form-input form-input--inline" placeholder="https://…"
+             aria-label="Public URL for {{ rep_spec.name if rep_spec else assignment.rep_spec_id }}">
+      <button type="submit" class="btn btn--sm btn--ghost">Save</button>
+    </form>
+  </td>
+  <td class="data-table__cell">
+    <button class="btn btn--sm btn--danger"
+            hx-delete="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}"
+            hx-target="#rs-row-{{ assignment.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Deactivate this replication spec assignment?"
+            aria-label="Deactivate assignment {{ assignment.id }}">
+      Deactivate
+    </button>
+  </td>
+</tr>

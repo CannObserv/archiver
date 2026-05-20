@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Information Items{% endblock %}
+
+{% block content %}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Information Items</h1>
+    <a href="/dashboard/info-items/new" class="btn btn--primary">New Item</a>
+  </div>
+
+  <form class="filter-card" method="GET" action="/dashboard/info-items/"
+        aria-label="Search Information Items">
+    <div style="display:flex;gap:var(--space-2);align-items:flex-end;">
+      <label for="name-search" class="form-label" style="flex:0 0 auto;">Search by name</label>
+      <input id="name-search" type="search" name="name_contains"
+             value="{{ name_contains }}"
+             class="form-input" placeholder="Enter name…" style="flex:1;"
+             aria-label="Name filter">
+      <button type="submit" class="btn">Search</button>
+      {% if name_contains %}
+      <a href="/dashboard/info-items/" class="btn btn--ghost">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if items %}
+  <table class="data-table" aria-label="Information Items">
+    <thead>
+      <tr>
+        <th class="data-table__th">Name</th>
+        <th class="data-table__th">Primary Source URL</th>
+        <th class="data-table__th">Active Rep Specs</th>
+        <th class="data-table__th">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in items %}
+      <tr>
+        <td class="data-table__cell">
+          <a href="/dashboard/info-items/{{ row.item.info_item_id }}">{{ row.item.name }}</a>
+        </td>
+        <td class="data-table__cell data-table__cell--muted">
+          {% if row.primary_url %}
+          <code class="text-small">{{ row.primary_url }}</code>
+          {% else %}
+          <span aria-label="none">—</span>
+          {% endif %}
+        </td>
+        <td class="data-table__cell">{{ row.rep_spec_count }}</td>
+        <td class="data-table__cell data-table__cell--muted">
+          {{ row.item.created_at.strftime('%Y-%m-%d') }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if has_more or offset > 0 %}
+  <nav class="pagination" aria-label="Pagination">
+    {% if offset > 0 %}
+    <a href="?name_contains={{ name_contains | urlencode }}&limit={{ limit }}&offset={{ [offset - limit, 0]|max }}"
+       class="btn btn--ghost btn--sm">← Previous</a>
+    {% endif %}
+    {% if has_more %}
+    <a href="?name_contains={{ name_contains | urlencode }}&limit={{ limit }}&offset={{ offset + limit }}"
+       class="btn btn--ghost btn--sm">Next →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <p class="text-muted">
+    {% if name_contains %}
+    No Information Items match <strong>{{ name_contains }}</strong>.
+    {% else %}
+    No Information Items yet. <a href="/dashboard/info-items/new">Create one</a>.
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

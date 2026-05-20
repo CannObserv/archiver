@@ -1,5 +1,6 @@
 """Shared fixtures for Archiver service tests — async engine + httpx client."""
 
+import hashlib
 import os
 from collections.abc import AsyncGenerator
 
@@ -7,10 +8,18 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from ulid import ULID
 
 from src.api.deps import get_db_session
 from src.api.main import app
 from src.core.models import Base
+
+# ---------------------------------------------------------------------------
+# Test API key — seeded once per session; all existing tests send this value.
+# After Epic 2, require_api_key does a DB hash lookup instead of env-var check.
+# ---------------------------------------------------------------------------
+_TEST_API_KEY_RAW = "test-secret-key"
+_TEST_API_KEY_HASH = hashlib.sha256(_TEST_API_KEY_RAW.encode()).hexdigest()
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if not TEST_DATABASE_URL:
@@ -36,6 +45,32 @@ async def test_engine():
         # Required for the GIN trigram indexes on info_items.
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(Base.metadata.create_all)
+        # Seed a test API key so require_api_key DB lookup succeeds for all
+        # tests that send X-API-Key: test-secret-key.
+        user_id = str(ULID())
+        key_id = str(ULID())
+        await conn.execute(
+            text(
+                "INSERT INTO information.app_users"
+                " (id, external_id, email, created_at, updated_at)"
+                " VALUES (:id, :ext_id, :email, now(), now())"
+            ),
+            {"id": user_id, "ext_id": "test-api-user", "email": "api-test@system.internal"},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO information.api_keys"
+                " (id, user_id, label, key_prefix, key_hash, created_at)"
+                " VALUES (:id, :user_id, :label, :key_prefix, :key_hash, now())"
+            ),
+            {
+                "id": key_id,
+                "user_id": user_id,
+                "label": "Test key (seeded by conftest)",
+                "key_prefix": _TEST_API_KEY_RAW[:8],
+                "key_hash": _TEST_API_KEY_HASH,
+            },
+        )
     yield engine
     async with engine.begin() as conn:
         # The Watcher test conftest may have created ``public.watches`` with

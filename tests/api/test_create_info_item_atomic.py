@@ -26,11 +26,6 @@ VALID_SOURCE_SPEC = {
 }
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key(monkeypatch):
-    monkeypatch.setenv("ARCHIVER_API_KEY", "test-secret-key")
-
-
 @pytest.fixture
 async def rep_spec_row(session) -> RepSpec:
     """Insert a minimal RepSpec for assignment tests."""
