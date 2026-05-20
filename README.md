@@ -40,6 +40,10 @@ bash clients/python/scripts/regen.sh
 
 (The script invokes `dump_openapi.py` internally.)
 
+## Admin dashboard
+
+HTML/HTMX admin UI at `/dashboard/`. Auth via `X-ExeDev-UserID` / `X-ExeDev-Email` proxy headers (redirects to `/__exe.dev/login` when absent). Covers all registry entities: Information Items, Information Sources, Source Revisions, Replication Specifications, and API key management. See [docs/UI.md](docs/UI.md) for the full page inventory and component catalogue.
+
 ## Optional: change-bus publisher
 
 Set `ARCHIVER_REDIS_URL=redis://localhost:6379/0` in the environment to enable the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded local-dev mode).
