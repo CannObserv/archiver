@@ -200,6 +200,7 @@ async def test_create_invalid_json_rerenders_form(client):
     )
     assert r.status_code == 200
     assert "error" in r.text.lower() or "invalid" in r.text.lower()
+    assert "not-json" in r.text  # document_raw round-trips into server response
 
 
 @pytest.mark.asyncio
@@ -212,3 +213,4 @@ async def test_create_invalid_schema_rerenders_form(client):
     )
     assert r.status_code == 200
     assert "error" in r.text.lower() or "invalid" in r.text.lower()
+    assert "Bad Schema" in r.text  # name round-trips into server response

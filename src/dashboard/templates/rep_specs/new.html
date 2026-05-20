@@ -2,7 +2,7 @@
 {% block title %}New Replication Specification{% endblock %}
 
 {% block content %}
-<div class="entity-section" x-data="repSpecEditor">
+<div class="entity-section" x-data='repSpecEditor({{ document_raw | tojson }}, {{ (selected_provider or "") | tojson }})'>
   <div class="entity-section__header">
     <h1 class="entity-section__title">New Replication Specification</h1>
   </div>

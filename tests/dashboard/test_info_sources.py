@@ -258,8 +258,8 @@ async def test_create_invalid_spec_rerenders_form_with_error(client):
     )
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    # error message present
     assert "invalid" in r.text.lower() or "error" in r.text.lower()
+    assert "not-json" in r.text  # source_spec_raw round-trips into server response
 
 
 @pytest.mark.asyncio

@@ -110,7 +110,7 @@ Single-field SourceSpec JSON editor with client-side JSON parse validation on bl
 **Methods:**
 - `validate()` — called on `@blur`. Attempts `JSON.parse(raw)`; sets `hasError`/`errorMsg`.
 
-**Usage:** `x-data="sourceSpecEditor"` on the outer `<div>` wrapping the create form. The `<textarea name="source_spec" x-model="raw" @blur="validate()">` submits directly as a form field — no hidden input needed.
+**Usage:** `x-data='sourceSpecEditor({{ source_spec_raw | tojson }})'` on the outer `<div>` wrapping the create form, passing the server-rendered initial value so Alpine's `x-model` initialises `raw` correctly on re-render after validation errors. The `<textarea name="source_spec" x-model="raw" @blur="validate()">` submits directly as a form field — no hidden input needed.
 
 ---
 
@@ -140,7 +140,9 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 ### Home (`/dashboard/`)  *(Epic 7 — implemented)*
 
-**GET `/dashboard/`** — summary dashboard. Four count tiles (Information Items, Information Sources, Replication Specifications, Source Revisions), each a link to the respective list page. Service health indicator loaded via `hx-get="/health" hx-trigger="load"` (non-blocking, shows "checking…" badge until HTMX fires). Recent captures table: last 10 SourceRevisions ordered by `captured_at desc`, with fingerprint link and source URL.
+**GET `/dashboard/`** — summary dashboard. Four count tiles (Information Items, Information Sources, Replication Specifications, Source Revisions), each a link to the respective list page. Service health indicator loaded via `hx-get="/dashboard/health" hx-trigger="load"` (non-blocking, shows "checking…" badge until HTMX fires). Recent captures table: last 10 SourceRevisions ordered by `captured_at desc`, with fingerprint link and source URL.
+
+**GET `/dashboard/health`** — HTMX partial. Returns `<span class="badge badge--success">ok</span>`. Auth-gated; unauthenticated requests redirect 307.
 
 ### Information Items (`/dashboard/info-items/`)  *(Epic 3 — implemented)*
 
@@ -205,11 +207,15 @@ Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment u
 
 Single-field document editor with client-side JSON parse validation on blur.
 
+**Parameters (factory args):**
+- `initialValue: string` — initial document JSON string (pass `{{ document_raw | tojson }}`).
+- `initialProvider: string` — initially selected provider (pass `{{ (selected_provider or "") | tojson }}`).
+
 **State:** `provider: string`, `raw: string`, `hasError: boolean`, `errorMsg: string`.
 
 **Methods:** `validate()` — called on `@blur`; attempts `JSON.parse(raw)`, sets `hasError`/`errorMsg`.
 
-**Usage:** `x-data="repSpecEditor"` on the create form wrapper. Provider `<select x-model="provider">` drives `provider` state for optional template reactions.
+**Usage:** `x-data='repSpecEditor({{ document_raw | tojson }}, {{ (selected_provider or "") | tojson }})'` on the create form wrapper, passing server-rendered initial values so Alpine's `x-model` initialises correctly on re-render. Provider `<select x-model="provider">` drives `provider` state for optional template reactions.
 
 ### Settings — API Keys (`/dashboard/settings/api-keys`)  *(Epic 2 — implemented)*
 

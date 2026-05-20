@@ -103,10 +103,10 @@ document.addEventListener("alpine:init", function () {
      *
      * @returns {object} Alpine component data.
      */
-    window.Alpine.data("repSpecEditor", function () {
+    window.Alpine.data("repSpecEditor", function (initialValue, initialProvider) {
         return {
-            provider: "",
-            raw: "",
+            provider: (initialProvider !== undefined) ? initialProvider : "",
+            raw: (initialValue !== undefined) ? initialValue : "",
             hasError: false,
             errorMsg: "",
 
@@ -138,9 +138,9 @@ document.addEventListener("alpine:init", function () {
      *
      * @returns {object} Alpine component data.
      */
-    window.Alpine.data("sourceSpecEditor", function () {
+    window.Alpine.data("sourceSpecEditor", function (initialValue) {
         return {
-            raw: "",
+            raw: (initialValue !== undefined) ? initialValue : "",
             hasError: false,
             errorMsg: "",
 

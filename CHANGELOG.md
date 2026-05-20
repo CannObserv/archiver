@@ -10,6 +10,16 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v3.5.0 (2026-05-20)
+
+[service] **Admin dashboard — Epics 3–7** — Five new dashboard route families (archiver#30–#34). All routes are HTML/HTMX; no API or SDK changes.
+
+- **Info Items** (`/dashboard/info-items/`) — paginated list, three-step wizard create, detail with Sources / Rep Specs / Revision History tabs, bind-source, assign/deactivate rep-spec, PATCH public-url, bind-revision.
+- **Info Sources** (`/dashboard/info-sources/`) — paginated list with shape and URL filters, create with SourceSpec JSON editor, detail with bound items and revision history.
+- **Source Revisions** (`/dashboard/source-revisions/`) — paginated list with info-source filter, detail with cache status, danger-zone clear-cache action.
+- **Replication Specifications** (`/dashboard/rep-specs/`) — paginated list with provider filter, create with document JSON editor, detail with active assignments.
+- **Home** (`/dashboard/`) — summary count tiles, HTMX health badge (`/dashboard/health`), recent captures table.
+
 ## v3.4.0 (2026-05-19)
 
 [service] **API key auth migrated from env-var to DB** — `require_api_key`

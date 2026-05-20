@@ -23,6 +23,14 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
+@router.get("/health", response_class=HTMLResponse)
+async def dashboard_health_partial(
+    user: AppUser = Depends(get_dashboard_user),
+) -> HTMLResponse:
+    """HTMX partial — returns a styled badge for the home page health indicator."""
+    return HTMLResponse('<span class="badge badge--success">ok</span>')
+
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard_index(
     request: Request,

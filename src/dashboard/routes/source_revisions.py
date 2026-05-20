@@ -165,7 +165,6 @@ async def detail_source_revision(
 @router.post("/{rev_id}/clear-cache")
 async def clear_revision_cache(
     rev_id: str,
-    request: Request,
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ):

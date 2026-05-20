@@ -52,6 +52,21 @@ async def test_home_shows_entity_counts(client, session):
 
 
 @pytest.mark.asyncio
+async def test_health_partial_returns_badge(client):
+    r = await client.get("/dashboard/health", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "badge" in r.text
+    assert "ok" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_partial_unauthenticated_redirects(client):
+    r = await client.get("/dashboard/health", follow_redirects=False)
+    assert r.status_code == 307
+
+
+@pytest.mark.asyncio
 async def test_home_shows_recent_revisions(client, session):
     src = _make_source("https://example.com/recent-rev")
     session.add(src)

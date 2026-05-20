@@ -2,7 +2,7 @@
 {% block title %}New Information Source{% endblock %}
 
 {% block content %}
-<div class="entity-section" x-data="sourceSpecEditor">
+<div class="entity-section" x-data='sourceSpecEditor({{ source_spec_raw | tojson }})'>
   <div class="entity-section__header">
     <h1 class="entity-section__title">New Information Source</h1>
   </div>

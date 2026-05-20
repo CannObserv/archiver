@@ -81,11 +81,11 @@
   {# Pagination #}
   <div class="pagination" style="margin-top:var(--space-3);">
     {% if offset > 0 %}
-    <a href="/dashboard/source-revisions/?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}{% if info_source_id %}&info_source_id={{ info_source_id }}{% endif %}"
+    <a href="/dashboard/source-revisions/?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}{% if info_source_id %}&info_source_id={{ info_source_id | urlencode }}{% endif %}"
        class="btn btn--ghost btn--sm">← Previous</a>
     {% endif %}
     {% if has_more %}
-    <a href="/dashboard/source-revisions/?offset={{ offset + limit }}&limit={{ limit }}{% if info_source_id %}&info_source_id={{ info_source_id }}{% endif %}"
+    <a href="/dashboard/source-revisions/?offset={{ offset + limit }}&limit={{ limit }}{% if info_source_id %}&info_source_id={{ info_source_id | urlencode }}{% endif %}"
        class="btn btn--ghost btn--sm">Next →</a>
     {% endif %}
   </div>
