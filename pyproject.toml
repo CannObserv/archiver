@@ -62,6 +62,7 @@ extend-select = ["B904"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
+known-third-party = ["alembic"]
 
 [tool.coverage.run]
 source = ["src"]

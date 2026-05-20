@@ -8,10 +8,10 @@ import asyncio
 import os
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from alembic import context
 from src.core.models import Base
 from src.core.models.base import ULIDType
 

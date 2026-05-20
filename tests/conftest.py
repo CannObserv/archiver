@@ -4,15 +4,16 @@ import asyncio
 import hashlib
 import os
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 import pytest
+from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from ulid import ULID
 
-from alembic import command as alembic_command
 from src.api.deps import get_db_session
 from src.api.main import app
 
@@ -67,7 +68,7 @@ def _run_alembic_upgrade() -> None:
     try:
         os.environ["ARCHIVER_DATABASE_URL"] = TEST_DATABASE_URL
         os.environ.pop("DATABASE_URL", None)
-        cfg = AlembicConfig("alembic.ini")
+        cfg = AlembicConfig(str(Path(__file__).parent.parent / "alembic.ini"))
         alembic_command.upgrade(cfg, "head")
     finally:
         if original_archiver is None:
@@ -89,7 +90,7 @@ async def test_engine():
     # internally, which requires a thread with no existing event loop.
     # Migrations handle: information schema creation, pg_trgm extension,
     # all table DDL, constraints, and indexes.
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _run_alembic_upgrade)
 
     engine = create_async_engine(TEST_DATABASE_URL)
