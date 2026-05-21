@@ -170,3 +170,61 @@ async def test_patch_other_users_key_returns_404(client, session):
         headers=_HEADERS,
     )
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Issue #37 — UX improvements
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_keys_header_has_add_key_button(client):
+    """Header shows toggle button; create form is not always open."""
+    response = await client.get(_URL, headers=_HEADERS)
+    assert response.status_code == 200
+    assert "Add key" in response.text
+    # The form is inside a toggleable container driven by apiKeyCreate
+    assert 'x-data="apiKeyCreate"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_thead_label_column_before_prefix(client, session):
+    """Column order is Label, Prefix, Last Used, Actions."""
+    user = AppUser(external_id="ext-settings", email="settings@example.com")
+    session.add(user)
+    await session.flush()
+    _, prefix, key_hash = generate_api_key()
+    session.add(ApiKey(user_id=user.id, label="Order test", key_prefix=prefix, key_hash=key_hash))
+    await session.flush()
+
+    response = await client.get(_URL, headers=_HEADERS)
+    thead = response.text[response.text.index("<thead>") : response.text.index("</thead>")]
+    assert thead.index("Label") < thead.index("Prefix")
+
+
+@pytest.mark.asyncio
+async def test_row_uses_api_key_row_component(client, session):
+    """Each key row uses the apiKeyRow Alpine component (starts in view mode)."""
+    user = AppUser(external_id="ext-settings", email="settings@example.com")
+    session.add(user)
+    await session.flush()
+    _, prefix, key_hash = generate_api_key()
+    session.add(
+        ApiKey(user_id=user.id, label="Row component test", key_prefix=prefix, key_hash=key_hash)
+    )
+    await session.flush()
+
+    response = await client.get(_URL, headers=_HEADERS)
+    assert 'x-data="apiKeyRow"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_reveal_copy_button_is_secondary_not_ghost(client):
+    """Copy button in the new-key reveal uses btn--secondary (visible on light bg)."""
+    response = await client.post(_URL, data={"label": "Copy style test"}, headers=_HEADERS)
+    assert response.status_code == 200
+    # Locate the reveal alert block and check button class within it
+    start = response.text.index("alert--success")
+    snippet = response.text[start : start + 600]
+    assert "btn--secondary" in snippet
+    assert "btn--ghost" not in snippet

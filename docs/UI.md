@@ -64,19 +64,43 @@ SourceSpec and RepSpec editors use HTMX to POST to `/api/v1/tools/validate-sourc
 
 All components registered as `Alpine.data('name', factory)` in `main.js` before `Alpine.start()`. No inline `x-data="{ ... }"` blobs in templates.
 
-### `apiKeyReveal`
+### `apiKeyCreate`
 
-Reveal-once modal for newly created API keys.
+Create-form toggle for the API Keys settings page.
 
 **State:**
-- `rawKey: string` — the one-time raw key value.
+- `showForm: boolean` — whether the create-key panel is expanded.
+
+**Usage:** `x-data="apiKeyCreate"` on the outer `<div class="entity-section">`. A `<button @click="showForm = !showForm">` in the header toggles the form. The form panel uses `x-show="showForm" x-cloak` to hide before Alpine initialises. After a full-page POST response, `showForm` resets to its initial `false` state automatically (form collapses; the new-key reveal panel appears instead).
+
+---
+
+### `apiKeyRow`
+
+Inline edit/view toggle for a single API key table row.
+
+**State:**
+- `editing: boolean` — whether the row is in edit mode.
+
+**Methods:**
+- `cancelEdit()` — set `editing = false` without a server call.
+
+**Usage:** `x-data="apiKeyRow"` on each `<tr id="key-row-{id}">`. View mode shows the label as text with Edit + Delete buttons. Edit mode reveals a label input and Save + Cancel buttons. Save uses HTMX `hx-patch` with `hx-include="#label-{id}"` to send the updated label; the server returns a fresh `_api_key_row.html` fragment that initialises with `editing: false`. Cancel calls `cancelEdit()`. Edit-mode elements carry `style="display:none;"` as an initial-state hint to prevent FOUC before Alpine runs.
+
+---
+
+### `apiKeyReveal`
+
+Reveal-once panel for a newly created API key.
+
+**State:**
+- `rawKey: string` — the one-time raw key value (set via `x-init`).
 - `copied: boolean` — clipboard copy feedback.
 
 **Methods:**
-- `open(key)` — set `rawKey`, open the modal, focus the first focusable element.
 - `copy()` — write `rawKey` to clipboard, set `copied = true` for 2 s.
 
-**Usage:** Included via `x-data="apiKeyReveal" x-init="open('{{ new_raw_key }}')"` on the reveal section returned by `POST /dashboard/settings/api-keys`. The raw key is embedded server-side in the one-time render; it is not stored client-side beyond the DOM lifetime.
+**Usage:** `x-data="apiKeyReveal" x-init="rawKey = '{{ new_raw_key }}'"` on the reveal section returned by `POST /dashboard/settings/api-keys`. `rawKey` is assigned directly in `x-init` (direct property assignment through the Alpine reactive proxy — do not use a method call from `x-init` as `this` is unbound). The raw key is embedded server-side in the one-time render; it is not stored client-side beyond the DOM lifetime.
 
 ---
 
@@ -219,12 +243,12 @@ Single-field document editor with client-side JSON parse validation on blur.
 
 ### Settings — API Keys (`/dashboard/settings/api-keys`)  *(Epic 2 — implemented)*
 
-**GET** — list current user's keys (prefix, label, last_used_at columns); create form.
+**GET** — list current user's keys. Table columns: Label, Prefix, Last Used, Actions. Create form is collapsed; click "+ Add key" (header button) to expand.
 
-**POST** — create new key (`label` form field required). Returns the full page with `new_raw_key` in template context so the `apiKeyReveal` component shows the raw key once. After navigation, the raw key is gone.
+**POST** — create new key (`label` form field required). Returns the full page with `new_raw_key` in template context so the `apiKeyReveal` component shows the raw key once. The create form collapses (Alpine `showForm` resets to false) and the new-key reveal panel appears above the table. After navigation, the raw key is gone.
 
-**DELETE `/dashboard/settings/api-keys/{id}`** — HTMX delete; response replaces the `<tr id="key-row-{id}">` with empty (removes row). Returns 404 if key belongs to a different user.
+**DELETE `/dashboard/settings/api-keys/{id}`** — HTMX delete; response replaces `<tr id="key-row-{id}">` with empty string (removes row). Returns 404 if key belongs to a different user.
 
-**PATCH `/dashboard/settings/api-keys/{id}`** — rename label (`label` form field). Returns `settings/_api_key_row.html` fragment replacing the existing row. Returns 404 if key belongs to a different user.
+**PATCH `/dashboard/settings/api-keys/{id}`** — rename label (`label` form field, submitted via `hx-include`). Returns `settings/_api_key_row.html` fragment replacing the row in view mode. Returns 404 if key belongs to a different user.
 
-Partial template: `settings/_api_key_row.html` — reusable `<tr>` fragment used both in list and as PATCH response.
+Partial template: `settings/_api_key_row.html` — reusable `<tr x-data="apiKeyRow">` fragment used both in list render and as PATCH response. Starts in view mode (`editing: false`). Edit button switches to edit mode; Save sends the PATCH; Cancel reverts without a server call.

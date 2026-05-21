@@ -73,7 +73,7 @@ async def settings_create_api_key(
         key_hash=key_hash,
     )
     session.add(api_key)
-    await session.flush()
+    await session.commit()
 
     keys = await _get_user_keys(session, user)
     return _templates.TemplateResponse(
@@ -92,7 +92,7 @@ async def settings_delete_api_key(
     """Delete one of the current user's API keys."""
     api_key = await _resolve_key(key_id, user, session)
     await session.delete(api_key)
-    await session.flush()
+    await session.commit()
     return Response(status_code=200)
 
 
@@ -111,6 +111,6 @@ async def settings_rename_api_key(
 
     api_key = await _resolve_key(key_id, user, session)
     api_key.label = label
-    await session.flush()
+    await session.commit()
 
     return _templates.TemplateResponse(request, "settings/_api_key_row.html", {"key": api_key})

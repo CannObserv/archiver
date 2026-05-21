@@ -1,15 +1,18 @@
 {# Partial: single API key table row — returned by PATCH rename. #}
-<tr id="key-row-{{ key.id }}">
-  <td class="data-table__cell"><code>{{ key.key_prefix }}…</code></td>
+<tr id="key-row-{{ key.id }}" x-data="apiKeyRow">
+
+  {# Label column — text in view mode, input in edit mode. #}
   <td class="data-table__cell">
-    <form hx-patch="/dashboard/settings/api-keys/{{ key.id }}"
-          hx-target="#key-row-{{ key.id }}" hx-swap="outerHTML"
-          class="inline-rename-form">
-      <input type="text" name="label" value="{{ key.label }}"
-             class="form-input form-input--inline" aria-label="Key label" required>
-      <button type="submit" class="btn btn--sm btn--ghost">Save</button>
-    </form>
+    <span x-show="!editing">{{ key.label }}</span>
+    <input type="text" name="label" id="label-{{ key.id }}" value="{{ key.label }}"
+           class="form-input form-input--inline" aria-label="Key label" required
+           x-show="editing" style="display:none;">
   </td>
+
+  {# Prefix column #}
+  <td class="data-table__cell"><code>{{ key.key_prefix }}…</code></td>
+
+  {# Last used column #}
   <td class="data-table__cell data-table__cell--muted">
     {% if key.last_used_at %}
       {{ key.last_used_at.strftime('%Y-%m-%d') }}
@@ -17,13 +20,41 @@
       Never
     {% endif %}
   </td>
+
+  {# Actions column #}
   <td class="data-table__cell">
-    <button class="btn btn--sm btn--danger"
-            hx-delete="/dashboard/settings/api-keys/{{ key.id }}"
-            hx-target="#key-row-{{ key.id }}" hx-swap="outerHTML"
-            hx-confirm="Delete this API key? This cannot be undone."
-            aria-label="Delete key {{ key.key_prefix }}…">
-      Delete
-    </button>
+
+    {# View mode: Edit + Delete #}
+    <div class="entity-card__actions" x-show="!editing">
+      <button type="button" class="btn btn--sm btn--secondary"
+              @click="editing = true"
+              aria-label="Edit key {{ key.key_prefix }}…">
+        Edit
+      </button>
+      <button type="button" class="btn btn--sm btn--danger"
+              hx-delete="/dashboard/settings/api-keys/{{ key.id }}"
+              hx-target="#key-row-{{ key.id }}" hx-swap="outerHTML"
+              hx-confirm="Delete this API key? This cannot be undone."
+              aria-label="Delete key {{ key.key_prefix }}…">
+        Delete
+      </button>
+    </div>
+
+    {# Edit mode: Save + Cancel #}
+    <div class="entity-card__actions" x-show="editing" style="display:none;">
+      <button type="button" class="btn btn--sm btn--primary"
+              hx-patch="/dashboard/settings/api-keys/{{ key.id }}"
+              hx-target="#key-row-{{ key.id }}" hx-swap="outerHTML"
+              hx-include="#label-{{ key.id }}"
+              aria-label="Save key {{ key.key_prefix }}…">
+        Save
+      </button>
+      <button type="button" class="btn btn--sm btn--secondary"
+              @click="cancelEdit()"
+              aria-label="Cancel editing key {{ key.key_prefix }}…">
+        Cancel
+      </button>
+    </div>
+
   </td>
 </tr>

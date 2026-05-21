@@ -870,6 +870,9 @@ p:last-child { margin-bottom: 0; }
   min-width: 44px;
 }
 
+/* ─── Alpine.js ──────────────────────────────────────────────────────────── */
+[x-cloak] { display: none !important; }
+
 /* ─── Utilities ──────────────────────────────────────────────────────────── */
 .text-muted { color: var(--color-text-muted); }
 .text-sm    { font-size: var(--font-size-sm); }

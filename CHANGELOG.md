@@ -10,6 +10,10 @@ affect callers (new endpoints, new SDK methods or types, behaviour
 changes, breaking changes, public-surface fixes). Internal refactors,
 test-only changes, and docs-only changes do not need entries.
 
+## v3.5.1 (2026-05-21)
+
+[service] **API Keys settings page — data-persistence and UX fixes** (archiver#37). Three mutating routes (`POST`, `DELETE`, `PATCH /dashboard/settings/api-keys`) called `session.flush()` instead of `session.commit()`; mutations appeared to succeed but rolled back silently on request completion. Fixed. Also: Alpine component registration race on hard refresh resolved (script load order); `window.open` name collision in `x-init` resolved; toggle-to-create form, column reorder (Label before Prefix), and inline Edit/Save/Cancel row workflow added.
+
 ## v3.5.0 (2026-05-20)
 
 [service] **Admin dashboard — Epics 3–7** — Five new dashboard route families (archiver#30–#34). All routes are HTML/HTMX; no API or SDK changes.

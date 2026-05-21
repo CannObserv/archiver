@@ -24,7 +24,31 @@ function configureHtmx() {
 document.addEventListener("alpine:init", function () {
 
     /**
-     * API key reveal modal — shows the raw key once after creation.
+     * API Keys settings page — create-form toggle.
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("apiKeyCreate", function () {
+        return {
+            showForm: false
+        };
+    });
+
+    /**
+     * Single API key table row — inline edit/view state.
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("apiKeyRow", function () {
+        return {
+            editing: false,
+
+            cancelEdit: function () {
+                this.editing = false;
+            }
+        };
+    });
+
+    /**
+     * API key reveal — shows the raw key once after creation.
      * @returns {object} Alpine component data.
      */
     window.Alpine.data("apiKeyReveal", function () {
