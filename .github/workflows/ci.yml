@@ -75,7 +75,6 @@ jobs:
 
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/archiver_test
-      ARCHIVER_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/archiver_test
       ARCHIVER_API_KEY: ci-test-key
 
     steps:
@@ -93,6 +92,8 @@ jobs:
         run: uv sync --group dev
 
       - name: alembic upgrade head
+        env:
+          ARCHIVER_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/archiver_test
         run: uv run alembic upgrade head
 
       - name: pytest (default, excludes integration)
