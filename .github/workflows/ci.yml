@@ -114,20 +114,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: require CHANGELOG.md on feat/fix
+      - name: require CHANGELOG.md on contract-visible changes
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
           PR_HAS_OPT_OUT: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           PUSH_AFTER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          # Mirror of scripts/check_changelog_on_push.sh PATTERN — keep in sync.
-          # Accepts feat[!]:, fix[!]:, with optional (scope) and `#<n> ` prefix.
-          PATTERN='^(#[0-9]+ )?(feat|fix)(\([^)]+\))?!?:'
+          # Path-based trigger — mirrors scripts/check_changelog_lib.sh TRIGGER RE.
+          # A CHANGELOG.md entry is required only when a contract-visible path changes:
+          #   alembic/versions/  deployed DB migrations
+          #   src/api/routes/    HTTP API surface
+          #   clients/python/    archiver-client SDK
+          # Dashboard, tests, docs, tooling changes never require an entry.
+          TRIGGER_RE='^(alembic/versions/|src/api/routes/|clients/python/)'
           ZERO=0000000000000000000000000000000000000000
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
@@ -137,7 +140,6 @@ jobs:
             fi
             base="$PR_BASE_SHA"
             head="$PR_HEAD_SHA"
-            msgs="$(git log --format=%s "$base..$head"; printf '%s\n' "$PR_TITLE")"
           else
             base="$PUSH_BEFORE_SHA"
             head="$PUSH_AFTER_SHA"
@@ -145,14 +147,15 @@ jobs:
               echo "no prior SHA on push (initial or force-with-lease edge); skipping"
               exit 0
             fi
-            msgs="$(git log --format=%s "$base..$head")"
           fi
 
-          if echo "$msgs" | grep -Eq "$PATTERN"; then
-            if ! git diff --name-only "$base" "$head" | grep -qx 'CHANGELOG.md'; then
-              echo "::error::feat/fix change without CHANGELOG.md update."
-              echo "Offending subjects:"
-              echo "$msgs" | grep -E "$PATTERN" | sed 's/^/  - /'
+          changed_files="$(git diff --name-only "$base" "$head")"
+
+          if printf '%s\n' "$changed_files" | grep -Eq "$TRIGGER_RE"; then
+            if ! printf '%s\n' "$changed_files" | grep -qx 'CHANGELOG.md'; then
+              echo "::error::Contract-visible path changed without a CHANGELOG.md entry."
+              echo "Matched trigger paths:"
+              printf '%s\n' "$changed_files" | grep -E "$TRIGGER_RE" | sed 's/^/  /'
               echo
               echo "Update CHANGELOG.md, or apply the 'no-changelog' label (PR only)."
               exit 1

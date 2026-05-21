@@ -1,14 +1,29 @@
 # Changelog
 
-All notable changes to archiver and its `archiver-client` SDK. Versions track
-the service version; the SDK is pinned 1:1.
+All notable changes to archiver and its `archiver-client` SDK.
 
 Format: human-readable narrative entries, newest first. Each change is
 tagged `[service]` (server-only), `[sdk]` (client-only), or `[both]`
-(coordinated). Update this file when merging changes to `main` that
-affect callers (new endpoints, new SDK methods or types, behaviour
-changes, breaking changes, public-surface fixes). Internal refactors,
-test-only changes, and docs-only changes do not need entries.
+(coordinated).
+
+**When to add an entry:** only when a contract-visible path changes —
+`alembic/versions/` (deployed migrations), `src/api/routes/` (HTTP surface),
+or `clients/python/` (SDK). Dashboard UX, test-only, lint/tooling, and
+docs-only changes do not need entries. The CI changelog job enforces this.
+
+**Versioning:** service and SDK versions are independent. Service version bumps
+with any notable release. SDK version in `clients/python/pyproject.toml` bumps
+only when the SDK surface changes (new methods, changed types, removals); a
+service-only patch does not require an SDK bump.
+
+## v3.5.2 (2026-05-21)
+
+[sdk] **SDK version decoupled from service version** (archiver#38). The SDK
+(`archiver-client`) now versions independently — its version in
+`clients/python/pyproject.toml` bumps only when the SDK surface changes (new
+methods, changed types, removals). A service-only release does not imply an SDK
+bump. No API or SDK surface changes in this release; `archiver-client` remains
+at v3.2.0.
 
 ## v3.5.1 (2026-05-21)
 
