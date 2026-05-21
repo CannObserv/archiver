@@ -145,7 +145,7 @@ set +a
 
 **Key variables:**
 - `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
-- `ARCHIVER_API_KEY` — required `X-API-Key` for all routes outside `/health` and `/openapi.json`.
+- `ARCHIVER_API_KEY` — convenience alias for a registered API key value (SHA-256 hash stored in `api_keys` table). The service does **not** read this env var for auth — `require_api_key` does a DB hash lookup. Used by `smoke_phase4.sh` and manual `curl` calls. The value must match a key registered via the dashboard Settings page.
 - `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name should include `_test` (e.g. `archiver_test`). `conftest.py` asserts this at collection time and fails fast if violated.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis).
 - `WATCHER_CACHE_DIR`, `WATCHER_CACHE_TTL_SECONDS`, `WATCHER_CACHE_SWEEP_INTERVAL_SECONDS` — Watcher-side, not Archiver-side; documented here because the `content_cache_uri` lifecycle protocol they govern is a registry contract (see design doc Section 2).
