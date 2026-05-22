@@ -131,7 +131,7 @@ dev = [
 
 [[package]]
 name = "archiver-client"
-version = "3.2.0"
+version = "3.2.1"
 source = { editable = "clients/python" }
 dependencies = [
     { name = "attrs" },

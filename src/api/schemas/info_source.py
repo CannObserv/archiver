@@ -35,9 +35,19 @@ class InfoSourceCreate(BaseModel):
 class InfoSourceOut(BaseModel):
     """Projection of an info_sources row."""
 
-    info_source_id: str
-    parent_info_source_id: str | None
-    source_spec: dict[str, Any]
-    schema_version: int
-    url: str | None
-    created_at: datetime
+    info_source_id: str = Field(description="ULID identifying this InfoSource.")
+    parent_info_source_id: str | None = Field(
+        description=("ULID of the root InfoSource this is a fragment of. Null for root sources.")
+    )
+    source_spec: dict[str, Any] = Field(
+        description="SourceSpec v1 document describing how to fetch and extract content."
+    )
+    schema_version: int = Field(
+        description="SourceSpec schema version embedded in the document; always 1 currently."
+    )
+    url: str | None = Field(
+        description=(
+            "Canonical URL for root sources. Null for fragment sources (URL inherited from parent)."
+        )
+    )
+    created_at: datetime = Field(description="UTC timestamp when the InfoSource was created.")

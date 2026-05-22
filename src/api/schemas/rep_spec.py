@@ -41,9 +41,16 @@ class RepSpecCreate(BaseModel):
 class RepSpecOut(BaseModel):
     """Projection of a rep_specs row."""
 
-    rep_spec_id: str
-    provider: str
-    name: str
-    schema_version: int
-    document: dict[str, Any]
-    created_at: datetime
+    rep_spec_id: str = Field(description="ULID identifying this RepSpec.")
+    provider: str = Field(description="Provider key (e.g. 'gcs', 'gdrive', 'ia').")
+    name: str = Field(description="Operator-friendly label for this RepSpec.")
+    schema_version: int = Field(
+        description="RepSpec envelope schema version; always 1 in the current implementation."
+    )
+    document: dict[str, Any] = Field(
+        description=(
+            "RepSpec envelope document validated against rep_spec_schema/v1.json "
+            "and the per-provider sub-schema."
+        )
+    )
+    created_at: datetime = Field(description="UTC timestamp when the RepSpec was created.")

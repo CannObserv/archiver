@@ -117,15 +117,30 @@ class InfoItemSourceRevisionOut(BaseModel):
 
 
 class InfoItemOut(BaseModel):
-    info_item_id: str
-    name: str
-    description: str | None
-    owner: str | None
-    rep_fields: dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-    info_item_sources: list[InfoItemSourceOut] = Field(default_factory=list)
-    info_item_rep_specs: list[InfoItemRepSpecOut] = Field(default_factory=list)
+    info_item_id: str = Field(description="ULID identifying this InfoItem.")
+    name: str = Field(description="Human-readable label for the InfoItem.")
+    description: str | None = Field(
+        description="Optional freetext description of the InfoItem's content or purpose."
+    )
+    owner: str | None = Field(
+        description="Optional owner identifier (team or individual) for this InfoItem."
+    )
+    rep_fields: dict[str, Any] = Field(
+        description="Operator-defined JSONB bag of structured metadata fields for this item."
+    )
+    created_at: datetime = Field(description="UTC timestamp when the InfoItem was created.")
+    updated_at: datetime = Field(description="UTC timestamp of the last update to the InfoItem.")
+    info_item_sources: list[InfoItemSourceOut] = Field(
+        default_factory=list,
+        description=(
+            "Bound InfoSources (primary + fragments). Exactly one active row has role null "
+            "(primary); others carry 'cross_check' or 'sub_aspect'."
+        ),
+    )
+    info_item_rep_specs: list[InfoItemRepSpecOut] = Field(
+        default_factory=list,
+        description="Effective-dated RepSpec assignments for this InfoItem.",
+    )
     dashboard_url: str | None = Field(
         default=None,
         description=(

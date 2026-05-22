@@ -16,6 +16,10 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v3.5.4 (2026-05-22)
+
+[service] **OpenAPI field descriptions on entity Out schemas** (archiver#42). All fields in `InfoItemOut`, `InfoSourceOut`, `RepSpecOut`, and `SourceRevisionOut` now carry `Field(description=...)`, surfaced in `GET /openapi.json`. No response shape changes; no SDK changes.
+
 ## v3.5.3 (2026-05-21)
 
 [both] **`dashboard_url` field on InfoItem responses** (archiver#41). All InfoItem GET/POST endpoints (`GET /api/v1/info-items`, `GET /api/v1/info-items/{id}`, `POST /api/v1/info-items`, `GET /api/v1/tools/find-info-items`) now include `dashboard_url: str | null` in the response body. When `ARCHIVER_PUBLIC_BASE_URL` is set in the environment, `dashboard_url` is `"{ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}"`; otherwise it is `null`. Consumers (e.g. Watcher's dashboard) can use this to link users directly to the Archiver detail page without separately configuring the Archiver public URL. SDK: `InfoItemOut` gains a typed `dashboard_url: None | str | Unset` attribute (v3.2.0 → v3.2.1).
