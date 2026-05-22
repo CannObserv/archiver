@@ -90,9 +90,26 @@ assert_triggers "alembic + CHANGELOG already present" \
     "alembic/versions/abc123.py
 CHANGELOG.md"
 
-# Prefix guard: src/api_something should NOT match src/api/routes/
+assert_triggers "api schema change" \
+    "src/api/schemas/info_item.py"
+
+assert_triggers "api schema — new file" \
+    "src/api/schemas/rep_spec.py"
+
+assert_triggers "mixed: schema + dashboard (schema wins)" \
+    "src/api/schemas/source_revision.py
+src/dashboard/static/dashboard.js"
+
+# Prefix guard: src/api_something should NOT match src/api/routes/ or src/api/schemas/
 assert_no_trigger "path prefix false-positive guard" \
     "src/api_integration_tests/helper.py"
+
+# Alembic root files (env.py, script.py.mako) are NOT in versions/ and must NOT trigger
+assert_no_trigger "alembic/env.py (not a migration)" \
+    "alembic/env.py"
+
+assert_no_trigger "alembic/script.py.mako (not a migration)" \
+    "alembic/script.py.mako"
 
 # ─────────────────────────────────────────────────────────────────────────────
 

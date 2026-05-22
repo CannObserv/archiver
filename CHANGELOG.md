@@ -18,7 +18,7 @@ service-only patch does not require an SDK bump.
 
 ## v3.5.2 (2026-05-21)
 
-[sdk] **SDK version decoupled from service version** (archiver#38). The SDK
+[service] **SDK version decoupled from service version** (archiver#38). The SDK
 (`archiver-client`) now versions independently — its version in
 `clients/python/pyproject.toml` bumps only when the SDK surface changes (new
 methods, changed types, removals). A service-only release does not imply an SDK

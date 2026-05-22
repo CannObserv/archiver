@@ -124,13 +124,14 @@ jobs:
           PUSH_AFTER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          # Path-based trigger — mirrors scripts/check_changelog_lib.sh TRIGGER RE.
+          # Path-based trigger — mirrors scripts/check_changelog_lib.sh CHANGELOG_TRIGGER_RE.
           # A CHANGELOG.md entry is required only when a contract-visible path changes:
           #   alembic/versions/  deployed DB migrations
           #   src/api/routes/    HTTP API surface
+          #   src/api/schemas/   Pydantic request/response contract models
           #   clients/python/    archiver-client SDK
           # Dashboard, tests, docs, tooling changes never require an entry.
-          TRIGGER_RE='^(alembic/versions/|src/api/routes/|clients/python/)'
+          TRIGGER_RE='^(alembic/versions/|src/api/routes/|src/api/schemas/|clients/python/)'
           ZERO=0000000000000000000000000000000000000000
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then

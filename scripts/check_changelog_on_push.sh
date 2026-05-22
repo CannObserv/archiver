@@ -32,8 +32,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 ERROR: pushing to main a change that touches a contract-visible path
        without a CHANGELOG.md entry.
 Range: $range
-Trigger paths matched (alembic/versions/, src/api/routes/, clients/python/):
-$(printf '%s\n' "$changed_files" | grep -E "$_CHANGELOG_TRIGGER_RE" | sed 's/^/  /')
+Trigger paths matched (alembic/versions/, src/api/routes/, src/api/schemas/, clients/python/):
+$(printf '%s\n' "$changed_files" | grep -E "$CHANGELOG_TRIGGER_RE" | sed 's/^/  /')
 
 Update CHANGELOG.md, or push with --no-verify if this is genuinely internal.
 EOF
