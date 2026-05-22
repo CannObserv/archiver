@@ -6,8 +6,15 @@ reads git's pre-push stdin protocol — one line per ref being pushed:
     <local_ref> <local_sha> <remote_ref> <remote_sha>
 
 Each test builds a throwaway git repo in ``tmp_path``, creates commits with
-controlled subjects, then invokes the script with synthetic stdin matching
+controlled file trees, then invokes the script with synthetic stdin matching
 the protocol. We assert exit code + stderr.
+
+Enforcement logic: a CHANGELOG.md entry is required when any changed file
+falls under a contract-visible path (mirrors ``scripts/check_changelog_lib.sh``):
+  - ``alembic/versions/``   deployed DB migrations
+  - ``src/api/routes/``     HTTP API surface
+  - ``src/api/schemas/``    Pydantic request/response contract models
+  - ``clients/python/``     archiver-client SDK
 """
 
 import subprocess
@@ -46,7 +53,7 @@ def commit(repo: Path, subject: str, files: dict[str, str] | None = None) -> str
     """Create a commit with the given subject, returning the new HEAD SHA.
 
     ``files`` maps relative path → contents. Defaults to a placeholder file
-    derived from the subject so each commit produces a non-empty diff.
+    so each commit produces a non-empty diff.
     """
     payload = files if files is not None else {"placeholder.txt": subject}
     for name, content in payload.items():
@@ -74,26 +81,37 @@ def push_line(local_sha: str, remote_sha: str, ref: str = MAIN) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Happy paths
+# Happy paths — non-trigger paths never require a CHANGELOG entry
 
 
-def test_non_feat_fix_range_passes(repo: Path) -> None:
-    """`chore:` and `docs:` commits don't require CHANGELOG.md."""
-    base = commit(repo, "chore: initial")
-    head = commit(repo, "docs: tweak readme")
+def test_non_trigger_paths_pass(repo: Path) -> None:
+    """Internal-only file changes do not require CHANGELOG.md."""
+    base = commit(repo, "chore: seed")
+    head = commit(
+        repo,
+        "fix: lint tweak",
+        {
+            "src/dashboard/static/dashboard.js": "// fixed\n",
+            "src/core/simhash.py": "# patched\n",
+            "tests/test_foo.py": "# test\n",
+        },
+    )
 
     result = run_script(repo, push_line(head, base))
 
     assert result.returncode == 0, result.stderr
 
 
-def test_fix_with_changelog_passes(repo: Path) -> None:
-    """A `fix:` commit that touches CHANGELOG.md satisfies the rule."""
+def test_trigger_path_with_changelog_passes(repo: Path) -> None:
+    """A trigger-path change that also touches CHANGELOG.md satisfies the rule."""
     base = commit(repo, "chore: seed")
     head = commit(
         repo,
-        "fix(sdk): squash an off-by-one",
-        {"src/thing.py": "x = 1\n", "CHANGELOG.md": "## v1.2.3\n"},
+        "feat: new endpoint",
+        {
+            "src/api/routes/info_items.py": "# new route\n",
+            "CHANGELOG.md": "## v1.2.3\n",
+        },
     )
 
     result = run_script(repo, push_line(head, base))
@@ -102,9 +120,9 @@ def test_fix_with_changelog_passes(repo: Path) -> None:
 
 
 def test_changelog_in_later_commit_in_range_passes(repo: Path) -> None:
-    """Multi-commit range: feat without CHANGELOG, then docs adds CHANGELOG → pass."""
+    """Multi-commit range: trigger path first, CHANGELOG added in later commit → pass."""
     base = commit(repo, "chore: seed")
-    commit(repo, "feat(api): new endpoint")
+    commit(repo, "feat: new endpoint", {"src/api/routes/new.py": "# route\n"})
     head = commit(repo, "docs: log it", {"CHANGELOG.md": "## v1.3.0\n"})
 
     result = run_script(repo, push_line(head, base))
@@ -112,65 +130,117 @@ def test_changelog_in_later_commit_in_range_passes(repo: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
-# ---------------------------------------------------------------------------
-# Failure paths
-
-
-def test_feat_without_changelog_fails(repo: Path) -> None:
-    """`feat:` without a CHANGELOG.md change in range exits 1 and names the offender."""
+def test_dashboard_only_change_passes(repo: Path) -> None:
+    """Dashboard UX changes are never contract-visible and never require CHANGELOG."""
     base = commit(repo, "chore: seed")
-    head = commit(repo, "feat(sdk): new public method")
+    head = commit(
+        repo,
+        "fix: dashboard UX",
+        {
+            "src/dashboard/routes/settings.py": "# tweak\n",
+            "src/dashboard/templates/base.html": "<html/>\n",
+        },
+    )
+
+    result = run_script(repo, push_line(head, base))
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_alembic_env_py_not_a_trigger(repo: Path) -> None:
+    """Alembic root files (env.py, script.py.mako) are not migration files."""
+    base = commit(repo, "chore: seed")
+    head = commit(
+        repo,
+        "chore: update alembic config",
+        {"alembic/env.py": "# updated\n"},
+    )
+
+    result = run_script(repo, push_line(head, base))
+
+    assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Failure paths — trigger-path changes without CHANGELOG exit 1
+
+
+def test_api_route_change_without_changelog_fails(repo: Path) -> None:
+    """A change to an API route file requires CHANGELOG.md."""
+    base = commit(repo, "chore: seed")
+    head = commit(repo, "feat: new route", {"src/api/routes/info_items.py": "# new\n"})
 
     result = run_script(repo, push_line(head, base))
 
     assert result.returncode == 1
     assert "ERROR" in result.stderr
-    assert "feat(sdk): new public method" in result.stderr
+    assert "src/api/routes/info_items.py" in result.stderr
 
 
-def test_issue_prefix_recognized(repo: Path) -> None:
-    """`#42 fix: ...` matches the optional issue-prefix pattern."""
+def test_api_schema_change_without_changelog_fails(repo: Path) -> None:
+    """A change to a Pydantic schema file requires CHANGELOG.md."""
     base = commit(repo, "chore: seed")
-    head = commit(repo, "#42 fix: addresses something")
+    head = commit(
+        repo,
+        "fix: remove deprecated field",
+        {"src/api/schemas/info_item.py": "# changed\n"},
+    )
 
     result = run_script(repo, push_line(head, base))
 
     assert result.returncode == 1
-    assert "#42 fix" in result.stderr
+    assert "ERROR" in result.stderr
+    assert "src/api/schemas/info_item.py" in result.stderr
 
 
-def test_feat_bang_marker_triggers(repo: Path) -> None:
-    """Conventional Commits breaking-change marker (`feat!:`) is matched."""
+def test_alembic_migration_without_changelog_fails(repo: Path) -> None:
+    """A new alembic migration requires CHANGELOG.md."""
     base = commit(repo, "chore: seed")
-    head = commit(repo, "feat!: drop legacy field")
+    head = commit(repo, "feat: add column", {"alembic/versions/abc123_add_col.py": "# migration\n"})
 
     result = run_script(repo, push_line(head, base))
 
     assert result.returncode == 1
-    assert "feat!: drop legacy field" in result.stderr
+    assert "ERROR" in result.stderr
+    assert "alembic/versions/abc123_add_col.py" in result.stderr
 
 
-def test_feat_scope_bang_marker_triggers(repo: Path) -> None:
-    """`feat(scope)!:` — both scope and bang — is matched."""
+def test_sdk_change_without_changelog_fails(repo: Path) -> None:
+    """A change under clients/python/ requires CHANGELOG.md."""
     base = commit(repo, "chore: seed")
-    head = commit(repo, "feat(api)!: rename resource")
+    head = commit(
+        repo,
+        "feat: new sdk method",
+        {"clients/python/src/archiver_client/api.py": "# sdk\n"},
+    )
 
     result = run_script(repo, push_line(head, base))
 
     assert result.returncode == 1
-    assert "feat(api)!: rename resource" in result.stderr
+    assert "ERROR" in result.stderr
+    assert "clients/python/src/archiver_client/api.py" in result.stderr
 
 
-def test_fix_bang_marker_triggers(repo: Path) -> None:
-    """`fix!:` is matched; pinned alongside the feat!: case so the alternation
-    in the regex can't silently regress for one branch but not the other."""
+def test_error_message_lists_matched_trigger_paths(repo: Path) -> None:
+    """The error message enumerates the matched trigger-path files."""
     base = commit(repo, "chore: seed")
-    head = commit(repo, "fix!: incompatible default-value change")
+    head = commit(
+        repo,
+        "feat: dual trigger",
+        {
+            "src/api/routes/info_items.py": "# route\n",
+            "alembic/versions/abc.py": "# migration\n",
+            "src/dashboard/static/app.js": "// internal\n",
+        },
+    )
 
     result = run_script(repo, push_line(head, base))
 
     assert result.returncode == 1
-    assert "fix!: incompatible default-value change" in result.stderr
+    assert "src/api/routes/info_items.py" in result.stderr
+    assert "alembic/versions/abc.py" in result.stderr
+    # dashboard file should NOT appear in the trigger list
+    assert "app.js" not in result.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -178,9 +248,9 @@ def test_fix_bang_marker_triggers(repo: Path) -> None:
 
 
 def test_non_main_ref_skipped(repo: Path) -> None:
-    """Pushing a feat to a non-main ref bypasses the check entirely."""
+    """Pushing a trigger-path change to a non-main ref bypasses the check."""
     base = commit(repo, "chore: seed")
-    head = commit(repo, "feat(sdk): new public method")
+    head = commit(repo, "feat: new route", {"src/api/routes/foo.py": "# route\n"})
 
     result = run_script(repo, push_line(head, base, ref=FEATURE))
 
@@ -191,13 +261,12 @@ def test_non_main_ref_skipped(repo: Path) -> None:
 def test_new_main_ref_skipped(repo: Path) -> None:
     """Pushing a brand-new `main` (remote_sha=ZERO) skips with a clear message."""
     commit(repo, "chore: seed")
-    head = commit(repo, "feat(sdk): new public method")
+    head = commit(repo, "feat: new route", {"src/api/routes/foo.py": "# route\n"})
 
     result = run_script(repo, push_line(head, ZERO))
 
     assert result.returncode == 0, result.stderr
     assert "new ref to refs/heads/main" in result.stderr
-    # Specifically: must NOT have run the check and emitted an ERROR.
     assert "ERROR" not in result.stderr
 
 
