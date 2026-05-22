@@ -35,6 +35,32 @@
     }
 
     /**
+     * Map a theme value to its display icon.
+     * @param {string|null} value - "light", "dark", or null (system).
+     * @returns {string}
+     */
+    function themeIcon(value) {
+        if (value === "light") { return "☀"; }
+        if (value === "dark")  { return "☾"; }
+        return "◐"; // system fallback
+    }
+
+    /**
+     * Update textContent and aria-label on all [data-theme-toggle] buttons.
+     * @param {string|null} value
+     */
+    function updateToggleButtons(value) {
+        var icon = themeIcon(value);
+        var label = value === null ? "Colour scheme: system" : "Colour scheme: " + value;
+        var buttons = document.querySelectorAll("[data-theme-toggle]");
+        var i;
+        for (i = 0; i < buttons.length; i += 1) {
+            buttons[i].textContent = icon;
+            buttons[i].setAttribute("aria-label", label);
+        }
+    }
+
+    /**
      * Handle a click on any [data-theme-toggle] button.
      * @param {Event} ev
      */
@@ -50,10 +76,13 @@
             localStorage.setItem(STORAGE_KEY, next);
         }
         applyTheme(next);
+        updateToggleButtons(next);
     }
 
     document.addEventListener("click", handleToggleClick);
 
     // Apply on first load (in case the FOUC inline script didn't run)
-    applyTheme(localStorage.getItem(STORAGE_KEY));
+    var initial = localStorage.getItem(STORAGE_KEY);
+    applyTheme(initial);
+    updateToggleButtons(initial);
 }());

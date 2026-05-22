@@ -15,7 +15,7 @@ Three-layer system:
 
 **FOUC prevention:** Inline `<script>` in `<head>` **before** `<link rel="stylesheet">` reads `localStorage.getItem('co-color-scheme')` and adds `.dark`/`.light` to `<html>` before first paint.
 
-**Tri-toggle** cycles: `light → system → dark`. `localStorage` key: `co-color-scheme`.
+**Tri-toggle** cycles: `system → light → dark → system`. `localStorage` key: `co-color-scheme`. `dark-mode.js` updates the button's `textContent` and `aria-label` on every toggle and on initial load. Icons: `◐` system, `☀` light, `☾` dark. `aria-label` values: `"Colour scheme: system"` / `"Colour scheme: light"` / `"Colour scheme: dark"`.
 
 **Brand colour:** `--color-brand: #6d4488` (light) / `#a78bc4` (dark).
 

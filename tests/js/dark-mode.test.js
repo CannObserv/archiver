@@ -1,7 +1,8 @@
 /*jslint browser */
 /**
  * Tests for dark-mode theme cycling logic.
- * Exercises the nextTheme and applyTheme behaviour in isolation.
+ * Exercises the nextTheme, applyTheme, themeIcon, and updateToggleButtons
+ * behaviour in isolation.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 
@@ -16,6 +17,30 @@ function applyTheme(htmlEl, value) {
     htmlEl.classList.remove("light", "dark");
     if (value === "dark") { htmlEl.classList.add("dark"); }
     else if (value === "light") { htmlEl.classList.add("light"); }
+}
+
+function themeIcon(value) {
+    if (value === "light") { return "☀"; }
+    if (value === "dark") { return "☾"; }
+    return "◐";
+}
+
+function makeBtn() {
+    return {
+        textContent: "",
+        _label: "",
+        setAttribute(k, v) { if (k === "aria-label") { this._label = v; } }
+    };
+}
+
+function updateToggleButtons(value, buttons) {
+    var icon = themeIcon(value);
+    var label = value === null ? "Colour scheme: system" : "Colour scheme: " + value;
+    var i;
+    for (i = 0; i < buttons.length; i += 1) {
+        buttons[i].textContent = icon;
+        buttons[i].setAttribute("aria-label", label);
+    }
 }
 
 describe("nextTheme", function () {
@@ -56,5 +81,50 @@ describe("applyTheme", function () {
         applyTheme(html, null);
         expect(html.classList.contains("dark")).toBe(false);
         expect(html.classList.contains("light")).toBe(false);
+    });
+});
+
+describe("themeIcon", function () {
+    it("null → ◐ (system)", function () {
+        expect(themeIcon(null)).toBe("◐");
+    });
+
+    it("'light' → ☀", function () {
+        expect(themeIcon("light")).toBe("☀");
+    });
+
+    it("'dark' → ☾", function () {
+        expect(themeIcon("dark")).toBe("☾");
+    });
+});
+
+describe("updateToggleButtons", function () {
+    it("sets system icon and label for null", function () {
+        var btn = makeBtn();
+        updateToggleButtons(null, [btn]);
+        expect(btn.textContent).toBe("◐");
+        expect(btn._label).toBe("Colour scheme: system");
+    });
+
+    it("sets light icon and label for 'light'", function () {
+        var btn = makeBtn();
+        updateToggleButtons("light", [btn]);
+        expect(btn.textContent).toBe("☀");
+        expect(btn._label).toBe("Colour scheme: light");
+    });
+
+    it("sets dark icon and label for 'dark'", function () {
+        var btn = makeBtn();
+        updateToggleButtons("dark", [btn]);
+        expect(btn.textContent).toBe("☾");
+        expect(btn._label).toBe("Colour scheme: dark");
+    });
+
+    it("updates multiple buttons", function () {
+        var btn1 = makeBtn();
+        var btn2 = makeBtn();
+        updateToggleButtons("dark", [btn1, btn2]);
+        expect(btn1.textContent).toBe("☾");
+        expect(btn2.textContent).toBe("☾");
     });
 });
