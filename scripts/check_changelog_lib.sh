@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Shared changelog-trigger logic.
 # Sourced by check_changelog_on_push.sh and test_check_changelog.sh.
 #

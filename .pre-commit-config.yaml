@@ -37,9 +37,17 @@ repos:
   - repo: local
     hooks:
       - id: changelog-required
-        name: require CHANGELOG.md on feat/fix when pushing to main
+        name: require CHANGELOG.md on contract-visible changes when pushing to main
         language: system
         entry: scripts/check_changelog_on_push.sh
+        stages: [pre-push]
+        always_run: true
+        pass_filenames: false
+
+      - id: test-changelog-lib
+        name: test changelog trigger logic
+        language: system
+        entry: bash scripts/test_check_changelog.sh
         stages: [pre-push]
         always_run: true
         pass_filenames: false
