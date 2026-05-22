@@ -1,5 +1,6 @@
 """InfoItem CRUD + sub-resource assignment endpoints."""
 
+import os
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
@@ -176,7 +177,12 @@ async def create_info_item(
     await session.commit()
     await session.refresh(item)
 
-    return info_item_to_out(item, sources=new_sources, rep_specs=new_rep_specs)
+    return info_item_to_out(
+        item,
+        sources=new_sources,
+        rep_specs=new_rep_specs,
+        base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+    )
 
 
 @router.get("", response_model=Page[InfoItemOut])
@@ -241,6 +247,7 @@ async def list_info_items(
                 item,
                 sources=sources_by_item.get(item.info_item_id, []),
                 rep_specs=rep_specs_by_item.get(item.info_item_id, []),
+                base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
             )
             for item in rows
         ],
@@ -283,7 +290,12 @@ async def get_info_item(
         .scalars()
         .all()
     )
-    return info_item_to_out(item, sources=sources, rep_specs=rep_specs)
+    return info_item_to_out(
+        item,
+        sources=sources,
+        rep_specs=rep_specs,
+        base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+    )
 
 
 # ---------------------------------------------------------------------------

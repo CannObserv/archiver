@@ -5,6 +5,8 @@ composing Information Items + SourceSpecs. Mutating CRUD lives on the existing
 /api/v1/info-items and sub-resource routes.
 """
 
+import os
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,7 +147,8 @@ async def find_info_items_route(
     Information Item. Returns up to ``limit`` matches, newest first.
     """
     items = await find_info_item(session, q, limit=limit)
-    return [info_item_to_out(item) for item in items]
+    base_url = os.environ.get("ARCHIVER_PUBLIC_BASE_URL")
+    return [info_item_to_out(item, base_url=base_url) for item in items]
 
 
 @router.post("/fetch-and-render", response_model=FetchAndRenderResult)

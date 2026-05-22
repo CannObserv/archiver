@@ -32,6 +32,8 @@ class InfoItemOut:
         updated_at (datetime.datetime):
         info_item_rep_specs (list[InfoItemRepSpecOut] | Unset):
         info_item_sources (list[InfoItemSourceOut] | Unset):
+        dashboard_url (None | str | Unset): Absolute URL of this item's Archiver dashboard detail
+            page. Null when ARCHIVER_PUBLIC_BASE_URL is not configured on the server.
     """
 
     created_at: datetime.datetime
@@ -43,6 +45,7 @@ class InfoItemOut:
     updated_at: datetime.datetime
     info_item_rep_specs: list[InfoItemRepSpecOut] | Unset = UNSET
     info_item_sources: list[InfoItemSourceOut] | Unset = UNSET
+    dashboard_url: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -93,6 +96,8 @@ class InfoItemOut:
             field_dict["info_item_rep_specs"] = info_item_rep_specs
         if info_item_sources is not UNSET:
             field_dict["info_item_sources"] = info_item_sources
+        if self.dashboard_url is not UNSET:
+            field_dict["dashboard_url"] = self.dashboard_url
 
         return field_dict
 
@@ -147,6 +152,19 @@ class InfoItemOut:
 
                 info_item_sources.append(info_item_sources_item)
 
+        _dashboard_url = d.pop("dashboard_url", UNSET)
+        dashboard_url: None | str | Unset
+        if isinstance(_dashboard_url, Unset):
+            dashboard_url = UNSET
+        else:
+
+            def _parse_dashboard_url(data: object) -> None | str:
+                if data is None:
+                    return data
+                return cast(None | str, data)
+
+            dashboard_url = _parse_dashboard_url(_dashboard_url)
+
         info_item_out = cls(
             created_at=created_at,
             description=description,
@@ -157,6 +175,7 @@ class InfoItemOut:
             updated_at=updated_at,
             info_item_rep_specs=info_item_rep_specs,
             info_item_sources=info_item_sources,
+            dashboard_url=dashboard_url,
         )
 
         info_item_out.additional_properties = d

@@ -99,10 +99,13 @@ def info_item_to_out(
     item: InfoItem,
     sources: list[InfoItemSource] | None = None,
     rep_specs: list[InfoItemRepSpec] | None = None,
+    base_url: str | None = None,
 ) -> InfoItemOut:
     """Serialise an InfoItem ORM row with optional related rows."""
+    item_id = str(item.info_item_id)
+    dashboard_url = f"{base_url.rstrip('/')}/info-items/{item_id}" if base_url else None
     return InfoItemOut(
-        info_item_id=str(item.info_item_id),
+        info_item_id=item_id,
         name=item.name,
         description=item.description,
         owner=item.owner,
@@ -111,4 +114,5 @@ def info_item_to_out(
         updated_at=item.updated_at,
         info_item_sources=[info_item_source_to_out(s) for s in (sources or [])],
         info_item_rep_specs=[info_item_rep_spec_to_out(r) for r in (rep_specs or [])],
+        dashboard_url=dashboard_url,
     )

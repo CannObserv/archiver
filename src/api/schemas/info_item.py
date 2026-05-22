@@ -126,3 +126,10 @@ class InfoItemOut(BaseModel):
     updated_at: datetime
     info_item_sources: list[InfoItemSourceOut] = Field(default_factory=list)
     info_item_rep_specs: list[InfoItemRepSpecOut] = Field(default_factory=list)
+    dashboard_url: str | None = Field(
+        default=None,
+        description=(
+            "Absolute URL of this item's Archiver dashboard detail page. "
+            "Null when ARCHIVER_PUBLIC_BASE_URL is not configured on the server."
+        ),
+    )
