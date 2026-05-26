@@ -176,9 +176,9 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 **POST `/dashboard/info-items/new`** — creates InfoItem (and optionally an initial InfoSource binding). Redirects 303 to detail on success. Returns 422 with re-rendered form on validation error.
 
-**GET `/dashboard/info-items/{id}`** — detail page. Header shows name, description, owner, rep_fields. Three Alpine.js tabs (client-side state):
-- *Sources* — table of active `info_item_sources` bindings + bind-source form.
-- *Replication Specs* — table of active `info_item_rep_specs` assignments + assign form.
+**GET `/dashboard/info-items/{id}`** — detail page. Header uses `.detail-grid` with `.detail-grid__item` / `.detail-grid__label` / `.detail-grid__value` divs (not `dl`/`dt`/`dd`) to show name, description, owner, rep_fields (shows `—` when empty), created_at. Three Alpine.js tabs rendered with `.tabs` / `.tabs__list` / `.tabs__btn` / `.tabs__btn--active` (not `btn--ghost`, which is topbar-only):
+- *Sources* — table of active `info_item_sources` bindings; URL column shows InfoSource detail link + external `↗` link; bind-source form uses `filter-card filter-card--stacked` (multi-field vertical form).
+- *Replication Specs* — table of active `info_item_rep_specs` assignments + assign form (`filter-card`, single-field).
 - *Revision History* — last 50 `info_item_source_revisions` ordered by `bound_at desc`.
 
 **POST `/dashboard/info-items/{id}/bind-source`** — binds an existing InfoSource (form fields: `info_source_id`, `role`). Redirects 303 to detail `?tab=sources`.

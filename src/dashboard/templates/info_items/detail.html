@@ -17,50 +17,63 @@
       </div>
     </div>
 
-    <dl class="detail-grid">
+    <div class="detail-grid">
       {% if item.description %}
-      <dt>Description</dt>
-      <dd>{{ item.description }}</dd>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Description</span>
+        <span class="detail-grid__value">{{ item.description }}</span>
+      </div>
       {% endif %}
       {% if item.owner %}
-      <dt>Owner</dt>
-      <dd>{{ item.owner }}</dd>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Owner</span>
+        <span class="detail-grid__value">{{ item.owner }}</span>
+      </div>
       {% endif %}
-      <dt>Rep Fields</dt>
-      <dd>
-        <code class="code-block">{{ item.rep_fields | tojson(indent=2) }}</code>
-      </dd>
-      <dt>Created</dt>
-      <dd class="text-muted">{{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
-    </dl>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Rep Fields</span>
+        <span class="detail-grid__value">
+          {% if item.rep_fields %}
+          <code class="code-block">{{ item.rep_fields | tojson(indent=2) }}</code>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Created</span>
+        <span class="detail-grid__value text-muted">{{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      </div>
+    </div>
   </div>
 
   {# Tab navigation #}
   <div x-data="{ activeTab: '{{ active_tab }}' }">
-    <nav class="tabs" role="tablist" aria-label="Information Item sections"
-         style="display:flex;gap:var(--space-2);margin:var(--space-4) 0 var(--space-3);">
-      <button role="tab" type="button"
-              @click="activeTab = 'sources'"
-              :aria-selected="activeTab === 'sources'"
-              :class="activeTab === 'sources' ? 'btn btn--primary btn--sm' : 'btn btn--ghost btn--sm'">
-        Sources
-        <span class="badge badge--sm" style="margin-left:var(--space-1);">{{ iis_rows|length }}</span>
-      </button>
-      <button role="tab" type="button"
-              @click="activeTab = 'repspecs'"
-              :aria-selected="activeTab === 'repspecs'"
-              :class="activeTab === 'repspecs' ? 'btn btn--primary btn--sm' : 'btn btn--ghost btn--sm'">
-        Replication Specs
-        <span class="badge badge--sm" style="margin-left:var(--space-1);">{{ irs_rows|length }}</span>
-      </button>
-      <button role="tab" type="button"
-              @click="activeTab = 'revisions'"
-              :aria-selected="activeTab === 'revisions'"
-              :class="activeTab === 'revisions' ? 'btn btn--primary btn--sm' : 'btn btn--ghost btn--sm'">
-        Revision History
-        <span class="badge badge--sm" style="margin-left:var(--space-1);">{{ iisr_rows|length }}</span>
-      </button>
-    </nav>
+    <div class="tabs" style="margin-top:var(--space-4);">
+      <div role="tablist" class="tabs__list" aria-label="Information Item sections">
+        <button role="tab" type="button"
+                @click="activeTab = 'sources'"
+                :aria-selected="activeTab === 'sources'"
+                :class="activeTab === 'sources' ? 'tabs__btn tabs__btn--active' : 'tabs__btn'">
+          Sources
+          <span class="badge badge--sm badge--neutral" style="margin-left:var(--space-1);">{{ iis_rows|length }}</span>
+        </button>
+        <button role="tab" type="button"
+                @click="activeTab = 'repspecs'"
+                :aria-selected="activeTab === 'repspecs'"
+                :class="activeTab === 'repspecs' ? 'tabs__btn tabs__btn--active' : 'tabs__btn'">
+          Replication Specs
+          <span class="badge badge--sm badge--neutral" style="margin-left:var(--space-1);">{{ irs_rows|length }}</span>
+        </button>
+        <button role="tab" type="button"
+                @click="activeTab = 'revisions'"
+                :aria-selected="activeTab === 'revisions'"
+                :class="activeTab === 'revisions' ? 'tabs__btn tabs__btn--active' : 'tabs__btn'">
+          Revision History
+          <span class="badge badge--sm badge--neutral" style="margin-left:var(--space-1);">{{ iisr_rows|length }}</span>
+        </button>
+      </div>
+    </div>
 
     {# Tab: Sources #}
     <div role="tabpanel" x-show="activeTab === 'sources'"
@@ -85,6 +98,11 @@
               <a href="/dashboard/info-sources/{{ iis.info_source_id }}">
                 <code class="text-small">{{ src.url or '(fragment)' }}</code>
               </a>
+              {% if src.url %}
+              <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer"
+                 class="text-muted text-small" style="margin-left:var(--space-1);"
+                 aria-label="Open source URL in new tab">↗</a>
+              {% endif %}
               {% else %}
               <span class="text-muted">{{ iis.info_source_id }}</span>
               {% endif %}
@@ -117,7 +135,7 @@
       <p class="text-muted">No active source bindings.</p>
       {% endif %}
 
-      <div class="filter-card" style="margin-top:var(--space-3);">
+      <div class="filter-card filter-card--stacked" style="margin-top:var(--space-3);">
         <h3 style="margin-top:0;">Bind Information Source</h3>
         <form method="POST"
               action="/dashboard/info-items/{{ item.info_item_id }}/bind-source"

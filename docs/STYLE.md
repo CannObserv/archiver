@@ -75,12 +75,13 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.btn--primary` — brand filled.
 - `.btn--secondary` — outline.
 - `.btn--danger` — destructive action.
-- `.btn--ghost` — transparent (topbar use).
+- `.btn--ghost` — transparent; **topbar use only** (text is `--color-text-on-brand` / white — invisible on light page backgrounds).
 - `.btn--sm` — compact size.
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
 
 ### Badges & Status
 - `.badge`, `.badge--success/warning/danger/info/neutral` — small inline label.
+- `.badge--sm` — extra-compact size (use in tight contexts like tab count indicators).
 - `.status-pill--cached/expired/missing` — SourceRevision cache state.
 
 ### Alerts & Flash
@@ -97,7 +98,8 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`.
 - `.form-input--error` / `.form-select--error` / `.form-textarea--error` — red border on invalid field.
 - `.form-input--inline` — compact width-auto variant for in-table rename inputs.
-- `.filter-card` — flex wrapper for filter controls.
+- `.filter-card` — flex row wrapper for filter controls (single-row, `align-items: flex-end`). **Topbar/filter-bar use only.**
+- `.filter-card--stacked` — modifier; changes `filter-card` to a vertical column (`flex-direction: column; align-items: stretch`). Use when the card contains a multi-field form with a heading above the inputs.
 
 ### Navigation
 - `.pagination`, `.pagination__btn`.
