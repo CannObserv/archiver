@@ -101,7 +101,7 @@
               {% if src.url %}
               <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer"
                  class="text-muted text-small" style="margin-left:var(--space-1);"
-                 aria-label="Open source URL in new tab">↗</a>
+                 aria-label="Open {{ src.url }} in new tab">↗</a>
               {% endif %}
               {% else %}
               <span class="text-muted">{{ iis.info_source_id }}</span>
@@ -109,7 +109,7 @@
             </td>
             <td class="data-table__cell">
               {% if iis.role %}
-              <span class="badge">{{ iis.role }}</span>
+              <span class="badge badge--neutral">{{ iis.role }}</span>
               {% else %}
               <span class="badge badge--info">primary</span>
               {% endif %}

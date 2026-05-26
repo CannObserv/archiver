@@ -48,7 +48,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 |---|---|
 | `--font-sans` | System UI stack |
 | `--font-mono` | SFMono / Consolas stack |
-| `--font-size-xs` – `--font-size-2xl` | 0.75 rem – 1.5 rem |
+| `--font-size-2xs` – `--font-size-2xl` | 0.65 rem – 1.5 rem |
 | `--font-weight-normal/medium/bold` | 400 / 500 / 700 |
 | `--line-height-tight/normal/loose` | 1.25 / 1.5 / 1.75 |
 
@@ -98,8 +98,8 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`.
 - `.form-input--error` / `.form-select--error` / `.form-textarea--error` — red border on invalid field.
 - `.form-input--inline` — compact width-auto variant for in-table rename inputs.
-- `.filter-card` — flex row wrapper for filter controls (single-row, `align-items: flex-end`). **Topbar/filter-bar use only.**
-- `.filter-card--stacked` — modifier; changes `filter-card` to a vertical column (`flex-direction: column; align-items: stretch`). Use when the card contains a multi-field form with a heading above the inputs.
+- `.filter-card` — for single-row action/filter bars: heading + inputs in a horizontal flex row (`align-items: flex-end`). Use for simple one-input + submit patterns. For multi-field stacked forms, add `.filter-card--stacked`.
+- `.filter-card--stacked` — modifier; changes `filter-card` to a vertical column (`flex-direction: column; align-items: stretch`). Use when the card contains a heading above multiple stacked form fields.
 
 ### Navigation
 - `.pagination`, `.pagination__btn`.
