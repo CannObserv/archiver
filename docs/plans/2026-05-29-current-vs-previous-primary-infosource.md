@@ -18,22 +18,31 @@ These three gaps together mean that when a tracked URL is superseded (government
 
 ## Approach
 
-Three coupled Archiver-side changes; Watcher changes are deferred (tracked in #44):
+Four coupled Archiver-side changes; Watcher changes are deferred (tracked in #44):
 
 1. **Vocabulary.** Introduce "current primary" (active NULL-role binding) and "previous primary" (deactivated NULL-role binding) as standard terms in CLAUDE.md, the ORM model docstring, and relevant API field descriptions. No code change.
 
-2. **API / SDK.** Add `is_active: bool` and `deactivated_at: datetime | None` to `InfoItemSourceOut`. Add `include_deactivated: bool = False` query param to `GET /info-items/{id}` (and `GET /info-items` list). When `True`, all bindings for the item(s) are returned regardless of `deactivated_at`; when `False` (default), behavior is unchanged. SDK wrapper updated to forward the param. No breaking change — additive only; minor version bump.
+2. **API / SDK.** Add `is_active: bool` and `deactivated_at: datetime | None` to `InfoItemSourceOut`. Add `include_deactivated: bool = False` query param to `GET /info-items/{id}`. When `True`, all bindings for the item are returned regardless of `deactivated_at`; when `False` (default), behavior is unchanged. Also add `DELETE /api/v1/info-items/{id}/info-sources/{source_id}` (mirroring the existing dashboard endpoint). SDK wrappers updated. No breaking change — additive only; minor version bump.
 
-3. **Change-bus event.** Add `InfoItemPrimaryChangedEvent` payload type to `src/core/changes/payloads.py`. Emit from the `add_info_source` route (following the same outbox pattern as `source_revision_captured`) when a new NULL-role binding is created and a previous primary exists: query for the most-recently-deactivated NULL-role binding on the InfoItem to populate `old_info_source_id`. Both the new binding and the outbox row are flushed in the same transaction.
+3. **Explicit succession workflow.** When `POST /info-items/{id}/info-sources` is called with `role=null` and an active primary already exists, `bind_info_source` raises a typed `ActiveRootAlreadyExistsError` (carrying the existing `info_source_id`). The route returns 409 with a structured payload identifying the current primary and guiding the caller to deactivate it first via the DELETE endpoint. Auto-deactivation is deliberately not performed — the succession step should be explicit to avoid accidental replacement.
+
+   Normal succession workflow:
+   1. `DELETE /api/v1/info-items/{id}/info-sources/{old_source_id}` — deactivate current primary
+   2. `POST /api/v1/info-items/{id}/info-sources` with `role=null` — bind new primary; event emitted
+
+4. **Change-bus event.** Add `InfoItemPrimaryChangedEvent` payload type to `src/core/changes/payloads.py` with `old_info_source_id: str | None` (null on first assignment). Emit from the `add_info_source` route every time a NULL-role binding is successfully created: if a previous primary exists (most-recently-deactivated NULL-role binding), populate `old_info_source_id`; otherwise emit with `old_info_source_id=null` to signal first primary assignment. Both binding and outbox row flushed in the same transaction.
 
 ## Tradeoffs / alternatives
 
 | Decision | Chosen | Rejected alternatives |
 |---|---|---|
-| API exposure shape | `include_deactivated=true` param — backward-compatible, consumer opt-in | Always include deactivated (breaks existing consumers); separate `/history` endpoint (unnecessary surface) |
-| `is_active` placement | Always present in `InfoItemSourceOut` — consistent, no schema variance | Only when `include_deactivated=True` — confusing; schema depends on request params |
-| Event emission point | At `add_info_source` route time, with DB lookback for previous primary | At deactivation time — new primary not known yet, requires two separate events; polling — adds latency and Watcher complexity |
-| Event emission responsibility | Route (follows existing `source_revision_captured` pattern) | Inside `bind_info_source` tool — would add outbox coupling to a pure validation/write tool |
+| API exposure shape | `include_deactivated=true` param on `GET /info-items/{id}` — backward-compatible, consumer opt-in | Always include deactivated (breaks existing consumers); separate `/history` endpoint (unnecessary surface); also on list endpoint (deferred — not needed by Watcher's use case) |
+| `is_active` placement | Always present in `InfoItemSourceOut` — consistent, no schema variance | Only when `include_deactivated=True` — confusing; schema varies by request params |
+| Succession UX | Explicit two-step (DELETE old → POST new); 409 with guidance on conflict | Auto-deactivate on POST — destructive without explicit intent; could silently replace primary on a caller mistake |
+| Atomic succession endpoint | Future `PUT /info-items/{id}/primary-source` noted as ergonomic option; not in scope | Would couple deactivation + bind into one call; deferred until Watcher's actual workflow is known |
+| Event on first assignment | `old_info_source_id: str \| None = None` on `InfoItemPrimaryChangedEvent` — single event type covers both first assignment (old=null) and succession (old=str) | Separate `info_item_primary_set` event type — unnecessary split; consumers branch on `old_info_source_id` |
+| Event emission point | At `add_info_source` route time, with DB lookback for previous deactivated primary | At deactivation time — new primary not known yet; polling — adds latency and Watcher complexity |
+| Event emission responsibility | Route (follows existing `source_revision_captured` pattern) | Inside `bind_info_source` tool — adds outbox coupling to a pure validation/write tool |
 
 ## Steps
 
@@ -45,11 +54,13 @@ Three coupled Archiver-side changes; Watcher changes are deferred (tracked in #4
 
 - [ ] **4. Route — `GET /info-items/{id}`** — add `include_deactivated: bool = Query(default=False)` param; when `True`, load all `InfoItemSource` rows for the item (drop the `deactivated_at IS NULL` filter); pass them to `info_item_to_out`. Tests: `include_deactivated=False` returns only active (existing behavior); `True` returns active + deactivated; deactivated rows have `is_active=False`.
 
-- [ ] **5. Route — `GET /info-items` (list)** — same `include_deactivated` param; when `True`, batch-load all bindings (not just active) and group by item. Tests: same shape as step 4.
+- [ ] **5. SDK** — update `get_info_item` wrapper in `clients/python/` to accept and forward `include_deactivated`; regenerate openapi-python-client models if the schema change requires it.
 
-- [ ] **6. SDK** — update `get_info_item` and `list_info_items` wrappers in `clients/python/` to accept and forward `include_deactivated`; regenerate openapi-python-client models if the schema change requires it.
+- [ ] **6. `ActiveRootAlreadyExistsError` in `bind_info_source`** — before inserting a NULL-role binding, query for an existing active NULL-role binding; if found, raise `ActiveRootAlreadyExistsError(existing_info_source_id=...)`. In `add_info_source` route: catch it and return 409 `conflict` with `data={"existing_info_source_id": str(...)}` and a message explaining the DELETE-then-POST succession workflow.
 
-- [ ] **7. Payload type: `InfoItemPrimaryChangedEvent`** — add to `src/core/changes/payloads.py`:
+- [ ] **7. `DELETE /api/v1/info-items/{id}/info-sources/{source_id}`** — add to `src/api/routes/info_items.py`; mirrors existing dashboard behavior (sets `deactivated_at=now()` on the active binding; 404 if not found or already deactivated). SDK: add `deactivate_info_source_binding(info_item_id, info_source_id)` wrapper. Tests: 200 on success; 404 on missing/already-deactivated; verify `deactivated_at` is set.
+
+- [ ] **8. Payload type: `InfoItemPrimaryChangedEvent`** — add to `src/core/changes/payloads.py`:
   ```python
   class InfoItemPrimaryChangedEvent(BaseModel):
       model_config = ConfigDict(extra="forbid")
@@ -57,20 +68,18 @@ Three coupled Archiver-side changes; Watcher changes are deferred (tracked in #4
       event_type: Literal["info_item_primary_changed"] = "info_item_primary_changed"
       occurred_at: datetime
       info_item_id: str
-      old_info_source_id: str
+      old_info_source_id: str | None  # None = first primary assignment
       new_info_source_id: str
   ```
 
-- [ ] **8. Emit logic** — in `src/api/routes/info_items.py`, in `add_info_source`, after `bind_info_source` succeeds: if `body.role is None`, query for the most-recently-deactivated NULL-role binding on this InfoItem (`ORDER BY deactivated_at DESC LIMIT 1`); if found, append an `InfoItemPrimaryChangedEvent` outbox row to the session before commit. Tests: event emitted on succession; no event on first primary assignment; no event on fragment binding.
+- [ ] **9. Emit logic** — in `src/api/routes/info_items.py`, in `add_info_source`, after `bind_info_source` succeeds and `body.role is None`: query for the most-recently-deactivated NULL-role binding (`ORDER BY deactivated_at DESC LIMIT 1`); append an `InfoItemPrimaryChangedEvent` outbox row with `old_info_source_id=str(...)` if found, or `old_info_source_id=None` on first assignment. Tests: event with `old=str` on succession; event with `old=None` on first assignment; no event on fragment binding.
 
-- [ ] **9. Full test sweep + lint** — `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+- [ ] **10. Full test sweep + lint** — `uv run pytest && uv run ruff check . && uv run ruff format --check .`
 
-- [ ] **10. CHANGELOG + version bump** — service and SDK: minor version bump (additive API, no break). CHANGELOG entries tagged `[both]`.
+- [ ] **11. CHANGELOG + version bump** — service and SDK: minor version bump (additive API, no break). CHANGELOG entries tagged `[both]`.
 
 ## Open questions / risks
 
-1. **API deactivate endpoint.** The `DELETE /info-items/{id}/info-sources/{source_id}` deactivation endpoint currently exists only in the dashboard (`src/dashboard/routes/info_items.py`), not in the API. For Watcher to perform primary succession programmatically (deactivate old → bind new), it needs an API-level deactivate endpoint. This plan does not add it; it should be a follow-on issue if Watcher needs it. (For now, primary succession can be performed via the dashboard.)
+1. **Atomic succession ergonomics.** The two-step DELETE + POST succession workflow is explicit but verbose. A future `PUT /info-items/{id}/primary-source` endpoint could atomically deactivate the current primary and bind the new one in a single transaction. Deferred pending observation of actual Watcher usage patterns.
 
-2. **First primary assignment.** Should a distinct `info_item_primary_set` event fire when a NULL-role binding is created with no prior primary? Currently the plan is silent — no event on first assignment. Confirm whether Watcher needs that signal.
-
-3. **`include_deactivated` on list vs detail.** List (`GET /info-items`) with `include_deactivated=True` may be expensive at scale (many items × many historical bindings). Consider whether Watcher's discovery use case actually needs it on the list endpoint, or only on `GET /info-items/{id}`. Scope reduction is safe.
+2. **Dashboard deactivate endpoint divergence.** The existing dashboard `DELETE /{item_id}/info-sources/{source_id}` (in `src/dashboard/routes/info_items.py`) must remain consistent with the new API endpoint. Consider extracting a shared `deactivate_info_item_source_binding(session, item_id, source_id)` tool function to avoid logic duplication.
