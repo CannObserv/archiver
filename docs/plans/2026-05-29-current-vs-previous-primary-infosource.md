@@ -58,9 +58,11 @@ Four coupled Archiver-side changes; Watcher changes are deferred (tracked in #44
 
 - [ ] **6. `ActiveRootAlreadyExistsError` in `bind_info_source`** — before inserting a NULL-role binding, query for an existing active NULL-role binding; if found, raise `ActiveRootAlreadyExistsError(existing_info_source_id=...)`. In `add_info_source` route: catch it and return 409 `conflict` with `data={"existing_info_source_id": str(...)}` and a message explaining the DELETE-then-POST succession workflow.
 
-- [ ] **7. `DELETE /api/v1/info-items/{id}/info-sources/{source_id}`** — add to `src/api/routes/info_items.py`; mirrors existing dashboard behavior (sets `deactivated_at=now()` on the active binding; 404 if not found or already deactivated). SDK: add `deactivate_info_source_binding(info_item_id, info_source_id)` wrapper. Tests: 200 on success; 404 on missing/already-deactivated; verify `deactivated_at` is set.
+- [ ] **7. Extract shared deactivation tool** — add `deactivate_info_item_source_binding(session, item_id, source_id)` to `src/core/tools/` (raises typed `BindingNotFoundError` when not found or already deactivated). Refactor existing dashboard `DELETE /{item_id}/info-sources/{source_id}` to call it.
 
-- [ ] **8. Payload type: `InfoItemPrimaryChangedEvent`** — add to `src/core/changes/payloads.py`:
+- [ ] **8. `DELETE /api/v1/info-items/{id}/info-sources/{source_id}`** — add to `src/api/routes/info_items.py`; calls the shared tool from step 7; translates `BindingNotFoundError` → 404. SDK: add `deactivate_info_source_binding(info_item_id, info_source_id)` wrapper. Tests: 200 on success; 404 on missing/already-deactivated; verify `deactivated_at` is set.
+
+- [ ] **9. Payload type: `InfoItemPrimaryChangedEvent`** — add to `src/core/changes/payloads.py`:
   ```python
   class InfoItemPrimaryChangedEvent(BaseModel):
       model_config = ConfigDict(extra="forbid")
@@ -72,14 +74,12 @@ Four coupled Archiver-side changes; Watcher changes are deferred (tracked in #44
       new_info_source_id: str
   ```
 
-- [ ] **9. Emit logic** — in `src/api/routes/info_items.py`, in `add_info_source`, after `bind_info_source` succeeds and `body.role is None`: query for the most-recently-deactivated NULL-role binding (`ORDER BY deactivated_at DESC LIMIT 1`); append an `InfoItemPrimaryChangedEvent` outbox row with `old_info_source_id=str(...)` if found, or `old_info_source_id=None` on first assignment. Tests: event with `old=str` on succession; event with `old=None` on first assignment; no event on fragment binding.
+- [ ] **10. Emit logic** — in `src/api/routes/info_items.py`, in `add_info_source`, after `bind_info_source` succeeds and `body.role is None`: query for the most-recently-deactivated NULL-role binding (`ORDER BY deactivated_at DESC LIMIT 1`); append an `InfoItemPrimaryChangedEvent` outbox row with `old_info_source_id=str(...)` if found, or `old_info_source_id=None` on first assignment. Tests: event with `old=str` on succession; event with `old=None` on first assignment; no event on fragment binding.
 
-- [ ] **10. Full test sweep + lint** — `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+- [ ] **11. Full test sweep + lint** — `uv run pytest && uv run ruff check . && uv run ruff format --check .`
 
-- [ ] **11. CHANGELOG + version bump** — service and SDK: minor version bump (additive API, no break). CHANGELOG entries tagged `[both]`.
+- [ ] **12. CHANGELOG + version bump** — service and SDK: minor version bump (additive API, no break). CHANGELOG entries tagged `[both]`.
 
 ## Open questions / risks
 
-1. **Atomic succession ergonomics.** The two-step DELETE + POST succession workflow is explicit but verbose. A future `PUT /info-items/{id}/primary-source` endpoint could atomically deactivate the current primary and bind the new one in a single transaction. Deferred pending observation of actual Watcher usage patterns.
-
-2. **Dashboard deactivate endpoint divergence.** The existing dashboard `DELETE /{item_id}/info-sources/{source_id}` (in `src/dashboard/routes/info_items.py`) must remain consistent with the new API endpoint. Consider extracting a shared `deactivate_info_item_source_binding(session, item_id, source_id)` tool function to avoid logic duplication.
+None — all design questions resolved. Atomic succession ergonomics deferred to [#45](https://github.com/CannObserv/archiver/issues/45).
