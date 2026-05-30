@@ -5,6 +5,7 @@ from ulid import ULID
 
 from src.core.models import InfoItem, InfoSource
 from src.core.tools.bind_info_source import (
+    ActiveRootAlreadyExistsError,
     ActiveRootMissingError,
     AlgorithmFamilyMismatchError,
     FragmentParentMismatchError,
@@ -183,6 +184,25 @@ async def test_bind_fragment_with_cross_check(session, item, root_src, frag_of_r
         role="cross_check",
     )
     assert binding.role == "cross_check"
+
+
+# --- active-root collision guard ---
+
+
+@pytest.mark.asyncio
+async def test_second_active_root_rejected(session, item, root_src, other_root):
+    """A second NULL-role bind on the same InfoItem raises ActiveRootAlreadyExistsError."""
+    await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=root_src.info_source_id, role=None
+    )
+    with pytest.raises(ActiveRootAlreadyExistsError) as exc_info:
+        await bind_info_source(
+            session,
+            info_item_id=item.info_item_id,
+            info_source_id=other_root.info_source_id,
+            role=None,
+        )
+    assert exc_info.value.existing_info_source_id == root_src.info_source_id
 
 
 # --- shape consistency ---

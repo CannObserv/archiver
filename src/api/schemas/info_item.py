@@ -95,7 +95,14 @@ class InfoItemSourceOut(BaseModel):
 
     info_source_id: str
     role: str | None
+    is_active: bool = Field(
+        description="True when deactivated_at is null (binding is currently active)."
+    )
     created_at: datetime
+    deactivated_at: datetime | None = Field(
+        default=None,
+        description="UTC timestamp when this binding was deactivated, or null if still active.",
+    )
 
 
 class InfoItemRepSpecOut(BaseModel):
@@ -133,8 +140,10 @@ class InfoItemOut(BaseModel):
     info_item_sources: list[InfoItemSourceOut] = Field(
         default_factory=list,
         description=(
-            "Bound InfoSources (primary + fragments). Exactly one active row has role null "
-            "(primary); others carry 'cross_check' or 'sub_aspect'."
+            "Bound InfoSources. By default only active bindings are returned "
+            "(is_active=true). Pass include_deactivated=true to also include previous "
+            "primaries and other deactivated bindings. Exactly one active row has role "
+            "null (current primary); others carry 'cross_check' or 'sub_aspect'."
         ),
     )
     info_item_rep_specs: list[InfoItemRepSpecOut] = Field(

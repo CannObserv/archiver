@@ -280,6 +280,100 @@ async def test_cross_family_css_under_jsonpath_returns_422_domain(client, sessio
 
 
 @pytest.mark.asyncio
+async def test_duplicate_primary_returns_409_conflict(client, session, item):
+    """POST with role=null when an active primary already exists → 409 conflict."""
+    src_a = await _make_source(session, url="https://example.com/a")
+    src_b = await _make_source(session, url="https://example.com/b")
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=src_a.info_source_id, role=None
+        )
+    )
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(src_b.info_source_id)},
+    )
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "conflict"
+    assert detail["data"]["existing_info_source_id"] == str(src_a.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_response_includes_is_active_and_deactivated_at(client, session, item):
+    """Successful bind returns is_active=True and deactivated_at=None."""
+    src = await _make_source(session, url="https://example.com/a")
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(src.info_source_id)},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["is_active"] is True
+    assert body["deactivated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_primary_changed_event_emitted_on_first_assignment(client, session, item):
+    """Binding a first primary emits info_item_primary_changed with old=null."""
+    from sqlalchemy import select
+
+    from src.core.models import ChangesOutboxRow
+
+    src = await _make_source(session, url="https://example.com/a")
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(src.info_source_id)},
+    )
+    assert resp.status_code == 201
+
+    rows = (await session.execute(select(ChangesOutboxRow))).scalars().all()
+    primary_events = [r for r in rows if r.payload.get("event_type") == "info_item_primary_changed"]
+    assert len(primary_events) == 1
+    ev = primary_events[0].payload
+    assert ev["old_info_source_id"] is None
+    assert ev["new_info_source_id"] == str(src.info_source_id)
+    assert ev["info_item_id"] == str(item.info_item_id)
+
+
+@pytest.mark.asyncio
+async def test_primary_changed_event_not_emitted_for_fragment_binding(client, session, item):
+    """Fragment bindings do NOT emit info_item_primary_changed."""
+    from sqlalchemy import select
+
+    from src.core.models import ChangesOutboxRow
+
+    root = await _make_source(session, url="https://example.com/a")
+    frag = await _make_source(session, parent_id=root.info_source_id)
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=root.info_source_id, role=None
+        )
+    )
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(frag.info_source_id), "role": "cross_check"},
+    )
+    assert resp.status_code == 201
+
+    rows = (await session.execute(select(ChangesOutboxRow))).scalars().all()
+    primary_events = [r for r in rows if r.payload.get("event_type") == "info_item_primary_changed"]
+    assert primary_events == []
+
+
+@pytest.mark.asyncio
 async def test_same_family_fragment_still_binds_201(client, session, item):
     """xpath fragment under full_page primary — both html_text → 201."""
     root = await _make_source(session, url="https://example.com/a")  # full_page

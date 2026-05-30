@@ -34,6 +34,9 @@ from archiver_client.generated.api.info_items import (
     create_info_item_api_v1_info_items_post as _create_info_item,
 )
 from archiver_client.generated.api.info_items import (
+    deactivate_info_source_binding_api_v1_info_items_info_item_id_info_sources_info_source_id_delete as _deactivate_info_source_binding,
+)
+from archiver_client.generated.api.info_items import (
     deactivate_rep_spec_assignment_api_v1_info_items_info_item_id_rep_spec_assignments_assignment_id_delete as _deactivate_rep_spec,
 )
 from archiver_client.generated.api.info_items import (
@@ -202,10 +205,18 @@ class ArchiverClient:
         )
         return _unwrap(response)
 
-    async def get_info_item(self, info_item_id: str) -> InfoItemOut:
-        """Fetch a single InfoItem by ID."""
+    async def get_info_item(
+        self, info_item_id: str, *, include_deactivated: bool = False
+    ) -> InfoItemOut:
+        """Fetch a single InfoItem by ID.
+
+        Pass ``include_deactivated=True`` to also include previous primaries and
+        other deactivated source bindings in ``info_item_sources``.
+        """
         response = await _get_info_item.asyncio_detailed(
-            client=self._gen_client, info_item_id=info_item_id
+            client=self._gen_client,
+            info_item_id=info_item_id,
+            include_deactivated=include_deactivated,
         )
         return _unwrap(response)
 
@@ -324,6 +335,23 @@ class ArchiverClient:
         )
         response = await _add_info_source.asyncio_detailed(
             client=self._gen_client, info_item_id=info_item_id, body=body
+        )
+        return _unwrap(response)
+
+    async def deactivate_info_source_binding(
+        self,
+        info_item_id: str,
+        info_source_id: str,
+    ) -> InfoItemSourceOut:
+        """Deactivate an InfoItemSource binding (sets ``deactivated_at``).
+
+        Use to retire the current primary before binding a new one.
+        Returns the deactivated binding row. Raises on 404.
+        """
+        response = await _deactivate_info_source_binding.asyncio_detailed(
+            client=self._gen_client,
+            info_item_id=info_item_id,
+            info_source_id=info_source_id,
         )
         return _unwrap(response)
 

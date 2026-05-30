@@ -71,6 +71,21 @@ def _info_source_out_payload() -> dict:
     }
 
 
+def _info_item_source_out_payload(
+    info_source_id: str = "01HZZ00000000000000000000F",
+    *,
+    is_active: bool = True,
+    deactivated_at: str | None = None,
+) -> dict:
+    return {
+        "info_source_id": info_source_id,
+        "role": None,
+        "is_active": is_active,
+        "created_at": _TS,
+        "deactivated_at": deactivated_at,
+    }
+
+
 def _top_info_source_payload(
     info_source_id: str = "01HZZ00000000000000000000F",
     parent: str | None = None,
@@ -225,6 +240,54 @@ async def test_get_info_item_422_raises_validation_error(client):
             await client.get_info_item("bad-id")
 
 
+@pytest.mark.asyncio
+async def test_get_info_item_include_deactivated_forwards_param(client):
+    """include_deactivated=True must be forwarded as a query param."""
+    with respx.mock:
+        route = respx.get(f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A").mock(
+            return_value=httpx.Response(200, json=_info_item_payload())
+        )
+        await client.get_info_item("01HZZ00000000000000000000A", include_deactivated=True)
+    assert route.calls.last.request.url.params.get("include_deactivated") == "true"
+
+
+@pytest.mark.asyncio
+async def test_deactivate_info_source_binding(client):
+    """Happy path: returns deactivated InfoItemSourceOut with is_active=False."""
+    payload = _info_item_source_out_payload(is_active=False, deactivated_at=_TS)
+    with respx.mock:
+        respx.delete(
+            f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A"
+            f"/info-sources/01HZZ00000000000000000000F"
+        ).mock(return_value=httpx.Response(200, json=payload))
+        out = await client.deactivate_info_source_binding(
+            "01HZZ00000000000000000000A", "01HZZ00000000000000000000F"
+        )
+    assert out.is_active is False
+    assert out.deactivated_at is not None
+
+
+@pytest.mark.asyncio
+async def test_deactivate_info_source_binding_404_raises_not_found(client):
+    with respx.mock:
+        respx.delete(
+            f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/info-sources/missing"
+        ).mock(
+            return_value=httpx.Response(
+                404,
+                json={
+                    "detail": {
+                        "kind": "lookup",
+                        "message": "Active binding not found",
+                        "errors": [],
+                    }
+                },
+            )
+        )
+        with pytest.raises(NotFound):
+            await client.deactivate_info_source_binding("01HZZ00000000000000000000A", "missing")
+
+
 # --- RepSpec assignment endpoints ---
 
 
@@ -297,7 +360,7 @@ async def test_set_public_url(client):
 async def test_add_info_source(client):
     with respx.mock:
         respx.post(f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/info-sources").mock(
-            return_value=httpx.Response(201, json=_info_source_out_payload())
+            return_value=httpx.Response(201, json=_info_item_source_out_payload())
         )
         out = await client.add_info_source(
             "01HZZ00000000000000000000A",
