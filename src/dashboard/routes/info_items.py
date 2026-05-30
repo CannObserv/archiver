@@ -56,6 +56,10 @@ from src.core.tools.create_info_source import (
     InvalidSourceSpecError,
     create_info_source,
 )
+from src.core.tools.deactivate_info_item_source_binding import (
+    BindingNotFoundError,
+    deactivate_info_item_source_binding,
+)
 from src.dashboard.deps import get_dashboard_user
 
 router = APIRouter(prefix="/dashboard/info-items", tags=["dashboard-info-items"])
@@ -475,19 +479,13 @@ async def deactivate_source_binding(
     except Exception as e:
         raise_envelope(404, "lookup", "Binding not found", source_exc=e)
 
-    result = await session.execute(
-        select(InfoItemSource).where(
-            InfoItemSource.info_item_id == item_ulid,
-            InfoItemSource.info_source_id == source_ulid,
-            InfoItemSource.deactivated_at.is_(None),
+    try:
+        await deactivate_info_item_source_binding(
+            session, info_item_id=item_ulid, info_source_id=source_ulid
         )
-    )
-    binding = result.scalar_one_or_none()
-    if binding is None:
-        raise_envelope(404, "lookup", "Active binding not found")
+    except BindingNotFoundError as e:
+        raise_envelope(404, "lookup", "Active binding not found", source_exc=e)
 
-    binding.deactivated_at = datetime.now(UTC)
-    await session.flush()
     await session.commit()
     return Response(status_code=200)
 

@@ -29,7 +29,9 @@ def info_item_source_to_out(src: InfoItemSource) -> InfoItemSourceOut:
     return InfoItemSourceOut(
         info_source_id=str(src.info_source_id),
         role=src.role,
+        is_active=src.deactivated_at is None,
         created_at=src.created_at,
+        deactivated_at=src.deactivated_at,
     )
 
 

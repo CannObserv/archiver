@@ -16,6 +16,20 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v3.6.0 (2026-05-29)
+
+[both] **Primary InfoSource succession — vocabulary, API exposure, and change-bus event** (archiver#44).
+
+Closes the three gaps that made URL succession unworkable in practice:
+
+**Vocabulary.** "Current primary" (`role IS NULL AND deactivated_at IS NULL`) and "previous primary" (`role IS NULL AND deactivated_at IS NOT NULL`) are now standard terms in the project's guidelines. Fragment bindings do not auto-transfer when a primary is replaced.
+
+**API / SDK.** `InfoItemSourceOut` gains `is_active: bool` and `deactivated_at: datetime | null` (always present, backward-compatible additive fields). `GET /api/v1/info-items/{id}` accepts a new `include_deactivated: bool = false` query param; when `true`, previous primaries and other deactivated source bindings are included in `info_item_sources`. New `DELETE /api/v1/info-items/{id}/info-sources/{source_id}` deactivates an active binding and returns the updated row — use to retire the current primary before binding a new one. SDK: `get_info_item` accepts `include_deactivated`; new `deactivate_info_source_binding` wrapper; `InfoItemSourceOut` model updated (v3.2.1 → v3.3.0).
+
+**Succession guard.** `POST /info-items/{id}/info-sources` with `role=null` now returns **409 Conflict** (with `data.existing_info_source_id`) when an active primary already exists, rather than letting the DB partial-unique index raise an opaque error. The error message guides callers to the explicit DELETE → POST succession workflow.
+
+**Change-bus event.** New `info_item_primary_changed` event emitted to `info.changes` every time a NULL-role binding is successfully created. Fields: `schema_version=1`, `info_item_id`, `old_info_source_id` (null on first assignment, non-null on succession), `new_info_source_id`. Subscribers (Watcher, Replicator) use this to discover URL succession.
+
 ## v3.5.4 (2026-05-22)
 
 [service] **OpenAPI field descriptions on entity Out schemas** (archiver#42). All fields in `InfoItemOut`, `InfoSourceOut`, `RepSpecOut`, and `SourceRevisionOut` now carry `Field(description=...)`, surfaced in `GET /openapi.json`. No response shape changes; no SDK changes.

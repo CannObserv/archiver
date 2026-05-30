@@ -48,6 +48,21 @@ class FragmentParentMismatchError(Exception):
         )
 
 
+class ActiveRootAlreadyExistsError(Exception):
+    """A NULL-role (primary) binding was requested but one is already active.
+
+    Deactivate the existing primary via
+    ``DELETE /info-items/{id}/info-sources/{source_id}`` first, then re-POST.
+    """
+
+    def __init__(self, *, existing_info_source_id: ULID):
+        self.existing_info_source_id = existing_info_source_id
+        super().__init__(
+            f"an active primary binding already exists for info_source_id "
+            f"{existing_info_source_id!s}"
+        )
+
+
 class AlgorithmFamilyMismatchError(Exception):
     """Fragment's extraction algorithm belongs to a different content-kind
     family than the InfoItem's active root binding's algorithm.
@@ -94,6 +109,22 @@ async def bind_info_source(
         raise RoleShapeMismatchError(role=role, source_is_root=False)
     if role is not None and source_is_root:
         raise RoleShapeMismatchError(role=role, source_is_root=True)
+
+    # 1b. Collision guard: reject a second active primary.
+    if role is None:
+        existing_binding = (
+            await db.execute(
+                select(InfoItemSource).where(
+                    InfoItemSource.info_item_id == info_item_id,
+                    InfoItemSource.role.is_(None),
+                    InfoItemSource.deactivated_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_binding is not None:
+            raise ActiveRootAlreadyExistsError(
+                existing_info_source_id=existing_binding.info_source_id
+            )
 
     # 2. Fragment-shares-root: fragment's parent must equal the InfoItem's
     # currently-active NULL-role binding's info_source_id.

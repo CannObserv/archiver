@@ -1,14 +1,19 @@
 """InfoItem ↔ InfoSource binding (operator-declared).
 
 Role semantics:
-- ``NULL`` — the binding's InfoSource is root-shaped (URL-bearing); it is
-  the InfoItem's *primary* by construction. At most one active NULL-role
-  binding per InfoItem (partial-unique index).
+- ``NULL`` — root-shaped binding. Two states:
+  - *Current primary*: ``deactivated_at IS NULL``. One per InfoItem (partial-unique index).
+    Its InfoSource URL is fetched by Watcher each tick.
+  - *Previous primary*: ``deactivated_at IS NOT NULL``. Retained as succession history.
+    Watcher may continue watching these for unanticipated changes.
 - ``'cross_check'`` — fragment-shaped binding; selector extracts the same
-  content as primary via a different selector. Used at fetch time to
+  content as current primary via a different selector. Used at fetch time to
   detect selector rot.
 - ``'sub_aspect'`` — fragment-shaped binding; selector extracts a different
   content area of the same fetched page. Operator-watchable from Watcher.
+
+Fragment bindings do not auto-transfer when the primary is replaced; each
+remains anchored to the InfoSource it was bound against.
 
 Shape consistency (NULL ↔ root, role ↔ fragment) and fragment-shares-root
 are enforced in the app layer (``src/core/tools/bind_info_source.py``),

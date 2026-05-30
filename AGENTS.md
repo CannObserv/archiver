@@ -174,6 +174,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 |---|---|---|
 | Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_source_spec=None, initial_rep_spec_assignments=None, rep_fields=None)` |
 | Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id, role=None)` |
+| Deactivate a source binding | `DELETE /info-items/{id}/info-sources/{source_id}` | `deactivate_info_source_binding(info_item_id, info_source_id)` |
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(source_spec, parent_info_source_id=None)` |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
 | List InfoSources (filter by parent, paginated) | `GET /info-sources?parent_info_source_id=…&limit=&offset=` | `list_info_sources(parent_info_source_id=None, limit=None, offset=None)` |
@@ -193,7 +194,14 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 
 **SDK version history:** see [CHANGELOG.md](CHANGELOG.md).
 
-**Change-bus producer:** New `SourceRevision` inserts write a row to `information.changes_outbox` in the same transaction. The publisher background task drains the outbox to the Redis Stream `info.changes` (event type `source_revision_captured`, payload typed by `src.core.changes.payloads.SourceRevisionCapturedEvent`). Publisher only starts when `ARCHIVER_REDIS_URL` is set.
+**Change-bus producer:** Writes rows to `information.changes_outbox` in the same transaction; the publisher background task drains the outbox to the Redis Stream `info.changes`. Publisher only starts when `ARCHIVER_REDIS_URL` is set. Two event types:
+
+| Event type | Trigger | Payload type |
+|---|---|---|
+| `source_revision_captured` | New `SourceRevision` insert (`POST /source-revisions` on non-idempotent path) | `src.core.changes.payloads.SourceRevisionCapturedEvent` |
+| `info_item_primary_changed` | NULL-role `InfoItemSource` binding created (`POST /info-items/{id}/info-sources` with `role=null`) | `src.core.changes.payloads.InfoItemPrimaryChangedEvent` |
+
+`info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession — start watching the new primary URL; optionally continue watching the old one.
 
 **Bus event versioning convention.** Every bus event payload carries
 `schema_version: int` (start at `1`, monotonic). Bump only on *incompatible*
@@ -356,17 +364,23 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - **`InfoSource`** (`info_sources`) — physical layer; either URL-keyed (root) or `parent_info_source_id`-keyed (fragment) per XOR check constraint. SourceSpec lives in the JSONB `source_spec` column.
 - **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`.
 - **`InfoItemSource`** (`info_item_sources`) — operator-declared
-  item↔source binding. The primary binding is implicit: at most one
-  active row per InfoItem has `role IS NULL`, and its underlying
-  InfoSource is root-shaped. Fragment bindings carry
-  `role IN ('cross_check', 'sub_aspect')` and their underlying
-  InfoSource's `parent_info_source_id` must equal the primary's
-  `info_source_id`.
+  item↔source binding. Two distinct states for the NULL-role binding:
+  - **Current primary** — the one active NULL-role row (`role IS NULL AND deactivated_at IS NULL`).
+    Enforced one-per-InfoItem by partial unique index `uq_info_item_sources_active_root`.
+    Its InfoSource is root-shaped and its URL is what Watcher fetches each tick.
+  - **Previous primary** — a deactivated NULL-role row (`role IS NULL AND deactivated_at IS NOT NULL`).
+    Preserved indefinitely as succession history. Watcher may continue watching previous
+    primaries for unanticipated changes.
+  Fragment bindings carry `role IN ('cross_check', 'sub_aspect')` and their underlying
+  InfoSource's `parent_info_source_id` must equal the current primary's `info_source_id`
+  at bind time. They do **not** auto-transfer when the primary is replaced; each fragment
+  remains anchored to the InfoSource it was bound against.
 
 | Role | Meaning | Shape constraint |
 |---|---|---|
-| `NULL` (primary) | Canonical content selector for the InfoItem. One active per InfoItem. | Root-shaped (URL non-null). |
-| `cross_check` | Same content as primary via a different selector. Watcher uses for selector-rot detection. | Fragment-shaped; parent equals active root binding's source. |
+| `NULL` — current primary | Canonical content selector for the InfoItem. One active per InfoItem. | Root-shaped (URL non-null). |
+| `NULL` — previous primary | Retired root binding; preserved as succession history. | Root-shaped; `deactivated_at` non-null. |
+| `cross_check` | Same content as current primary via a different selector. Watcher uses for selector-rot detection. | Fragment-shaped; parent equals active root binding's source. |
 | `sub_aspect` | Different content area of the same fetched page. Operator-watchable from Watcher. | Fragment-shaped; parent equals active root binding's source. |
 
 - **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.

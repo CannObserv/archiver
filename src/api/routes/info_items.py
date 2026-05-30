@@ -29,7 +29,9 @@ from src.api.serializers import (
     info_item_source_to_out,
     info_item_to_out,
 )
+from src.core.changes.payloads import InfoItemPrimaryChangedEvent
 from src.core.models import (
+    ChangesOutboxRow,
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
@@ -46,6 +48,7 @@ from src.core.tools.assign_rep_spec import (
     assign_rep_spec,
 )
 from src.core.tools.bind_info_source import (
+    ActiveRootAlreadyExistsError,
     ActiveRootMissingError,
     AlgorithmFamilyMismatchError,
     FragmentParentMismatchError,
@@ -69,6 +72,10 @@ from src.core.tools.create_info_source import (
     DuplicateUrlError,
     InvalidSourceSpecError,
     create_info_source,
+)
+from src.core.tools.deactivate_info_item_source_binding import (
+    BindingNotFoundError,
+    deactivate_info_item_source_binding,
 )
 
 router = APIRouter(prefix="/info-items", tags=["info-items"])
@@ -259,25 +266,32 @@ async def list_info_items(
 
 @router.get("/{info_item_id}", response_model=InfoItemOut)
 async def get_info_item(
-    info_item_id: ULIDStr, session: AsyncSession = Depends(get_db_session)
+    info_item_id: ULIDStr,
+    include_deactivated: bool = Query(
+        default=False,
+        description=(
+            "When true, include deactivated bindings (previous primaries and other "
+            "deactivated sources) in info_item_sources. When false (default), only "
+            "active bindings are returned."
+        ),
+    ),
+    session: AsyncSession = Depends(get_db_session),
 ) -> InfoItemOut:
-    """Fetch a single InfoItem by ID, including active sources and rep_spec assignments."""
+    """Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
+
+    Pass ``include_deactivated=true`` to also include previous primaries and other
+    deactivated source bindings in ``info_item_sources``.
+    """
     result = await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
     item = result.scalar_one_or_none()
     if item is None:
         raise_envelope(404, "lookup", "InfoItem not found")
-    sources = list(
-        (
-            await session.execute(
-                select(InfoItemSource).where(
-                    InfoItemSource.info_item_id == item.info_item_id,
-                    InfoItemSource.deactivated_at.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
+    sources_q = select(InfoItemSource).where(
+        InfoItemSource.info_item_id == item.info_item_id,
     )
+    if not include_deactivated:
+        sources_q = sources_q.where(InfoItemSource.deactivated_at.is_(None))
+    sources = list((await session.execute(sources_q)).scalars().all())
     rep_specs = list(
         (
             await session.execute(
@@ -315,10 +329,15 @@ async def add_info_source(
 ) -> InfoItemSourceOut:
     """Bind an existing InfoSource to an InfoItem.
 
-    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
-    primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
-    whose parent equals the InfoItem's active root binding's source.
+    ``body.role`` is ``null`` to bind the InfoItem's *current primary* (root-shaped
+    InfoSource; at most one active per InfoItem). If an active primary already exists,
+    returns 409 with ``data.existing_info_source_id`` — deactivate it first via
+    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+
+    ``body.role`` is ``'cross_check'`` or ``'sub_aspect'`` for a fragment-shaped
+    InfoSource whose parent equals the InfoItem's current primary's source.
+    Emits ``info_item_primary_changed`` on the change bus when a NULL-role binding
+    succeeds (``old_info_source_id`` is ``null`` on first assignment).
     """
     try:
         item_ulid = ULID.from_str(info_item_id)
@@ -357,6 +376,17 @@ async def add_info_source(
         raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
     except BindIIS_InfoSourceNotFoundError as e:
         raise_envelope(404, "lookup", "InfoSource not found", source_exc=e)
+    except ActiveRootAlreadyExistsError as e:
+        raise_envelope(
+            409,
+            "conflict",
+            "an active primary binding already exists for this InfoItem; "
+            "deactivate it first via "
+            "DELETE /api/v1/info-items/{info_item_id}/info-sources/{info_source_id}, "
+            "then re-POST",
+            data={"existing_info_source_id": str(e.existing_info_source_id)},
+            source_exc=e,
+        )
     except RoleShapeMismatchError as e:
         raise_envelope(
             422,
@@ -421,6 +451,80 @@ async def add_info_source(
             },
             source_exc=e,
         )
+
+    # Emit info_item_primary_changed event when a NULL-role binding was just created.
+    if body.role is None:
+        prev_binding = (
+            await session.execute(
+                select(InfoItemSource)
+                .where(
+                    InfoItemSource.info_item_id == item_ulid,
+                    InfoItemSource.role.is_(None),
+                    InfoItemSource.deactivated_at.isnot(None),
+                )
+                .order_by(InfoItemSource.deactivated_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        event = InfoItemPrimaryChangedEvent(
+            occurred_at=datetime.now(UTC),
+            info_item_id=str(item_ulid),
+            old_info_source_id=str(prev_binding.info_source_id) if prev_binding else None,
+            new_info_source_id=str(source_ulid),
+        )
+        session.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
+
+    await session.commit()
+    return info_item_source_to_out(binding)
+
+
+@router.delete(
+    "/{info_item_id}/info-sources/{info_source_id}",
+    status_code=200,
+    response_model=InfoItemSourceOut,
+)
+async def deactivate_info_source_binding(
+    info_item_id: ULIDStr,
+    info_source_id: ULIDStr,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemSourceOut:
+    """Deactivate an InfoItemSource binding (sets ``deactivated_at``).
+
+    Use this to retire the current primary before binding a new one.
+    Returns the deactivated binding row. 404 when no active binding exists.
+    """
+    try:
+        item_ulid = ULID.from_str(info_item_id)
+    except ValueError as e:
+        raise_envelope(
+            422,
+            "domain",
+            "info_item_id is not a valid ULID",
+            errors=[
+                FieldError(path="/info_item_id", message="not a valid ULID", code="invalid_ulid")
+            ],
+            source_exc=e,
+        )
+
+    try:
+        source_ulid = ULID.from_str(info_source_id)
+    except ValueError as e:
+        raise_envelope(
+            422,
+            "domain",
+            "info_source_id is not a valid ULID",
+            errors=[
+                FieldError(path="/info_source_id", message="not a valid ULID", code="invalid_ulid")
+            ],
+            source_exc=e,
+        )
+
+    try:
+        binding = await deactivate_info_item_source_binding(
+            session, info_item_id=item_ulid, info_source_id=source_ulid
+        )
+    except BindingNotFoundError as e:
+        raise_envelope(404, "lookup", "Active binding not found", source_exc=e)
 
     await session.commit()
     return info_item_source_to_out(binding)

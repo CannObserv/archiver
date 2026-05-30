@@ -295,3 +295,69 @@ async def test_list_info_items_excludes_deactivated_source_binding(client, sessi
     body = (await client.get("/api/v1/info-items", headers=HEADERS)).json()
     item_out = next(i for i in body["items"] if i["info_item_id"] == item_id)
     assert item_out["info_item_sources"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_info_item_binding_has_is_active_and_deactivated_at(client, session):
+    """Active binding response includes is_active=True and deactivated_at=None."""
+    item_id = await _make_item(client)
+    source_id = await _make_source(client)
+    await _bind(client, item_id, source_id)
+
+    body = (await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)).json()
+    src_out = body["info_item_sources"][0]
+    assert src_out["is_active"] is True
+    assert src_out["deactivated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_info_item_include_deactivated_false_default(client, session):
+    """include_deactivated=false (default) omits deactivated bindings."""
+    item_id = await _make_item(client)
+    source_id = await _make_source(client)
+    await _bind(client, item_id, source_id)
+
+    binding = await session.get(
+        InfoItemSource,
+        (ULID.from_str(item_id), ULID.from_str(source_id)),
+    )
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+
+    body = (await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)).json()
+    assert body["info_item_sources"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_info_item_include_deactivated_true_returns_all(client, session):
+    """include_deactivated=true returns both active and deactivated bindings."""
+    item_id = await _make_item(client)
+    old_source_id = await _make_source(client, "https://example.com/old")
+    new_source_id = await _make_source(client, "https://example.com/new")
+    await _bind(client, item_id, old_source_id)
+
+    # Deactivate the old primary.
+    binding = await session.get(
+        InfoItemSource,
+        (ULID.from_str(item_id), ULID.from_str(old_source_id)),
+    )
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+
+    # Bind a new primary.
+    await _bind(client, item_id, new_source_id)
+
+    body = (
+        await client.get(
+            f"/api/v1/info-items/{item_id}",
+            headers=HEADERS,
+            params={"include_deactivated": "true"},
+        )
+    ).json()
+    sources = body["info_item_sources"]
+    assert len(sources) == 2
+    active = next(s for s in sources if s["is_active"])
+    previous = next(s for s in sources if not s["is_active"])
+    assert active["info_source_id"] == new_source_id
+    assert previous["info_source_id"] == old_source_id
+    assert previous["deactivated_at"] is not None
