@@ -21,14 +21,14 @@
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ source_count }}</p>
     </a>
 
+    <a href="/dashboard/source-revisions/" class="entity-card" style="text-decoration:none;">
+      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Information Source Revisions</p>
+      <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ revision_count }}</p>
+    </a>
+
     <a href="/dashboard/rep-specs/" class="entity-card" style="text-decoration:none;">
       <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Replication Specifications</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ rep_spec_count }}</p>
-    </a>
-
-    <a href="/dashboard/source-revisions/" class="entity-card" style="text-decoration:none;">
-      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Source Revisions</p>
-      <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ revision_count }}</p>
     </a>
 
   </div>
@@ -45,14 +45,14 @@
   </div>
 
   {# Recent revisions #}
-  <h2 style="margin-bottom:var(--space-2);">Recent Captures</h2>
+  <h2 style="margin-bottom:var(--space-2);">Recent Changes</h2>
   {% if recent_revisions %}
-  <table class="data-table" aria-label="Recent revision captures">
+  <table class="data-table" aria-label="Recent changes">
     <thead>
       <tr>
-        <th class="data-table__th">Revision</th>
-        <th class="data-table__th">Source</th>
-        <th class="data-table__th">Captured</th>
+        <th class="data-table__th">Information Source</th>
+        <th class="data-table__th">Source Revision</th>
+        <th class="data-table__th">Observed</th>
       </tr>
     </thead>
     <tbody>
@@ -60,17 +60,17 @@
       {% set src = sources_by_id.get(rev.info_source_id) %}
       <tr>
         <td class="data-table__cell">
-          <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
-            <code class="text-small">{{ rev.content_fingerprint[:20] }}…</code>
-          </a>
-        </td>
-        <td class="data-table__cell">
           {% if src %}
           <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
              class="text-small">{{ src.url or rev.info_source_id }}</a>
           {% else %}
           <span class="text-muted text-small">{{ rev.info_source_id }}</span>
           {% endif %}
+        </td>
+        <td class="data-table__cell">
+          <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
+            <code class="text-small">{{ rev.content_fingerprint[:20] }}…</code>
+          </a>
         </td>
         <td class="data-table__cell data-table__cell--muted">
           {{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}
@@ -80,7 +80,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="text-muted">No revision captures yet.</p>
+  <p class="text-muted">No changes yet.</p>
   {% endif %}
 
 </div>

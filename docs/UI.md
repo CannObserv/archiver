@@ -164,7 +164,7 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 ### Home (`/dashboard/`)  *(Epic 7 — implemented)*
 
-**GET `/dashboard/`** — summary dashboard. Four count tiles (Information Items, Information Sources, Replication Specifications, Source Revisions), each a link to the respective list page. Service health indicator loaded via `hx-get="/dashboard/health" hx-trigger="load"` (non-blocking, shows "checking…" badge until HTMX fires). Recent captures table: last 10 SourceRevisions ordered by `captured_at desc`, with fingerprint link and source URL.
+**GET `/dashboard/`** — summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each a link to the respective list page. Service health indicator loaded via `hx-get="/dashboard/health" hx-trigger="load"` (non-blocking, shows "checking…" badge until HTMX fires). Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`. Columns: Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at formatted `%Y-%m-%d %H:%M`).
 
 **GET `/dashboard/health`** — HTMX partial. Returns `<span class="badge badge--success">ok</span>`. Auth-gated; unauthenticated requests redirect 307.
 
