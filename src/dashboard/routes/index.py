@@ -1,4 +1,4 @@
-"""Dashboard home — summary counts, recent revisions, health indicator."""
+"""Dashboard home — summary counts, recent changes, health indicator."""
 
 from pathlib import Path
 
@@ -37,7 +37,7 @@ async def dashboard_index(
     user: AppUser = Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Dashboard home: summary counts, recent revisions, health indicator."""
+    """Dashboard home: summary counts, recent changes, health indicator."""
     # Summary counts — single round-trip each
     item_count = (await session.execute(select(func.count()).select_from(InfoItem))).scalar_one()
     source_count = (
@@ -48,7 +48,7 @@ async def dashboard_index(
         await session.execute(select(func.count()).select_from(SourceRevision))
     ).scalar_one()
 
-    # Recent revisions (last 10)
+    # Recent changes (last 10)
     recent_revisions = list(
         (
             await session.execute(

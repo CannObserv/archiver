@@ -82,3 +82,11 @@ async def test_home_shows_recent_revisions(client, session):
     r = await client.get("/dashboard/", headers=_HEADERS)
     assert r.status_code == 200
     assert "2026-05-01" in r.text
+    assert "Recent Changes" in r.text
+    assert "Information Source" in r.text
+    assert "Source Revision" in r.text
+    assert "Observed" in r.text
+    # source URL appears before fingerprint in column order
+    url_pos = r.text.index("example.com/recent-rev")
+    fp_pos = r.text.index("sha256:ffffffff")
+    assert url_pos < fp_pos
