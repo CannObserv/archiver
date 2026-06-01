@@ -170,7 +170,7 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 ### Information Items (`/dashboard/info-items/`)  *(Epic 3 — implemented)*
 
-**GET `/dashboard/info-items/`** — paginated list with optional `name_contains` search. Columns: name (link to detail), primary source URL, active rep spec count, created_at.
+**GET `/dashboard/info-items/`** — paginated list with optional `name_contains` search. Filter panel: search input (flex-fill) + Search button (right-aligned via `margin-left:auto`). Columns: name (link to detail), Information Source (primary source URL linked to InfoSource detail; `—` if none), Observed (max `captured_at` of the primary source's revisions formatted `%Y-%m-%d %H:%M`; `—` if none).
 
 **GET `/dashboard/info-items/new`** — three-step `infoItemWizard` form. Step 1: name/description/owner/rep_fields (`jsonFieldEditor`). Step 2: optional SourceSpec JSON (`jsonFieldEditor`). Step 3: review and submit.
 

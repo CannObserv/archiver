@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -71,7 +71,8 @@ _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templ
 class _ItemRow:
     item: InfoItem
     primary_url: str | None
-    rep_spec_count: int
+    primary_info_source_id: ULID | None
+    observed_at: datetime | None
 
 
 async def _resolve_item(item_id: str, session: AsyncSession) -> InfoItem:
@@ -147,23 +148,21 @@ async def list_info_items(
         for src in src_rows:
             source_urls[src.info_source_id] = src.url
 
-    # Batch-load active rep_spec counts
-    rep_counts: dict[ULID, int] = {}
-    if item_ids:
-        rs_rows = (
-            (
-                await session.execute(
-                    select(InfoItemRepSpec).where(
-                        InfoItemRepSpec.info_item_id.in_(item_ids),
-                        InfoItemRepSpec.deactivated_at.is_(None),
-                    )
+    # Batch-load most-recent captured_at per primary source
+    observed_by_source: dict[ULID, datetime] = {}
+    if primary_source_ids:
+        obs_rows = (
+            await session.execute(
+                select(
+                    SourceRevision.info_source_id,
+                    func.max(SourceRevision.captured_at).label("latest"),
                 )
+                .where(SourceRevision.info_source_id.in_(primary_source_ids))
+                .group_by(SourceRevision.info_source_id)
             )
-            .scalars()
-            .all()
-        )
-        for rs in rs_rows:
-            rep_counts[rs.info_item_id] = rep_counts.get(rs.info_item_id, 0) + 1
+        ).all()
+        for obs in obs_rows:
+            observed_by_source[obs.info_source_id] = obs.latest
 
     items: list[_ItemRow] = []
     for item in rows:
@@ -173,7 +172,8 @@ async def list_info_items(
             _ItemRow(
                 item=item,
                 primary_url=primary_url,
-                rep_spec_count=rep_counts.get(item.info_item_id, 0),
+                primary_info_source_id=binding.info_source_id if binding else None,
+                observed_at=observed_by_source.get(binding.info_source_id) if binding else None,
             )
         )
 

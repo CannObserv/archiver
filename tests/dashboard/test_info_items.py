@@ -115,6 +115,138 @@ async def test_list_shows_primary_url(client, session):
 
 
 # ---------------------------------------------------------------------------
+# GET /dashboard/info-items/ — #47 UI/UX updates
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_no_search_by_name_label(client):
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Search by name" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_search_button_right_aligned(client):
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "margin-left:auto" in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_information_source_column_header(client, session):
+    session.add(_make_item("Col Header Item"))
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Information Source" in r.text
+    assert "Primary Source URL" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_no_active_rep_specs_column(client, session):
+    session.add(_make_item("No RepSpec Col Item"))
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Active Rep Specs" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_no_created_column(client, session):
+    session.add(_make_item("No Created Col Item"))
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert ">Created<" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_observed_column_header(client, session):
+    session.add(_make_item("Observed Col Item"))
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Observed" in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_primary_source_links_to_info_source_detail(client, session):
+    item = _make_item("Linked Source Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/linked-src")
+    session.add(source)
+    await session.flush()
+    binding = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        role=None,
+    )
+    session.add(binding)
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert f"/dashboard/info-sources/{source.info_source_id}" in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_observed_shows_captured_at_for_primary_source(client, session):
+    from datetime import UTC, datetime
+
+    item = _make_item("Observed Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/observed-src")
+    session.add(source)
+    await session.flush()
+    binding = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        role=None,
+    )
+    session.add(binding)
+    await session.flush()
+    rev = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:deadbeef01",
+        captured_at=datetime(2026, 5, 15, 10, 30, 0, tzinfo=UTC),
+    )
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "2026-05-15 10:30" in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_observed_dash_when_no_revision(client, session):
+    item = _make_item("No Rev Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/no-rev-src")
+    session.add(source)
+    await session.flush()
+    binding = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        role=None,
+    )
+    session.add(binding)
+    await session.flush()
+
+    r = await client.get(_LIST_URL, headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Observed" in r.text
+
+
+# ---------------------------------------------------------------------------
 # GET /dashboard/info-items/new
 # ---------------------------------------------------------------------------
 

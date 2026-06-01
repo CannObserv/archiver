@@ -11,12 +11,11 @@
   <form class="filter-card" method="GET" action="/dashboard/info-items/"
         aria-label="Search Information Items">
     <div style="display:flex;gap:var(--space-2);align-items:flex-end;">
-      <label for="name-search" class="form-label" style="flex:0 0 auto;">Search by name</label>
       <input id="name-search" type="search" name="name_contains"
              value="{{ name_contains }}"
              class="form-input" placeholder="Enter name…" style="flex:1;"
              aria-label="Name filter">
-      <button type="submit" class="btn">Search</button>
+      <button type="submit" class="btn" style="margin-left:auto;">Search</button>
       {% if name_contains %}
       <a href="/dashboard/info-items/" class="btn btn--ghost">Clear</a>
       {% endif %}
@@ -28,9 +27,8 @@
     <thead>
       <tr>
         <th class="data-table__th">Name</th>
-        <th class="data-table__th">Primary Source URL</th>
-        <th class="data-table__th">Active Rep Specs</th>
-        <th class="data-table__th">Created</th>
+        <th class="data-table__th">Information Source</th>
+        <th class="data-table__th">Observed</th>
       </tr>
     </thead>
     <tbody>
@@ -39,16 +37,16 @@
         <td class="data-table__cell">
           <a href="/dashboard/info-items/{{ row.item.info_item_id }}">{{ row.item.name }}</a>
         </td>
-        <td class="data-table__cell data-table__cell--muted">
-          {% if row.primary_url %}
-          <code class="text-small">{{ row.primary_url }}</code>
+        <td class="data-table__cell">
+          {% if row.primary_info_source_id %}
+          <a href="/dashboard/info-sources/{{ row.primary_info_source_id }}"
+             class="text-small">{{ row.primary_url or row.primary_info_source_id }}</a>
           {% else %}
           <span aria-label="none">—</span>
           {% endif %}
         </td>
-        <td class="data-table__cell">{{ row.rep_spec_count }}</td>
         <td class="data-table__cell data-table__cell--muted">
-          {{ row.item.created_at.strftime('%Y-%m-%d') }}
+          {{ row.observed_at.strftime('%Y-%m-%d %H:%M') if row.observed_at else '—' }}
         </td>
       </tr>
       {% endfor %}
