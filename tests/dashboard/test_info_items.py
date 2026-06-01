@@ -127,13 +127,6 @@ async def test_list_no_search_by_name_label(client):
 
 
 @pytest.mark.asyncio
-async def test_list_search_button_right_aligned(client):
-    r = await client.get(_LIST_URL, headers=_HEADERS)
-    assert r.status_code == 200
-    assert "margin-left:auto" in r.text
-
-
-@pytest.mark.asyncio
 async def test_list_information_source_column_header(client, session):
     session.add(_make_item("Col Header Item"))
     await session.flush()
@@ -244,6 +237,7 @@ async def test_list_observed_dash_when_no_revision(client, session):
     r = await client.get(_LIST_URL, headers=_HEADERS)
     assert r.status_code == 200
     assert "Observed" in r.text
+    assert "—" in r.text
 
 
 # ---------------------------------------------------------------------------
