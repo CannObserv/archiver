@@ -98,7 +98,7 @@ async def test_deactivated_root_allows_new_root(session, item, make_source):
 
 @pytest.mark.asyncio
 async def test_role_check_constraint_rejects_bogus_value(session, item, make_source):
-    """CHECK constraint blocks any role outside {NULL, cross_check, sub_aspect}."""
+    """CHECK constraint blocks any role outside {NULL, cross_check}."""
     src = await make_source("https://example.com/x")
     session.add(
         InfoItemSource(
@@ -112,26 +112,33 @@ async def test_role_check_constraint_rejects_bogus_value(session, item, make_sou
 
 
 @pytest.mark.asyncio
-async def test_fragment_roles_accepted(session, item, make_source):
-    """Both cross_check and sub_aspect are allowed at the schema level.
+async def test_cross_check_role_accepted(session, item, make_source):
+    """cross_check is allowed at the schema level.
 
     Shape consistency (role ↔ fragment InfoSource) is enforced in the app
     layer, not the DB — see tests/core/tools/test_bind_info_source.py.
     """
-    s1 = await make_source("https://example.com/a")
-    s2 = await make_source("https://example.com/b")
-    session.add_all(
-        [
-            InfoItemSource(
-                info_item_id=item.info_item_id,
-                info_source_id=s1.info_source_id,
-                role="cross_check",
-            ),
-            InfoItemSource(
-                info_item_id=item.info_item_id,
-                info_source_id=s2.info_source_id,
-                role="sub_aspect",
-            ),
-        ]
+    src = await make_source("https://example.com/a")
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=src.info_source_id,
+            role="cross_check",
+        )
     )
-    await session.commit()  # both should persist
+    await session.commit()  # should persist
+
+
+@pytest.mark.asyncio
+async def test_sub_aspect_role_rejected(session, item, make_source):
+    """sub_aspect is no longer a valid role — CHECK constraint must reject it."""
+    src = await make_source("https://example.com/b")
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=src.info_source_id,
+            role="sub_aspect",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await session.commit()

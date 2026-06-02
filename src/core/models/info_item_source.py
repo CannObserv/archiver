@@ -9,8 +9,6 @@ Role semantics:
 - ``'cross_check'`` — fragment-shaped binding; selector extracts the same
   content as current primary via a different selector. Used at fetch time to
   detect selector rot.
-- ``'sub_aspect'`` — fragment-shaped binding; selector extracts a different
-  content area of the same fetched page. Operator-watchable from Watcher.
 
 Fragment bindings do not auto-transfer when the primary is replaced; each
 remains anchored to the InfoSource it was bound against.
@@ -39,8 +37,8 @@ from ulid import ULID
 from src.core.models.base import Base, ULIDType
 
 # Allowed non-null role values. NULL is the implicit "primary" role.
-FRAGMENT_ROLES: tuple[str, ...] = ("cross_check", "sub_aspect")
-FragmentRole = Literal["cross_check", "sub_aspect"]
+FRAGMENT_ROLES: tuple[str, ...] = ("cross_check",)
+FragmentRole = Literal["cross_check"]
 
 
 class InfoItemSource(Base):
@@ -68,7 +66,7 @@ class InfoItemSource(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "role IS NULL OR role IN ('cross_check', 'sub_aspect')",
+            "role IS NULL OR role IN ('cross_check')",
             name="ck_info_item_sources_role_values",
         ),
         Index(

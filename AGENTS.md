@@ -356,7 +356,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
   **Fetch group invariant:** exactly one URL is fetched (the primary's URL) and exactly one
   content-kind is produced (HTML/text or JSON). Every InfoSource bound to this InfoItem —
-  primary, cross_check, sub_aspect — has its `extraction.algorithm` run against the primary's
+  primary or cross_check — has its `extraction.algorithm` run against the primary's
   fetched bytes (no chaining off primary's extracted output). The Archiver enforces this at
   bind time by rejecting cross-family algorithm bindings (`{css,xpath,regex,full_page}` ≠
   `{jsonpath}`); see `src/core/source_spec_schema/families.py` and
@@ -371,7 +371,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
   - **Previous primary** — a deactivated NULL-role row (`role IS NULL AND deactivated_at IS NOT NULL`).
     Preserved indefinitely as succession history. Watcher may continue watching previous
     primaries for unanticipated changes.
-  Fragment bindings carry `role IN ('cross_check', 'sub_aspect')` and their underlying
+  Fragment bindings carry `role = 'cross_check'` and their underlying
   InfoSource's `parent_info_source_id` must equal the current primary's `info_source_id`
   at bind time. They do **not** auto-transfer when the primary is replaced; each fragment
   remains anchored to the InfoSource it was bound against.
@@ -381,7 +381,6 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 | `NULL` — current primary | Canonical content selector for the InfoItem. One active per InfoItem. | Root-shaped (URL non-null). |
 | `NULL` — previous primary | Retired root binding; preserved as succession history. | Root-shaped; `deactivated_at` non-null. |
 | `cross_check` | Same content as current primary via a different selector. Watcher uses for selector-rot detection. | Fragment-shaped; parent equals active root binding's source. |
-| `sub_aspect` | Different content area of the same fetched page. Operator-watchable from Watcher. | Fragment-shaped; parent equals active root binding's source. |
 
 - **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.

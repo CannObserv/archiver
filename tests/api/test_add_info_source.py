@@ -109,6 +109,22 @@ async def test_bind_fragment_with_cross_check_201(client, session, item):
 
 
 @pytest.mark.asyncio
+async def test_sub_aspect_role_rejected_422(client, session, item):
+    src = await _make_source(session, url="https://example.com/a")
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(src.info_source_id), "role": "sub_aspect"},
+    )
+    # Pydantic Literal rejects this before reaching the route handler
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "body"
+
+
+@pytest.mark.asyncio
 async def test_legacy_primary_role_rejected_422(client, session, item):
     src = await _make_source(session, url="https://example.com/a")
     await session.commit()
@@ -132,7 +148,7 @@ async def test_root_with_role_returns_422_domain(client, session, item):
     resp = await client.post(
         f"/api/v1/info-items/{item.info_item_id}/info-sources",
         headers=HEADERS,
-        json={"info_source_id": str(src.info_source_id), "role": "sub_aspect"},
+        json={"info_source_id": str(src.info_source_id), "role": "cross_check"},
     )
     assert resp.status_code == 422
     detail = resp.json()["detail"]
@@ -194,7 +210,7 @@ async def test_fragment_under_different_root_returns_422_domain(client, session,
     resp = await client.post(
         f"/api/v1/info-items/{item.info_item_id}/info-sources",
         headers=HEADERS,
-        json={"info_source_id": str(frag_of_b.info_source_id), "role": "sub_aspect"},
+        json={"info_source_id": str(frag_of_b.info_source_id), "role": "cross_check"},
     )
     assert resp.status_code == 422
     detail = resp.json()["detail"]
@@ -267,7 +283,7 @@ async def test_cross_family_css_under_jsonpath_returns_422_domain(client, sessio
     resp = await client.post(
         f"/api/v1/info-items/{item.info_item_id}/info-sources",
         headers=HEADERS,
-        json={"info_source_id": str(frag.info_source_id), "role": "sub_aspect"},
+        json={"info_source_id": str(frag.info_source_id), "role": "cross_check"},
     )
     assert resp.status_code == 422
     detail = resp.json()["detail"]

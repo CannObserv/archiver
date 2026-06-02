@@ -28,8 +28,8 @@ class InfoItemSourceCreate(BaseModel):
         default=None,
         description=(
             "Binding role. ``null`` (default) for root-shaped InfoSources (the "
-            "InfoItem's primary). ``'cross_check'`` or ``'sub_aspect'`` for "
-            "fragment-shaped InfoSources sharing the primary's root."
+            "InfoItem's primary). ``'cross_check'`` for fragment-shaped "
+            "InfoSources sharing the primary's root (selector-rot detection)."
         ),
     )
 
@@ -143,7 +143,7 @@ class InfoItemOut(BaseModel):
             "Bound InfoSources. By default only active bindings are returned "
             "(is_active=true). Pass include_deactivated=true to also include previous "
             "primaries and other deactivated bindings. Exactly one active row has role "
-            "null (current primary); others carry 'cross_check' or 'sub_aspect'."
+            "null (current primary); others carry 'cross_check'."
         ),
     )
     info_item_rep_specs: list[InfoItemRepSpecOut] = Field(

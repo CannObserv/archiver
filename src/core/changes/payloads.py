@@ -12,7 +12,7 @@ class InfoItemBinding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     info_item_id: str
-    role: str | None  # None = primary (root); 'cross_check' or 'sub_aspect' = fragment
+    role: str | None  # None = primary (root); 'cross_check' = fragment
 
 
 class SourceRevisionCapturedEvent(BaseModel):

@@ -19,8 +19,8 @@ class InfoItemSourceCreate:
     Attributes:
         info_source_id (str): ULID of an existing InfoSource.
         role (InfoItemSourceCreateRoleType0 | None | Unset): Binding role. ``null`` (default) for root-shaped
-            InfoSources (the InfoItem's primary). ``'cross_check'`` or ``'sub_aspect'`` for fragment-shaped InfoSources
-            sharing the primary's root.
+            InfoSources (the InfoItem's primary). ``'cross_check'`` for fragment-shaped InfoSources sharing the
+            primary's root (selector-rot detection).
     """
 
     info_source_id: str

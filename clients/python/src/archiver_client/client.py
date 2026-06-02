@@ -320,14 +320,14 @@ class ArchiverClient:
         self,
         info_item_id: str,
         info_source_id: str,
-        role: Literal["cross_check", "sub_aspect"] | None = None,
+        role: Literal["cross_check"] | None = None,
     ) -> InfoItemSourceOut:
         """Bind an InfoSource to an InfoItem.
 
         ``role`` is ``None`` (default) for a root-shaped InfoSource — the
         InfoItem's primary, exactly one active per InfoItem. Pass
-        ``'cross_check'`` or ``'sub_aspect'`` for a fragment-shaped
-        InfoSource that shares the primary's root.
+        ``'cross_check'`` for a fragment-shaped InfoSource that shares
+        the primary's root (selector-rot detection).
         """
         body = InfoItemSourceCreate(
             info_source_id=info_source_id,

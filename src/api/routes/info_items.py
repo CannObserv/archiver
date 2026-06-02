@@ -334,8 +334,8 @@ async def add_info_source(
     returns 409 with ``data.existing_info_source_id`` — deactivate it first via
     ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
 
-    ``body.role`` is ``'cross_check'`` or ``'sub_aspect'`` for a fragment-shaped
-    InfoSource whose parent equals the InfoItem's current primary's source.
+    ``body.role`` is ``'cross_check'`` for a fragment-shaped InfoSource whose
+    parent equals the InfoItem's current primary's source.
     Emits ``info_item_primary_changed`` on the change bus when a NULL-role binding
     succeeds (``old_info_source_id`` is ``null`` on first assignment).
     """

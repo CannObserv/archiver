@@ -215,7 +215,7 @@ async def test_root_with_role_rejected(session, item, root_src):
             session,
             info_item_id=item.info_item_id,
             info_source_id=root_src.info_source_id,
-            role="sub_aspect",
+            role="cross_check",
         )
 
 
@@ -246,7 +246,7 @@ async def test_fragment_under_different_root_rejected(session, item, root_src, f
             session,
             info_item_id=item.info_item_id,
             info_source_id=frag_of_other.info_source_id,
-            role="sub_aspect",
+            role="cross_check",
         )
 
 
@@ -319,9 +319,9 @@ async def test_same_family_fragment_json_json_accepted(
         session,
         info_item_id=item.info_item_id,
         info_source_id=frag_jsonpath_of_json_root.info_source_id,
-        role="sub_aspect",
+        role="cross_check",
     )
-    assert binding.role == "sub_aspect"
+    assert binding.role == "cross_check"
 
 
 @pytest.mark.asyncio

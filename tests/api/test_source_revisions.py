@@ -687,7 +687,7 @@ async def test_outbox_payload_empty_list_when_no_bindings(client, session, info_
 
 @pytest.mark.asyncio
 async def test_outbox_payload_carries_fragment_role(client, session):
-    """Cross-check / sub_aspect roles are included in bindings; consumers filter."""
+    """Fragment roles are included in bindings; consumers filter."""
     # Create root InfoSource
     root_source = InfoSource(
         source_spec={
@@ -714,7 +714,7 @@ async def test_outbox_payload_carries_fragment_role(client, session):
     session.add(fragment_source)
     await session.flush()
 
-    # Create an InfoItem and bind the fragment with role='sub_aspect'
+    # Create an InfoItem and bind the fragment with role='cross_check'
     item = InfoItem(name="fragment-role-test-item")
     session.add(item)
     await session.flush()
@@ -723,7 +723,7 @@ async def test_outbox_payload_carries_fragment_role(client, session):
         InfoItemSource(
             info_item_id=item.info_item_id,
             info_source_id=fragment_source.info_source_id,
-            role="sub_aspect",
+            role="cross_check",
         )
     )
     await session.flush()
@@ -745,7 +745,7 @@ async def test_outbox_payload_carries_fragment_role(client, session):
     bindings = row.payload["bindings"]
     assert len(bindings) == 1
     assert bindings[0]["info_item_id"] == str(item.info_item_id)
-    assert bindings[0]["role"] == "sub_aspect"
+    assert bindings[0]["role"] == "cross_check"
 
 
 # ---------------------------------------------------------------------------

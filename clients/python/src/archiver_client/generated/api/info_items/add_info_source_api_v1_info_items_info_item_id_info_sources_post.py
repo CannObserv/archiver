@@ -106,8 +106,8 @@ def sync_detailed(
 
     ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
     primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
-    whose parent equals the InfoItem's active root binding's source.
+    ``'cross_check'`` for a fragment-shaped InfoSource whose parent equals
+    the InfoItem's active root binding's source.
 
     Args:
         info_item_id (str):
@@ -145,8 +145,8 @@ def sync(
 
     ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
     primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
-    whose parent equals the InfoItem's active root binding's source.
+    ``'cross_check'`` for a fragment-shaped InfoSource whose parent equals
+    the InfoItem's active root binding's source.
 
     Args:
         info_item_id (str):
@@ -179,8 +179,8 @@ async def asyncio_detailed(
 
     ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
     primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
-    whose parent equals the InfoItem's active root binding's source.
+    ``'cross_check'`` for a fragment-shaped InfoSource whose parent equals
+    the InfoItem's active root binding's source.
 
     Args:
         info_item_id (str):
@@ -216,8 +216,8 @@ async def asyncio(
 
     ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
     primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` / ``'sub_aspect'`` for a fragment-shaped InfoSource
-    whose parent equals the InfoItem's active root binding's source.
+    ``'cross_check'`` for a fragment-shaped InfoSource whose parent equals
+    the InfoItem's active root binding's source.
 
     Args:
         info_item_id (str):
