@@ -180,9 +180,11 @@ document.addEventListener("alpine:init", function () {
     /**
      * Multi-step Information Item create wizard.
      *
-     * Manages step navigation and exposes rep_fields / source_spec JSON strings
-     * for nested jsonFieldEditor components to write into.  A single ``<form>``
-     * wraps all steps; hidden inputs read from these properties on submit.
+     * Manages step navigation and exposes rep_fields / initialSourceSpecsRaw
+     * for form bindings.  repFieldsRaw is written by a nested jsonFieldEditor;
+     * initialSourceSpecsRaw is bound directly via x-model on the textarea.
+     * A single ``<form>`` wraps all steps; hidden inputs / named textareas
+     * capture the values on submit.
      *
      * @returns {object} Alpine component data.
      */
@@ -193,7 +195,7 @@ document.addEventListener("alpine:init", function () {
             description: "",
             owner: "",
             repFieldsRaw: "{}",
-            sourceSpecRaw: "",
+            initialSourceSpecsRaw: "",
 
             nextStep: function () {
                 if (this.step === 1 && !this.name.trim()) { return; }
@@ -202,8 +204,8 @@ document.addEventListener("alpine:init", function () {
 
             /** Sync hidden input values before form submits. */
             prepareSubmit: function () {
-                // jsonFieldEditor components write into $root.repFieldsRaw /
-                // sourceSpecRaw already via formatAndValidate; nothing extra needed.
+                // jsonFieldEditor writes into $root.repFieldsRaw via formatAndValidate.
+                // initialSourceSpecsRaw is kept in sync via x-model — nothing extra needed.
             }
         };
     });

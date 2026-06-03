@@ -54,6 +54,59 @@ async def _resolve_source(source_id: str, session: AsyncSession) -> InfoSource:
     return src
 
 
+async def _detail_context(
+    src: InfoSource,
+    user,
+    session: AsyncSession,
+    *,
+    specs_error: str | None = None,
+) -> dict:
+    """Build the template context dict for the InfoSource detail page."""
+    binding_rows = list(
+        (
+            await session.execute(
+                select(InfoItemSource).where(
+                    InfoItemSource.info_source_id == src.info_source_id,
+                    InfoItemSource.deactivated_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    item_ids = [b.info_item_id for b in binding_rows]
+    items_by_id: dict[ULID, InfoItem] = {}
+    if item_ids:
+        item_rows = list(
+            (await session.execute(select(InfoItem).where(InfoItem.info_item_id.in_(item_ids))))
+            .scalars()
+            .all()
+        )
+        items_by_id = {i.info_item_id: i for i in item_rows}
+    revision_rows = list(
+        (
+            await session.execute(
+                select(SourceRevision)
+                .where(SourceRevision.info_source_id == src.info_source_id)
+                .order_by(SourceRevision.captured_at.desc())
+                .limit(50)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "user": user,
+        "src": src,
+        "bindings": binding_rows,
+        "items_by_id": items_by_id,
+        "revisions": revision_rows,
+        "specs_json": json.dumps(src.source_specs, indent=2),
+        "now": datetime.now(UTC),
+        "specs_error": specs_error,
+    }
+
+
 # ---------------------------------------------------------------------------
 # GET /dashboard/info-sources/
 # ---------------------------------------------------------------------------
@@ -179,57 +232,8 @@ async def detail_info_source(
 ) -> HTMLResponse:
     """Detail page: URL, specs, bound items, revisions."""
     src = await _resolve_source(source_id, session)
-
-    # Active bindings → InfoItems
-    binding_rows = list(
-        (
-            await session.execute(
-                select(InfoItemSource).where(
-                    InfoItemSource.info_source_id == src.info_source_id,
-                    InfoItemSource.deactivated_at.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    item_ids = [b.info_item_id for b in binding_rows]
-    items_by_id: dict[ULID, InfoItem] = {}
-    if item_ids:
-        item_rows = list(
-            (await session.execute(select(InfoItem).where(InfoItem.info_item_id.in_(item_ids))))
-            .scalars()
-            .all()
-        )
-        items_by_id = {i.info_item_id: i for i in item_rows}
-
-    # Revisions
-    revision_rows = list(
-        (
-            await session.execute(
-                select(SourceRevision)
-                .where(SourceRevision.info_source_id == src.info_source_id)
-                .order_by(SourceRevision.captured_at.desc())
-                .limit(50)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    return _templates.TemplateResponse(
-        request,
-        "info_sources/detail.html",
-        {
-            "user": user,
-            "src": src,
-            "bindings": binding_rows,
-            "items_by_id": items_by_id,
-            "revisions": revision_rows,
-            "specs_json": json.dumps(src.source_specs, indent=2),
-            "now": datetime.now(UTC),
-        },
-    )
+    ctx = await _detail_context(src, user, session)
+    return _templates.TemplateResponse(request, "info_sources/detail.html", ctx)
 
 
 @router.post("/{source_id}/source-specs")
@@ -240,24 +244,32 @@ async def update_info_source_specs_view(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Replace source_specs on an existing InfoSource."""
+    """Replace source_specs on an existing InfoSource. Re-renders detail page on error."""
     src = await _resolve_source(source_id, session)
+
+    async def _rerender(error: str) -> HTMLResponse:
+        ctx = await _detail_context(src, user, session, specs_error=error)
+        return _templates.TemplateResponse(
+            request, "info_sources/detail.html", ctx, status_code=422
+        )
 
     try:
         specs_list = json.loads(source_specs) if source_specs.strip() else []
         if not isinstance(specs_list, list):
             raise ValueError("not a list")
-    except (json.JSONDecodeError, ValueError) as e:
-        raise_envelope(422, "domain", "source_specs must be a JSON array", source_exc=e)
+    except (json.JSONDecodeError, ValueError):
+        return await _rerender("source_specs must be a JSON array")
 
     try:
         await update_info_source_specs(
             session, info_source_id=src.info_source_id, source_specs=specs_list
         )
     except UpdateInvalidSpecError as e:
-        raise_envelope(422, "schema", str(e), source_exc=e)
+        return await _rerender(
+            "; ".join(err.get("message", "") for err in e.errors) if e.errors else str(e)
+        )
     except UpdateMixedFamilyError as e:
-        raise_envelope(422, "domain", str(e), source_exc=e)
+        return await _rerender(str(e))
 
     await session.commit()
     return RedirectResponse(

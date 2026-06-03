@@ -85,6 +85,8 @@ class InfoItemCreate(BaseModel):
     def _check_specs_require_url(self) -> "InfoItemCreate":
         if self.initial_source_specs is not None and self.initial_url is None:
             raise ValueError("initial_source_specs requires initial_url to be set")
+        if self.initial_url is not None and self.initial_source_specs is None:
+            raise ValueError("initial_url requires initial_source_specs to be set")
         return self
 
 
@@ -139,8 +141,9 @@ class InfoItemOut(BaseModel):
         description=(
             "Bound InfoSources. By default only active bindings are returned "
             "(is_active=true). Pass include_deactivated=true to also include previous "
-            "primaries and other deactivated bindings. Exactly one active row has role "
-            "null (current primary); others carry 'cross_check'."
+            "primaries and other deactivated bindings. At most one active binding "
+            "(is_active=true) exists — the current primary. Deactivated bindings "
+            "(is_active=false) are previous primaries, preserved as succession history."
         ),
     )
     info_item_rep_specs: list[InfoItemRepSpecOut] = Field(

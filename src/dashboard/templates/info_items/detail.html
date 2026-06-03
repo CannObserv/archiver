@@ -95,7 +95,7 @@
             <td class="data-table__cell">
               {% if src %}
               <a href="/dashboard/info-sources/{{ iis.info_source_id }}">
-                <code class="text-small">{{ src.url or '(fragment)' }}</code>
+                <code class="text-small">{{ src.url }}</code>
               </a>
               {% if src.url %}
               <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer"

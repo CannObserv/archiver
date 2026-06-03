@@ -7,6 +7,7 @@ Covers:
 - create with bad source_specs → 422, no InfoItem persisted
 - create with non-existent rep_spec_id → 404, no InfoItem persisted
 - create with rep_fields that doesn't satisfy required_fields → 422, no InfoItem persisted
+- create with initial_url but no initial_source_specs → 422 (validator)
 """
 
 from datetime import UTC, datetime
@@ -195,6 +196,17 @@ async def test_create_with_bad_source_specs_returns_422_no_rows(client, session)
         select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "should-not-exist")
     )
     assert item_count == 0
+
+
+@pytest.mark.asyncio
+async def test_create_with_initial_url_but_no_source_specs_returns_422(client):
+    """initial_url without initial_source_specs → 422 (Pydantic validator at schema layer)."""
+    response = await client.post(
+        "/api/v1/info-items",
+        headers=HEADERS,
+        json={"name": "url-without-specs", "initial_url": "https://example.com/page"},
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

@@ -113,13 +113,13 @@ Multi-step create form for Information Items.
 - `name: string`, `description: string`, `owner: string` — form field values.
 - `repFieldsRaw: string` — raw JSON string for `rep_fields` (written by nested `jsonFieldEditor`).
 - `initialUrl: string` — URL for the optional initial InfoSource.
-- `initialSourceSpecsRaw: string` — raw JSON array string for `initial_source_specs` (written by nested `jsonFieldEditor`).
+- `initialSourceSpecsRaw: string` — raw JSON array string for `initial_source_specs` (bound via `x-model` on the textarea; not a `jsonFieldEditor` — arrays are not objects).
 
 **Methods:**
 - `nextStep()` — advance to next step; step 1 guards that `name` is non-empty.
-- `prepareSubmit()` — called on form submit; no-op (jsonFieldEditor writes directly into root props on blur).
+- `prepareSubmit()` — called on form submit; no-op (editors write into root props on blur; `initialSourceSpecsRaw` stays in sync via `x-model`).
 
-**Usage:** `x-data="infoItemWizard"` on the outer `<div>`. Nested `jsonFieldEditor` components read/write `$root.repFieldsRaw` and `$root.initialSourceSpecsRaw`. Hidden `<input>` elements bind via `:value` to these root properties so the standard form POST captures the current JSON. Step 2 shows `initial_url` text input and `initial_source_specs` JSON array field.
+**Usage:** `x-data="infoItemWizard"` on the outer `<div>`. `repFieldsRaw` is written by a nested `jsonFieldEditor`. `initialSourceSpecsRaw` is bound directly via `x-model="initialSourceSpecsRaw"` on the step-2 textarea (which also carries `name="initial_source_specs"` so the form POST captures it directly — no hidden input needed for this field). Step 2 shows `initial_url` text input and `initial_source_specs` JSON array textarea.
 
 ---
 
@@ -201,7 +201,7 @@ Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment u
 - Bound Information Items — table of active `info_item_sources` bindings (item name link, bound date). Role column removed.
 - Revision History — last 50 `source_revisions` ordered by `captured_at desc` (fingerprint truncated, captured date, cache status pill).
 
-**POST `/dashboard/info-sources/{id}/source-specs`** — replaces `source_specs` list on an existing InfoSource (form field: `source_specs` JSON array). Redirects 303 to detail. Returns 422 on schema/family validation failure.
+**POST `/dashboard/info-sources/{id}/source-specs`** — replaces `source_specs` list on an existing InfoSource (form field: `source_specs` JSON array). Redirects 303 to detail on success. Re-renders detail page with `specs_error` inline error on JSON parse failure, schema validation failure, or mixed-family error (422).
 
 ### Information Source Revisions (`/dashboard/source-revisions/`)  *(Epic 5 — implemented)*
 

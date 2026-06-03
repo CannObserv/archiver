@@ -212,3 +212,66 @@ async def test_create_invalid_specs_rerenders_form_with_error(client):
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     assert "not-json" in r.text
+
+
+# ---------------------------------------------------------------------------
+# POST /dashboard/info-sources/{id}/source-specs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_specs_valid_redirects(client, session):
+    src = _make_source("https://example.com/update-specs-ok")
+    session.add(src)
+    await session.flush()
+
+    xpath_spec = {
+        "schema_version": 1,
+        "extraction": {"algorithm": "xpath", "selector": "//h1"},
+        "fingerprint": {},
+    }
+    specs = json.dumps([_spec("css"), xpath_spec])
+    r = await client.post(
+        f"/dashboard/info-sources/{src.info_source_id}/source-specs",
+        data={"source_specs": specs},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303)
+
+
+@pytest.mark.asyncio
+async def test_update_specs_invalid_json_rerenders_html_with_error(client, session):
+    """Invalid JSON → re-renders detail page HTML with inline error (not JSON body)."""
+    src = _make_source("https://example.com/update-specs-bad-json")
+    session.add(src)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-sources/{src.info_source_id}/source-specs",
+        data={"source_specs": "not-valid-json"},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 422
+    assert "text/html" in r.headers["content-type"]
+    assert "JSON" in r.text  # error message visible in page
+
+
+@pytest.mark.asyncio
+async def test_update_specs_schema_error_rerenders_html_with_error(client, session):
+    """Schema-invalid spec → re-renders detail page HTML (not JSON envelope)."""
+    src = _make_source("https://example.com/update-specs-schema-err")
+    session.add(src)
+    await session.flush()
+
+    # css requires selector — missing it makes it schema-invalid
+    bad_specs = json.dumps([{"schema_version": 1, "extraction": {"algorithm": "css"}}])
+    r = await client.post(
+        f"/dashboard/info-sources/{src.info_source_id}/source-specs",
+        data={"source_specs": bad_specs},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 422
+    assert "text/html" in r.headers["content-type"]

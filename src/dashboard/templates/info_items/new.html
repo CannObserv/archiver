@@ -88,16 +88,11 @@
 
       <div style="margin-bottom:var(--space-3);">
         <label for="initial-source-specs" class="form-label">Source Specs (JSON array)</label>
-        <div x-data="jsonFieldEditor('sourceSpecsRaw', 'source_specs_error')">
-          <textarea id="initial-source-specs" class="form-textarea code-block"
-                    x-model="raw"
-                    @blur="formatAndValidate()"
-                    :class="{ 'form-textarea--error': hasError }"
-                    rows="6"
-                    placeholder='[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'></textarea>
-          <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>
-        </div>
-        <input type="hidden" name="initial_source_specs" :value="$root.sourceSpecsRaw">
+        <textarea id="initial-source-specs" name="initial_source_specs"
+                  class="form-textarea code-block"
+                  x-model="initialSourceSpecsRaw"
+                  rows="6"
+                  placeholder='[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'></textarea>
         {% if errors.initial_source_specs %}<p class="alert alert--error">{{ errors.initial_source_specs }}</p>{% endif %}
       </div>
 
