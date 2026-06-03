@@ -70,27 +70,35 @@
       </div>
     </div>
 
-    {# Step 2: Optional Source Spec #}
+    {# Step 2: Optional Source #}
     <div x-show="step === 2" class="filter-card">
       <h2 style="margin-top:0;">2. Initial Information Source (optional)</h2>
       <p class="text-muted">
-        Paste a SourceSpec JSON document to create and bind a primary Information Source.
+        Provide a URL and extraction specs to create and bind a primary Information Source.
         Leave blank to skip — you can bind sources from the detail page.
       </p>
 
       <div style="margin-bottom:var(--space-3);">
-        <label for="source-spec" class="form-label">SourceSpec JSON</label>
-        <div x-data="jsonFieldEditor('sourceSpecRaw', 'source_spec_error')">
-          <textarea id="source-spec" class="form-textarea code-block"
+        <label for="initial-url" class="form-label">URL</label>
+        <input id="initial-url" type="url" name="initial_url"
+               class="form-input" placeholder="https://example.com/page"
+               autocomplete="off">
+        {% if errors.initial_url %}<p class="alert alert--error">{{ errors.initial_url }}</p>{% endif %}
+      </div>
+
+      <div style="margin-bottom:var(--space-3);">
+        <label for="initial-source-specs" class="form-label">Source Specs (JSON array)</label>
+        <div x-data="jsonFieldEditor('sourceSpecsRaw', 'source_specs_error')">
+          <textarea id="initial-source-specs" class="form-textarea code-block"
                     x-model="raw"
                     @blur="formatAndValidate()"
                     :class="{ 'form-textarea--error': hasError }"
-                    rows="8"
-                    placeholder='{"schema_version":1,"target":{"url":"https://..."},"extraction":{"algorithm":"css","selector":"h1"},"fingerprint":{}}'></textarea>
+                    rows="6"
+                    placeholder='[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'></textarea>
           <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>
         </div>
-        <input type="hidden" name="source_spec" :value="$root.sourceSpecRaw">
-        {% if errors.source_spec %}<p class="alert alert--error">{{ errors.source_spec }}</p>{% endif %}
+        <input type="hidden" name="initial_source_specs" :value="$root.sourceSpecsRaw">
+        {% if errors.initial_source_specs %}<p class="alert alert--error">{{ errors.initial_source_specs }}</p>{% endif %}
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
@@ -112,12 +120,6 @@
         <dd x-text="owner || '—'"></dd>
         <dt>Rep Fields</dt>
         <dd><code x-text="$root.repFieldsRaw || '{}'"></code></dd>
-        <dt>Source Spec</dt>
-        <dd>
-          <span x-show="!$root.sourceSpecRaw || !$root.sourceSpecRaw.trim()" class="text-muted">None</span>
-          <code x-show="$root.sourceSpecRaw && $root.sourceSpecRaw.trim()"
-                x-text="$root.sourceSpecRaw" style="word-break:break-all;"></code>
-        </dd>
       </dl>
 
       <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">

@@ -4,16 +4,16 @@ import pytest
 
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 
-HEADERS = {"X-API-Key": "test-secret-key"}
 
-
-def _root_doc(url: str) -> dict:
+def _spec_doc() -> dict:
     return {
         "schema_version": 1,
-        "target": {"url": url},
         "extraction": {"algorithm": "full_page"},
         "fingerprint": {},
     }
+
+
+HEADERS = {"X-API-Key": "test-secret-key"}
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ async def item(session):
 
 @pytest.fixture
 async def root_src(session):
-    src = InfoSource(source_spec=_root_doc("https://example.com/p"), schema_version=1)
+    src = InfoSource(url="https://example.com/p", source_specs=[_spec_doc()])
     session.add(src)
     await session.flush()
     return src
@@ -37,7 +37,6 @@ async def active_binding(session, item, root_src):
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=root_src.info_source_id,
-        role=None,
     )
     session.add(binding)
     await session.commit()
@@ -86,7 +85,7 @@ async def test_deactivate_then_rebind_primary_succeeds(client, session, active_b
     """Succession workflow: DELETE old primary → POST new primary → 201."""
     root_src = active_binding
 
-    new_src = InfoSource(source_spec=_root_doc("https://example.com/q"), schema_version=1)
+    new_src = InfoSource(url="https://example.com/q", source_specs=[_spec_doc()])
     session.add(new_src)
     await session.commit()
 
@@ -126,7 +125,7 @@ async def test_succession_emits_primary_changed_event_with_old_source(
     from src.core.models import ChangesOutboxRow
 
     old_src = active_binding
-    new_src = InfoSource(source_spec=_root_doc("https://example.com/new"), schema_version=1)
+    new_src = InfoSource(url="https://example.com/new", source_specs=[_spec_doc()])
     session.add(new_src)
     await session.commit()
 

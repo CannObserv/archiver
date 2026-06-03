@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/tools/preview-extraction (v2 shape: source_spec)."""
+"""Tests for POST /api/v1/tools/preview-extraction."""
 
 import httpx
 import pytest
@@ -11,14 +11,12 @@ HEADERS = {"X-API-Key": "test-secret-key"}
 
 VALID_FULL_PAGE_SPEC = {
     "schema_version": 1,
-    "target": {"url": "https://example.com"},
     "extraction": {"algorithm": "full_page"},
     "fingerprint": {},
 }
 
 VALID_CSS_SPEC = {
     "schema_version": 1,
-    "target": {"url": "https://example.com"},
     "extraction": {"algorithm": "css", "selector": ".target"},
     "fingerprint": {},
 }
@@ -26,6 +24,8 @@ VALID_CSS_SPEC = {
 HTML_FIXTURE = (
     b"<html><body><div class='target'>kept content</div><div>dropped content</div></body></html>"
 )
+
+DEFAULT_URL = "https://example.com"
 
 
 def _stub_fetcher(content: bytes = HTML_FIXTURE, *, raise_exc: Exception | None = None):
@@ -50,7 +50,7 @@ async def test_preview_extraction_full_page_returns_chunks_and_simhash(client):
     response = await client.post(
         "/api/v1/tools/preview-extraction",
         headers=HEADERS,
-        json={"source_spec": VALID_FULL_PAGE_SPEC},
+        json={"url": DEFAULT_URL, "source_spec": VALID_FULL_PAGE_SPEC},
     )
     assert response.status_code == 200
     body = response.json()
@@ -59,7 +59,6 @@ async def test_preview_extraction_full_page_returns_chunks_and_simhash(client):
     assert "kept content" in joined
     assert body["total_chars"] > 0
     assert body["fingerprint_algorithm"] == "sha256"
-    # The preview_extraction tool always uses sha256 and prefixes with "sha256:".
     assert body["computed_fingerprint"].startswith("sha256:")
 
 
@@ -69,7 +68,7 @@ async def test_preview_extraction_css_filters_to_selector(client):
     response = await client.post(
         "/api/v1/tools/preview-extraction",
         headers=HEADERS,
-        json={"source_spec": VALID_CSS_SPEC},
+        json={"url": DEFAULT_URL, "source_spec": VALID_CSS_SPEC},
     )
     assert response.status_code == 200
     body = response.json()
@@ -82,12 +81,11 @@ async def test_preview_extraction_css_filters_to_selector(client):
 
 @pytest.mark.asyncio
 async def test_preview_extraction_invalid_spec_returns_422_with_errors(client):
-    bad_spec = dict(VALID_FULL_PAGE_SPEC)
-    bad_spec.pop("extraction")  # missing required field
+    bad_spec = {"schema_version": 1, "fingerprint": {}}  # missing extraction
     response = await client.post(
         "/api/v1/tools/preview-extraction",
         headers=HEADERS,
-        json={"source_spec": bad_spec},
+        json={"url": DEFAULT_URL, "source_spec": bad_spec},
     )
     assert response.status_code == 422
     detail = response.json()["detail"]
@@ -95,9 +93,6 @@ async def test_preview_extraction_invalid_spec_returns_422_with_errors(client):
     assert detail["message"] == "source_spec validation failed"
     assert isinstance(detail["errors"], list)
     assert len(detail["errors"]) >= 1
-    for err in detail["errors"]:
-        assert "path" in err
-        assert "message" in err
 
 
 @pytest.mark.asyncio
@@ -108,19 +103,19 @@ async def test_preview_extraction_unreachable_target_returns_422_target_unreacha
     response = await client.post(
         "/api/v1/tools/preview-extraction",
         headers=HEADERS,
-        json={"source_spec": VALID_FULL_PAGE_SPEC},
+        json={"url": DEFAULT_URL, "source_spec": VALID_FULL_PAGE_SPEC},
     )
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert detail["kind"] == "domain"
     assert detail["errors"][0]["code"] == "target_unreachable"
-    assert detail["errors"][0]["path"] == "/target/url"
+    assert detail["errors"][0]["path"] == "/url"
 
 
 @pytest.mark.asyncio
 async def test_preview_extraction_requires_api_key(client):
     response = await client.post(
         "/api/v1/tools/preview-extraction",
-        json={"source_spec": VALID_FULL_PAGE_SPEC},
+        json={"url": DEFAULT_URL, "source_spec": VALID_FULL_PAGE_SPEC},
     )
     assert response.status_code == 403

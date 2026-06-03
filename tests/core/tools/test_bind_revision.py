@@ -13,6 +13,15 @@ from src.core.tools.bind_revision import (
     bind_revision,
 )
 
+
+def _spec_doc() -> dict:
+    return {
+        "schema_version": 1,
+        "extraction": {"algorithm": "full_page"},
+        "fingerprint": {},
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -23,10 +32,7 @@ def _make_item() -> InfoItem:
 
 
 def _make_source() -> InfoSource:
-    return InfoSource(
-        source_spec={"target": {"url": f"https://example.com/{ULID()}"}},
-        schema_version=1,
-    )
+    return InfoSource(url=f"https://example.com/{ULID()}", source_specs=[_spec_doc()])
 
 
 def _make_revision(info_source_id: ULID) -> SourceRevision:

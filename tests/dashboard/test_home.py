@@ -15,13 +15,10 @@ _HEADERS = {"X-ExeDev-UserID": "ext-home", "X-ExeDev-Email": "home@example.com"}
 
 def _make_source(url: str) -> InfoSource:
     return InfoSource(
-        source_spec={
-            "schema_version": 1,
-            "target": {"url": url},
-            "extraction": {"algorithm": "full_page"},
-            "fingerprint": {},
-        },
-        schema_version=1,
+        url=url,
+        source_specs=[
+            {"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}
+        ],
     )
 
 

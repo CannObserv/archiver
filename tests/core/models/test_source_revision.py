@@ -8,17 +8,17 @@ from sqlalchemy.exc import IntegrityError
 from src.core.models import InfoSource, SourceRevision
 
 
+def _spec_doc() -> dict:
+    return {
+        "schema_version": 1,
+        "extraction": {"algorithm": "full_page"},
+        "fingerprint": {},
+    }
+
+
 @pytest.fixture
 async def root_source(session):
-    src = InfoSource(
-        source_spec={
-            "schema_version": 1,
-            "target": {"url": "https://example.com/p"},
-            "extraction": {"algorithm": "full_page"},
-            "fingerprint": {},
-        },
-        schema_version=1,
-    )
+    src = InfoSource(url="https://example.com/p", source_specs=[_spec_doc()])
     session.add(src)
     await session.flush()
     return src

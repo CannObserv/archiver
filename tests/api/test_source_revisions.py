@@ -44,15 +44,16 @@ FP_VALID_2 = "sha256:" + "b" * 64
 
 @pytest.fixture
 async def info_source(session) -> InfoSource:
-    """Root InfoSource for source-revision tests."""
+    """InfoSource for source-revision tests."""
     src = InfoSource(
-        source_spec={
-            "schema_version": 1,
-            "target": {"url": "https://example.com/rev-test"},
-            "extraction": {"algorithm": "full_page"},
-            "fingerprint": {},
-        },
-        schema_version=1,
+        url="https://example.com/rev-test",
+        source_specs=[
+            {
+                "schema_version": 1,
+                "extraction": {"algorithm": "full_page"},
+                "fingerprint": {},
+            }
+        ],
     )
     session.add(src)
     await session.flush()
@@ -494,7 +495,6 @@ async def _bind_item_to_source(
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=source.info_source_id,
-        role=None,
     )
     if deactivated:
         binding.deactivated_at = datetime.now(UTC)
@@ -532,7 +532,7 @@ async def test_new_revision_writes_outbox_row(client, session, info_source):
     assert row.topic == "info.changes"
     payload = row.payload
     assert payload["event_type"] == "source_revision_captured"
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["info_source_id"] == source_id
     assert payload["source_revision_id"] == rev_id
     assert payload["content_fingerprint"] == FP_VALID
@@ -577,12 +577,10 @@ async def test_outbox_payload_includes_active_bindings(client, session, info_sou
             InfoItemSource(
                 info_item_id=item1.info_item_id,
                 info_source_id=info_source.info_source_id,
-                role=None,
             ),
             InfoItemSource(
                 info_item_id=item2.info_item_id,
                 info_source_id=info_source.info_source_id,
-                role=None,
             ),
         ]
     )
@@ -603,9 +601,7 @@ async def test_outbox_payload_includes_active_bindings(client, session, info_sou
     row = result.scalar_one()
     bindings = row.payload["bindings"]
     ids = {b["info_item_id"] for b in bindings}
-    roles = {b["role"] for b in bindings}
     assert {str(item1.info_item_id), str(item2.info_item_id)} == ids
-    assert roles == {None}
 
     # Bindings are emitted in deterministic info_item_id order so downstream
     # snapshot-style consumers (e.g. Replicator diff tests) aren't flaky.
@@ -627,7 +623,6 @@ async def test_outbox_payload_excludes_deactivated_bindings(client, session, inf
         InfoItemSource(
             info_item_id=active_item.info_item_id,
             info_source_id=info_source.info_source_id,
-            role=None,
         )
     )
     await session.flush()
@@ -683,69 +678,6 @@ async def test_outbox_payload_empty_list_when_no_bindings(client, session, info_
 # ---------------------------------------------------------------------------
 # Test 21: Fragment role propagated in bindings
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_outbox_payload_carries_fragment_role(client, session):
-    """Fragment roles are included in bindings; consumers filter."""
-    # Create root InfoSource
-    root_source = InfoSource(
-        source_spec={
-            "schema_version": 1,
-            "target": {"url": "https://example.com/fragment-role-root"},
-            "extraction": {"algorithm": "full_page"},
-            "fingerprint": {},
-        },
-        schema_version=1,
-    )
-    session.add(root_source)
-    await session.flush()
-
-    # Create fragment InfoSource (parent = root); no target.url → url col stays NULL
-    fragment_source = InfoSource(
-        parent_info_source_id=root_source.info_source_id,
-        source_spec={
-            "schema_version": 1,
-            "extraction": {"algorithm": "css", "selector": ".sub-section"},
-            "fingerprint": {},
-        },
-        schema_version=1,
-    )
-    session.add(fragment_source)
-    await session.flush()
-
-    # Create an InfoItem and bind the fragment with role='cross_check'
-    item = InfoItem(name="fragment-role-test-item")
-    session.add(item)
-    await session.flush()
-
-    session.add(
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=fragment_source.info_source_id,
-            role="cross_check",
-        )
-    )
-    await session.flush()
-
-    # POST a revision against the FRAGMENT source
-    resp = await client.post(
-        "/api/v1/source-revisions",
-        headers=HEADERS,
-        json={
-            "info_source_id": str(fragment_source.info_source_id),
-            "content_fingerprint": FP_VALID,
-            "captured_at": "2026-05-08T12:00:00.000000Z",
-        },
-    )
-    assert resp.status_code == 201
-
-    result = await session.execute(select(ChangesOutboxRow))
-    row = result.scalar_one()
-    bindings = row.payload["bindings"]
-    assert len(bindings) == 1
-    assert bindings[0]["info_item_id"] == str(item.info_item_id)
-    assert bindings[0]["role"] == "cross_check"
 
 
 # ---------------------------------------------------------------------------

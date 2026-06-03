@@ -148,10 +148,11 @@ class FetchAndRenderResult(BaseModel):
 class PreviewExtractionRequest(BaseModel):
     """Request body for POST /api/v1/tools/preview-extraction."""
 
+    url: str = Field(description="URL to fetch.")
     source_spec: dict[str, Any] = Field(
         description=(
-            "Candidate SourceSpec document. Must include target.url. Validated "
-            "against the v1 schema before any fetch is attempted; a validation "
+            "Candidate SourceSpec document (schema_version, extraction, fingerprint). "
+            "Validated against the v1 schema before any fetch is attempted; a validation "
             "failure returns 422 with the per-field issue list."
         )
     )

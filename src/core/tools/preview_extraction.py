@@ -4,9 +4,6 @@ Composes ``fetch_and_render`` + ``HtmlExtractor`` + ``extraction_config_from_spe
 + a SHA-256 fingerprint. Returns chunks + total chars + the computed fingerprint
 so an authoring agent can verify the spec yields the expected content before
 persisting.
-
-The URL is taken from ``source_spec["target"]["url"]`` — callers no longer pass
-it separately.
 """
 
 import hashlib
@@ -17,12 +14,7 @@ import httpx
 
 from src.core.extraction_defaults import extraction_config_from_spec
 from src.core.extractors import HtmlExtractor
-from src.core.source_spec_schema.validator import (
-    ValidationError,
-)
-from src.core.source_spec_schema.validator import (
-    validate_source_spec as validate_root_source_spec,
-)
+from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
 
@@ -52,11 +44,7 @@ class TargetUnreachableError(Exception):
 
 
 class SourceSpecValidationError(Exception):
-    """Raised when the SourceSpec document fails validation.
-
-    ``errors`` carries the structured per-field issue list from
-    ``validate_root_source_spec``.
-    """
+    """Raised when the SourceSpec document fails validation."""
 
     def __init__(self, errors: list[ValidationError]) -> None:
         super().__init__(f"SourceSpec validation failed: {errors}")
@@ -71,21 +59,18 @@ def _compute_fingerprint(text: str) -> str:
 
 async def preview_extraction(
     fetcher: HttpFetcherProtocol,
+    url: str,
     source_spec: dict[str, Any],
 ) -> PreviewExtractionResult:
-    """Validate the SourceSpec, fetch its target URL, extract, and fingerprint.
-
-    The URL is read from ``source_spec["target"]["url"]``.
+    """Validate the SourceSpec, fetch ``url``, extract, and fingerprint.
 
     Raises:
-        SourceSpecValidationError: if the document fails ``validate_root_source_spec``.
+        SourceSpecValidationError: if the document fails schema validation.
         TargetUnreachableError: if the HTTP fetch fails (route layer → 422).
     """
-    ok, errors = validate_root_source_spec(source_spec)
+    ok, errors = validate_source_spec(source_spec)
     if not ok:
         raise SourceSpecValidationError(errors)
-
-    url = source_spec["target"]["url"]
 
     try:
         fetch_result = await fetcher.fetch(url)

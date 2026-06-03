@@ -36,8 +36,11 @@ async def test_malformed_ulid_chains_value_error(session: AsyncSession):
 @pytest.mark.asyncio
 async def test_invalid_source_spec_chains_typed_error(session: AsyncSession):
     """`except InvalidSourceSpecError as e` site must keep the typed error as __cause__."""
-    body = InfoSourceCreate(source_spec={"not": "a valid source_spec"})
+    body = InfoSourceCreate(
+        url="https://example.com/p",
+        source_specs=[{"schema_version": 1, "extraction": {"algorithm": "css"}, "fingerprint": {}}],
+    )
     with pytest.raises(HTTPException) as exc_info:
-        await create_info_source_route(body=body, session=session)
+        await create_info_source_route(body=body, session=session, _key=None)
     assert exc_info.value.status_code == 422
     assert isinstance(exc_info.value.__cause__, InvalidSourceSpecError)

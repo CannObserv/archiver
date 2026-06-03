@@ -10,10 +10,9 @@ from src.core.tools.deactivate_info_item_source_binding import (
 )
 
 
-def _root_doc(url: str) -> dict:
+def _spec() -> dict:
     return {
         "schema_version": 1,
-        "target": {"url": url},
         "extraction": {"algorithm": "full_page"},
         "fingerprint": {},
     }
@@ -29,7 +28,7 @@ async def item(session):
 
 @pytest.fixture
 async def root_src(session):
-    src = InfoSource(source_spec=_root_doc("https://example.com/p"), schema_version=1)
+    src = InfoSource(url="https://example.com/p", source_specs=[_spec()])
     session.add(src)
     await session.flush()
     return src
@@ -40,7 +39,6 @@ async def active_binding(session, item, root_src):
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=root_src.info_source_id,
-        role=None,
     )
     session.add(binding)
     await session.flush()

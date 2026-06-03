@@ -188,13 +188,11 @@ async def preview_extraction_route(
     + the spec's fingerprint algorithm so an authoring agent can verify the
     spec yields the expected content before persisting.
 
-    The URL is read from ``source_spec["target"]["url"]``.
-
     Returns 422 with the standard error envelope; ``code`` on each FieldError
     disambiguates (``target_unreachable``, etc.).
     """
     try:
-        result = await preview_extraction(fetcher, body.source_spec)
+        result = await preview_extraction(fetcher, body.url, body.source_spec)
     except SourceSpecValidationError as e:
         raise_422(
             "source_spec validation failed",
@@ -207,7 +205,7 @@ async def preview_extraction_route(
         raise_422(
             str(e),
             kind="domain",
-            errors=[FieldError(path="/target/url", message=str(e), code="target_unreachable")],
+            errors=[FieldError(path="/url", message=str(e), code="target_unreachable")],
             source_exc=e,
         )
 

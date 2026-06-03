@@ -84,7 +84,6 @@
         <thead>
           <tr>
             <th class="data-table__th">URL</th>
-            <th class="data-table__th">Role</th>
             <th class="data-table__th">Bound</th>
             <th class="data-table__th"><span class="sr-only">Actions</span></th>
           </tr>
@@ -105,13 +104,6 @@
               {% endif %}
               {% else %}
               <span class="text-muted">{{ iis.info_source_id }}</span>
-              {% endif %}
-            </td>
-            <td class="data-table__cell">
-              {% if iis.role %}
-              <span class="badge badge--neutral">{{ iis.role }}</span>
-              {% else %}
-              <span class="badge badge--info">primary</span>
               {% endif %}
             </td>
             <td class="data-table__cell data-table__cell--muted">
@@ -146,13 +138,6 @@
                    class="form-input" placeholder="01ABCDE…" required
                    aria-describedby="bind-source-hint">
             <p class="text-small text-muted" id="bind-source-hint">ULID of an existing Information Source.</p>
-          </div>
-          <div>
-            <label for="bind-source-role" class="form-label">Role</label>
-            <select id="bind-source-role" name="role" class="form-select">
-              <option value="">primary (null)</option>
-              <option value="cross_check">cross_check</option>
-            </select>
           </div>
           <div style="text-align:right;">
             <button type="submit" class="btn btn--primary btn--sm">Bind Source</button>

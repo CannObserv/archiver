@@ -20,10 +20,9 @@ _LIST_URL = "/dashboard/info-items/"
 _NEW_URL = "/dashboard/info-items/new"
 
 
-def _root_doc(url: str) -> dict:
+def _spec() -> dict:
     return {
         "schema_version": 1,
-        "target": {"url": url},
         "extraction": {"algorithm": "full_page"},
         "fingerprint": {},
     }
@@ -34,7 +33,7 @@ def _make_item(name: str = "Test Item", **kw) -> InfoItem:
 
 
 def _make_source(url: str = "https://example.com/page") -> InfoSource:
-    return InfoSource(source_spec=_root_doc(url), schema_version=1)
+    return InfoSource(url=url, source_specs=[_spec()])
 
 
 def _make_rep_spec(name: str = "Test Spec") -> RepSpec:
@@ -105,7 +104,6 @@ async def test_list_shows_primary_url(client, session):
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=source.info_source_id,
-        role=None,
     )
     session.add(binding)
     await session.flush()
@@ -178,7 +176,6 @@ async def test_list_primary_source_links_to_info_source_detail(client, session):
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=source.info_source_id,
-        role=None,
     )
     session.add(binding)
     await session.flush()
@@ -201,7 +198,6 @@ async def test_list_observed_shows_captured_at_for_primary_source(client, sessio
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=source.info_source_id,
-        role=None,
     )
     session.add(binding)
     await session.flush()
@@ -229,7 +225,6 @@ async def test_list_observed_dash_when_no_revision(client, session):
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=source.info_source_id,
-        role=None,
     )
     session.add(binding)
     await session.flush()
@@ -300,17 +295,15 @@ async def test_create_missing_name_returns_error(client):
 
 @pytest.mark.asyncio
 async def test_create_with_source_spec_creates_binding(client, session):
-    source_spec = json.dumps(
-        {
-            "schema_version": 1,
-            "target": {"url": "https://example.com/new-item-src"},
-            "extraction": {"algorithm": "full_page"},
-            "fingerprint": {},
-        }
-    )
+    specs = json.dumps([_spec()])
     r = await client.post(
         _NEW_URL,
-        data={"name": "Item With Source", "rep_fields": "{}", "source_spec": source_spec},
+        data={
+            "name": "Item With Source",
+            "rep_fields": "{}",
+            "initial_url": "https://example.com/new-item-src",
+            "initial_source_specs": specs,
+        },
         headers=_HEADERS,
         follow_redirects=False,
     )
@@ -376,7 +369,6 @@ async def test_detail_shows_active_source_binding(client, session):
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=source.info_source_id,
-        role=None,
     )
     session.add(binding)
     await session.flush()
@@ -425,7 +417,7 @@ async def test_bind_source_creates_binding(client, session):
 
     r = await client.post(
         f"/dashboard/info-items/{item.info_item_id}/bind-source",
-        data={"info_source_id": str(source.info_source_id), "role": ""},
+        data={"info_source_id": str(source.info_source_id)},
         headers=_HEADERS,
         follow_redirects=False,
     )
@@ -447,7 +439,7 @@ async def test_bind_source_unknown_item_returns_404(client):
     fake_id = str(ULID())
     r = await client.post(
         f"/dashboard/info-items/{fake_id}/bind-source",
-        data={"info_source_id": str(ULID()), "role": ""},
+        data={"info_source_id": str(ULID())},
         headers=_HEADERS,
     )
     assert r.status_code == 404
@@ -469,7 +461,6 @@ async def test_deactivate_source_binding(client, session):
     binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=source.info_source_id,
-        role=None,
     )
     session.add(binding)
     await session.flush()

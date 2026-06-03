@@ -133,21 +133,19 @@ async def create_source_revision(
         inserted = True
 
     if inserted:
-        # Query active (info_item_id, role) pairs bound to this source.
+        # Query active info_item_id values bound to this source.
         # Order by info_item_id so the emitted bindings list is deterministic
         # — downstream consumers diffing payloads (e.g. snapshot tests) rely
         # on stable ordering.
         bindings_result = await session.execute(
-            select(InfoItemSource.info_item_id, InfoItemSource.role)
+            select(InfoItemSource.info_item_id)
             .where(
                 InfoItemSource.info_source_id == row.info_source_id,
                 InfoItemSource.deactivated_at.is_(None),
             )
             .order_by(InfoItemSource.info_item_id)
         )
-        bindings = [
-            InfoItemBinding(info_item_id=str(iid), role=r) for iid, r in bindings_result.all()
-        ]
+        bindings = [InfoItemBinding(info_item_id=str(iid)) for (iid,) in bindings_result.all()]
         event = SourceRevisionCapturedEvent(
             occurred_at=datetime.now(UTC),
             info_source_id=str(row.info_source_id),

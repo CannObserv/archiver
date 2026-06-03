@@ -1,7 +1,7 @@
 """End-to-end: POST /source-revisions → outbox → fakeredis stream.
 
 Exercises the full path:
-  HTTP POST /api/v1/info-items (with initial_source_spec)
+  HTTP POST /api/v1/info-items (with initial_url + initial_source_specs)
   → HTTP POST /api/v1/source-revisions
   → outbox row written transactionally in the same savepoint
   → drain_once publishes to fakeredis stream
@@ -24,12 +24,12 @@ pytestmark = pytest.mark.integration
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
-VALID_SOURCE_SPEC = {
+VALID_SPEC = {
     "schema_version": 1,
-    "target": {"url": "https://example.com/integration-test"},
     "extraction": {"algorithm": "full_page"},
     "fingerprint": {},
 }
+VALID_URL = "https://example.com/integration-test"
 
 FINGERPRINT = "sha256:" + "a" * 64
 
@@ -67,7 +67,8 @@ async def test_source_revision_post_to_redis_stream(
         headers=HEADERS,
         json={
             "name": "integration-test-item",
-            "initial_source_spec": VALID_SOURCE_SPEC,
+            "initial_url": VALID_URL,
+            "initial_source_specs": [VALID_SPEC],
         },
     )
     assert create_resp.status_code == 201, create_resp.text
@@ -109,8 +110,6 @@ async def test_source_revision_post_to_redis_stream(
     assert payload["content_fingerprint"] == FINGERPRINT
     matching = [b for b in payload["bindings"] if b["info_item_id"] == info_item_id]
     assert matching, f"expected a binding for {info_item_id} in {payload['bindings']!r}"
-    # initial_source_spec creates a root binding → role is NULL.
-    assert matching[0]["role"] is None
 
     # ------------------------------------------------------------------
     # Step 4: Build a publisher session_factory bound to the SAME

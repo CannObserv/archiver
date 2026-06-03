@@ -15,14 +15,16 @@ HEADERS = {"X-API-Key": "test-secret-key"}
 # ---------------------------------------------------------------------------
 
 
-def _root_spec(url: str = "https://example.com") -> dict:
+def _source_payload(url: str = "https://example.com") -> dict:
     return {
-        "source_spec": {
-            "schema_version": 1,
-            "target": {"url": url},
-            "extraction": {"algorithm": "css", "selector": "body"},
-            "fingerprint": {},
-        }
+        "url": url,
+        "source_specs": [
+            {
+                "schema_version": 1,
+                "extraction": {"algorithm": "css", "selector": "body"},
+                "fingerprint": {},
+            }
+        ],
     }
 
 
@@ -33,9 +35,9 @@ async def _make_item(client, name: str = "Item") -> str:
 
 
 async def _make_source(client, url: str = "https://example.com") -> str:
-    return (
-        await client.post("/api/v1/info-sources", headers=HEADERS, json=_root_spec(url))
-    ).json()["info_source_id"]
+    resp = await client.post("/api/v1/info-sources", headers=HEADERS, json=_source_payload(url))
+    assert resp.status_code == 201, resp.text
+    return resp.json()["info_source_id"]
 
 
 async def _bind(client, item_id: str, source_id: str) -> None:
@@ -81,20 +83,7 @@ async def test_get_info_item_returns_active_bindings(client):
     item_id = (
         await client.post("/api/v1/info-items", headers=HEADERS, json={"name": "Bound"})
     ).json()["info_item_id"]
-    source_id = (
-        await client.post(
-            "/api/v1/info-sources",
-            headers=HEADERS,
-            json={
-                "source_spec": {
-                    "target": {"url": "https://example.com"},
-                    "extraction": {"algorithm": "css", "selector": "body"},
-                    "fingerprint": {},
-                    "schema_version": 1,
-                }
-            },
-        )
-    ).json()["info_source_id"]
+    source_id = await _make_source(client, "https://example.com/binding-test")
     bind = await client.post(
         f"/api/v1/info-items/{item_id}/info-sources",
         headers=HEADERS,
@@ -104,7 +93,7 @@ async def test_get_info_item_returns_active_bindings(client):
     body = (await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)).json()
     assert len(body["info_item_sources"]) == 1
     assert body["info_item_sources"][0]["info_source_id"] == source_id
-    assert body["info_item_sources"][0]["role"] is None  # primary
+    assert "role" not in body["info_item_sources"][0]
 
 
 @pytest.mark.asyncio

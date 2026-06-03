@@ -44,15 +44,16 @@ async def info_item(session) -> InfoItem:
 
 @pytest.fixture
 async def info_source(session) -> InfoSource:
-    """A root InfoSource for binding tests."""
+    """An InfoSource for binding tests."""
     src = InfoSource(
-        source_spec={
-            "schema_version": 1,
-            "target": {"url": "https://example.com/test"},
-            "extraction": {"algorithm": "full_page"},
-            "fingerprint": {},
-        },
-        schema_version=1,
+        url="https://example.com/test",
+        source_specs=[
+            {
+                "schema_version": 1,
+                "extraction": {"algorithm": "full_page"},
+                "fingerprint": {},
+            }
+        ],
     )
     session.add(src)
     await session.flush()
@@ -104,12 +105,11 @@ async def test_add_info_source_happy_path(client, info_item, info_source):
     response = await client.post(
         f"/api/v1/info-items/{item_id}/info-sources",
         headers=HEADERS,
-        json={"info_source_id": source_id, "role": None},
+        json={"info_source_id": source_id},
     )
     assert response.status_code == 201
     body = response.json()
     assert body["info_source_id"] == source_id
-    assert body["role"] is None
     assert "created_at" in body
 
 
@@ -121,7 +121,7 @@ async def test_add_info_source_missing_item_returns_404(client, info_source):
     response = await client.post(
         f"/api/v1/info-items/{fake_item_id}/info-sources",
         headers=HEADERS,
-        json={"info_source_id": source_id, "role": None},
+        json={"info_source_id": source_id},
     )
     assert response.status_code == 404
     detail = response.json()["detail"]
@@ -152,7 +152,7 @@ async def test_add_info_source_requires_api_key(client, info_item, info_source):
 
     response = await client.post(
         f"/api/v1/info-items/{item_id}/info-sources",
-        json={"info_source_id": source_id, "role": None},
+        json={"info_source_id": source_id},
     )
     assert response.status_code == 403
 

@@ -13,42 +13,33 @@
           <span aria-hidden="true"> / </span>
         </nav>
         <h1 class="entity-card__title">
-          {% if src.url %}
           <code class="text-small">{{ src.url }}</code>
-          {% else %}
-          <span class="badge badge--sm">fragment</span>
-          {% endif %}
         </h1>
         <p class="entity-card__id text-small text-muted">{{ src.info_source_id }}</p>
       </div>
     </div>
 
     <dl class="detail-grid">
-      <dt>Shape</dt>
-      <dd>
-        {% if src.url %}
-        <span class="badge badge--info">root</span>
-        {% else %}
-        <span class="badge">fragment</span>
-        {% endif %}
-      </dd>
-      {% if parent %}
-      <dt>Parent Source</dt>
-      <dd>
-        <a href="/dashboard/info-sources/{{ parent.info_source_id }}">
-          <code class="text-small">{{ parent.url or parent.info_source_id }}</code>
-        </a>
-      </dd>
-      {% endif %}
       <dt>Created</dt>
       <dd class="text-muted">{{ src.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
     </dl>
   </div>
 
-  {# SourceSpec JSON #}
+  {# Source Specs JSON #}
   <div class="entity-card" style="margin-top:var(--space-3);">
-    <h2 style="margin-top:0;">Source Specification</h2>
-    <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ spec_json }}</code></pre>
+    <h2 style="margin-top:0;">Source Specs</h2>
+    <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ specs_json }}</code></pre>
+    <form method="POST" action="/dashboard/info-sources/{{ src.info_source_id }}/source-specs"
+          style="margin-top:var(--space-3);">
+      <div>
+        <label for="source-specs-edit" class="form-label">Update Source Specs</label>
+        <textarea id="source-specs-edit" name="source_specs"
+                  class="form-textarea code-block" rows="8">{{ specs_json }}</textarea>
+      </div>
+      <div style="text-align:right;margin-top:var(--space-2);">
+        <button type="submit" class="btn btn--sm btn--primary">Update Specs</button>
+      </div>
+    </form>
   </div>
 
   {# Bound Information Items #}
@@ -59,7 +50,6 @@
       <thead>
         <tr>
           <th class="data-table__th">Item</th>
-          <th class="data-table__th">Role</th>
           <th class="data-table__th">Bound</th>
         </tr>
       </thead>
@@ -72,13 +62,6 @@
             <a href="/dashboard/info-items/{{ binding.info_item_id }}">{{ item.name }}</a>
             {% else %}
             <span class="text-muted">{{ binding.info_item_id }}</span>
-            {% endif %}
-          </td>
-          <td class="data-table__cell">
-            {% if binding.role %}
-            <span class="badge">{{ binding.role }}</span>
-            {% else %}
-            <span class="badge badge--info">primary</span>
             {% endif %}
           </td>
           <td class="data-table__cell data-table__cell--muted">

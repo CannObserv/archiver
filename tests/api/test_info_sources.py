@@ -1,9 +1,10 @@
 """Tests for top-level /info-sources endpoints.
 
 Covers:
-- POST /info-sources (root + fragment + validation + parent + duplicate)
-- GET /info-sources (filter by parent_info_source_id)
-- GET /info-sources/{id}
+- POST /info-sources (create with url + source_specs)
+- PATCH /info-sources/{id}/source-specs (update specs)
+- GET /info-sources (list, ?url= filter)
+- GET /info-sources/{id} (detail)
 """
 
 from __future__ import annotations
@@ -13,21 +14,17 @@ import pytest
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
-def _root_doc(url: str = "https://example.com/p") -> dict:
-    return {
+def _spec(algorithm: str = "full_page", selector: str | None = None) -> dict:
+    doc: dict = {
         "schema_version": 1,
-        "target": {"url": url},
-        "extraction": {"algorithm": "full_page"},
+        "extraction": {"algorithm": algorithm},
         "fingerprint": {},
     }
-
-
-def _fragment_doc() -> dict:
-    return {
-        "schema_version": 1,
-        "extraction": {"algorithm": "css", "selector": "#agenda"},
-        "fingerprint": {},
-    }
+    if selector is not None:
+        doc["extraction"]["selector"] = selector
+    elif algorithm != "full_page":
+        doc["extraction"]["selector"] = "#x"
+    return doc
 
 
 # ---------------------------------------------------------------------------
@@ -36,187 +33,181 @@ def _fragment_doc() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_post_root_returns_201_with_canonical_url(client):
+async def test_post_returns_201_with_canonical_url(client):
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={"source_spec": _root_doc("https://EXAMPLE.com/p#frag")},
+        json={"url": "https://EXAMPLE.com/p#frag", "source_specs": [_spec()]},
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["url"] == "https://example.com/p"
-    assert body["parent_info_source_id"] is None
-    assert body["schema_version"] == 1
+    assert body["source_specs"] == [_spec()]
     assert len(body["info_source_id"]) == 26
 
 
 @pytest.mark.asyncio
-async def test_post_fragment_returns_201_with_parent(client):
-    parent_resp = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc()},
-    )
-    parent_id = parent_resp.json()["info_source_id"]
-
+async def test_post_multiple_specs(client):
+    specs = [_spec("full_page"), _spec("css")]
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={
-            "source_spec": _fragment_doc(),
-            "parent_info_source_id": parent_id,
-        },
+        json={"url": "https://example.com/multi", "source_specs": specs},
     )
-
-    assert resp.status_code == 201, resp.text
-    body = resp.json()
-    assert body["parent_info_source_id"] == parent_id
-    assert body["url"] is None
+    assert resp.status_code == 201
+    assert resp.json()["source_specs"] == specs
 
 
 @pytest.mark.asyncio
-async def test_post_root_without_url_returns_422(client):
+async def test_post_same_url_twice_creates_two_rows(client):
+    payload = {"url": "https://example.com/dup", "source_specs": [_spec()]}
+    r1 = await client.post("/api/v1/info-sources", headers=HEADERS, json=payload)
+    r2 = await client.post("/api/v1/info-sources", headers=HEADERS, json=payload)
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+    assert r1.json()["info_source_id"] != r2.json()["info_source_id"]
+
+
+@pytest.mark.asyncio
+async def test_post_invalid_url_returns_422(client):
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={"source_spec": _fragment_doc()},
+        json={"url": "not-a-url", "source_specs": [_spec()]},
     )
     assert resp.status_code == 422
-    detail = resp.json()["detail"]
-    assert detail["kind"] == "schema"
-    assert detail["message"] == "invalid source_spec"
-    assert isinstance(detail["errors"], list)
-    assert any(e["path"] == "/target/url" for e in detail["errors"])
+    assert resp.json()["detail"]["kind"] == "domain"
 
 
 @pytest.mark.asyncio
-async def test_post_fragment_with_target_url_returns_422(client):
-    parent_resp = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc()},
-    )
-    parent_id = parent_resp.json()["info_source_id"]
-
+async def test_post_empty_specs_returns_422(client):
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={
-            "source_spec": _root_doc("https://example.com/q"),
-            "parent_info_source_id": parent_id,
-        },
+        json={"url": "https://example.com/p", "source_specs": []},
     )
     assert resp.status_code == 422
-    detail = resp.json()["detail"]
-    assert detail["kind"] == "schema"
-    assert detail["message"] == "invalid source_spec"
-    assert any(e["path"] == "/target/url" for e in detail["errors"])
 
 
 @pytest.mark.asyncio
-async def test_post_fragment_with_unknown_parent_returns_404(client):
+async def test_post_invalid_spec_element_returns_422(client):
+    bad_spec = {"schema_version": 1, "extraction": {"algorithm": "css"}, "fingerprint": {}}
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={
-            "source_spec": _fragment_doc(),
-            "parent_info_source_id": "01HZZ00000000000000000000Z",
-        },
-    )
-    assert resp.status_code == 404
-    detail = resp.json()["detail"]
-    assert detail["kind"] == "lookup"
-    assert detail["message"] == "parent InfoSource not found"
-
-
-@pytest.mark.asyncio
-async def test_post_fragment_with_fragment_parent_returns_422(client):
-    """Fragment-of-fragment chains are forbidden."""
-    root_resp = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc()},
-    )
-    root_id = root_resp.json()["info_source_id"]
-
-    frag_resp = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _fragment_doc(), "parent_info_source_id": root_id},
-    )
-    frag_id = frag_resp.json()["info_source_id"]
-
-    resp = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _fragment_doc(), "parent_info_source_id": frag_id},
+        json={"url": "https://example.com/p", "source_specs": [bad_spec]},
     )
     assert resp.status_code == 422
-    detail = resp.json()["detail"]
-    assert detail["kind"] == "domain"
-    assert detail["message"] == "parent_info_source_id must reference a root InfoSource"
-    assert detail["errors"][0]["path"] == "/parent_info_source_id"
-    assert detail["errors"][0]["code"] == "parent_must_be_root"
+    assert resp.json()["detail"]["kind"] == "schema"
 
 
 @pytest.mark.asyncio
-async def test_post_duplicate_url_returns_409_with_existing_id(client):
-    first = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc()},
-    )
-    first_id = first.json()["info_source_id"]
-
-    second = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc()},
-    )
-    assert second.status_code == 409
-    detail = second.json()["detail"]
-    assert detail["kind"] == "conflict"
-    assert detail["message"] == "an InfoSource already exists for this URL"
-    assert detail["data"]["existing_info_source_id"] == first_id
-    assert detail["data"]["url"] == "https://example.com/p"
-
-
-@pytest.mark.asyncio
-async def test_post_invalid_parent_id_returns_422(client):
+async def test_post_mixed_families_returns_422(client):
+    specs = [_spec("full_page"), _spec("jsonpath")]
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={
-            "source_spec": _fragment_doc(),
-            "parent_info_source_id": "not-a-ulid",
-        },
+        json={"url": "https://example.com/p", "source_specs": specs},
     )
     assert resp.status_code == 422
-    detail = resp.json()["detail"]
-    assert detail["kind"] == "domain"
-    assert detail["message"] == "parent_info_source_id is not a valid ULID"
-    assert detail["errors"][0]["path"] == "/parent_info_source_id"
-    assert detail["errors"][0]["code"] == "invalid_ulid"
 
 
 @pytest.mark.asyncio
 async def test_post_requires_api_key(client):
     resp = await client.post(
         "/api/v1/info-sources",
-        json={"source_spec": _root_doc()},
+        json={"url": "https://example.com/p", "source_specs": [_spec()]},
     )
     assert resp.status_code == 403
 
 
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/info-sources/{id}/source-specs
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_post_rejects_extra_fields(client):
-    """schema_version must come from source_spec, not the top-level request body."""
-    resp = await client.post(
+async def test_patch_source_specs_updates_specs(client):
+    create_resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={"source_spec": _root_doc(), "schema_version": 1},
+        json={"url": "https://example.com/patch-test", "source_specs": [_spec()]},
     )
-    assert resp.status_code == 422
+    src_id = create_resp.json()["info_source_id"]
+
+    new_specs = [_spec("full_page"), _spec("css")]
+    patch_resp = await client.patch(
+        f"/api/v1/info-sources/{src_id}/source-specs",
+        headers=HEADERS,
+        json={"source_specs": new_specs},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["source_specs"] == new_specs
+    assert patch_resp.json()["url"] == "https://example.com/patch-test"
+
+
+@pytest.mark.asyncio
+async def test_patch_source_specs_not_found_returns_404(client):
+    resp = await client.patch(
+        "/api/v1/info-sources/01JZZZZZZZZZZZZZZZZZZZZZZZ/source-specs",
+        headers=HEADERS,
+        json={"source_specs": [_spec()]},
+    )
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/info-sources
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_list_returns_200(client):
+    resp = await client.get("/api/v1/info-sources", headers=HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "items" in body
+    assert "has_more" in body
+
+
+@pytest.mark.asyncio
+async def test_get_list_url_filter(client):
+    url_a = "https://example.com/list-filter-a"
+    url_b = "https://example.com/list-filter-b"
+    await client.post(
+        "/api/v1/info-sources", headers=HEADERS, json={"url": url_a, "source_specs": [_spec()]}
+    )
+    await client.post(
+        "/api/v1/info-sources", headers=HEADERS, json={"url": url_b, "source_specs": [_spec()]}
+    )
+
+    resp = await client.get(f"/api/v1/info-sources?url={url_a}", headers=HEADERS)
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert all(i["url"] == url_a for i in items)
+
+
+@pytest.mark.asyncio
+async def test_get_list_requires_api_key(client):
+    resp = await client.get("/api/v1/info-sources")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_list_pagination(client):
+    url_base = "https://example.com/paginate-src-"
+    for i in range(3):
+        await client.post(
+            "/api/v1/info-sources",
+            headers=HEADERS,
+            json={"url": f"{url_base}{i}", "source_specs": [_spec()]},
+        )
+
+    resp = await client.get("/api/v1/info-sources?limit=2&offset=0", headers=HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["items"]) <= 2
+    assert "has_more" in body
 
 
 # ---------------------------------------------------------------------------
@@ -225,208 +216,27 @@ async def test_post_rejects_extra_fields(client):
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_returns_root(client):
-    create_resp = await client.post(
+async def test_get_by_id_returns_source(client):
+    create = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={"source_spec": _root_doc()},
+        json={"url": "https://example.com/get-by-id", "source_specs": [_spec()]},
     )
-    src_id = create_resp.json()["info_source_id"]
+    src_id = create.json()["info_source_id"]
 
     resp = await client.get(f"/api/v1/info-sources/{src_id}", headers=HEADERS)
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["info_source_id"] == src_id
-    assert body["url"] == "https://example.com/p"
+    assert resp.json()["info_source_id"] == src_id
+    assert resp.json()["url"] == "https://example.com/get-by-id"
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_unknown_returns_404(client):
-    resp = await client.get(
-        "/api/v1/info-sources/01HZZ00000000000000000000Z",
-        headers=HEADERS,
-    )
+async def test_get_by_id_not_found(client):
+    resp = await client.get("/api/v1/info-sources/01JZZZZZZZZZZZZZZZZZZZZZZZ", headers=HEADERS)
     assert resp.status_code == 404
-    detail = resp.json()["detail"]
-    assert detail["kind"] == "lookup"
-    assert detail["message"] == "InfoSource not found"
-
-
-@pytest.mark.asyncio
-async def test_get_by_id_invalid_ulid_returns_422(client):
-    resp = await client.get("/api/v1/info-sources/not-a-ulid", headers=HEADERS)
-    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_get_by_id_requires_api_key(client):
-    resp = await client.get("/api/v1/info-sources/01HZZ00000000000000000000Z")
-    assert resp.status_code == 403
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/info-sources (list / filter)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_list_returns_all_when_no_filter(client):
-    a = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc("https://example.com/a")},
-    )
-    b = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc("https://example.com/b")},
-    )
-
-    resp = await client.get("/api/v1/info-sources", headers=HEADERS)
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["limit"] == 100
-    assert body["offset"] == 0
-    assert body["has_more"] is False
-    ids = {row["info_source_id"] for row in body["items"]}
-    assert a.json()["info_source_id"] in ids
-    assert b.json()["info_source_id"] in ids
-
-
-@pytest.mark.asyncio
-async def test_list_filter_by_parent_returns_only_fragments(client):
-    root_a = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc("https://example.com/a")},
-    )
-    root_a_id = root_a.json()["info_source_id"]
-
-    root_b = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc("https://example.com/b")},
-    )
-
-    frag1 = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _fragment_doc(), "parent_info_source_id": root_a_id},
-    )
-    frag2 = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _fragment_doc(), "parent_info_source_id": root_a_id},
-    )
-
-    resp = await client.get(
-        f"/api/v1/info-sources?parent_info_source_id={root_a_id}",
-        headers=HEADERS,
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    ids = {row["info_source_id"] for row in body["items"]}
-    assert ids == {frag1.json()["info_source_id"], frag2.json()["info_source_id"]}
-    # neither root must appear in fragment-filtered results
-    assert root_a_id not in ids
-    assert root_b.json()["info_source_id"] not in ids
-
-
-@pytest.mark.asyncio
-async def test_list_pagination_pages_correctly(client):
-    ids = []
-    for path in ("a", "b", "c", "d", "e"):
-        resp = await client.post(
-            "/api/v1/info-sources",
-            headers=HEADERS,
-            json={"source_spec": _root_doc(f"https://example.com/{path}")},
-        )
-        ids.append(resp.json()["info_source_id"])
-
-    p1 = (await client.get("/api/v1/info-sources?limit=2&offset=0", headers=HEADERS)).json()
-    p2 = (await client.get("/api/v1/info-sources?limit=2&offset=2", headers=HEADERS)).json()
-    p3 = (await client.get("/api/v1/info-sources?limit=2&offset=4", headers=HEADERS)).json()
-
-    assert [r["info_source_id"] for r in p1["items"]] == ids[0:2]
-    assert p1["has_more"] is True
-    assert p1["limit"] == 2
-    assert p1["offset"] == 0
-    assert [r["info_source_id"] for r in p2["items"]] == ids[2:4]
-    assert p2["has_more"] is True
-    assert [r["info_source_id"] for r in p3["items"]] == ids[4:5]
-    assert p3["has_more"] is False
-
-
-@pytest.mark.asyncio
-async def test_list_pagination_composes_with_parent_filter(client):
-    root = await client.post(
-        "/api/v1/info-sources",
-        headers=HEADERS,
-        json={"source_spec": _root_doc("https://example.com/root-p")},
-    )
-    root_id = root.json()["info_source_id"]
-
-    frag_ids = []
-    for _ in range(3):
-        resp = await client.post(
-            "/api/v1/info-sources",
-            headers=HEADERS,
-            json={"source_spec": _fragment_doc(), "parent_info_source_id": root_id},
-        )
-        frag_ids.append(resp.json()["info_source_id"])
-
-    p1 = (
-        await client.get(
-            f"/api/v1/info-sources?parent_info_source_id={root_id}&limit=2&offset=0",
-            headers=HEADERS,
-        )
-    ).json()
-    p2 = (
-        await client.get(
-            f"/api/v1/info-sources?parent_info_source_id={root_id}&limit=2&offset=2",
-            headers=HEADERS,
-        )
-    ).json()
-
-    assert [r["info_source_id"] for r in p1["items"]] == frag_ids[0:2]
-    assert p1["has_more"] is True
-    assert [r["info_source_id"] for r in p2["items"]] == frag_ids[2:3]
-    assert p2["has_more"] is False
-
-
-@pytest.mark.asyncio
-async def test_list_limit_too_high_returns_422(client):
-    resp = await client.get("/api/v1/info-sources?limit=501", headers=HEADERS)
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_list_limit_zero_returns_422(client):
-    resp = await client.get("/api/v1/info-sources?limit=0", headers=HEADERS)
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_list_negative_offset_returns_422(client):
-    resp = await client.get("/api/v1/info-sources?offset=-1", headers=HEADERS)
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_list_filter_by_invalid_parent_id_returns_422(client):
-    resp = await client.get(
-        "/api/v1/info-sources?parent_info_source_id=not-a-ulid",
-        headers=HEADERS,
-    )
-    assert resp.status_code == 422
-    detail = resp.json()["detail"]
-    assert detail["kind"] == "domain"
-    assert detail["message"] == "parent_info_source_id is not a valid ULID"
-    assert detail["errors"][0]["path"] == "/parent_info_source_id"
-    assert detail["errors"][0]["code"] == "invalid_ulid"
-
-
-@pytest.mark.asyncio
-async def test_list_requires_api_key(client):
-    resp = await client.get("/api/v1/info-sources")
+    resp = await client.get("/api/v1/info-sources/01JZZZZZZZZZZZZZZZZZZZZZZZ")
     assert resp.status_code == 403

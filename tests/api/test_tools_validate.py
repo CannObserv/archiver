@@ -11,7 +11,6 @@ HEADERS = {"X-API-Key": "test-secret-key"}
 
 VALID_SOURCE_SPEC = {
     "schema_version": 1,
-    "target": {"url": "https://example.com"},
     "extraction": {"algorithm": "full_page"},
     "fingerprint": {},
 }

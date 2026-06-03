@@ -15,17 +15,13 @@ _HEADERS = {"X-ExeDev-UserID": "ext-revisions", "X-ExeDev-Email": "revisions@exa
 _LIST_URL = "/dashboard/source-revisions/"
 
 
-def _root_doc(url: str) -> dict:
-    return {
-        "schema_version": 1,
-        "target": {"url": url},
-        "extraction": {"algorithm": "full_page"},
-        "fingerprint": {},
-    }
-
-
 def _make_source(url: str = "https://example.com/rev-test") -> InfoSource:
-    return InfoSource(source_spec=_root_doc(url), schema_version=1)
+    return InfoSource(
+        url=url,
+        source_specs=[
+            {"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}
+        ],
+    )
 
 
 def _make_revision(source: InfoSource, fp_suffix: str = "a" * 64) -> SourceRevision:
