@@ -149,8 +149,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Reverse is destructive — fragment rows and role values cannot be recovered."""
-    # info_item_sources
+    """Downgrade is not supported.
+
+    The upgrade drops the fragment model and the role column. Reversing would require
+    reconstructing DDL incompatible with the original schema. Restore from backup instead.
+    """
+    raise NotImplementedError(
+        "c9d8e7f6a5b4 downgrade is not supported — restore from backup instead."
+    )
+    # info_item_sources  (unreachable; kept as documentation)
     op.drop_index(
         "uq_info_item_sources_active",
         table_name="info_item_sources",

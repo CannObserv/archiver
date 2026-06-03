@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class RepSpecAssignmentCreate(BaseModel):
@@ -80,6 +80,12 @@ class InfoItemCreate(BaseModel):
             "rep_fields are validated against each RepSpec's required_fields."
         ),
     )
+
+    @model_validator(mode="after")
+    def _check_specs_require_url(self) -> "InfoItemCreate":
+        if self.initial_source_specs is not None and self.initial_url is None:
+            raise ValueError("initial_source_specs requires initial_url to be set")
+        return self
 
 
 class InfoItemSourceOut(BaseModel):

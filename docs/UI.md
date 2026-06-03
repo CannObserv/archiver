@@ -112,29 +112,20 @@ Multi-step create form for Information Items.
 - `step: number` — current step (1 = Basics, 2 = Source, 3 = Review).
 - `name: string`, `description: string`, `owner: string` — form field values.
 - `repFieldsRaw: string` — raw JSON string for `rep_fields` (written by nested `jsonFieldEditor`).
-- `sourceSpecRaw: string` — raw JSON string for `source_spec` (written by nested `jsonFieldEditor`).
+- `initialUrl: string` — URL for the optional initial InfoSource.
+- `initialSourceSpecsRaw: string` — raw JSON array string for `initial_source_specs` (written by nested `jsonFieldEditor`).
 
 **Methods:**
 - `nextStep()` — advance to next step; step 1 guards that `name` is non-empty.
 - `prepareSubmit()` — called on form submit; no-op (jsonFieldEditor writes directly into root props on blur).
 
-**Usage:** `x-data="infoItemWizard"` on the outer `<div>`. Nested `jsonFieldEditor` components read/write `$root.repFieldsRaw` and `$root.sourceSpecRaw`. Hidden `<input>` elements bind via `:value` to these root properties so the standard form POST captures the current JSON.
+**Usage:** `x-data="infoItemWizard"` on the outer `<div>`. Nested `jsonFieldEditor` components read/write `$root.repFieldsRaw` and `$root.initialSourceSpecsRaw`. Hidden `<input>` elements bind via `:value` to these root properties so the standard form POST captures the current JSON. Step 2 shows `initial_url` text input and `initial_source_specs` JSON array field.
 
 ---
 
 ### `sourceSpecEditor`
 
-Single-field SourceSpec JSON editor with client-side JSON parse validation on blur.
-
-**State:**
-- `raw: string` — raw textarea value (bound via `x-model`).
-- `hasError: boolean` — true when the current value is not valid JSON.
-- `errorMsg: string` — human-readable parse error.
-
-**Methods:**
-- `validate()` — called on `@blur`. Attempts `JSON.parse(raw)`; sets `hasError`/`errorMsg`.
-
-**Usage:** `x-data='sourceSpecEditor({{ source_spec_raw | tojson }})'` on the outer `<div>` wrapping the create form, passing the server-rendered initial value so Alpine's `x-model` initialises `raw` correctly on re-render after validation errors. The `<textarea name="source_spec" x-model="raw" @blur="validate()">` submits directly as a form field — no hidden input needed.
+*(Retired from InfoSource create form — replaced by plain `<textarea name="source_specs">` with inline error display. Component may still exist in `main.js` for other uses but is no longer used by the InfoSource new/edit forms.)*
 
 ---
 
@@ -172,16 +163,16 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 **GET `/dashboard/info-items/`** — paginated list with optional `name_contains` search. Filter panel: search input (flex-fill) + Search button (right-aligned via `margin-left:auto`). Columns: name (link to detail), Information Source (primary source URL linked to InfoSource detail; `—` if none), Observed (max `captured_at` of the primary source's revisions formatted `%Y-%m-%d %H:%M`; `—` if none).
 
-**GET `/dashboard/info-items/new`** — three-step `infoItemWizard` form. Step 1: name/description/owner/rep_fields (`jsonFieldEditor`). Step 2: optional SourceSpec JSON (`jsonFieldEditor`). Step 3: review and submit.
+**GET `/dashboard/info-items/new`** — three-step `infoItemWizard` form. Step 1: name/description/owner/rep_fields (`jsonFieldEditor`). Step 2: optional `initial_url` text input + `initial_source_specs` JSON array (`jsonFieldEditor`). Step 3: review and submit.
 
-**POST `/dashboard/info-items/new`** — creates InfoItem (and optionally an initial InfoSource binding). Redirects 303 to detail on success. Returns 422 with re-rendered form on validation error.
+**POST `/dashboard/info-items/new`** — creates InfoItem (and optionally an initial InfoSource binding). Form fields: `initial_url` (string) + `initial_source_specs` (JSON array). Redirects 303 to detail on success. Returns 422 with re-rendered form on validation error.
 
 **GET `/dashboard/info-items/{id}`** — detail page. Header uses `.detail-grid` with `.detail-grid__item` / `.detail-grid__label` / `.detail-grid__value` divs (not `dl`/`dt`/`dd`) to show name, description, owner, rep_fields (shows `—` when empty), created_at. Three Alpine.js tabs rendered with `.tabs` / `.tabs__list` / `.tabs__btn` / `.tabs__btn--active` (not `btn--ghost`, which is topbar-only):
 - *Sources* — table of active `info_item_sources` bindings; URL column shows InfoSource detail link + external `↗` link; bind-source form uses `filter-card filter-card--stacked` (multi-field vertical form).
 - *Replication Specs* — table of active `info_item_rep_specs` assignments + assign form (`filter-card`, single-field).
 - *Revision History* — last 50 `info_item_source_revisions` ordered by `bound_at desc`.
 
-**POST `/dashboard/info-items/{id}/bind-source`** — binds an existing InfoSource (form fields: `info_source_id`, `role`). Redirects 303 to detail `?tab=sources`.
+**POST `/dashboard/info-items/{id}/bind-source`** — binds an existing InfoSource (form field: `info_source_id`). Redirects 303 to detail `?tab=sources`. Returns 409 if an active binding already exists.
 
 **DELETE `/dashboard/info-items/{id}/info-sources/{source_id}`** — HTMX delete; sets `deactivated_at = now()`. Response replaces `<tr id="source-row-{source_id}">` with empty (removes row).
 
@@ -197,17 +188,20 @@ Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment u
 
 ### Information Sources (`/dashboard/info-sources/`)  *(Epic 4 — implemented)*
 
-**GET `/dashboard/info-sources/`** — paginated list. Query params: `shape` (`root` / `fragment` / omit for all), `url_contains` (ilike filter on `url` column), `limit`, `offset`.
+**GET `/dashboard/info-sources/`** — paginated list. Query params: `url_contains` (ilike filter on `url` column), `limit`, `offset`. Shape/fragment filters removed.
 
-**GET `/dashboard/info-sources/new`** — create form. `sourceSpecEditor` Alpine component wraps the SourceSpec JSON textarea: validates JSON on blur, shows inline error. Also accepts optional `parent_info_source_id` field for fragments.
+**GET `/dashboard/info-sources/new`** — create form. Fields: `url` (text input) + `source_specs` (JSON array textarea, validates JSON on blur).
 
-**POST `/dashboard/info-sources/new`** — form fields: `source_spec` (JSON string), `parent_info_source_id` (ULID, optional). Calls `create_info_source` tool. Redirects 303 to detail on success. Re-renders form with `errors` dict on `InvalidSourceSpecError`, `ParentNotFoundError`, `ParentMustBeRootError`. Shows conflict alert + link to existing source on `DuplicateUrlError`.
+**POST `/dashboard/info-sources/new`** — form fields: `url` (string), `source_specs` (JSON array string). Calls `create_info_source` tool. Redirects 303 to detail on success. Re-renders form with `errors` dict on `InvalidUrlError`, `InvalidSourceSpecError`, `MixedAlgorithmFamilyError`.
 
 **GET `/dashboard/info-sources/{id}`** — detail page. Sections:
-- Header: shape badge (`root` / `fragment`), `info_source_id`, created_at. Parent link if fragment (links to parent's detail).
-- SourceSpec JSON — displayed in `<pre class="code-block">`.
-- Bound Information Items — table of active `info_item_sources` bindings (item name link, role badge, bound date).
+- Header: `info_source_id`, `url`, created_at. No parent link (fragments removed).
+- Source Specs JSON array — displayed in `<pre class="code-block">`.
+- Edit Specs form — `PATCH /dashboard/info-sources/{id}/source-specs` textarea replaces the specs list. URL is immutable.
+- Bound Information Items — table of active `info_item_sources` bindings (item name link, bound date). Role column removed.
 - Revision History — last 50 `source_revisions` ordered by `captured_at desc` (fingerprint truncated, captured date, cache status pill).
+
+**POST `/dashboard/info-sources/{id}/source-specs`** — replaces `source_specs` list on an existing InfoSource (form field: `source_specs` JSON array). Redirects 303 to detail. Returns 422 on schema/family validation failure.
 
 ### Information Source Revisions (`/dashboard/source-revisions/`)  *(Epic 5 — implemented)*
 

@@ -97,32 +97,15 @@ def sync_detailed(
 ) -> Response[EnvelopeResponse | InfoSourceOut]:
     """Create Info Source Route
 
-     Create a new InfoSource (root or fragment).
+     Create a new InfoSource.
 
-    A root source is created when ``parent_info_source_id`` is omitted; the
-    submitted ``source_spec`` must carry ``target.url``. A fragment is created
-    when ``parent_info_source_id`` is supplied; the spec must NOT carry
-    ``target.url`` and the parent must itself be a root.
-
-    Error responses:
-    - 422: source_spec fails schema/shape validation, or
-           ``parent_info_source_id`` is supplied but points at another fragment,
-           or the path-shape ULID is malformed.
-    - 404: ``parent_info_source_id`` references no existing InfoSource.
-    - 409: a root with the same canonicalized URL already exists. The response
-           body's ``data.existing_info_source_id`` is the row the operator should
-           bind to instead.
+    Multiple InfoSources with the same URL are valid — different InfoItems may
+    extract distinct semantic content from the same URL using different specs.
 
     Args:
-        body (InfoSourceCreate): Request body for POST /info-sources.
-
-            A root source is created when ``parent_info_source_id`` is omitted; the
-            ``source_spec`` must then carry ``target.url``. A fragment is created when
-            ``parent_info_source_id`` is supplied; the ``source_spec`` must NOT carry
-            ``target.url`` — fragments inherit URL/fetch semantics from the parent.
-
-            ``schema_version`` is read from the embedded source_spec document; clients
-            must not supply it separately.
+        body (InfoSourceCreate): ``url`` is the URL to fetch (immutable). ``source_specs``
+            is the ordered list of extraction specs; first element is primary, subsequent
+            elements are cross-check alternatives.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -150,32 +133,15 @@ def sync(
 ) -> EnvelopeResponse | InfoSourceOut | None:
     """Create Info Source Route
 
-     Create a new InfoSource (root or fragment).
+     Create a new InfoSource.
 
-    A root source is created when ``parent_info_source_id`` is omitted; the
-    submitted ``source_spec`` must carry ``target.url``. A fragment is created
-    when ``parent_info_source_id`` is supplied; the spec must NOT carry
-    ``target.url`` and the parent must itself be a root.
-
-    Error responses:
-    - 422: source_spec fails schema/shape validation, or
-           ``parent_info_source_id`` is supplied but points at another fragment,
-           or the path-shape ULID is malformed.
-    - 404: ``parent_info_source_id`` references no existing InfoSource.
-    - 409: a root with the same canonicalized URL already exists. The response
-           body's ``data.existing_info_source_id`` is the row the operator should
-           bind to instead.
+    Multiple InfoSources with the same URL are valid — different InfoItems may
+    extract distinct semantic content from the same URL using different specs.
 
     Args:
-        body (InfoSourceCreate): Request body for POST /info-sources.
-
-            A root source is created when ``parent_info_source_id`` is omitted; the
-            ``source_spec`` must then carry ``target.url``. A fragment is created when
-            ``parent_info_source_id`` is supplied; the ``source_spec`` must NOT carry
-            ``target.url`` — fragments inherit URL/fetch semantics from the parent.
-
-            ``schema_version`` is read from the embedded source_spec document; clients
-            must not supply it separately.
+        body (InfoSourceCreate): ``url`` is the URL to fetch (immutable). ``source_specs``
+            is the ordered list of extraction specs; first element is primary, subsequent
+            elements are cross-check alternatives.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -198,32 +164,15 @@ async def asyncio_detailed(
 ) -> Response[EnvelopeResponse | InfoSourceOut]:
     """Create Info Source Route
 
-     Create a new InfoSource (root or fragment).
+     Create a new InfoSource.
 
-    A root source is created when ``parent_info_source_id`` is omitted; the
-    submitted ``source_spec`` must carry ``target.url``. A fragment is created
-    when ``parent_info_source_id`` is supplied; the spec must NOT carry
-    ``target.url`` and the parent must itself be a root.
-
-    Error responses:
-    - 422: source_spec fails schema/shape validation, or
-           ``parent_info_source_id`` is supplied but points at another fragment,
-           or the path-shape ULID is malformed.
-    - 404: ``parent_info_source_id`` references no existing InfoSource.
-    - 409: a root with the same canonicalized URL already exists. The response
-           body's ``data.existing_info_source_id`` is the row the operator should
-           bind to instead.
+    Multiple InfoSources with the same URL are valid — different InfoItems may
+    extract distinct semantic content from the same URL using different specs.
 
     Args:
-        body (InfoSourceCreate): Request body for POST /info-sources.
-
-            A root source is created when ``parent_info_source_id`` is omitted; the
-            ``source_spec`` must then carry ``target.url``. A fragment is created when
-            ``parent_info_source_id`` is supplied; the ``source_spec`` must NOT carry
-            ``target.url`` — fragments inherit URL/fetch semantics from the parent.
-
-            ``schema_version`` is read from the embedded source_spec document; clients
-            must not supply it separately.
+        body (InfoSourceCreate): ``url`` is the URL to fetch (immutable). ``source_specs``
+            is the ordered list of extraction specs; first element is primary, subsequent
+            elements are cross-check alternatives.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -249,32 +198,15 @@ async def asyncio(
 ) -> EnvelopeResponse | InfoSourceOut | None:
     """Create Info Source Route
 
-     Create a new InfoSource (root or fragment).
+     Create a new InfoSource.
 
-    A root source is created when ``parent_info_source_id`` is omitted; the
-    submitted ``source_spec`` must carry ``target.url``. A fragment is created
-    when ``parent_info_source_id`` is supplied; the spec must NOT carry
-    ``target.url`` and the parent must itself be a root.
-
-    Error responses:
-    - 422: source_spec fails schema/shape validation, or
-           ``parent_info_source_id`` is supplied but points at another fragment,
-           or the path-shape ULID is malformed.
-    - 404: ``parent_info_source_id`` references no existing InfoSource.
-    - 409: a root with the same canonicalized URL already exists. The response
-           body's ``data.existing_info_source_id`` is the row the operator should
-           bind to instead.
+    Multiple InfoSources with the same URL are valid — different InfoItems may
+    extract distinct semantic content from the same URL using different specs.
 
     Args:
-        body (InfoSourceCreate): Request body for POST /info-sources.
-
-            A root source is created when ``parent_info_source_id`` is omitted; the
-            ``source_spec`` must then carry ``target.url``. A fragment is created when
-            ``parent_info_source_id`` is supplied; the ``source_spec`` must NOT carry
-            ``target.url`` — fragments inherit URL/fetch semantics from the parent.
-
-            ``schema_version`` is read from the embedded source_spec document; clients
-            must not supply it separately.
+        body (InfoSourceCreate): ``url`` is the URL to fetch (immutable). ``source_specs``
+            is the ordered list of extraction specs; first element is primary, subsequent
+            elements are cross-check alternatives.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

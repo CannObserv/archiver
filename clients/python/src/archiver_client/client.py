@@ -91,6 +91,7 @@ from archiver_client.generated.models.info_item_source_revision_out import (
 )
 from archiver_client.generated.models.info_source_create import InfoSourceCreate
 from archiver_client.generated.models.info_source_out import InfoSourceOut
+from archiver_client.generated.models.info_source_patch import InfoSourcePatch
 from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
 from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
 from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
@@ -371,18 +372,14 @@ class ArchiverClient:
 
         URL is immutable; only source_specs may be updated.
         """
-        from archiver_client.generated.models.info_source_patch import InfoSourcePatch
-
         body = InfoSourcePatch(source_specs=source_specs)
         response = await self._gen_client.get_httpx_client().patch(
             f"/api/v1/info-sources/{info_source_id}/source-specs",
             json=body.to_dict(),
         )
         if response.is_error:
-            raise error_from_response(response)
-        from archiver_client.generated.models.info_source_out import InfoSourceOut as _InfoSourceOut
-
-        return _InfoSourceOut.from_dict(response.json())
+            raise error_from_response(response.status_code, response.content)
+        return InfoSourceOut.from_dict(response.json())
 
     async def get_info_source(self, info_source_id: str) -> InfoSourceOut:
         """Fetch a single InfoSource by ID."""

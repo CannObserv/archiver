@@ -111,7 +111,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.modal`, `.modal__header`, `.modal__title`, `.modal__close`, `.modal__body`, `.modal__footer`.
 
 ### Code
-- `.code-block` — monospace card for JSON display.
+- `.code-block` — monospace card for JSON display. Also used as `class="form-textarea code-block"` on `<textarea>` elements that contain JSON (e.g. `source_specs` array editor on InfoSource create/edit forms) to give the input a monospace font matching the display block.
 
 ### Danger zone
 - `.danger-zone`, `.danger-zone__title` — destructive-action section at bottom of detail pages.

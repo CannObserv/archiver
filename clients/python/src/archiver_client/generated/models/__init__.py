@@ -11,7 +11,6 @@ from .fetch_and_render_result_headers import FetchAndRenderResultHeaders
 from .field_error import FieldError
 from .health_health_get_response_health_health_get import HealthHealthGetResponseHealthHealthGet
 from .info_item_create import InfoItemCreate
-from .info_item_create_initial_source_spec_type_0 import InfoItemCreateInitialSourceSpecType0
 from .info_item_create_rep_fields import InfoItemCreateRepFields
 from .info_item_out import InfoItemOut
 from .info_item_out_rep_fields import InfoItemOutRepFields
@@ -19,14 +18,12 @@ from .info_item_rep_spec_create import InfoItemRepSpecCreate
 from .info_item_rep_spec_out import InfoItemRepSpecOut
 from .info_item_rep_spec_public_url_patch import InfoItemRepSpecPublicUrlPatch
 from .info_item_source_create import InfoItemSourceCreate
-from .info_item_source_create_role_type_0 import InfoItemSourceCreateRoleType0
 from .info_item_source_out import InfoItemSourceOut
 from .info_item_source_revision_create import InfoItemSourceRevisionCreate
 from .info_item_source_revision_out import InfoItemSourceRevisionOut
 from .info_source_create import InfoSourceCreate
-from .info_source_create_source_spec import InfoSourceCreateSourceSpec
 from .info_source_out import InfoSourceOut
-from .info_source_out_source_spec import InfoSourceOutSourceSpec
+from .info_source_patch import InfoSourcePatch
 from .page_info_item_out import PageInfoItemOut
 from .page_info_source_out import PageInfoSourceOut
 from .page_rep_spec_out import PageRepSpecOut
@@ -69,7 +66,6 @@ __all__ = (
     "FieldError",
     "HealthHealthGetResponseHealthHealthGet",
     "InfoItemCreate",
-    "InfoItemCreateInitialSourceSpecType0",
     "InfoItemCreateRepFields",
     "InfoItemOut",
     "InfoItemOutRepFields",
@@ -77,14 +73,12 @@ __all__ = (
     "InfoItemRepSpecOut",
     "InfoItemRepSpecPublicUrlPatch",
     "InfoItemSourceCreate",
-    "InfoItemSourceCreateRoleType0",
     "InfoItemSourceOut",
     "InfoItemSourceRevisionCreate",
     "InfoItemSourceRevisionOut",
     "InfoSourceCreate",
-    "InfoSourceCreateSourceSpec",
     "InfoSourceOut",
-    "InfoSourceOutSourceSpec",
+    "InfoSourcePatch",
     "PageInfoItemOut",
     "PageInfoSourceOut",
     "PageRepSpecOut",

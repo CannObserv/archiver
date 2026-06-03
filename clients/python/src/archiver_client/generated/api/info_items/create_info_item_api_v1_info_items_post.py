@@ -99,7 +99,7 @@ def sync_detailed(
 
      Create an InfoItem.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
+    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates a primary InfoSource
     binding) and ``initial_rep_spec_assignments`` (creates effective-dated
     RepSpec assignments). All writes are a single transaction; any validation
     or lookup failure rolls back the whole thing.
@@ -135,7 +135,7 @@ def sync(
 
      Create an InfoItem.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
+    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates a primary InfoSource
     binding) and ``initial_rep_spec_assignments`` (creates effective-dated
     RepSpec assignments). All writes are a single transaction; any validation
     or lookup failure rolls back the whole thing.
@@ -166,7 +166,7 @@ async def asyncio_detailed(
 
      Create an InfoItem.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
+    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates a primary InfoSource
     binding) and ``initial_rep_spec_assignments`` (creates effective-dated
     RepSpec assignments). All writes are a single transaction; any validation
     or lookup failure rolls back the whole thing.
@@ -200,7 +200,7 @@ async def asyncio(
 
      Create an InfoItem.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
+    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates a primary InfoSource
     binding) and ``initial_rep_spec_assignments`` (creates effective-dated
     RepSpec assignments). All writes are a single transaction; any validation
     or lookup failure rolls back the whole thing.

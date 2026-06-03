@@ -85,10 +85,10 @@ async def create_info_item(
 ) -> InfoItemOut:
     """Create an InfoItem.
 
-    Optionally accepts ``initial_source_spec`` (creates a primary InfoSource
-    binding) and ``initial_rep_spec_assignments`` (creates effective-dated
-    RepSpec assignments). All writes are a single transaction; any validation
-    or lookup failure rolls back the whole thing.
+    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
+    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
+    effective-dated RepSpec assignments). All writes are a single transaction; any
+    validation or lookup failure rolls back the whole thing.
     """
     # --- 1. Look up RepSpecs + validate rep_fields against required_fields ---
     rep_spec_rows: list[RepSpec] = []

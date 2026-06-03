@@ -80,13 +80,14 @@ def _info_item_source_out_payload(
 def _top_info_source_payload(
     info_source_id: str = "01HZZ00000000000000000000F",
     url: str = "https://example.com/p",
+    source_specs: list | None = None,
 ) -> dict:
     return {
         "info_source_id": info_source_id,
         "url": url,
-        "source_specs": [
-            {"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}
-        ],
+        "source_specs": source_specs
+        if source_specs is not None
+        else [{"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}],
         "created_at": _TS,
     }
 
@@ -520,3 +521,53 @@ async def test_list_info_sources_forwards_pagination_params(client):
     assert route.calls.last.request.url.params.get("limit") == "1"
     assert route.calls.last.request.url.params.get("offset") == "4"
     assert out.has_more is True
+
+
+@pytest.mark.asyncio
+async def test_update_info_source_specs(client):
+    new_specs = [
+        {
+            "schema_version": 1,
+            "extraction": {"algorithm": "css", "selector": "#main"},
+            "fingerprint": {},
+        }
+    ]
+    with respx.mock:
+        route = respx.patch(
+            f"{BASE_URL}/api/v1/info-sources/01HZZ00000000000000000000F/source-specs"
+        ).mock(
+            return_value=httpx.Response(200, json=_top_info_source_payload(source_specs=new_specs)),
+        )
+        out = await client.update_info_source_specs("01HZZ00000000000000000000F", new_specs)
+    sent_body = route.calls[0].request.read()
+    assert b'"source_specs"' in sent_body
+    assert out.source_specs == new_specs
+
+
+@pytest.mark.asyncio
+async def test_update_info_source_specs_not_found_raises(client):
+    with respx.mock:
+        respx.patch(f"{BASE_URL}/api/v1/info-sources/01HZZ00000000000000000000F/source-specs").mock(
+            return_value=httpx.Response(
+                404,
+                json={
+                    "detail": {
+                        "kind": "lookup",
+                        "message": "InfoSource not found",
+                        "errors": [],
+                        "data": {},
+                    }
+                },
+            )
+        )
+        with pytest.raises(NotFound):
+            await client.update_info_source_specs(
+                "01HZZ00000000000000000000F",
+                [
+                    {
+                        "schema_version": 1,
+                        "extraction": {"algorithm": "full_page"},
+                        "fingerprint": {},
+                    }
+                ],
+            )
