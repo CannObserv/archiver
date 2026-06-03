@@ -172,9 +172,9 @@ class ArchiverClient:
         if rep_fields is not None:
             body.rep_fields = InfoItemCreateRepFields.from_dict(rep_fields)
         if initial_url is not None:
-            body.additional_properties["initial_url"] = initial_url
+            body.initial_url = initial_url
         if initial_source_specs is not None:
-            body.additional_properties["initial_source_specs"] = initial_source_specs
+            body.initial_source_specs = initial_source_specs
         if initial_rep_spec_assignments is not None:
             body.initial_rep_spec_assignments = [
                 RepSpecAssignmentCreate.from_dict(a) for a in initial_rep_spec_assignments
@@ -373,7 +373,7 @@ class ArchiverClient:
         URL is immutable; only source_specs may be updated.
         """
         body = InfoSourcePatch(source_specs=source_specs)
-        response = await self._gen_client.get_httpx_client().patch(
+        response = await self._gen_client.get_async_httpx_client().patch(
             f"/api/v1/info-sources/{info_source_id}/source-specs",
             json=body.to_dict(),
         )
