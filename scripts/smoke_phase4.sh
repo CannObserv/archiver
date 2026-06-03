@@ -43,7 +43,6 @@ DB_URL="${ARCHIVER_DATABASE_URL:?ARCHIVER_DATABASE_URL must be set}"
 PSQL_URL="${DB_URL/postgresql+asyncpg/postgresql}"
 
 SMOKE_NAME="smoke-phase4-$$"
-# Source spec URL must be unique per run — info_sources.url has a unique constraint.
 SMOKE_URL="https://example.com/smoke/$$"
 FINGERPRINT_A="sha256:$(python3 -c "print('a'*64)")"
 FINGERPRINT_B="sha256:$(python3 -c "print('b'*64)")"
@@ -131,11 +130,9 @@ STATUS=$(curl -fsS --max-time 5 -o /dev/null -w "%{http_code}" "${ARCHIVER_URL}/
 assert_eq "$STATUS" "200" "HTTP status"
 echo "  ok"
 
-# 2. validate_source_spec — valid root spec (full_page, no target.url required by schema
-#    but we include one for realism; target is optional at the top level)
-step 2 "validate_source_spec (valid root spec → {valid: true})"
-# SMOKE_URL includes $$ (PID) to avoid hitting info_sources.url unique constraint on re-runs.
-SOURCE_SPEC_DOC="{\"schema_version\":1,\"target\":{\"url\":\"${SMOKE_URL}\"},\"extraction\":{\"algorithm\":\"full_page\"},\"fingerprint\":{}}"
+# 2. validate_source_spec — valid spec (extraction + fingerprint, no target)
+step 2 "validate_source_spec (valid spec → {valid: true})"
+SOURCE_SPEC_DOC='{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}'
 RESP=$(call POST /api/v1/tools/validate-source-spec "{\"document\": $SOURCE_SPEC_DOC}")
 assert_eq "$(echo "$RESP" | jq -r .valid)" "true" "valid"
 echo "  ok"
@@ -163,13 +160,14 @@ RESOLVED=$(echo "$RESP" | jq -r '.bag.item.title_slug // empty')
 assert_nonempty "$RESOLVED" "title_slug"
 echo "  ok (title_slug=$RESOLVED)"
 
-# 6. Atomic InfoItem create — name + rep_fields + initial_source_spec
-step 6 "POST /info-items (atomic: name + rep_fields + initial_source_spec → 201)"
+# 6. Atomic InfoItem create — name + rep_fields + initial_url + initial_source_specs
+step 6 "POST /info-items (atomic: name + rep_fields + initial_url → 201)"
 CREATE_BODY=$(jq -nc \
     --arg name "$SMOKE_NAME" \
+    --arg url "$SMOKE_URL" \
     --argjson rep_fields "$REP_FIELDS_BAG" \
-    --argjson source_spec "$SOURCE_SPEC_DOC" \
-    '{name: $name, rep_fields: $rep_fields, initial_source_spec: $source_spec}')
+    --argjson source_specs "[$SOURCE_SPEC_DOC]" \
+    '{name: $name, rep_fields: $rep_fields, initial_url: $url, initial_source_specs: $source_specs}')
 RESP=$(call POST /api/v1/info-items "$CREATE_BODY")
 INFO_ITEM_ID=$(echo "$RESP" | jq -r .info_item_id)
 INFO_SOURCE_ID=$(echo "$RESP" | jq -r '.info_item_sources[0].info_source_id')
@@ -255,32 +253,31 @@ assert_eq "$(echo "$RESP" | jq -r .content_cache_uri)" "null" "content_cache_uri
 assert_eq "$(echo "$RESP" | jq -r .content_cache_expires_at)" "null" "content_cache_expires_at"
 echo "  ok"
 
-# 15. POST /info-sources fragment under the smoke root, then verify via GETs
-step 15 "POST /info-sources (fragment under smoke root → 201) + GET round-trip"
-FRAGMENT_DOC='{"schema_version":1,"extraction":{"algorithm":"css","selector":"#smoke-fragment"},"fingerprint":{}}'
+# 15. POST /info-sources directly + verify via GETs (url + source_specs)
+step 15 "POST /info-sources (url + source_specs → 201) + GET round-trip + ?url= filter"
+SMOKE_URL2="https://example.com/smoke2/$$"
+CSS_SPEC='{"schema_version":1,"extraction":{"algorithm":"css","selector":"#smoke-direct"},"fingerprint":{}}'
 RESP=$(call POST /api/v1/info-sources \
-    "$(jq -nc --arg parent "$INFO_SOURCE_ID" --argjson spec "$FRAGMENT_DOC" \
-       '{source_spec: $spec, parent_info_source_id: $parent}')")
-FRAGMENT_ID=$(echo "$RESP" | jq -r .info_source_id)
-assert_nonempty "$FRAGMENT_ID" "fragment info_source_id"
-assert_eq "$(echo "$RESP" | jq -r .parent_info_source_id)" "$INFO_SOURCE_ID" "parent_info_source_id"
-assert_eq "$(echo "$RESP" | jq -r .url)" "null" "fragment url is null"
+    "$(jq -nc --arg url "$SMOKE_URL2" --argjson spec "$CSS_SPEC" \
+       '{url: $url, source_specs: [$spec]}')")
+DIRECT_SRC_ID=$(echo "$RESP" | jq -r .info_source_id)
+assert_nonempty "$DIRECT_SRC_ID" "direct info_source_id"
+assert_eq "$(echo "$RESP" | jq -r .url)" "$SMOKE_URL2" "direct url"
 
 # GET /info-sources/{id} round-trip
-RESP=$(call GET "/api/v1/info-sources/${FRAGMENT_ID}")
-assert_eq "$(echo "$RESP" | jq -r .info_source_id)" "$FRAGMENT_ID" "round-trip id"
+RESP=$(call GET "/api/v1/info-sources/${DIRECT_SRC_ID}")
+assert_eq "$(echo "$RESP" | jq -r .info_source_id)" "$DIRECT_SRC_ID" "round-trip id"
 
-# GET /info-sources?parent_info_source_id=... should include the fragment
-# v1.2 envelope: response is {"items": [...], "has_more": ..., "limit": ..., "offset": ...}
-RESP=$(call GET "/api/v1/info-sources?parent_info_source_id=${INFO_SOURCE_ID}")
-COUNT=$(echo "$RESP" | jq "[.items[] | select(.info_source_id == \"$FRAGMENT_ID\")] | length")
-assert_eq "$COUNT" "1" "fragment found in parent-filtered list"
-echo "  ok (fragment_id=$FRAGMENT_ID)"
+# GET /info-sources?url=... should find the new source
+RESP=$(call GET "/api/v1/info-sources?url=${SMOKE_URL2}")
+COUNT=$(echo "$RESP" | jq "[.items[] | select(.info_source_id == \"$DIRECT_SRC_ID\")] | length")
+assert_eq "$COUNT" "1" "source found via ?url= filter"
+echo "  ok (direct_src_id=$DIRECT_SRC_ID)"
 
 # 16. Cleanup — remove smoke rows to keep the DB tidy
 step 16 "Cleanup (DELETE smoke rows)"
 psql "$PSQL_URL" -q -c "
-    DELETE FROM information.info_sources WHERE info_source_id = '$FRAGMENT_ID'" 2>&1
+    DELETE FROM information.info_sources WHERE info_source_id = '$DIRECT_SRC_ID'" 2>&1
 psql "$PSQL_URL" -q -c "
     DELETE FROM information.info_items WHERE name = '$SMOKE_NAME'" 2>&1
 psql "$PSQL_URL" -q -c "
