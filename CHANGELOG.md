@@ -16,6 +16,46 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.0.0 (2026-06-03)
+
+[both] **InfoSource simplification — `source_specs` list, `url` column, no fragments** (archiver#48).
+
+Ground-up simplification of the InfoSource and InfoItemSource data model. **Breaking API changes.**
+
+**Schema.** `info_sources` table:
+- `source_spec` (single JSONB object) → `source_specs` (mutable JSONB array of extraction specs)
+- `url` promoted from computed column to a real `TEXT NOT NULL` column (not unique — multiple InfoSources may share the same URL for different extraction strategies)
+- `parent_info_source_id`, XOR check constraint, and fragment pagination index removed
+- `schema_version` column dropped (version lives inside each spec element)
+
+`info_item_sources` table:
+- `role` column and `ck_info_item_sources_role_values` CHECK constraint dropped
+- Unique index condition simplified from `deactivated_at IS NULL AND role IS NULL` → `deactivated_at IS NULL`
+
+**SourceSpec schema.** `target` section removed. Each spec element is now `{schema_version, extraction, fingerprint}` only.
+
+**API changes.**
+- `POST /info-sources`: body changes from `{source_spec, parent_info_source_id}` to `{url, source_specs}`. No more 409 on duplicate URL — multiple InfoSources at the same URL are valid.
+- `PATCH /info-sources/{id}/source-specs`: new endpoint to update the spec list without URL succession.
+- `GET /info-sources`: `?parent_info_source_id=` filter replaced with `?url=` exact-match filter.
+- `POST /info-items/{id}/info-sources`: `role` field removed. Every binding is a primary binding; always emits `info_item_primary_changed` on the bus.
+- `POST /info-items`: `initial_source_spec` replaced by `initial_url` + `initial_source_specs`.
+- `POST /api/v1/tools/preview-extraction`: `url` is now an explicit required body field; `source_spec` contains only `extraction` + `fingerprint` (no `target`).
+
+**Bus event.** `source_revision_captured` payload: `bindings[*].role` field removed; `schema_version` bumped from 1 to 2. Consumers must branch on `schema_version` before destructuring.
+
+**SDK.** Breaking — bumped to v4.0.0.
+- `create_info_source(url, source_specs)` replaces `(source_spec, parent_info_source_id=None)`
+- `add_info_source(item_id, source_id)` — `role` parameter removed
+- `list_info_sources(url=)` replaces `(parent_info_source_id=)`
+- `create_info_item`: `initial_url` + `initial_source_specs` replace `initial_source_spec`
+- `preview_extraction(url, source_spec)` — `url` now explicit
+- New: `update_info_source_specs(info_source_id, source_specs)`
+- `InfoSourceOut`: `url: str`, `source_specs: list` — no `parent_info_source_id`
+- `InfoItemSourceOut`: no `role` field
+
+**Deploy coordination required.** Watcher reads `source_spec` (singular) and `source_spec["target"]["url"]`; it must be updated to read `source_specs` (array) and top-level `url` in the same deploy window. Bus consumers that branch on `bindings[*].role` must be updated to handle `schema_version: 2` before this ships.
+
 ## v3.6.0 (2026-05-29)
 
 [both] **Primary InfoSource succession — vocabulary, API exposure, and change-bus event** (archiver#44).

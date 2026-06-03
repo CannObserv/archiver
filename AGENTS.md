@@ -165,19 +165,20 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |
 | `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` |
 | `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)` |
-| `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(source_spec)` |
+| `preview_extraction` | `POST /tools/preview-extraction` | `preview_extraction(url, source_spec)` |
 | `propose_selectors` | `POST /tools/propose-selectors` | `propose_selectors(url, description, top_k=5)` |
 
 **Mutating endpoints:**
 
 | Endpoint | HTTP | SDK method |
 |---|---|---|
-| Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_source_spec=None, initial_rep_spec_assignments=None, rep_fields=None)` |
-| Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id, role=None)` |
+| Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_url=None, initial_source_specs=None, initial_rep_spec_assignments=None, rep_fields=None)` |
+| Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id)` |
 | Deactivate a source binding | `DELETE /info-items/{id}/info-sources/{source_id}` | `deactivate_info_source_binding(info_item_id, info_source_id)` |
-| Author a top-level InfoSource | `POST /info-sources` | `create_info_source(source_spec, parent_info_source_id=None)` |
+| Author a top-level InfoSource | `POST /info-sources` | `create_info_source(url, source_specs)` |
+| Update InfoSource specs | `PATCH /info-sources/{id}/source-specs` | `update_info_source_specs(info_source_id, source_specs)` |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
-| List InfoSources (filter by parent, paginated) | `GET /info-sources?parent_info_source_id=…&limit=&offset=` | `list_info_sources(parent_info_source_id=None, limit=None, offset=None)` |
+| List InfoSources (filter by URL, paginated) | `GET /info-sources?url=…&limit=&offset=` | `list_info_sources(url=None, limit=None, offset=None)` |
 | Author a RepSpec | `POST /rep-specs` | `create_rep_spec(provider, name, document)` |
 | Get a RepSpec | `GET /rep-specs/{id}` | `get_rep_spec(id)` |
 | List RepSpecs (filter by provider, paginated) | `GET /rep-specs?provider=…&limit=&offset=` | `list_rep_specs(provider=None, limit=None, offset=None)` |
@@ -188,7 +189,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
-`POST /info-sources` returns 409 Conflict (with the existing row's id) on duplicate URL; 422 on invalid source_spec or fragment-of-fragment chains; 404 on unknown parent. Fragments require a root parent (no chains).
+`POST /info-sources` accepts `{url, source_specs}`. Multiple InfoSources at the same URL are valid. Returns 422 on invalid URL or spec validation failure.
 
 **Pagination:** `GET /info-items`, `GET /info-sources`, and `GET /rep-specs` return a `Page` envelope — `{items, has_more, limit, offset}`. All accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` / `list_rep_specs` return `PageInfoItemOut` / `PageInfoSourceOut` / `PageRepSpecOut`; pass `limit`/`offset` to forward to the server.
 
@@ -199,9 +200,9 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Event type | Trigger | Payload type |
 |---|---|---|
 | `source_revision_captured` | New `SourceRevision` insert (`POST /source-revisions` on non-idempotent path) | `src.core.changes.payloads.SourceRevisionCapturedEvent` |
-| `info_item_primary_changed` | NULL-role `InfoItemSource` binding created (`POST /info-items/{id}/info-sources` with `role=null`) | `src.core.changes.payloads.InfoItemPrimaryChangedEvent` |
+| `info_item_primary_changed` | New active `InfoItemSource` binding created (`POST /info-items/{id}/info-sources`) | `src.core.changes.payloads.InfoItemPrimaryChangedEvent` |
 
-`info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession — start watching the new primary URL; optionally continue watching the old one.
+`source_revision_captured` schema_version is now **2** — `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 
 **Bus event versioning convention.** Every bus event payload carries
 `schema_version: int` (start at `1`, monotonic). Bump only on *incompatible*
@@ -354,33 +355,25 @@ validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachab
 Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
 
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
-  **Fetch group invariant:** exactly one URL is fetched (the primary's URL) and exactly one
-  content-kind is produced (HTML/text or JSON). Every InfoSource bound to this InfoItem —
-  primary or cross_check — has its `extraction.algorithm` run against the primary's
-  fetched bytes (no chaining off primary's extracted output). The Archiver enforces this at
-  bind time by rejecting cross-family algorithm bindings (`{css,xpath,regex,full_page}` ≠
-  `{jsonpath}`); see `src/core/source_spec_schema/families.py` and
-  `src/core/tools/bind_info_source.py::AlgorithmFamilyMismatchError`.
-- **`InfoSource`** (`info_sources`) — physical layer; either URL-keyed (root) or `parent_info_source_id`-keyed (fragment) per XOR check constraint. SourceSpec lives in the JSONB `source_spec` column.
+  **Fetch group invariant:** exactly one URL is fetched (the primary binding's InfoSource URL) and
+  exactly one content-kind is produced (HTML/text or JSON). All specs in the bound InfoSource's
+  `source_specs` list are evaluated against the same fetched bytes (no chaining off primary's
+  extracted output). All specs in a list must share a content-kind family
+  (`{css,xpath,regex,full_page}` ≠ `{jsonpath}`); see `src/core/source_spec_schema/families.py`.
+- **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
+  InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
+  (mutable array): first element is the primary extraction spec; subsequent elements are
+  cross-check alternatives for selector-rot detection. Each spec: `{schema_version, extraction,
+  fingerprint}` — no `target` section; URL is on the InfoSource directly.
 - **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`.
-- **`InfoItemSource`** (`info_item_sources`) — operator-declared
-  item↔source binding. Two distinct states for the NULL-role binding:
-  - **Current primary** — the one active NULL-role row (`role IS NULL AND deactivated_at IS NULL`).
-    Enforced one-per-InfoItem by partial unique index `uq_info_item_sources_active_root`.
-    Its InfoSource is root-shaped and its URL is what Watcher fetches each tick.
-  - **Previous primary** — a deactivated NULL-role row (`role IS NULL AND deactivated_at IS NOT NULL`).
-    Preserved indefinitely as succession history. Watcher may continue watching previous
-    primaries for unanticipated changes.
-  Fragment bindings carry `role = 'cross_check'` and their underlying
-  InfoSource's `parent_info_source_id` must equal the current primary's `info_source_id`
-  at bind time. They do **not** auto-transfer when the primary is replaced; each fragment
-  remains anchored to the InfoSource it was bound against.
-
-| Role | Meaning | Shape constraint |
-|---|---|---|
-| `NULL` — current primary | Canonical content selector for the InfoItem. One active per InfoItem. | Root-shaped (URL non-null). |
-| `NULL` — previous primary | Retired root binding; preserved as succession history. | Root-shaped; `deactivated_at` non-null. |
-| `cross_check` | Same content as current primary via a different selector. Watcher uses for selector-rot detection. | Fragment-shaped; parent equals active root binding's source. |
+- **`InfoItemSource`** (`info_item_sources`) — operator-declared item↔source binding. No `role`
+  column — every binding is a primary binding. Two distinct states:
+  - **Current primary** — the one active row (`deactivated_at IS NULL`). Enforced one-per-InfoItem
+    by partial unique index `uq_info_item_sources_active`. Its InfoSource URL is what Watcher
+    fetches each tick.
+  - **Previous primary** — a deactivated row (`deactivated_at IS NOT NULL`). Preserved indefinitely
+    as succession history. Watcher may continue watching previous primaries for unanticipated
+    changes.
 
 - **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
