@@ -19,7 +19,9 @@ from src.core.extraction_defaults import extraction_config_from_spec
 from src.core.extractors import HtmlExtractor
 from src.core.source_spec_schema.validator import (
     ValidationError,
-    validate_root_source_spec,
+)
+from src.core.source_spec_schema.validator import (
+    validate_source_spec as validate_root_source_spec,
 )
 from src.core.tools.fetch_and_render import HttpFetcherProtocol
 

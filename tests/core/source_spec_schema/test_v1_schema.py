@@ -1,4 +1,4 @@
-"""SourceSpec v1 schema shape tests (validator wrapper is Task B2)."""
+"""SourceSpec v1 schema shape tests."""
 
 import json
 from pathlib import Path
@@ -19,46 +19,36 @@ def validator(schema):
     return jsonschema.Draft202012Validator(schema)
 
 
-def test_root_full_page_valid(validator):
+def test_full_page_spec_valid(validator):
     doc = {
         "schema_version": 1,
-        "target": {"url": "https://example.com/p"},
         "extraction": {"algorithm": "full_page"},
         "fingerprint": {},
     }
     validator.validate(doc)
 
 
-def test_root_css_with_selector_valid(validator):
-    """A root source can use a CSS selector for its extraction.
-
-    Root vs. fragment is distinguished by presence of target.url, not the
-    extraction.algorithm choice.
-    """
+def test_css_spec_valid(validator):
     doc = {
         "schema_version": 1,
-        "target": {"url": "https://example.com/p"},
         "extraction": {"algorithm": "css", "selector": "#agenda"},
         "fingerprint": {},
     }
     validator.validate(doc)
 
 
-def test_root_missing_url_rejected(validator):
+def test_jsonpath_spec_valid(validator):
     doc = {
         "schema_version": 1,
-        "target": {},
-        "extraction": {"algorithm": "full_page"},
+        "extraction": {"algorithm": "jsonpath", "selector": "$.data[*].value"},
         "fingerprint": {},
     }
-    with pytest.raises(jsonschema.ValidationError):
-        validator.validate(doc)
+    validator.validate(doc)
 
 
-def test_root_css_missing_selector_rejected(validator):
+def test_css_missing_selector_rejected(validator):
     doc = {
         "schema_version": 1,
-        "target": {"url": "https://example.com/p"},
         "extraction": {"algorithm": "css"},
         "fingerprint": {},
     }
@@ -66,37 +56,24 @@ def test_root_css_missing_selector_rejected(validator):
         validator.validate(doc)
 
 
-def test_fragment_no_target_valid(validator):
-    """Fragment SourceSpec: no target field → schema allows it (XOR enforced at DB)."""
+def test_target_field_rejected(validator):
+    """target is no longer part of the spec — URL lives on InfoSource directly."""
     doc = {
         "schema_version": 1,
-        "extraction": {"algorithm": "css", "selector": "#agenda"},
+        "target": {"url": "https://example.com/p"},
+        "extraction": {"algorithm": "full_page"},
         "fingerprint": {},
     }
-    validator.validate(doc)
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(doc)
 
 
 def test_extra_top_level_property_rejected(validator):
     doc = {
         "schema_version": 1,
-        "target": {"url": "https://example.com/p"},
         "extraction": {"algorithm": "full_page"},
         "fingerprint": {},
         "junk": True,
     }
     with pytest.raises(jsonschema.ValidationError):
         validator.validate(doc)
-
-
-def test_url_canonicalization_strip_query_keys_valid(validator):
-    """target.url_canonicalization.strip_query_keys is an optional list of strings."""
-    doc = {
-        "schema_version": 1,
-        "target": {
-            "url": "https://example.com/p",
-            "url_canonicalization": {"strip_query_keys": ["utm_source", "utm_medium"]},
-        },
-        "extraction": {"algorithm": "full_page"},
-        "fingerprint": {},
-    }
-    validator.validate(doc)

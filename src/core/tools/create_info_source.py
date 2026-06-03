@@ -14,12 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import InfoSource
-from src.core.source_spec_schema.validator import (
-    ValidationError,
-    validate_fragment_source_spec,
-    validate_root_source_spec,
-)
+from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 from src.core.url_canonicalization import canonicalize_url
+
+# Shims — removed when create_info_source is rewritten in Step 5.
+validate_root_source_spec = validate_source_spec
+validate_fragment_source_spec = validate_source_spec
 
 
 class CreateInfoSourceError(Exception):

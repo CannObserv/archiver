@@ -2,39 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://watcher.exe.xyz/schemas/source-spec/v1.json",
   "title": "Source Specification v1",
-  "description": "Defines how to fetch and extract a slice of content. An InfoItem is a fetch group: exactly one URL is fetched (the primary's URL) and exactly one content-kind is produced (HTML or JSON). Every InfoSource bound to the InfoItem — primary or cross_check — has its extraction.algorithm evaluated against the primary's fetched bytes. Fragment extractions are NOT chained off primary's extracted output. Consequently, all bindings on an InfoItem must use algorithms in the same content-kind family (HTML/text: css|xpath|regex|full_page; JSON: jsonpath); the Archiver rejects mixed-family bindings at bind time.",
+  "description": "Extraction specification for an InfoSource. Each InfoSource holds a source_specs list; all specs are evaluated against the same fetch group (the InfoSource URL's fetched bytes, not chained off primary extracted output). The first spec is the primary extraction strategy; additional specs are cross-check alternatives for selector-rot detection. All specs in a list must share a content-kind family (html_text: css|xpath|regex|full_page; json: jsonpath). The URL is a separate InfoSource field, not part of this spec.",
   "type": "object",
   "required": ["schema_version", "extraction", "fingerprint"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {"const": 1},
-    "target": {
-      "type": "object",
-      "required": ["url"],
-      "additionalProperties": false,
-      "properties": {
-        "url": {"type": "string", "format": "uri"},
-        "fragment": {"type": "string"},
-        "fetch": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "render": {"type": "boolean"},
-            "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 300}
-          }
-        },
-        "url_canonicalization": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "strip_query_keys": {
-              "type": "array",
-              "items": {"type": "string"}
-            }
-          }
-        }
-      }
-    },
     "extraction": {
       "type": "object",
       "required": ["algorithm"],

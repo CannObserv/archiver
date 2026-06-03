@@ -25,7 +25,6 @@ def test_existing_extraction_validation_still_works():
     ok, errs = validate_source_spec(
         {
             "schema_version": 1,
-            "target": {"url": "https://example.com/p"},
             "extraction": {"algorithm": "full_page"},
             "fingerprint": {},
         }
