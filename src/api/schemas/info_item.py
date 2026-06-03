@@ -5,8 +5,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from src.core.models import FragmentRole
-
 
 class RepSpecAssignmentCreate(BaseModel):
     """One rep_spec assignment to atomically attach to a new InfoItem."""
@@ -24,14 +22,6 @@ class InfoItemSourceCreate(BaseModel):
     """Request body for POST /info-items/{id}/info-sources."""
 
     info_source_id: str = Field(min_length=1, description="ULID of an existing InfoSource.")
-    role: FragmentRole | None = Field(
-        default=None,
-        description=(
-            "Binding role. ``null`` (default) for root-shaped InfoSources (the "
-            "InfoItem's primary). ``'cross_check'`` for fragment-shaped "
-            "InfoSources sharing the primary's root (selector-rot detection)."
-        ),
-    )
 
 
 class InfoItemRepSpecCreate(BaseModel):
@@ -94,7 +84,6 @@ class InfoItemSourceOut(BaseModel):
     """Light projection of an info_item_sources row."""
 
     info_source_id: str
-    role: str | None
     is_active: bool = Field(
         description="True when deactivated_at is null (binding is currently active)."
     )

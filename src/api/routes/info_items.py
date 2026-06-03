@@ -48,11 +48,7 @@ from src.core.tools.assign_rep_spec import (
     assign_rep_spec,
 )
 from src.core.tools.bind_info_source import (
-    ActiveRootAlreadyExistsError,
-    ActiveRootMissingError,
-    AlgorithmFamilyMismatchError,
-    FragmentParentMismatchError,
-    RoleShapeMismatchError,
+    ActiveBindingAlreadyExistsError,
     bind_info_source,
 )
 from src.core.tools.bind_info_source import (
@@ -153,16 +149,11 @@ async def create_info_item(
     session.add(item)
     await session.flush()  # populate item.info_item_id
 
-    # Atomic-create only supports a single initial_source_spec (becomes the
-    # NULL-role / root binding). If initial fragment specs are added later,
-    # they must run through bind_info_source for the family-compatibility
-    # check (archiver#22).
     new_sources: list[InfoItemSource] = []
     if info_source is not None:
         binding = InfoItemSource(
             info_item_id=item.info_item_id,
             info_source_id=info_source.info_source_id,
-            role=None,
         )
         session.add(binding)
         await session.flush()
@@ -329,15 +320,12 @@ async def add_info_source(
 ) -> InfoItemSourceOut:
     """Bind an existing InfoSource to an InfoItem.
 
-    ``body.role`` is ``null`` to bind the InfoItem's *current primary* (root-shaped
-    InfoSource; at most one active per InfoItem). If an active primary already exists,
-    returns 409 with ``data.existing_info_source_id`` — deactivate it first via
+    At most one active binding per InfoItem. If one already exists, returns 409 with
+    ``data.existing_info_source_id`` — deactivate it first via
     ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
 
-    ``body.role`` is ``'cross_check'`` for a fragment-shaped InfoSource whose
-    parent equals the InfoItem's current primary's source.
-    Emits ``info_item_primary_changed`` on the change bus when a NULL-role binding
-    succeeds (``old_info_source_id`` is ``null`` on first assignment).
+    Emits ``info_item_primary_changed`` on the change bus
+    (``old_info_source_id`` is ``null`` on first assignment).
     """
     try:
         item_ulid = ULID.from_str(info_item_id)
@@ -370,109 +358,42 @@ async def add_info_source(
             session,
             info_item_id=item_ulid,
             info_source_id=source_ulid,
-            role=body.role,
         )
     except BindIIS_InfoItemNotFoundError as e:
         raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
     except BindIIS_InfoSourceNotFoundError as e:
         raise_envelope(404, "lookup", "InfoSource not found", source_exc=e)
-    except ActiveRootAlreadyExistsError as e:
+    except ActiveBindingAlreadyExistsError as e:
         raise_envelope(
             409,
             "conflict",
-            "an active primary binding already exists for this InfoItem; "
+            "an active binding already exists for this InfoItem; "
             "deactivate it first via "
             "DELETE /api/v1/info-items/{info_item_id}/info-sources/{info_source_id}, "
             "then re-POST",
             data={"existing_info_source_id": str(e.existing_info_source_id)},
             source_exc=e,
         )
-    except RoleShapeMismatchError as e:
-        raise_envelope(
-            422,
-            "domain",
-            f"role {e.role!r} is not valid for "
-            f"{'root' if e.source_is_root else 'fragment'}-shaped InfoSource",
-            errors=[
-                FieldError(path="/role", message="role/shape mismatch", code="role_shape_mismatch")
-            ],
-            source_exc=e,
-        )
-    except ActiveRootMissingError as e:
-        raise_envelope(
-            422,
-            "domain",
-            "cannot bind a fragment-role InfoSource before an active root binding exists",
-            errors=[
-                FieldError(
-                    path="/info_source_id",
-                    message="InfoItem has no active root binding",
-                    code="active_root_missing",
-                )
-            ],
-            source_exc=e,
-        )
-    except FragmentParentMismatchError as e:
-        raise_envelope(
-            422,
-            "domain",
-            "fragment's parent does not match the InfoItem's active root binding",
-            errors=[
-                FieldError(
-                    path="/info_source_id",
-                    message="fragment parent != active root source",
-                    code="fragment_parent_mismatch",
-                )
-            ],
-            data={
-                "expected_root_info_source_id": str(e.expected_root_id),
-                "actual_parent_info_source_id": str(e.actual_parent_id),
-            },
-            source_exc=e,
-        )
-    except AlgorithmFamilyMismatchError as e:
-        raise_envelope(
-            422,
-            "domain",
-            "fragment algorithm does not match the InfoItem's primary algorithm family",
-            errors=[
-                FieldError(
-                    path="/extraction/algorithm",
-                    message=(
-                        f"algorithm {e.actual_algorithm!r} is in a different "
-                        f"content-kind family than the primary ({e.expected_family!r})"
-                    ),
-                    code="algorithm_family_mismatch",
-                )
-            ],
-            data={
-                "expected_family": e.expected_family,
-                "actual_algorithm": e.actual_algorithm,
-            },
-            source_exc=e,
-        )
 
-    # Emit info_item_primary_changed event when a NULL-role binding was just created.
-    if body.role is None:
-        prev_binding = (
-            await session.execute(
-                select(InfoItemSource)
-                .where(
-                    InfoItemSource.info_item_id == item_ulid,
-                    InfoItemSource.role.is_(None),
-                    InfoItemSource.deactivated_at.isnot(None),
-                )
-                .order_by(InfoItemSource.deactivated_at.desc())
-                .limit(1)
+    # Every binding is a primary binding — emit info_item_primary_changed.
+    prev_binding = (
+        await session.execute(
+            select(InfoItemSource)
+            .where(
+                InfoItemSource.info_item_id == item_ulid,
+                InfoItemSource.deactivated_at.isnot(None),
             )
-        ).scalar_one_or_none()
-        event = InfoItemPrimaryChangedEvent(
-            occurred_at=datetime.now(UTC),
-            info_item_id=str(item_ulid),
-            old_info_source_id=str(prev_binding.info_source_id) if prev_binding else None,
-            new_info_source_id=str(source_ulid),
+            .order_by(InfoItemSource.deactivated_at.desc())
+            .limit(1)
         )
-        session.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
+    ).scalar_one_or_none()
+    event = InfoItemPrimaryChangedEvent(
+        occurred_at=datetime.now(UTC),
+        info_item_id=str(item_ulid),
+        old_info_source_id=str(prev_binding.info_source_id) if prev_binding else None,
+        new_info_source_id=str(source_ulid),
+    )
+    session.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
 
     await session.commit()
     return info_item_source_to_out(binding)

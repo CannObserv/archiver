@@ -32,10 +32,7 @@ from src.core.tools.assign_rep_spec import (
     assign_rep_spec,
 )
 from src.core.tools.bind_info_source import (
-    ActiveRootMissingError,
-    AlgorithmFamilyMismatchError,
-    FragmentParentMismatchError,
-    RoleShapeMismatchError,
+    ActiveBindingAlreadyExistsError,
     bind_info_source,
 )
 from src.core.tools.bind_info_source import (
@@ -122,7 +119,6 @@ async def list_info_items(
                     select(InfoItemSource).where(
                         InfoItemSource.info_item_id.in_(item_ids),
                         InfoItemSource.deactivated_at.is_(None),
-                        InfoItemSource.role.is_(None),
                     )
                 )
             )
@@ -295,7 +291,6 @@ async def create_info_item(
         binding = InfoItemSource(
             info_item_id=item.info_item_id,
             info_source_id=info_source.info_source_id,
-            role=None,
         )
         session.add(binding)
         await session.flush()
@@ -417,7 +412,6 @@ async def detail_info_item(
 async def bind_source(
     item_id: str,
     info_source_id: str = Form(...),
-    role: str | None = Form(default=None),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
@@ -432,26 +426,16 @@ async def bind_source(
     except Exception as e:
         raise_envelope(422, "domain", "info_source_id is not a valid ULID", source_exc=e)
 
-    # Treat empty string as None (null role = primary)
-    role_val = role.strip() if role else None
-    if role_val == "":
-        role_val = None
-
     try:
-        await bind_info_source(  # type: ignore[arg-type]
-            session, info_item_id=item_ulid, info_source_id=source_ulid, role=role_val
-        )
+        await bind_info_source(session, info_item_id=item_ulid, info_source_id=source_ulid)
     except BindItemNotFoundError as e:
         raise_envelope(404, "lookup", "Information Item not found", source_exc=e)
     except BindSourceNotFoundError as e:
         raise_envelope(404, "lookup", "Information Source not found", source_exc=e)
-    except (
-        RoleShapeMismatchError,
-        ActiveRootMissingError,
-        FragmentParentMismatchError,
-        AlgorithmFamilyMismatchError,
-    ) as e:
-        raise_envelope(422, "domain", str(e), source_exc=e)
+    except ActiveBindingAlreadyExistsError as e:
+        raise_envelope(
+            409, "conflict", "An active binding already exists for this item", source_exc=e
+        )
 
     await session.commit()
     return RedirectResponse(

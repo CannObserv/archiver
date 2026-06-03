@@ -28,7 +28,6 @@ def info_item_source_to_out(src: InfoItemSource) -> InfoItemSourceOut:
     """Serialise an InfoItemSource ORM row."""
     return InfoItemSourceOut(
         info_source_id=str(src.info_source_id),
-        role=src.role,
         is_active=src.deactivated_at is None,
         created_at=src.created_at,
         deactivated_at=src.deactivated_at,
@@ -61,12 +60,8 @@ def info_source_to_out(src: InfoSource) -> InfoSourceOut:
     """Serialise an InfoSource ORM row."""
     return InfoSourceOut(
         info_source_id=str(src.info_source_id),
-        parent_info_source_id=(
-            str(src.parent_info_source_id) if src.parent_info_source_id is not None else None
-        ),
-        source_spec=src.source_spec,
-        schema_version=src.schema_version,
         url=src.url,
+        source_specs=src.source_specs,
         created_at=src.created_at,
     )
 
