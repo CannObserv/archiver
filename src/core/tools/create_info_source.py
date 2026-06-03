@@ -1,139 +1,87 @@
-"""create_info_source — author a new InfoSource (root or fragment).
+"""create_info_source — author a new InfoSource.
 
-Shared helper used by both ``POST /info-sources`` (top-level) and the
-atomic ``POST /info-items`` flow (initial primary source). Centralizing here
-keeps URL canonicalization, validation, and the root/fragment XOR check in
-lockstep across both entry points.
+Shared helper used by ``POST /info-sources`` and the atomic ``POST /info-items`` flow.
+Centralizes URL canonicalization, spec validation, and content-kind family enforcement.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from ulid import ULID
 
 from src.core.models import InfoSource
+from src.core.source_spec_schema.families import family_for
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 from src.core.url_canonicalization import canonicalize_url
-
-# Shims — removed when create_info_source is rewritten in Step 5.
-validate_root_source_spec = validate_source_spec
-validate_fragment_source_spec = validate_source_spec
 
 
 class CreateInfoSourceError(Exception):
     """Base class for create_info_source failures."""
 
 
+class InvalidUrlError(CreateInfoSourceError):
+    """The submitted URL failed canonicalization (no scheme or host)."""
+
+
 class InvalidSourceSpecError(CreateInfoSourceError):
-    """The submitted source_spec failed schema or shape validation."""
+    """One or more specs in source_specs failed schema validation."""
 
     def __init__(self, errors: list[ValidationError]) -> None:
         self.errors = errors
         super().__init__(f"invalid source_spec: {errors}")
 
 
-class ParentNotFoundError(CreateInfoSourceError):
-    """The given parent_info_source_id does not exist."""
+class MixedAlgorithmFamilyError(CreateInfoSourceError):
+    """The source_specs list contains algorithms from different content-kind families.
 
-
-class ParentMustBeRootError(CreateInfoSourceError):
-    """A fragment's parent must itself be a root (no fragment-of-fragment chains)."""
-
-
-class DuplicateUrlError(CreateInfoSourceError):
-    """Another InfoSource with the same canonicalized URL already exists."""
-
-    def __init__(self, *, existing_info_source_id: ULID, url: str) -> None:
-        self.existing_info_source_id = existing_info_source_id
-        self.url = url
-        super().__init__(f"duplicate url: {url} (existing id={existing_info_source_id})")
+    All specs must use the same family (html_text: css/xpath/regex/full_page;
+    json: jsonpath) because they are evaluated against the same fetched bytes.
+    """
 
 
 async def create_info_source(
     db: AsyncSession,
     *,
-    source_spec: dict,
-    parent_info_source_id: ULID | None = None,
+    url: str,
+    source_specs: list[dict],
 ) -> InfoSource:
     """Persist a new InfoSource and return the row.
 
-    Validates the source_spec shape (root vs. fragment), looks up the parent
-    (when supplied) and rejects fragment-of-fragment chains, applies URL
-    canonicalization for roots, and surfaces duplicate-URL collisions as a
-    typed error before they reach the database.
-
-    Caller is responsible for committing the session.
+    Canonicalizes the URL, validates each spec, enforces same-family constraint,
+    then inserts. Caller commits.
     """
-    if parent_info_source_id is None:
-        ok, errors = validate_root_source_spec(source_spec)
-        if not ok:
-            raise InvalidSourceSpecError(errors)
-    else:
-        ok, errors = validate_fragment_source_spec(source_spec)
-        if not ok:
-            raise InvalidSourceSpecError(errors)
+    # 1. Canonicalize URL
+    try:
+        canonical_url = canonicalize_url(url)
+    except ValueError as e:
+        raise InvalidUrlError(str(e)) from e
 
-        parent = await db.get(InfoSource, parent_info_source_id)
-        if parent is None:
-            raise ParentNotFoundError(str(parent_info_source_id))
-        if parent.parent_info_source_id is not None:
-            raise ParentMustBeRootError(str(parent_info_source_id))
-
-    spec_doc: dict = dict(source_spec)
-
-    if parent_info_source_id is not None:
-        # Fragments don't carry a URL; nothing to canonicalize, and the only
-        # uniqueness constraint (uq_info_sources_url) doesn't apply.
-        src = InfoSource(
-            source_spec=spec_doc,
-            schema_version=spec_doc["schema_version"],
-            parent_info_source_id=parent_info_source_id,
+    # 2. Validate specs list is non-empty
+    if not source_specs:
+        raise InvalidSourceSpecError(
+            [{"path": "/source_specs", "message": "at least one spec is required"}]
         )
-        db.add(src)
-        await db.flush()
-        return src
 
-    # Root path — canonicalize URL, then INSERT ... ON CONFLICT DO NOTHING so
-    # concurrent writers race safely against the uq_info_sources_url
-    # constraint instead of leaking IntegrityError.
-    target = dict(spec_doc.get("target", {}))
-    raw_url: str = target["url"]
-    canon_cfg: dict = target.get("url_canonicalization") or {}
-    strip_keys: list[str] = canon_cfg.get("strip_query_keys") or []
-    canonical = canonicalize_url(raw_url, strip_query_keys=strip_keys or None)
-    target["url"] = canonical
-    spec_doc["target"] = target
+    # 3. Validate each spec element
+    all_errors: list[ValidationError] = []
+    for i, spec in enumerate(source_specs):
+        ok, errs = validate_source_spec(spec)
+        if not ok:
+            for err in errs:
+                all_errors.append(
+                    {"path": f"/source_specs/{i}{err['path']}", "message": err["message"]}
+                )
+    if all_errors:
+        raise InvalidSourceSpecError(all_errors)
 
-    stmt = (
-        pg_insert(InfoSource)
-        .values(
-            source_spec=spec_doc,
-            schema_version=spec_doc["schema_version"],
-            parent_info_source_id=None,
+    # 4. Enforce same content-kind family across all specs
+    families = {family_for(spec["extraction"]["algorithm"]) for spec in source_specs}
+    if len(families) > 1:
+        raise MixedAlgorithmFamilyError(
+            f"source_specs mix content-kind families: {families!r}. "
+            "All specs must use the same family (html_text or json)."
         )
-        .on_conflict_do_nothing(constraint="uq_info_sources_url")
-        .returning(InfoSource)
-    )
-    inserted = (await db.execute(stmt)).scalar_one_or_none()
-    if inserted is not None:
-        return inserted
 
-    # Conflict — the winning INSERT is committed (or visible at READ COMMITTED
-    # after ON CONFLICT serialises on the constraint). Look up the existing
-    # row and surface the typed error.
-    existing = (
-        await db.execute(select(InfoSource).where(InfoSource.url == canonical))
-    ).scalar_one_or_none()
-    if existing is None:
-        # ON CONFLICT fired but the row is no longer there — a concurrent
-        # DELETE raced our insert. The window is narrow (FK from
-        # info_item_sources prevents deleting a bound root) but possible for
-        # an unbound root. Surface a base CreateInfoSourceError so the route
-        # maps it to a clean 5xx instead of a NoResultFound traceback.
-        raise CreateInfoSourceError(f"conflict row vanished after insert: url={canonical!r}")
-    raise DuplicateUrlError(
-        existing_info_source_id=existing.info_source_id,
-        url=canonical,
-    )
+    src = InfoSource(url=canonical_url, source_specs=list(source_specs))
+    db.add(src)
+    await db.flush()
+    return src

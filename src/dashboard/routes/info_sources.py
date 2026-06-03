@@ -1,4 +1,4 @@
-"""Dashboard — Information Sources (list, detail, create)."""
+"""Dashboard — Information Sources (list, detail, create, edit specs)."""
 
 import json
 from datetime import UTC, datetime
@@ -20,11 +20,20 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.tools.create_info_source import (
-    DuplicateUrlError,
+    CreateInfoSourceError,
     InvalidSourceSpecError,
-    ParentMustBeRootError,
-    ParentNotFoundError,
+    InvalidUrlError,
+    MixedAlgorithmFamilyError,
     create_info_source,
+)
+from src.core.tools.update_info_source_specs import (
+    InvalidSourceSpecError as UpdateInvalidSpecError,
+)
+from src.core.tools.update_info_source_specs import (
+    MixedAlgorithmFamilyError as UpdateMixedFamilyError,
+)
+from src.core.tools.update_info_source_specs import (
+    update_info_source_specs,
 )
 from src.dashboard.deps import get_dashboard_user
 
@@ -53,19 +62,14 @@ async def _resolve_source(source_id: str, session: AsyncSession) -> InfoSource:
 @router.get("/", response_class=HTMLResponse)
 async def list_info_sources(
     request: Request,
-    shape: str | None = None,
     url_contains: str | None = None,
     limit: int = 50,
     offset: int = 0,
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Paginated list with optional shape and URL filters."""
+    """Paginated list with optional URL filter."""
     stmt = select(InfoSource).order_by(InfoSource.created_at, InfoSource.info_source_id)
-    if shape == "root":
-        stmt = stmt.where(InfoSource.parent_info_source_id.is_(None))
-    elif shape == "fragment":
-        stmt = stmt.where(InfoSource.parent_info_source_id.is_not(None))
     if url_contains:
         stmt = stmt.where(InfoSource.url.ilike(f"%{url_contains}%"))
     stmt = stmt.offset(offset).limit(limit + 1)
@@ -83,7 +87,6 @@ async def list_info_sources(
             "has_more": has_more,
             "limit": limit,
             "offset": offset,
-            "shape": shape,
             "url_contains": url_contains,
         },
     )
@@ -104,60 +107,54 @@ async def new_info_source_form(
     return _templates.TemplateResponse(
         request,
         "info_sources/new.html",
-        {"user": user, "errors": {}, "source_spec_raw": ""},
+        {"user": user, "errors": {}, "url_value": "", "source_specs_raw": ""},
     )
 
 
 @router.post("/new")
 async def create_info_source_view(
     request: Request,
-    source_spec: str = Form(default=""),
-    parent_info_source_id: str = Form(default=""),
+    url: str = Form(default=""),
+    source_specs: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Parse SourceSpec JSON, create row, redirect to detail."""
+    """Parse URL + source_specs JSON array, create row, redirect to detail."""
 
-    def _rerender(errors: dict, conflict_id: str | None = None) -> HTMLResponse:
+    def _rerender(errors: dict) -> HTMLResponse:
         return _templates.TemplateResponse(
             request,
             "info_sources/new.html",
             {
                 "user": user,
                 "errors": errors,
-                "source_spec_raw": source_spec,
-                "conflict_id": conflict_id,
+                "url_value": url,
+                "source_specs_raw": source_specs,
             },
         )
 
+    url_val = url.strip()
+    if not url_val:
+        return _rerender({"url": "URL is required."})
+
     try:
-        spec_doc = json.loads(source_spec) if source_spec.strip() else {}
+        specs_list = json.loads(source_specs) if source_specs.strip() else []
+        if not isinstance(specs_list, list):
+            return _rerender({"source_specs": "Must be a JSON array."})
     except json.JSONDecodeError:
-        return _rerender({"source_spec": "Invalid JSON — could not parse."})
-
-    parent_ulid: ULID | None = None
-    if parent_info_source_id.strip():
-        try:
-            parent_ulid = ULID.from_str(parent_info_source_id.strip())
-        except Exception:
-            return _rerender({"parent_info_source_id": "Not a valid ULID."})
+        return _rerender({"source_specs": "Invalid JSON — could not parse."})
 
     try:
-        src = await create_info_source(
-            session, source_spec=spec_doc, parent_info_source_id=parent_ulid
-        )
+        src = await create_info_source(session, url=url_val, source_specs=specs_list)
+    except InvalidUrlError as e:
+        return _rerender({"url": str(e)})
     except InvalidSourceSpecError as e:
-        msg = "; ".join(str(err) for err in e.errors) if e.errors else "Invalid source spec."
-        return _rerender({"source_spec": msg})
-    except ParentNotFoundError:
-        return _rerender({"parent_info_source_id": "Parent Information Source not found."})
-    except ParentMustBeRootError:
-        return _rerender({"parent_info_source_id": "Parent must be a root Information Source."})
-    except DuplicateUrlError as e:
-        return _rerender(
-            {"source_spec": "An Information Source with this URL already exists."},
-            conflict_id=str(e.existing_info_source_id),
-        )
+        msg = "; ".join(err.get("message", "") for err in e.errors) if e.errors else str(e)
+        return _rerender({"source_specs": msg})
+    except MixedAlgorithmFamilyError as e:
+        return _rerender({"source_specs": str(e)})
+    except CreateInfoSourceError as e:
+        return _rerender({"source_specs": str(e)})
 
     await session.commit()
     await session.refresh(src)
@@ -169,6 +166,7 @@ async def create_info_source_view(
 
 # ---------------------------------------------------------------------------
 # GET /dashboard/info-sources/{id}
+# POST /dashboard/info-sources/{id}/source-specs (update specs)
 # ---------------------------------------------------------------------------
 
 
@@ -179,13 +177,8 @@ async def detail_info_source(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Detail page: spec, parent link, bound items, revisions."""
+    """Detail page: URL, specs, bound items, revisions."""
     src = await _resolve_source(source_id, session)
-
-    # Parent (if fragment)
-    parent: InfoSource | None = None
-    if src.parent_info_source_id is not None:
-        parent = await session.get(InfoSource, src.parent_info_source_id)
 
     # Active bindings → InfoItems
     binding_rows = list(
@@ -230,11 +223,44 @@ async def detail_info_source(
         {
             "user": user,
             "src": src,
-            "parent": parent,
             "bindings": binding_rows,
             "items_by_id": items_by_id,
             "revisions": revision_rows,
-            "spec_json": json.dumps(src.source_spec, indent=2),
+            "specs_json": json.dumps(src.source_specs, indent=2),
             "now": datetime.now(UTC),
         },
+    )
+
+
+@router.post("/{source_id}/source-specs")
+async def update_info_source_specs_view(
+    source_id: str,
+    request: Request,
+    source_specs: str = Form(default=""),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Replace source_specs on an existing InfoSource."""
+    src = await _resolve_source(source_id, session)
+
+    try:
+        specs_list = json.loads(source_specs) if source_specs.strip() else []
+        if not isinstance(specs_list, list):
+            raise ValueError("not a list")
+    except (json.JSONDecodeError, ValueError) as e:
+        raise_envelope(422, "domain", "source_specs must be a JSON array", source_exc=e)
+
+    try:
+        await update_info_source_specs(
+            session, info_source_id=src.info_source_id, source_specs=specs_list
+        )
+    except UpdateInvalidSpecError as e:
+        raise_envelope(422, "schema", str(e), source_exc=e)
+    except UpdateMixedFamilyError as e:
+        raise_envelope(422, "domain", str(e), source_exc=e)
+
+    await session.commit()
+    return RedirectResponse(
+        url=f"/dashboard/info-sources/{source_id}",
+        status_code=303,
     )

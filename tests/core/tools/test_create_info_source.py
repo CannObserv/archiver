@@ -1,45 +1,31 @@
-"""Tests for create_info_source — InfoSource authoring helper.
-
-Covers root + fragment shapes, validation, parent existence, parent-must-be-root,
-URL canonicalization, and duplicate-URL handling.
-"""
+"""Tests for create_info_source — InfoSource authoring helper."""
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from ulid import ULID
+from sqlalchemy import select
 
 from src.core.models import InfoSource
 from src.core.tools.create_info_source import (
     CreateInfoSourceError,
-    DuplicateUrlError,
     InvalidSourceSpecError,
-    ParentMustBeRootError,
-    ParentNotFoundError,
+    InvalidUrlError,
+    MixedAlgorithmFamilyError,
     create_info_source,
 )
 
 
-def _root_doc(url: str = "https://example.com/p", **extra) -> dict:
-    return {
+def _spec(algorithm: str = "full_page", selector: str | None = None) -> dict:
+    doc: dict = {
         "schema_version": 1,
-        "target": {"url": url, **(extra.pop("target_extra", {}))},
-        "extraction": {"algorithm": "full_page"},
-        "fingerprint": {},
-        **extra,
-    }
-
-
-def _fragment_doc() -> dict:
-    return {
-        "schema_version": 1,
-        "extraction": {"algorithm": "css", "selector": "#agenda"},
+        "extraction": {"algorithm": algorithm},
         "fingerprint": {},
     }
+    if selector is not None:
+        doc["extraction"]["selector"] = selector
+    elif algorithm != "full_page":
+        doc["extraction"]["selector"] = "#x"
+    return doc
 
 
 # ---------------------------------------------------------------------------
@@ -48,161 +34,39 @@ def _fragment_doc() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_root_persists_with_canonicalized_url(session):
-    """Host is lowercased; #fragment dropped (canonicalize_url contract)."""
+async def test_create_persists_with_canonicalized_url(session):
+    """Host is lowercased; #fragment dropped."""
     src = await create_info_source(
         session,
-        source_spec=_root_doc("https://Example.COM/p#frag"),
+        url="https://Example.COM/p#frag",
+        source_specs=[_spec()],
     )
-
-    assert src.parent_info_source_id is None
     assert src.url == "https://example.com/p"
-    assert src.schema_version == 1
+    assert src.source_specs == [_spec()]
 
 
 @pytest.mark.asyncio
-async def test_create_fragment_persists_with_parent(session):
-    parent = await create_info_source(session, source_spec=_root_doc())
+async def test_create_with_multiple_specs(session):
+    specs = [_spec("full_page"), _spec("css")]
+    src = await create_info_source(session, url="https://example.com/p", source_specs=specs)
+    assert src.source_specs == specs
 
-    frag = await create_info_source(
-        session,
-        source_spec=_fragment_doc(),
-        parent_info_source_id=parent.info_source_id,
+
+@pytest.mark.asyncio
+async def test_same_url_allowed_for_different_specs(session):
+    """Multiple InfoSources with the same URL are valid."""
+    a = await create_info_source(
+        session, url="https://example.com/p", source_specs=[_spec("full_page")]
     )
-
-    assert frag.parent_info_source_id == parent.info_source_id
-    assert frag.url is None
-
-
-@pytest.mark.asyncio
-async def test_strip_query_keys_honored(session):
-    doc = _root_doc("https://example.com/p?utm_source=x&keep=1")
-    doc["target"]["url_canonicalization"] = {"strip_query_keys": ["utm_source"]}
-
-    src = await create_info_source(session, source_spec=doc)
-
-    assert src.url == "https://example.com/p?keep=1"
-
-
-# ---------------------------------------------------------------------------
-# Validation failures
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_root_without_url_rejected(session):
-    """A root source with no target.url is rejected with structured errors."""
-    bad = _fragment_doc()  # no target block
-
-    with pytest.raises(InvalidSourceSpecError) as exc_info:
-        await create_info_source(session, source_spec=bad)
-
-    assert any(e["path"] == "/target/url" for e in exc_info.value.errors)
-
-
-@pytest.mark.asyncio
-async def test_fragment_with_target_url_rejected(session):
-    """A fragment source must not carry target.url."""
-    parent = await create_info_source(session, source_spec=_root_doc())
-    bad = _root_doc("https://example.com/q")
-
-    with pytest.raises(InvalidSourceSpecError) as exc_info:
-        await create_info_source(
-            session,
-            source_spec=bad,
-            parent_info_source_id=parent.info_source_id,
-        )
-
-    assert any(e["path"] == "/target/url" for e in exc_info.value.errors)
-
-
-@pytest.mark.asyncio
-async def test_schema_violation_rejected(session):
-    """Bare schema-shape failures bubble up as InvalidSourceSpecError."""
-    bad = {"schema_version": 1, "extraction": {"algorithm": "css"}, "fingerprint": {}}
-
-    with pytest.raises(InvalidSourceSpecError):
-        await create_info_source(session, source_spec=bad)
-
-
-# ---------------------------------------------------------------------------
-# Parent semantics
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_parent_not_found_raises(session):
-    with pytest.raises(ParentNotFoundError):
-        await create_info_source(
-            session,
-            source_spec=_fragment_doc(),
-            parent_info_source_id=ULID(),
-        )
-
-
-@pytest.mark.asyncio
-async def test_parent_must_be_root(session):
-    """Fragment-of-fragment chains are rejected."""
-    root = await create_info_source(session, source_spec=_root_doc())
-    frag1 = await create_info_source(
-        session,
-        source_spec=_fragment_doc(),
-        parent_info_source_id=root.info_source_id,
-    )
-
-    with pytest.raises(ParentMustBeRootError):
-        await create_info_source(
-            session,
-            source_spec=_fragment_doc(),
-            parent_info_source_id=frag1.info_source_id,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Duplicate-URL handling
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_duplicate_root_url_raises(session):
-    """Two roots at the same canonicalized URL → DuplicateUrlError carrying existing id."""
-    first = await create_info_source(session, source_spec=_root_doc())
-
-    with pytest.raises(DuplicateUrlError) as exc_info:
-        await create_info_source(session, source_spec=_root_doc())
-
-    assert exc_info.value.existing_info_source_id == first.info_source_id
-    assert exc_info.value.url == first.url
-
-
-@pytest.mark.asyncio
-async def test_duplicate_detection_uses_canonicalized_url(session):
-    """Distinct raw URLs that canonicalize to the same value collide."""
-    await create_info_source(session, source_spec=_root_doc("https://example.com/p"))
-
-    with pytest.raises(DuplicateUrlError):
-        await create_info_source(session, source_spec=_root_doc("https://EXAMPLE.com/p#frag"))
-
-
-# ---------------------------------------------------------------------------
-# Inheritance / shape
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_create_info_source_error_is_base_class():
-    assert issubclass(InvalidSourceSpecError, CreateInfoSourceError)
-    assert issubclass(ParentNotFoundError, CreateInfoSourceError)
-    assert issubclass(ParentMustBeRootError, CreateInfoSourceError)
-    assert issubclass(DuplicateUrlError, CreateInfoSourceError)
+    b = await create_info_source(session, url="https://example.com/p", source_specs=[_spec("css")])
+    assert a.info_source_id != b.info_source_id
+    assert a.url == b.url
 
 
 @pytest.mark.asyncio
 async def test_db_round_trip(session):
-    """Confirms the row is actually persisted to the InfoSource table."""
-    src = await create_info_source(session, source_spec=_root_doc("https://example.com/x"))
+    src = await create_info_source(session, url="https://example.com/x", source_specs=[_spec()])
     await session.flush()
-
     fetched = (
         await session.execute(
             select(InfoSource).where(InfoSource.info_source_id == src.info_source_id)
@@ -212,67 +76,44 @@ async def test_db_round_trip(session):
 
 
 # ---------------------------------------------------------------------------
-# Concurrency — verifies the INSERT...ON CONFLICT path under real parallel
-# transactions (not the same-session SELECT-then-INSERT shortcut).
+# Validation failures
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_concurrent_root_creates_resolve_to_one_winner(test_engine):
-    """Two parallel ``create_info_source`` calls for the same URL — one wins,
-    one raises ``DuplicateUrlError``.
+async def test_invalid_url_raises(session):
+    with pytest.raises(InvalidUrlError):
+        await create_info_source(session, url="not-a-url", source_specs=[_spec()])
 
-    This bypasses the savepoint-based ``session`` fixture and uses two real
-    ``AsyncSession`` instances on distinct connections so that PG actually
-    serialises both INSERTs at the ``uq_info_sources_url`` constraint. Without
-    the ON CONFLICT clause this used to surface as ``IntegrityError`` (500);
-    the fix returns a typed ``DuplicateUrlError`` (409) for the loser.
-    """
-    factory = async_sessionmaker(bind=test_engine, expire_on_commit=False)
-    race_url = "https://race.example.com/concurrent"
 
-    async def race() -> tuple[str, ULID]:
-        async with factory() as s:
-            try:
-                src = await create_info_source(
-                    s,
-                    source_spec={
-                        "schema_version": 1,
-                        "target": {"url": race_url},
-                        "extraction": {"algorithm": "full_page"},
-                        "fingerprint": {},
-                    },
-                )
-                await s.commit()
-                return ("won", src.info_source_id)
-            except DuplicateUrlError as e:
-                await s.rollback()
-                return ("lost", e.existing_info_source_id)
+@pytest.mark.asyncio
+async def test_empty_source_specs_rejected(session):
+    with pytest.raises(InvalidSourceSpecError):
+        await create_info_source(session, url="https://example.com/p", source_specs=[])
 
-    try:
-        results = await asyncio.gather(race(), race())
-        outcomes = sorted(r[0] for r in results)
-        assert outcomes == ["lost", "won"], f"unexpected outcomes: {outcomes}"
 
-        winner_id = next(r[1] for r in results if r[0] == "won")
-        loser_existing = next(r[1] for r in results if r[0] == "lost")
-        assert loser_existing == winner_id, (
-            "loser's existing_info_source_id must point at the winner's row"
-        )
+@pytest.mark.asyncio
+async def test_invalid_spec_element_rejected(session):
+    bad_spec = {"schema_version": 1, "extraction": {"algorithm": "css"}, "fingerprint": {}}
+    with pytest.raises(InvalidSourceSpecError) as exc_info:
+        await create_info_source(session, url="https://example.com/p", source_specs=[bad_spec])
+    assert exc_info.value.errors
 
-        # And the DB has exactly one row at that URL.
-        async with factory() as s:
-            count = await s.scalar(
-                select(InfoSource)
-                .where(InfoSource.url == race_url)
-                .with_only_columns(InfoSource.info_source_id)
-            )
-            assert count == winner_id
-    finally:
-        # Clean up — the savepoint fixture isn't in play, so we delete by URL.
-        async with factory() as cleanup:
-            await cleanup.execute(
-                text("DELETE FROM information.info_sources WHERE url = :u"),
-                {"u": race_url},
-            )
-            await cleanup.commit()
+
+@pytest.mark.asyncio
+async def test_mixed_algorithm_families_rejected(session):
+    """All specs must share a content-kind family (html_text or json)."""
+    specs = [_spec("full_page"), _spec("jsonpath")]
+    with pytest.raises(MixedAlgorithmFamilyError):
+        await create_info_source(session, url="https://example.com/p", source_specs=specs)
+
+
+# ---------------------------------------------------------------------------
+# Inheritance
+# ---------------------------------------------------------------------------
+
+
+def test_error_hierarchy():
+    assert issubclass(InvalidSourceSpecError, CreateInfoSourceError)
+    assert issubclass(InvalidUrlError, CreateInfoSourceError)
+    assert issubclass(MixedAlgorithmFamilyError, CreateInfoSourceError)

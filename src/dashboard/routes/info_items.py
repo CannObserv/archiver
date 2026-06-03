@@ -49,8 +49,10 @@ from src.core.tools.bind_revision import (
     bind_revision,
 )
 from src.core.tools.create_info_source import (
-    DuplicateUrlError,
+    CreateInfoSourceError,
     InvalidSourceSpecError,
+    InvalidUrlError,
+    MixedAlgorithmFamilyError,
     create_info_source,
 )
 from src.core.tools.deactivate_info_item_source_binding import (
@@ -217,7 +219,8 @@ async def create_info_item(
     description: str | None = Form(default=None),
     owner: str | None = Form(default=None),
     rep_fields: str = Form(default="{}"),
-    source_spec: str | None = Form(default=None),
+    initial_url: str | None = Form(default=None),
+    initial_source_specs: str | None = Form(default=None),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
@@ -238,14 +241,14 @@ async def create_info_item(
     except json.JSONDecodeError:
         errors["rep_fields"] = "Invalid JSON."
 
-    source_spec_dict: dict | None = None
-    if source_spec and source_spec.strip():
+    source_specs_list: list | None = None
+    if initial_source_specs and initial_source_specs.strip():
         try:
-            source_spec_dict = json.loads(source_spec)
-            if not isinstance(source_spec_dict, dict):
-                errors["source_spec"] = "Must be a JSON object."
+            source_specs_list = json.loads(initial_source_specs)
+            if not isinstance(source_specs_list, list):
+                errors["initial_source_specs"] = "Must be a JSON array."
         except json.JSONDecodeError:
-            errors["source_spec"] = "Invalid JSON."
+            errors["initial_source_specs"] = "Invalid JSON."
 
     if errors:
         return _templates.TemplateResponse(
@@ -255,22 +258,28 @@ async def create_info_item(
             status_code=422,
         )
 
-    # Create InfoSource first (so a URL collision surfaces before InfoItem is written)
     info_source = None
-    if source_spec_dict is not None:
+    url_val = initial_url.strip() if initial_url else None
+    if url_val:
         try:
-            info_source = await create_info_source(session, source_spec=source_spec_dict)
-        except InvalidSourceSpecError as e:
-            msg = e.errors[0].get("message", "") if e.errors else str(e)
-            errors["source_spec"] = f"Invalid source spec: {msg}"
+            info_source = await create_info_source(
+                session, url=url_val, source_specs=source_specs_list or []
+            )
+        except (InvalidUrlError, InvalidSourceSpecError, MixedAlgorithmFamilyError) as e:
+            msg = (
+                getattr(e, "errors", [{}])[0].get("message", str(e))
+                if hasattr(e, "errors")
+                else str(e)
+            )
+            errors["initial_url"] = f"Could not create InfoSource: {msg}"
             return _templates.TemplateResponse(
                 request,
                 "info_items/new.html",
                 {"user": user, "errors": errors},
                 status_code=422,
             )
-        except DuplicateUrlError as e:
-            errors["source_spec"] = f"An Information Source already exists for this URL ({e.url})."
+        except CreateInfoSourceError as e:
+            errors["initial_url"] = str(e)
             return _templates.TemplateResponse(
                 request,
                 "info_items/new.html",

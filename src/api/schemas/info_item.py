@@ -61,13 +61,15 @@ class InfoItemCreate(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     owner: str | None = Field(default=None, max_length=200)
     rep_fields: dict[str, Any] = Field(default_factory=dict)
-    initial_source_spec: dict[str, Any] | None = Field(
+    initial_url: str | None = Field(
+        default=None,
+        description="Optional URL to atomically create an InfoSource binding for this item.",
+    )
+    initial_source_specs: list[dict[str, Any]] | None = Field(
         default=None,
         description=(
-            "Optional SourceSpec document to atomically create alongside the new "
-            "InfoItem as the primary (NULL-role) binding. Validated before any row "
-            "is written; on validation failure neither InfoItem nor InfoSource is "
-            "persisted."
+            "Extraction specs for the initial InfoSource. Required when initial_url is set. "
+            "Each element is a SourceSpec v1 document (schema_version, extraction, fingerprint)."
         ),
     )
     initial_rep_spec_assignments: list[RepSpecAssignmentCreate] = Field(

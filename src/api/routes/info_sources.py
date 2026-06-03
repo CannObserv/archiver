@@ -1,10 +1,4 @@
-"""Top-level InfoSource endpoints.
-
-Distinct from the sub-resource binding endpoint
-``POST /info-items/{id}/info-sources`` (which binds an existing InfoSource to
-an InfoItem). These routes author and read InfoSource rows directly — used by
-Watcher Phase 5 for fragment authoring under a shared root.
-"""
+"""Top-level InfoSource endpoints."""
 
 from __future__ import annotations
 
@@ -13,20 +7,30 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.api.deps import get_db_session
-from src.api.errors import FieldError, raise_422, raise_envelope
-from src.api.schemas.info_source import InfoSourceCreate, InfoSourceOut
+from src.api.deps import get_db_session, require_api_key
+from src.api.errors import raise_422, raise_envelope
+from src.api.schemas.info_source import InfoSourceCreate, InfoSourceOut, InfoSourcePatch
 from src.api.schemas.pagination import Page
 from src.api.schemas.types import ULIDStr
 from src.api.serializers import info_source_to_out
 from src.core.models import InfoSource
 from src.core.tools.create_info_source import (
-    DuplicateUrlError,
+    CreateInfoSourceError,
     InvalidSourceSpecError,
-    ParentMustBeRootError,
-    ParentNotFoundError,
+    InvalidUrlError,
+    MixedAlgorithmFamilyError,
     create_info_source,
 )
+from src.core.tools.update_info_source_specs import (
+    InfoSourceNotFoundError as UpdateNotFoundError,
+)
+from src.core.tools.update_info_source_specs import (
+    InvalidSourceSpecError as UpdateInvalidSpecError,
+)
+from src.core.tools.update_info_source_specs import (
+    MixedAlgorithmFamilyError as UpdateMixedFamilyError,
+)
+from src.core.tools.update_info_source_specs import update_info_source_specs
 
 router = APIRouter(prefix="/info-sources", tags=["info-sources"])
 
@@ -35,74 +39,52 @@ router = APIRouter(prefix="/info-sources", tags=["info-sources"])
 async def create_info_source_route(
     body: InfoSourceCreate,
     session: AsyncSession = Depends(get_db_session),
+    _key=Depends(require_api_key),
 ) -> InfoSourceOut:
-    """Create a new InfoSource (root or fragment).
+    """Create a new InfoSource.
 
-    A root source is created when ``parent_info_source_id`` is omitted; the
-    submitted ``source_spec`` must carry ``target.url``. A fragment is created
-    when ``parent_info_source_id`` is supplied; the spec must NOT carry
-    ``target.url`` and the parent must itself be a root.
-
-    Error responses:
-    - 422: source_spec fails schema/shape validation, or
-           ``parent_info_source_id`` is supplied but points at another fragment,
-           or the path-shape ULID is malformed.
-    - 404: ``parent_info_source_id`` references no existing InfoSource.
-    - 409: a root with the same canonicalized URL already exists. The response
-           body's ``data.existing_info_source_id`` is the row the operator should
-           bind to instead.
+    Multiple InfoSources with the same URL are valid — different InfoItems may
+    extract distinct semantic content from the same URL using different specs.
     """
-    parent_ulid: ULID | None = None
-    if body.parent_info_source_id is not None:
-        try:
-            parent_ulid = ULID.from_str(body.parent_info_source_id)
-        except ValueError as e:
-            raise_envelope(
-                422,
-                "domain",
-                "parent_info_source_id is not a valid ULID",
-                errors=[
-                    FieldError(
-                        path="/parent_info_source_id",
-                        message="not a valid ULID",
-                        code="invalid_ulid",
-                    )
-                ],
-                source_exc=e,
-            )
-
     try:
-        src = await create_info_source(
-            session,
-            source_spec=body.source_spec,
-            parent_info_source_id=parent_ulid,
-        )
+        src = await create_info_source(session, url=body.url, source_specs=body.source_specs)
+    except InvalidUrlError as e:
+        raise_422("invalid url", kind="domain", source_exc=e)
     except InvalidSourceSpecError as e:
         raise_422("invalid source_spec", kind="schema", errors=e.errors, source_exc=e)
-    except ParentNotFoundError as e:
-        raise_envelope(404, "lookup", "parent InfoSource not found", source_exc=e)
-    except ParentMustBeRootError as e:
-        raise_envelope(
-            422,
-            "domain",
-            "parent_info_source_id must reference a root InfoSource",
-            errors=[
-                FieldError(
-                    path="/parent_info_source_id",
-                    message="must reference a root InfoSource",
-                    code="parent_must_be_root",
-                )
-            ],
-            source_exc=e,
+    except MixedAlgorithmFamilyError as e:
+        raise_422("mixed algorithm families in source_specs", kind="domain", source_exc=e)
+    except CreateInfoSourceError as e:
+        raise_422(str(e), kind="domain", source_exc=e)
+
+    await session.commit()
+    await session.refresh(src)
+    return info_source_to_out(src)
+
+
+@router.patch("/{info_source_id}/source-specs", response_model=InfoSourceOut)
+async def patch_info_source_specs(
+    info_source_id: ULIDStr,
+    body: InfoSourcePatch,
+    session: AsyncSession = Depends(get_db_session),
+    _key=Depends(require_api_key),
+) -> InfoSourceOut:
+    """Replace the source_specs list on an existing InfoSource.
+
+    URL is immutable; only source_specs may be updated.
+    """
+    try:
+        src = await update_info_source_specs(
+            session,
+            info_source_id=ULID.from_str(info_source_id),
+            source_specs=body.source_specs,
         )
-    except DuplicateUrlError as e:
-        raise_envelope(
-            409,
-            "conflict",
-            "an InfoSource already exists for this URL",
-            data={"url": e.url, "existing_info_source_id": str(e.existing_info_source_id)},
-            source_exc=e,
-        )
+    except UpdateNotFoundError as e:
+        raise_envelope(404, "lookup", "InfoSource not found", source_exc=e)
+    except UpdateInvalidSpecError as e:
+        raise_422("invalid source_spec", kind="schema", errors=e.errors, source_exc=e)
+    except UpdateMixedFamilyError as e:
+        raise_422("mixed algorithm families in source_specs", kind="domain", source_exc=e)
 
     await session.commit()
     await session.refresh(src)
@@ -111,39 +93,18 @@ async def create_info_source_route(
 
 @router.get("", response_model=Page[InfoSourceOut])
 async def list_info_sources(
-    parent_info_source_id: str | None = Query(default=None),
+    url: str | None = Query(default=None, description="Filter by exact URL."),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db_session),
+    _key=Depends(require_api_key),
 ) -> Page[InfoSourceOut]:
-    """List InfoSources with offset pagination, optionally filtered by parent.
-
-    Returns at most ``limit`` rows per call. Without ``parent_info_source_id``
-    pages across the whole table; with it, restricts to fragments whose
-    ``parent_info_source_id`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
-    """
+    """List InfoSources with offset pagination, optionally filtered by URL."""
     stmt = select(InfoSource).order_by(InfoSource.created_at, InfoSource.info_source_id)
-    if parent_info_source_id is not None:
-        try:
-            parent_ulid = ULID.from_str(parent_info_source_id)
-        except ValueError as e:
-            raise_envelope(
-                422,
-                "domain",
-                "parent_info_source_id is not a valid ULID",
-                errors=[
-                    FieldError(
-                        path="/parent_info_source_id",
-                        message="not a valid ULID",
-                        code="invalid_ulid",
-                    )
-                ],
-                source_exc=e,
-            )
-        stmt = stmt.where(InfoSource.parent_info_source_id == parent_ulid)
+    if url is not None:
+        stmt = stmt.where(InfoSource.url == url)
     stmt = stmt.offset(offset).limit(limit + 1)
-    rows = (await session.execute(stmt)).scalars().all()
+    rows = list((await session.execute(stmt)).scalars().all())
     has_more = len(rows) > limit
     rows = rows[:limit]
     return Page[InfoSourceOut](
@@ -158,6 +119,7 @@ async def list_info_sources(
 async def get_info_source(
     info_source_id: ULIDStr,
     session: AsyncSession = Depends(get_db_session),
+    _key=Depends(require_api_key),
 ) -> InfoSourceOut:
     """Fetch a single InfoSource by ID."""
     src = await session.get(InfoSource, ULID.from_str(info_source_id))

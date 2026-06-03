@@ -65,8 +65,10 @@ from src.core.tools.bind_revision import (
     bind_revision,
 )
 from src.core.tools.create_info_source import (
-    DuplicateUrlError,
+    CreateInfoSourceError,
     InvalidSourceSpecError,
+    InvalidUrlError,
+    MixedAlgorithmFamilyError,
     create_info_source,
 )
 from src.core.tools.deactivate_info_item_source_binding import (
@@ -121,23 +123,22 @@ async def create_info_item(
                     data={"rep_spec_id": str(assignment.rep_spec_id)},
                 )
 
-    # --- 2. Create InfoSource (if requested) BEFORE inserting the InfoItem.
-    # Surfacing duplicate-URL collisions as 409 here keeps the all-or-nothing
-    # contract: no InfoItem row is flushed when the InfoSource insert fails.
+    # --- 2. Create InfoSource (if requested) BEFORE inserting the InfoItem ---
     info_source: InfoSource | None = None
-    if body.initial_source_spec is not None:
+    if body.initial_url is not None:
+        specs = body.initial_source_specs or []
         try:
-            info_source = await create_info_source(session, source_spec=body.initial_source_spec)
+            info_source = await create_info_source(
+                session, url=body.initial_url, source_specs=specs
+            )
+        except InvalidUrlError as e:
+            raise_422("invalid url", kind="domain", source_exc=e)
         except InvalidSourceSpecError as e:
             raise_422("invalid source_spec", kind="schema", errors=e.errors, source_exc=e)
-        except DuplicateUrlError as e:
-            raise_envelope(
-                409,
-                "conflict",
-                "an InfoSource already exists for this URL",
-                data={"url": e.url, "existing_info_source_id": str(e.existing_info_source_id)},
-                source_exc=e,
-            )
+        except MixedAlgorithmFamilyError as e:
+            raise_422("mixed algorithm families in source_specs", kind="domain", source_exc=e)
+        except CreateInfoSourceError as e:
+            raise_422(str(e), kind="domain", source_exc=e)
 
     # --- 3. Insert InfoItem + binding ---
     item = InfoItem(
