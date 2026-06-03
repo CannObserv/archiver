@@ -226,18 +226,20 @@ class PreviewExtractionResult:
 
 async def preview_extraction(
     client_facade: ArchiverClient,
+    url: str,
     source_spec: dict[str, Any],
 ) -> PreviewExtractionResult:
     """Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Accepts a SourceSpec document dict (v2 shape). On schema validation failure
-    or target unreachability, the underlying HTTPException is surfaced as an
-    ``ArchiverClientError`` subclass with the structured ``detail`` body intact.
+    ``url`` is the URL to fetch. ``source_spec`` is the extraction spec document
+    (schema_version, extraction, fingerprint — no target section). On schema
+    validation failure or target unreachability, the underlying HTTPException is
+    surfaced as an ``ArchiverClientError`` subclass.
     """
     body = await _post_json(
         client_facade,
         "/api/v1/tools/preview-extraction",
-        {"source_spec": source_spec},
+        {"url": url, "source_spec": source_spec},
     )
     return PreviewExtractionResult(
         chunks=[

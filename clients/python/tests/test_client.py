@@ -63,14 +63,6 @@ def _source_revision_binding_payload() -> dict:
     }
 
 
-def _info_source_out_payload() -> dict:
-    return {
-        "info_source_id": "01HZZ00000000000000000000F",
-        "role": None,
-        "created_at": _TS,
-    }
-
-
 def _info_item_source_out_payload(
     info_source_id: str = "01HZZ00000000000000000000F",
     *,
@@ -79,7 +71,6 @@ def _info_item_source_out_payload(
 ) -> dict:
     return {
         "info_source_id": info_source_id,
-        "role": None,
         "is_active": is_active,
         "created_at": _TS,
         "deactivated_at": deactivated_at,
@@ -88,19 +79,14 @@ def _info_item_source_out_payload(
 
 def _top_info_source_payload(
     info_source_id: str = "01HZZ00000000000000000000F",
-    parent: str | None = None,
-    url: str | None = "https://example.com/p",
+    url: str = "https://example.com/p",
 ) -> dict:
     return {
         "info_source_id": info_source_id,
-        "parent_info_source_id": parent,
-        "source_spec": {
-            "schema_version": 1,
-            "extraction": {"algorithm": "full_page"},
-            "fingerprint": {},
-        },
-        "schema_version": 1,
         "url": url,
+        "source_specs": [
+            {"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}
+        ],
         "created_at": _TS,
     }
 
@@ -366,8 +352,8 @@ async def test_add_info_source(client):
             "01HZZ00000000000000000000A",
             "01HZZ00000000000000000000F",
         )
-    assert out.role is None
     assert out.info_source_id == "01HZZ00000000000000000000F"
+    assert out.is_active is True
 
 
 # --- SourceRevision endpoints ---
@@ -446,48 +432,20 @@ async def test_bind_revision(client):
 
 
 @pytest.mark.asyncio
-async def test_create_info_source_root(client):
+async def test_create_info_source(client):
     with respx.mock:
         route = respx.post(f"{BASE_URL}/api/v1/info-sources").mock(
             return_value=httpx.Response(201, json=_top_info_source_payload()),
         )
         out = await client.create_info_source(
-            {
-                "schema_version": 1,
-                "target": {"url": "https://example.com/p"},
-                "extraction": {"algorithm": "full_page"},
-                "fingerprint": {},
-            }
+            "https://example.com/p",
+            [{"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}],
         )
     sent_body = route.calls[0].request.read()
-    assert b'"source_spec"' in sent_body
-    assert b'"parent_info_source_id"' not in sent_body
+    assert b'"url"' in sent_body
+    assert b'"source_specs"' in sent_body
     assert out.url == "https://example.com/p"
-    assert out.parent_info_source_id is None
-
-
-@pytest.mark.asyncio
-async def test_create_info_source_fragment(client):
-    parent_id = "01HZZ00000000000000000000P"
-    with respx.mock:
-        route = respx.post(f"{BASE_URL}/api/v1/info-sources").mock(
-            return_value=httpx.Response(
-                201,
-                json=_top_info_source_payload(parent=parent_id, url=None),
-            ),
-        )
-        out = await client.create_info_source(
-            {
-                "schema_version": 1,
-                "extraction": {"algorithm": "css", "selector": "#x"},
-                "fingerprint": {},
-            },
-            parent_info_source_id=parent_id,
-        )
-    sent_body = route.calls[0].request.read()
-    assert parent_id.encode() in sent_body
-    assert out.parent_info_source_id == parent_id
-    assert out.url is None
+    assert len(out.source_specs) == 1
 
 
 @pytest.mark.asyncio
@@ -520,28 +478,28 @@ async def test_list_info_sources_no_filter(client):
     assert out.offset == 0
     assert len(out.items) == 1
     # No query string when filter is omitted
-    assert b"parent_info_source_id" not in route.calls[0].request.url.query
+    assert b"url" not in route.calls[0].request.url.query
 
 
 @pytest.mark.asyncio
-async def test_list_info_sources_filter_by_parent(client):
-    parent_id = "01HZZ00000000000000000000P"
+async def test_list_info_sources_filter_by_url(client):
+    filter_url = "https://example.com/filter"
     with respx.mock:
         route = respx.get(f"{BASE_URL}/api/v1/info-sources").mock(
             return_value=httpx.Response(
                 200,
                 json={
-                    "items": [_top_info_source_payload(parent=parent_id, url=None)],
+                    "items": [_top_info_source_payload(url=filter_url)],
                     "has_more": False,
                     "limit": 100,
                     "offset": 0,
                 },
             )
         )
-        out = await client.list_info_sources(parent_info_source_id=parent_id)
+        out = await client.list_info_sources(url=filter_url)
     assert len(out.items) == 1
-    assert out.items[0].parent_info_source_id == parent_id
-    assert parent_id.encode() in route.calls[0].request.url.query
+    assert out.items[0].url == filter_url
+    assert b"url" in route.calls[0].request.url.query
 
 
 @pytest.mark.asyncio

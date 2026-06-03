@@ -13,10 +13,11 @@ _TS = "2026-05-04T00:00:00Z"
 
 VALID_SOURCE_SPEC = {
     "schema_version": 1,
-    "target": {"url": "https://example.com"},
     "extraction": {"algorithm": "full_page"},
-    "fingerprint": {"algorithm": "simhash"},
+    "fingerprint": {},
 }
+
+VALID_SOURCE_URL = "https://example.com"
 
 VALID_REP_SPEC = {
     "schema_version": 1,
@@ -279,11 +280,11 @@ async def test_find_info_item_empty_result(client):
     assert results == []
 
 
-# --- create_info_item with initial_source_spec ---
+# --- create_info_item with initial_url + initial_source_specs ---
 
 
 @pytest.mark.asyncio
-async def test_create_info_item_with_source_spec_sends_initial_source_spec(client):
+async def test_create_info_item_with_source_sends_initial_url_and_specs(client):
     with respx.mock:
         route = respx.post(f"{BASE_URL}/api/v1/info-items").mock(
             return_value=httpx.Response(
@@ -291,10 +292,14 @@ async def test_create_info_item_with_source_spec_sends_initial_source_spec(clien
                 json=_info_item_payload("01HZZ00000000000000000000A", "X"),
             )
         )
-        await client.create_info_item(name="X", initial_source_spec=VALID_SOURCE_SPEC)
+        await client.create_info_item(
+            name="X",
+            initial_url=VALID_SOURCE_URL,
+            initial_source_specs=[VALID_SOURCE_SPEC],
+        )
     sent_body = route.calls[0].request.read()
-    assert b'"initial_source_spec"' in sent_body
-    assert b'"schema_version"' in sent_body
+    assert b'"initial_url"' in sent_body
+    assert b'"initial_source_specs"' in sent_body
 
 
 @pytest.mark.asyncio
@@ -362,7 +367,7 @@ async def test_preview_extraction_returns_typed_result(client):
                 },
             )
         )
-        result = await client.preview_extraction(VALID_SOURCE_SPEC)
+        result = await client.preview_extraction(VALID_SOURCE_URL, VALID_SOURCE_SPEC)
     assert len(result.chunks) == 1
     assert result.chunks[0].text == "kept"
     assert result.total_chars == 4
@@ -385,8 +390,9 @@ async def test_preview_extraction_sends_source_spec_key(client):
                 },
             )
         )
-        await client.preview_extraction(VALID_SOURCE_SPEC)
+        await client.preview_extraction(VALID_SOURCE_URL, VALID_SOURCE_SPEC)
     sent_body = route.calls[0].request.read()
+    assert b'"url"' in sent_body
     assert b'"source_spec"' in sent_body
     assert b'"document"' not in sent_body
 

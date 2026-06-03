@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import datetime
 from types import TracebackType
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 
@@ -74,9 +74,6 @@ from archiver_client.generated.api.source_revisions import (
 )
 from archiver_client.generated.client import AuthenticatedClient
 from archiver_client.generated.models.info_item_create import InfoItemCreate
-from archiver_client.generated.models.info_item_create_initial_source_spec_type_0 import (
-    InfoItemCreateInitialSourceSpecType0,
-)
 from archiver_client.generated.models.info_item_create_rep_fields import InfoItemCreateRepFields
 from archiver_client.generated.models.info_item_out import InfoItemOut
 from archiver_client.generated.models.info_item_rep_spec_create import InfoItemRepSpecCreate
@@ -93,9 +90,6 @@ from archiver_client.generated.models.info_item_source_revision_out import (
     InfoItemSourceRevisionOut,
 )
 from archiver_client.generated.models.info_source_create import InfoSourceCreate
-from archiver_client.generated.models.info_source_create_source_spec import (
-    InfoSourceCreateSourceSpec,
-)
 from archiver_client.generated.models.info_source_out import InfoSourceOut
 from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
 from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
@@ -162,22 +156,24 @@ class ArchiverClient:
         description: str | None = None,
         owner: str | None = None,
         rep_fields: dict | None = None,
-        initial_source_spec: dict | None = None,
+        initial_url: str | None = None,
+        initial_source_specs: list[dict] | None = None,
         initial_rep_spec_assignments: list[dict] | None = None,
     ) -> InfoItemOut:
         """Create a new InfoItem.
 
-        ``initial_source_spec`` atomically creates a primary InfoSource alongside
-        the InfoItem. ``initial_rep_spec_assignments`` atomically creates
-        RepSpec assignment rows. On validation failure, no rows are persisted.
+        ``initial_url`` and ``initial_source_specs`` atomically create a primary
+        InfoSource alongside the InfoItem. ``initial_rep_spec_assignments``
+        atomically creates RepSpec assignment rows. On validation failure, no rows
+        are persisted.
         """
         body = InfoItemCreate(name=name, description=description, owner=owner)
         if rep_fields is not None:
             body.rep_fields = InfoItemCreateRepFields.from_dict(rep_fields)
-        if initial_source_spec is not None:
-            body.initial_source_spec = InfoItemCreateInitialSourceSpecType0.from_dict(
-                initial_source_spec
-            )
+        if initial_url is not None:
+            body.additional_properties["initial_url"] = initial_url
+        if initial_source_specs is not None:
+            body.additional_properties["initial_source_specs"] = initial_source_specs
         if initial_rep_spec_assignments is not None:
             body.initial_rep_spec_assignments = [
                 RepSpecAssignmentCreate.from_dict(a) for a in initial_rep_spec_assignments
@@ -320,19 +316,13 @@ class ArchiverClient:
         self,
         info_item_id: str,
         info_source_id: str,
-        role: Literal["cross_check"] | None = None,
     ) -> InfoItemSourceOut:
         """Bind an InfoSource to an InfoItem.
 
-        ``role`` is ``None`` (default) for a root-shaped InfoSource — the
-        InfoItem's primary, exactly one active per InfoItem. Pass
-        ``'cross_check'`` for a fragment-shaped InfoSource that shares
-        the primary's root (selector-rot detection).
+        At most one active binding per InfoItem. Raises ``Conflict`` if an active
+        binding already exists — deactivate it first.
         """
-        body = InfoItemSourceCreate(
-            info_source_id=info_source_id,
-            role=role if role is not None else UNSET,
-        )
+        body = InfoItemSourceCreate(info_source_id=info_source_id)
         response = await _add_info_source.asyncio_detailed(
             client=self._gen_client, info_item_id=info_item_id, body=body
         )
@@ -359,24 +349,40 @@ class ArchiverClient:
 
     async def create_info_source(
         self,
-        source_spec: dict,
-        *,
-        parent_info_source_id: str | None = None,
+        url: str,
+        source_specs: list[dict],
     ) -> InfoSourceOut:
-        """Author a new InfoSource (root or fragment).
+        """Author a new InfoSource.
 
-        Pass ``parent_info_source_id`` to create a fragment under a root
-        InfoSource. Without it, the source is created as a root and
-        ``source_spec`` must carry ``target.url``.
+        ``url`` is the URL to fetch (immutable after creation). ``source_specs``
+        is the ordered list of extraction specs; first element is primary,
+        subsequent elements are cross-check alternatives.
         """
-        body = InfoSourceCreate(
-            source_spec=InfoSourceCreateSourceSpec.from_dict(source_spec),
-            parent_info_source_id=(
-                parent_info_source_id if parent_info_source_id is not None else UNSET
-            ),
-        )
+        body = InfoSourceCreate(url=url, source_specs=source_specs)
         response = await _create_info_source.asyncio_detailed(client=self._gen_client, body=body)
         return _unwrap(response)
+
+    async def update_info_source_specs(
+        self,
+        info_source_id: str,
+        source_specs: list[dict],
+    ) -> InfoSourceOut:
+        """Replace the source_specs list on an existing InfoSource.
+
+        URL is immutable; only source_specs may be updated.
+        """
+        from archiver_client.generated.models.info_source_patch import InfoSourcePatch
+
+        body = InfoSourcePatch(source_specs=source_specs)
+        response = await self._gen_client.get_httpx_client().patch(
+            f"/api/v1/info-sources/{info_source_id}/source-specs",
+            json=body.to_dict(),
+        )
+        if response.is_error:
+            raise error_from_response(response)
+        from archiver_client.generated.models.info_source_out import InfoSourceOut as _InfoSourceOut
+
+        return _InfoSourceOut.from_dict(response.json())
 
     async def get_info_source(self, info_source_id: str) -> InfoSourceOut:
         """Fetch a single InfoSource by ID."""
@@ -388,21 +394,19 @@ class ArchiverClient:
     async def list_info_sources(
         self,
         *,
-        parent_info_source_id: str | None = None,
+        url: str | None = None,
         limit: int | None = None,
         offset: int | None = None,
     ) -> PageInfoSourceOut:
         """List InfoSources as a paginated envelope.
 
-        With ``parent_info_source_id`` set, restricts to fragments under that
-        parent. ``limit``/``offset`` are forwarded when set; omit to accept
-        server defaults (limit=100, offset=0). Server caps ``limit`` at 500.
+        ``url`` filters to exact URL matches. ``limit``/``offset`` are
+        forwarded when set; omit to accept server defaults (limit=100, offset=0).
+        Server caps ``limit`` at 500.
         """
         response = await _list_info_sources.asyncio_detailed(
             client=self._gen_client,
-            parent_info_source_id=(
-                parent_info_source_id if parent_info_source_id is not None else UNSET
-            ),
+            url=url if url is not None else UNSET,
             limit=UNSET if limit is None else limit,
             offset=UNSET if offset is None else offset,
         )
@@ -526,13 +530,15 @@ class ArchiverClient:
         """
         return await _tools.fetch_and_render(self, url, render=render)
 
-    async def preview_extraction(self, source_spec: dict) -> _tools.PreviewExtractionResult:
+    async def preview_extraction(
+        self, url: str, source_spec: dict
+    ) -> _tools.PreviewExtractionResult:
         """Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-        Accepts a SourceSpec document dict (v2 shape). Use after authoring the
-        SourceSpec to verify extracted chunks before persisting.
+        ``url`` is the URL to fetch. ``source_spec`` is the extraction spec
+        (schema_version, extraction, fingerprint — no target section).
         """
-        return await _tools.preview_extraction(self, source_spec)
+        return await _tools.preview_extraction(self, url, source_spec)
 
     async def propose_selectors(
         self, url: str, description: str, *, top_k: int = 5
