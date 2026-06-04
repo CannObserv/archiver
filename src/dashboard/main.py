@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from src.dashboard.deps import DashboardAuthRequired
@@ -25,15 +26,13 @@ async def _dashboard_auth_redirect(
     return RedirectResponse(url=exc.redirect_to, status_code=307)
 
 
+_error_templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+
 async def _dashboard_not_found(request: Request, exc: DashboardNotFound) -> HTMLResponse:
-    content = (
-        "<html><body style='font-family:system-ui;padding:2rem'>"
-        "<h1>404 — Not Found</h1>"
-        f"<p>{exc.message}</p>"
-        "<p><a href='/dashboard/'>← Dashboard home</a></p>"
-        "</body></html>"
+    return _error_templates.TemplateResponse(
+        request, "_404.html", {"message": exc.message}, status_code=404
     )
-    return HTMLResponse(content=content, status_code=404)
 
 
 def register_dashboard(app: FastAPI) -> None:

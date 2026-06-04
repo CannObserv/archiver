@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -138,7 +139,7 @@ class _DomainRow:
     source_count: int
     item_count: int
     is_active: bool
-    archived_at: object  # datetime | None
+    archived_at: datetime | None
 
 
 async def _get_domain_overview(session: AsyncSession) -> list[_DomainRow]:

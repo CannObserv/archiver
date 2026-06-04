@@ -130,7 +130,8 @@ All components are registered via `window.Alpine.data('name', factory)` inside a
 
 | Component | File | Description |
 |---|---|---|
-| `sortableChips` | `main.js` | Chip strip for selector/rep-field suggestions with client-side sort. Pass server chips as JSON: `x-data="sortableChips('frequency', null, chipsJson)"`. Clicking a chip fires a `chip-insert` window event `{ detail: { label } }`. Caller listens with `@chip-insert.window`. Full docs in `docs/UI.md`. |
+| `sortableChips` | `main.js` | Chip strip for selector/rep-field suggestions with client-side sort. Pass server chips as JSON: `x-data="sortableChips('frequency', null, chipsJson)"`. Optional `value` field on each chip overrides the dispatch payload (used for spec JSON vs display text). Clicking dispatches `chip-insert` window event; caller listens with `@chip-insert.window`. Full docs in `docs/UI.md`. |
+| `repFieldsEditor` | `main.js` | Wrapper for the rep_fields textarea + suggestion strip. Listens for `chip-insert` window events and merges the key into the existing JSON object. Usage: `x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)"`. Full docs in `docs/UI.md`. |
 | `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
 | `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
 | `registerWizard` | `register/index.html` | 4-step registration wizard (client-side only; inline script in the template). |

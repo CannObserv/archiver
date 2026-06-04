@@ -201,10 +201,13 @@ document.addEventListener("alpine:init", function () {
             init: function () {
                 var self = this;
                 if (Array.isArray(initialChips) && initialChips.length) {
+                    // Chips passed as JSON from server; preserve optional 'value' field
+                    // for cases where the display label differs from the injected value.
                     initialChips.forEach(function (c) {
                         self.chips.push({
                             label: String(c.label),
-                            frequency: Number(c.frequency) || 0
+                            frequency: Number(c.frequency) || 0,
+                            value: c.value
                         });
                     });
                 } else {
@@ -235,8 +238,39 @@ document.addEventListener("alpine:init", function () {
                 });
             },
 
-            insertChip: function (label) {
-                window.dispatchEvent(new CustomEvent("chip-insert", { detail: { label: label } }));
+            // label is the display text; value (optional) is the injected payload.
+            // Dispatches chip-insert on window so parent scopes can intercept with
+            // @chip-insert.window without needing to share the Alpine tree.
+            insertChip: function (label, value) {
+                var payload = (value !== undefined && value !== null) ? value : label;
+                window.dispatchEvent(new CustomEvent("chip-insert", { detail: { label: payload } }));
+            }
+        };
+    });
+
+    /**
+     * Rep-fields JSON editor — wraps the rep_fields <textarea> + the
+     * sortableChips suggestion strip that lives above it.
+     *
+     * Listen for chip-insert window events and merge the key into the
+     * existing JSON object rather than replacing the whole textarea value.
+     * This lets operators build up a rep_fields object by clicking keys
+     * one at a time without losing previously typed values.
+     *
+     * Usage: x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)"
+     */
+    window.Alpine.data("repFieldsEditor", function () {
+        return {
+            insertKey: function (key) {
+                var ta = this.$el.querySelector("[name=rep_fields]");
+                if (!ta) { return; }
+                try {
+                    var obj = JSON.parse(ta.value || "{}");
+                    if (obj[key] === undefined) { obj[key] = ""; }
+                    ta.value = JSON.stringify(obj, null, 2);
+                } catch (e) {
+                    ta.value = JSON.stringify({ [key]: "" }, null, 2);
+                }
             }
         };
     });

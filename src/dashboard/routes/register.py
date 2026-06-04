@@ -1,12 +1,16 @@
 """Dashboard — Information Item registration flow.
 
-4-step wizard (URL → Selector → Metadata → Review & Submit).
-Steps 1–3 are client-side Alpine.js navigation; the final POST submits atomically.
+4-step wizard rendered by ``register/index.html``.  All four steps live in one
+template; Alpine.js ``registerWizard`` manages client-side step navigation.
+The final POST submits all fields atomically in a single transaction:
+``get_or_create_domain`` (inside ``create_info_source``) + ``create_info_source``
++ ``InfoItem`` + ``InfoItemSource`` binding are all flushed before a single
+``session.commit()``.
 
 HTMX partials:
   GET  /dashboard/register/url-check     — domain badge + Case A/B/C card
-  GET  /dashboard/register/suggest-specs — sortableChips with selector suggestions
-  POST /dashboard/register/preview       — preview extraction result
+  GET  /dashboard/register/suggest-specs — sortableChips with full-spec values
+  POST /dashboard/register/preview       — live extraction preview
 """
 
 from __future__ import annotations
@@ -177,18 +181,27 @@ async def suggest_specs(
             .scalars()
             .all()
         )
-        # Extract (algorithm, selector) combos
+        # Count (algorithm, selector) combos; keep a representative spec for each.
         counter: Counter = Counter()
+        spec_by_key: dict[tuple[str, str], dict] = {}
         for src in src_rows:
             for spec in src.source_specs or []:
                 ext = spec.get("extraction", {})
                 algo = ext.get("algorithm", "")
-                selector = ext.get("selector", "")
-                label = f"{algo}: {selector}" if selector else algo
-                counter[label] += 1
+                selector = ext.get("selector", "") or ""
+                key = (algo, selector)
+                counter[key] += 1
+                if key not in spec_by_key:
+                    spec_by_key[key] = {
+                        "schema_version": spec.get("schema_version", 1),
+                        "extraction": ext,
+                        "fingerprint": spec.get("fingerprint", {}),
+                    }
 
-        for label, freq in counter.most_common(5):
-            suggestions.append({"label": label, "frequency": freq})
+        for (algo, selector), freq in counter.most_common(5):
+            display = f"{algo}: {selector}" if selector else algo
+            value = json.dumps([spec_by_key[(algo, selector)]])
+            suggestions.append({"label": display, "frequency": freq, "value": value})
 
     return _templates.TemplateResponse(
         request,

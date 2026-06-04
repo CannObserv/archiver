@@ -263,41 +263,59 @@ Chip strip for selector/rep-field suggestions with client-side re-sort.
 
 **Parameters (factory args):**
 - `defaultSort: string` — initial sort mode: `'frequency'` (default), `'asc'`, or `'desc'`.
-- `targetProp: string` — property name on `$root` to write the clicked chip label into.
+- `_unused: null` — reserved for backward compat; always pass `null`.
+- `initialChips: Array<{label, frequency, value?}>` — server-rendered chip data as a JSON literal (use `{{ suggestions | tojson }}`). The optional `value` field is the injected payload when it differs from the display `label` (e.g. a full spec JSON string vs the human-readable algorithm/selector).
 
-**State:** `sort: string`, `chips: Array<{label, frequency}>` (reactive, re-sorted on sort change).
+**State:** `sort: string`, `chips: Array<{label, frequency, value?}>` (reactive, re-sorted on sort change).
 
 **Methods:**
 - `setSort(mode)` — sets `sort` and re-sorts `chips` in place.
-- `insertChip(label)` — writes `label` into `$root[targetProp]`.
-- `init()` — reads `data-label` and `data-frequency` attributes from child `[data-label]` buttons.
+- `insertChip(label, value?)` — dispatches a `chip-insert` `CustomEvent` on `window` with `{ detail: { label: value ?? label } }`. Parent scopes listen via `@chip-insert.window`.
+- `init()` — seeds `chips` from `initialChips` JSON arg; falls back to reading `data-label`/`data-frequency` DOM attributes if no arg provided.
 
-**Sort controls:** Three pill buttons above the chip row — `[Frequency ▾]`, `[A → Z]`, `[Z → A]`. Active button gets `.btn--active`; others get `.btn--ghost`. Sort is purely client-side.
-
-**Server rendering:** Each chip `<button>` must have `data-label="key.path"` and `data-frequency="N"`. The component reads these on `init()`; server output order is irrelevant.
-
-**Chip format:** `key.path ×N` where `×N` is a muted frequency suffix rendered server-side.
+**Sort controls:** Three pill buttons — `[Frequency ▾]`, `[A → Z]`, `[Z → A]`. Active button gets `.btn--active`; others get `.btn--ghost`. Sort is purely client-side; no server round-trip.
 
 **Usage:**
 ```html
-<div x-data="sortableChips('frequency', 'selectedSpec')">
-  <div style="display:flex;gap:var(--space-1);margin-bottom:var(--space-2);">
-    <button type="button" :class="sort==='frequency'?'btn btn--active':'btn btn--ghost'" @click="setSort('frequency')">Frequency ▾</button>
-    <button type="button" :class="sort==='asc'?'btn btn--active':'btn btn--ghost'" @click="setSort('asc')">A → Z</button>
-    <button type="button" :class="sort==='desc'?'btn btn--active':'btn btn--ghost'" @click="setSort('desc')">Z → A</button>
+<!-- Parent listens for chip-insert events -->
+<div @chip-insert.window="myProp = $event.detail.label">
+  <div x-data="sortableChips('frequency', null, {{ suggestions | tojson }})">
+    <div style="display:flex;gap:var(--space-1);margin-bottom:var(--space-2);">
+      <button type="button" :class="sort==='frequency'?'btn btn--active':'btn btn--ghost'" @click="setSort('frequency')">Frequency ▾</button>
+      <button type="button" :class="sort==='asc'?'btn btn--active':'btn btn--ghost'" @click="setSort('asc')">A → Z</button>
+      <button type="button" :class="sort==='desc'?'btn btn--active':'btn btn--ghost'" @click="setSort('desc')">Z → A</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
+      <template x-for="chip in chips" :key="chip.label">
+        <button type="button" class="btn btn--ghost text-small" @click="insertChip(chip.label, chip.value)">
+          <span x-text="chip.label"></span>&nbsp;<span class="text-muted" x-text="'×' + chip.frequency"></span>
+        </button>
+      </template>
+    </div>
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
-    <template x-for="chip in chips" :key="chip.label">
-      <button type="button" class="btn btn--ghost" @click="insertChip(chip.label)"
-              :data-label="chip.label" :data-frequency="chip.frequency"
-              x-text="chip.label + ' ×' + chip.frequency"></button>
-    </template>
-  </div>
-  <!-- hidden server-rendered chips for init() to read (rendered inside template) -->
 </div>
 ```
 
 JS tests in `tests/js/sortable-chips.test.js` (Vitest).
+
+### `repFieldsEditor` Alpine Component  *(#49 CR — implemented)*
+
+Wrapper for the `rep_fields` textarea + sortableChips suggestion strip on the InfoItem detail hub page. Handles `chip-insert` window events by merging the clicked key into the existing JSON object (preserving other keys) rather than replacing the whole textarea value.
+
+**Methods:**
+- `insertKey(key)` — finds `[name=rep_fields]` within `$el`, parses its current value as JSON, adds `key: ""` if absent, and writes back pretty-printed JSON. Falls back gracefully on parse errors.
+
+**Usage:**
+```html
+<div x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)">
+  <!-- sortableChips suggestion strip (HTMX-loaded) -->
+  <div id="rep-fields-suggestions" hx-get="..." hx-trigger="load" hx-swap="innerHTML"></div>
+  <!-- rep_fields form -->
+  <form hx-patch="...">
+    <textarea name="rep_fields" ...></textarea>
+  </form>
+</div>
+```
 
 ### Settings — API Keys (`/dashboard/settings/api-keys`)  *(Epic 2 — implemented)*
 

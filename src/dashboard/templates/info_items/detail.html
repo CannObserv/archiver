@@ -149,7 +149,7 @@
     <h3 style="margin-bottom:var(--space-2);font-size:1rem;">Rep Fields</h3>
     {# Chip listener: clicking a suggestion dispatches chip-insert on window; this div catches it
        and writes the label into the textarea so the user can edit/save it. #}
-    <div x-data="{}" @chip-insert.window="$el.querySelector('[name=rep_fields]').value = $event.detail.label" style="margin-bottom:var(--space-4);">
+    <div x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)" style="margin-bottom:var(--space-4);">
       {# Frequency-sorted domain key suggestions — loaded on section view #}
       <div id="rep-fields-suggestions"
            hx-get="/dashboard/info-items/{{ item.info_item_id }}/suggest-rep-fields"
