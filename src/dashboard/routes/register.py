@@ -31,6 +31,7 @@ from src.core.tools.create_info_source import (
     MixedAlgorithmFamilyError,
     create_info_source,
 )
+from src.core.tools.preview_extraction import preview_extraction
 from src.core.url_canonicalization import canonicalize_url
 from src.dashboard.deps import get_dashboard_user
 
@@ -50,7 +51,7 @@ async def register_step1(
     user=Depends(get_dashboard_user),
 ) -> HTMLResponse:
     """Step 1: URL input."""
-    return _templates.TemplateResponse(request, "register/step1.html", {"user": user, "errors": {}})
+    return _templates.TemplateResponse(request, "register/index.html", {"user": user, "errors": {}})
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +230,6 @@ async def preview(
         return HTMLResponse('<p class="text-muted text-small">Invalid source_specs JSON.</p>')
 
     try:
-        from src.core.tools.preview_extraction import preview_extraction
-
         result = await preview_extraction(canonical, spec, fetcher=fetcher)
         text_preview = "\n".join(c.text[:200] for c in result.chunks[:3] if c.text)[:500]
         suggested_name = ""
@@ -289,7 +288,7 @@ async def register_submit(
         errors["url"] = str(exc)
         return _templates.TemplateResponse(
             request,
-            "register/step1.html",
+            "register/index.html",
             {"user": user, "errors": errors, "url_value": url},
             status_code=422,
         )
@@ -303,7 +302,7 @@ async def register_submit(
         errors["source_specs"] = f"Invalid source_specs: {exc}"
         return _templates.TemplateResponse(
             request,
-            "register/step1.html",
+            "register/index.html",
             {
                 "user": user,
                 "errors": errors,
@@ -321,7 +320,7 @@ async def register_submit(
         errors["name"] = "Name is required."
         return _templates.TemplateResponse(
             request,
-            "register/step1.html",
+            "register/index.html",
             {
                 "user": user,
                 "errors": errors,
@@ -341,7 +340,7 @@ async def register_submit(
         errors["url"] = str(exc)
         return _templates.TemplateResponse(
             request,
-            "register/step1.html",
+            "register/index.html",
             {"user": user, "errors": errors, "url_value": url},
             status_code=422,
         )
@@ -349,7 +348,7 @@ async def register_submit(
         errors["source_specs"] = str(exc)
         return _templates.TemplateResponse(
             request,
-            "register/step1.html",
+            "register/index.html",
             {
                 "user": user,
                 "errors": errors,
@@ -373,9 +372,7 @@ async def register_submit(
     await session.flush()
 
     # Bind
-    from src.core.models.info_item_source import InfoItemSource as _IIS
-
-    binding = _IIS(
+    binding = InfoItemSource(
         info_item_id=item.info_item_id,
         info_source_id=src.info_source_id,
     )

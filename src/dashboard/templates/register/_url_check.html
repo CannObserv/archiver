@@ -25,10 +25,11 @@
 {% elif case == "B" %}
 <div class="filter-card">
   <p class="text-small text-muted">
-    <strong>{{ hostname }}</strong> — This URL has an existing Information Source with no active Information Item bound.
+    <strong>{{ hostname }}</strong> — This URL already has an unbound Information Source.
   </p>
   <p class="text-small" style="margin-top:var(--space-1);">
-    Proceeding will create a new Information Item and bind this source.
+    Proceeding will create a <strong>new</strong> Information Source and Information Item at this URL.
+    To reuse the existing source, bind it manually from the Information Item detail page after registering.
   </p>
 </div>
 {% elif case == "new" and domain %}

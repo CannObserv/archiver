@@ -3,7 +3,8 @@
 {% block title %}Register Information Item{% endblock %}
 
 {% block content %}
-<div class="entity-section" x-data="registerWizard({{ initial_step|default(1) }})">
+<div class="entity-section" x-data="registerWizard({{ initial_step|default(1) }})"
+     @chip-insert.window="sourceSpecs = $event.detail.label">
   <div class="entity-section__header">
     <h1 class="entity-section__title">Register Information Item</h1>
   </div>

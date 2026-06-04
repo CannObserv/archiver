@@ -1,6 +1,7 @@
 """Dashboard home — CTA, health strip, Recent Activity, domain overview."""
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -131,22 +132,13 @@ async def dashboard_index(
     )
 
 
+@dataclass
 class _DomainRow:
-    """Simple data holder for domain overview rows."""
-
-    def __init__(
-        self,
-        name: str,
-        source_count: int,
-        item_count: int,
-        is_active: bool,
-        archived_at,
-    ) -> None:
-        self.name = name
-        self.source_count = source_count
-        self.item_count = item_count
-        self.is_active = is_active
-        self.archived_at = archived_at
+    name: str
+    source_count: int
+    item_count: int
+    is_active: bool
+    archived_at: object  # datetime | None
 
 
 async def _get_domain_overview(session: AsyncSession) -> list[_DomainRow]:

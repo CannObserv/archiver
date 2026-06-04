@@ -422,62 +422,46 @@ async def suggest_rep_fields(
     """HTMX partial: domain-scoped rep_fields key suggestions as sortableChips."""
     item = await _resolve_item(item_id, session)
 
-    # Derive domain from active primary source
-    primary_binding = (
+    # Query 1: derive domain_name from the item's active primary source.
+    domain_name: str | None = (
         await session.execute(
-            select(InfoItemSource).where(
-                InfoItemSource.info_item_id == item.info_item_id,
-                InfoItemSource.deactivated_at.is_(None),
+            select(InfoSource.domain_name).join(
+                InfoItemSource,
+                (InfoItemSource.info_source_id == InfoSource.info_source_id)
+                & (InfoItemSource.info_item_id == item.info_item_id)
+                & InfoItemSource.deactivated_at.is_(None),
             )
         )
     ).scalar_one_or_none()
 
     suggestions: list[dict] = []
-    if primary_binding:
-        primary_src = await session.get(InfoSource, primary_binding.info_source_id)
-        if primary_src and primary_src.domain_name:
-            # Find all InfoItems on the same domain via their active primary source
-            same_domain_source_ids = list(
-                (
-                    await session.execute(
-                        select(InfoSource.info_source_id).where(
-                            InfoSource.domain_name == primary_src.domain_name
-                        )
+    if domain_name:
+        # Query 2: rep_fields of all actively-bound items sharing the same domain.
+        rep_fields_rows = list(
+            (
+                await session.execute(
+                    select(InfoItem.rep_fields)
+                    .join(
+                        InfoItemSource,
+                        (InfoItemSource.info_item_id == InfoItem.info_item_id)
+                        & InfoItemSource.deactivated_at.is_(None),
+                    )
+                    .join(
+                        InfoSource,
+                        (InfoSource.info_source_id == InfoItemSource.info_source_id)
+                        & (InfoSource.domain_name == domain_name),
                     )
                 )
-                .scalars()
-                .all()
             )
-            if same_domain_source_ids:
-                bound_item_ids = list(
-                    {
-                        b.info_item_id
-                        for b in (
-                            await session.execute(
-                                select(InfoItemSource).where(
-                                    InfoItemSource.info_source_id.in_(same_domain_source_ids),
-                                    InfoItemSource.deactivated_at.is_(None),
-                                )
-                            )
-                        )
-                        .scalars()
-                        .all()
-                    }
-                )
-                if bound_item_ids:
-                    key_counter: Counter = Counter()
-                    domain_items = (
-                        await session.execute(
-                            select(InfoItem).where(
-                                InfoItem.info_item_id.in_(bound_item_ids),
-                            )
-                        )
-                    ).scalars()
-                    for di in domain_items:
-                        for k in (di.rep_fields or {}).keys():
-                            key_counter[k] += 1
-                    for key, freq in key_counter.most_common():
-                        suggestions.append({"label": key, "frequency": freq})
+            .scalars()
+            .all()
+        )
+        key_counter: Counter = Counter()
+        for rep_fields in rep_fields_rows:
+            for k in (rep_fields or {}).keys():
+                key_counter[k] += 1
+        for key, freq in key_counter.most_common():
+            suggestions.append({"label": key, "frequency": freq})
 
     return _templates.TemplateResponse(
         request,

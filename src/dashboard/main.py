@@ -3,11 +3,12 @@
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from src.dashboard.deps import DashboardAuthRequired
+from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.routes.domains import router as domains_router
 from src.dashboard.routes.index import router as index_router
 from src.dashboard.routes.info_items import router as info_items_router
@@ -24,6 +25,17 @@ async def _dashboard_auth_redirect(
     return RedirectResponse(url=exc.redirect_to, status_code=307)
 
 
+async def _dashboard_not_found(request: Request, exc: DashboardNotFound) -> HTMLResponse:
+    content = (
+        "<html><body style='font-family:system-ui;padding:2rem'>"
+        "<h1>404 — Not Found</h1>"
+        f"<p>{exc.message}</p>"
+        "<p><a href='/dashboard/'>← Dashboard home</a></p>"
+        "</body></html>"
+    )
+    return HTMLResponse(content=content, status_code=404)
+
+
 def register_dashboard(app: FastAPI) -> None:
     """Mount static files, register exception handler, include dashboard routers."""
     static_dir = Path(__file__).parent / "static"
@@ -33,6 +45,7 @@ def register_dashboard(app: FastAPI) -> None:
         name="dashboard-static",
     )
     app.add_exception_handler(DashboardAuthRequired, _dashboard_auth_redirect)
+    app.add_exception_handler(DashboardNotFound, _dashboard_not_found)
     app.include_router(domains_router)
     app.include_router(register_router)
     app.include_router(index_router)

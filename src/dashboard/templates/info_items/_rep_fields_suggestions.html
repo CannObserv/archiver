@@ -1,5 +1,5 @@
 {% if suggestions %}
-<div x-data="sortableChips('frequency', 'repFieldKey')" style="margin-bottom:var(--space-2);">
+<div x-data="sortableChips('frequency', null, {{ suggestions | tojson }})" style="margin-bottom:var(--space-2);">
   <div style="display:flex;gap:var(--space-1);margin-bottom:var(--space-1);">
     <button type="button" :class="sort==='frequency'?'btn btn--active':'btn btn--ghost'"
             @click="setSort('frequency')">Frequency ▾</button>
@@ -9,14 +9,11 @@
             @click="setSort('desc')">Z → A</button>
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
-    {% for s in suggestions %}
-    <button type="button"
-            class="btn btn--ghost text-small"
-            data-label="{{ s.label }}"
-            data-frequency="{{ s.frequency }}">
-      {{ s.label }} <span class="text-muted">×{{ s.frequency }}</span>
-    </button>
-    {% endfor %}
+    <template x-for="chip in chips" :key="chip.label">
+      <button type="button" class="btn btn--ghost text-small" @click="insertChip(chip.label)">
+        <span x-text="chip.label"></span>&nbsp;<span class="text-muted" x-text="'×' + chip.frequency"></span>
+      </button>
+    </template>
   </div>
 </div>
 {% else %}

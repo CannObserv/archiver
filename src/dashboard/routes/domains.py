@@ -15,6 +15,7 @@ from src.api.deps import get_db_session
 from src.core.models import InfoSource
 from src.core.models.domain import Domain
 from src.dashboard.deps import get_dashboard_user
+from src.dashboard.exceptions import DashboardNotFound
 
 router = APIRouter(prefix="/dashboard/domains", tags=["dashboard-domains"])
 
@@ -25,9 +26,7 @@ async def _get_domain_or_404(name: str, session: AsyncSession) -> Domain:
     result = await session.execute(select(Domain).where(Domain.name == name))
     domain = result.scalar_one_or_none()
     if domain is None:
-        from src.api.errors import raise_envelope
-
-        raise_envelope(404, "lookup", f"Domain {name!r} not found")
+        raise DashboardNotFound(f"Domain {name!r} not found")
     return domain
 
 

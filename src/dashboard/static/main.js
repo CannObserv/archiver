@@ -180,32 +180,43 @@ document.addEventListener("alpine:init", function () {
     /**
      * Sortable chip strip for selector / rep-field suggestions.
      *
-     * Usage: x-data="sortableChips('frequency', 'myProp')" on a wrapper element.
-     * Server embeds data-frequency and data-label attributes on each chip <button>.
-     * The component reads them from the DOM on init.
+     * Usage: x-data="sortableChips('frequency', null, chipsJson)" where chipsJson is a
+     * JSON-serialised Array<{label, frequency}> rendered by the server.
      *
      * Sort modes: 'frequency' (desc by data-frequency), 'asc' (A→Z), 'desc' (Z→A).
-     * Clicking a chip calls insertChip(label), which writes the label into the
-     * target property on $root (passed as targetProp).
+     * Clicking a chip dispatches a window-level 'chip-insert' CustomEvent with
+     * { label } so any ancestor or sibling Alpine scope can listen with
+     * @chip-insert.window="...".
      *
-     * @param {string} defaultSort  Initial sort mode ('frequency', 'asc', or 'desc').
-     * @param {string} targetProp   Property name on $root to write the clicked chip label into.
+     * @param {string} defaultSort   Initial sort mode ('frequency', 'asc', or 'desc').
+     * @param {*}      _unused       Reserved for backward compat — pass null.
+     * @param {Array}  initialChips  Server-rendered chip data [{label, frequency}, ...].
      * @returns {object} Alpine component data.
      */
-    window.Alpine.data("sortableChips", function (defaultSort, targetProp) {
+    window.Alpine.data("sortableChips", function (defaultSort, _unused, initialChips) {
         return {
             sort: defaultSort || "frequency",
             chips: [],
 
             init: function () {
                 var self = this;
-                var buttons = this.$el.querySelectorAll("[data-label]");
-                var i;
-                for (i = 0; i < buttons.length; i += 1) {
-                    self.chips.push({
-                        label: buttons[i].getAttribute("data-label"),
-                        frequency: parseInt(buttons[i].getAttribute("data-frequency") || "0", 10)
+                if (Array.isArray(initialChips) && initialChips.length) {
+                    initialChips.forEach(function (c) {
+                        self.chips.push({
+                            label: String(c.label),
+                            frequency: Number(c.frequency) || 0
+                        });
                     });
+                } else {
+                    // Fallback: read data-label / data-frequency from child buttons.
+                    var buttons = this.$el.querySelectorAll("[data-label]");
+                    var i;
+                    for (i = 0; i < buttons.length; i += 1) {
+                        self.chips.push({
+                            label: buttons[i].getAttribute("data-label"),
+                            frequency: parseInt(buttons[i].getAttribute("data-frequency") || "0", 10)
+                        });
+                    }
                 }
                 this._applySort();
             },
@@ -225,9 +236,7 @@ document.addEventListener("alpine:init", function () {
             },
 
             insertChip: function (label) {
-                if (targetProp && this.$root && this.$root[targetProp] !== undefined) {
-                    this.$root[targetProp] = label;
-                }
+                window.dispatchEvent(new CustomEvent("chip-insert", { detail: { label: label } }));
             }
         };
     });

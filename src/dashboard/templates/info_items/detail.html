@@ -147,15 +147,17 @@
 
     {# Rep Fields sub-section #}
     <h3 style="margin-bottom:var(--space-2);font-size:1rem;">Rep Fields</h3>
-    {# Frequency-sorted domain key suggestions — loaded on section view #}
-    <div id="rep-fields-suggestions"
-         hx-get="/dashboard/info-items/{{ item.info_item_id }}/suggest-rep-fields"
-         hx-trigger="load"
-         hx-swap="innerHTML"
-         style="margin-bottom:var(--space-2);">
-      <p class="text-muted text-small">Loading suggestions…</p>
-    </div>
-    <div style="margin-bottom:var(--space-4);">
+    {# Chip listener: clicking a suggestion dispatches chip-insert on window; this div catches it
+       and writes the label into the textarea so the user can edit/save it. #}
+    <div x-data="{}" @chip-insert.window="$el.querySelector('[name=rep_fields]').value = $event.detail.label" style="margin-bottom:var(--space-4);">
+      {# Frequency-sorted domain key suggestions — loaded on section view #}
+      <div id="rep-fields-suggestions"
+           hx-get="/dashboard/info-items/{{ item.info_item_id }}/suggest-rep-fields"
+           hx-trigger="load"
+           hx-swap="innerHTML"
+           style="margin-bottom:var(--space-2);">
+        <p class="text-muted text-small">Loading suggestions…</p>
+      </div>
       <form hx-patch="/dashboard/info-items/{{ item.info_item_id }}/rep-fields"
             hx-target="#rep-fields-flash"
             hx-swap="innerHTML"

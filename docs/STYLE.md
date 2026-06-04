@@ -124,6 +124,17 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `[x-cloak] { display: none !important; }` — prevents FOUC on elements controlled by `x-show`. Add `x-cloak` to any element that should be hidden before Alpine initialises (e.g. collapsible panels). Do **not** add `x-cloak` to elements that should start visible.
 - For elements that are conditionally hidden by `x-show` but start hidden, add `style="display:none;"` as an initial-state hint instead of `x-cloak`; Alpine's `x-show` manages their display after initialisation. This preserves the CSS class's `display` value (e.g. `display:flex` on `.entity-card__actions`) when the element is shown.
 
+### Alpine component catalogue (`main.js`)
+
+All components are registered via `window.Alpine.data('name', factory)` inside a `alpine:init` listener before `Alpine.start()`. Do **not** add inline `x-data="{ ... }"` blobs for logic that should be reusable or testable.
+
+| Component | File | Description |
+|---|---|---|
+| `sortableChips` | `main.js` | Chip strip for selector/rep-field suggestions with client-side sort. Pass server chips as JSON: `x-data="sortableChips('frequency', null, chipsJson)"`. Clicking a chip fires a `chip-insert` window event `{ detail: { label } }`. Caller listens with `@chip-insert.window`. Full docs in `docs/UI.md`. |
+| `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
+| `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
+| `registerWizard` | `register/index.html` | 4-step registration wizard (client-side only; inline script in the template). |
+
 ---
 
 ## Display Names
