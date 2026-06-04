@@ -109,6 +109,30 @@ async def test_mixed_algorithm_families_rejected(session):
 
 
 # ---------------------------------------------------------------------------
+# Domain auto-creation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_sets_domain_name(session):
+    """domain_name is populated from the URL hostname on create."""
+    src = await create_info_source(
+        session, url="https://regulations.cannabis.ca.gov/path", source_specs=[_spec()]
+    )
+    assert src.domain_name == "regulations.cannabis.ca.gov"
+
+
+@pytest.mark.asyncio
+async def test_create_same_domain_twice_no_conflict(session):
+    """Two InfoSources at the same domain reuse the domain row without error."""
+    a = await create_info_source(
+        session, url="https://example.com/a", source_specs=[_spec("full_page")]
+    )
+    b = await create_info_source(session, url="https://example.com/b", source_specs=[_spec("css")])
+    assert a.domain_name == b.domain_name == "example.com"
+
+
+# ---------------------------------------------------------------------------
 # Inheritance
 # ---------------------------------------------------------------------------
 
