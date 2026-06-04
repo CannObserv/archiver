@@ -1,6 +1,7 @@
 """Dashboard — Information Items (list, detail, create, sub-resource mutations)."""
 
 import json
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -403,6 +404,85 @@ async def detail_info_item(
             "iisr_rows": iisr_rows,
             "revisions_by_id": revisions_by_id,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /{item_id}/suggest-rep-fields  (HTMX partial — #49)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{item_id}/suggest-rep-fields", response_class=HTMLResponse)
+async def suggest_rep_fields(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX partial: domain-scoped rep_fields key suggestions as sortableChips."""
+    item = await _resolve_item(item_id, session)
+
+    # Derive domain from active primary source
+    primary_binding = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+    suggestions: list[dict] = []
+    if primary_binding:
+        primary_src = await session.get(InfoSource, primary_binding.info_source_id)
+        if primary_src and primary_src.domain_name:
+            # Find all InfoItems on the same domain via their active primary source
+            same_domain_source_ids = list(
+                (
+                    await session.execute(
+                        select(InfoSource.info_source_id).where(
+                            InfoSource.domain_name == primary_src.domain_name
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if same_domain_source_ids:
+                bound_item_ids = list(
+                    {
+                        b.info_item_id
+                        for b in (
+                            await session.execute(
+                                select(InfoItemSource).where(
+                                    InfoItemSource.info_source_id.in_(same_domain_source_ids),
+                                    InfoItemSource.deactivated_at.is_(None),
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    }
+                )
+                if bound_item_ids:
+                    key_counter: Counter = Counter()
+                    domain_items = (
+                        await session.execute(
+                            select(InfoItem).where(
+                                InfoItem.info_item_id.in_(bound_item_ids),
+                            )
+                        )
+                    ).scalars()
+                    for di in domain_items:
+                        for k in (di.rep_fields or {}).keys():
+                            key_counter[k] += 1
+                    for key, freq in key_counter.most_common():
+                        suggestions.append({"label": key, "frequency": freq})
+
+    return _templates.TemplateResponse(
+        request,
+        "info_items/_rep_fields_suggestions.html",
+        {"user": user, "suggestions": suggestions},
     )
 
 

@@ -147,6 +147,14 @@
 
     {# Rep Fields sub-section #}
     <h3 style="margin-bottom:var(--space-2);font-size:1rem;">Rep Fields</h3>
+    {# Frequency-sorted domain key suggestions — loaded on section view #}
+    <div id="rep-fields-suggestions"
+         hx-get="/dashboard/info-items/{{ item.info_item_id }}/suggest-rep-fields"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         style="margin-bottom:var(--space-2);">
+      <p class="text-muted text-small">Loading suggestions…</p>
+    </div>
     <div style="margin-bottom:var(--space-4);">
       <form hx-patch="/dashboard/info-items/{{ item.info_item_id }}/rep-fields"
             hx-target="#rep-fields-flash"
