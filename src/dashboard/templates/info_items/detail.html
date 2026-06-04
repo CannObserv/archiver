@@ -4,16 +4,34 @@
 {% block content %}
 <div class="entity-section">
 
-  {# Header #}
-  <div class="entity-card">
-    <div class="entity-card__header">
+  {# ── Section 1: Overview ───────────────────────────────────────────── #}
+  <section aria-label="Overview" style="margin-bottom:var(--space-5);">
+    <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
+      <a href="/dashboard/info-items/" class="text-muted text-small">Information Items</a>
+      <span aria-hidden="true"> / </span>
+    </nav>
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2);flex-wrap:wrap;">
       <div>
-        <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
-          <a href="/dashboard/info-items/" class="text-muted text-small">Information Items</a>
-          <span aria-hidden="true"> / </span>
-        </nav>
-        <h1 class="entity-card__title">{{ item.name }}</h1>
-        <p class="entity-card__id text-small text-muted">{{ item.info_item_id }}</p>
+        <h1 style="margin:0 0 var(--space-1);">{{ item.name }}</h1>
+        <p class="text-muted text-small" style="margin:0 0 var(--space-2);">
+          <code x-data="{copied:false}">
+            <span>{{ item.info_item_id }}</span>
+            <button type="button" class="btn btn--ghost" style="font-size:0.7rem;padding:0.1rem 0.4rem;margin-left:0.25rem;"
+                    @click="navigator.clipboard && navigator.clipboard.writeText('{{ item.info_item_id }}').then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
+                    x-text="copied ? '✓' : 'copy'">copy</button>
+          </code>
+        </p>
+        {% set primary_src = sources_by_id.get(iis_rows[0].info_source_id) if iis_rows else none %}
+        {% if primary_src and primary_src.domain_name %}
+        <p style="margin:0 0 var(--space-2);">
+          <a href="/dashboard/domains/{{ primary_src.domain_name }}" class="badge badge--primary">{{ primary_src.domain_name }}</a>
+        </p>
+        {% else %}
+        <p style="margin:0 0 var(--space-2);">
+          <span class="badge badge--muted">No primary source</span>
+        </p>
+        {% endif %}
       </div>
     </div>
 
@@ -31,217 +49,215 @@
       </div>
       {% endif %}
       <div class="detail-grid__item">
-        <span class="detail-grid__label">Rep Fields</span>
-        <span class="detail-grid__value">
-          {% if item.rep_fields %}
-          <code class="code-block">{{ item.rep_fields | tojson(indent=2) }}</code>
-          {% else %}
-          <span class="text-muted">—</span>
-          {% endif %}
-        </span>
-      </div>
-      <div class="detail-grid__item">
         <span class="detail-grid__label">Created</span>
         <span class="detail-grid__value text-muted">{{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
       </div>
     </div>
-  </div>
+  </section>
 
-  {# Tab navigation #}
-  <div x-data="{ activeTab: '{{ active_tab }}' }">
-    <div class="tabs" style="margin-top:var(--space-4);">
-      <div role="tablist" class="tabs__list" aria-label="Information Item sections">
-        <button role="tab" type="button"
-                @click="activeTab = 'sources'"
-                :aria-selected="activeTab === 'sources'"
-                :class="activeTab === 'sources' ? 'tabs__btn tabs__btn--active' : 'tabs__btn'">
-          Sources
-          <span class="badge badge--sm badge--neutral" style="margin-left:var(--space-1);">{{ iis_rows|length }}</span>
-        </button>
-        <button role="tab" type="button"
-                @click="activeTab = 'repspecs'"
-                :aria-selected="activeTab === 'repspecs'"
-                :class="activeTab === 'repspecs' ? 'tabs__btn tabs__btn--active' : 'tabs__btn'">
-          Replication Specs
-          <span class="badge badge--sm badge--neutral" style="margin-left:var(--space-1);">{{ irs_rows|length }}</span>
-        </button>
-        <button role="tab" type="button"
-                @click="activeTab = 'revisions'"
-                :aria-selected="activeTab === 'revisions'"
-                :class="activeTab === 'revisions' ? 'tabs__btn tabs__btn--active' : 'tabs__btn'">
-          Revision History
-          <span class="badge badge--sm badge--neutral" style="margin-left:var(--space-1);">{{ iisr_rows|length }}</span>
-        </button>
-      </div>
-    </div>
+  {# ── Section 2: Information Sources ───────────────────────────────── #}
+  <section aria-label="Information Sources" style="margin-bottom:var(--space-5);">
+    <h2 class="entity-section__title" style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);">
+      Information Sources
+    </h2>
 
-    {# Tab: Sources #}
-    <div role="tabpanel" x-show="activeTab === 'sources'"
-         aria-live="polite" aria-atomic="false">
+    {% if iis_rows %}
+    <table class="data-table" aria-label="Bound Information Sources" style="margin-bottom:var(--space-3);">
+      <thead>
+        <tr>
+          <th class="data-table__th">URL</th>
+          <th class="data-table__th">Domain</th>
+          <th class="data-table__th">Bound</th>
+          <th class="data-table__th">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for binding in iis_rows %}
+        {% set src = sources_by_id.get(binding.info_source_id) %}
+        <tr style="{% if loop.first %}border-left:3px solid var(--color-brand);{% endif %}">
+          <td class="data-table__cell">
+            {% if src %}
+            <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-small">{{ src.url }}</a>
+            <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="text-muted text-small" aria-label="Open in new tab">↗</a>
+            {% else %}
+            <span class="text-muted text-small">{{ binding.info_source_id }}</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-small">
+            {% if src and src.domain_name %}
+            <a href="/dashboard/domains/{{ src.domain_name }}">{{ src.domain_name }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-small">
+            {{ binding.created_at.strftime('%Y-%m-%d') }}
+          </td>
+          <td class="data-table__cell">
+            <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/deactivate-source"
+                  style="display:inline;">
+              <input type="hidden" name="info_source_id" value="{{ binding.info_source_id }}">
+              <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;">Deactivate</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted" style="margin-bottom:var(--space-3);">No active source bindings.</p>
+    {% endif %}
 
-      {% if iis_rows %}
-      <table class="data-table" aria-label="Active source bindings">
-        <thead>
-          <tr>
-            <th class="data-table__th">URL</th>
-            <th class="data-table__th">Bound</th>
-            <th class="data-table__th"><span class="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for iis in iis_rows %}
-          <tr id="source-row-{{ iis.info_source_id }}">
-            {% set src = sources_by_id.get(iis.info_source_id) %}
-            <td class="data-table__cell">
-              {% if src %}
-              <a href="/dashboard/info-sources/{{ iis.info_source_id }}">
-                <code class="text-small">{{ src.url }}</code>
-              </a>
-              {% if src.url %}
-              <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer"
-                 class="text-muted text-small" style="margin-left:var(--space-1);"
-                 aria-label="Open {{ src.url }} in new tab">↗</a>
-              {% endif %}
-              {% else %}
-              <span class="text-muted">{{ iis.info_source_id }}</span>
-              {% endif %}
-            </td>
-            <td class="data-table__cell data-table__cell--muted">
-              {{ iis.created_at.strftime('%Y-%m-%d') }}
-            </td>
-            <td class="data-table__cell">
-              <button class="btn btn--sm btn--danger"
-                      hx-delete="/dashboard/info-items/{{ item.info_item_id }}/info-sources/{{ iis.info_source_id }}"
-                      hx-target="#source-row-{{ iis.info_source_id }}"
-                      hx-swap="outerHTML"
-                      hx-confirm="Remove this source binding? The source itself is not deleted."
-                      aria-label="Remove binding for {{ src.url if src else iis.info_source_id }}">
-                Remove
-              </button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="text-muted">No active source bindings.</p>
+    {# Bind form #}
+    <details style="max-width:30rem;">
+      <summary class="text-small" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind existing Information Source</summary>
+      <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/bind-source"
+            style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
+        <input type="text" name="info_source_id" class="input" placeholder="InfoSource ULID"
+               style="flex:1;" required>
+        <button type="submit" class="btn btn--primary">Bind</button>
+      </form>
+    </details>
+  </section>
+
+  {# ── Section 3: Watcher (stub) ─────────────────────────────────────── #}
+  <section aria-label="Watcher" style="margin-bottom:var(--space-5);">
+    <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);font-weight:500;color:var(--color-text-muted);">
+      Watcher
+    </h2>
+    <div style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
+      {% if primary_src %}
+      <p class="text-small" style="margin-bottom:var(--space-1);">
+        <span class="text-muted">URL:</span> {{ primary_src.url }}
+      </p>
+      {% if primary_src.domain_name %}
+      <p class="text-small" style="margin-bottom:var(--space-2);">
+        <span class="text-muted">Domain:</span>
+        <a href="/dashboard/domains/{{ primary_src.domain_name }}">{{ primary_src.domain_name }}</a>
+      </p>
       {% endif %}
-
-      <div class="filter-card filter-card--stacked" style="margin-top:var(--space-3);">
-        <h3 style="margin-top:0;">Bind Information Source</h3>
-        <form method="POST"
-              action="/dashboard/info-items/{{ item.info_item_id }}/bind-source"
-              style="display:flex;flex-direction:column;gap:var(--space-2);">
-          <div>
-            <label for="bind-source-id" class="form-label">Information Source ID</label>
-            <input id="bind-source-id" type="text" name="info_source_id"
-                   class="form-input" placeholder="01ABCDE…" required
-                   aria-describedby="bind-source-hint">
-            <p class="text-small text-muted" id="bind-source-hint">ULID of an existing Information Source.</p>
-          </div>
-          <div style="text-align:right;">
-            <button type="submit" class="btn btn--primary btn--sm">Bind Source</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    {# Tab: Replication Specs #}
-    <div role="tabpanel" x-show="activeTab === 'repspecs'"
-         aria-live="polite" aria-atomic="false">
-
-      {% if irs_rows %}
-      <table class="data-table" aria-label="Active replication spec assignments">
-        <thead>
-          <tr>
-            <th class="data-table__th">Rep Spec</th>
-            <th class="data-table__th">Activated</th>
-            <th class="data-table__th">Public URL</th>
-            <th class="data-table__th"><span class="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for assignment in irs_rows %}
-          {% set rep_spec = rep_specs_by_id.get(assignment.rep_spec_id) %}
-          {% set item_id = item.info_item_id | string %}
-          {% include "info_items/_rep_spec_row.html" %}
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="text-muted">No active replication spec assignments.</p>
       {% endif %}
+      <p class="text-muted text-small">Watcher integration — cadence, last fetch, and health will appear here once cross-service status is available.</p>
+    </div>
+  </section>
 
-      <div class="filter-card" style="margin-top:var(--space-3);">
-        <h3 style="margin-top:0;">Assign Replication Specification</h3>
-        <form method="POST"
-              action="/dashboard/info-items/{{ item.info_item_id }}/assign-rep-spec"
-              style="display:flex;gap:var(--space-2);align-items:flex-end;">
-          <div style="flex:1;">
-            <label for="assign-rs-id" class="form-label">Rep Spec ID</label>
-            <input id="assign-rs-id" type="text" name="rep_spec_id"
-                   class="form-input" placeholder="01ABCDE…" required>
-          </div>
-          <button type="submit" class="btn btn--primary btn--sm">Assign</button>
-        </form>
-      </div>
+  {# ── Section 4: Replicator ─────────────────────────────────────────── #}
+  <section aria-label="Replicator" style="margin-bottom:var(--space-5);">
+    <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);">
+      Replicator
+    </h2>
+
+    {# Rep Fields sub-section #}
+    <h3 style="margin-bottom:var(--space-2);font-size:1rem;">Rep Fields</h3>
+    <div style="margin-bottom:var(--space-4);">
+      <form hx-patch="/dashboard/info-items/{{ item.info_item_id }}/rep-fields"
+            hx-target="#rep-fields-flash"
+            hx-swap="innerHTML"
+            style="max-width:40rem;">
+        <textarea name="rep_fields" class="input"
+                  rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;margin-bottom:var(--space-2);"
+                  placeholder='{"key": "value"}'>{{ item.rep_fields | tojson(indent=2) if item.rep_fields else '{}' }}</textarea>
+        <div style="display:flex;align-items:center;gap:var(--space-2);">
+          <button type="submit" class="btn btn--primary">Save Rep Fields</button>
+          <span id="rep-fields-flash"></span>
+        </div>
+      </form>
     </div>
 
-    {# Tab: Revision History #}
-    <div role="tabpanel" x-show="activeTab === 'revisions'"
-         aria-live="polite" aria-atomic="false">
+    {# Replication Specs sub-section #}
+    <h3 style="margin-bottom:var(--space-2);font-size:1rem;">Replication Specs</h3>
 
-      {% if iisr_rows %}
-      <table class="data-table" aria-label="Revision history">
-        <thead>
-          <tr>
-            <th class="data-table__th">Fingerprint</th>
-            <th class="data-table__th">Captured</th>
-            <th class="data-table__th">Bound</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for iisr in iisr_rows %}
-          {% set rev = revisions_by_id.get(iisr.source_revision_id) %}
-          <tr>
-            <td class="data-table__cell">
-              {% if rev %}
-              <a href="/dashboard/source-revisions/{{ iisr.source_revision_id }}">
-                <code class="text-small">{{ rev.content_fingerprint[:20] }}…</code>
-              </a>
-              {% else %}
-              <code class="text-small text-muted">{{ iisr.source_revision_id }}</code>
-              {% endif %}
-            </td>
-            <td class="data-table__cell data-table__cell--muted">
-              {% if rev %}{{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
-            </td>
-            <td class="data-table__cell data-table__cell--muted">
-              {{ iisr.bound_at.strftime('%Y-%m-%d %H:%M') }}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="text-muted">No revision history.</p>
-      {% endif %}
+    {% if irs_rows %}
+    <table class="data-table" aria-label="Active Replication Spec assignments" style="margin-bottom:var(--space-3);">
+      <thead>
+        <tr>
+          <th class="data-table__th">Spec</th>
+          <th class="data-table__th">Provider</th>
+          <th class="data-table__th">Activated</th>
+          <th class="data-table__th">Public URL</th>
+          <th class="data-table__th">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for assignment in irs_rows %}
+        {% set rep_spec = rep_specs_by_id.get(assignment.rep_spec_id) %}
+        {% set item_id = item.info_item_id %}
+        {% include "info_items/_rep_spec_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted" style="margin-bottom:var(--space-3);">No active Replication Spec assignments.</p>
+    {% endif %}
 
-      <div class="filter-card" style="margin-top:var(--space-3);">
-        <h3 style="margin-top:0;">Bind Source Revision</h3>
-        <form method="POST"
-              action="/dashboard/info-items/{{ item.info_item_id }}/bind-revision"
-              style="display:flex;gap:var(--space-2);align-items:flex-end;">
-          <div style="flex:1;">
-            <label for="bind-rev-id" class="form-label">Source Revision ID</label>
-            <input id="bind-rev-id" type="text" name="source_revision_id"
-                   class="form-input" placeholder="01ABCDE…" required>
-          </div>
-          <button type="submit" class="btn btn--primary btn--sm">Bind</button>
-        </form>
-      </div>
+    <details style="max-width:30rem;margin-bottom:var(--space-3);">
+      <summary class="text-small" style="cursor:pointer;margin-bottom:var(--space-2);">+ Assign Replication Spec</summary>
+      <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/assign-rep-spec"
+            style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
+        <input type="text" name="rep_spec_id" class="input" placeholder="RepSpec ULID"
+               style="flex:1;" required>
+        <button type="submit" class="btn btn--primary">Assign</button>
+      </form>
+    </details>
+
+    <div style="margin-top:var(--space-4);background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
+      <p class="text-muted text-small">Replicator integration — replication job history and public URL writeback will appear here once the Replicator service is available.</p>
     </div>
+  </section>
 
-  </div>{# /x-data tabs #}
+  {# ── Section 5: Revision History ──────────────────────────────────── #}
+  <section aria-label="Revision History" style="margin-bottom:var(--space-5);">
+    <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);">
+      Revision History
+    </h2>
+    <details style="margin-bottom:var(--space-3);">
+      <summary class="text-small" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind Revision</summary>
+      <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/bind-revision"
+            style="display:flex;gap:var(--space-2);margin-top:var(--space-2);max-width:30rem;">
+        <input type="text" name="source_revision_id" class="input" placeholder="SourceRevision ULID"
+               style="flex:1;" required>
+        <button type="submit" class="btn btn--primary">Bind</button>
+      </form>
+    </details>
+
+    {% if iisr_rows %}
+    <table class="data-table" aria-label="Revision history">
+      <thead>
+        <tr>
+          <th class="data-table__th">Fingerprint</th>
+          <th class="data-table__th">Captured</th>
+          <th class="data-table__th">Cache</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for binding in iisr_rows %}
+        {% set rev = revisions_by_id.get(binding.source_revision_id) %}
+        <tr>
+          <td class="data-table__cell">
+            {% if rev %}
+            <a href="/dashboard/source-revisions/{{ binding.source_revision_id }}" class="text-small">
+              <code>{{ rev.content_fingerprint[:20] }}…</code>
+            </a>
+            {% else %}
+            <span class="text-muted text-small">{{ binding.source_revision_id }}</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-small">
+            {% if rev %}{{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+          </td>
+          <td class="data-table__cell">
+            {% if rev and rev.content_cache_uri %}
+            <span class="badge badge--success text-small">cached</span>
+            {% else %}
+            <span class="badge badge--muted text-small">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No revisions bound yet.</p>
+    {% endif %}
+  </section>
+
 </div>
 {% endblock %}

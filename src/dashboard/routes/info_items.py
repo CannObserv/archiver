@@ -317,11 +317,10 @@ async def create_info_item(
 async def detail_info_item(
     request: Request,
     item_id: str,
-    tab: str = "sources",
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Detail page with Sources / Replication Specs / Revision History tabs."""
+    """InfoItem hub page — 5-section vertical scroll."""
     item = await _resolve_item(item_id, session)
 
     # Active source bindings + InfoSource rows for display
@@ -403,8 +402,41 @@ async def detail_info_item(
             "rep_specs_by_id": rep_specs_by_id,
             "iisr_rows": iisr_rows,
             "revisions_by_id": revisions_by_id,
-            "active_tab": tab,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# PATCH /{item_id}/rep-fields  (inline save — #49)
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/{item_id}/rep-fields", response_class=HTMLResponse)
+async def patch_rep_fields(
+    item_id: str,
+    request: Request,
+    rep_fields: str = Form(default="{}"),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX: save rep_fields JSON inline; return updated section partial."""
+    item = await _resolve_item(item_id, session)
+
+    try:
+        parsed = json.loads(rep_fields) if rep_fields.strip() else {}
+        if not isinstance(parsed, dict):
+            raise ValueError("rep_fields must be a JSON object")
+    except (json.JSONDecodeError, ValueError) as exc:
+        return HTMLResponse(
+            f'<p class="text-danger text-small">Invalid rep_fields: {exc}</p>', status_code=422
+        )
+
+    item.rep_fields = parsed
+    await session.commit()
+    await session.refresh(item)
+
+    return HTMLResponse(
+        '<p class="badge badge--success" style="margin-top:var(--space-1);">Saved.</p>'
     )
 
 
