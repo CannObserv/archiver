@@ -8,57 +8,102 @@
     <h1 class="entity-section__title">Dashboard</h1>
   </div>
 
+  {# Primary CTA + secondary link #}
+  <div style="margin-bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-3);">
+    <a href="/dashboard/register" class="btn btn--primary">Register Information Item</a>
+    <a href="/dashboard/info-items/" class="text-small">Browse Information Items</a>
+  </div>
+
+  {# Service health strip — loaded client-side via HTMX so it doesn't block page render #}
+  <div class="filter-card" style="margin-bottom:var(--space-4);display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-3);">
+    <span class="text-small text-muted">Service health:</span>
+    <span>
+      <span class="text-small text-muted">Archiver</span>&nbsp;
+      <span id="health-archiver"
+            hx-get="/dashboard/health"
+            hx-trigger="load"
+            hx-swap="innerHTML">
+        <span class="badge">checking…</span>
+      </span>
+    </span>
+    {% if watcher_base_url %}
+    <span>
+      <span class="text-small text-muted">Watcher</span>&nbsp;
+      <span id="health-watcher"
+            hx-get="/dashboard/health/watcher"
+            hx-trigger="load"
+            hx-swap="innerHTML">
+        <span class="badge">checking…</span>
+      </span>
+    </span>
+    {% else %}
+    <span>
+      <span class="text-small text-muted">Watcher</span>&nbsp;
+      <span class="badge badge--muted">not configured</span>
+    </span>
+    {% endif %}
+    {% if redis_configured %}
+    <span>
+      <span class="text-small text-muted">Redis</span>&nbsp;
+      <span id="health-redis"
+            hx-get="/dashboard/health/redis"
+            hx-trigger="load"
+            hx-swap="innerHTML">
+        <span class="badge">checking…</span>
+      </span>
+    </span>
+    {% else %}
+    <span>
+      <span class="text-small text-muted">Redis</span>&nbsp;
+      <span class="badge badge--muted">not configured</span>
+    </span>
+    {% endif %}
+  </div>
+
   {# Summary counts #}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--space-3);margin-bottom:var(--space-4);">
-
     <a href="/dashboard/info-items/" class="entity-card" style="text-decoration:none;">
       <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Information Items</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ item_count }}</p>
     </a>
-
     <a href="/dashboard/info-sources/" class="entity-card" style="text-decoration:none;">
       <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Information Sources</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ source_count }}</p>
     </a>
-
     <a href="/dashboard/source-revisions/" class="entity-card" style="text-decoration:none;">
-      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Information Source Revisions</p>
+      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Source Revisions</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ revision_count }}</p>
     </a>
-
     <a href="/dashboard/rep-specs/" class="entity-card" style="text-decoration:none;">
-      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Replication Specifications</p>
+      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Replication Specs</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ rep_spec_count }}</p>
     </a>
-
   </div>
 
-  {# Service health — loaded client-side via HTMX so it doesn't block page render #}
-  <div class="filter-card" style="margin-bottom:var(--space-4);">
-    <span class="text-small text-muted" style="margin-right:var(--space-2);">Service health:</span>
-    <span id="health-indicator"
-          hx-get="/dashboard/health"
-          hx-trigger="load"
-          hx-swap="innerHTML">
-      <span class="badge">checking…</span>
-    </span>
-  </div>
-
-  {# Recent changes #}
-  <h2 style="margin-bottom:var(--space-2);">Recent Changes</h2>
+  {# Recent Activity #}
+  <h2 style="margin-bottom:var(--space-2);">Recent Activity</h2>
   {% if recent_revisions %}
-  <table class="data-table" aria-label="Recent changes">
+  <table class="data-table" aria-label="Recent activity" style="margin-bottom:var(--space-4);">
     <thead>
       <tr>
-        <th class="data-table__th">Information Source</th>
-        <th class="data-table__th">Source Revision</th>
+        <th class="data-table__th">Item</th>
+        <th class="data-table__th">Source</th>
+        <th class="data-table__th">Revision</th>
         <th class="data-table__th">Observed</th>
       </tr>
     </thead>
     <tbody>
       {% for rev in recent_revisions %}
       {% set src = sources_by_id.get(rev.info_source_id) %}
+      {% set item = items_by_source_id.get(rev.info_source_id) %}
       <tr>
+        <td class="data-table__cell">
+          {% if item %}
+          <a href="/dashboard/info-items/{{ item.info_item_id }}" class="text-small">{{ item.name }}</a>
+          {% else %}
+          <span class="text-muted text-small">—</span>
+          {% endif %}
+        </td>
         <td class="data-table__cell">
           {% if src %}
           <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
@@ -80,7 +125,42 @@
     </tbody>
   </table>
   {% else %}
-  <p class="text-muted">No changes yet.</p>
+  <p class="text-muted" style="margin-bottom:var(--space-4);">No activity yet.</p>
+  {% endif %}
+
+  {# Domain overview — top 10 by InfoSource count #}
+  {% if domain_overview %}
+  <h2 style="margin-bottom:var(--space-2);">Domains</h2>
+  <table class="data-table" aria-label="Domain overview">
+    <thead>
+      <tr>
+        <th class="data-table__th">Domain</th>
+        <th class="data-table__th">Sources</th>
+        <th class="data-table__th">Items</th>
+        <th class="data-table__th">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in domain_overview %}
+      <tr>
+        <td class="data-table__cell">
+          <a href="/dashboard/domains/{{ row.name }}" class="text-small">{{ row.name }}</a>
+        </td>
+        <td class="data-table__cell data-table__cell--muted">{{ row.source_count }}</td>
+        <td class="data-table__cell data-table__cell--muted">{{ row.item_count }}</td>
+        <td class="data-table__cell">
+          {% if row.archived_at %}
+          <span class="badge badge--warning">archived</span>
+          {% elif not row.is_active %}
+          <span class="badge badge--muted">inactive</span>
+          {% else %}
+          <span class="badge badge--success">active</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   {% endif %}
 
 </div>

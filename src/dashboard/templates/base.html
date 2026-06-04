@@ -41,12 +41,22 @@
             Home
           </a>
         </li>
+
+        <li class="sidebar__section-label">Registry</li>
+        <li>
+          <a href="/dashboard/domains/" class="sidebar__link{% if request.url.path.startswith('/dashboard/domains') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/domains') %}aria-current="page"{% endif %}>
+            Domains
+          </a>
+        </li>
         <li>
           <a href="/dashboard/info-items/" class="sidebar__link{% if request.url.path.startswith('/dashboard/info-items') %} sidebar__link--active{% endif %}"
              {% if request.url.path.startswith('/dashboard/info-items') %}aria-current="page"{% endif %}>
             Information Items
           </a>
         </li>
+
+        <li class="sidebar__section-label">Sources</li>
         <li>
           <a href="/dashboard/info-sources/" class="sidebar__link{% if request.url.path.startswith('/dashboard/info-sources') %} sidebar__link--active{% endif %}"
              {% if request.url.path.startswith('/dashboard/info-sources') %}aria-current="page"{% endif %}>
@@ -56,15 +66,18 @@
         <li>
           <a href="/dashboard/source-revisions/" class="sidebar__link{% if request.url.path.startswith('/dashboard/source-revisions') %} sidebar__link--active{% endif %}"
              {% if request.url.path.startswith('/dashboard/source-revisions') %}aria-current="page"{% endif %}>
-            Information Source Revisions
+            Source Revisions
           </a>
         </li>
+
+        <li class="sidebar__section-label">Replication</li>
         <li>
           <a href="/dashboard/rep-specs/" class="sidebar__link{% if request.url.path.startswith('/dashboard/rep-specs') %} sidebar__link--active{% endif %}"
              {% if request.url.path.startswith('/dashboard/rep-specs') %}aria-current="page"{% endif %}>
-            Replication Specifications
+            Replication Specs
           </a>
         </li>
+
         <li class="sidebar__section-label">Settings</li>
         <li>
           <a href="/dashboard/settings/api-keys" class="sidebar__link{% if request.url.path.startswith('/dashboard/settings') %} sidebar__link--active{% endif %}"
