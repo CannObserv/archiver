@@ -178,6 +178,61 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * Sortable chip strip for selector / rep-field suggestions.
+     *
+     * Usage: x-data="sortableChips('frequency', 'myProp')" on a wrapper element.
+     * Server embeds data-frequency and data-label attributes on each chip <button>.
+     * The component reads them from the DOM on init.
+     *
+     * Sort modes: 'frequency' (desc by data-frequency), 'asc' (A→Z), 'desc' (Z→A).
+     * Clicking a chip calls insertChip(label), which writes the label into the
+     * target property on $root (passed as targetProp).
+     *
+     * @param {string} defaultSort  Initial sort mode ('frequency', 'asc', or 'desc').
+     * @param {string} targetProp   Property name on $root to write the clicked chip label into.
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("sortableChips", function (defaultSort, targetProp) {
+        return {
+            sort: defaultSort || "frequency",
+            chips: [],
+
+            init: function () {
+                var self = this;
+                var buttons = this.$el.querySelectorAll("[data-label]");
+                var i;
+                for (i = 0; i < buttons.length; i += 1) {
+                    self.chips.push({
+                        label: buttons[i].getAttribute("data-label"),
+                        frequency: parseInt(buttons[i].getAttribute("data-frequency") || "0", 10)
+                    });
+                }
+                this._applySort();
+            },
+
+            setSort: function (mode) {
+                this.sort = mode;
+                this._applySort();
+            },
+
+            _applySort: function () {
+                var mode = this.sort;
+                this.chips = this.chips.slice().sort(function (a, b) {
+                    if (mode === "asc") { return a.label.localeCompare(b.label); }
+                    if (mode === "desc") { return b.label.localeCompare(a.label); }
+                    return b.frequency - a.frequency;
+                });
+            },
+
+            insertChip: function (label) {
+                if (targetProp && this.$root && this.$root[targetProp] !== undefined) {
+                    this.$root[targetProp] = label;
+                }
+            }
+        };
+    });
+
+    /**
      * Multi-step Information Item create wizard.
      *
      * Manages step navigation and exposes rep_fields / initialSourceSpecsRaw
