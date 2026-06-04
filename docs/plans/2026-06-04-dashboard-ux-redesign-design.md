@@ -81,19 +81,20 @@ Step guard: `source_specs` must be a valid JSON array (client-side via `jsonFiel
 
 - `name` (required; pre-populated from page `<title>` if the preview ran and returned a suggested name, otherwise blank)
 - `description` (optional textarea)
-- `owner` (optional text)
-- `rep_fields` (optional JSON object via `jsonFieldEditor`)
+- `owner` (auto-populated from the current AppUser; not free text — the dashboard user identity from proxy headers is the owner)
+
+`rep_fields` is omitted here; editing it is deferred to the InfoItem detail screen. A follow-up issue (#50) tracks adding a Watcher configuration affordance to this step once the Watcher integration story is settled.
 
 Name pre-population: `POST /dashboard/register/preview` response includes `suggested_name`; client writes it into the name input only if the field is currently empty.
 
 #### Step 4 — Review & Submit
 
-Read-only summary: URL, domain badge, selector summary (algorithm + selector string), name, description, owner, rep_fields. "Edit" links back to each step without resetting state.
+Read-only summary: URL, domain badge, selector summary (algorithm + selector string), name, description, owner (current user display name). "Edit" links back to each step without resetting state.
 
 Single `POST /dashboard/register` — server executes atomically:
 1. `get_or_create_domain(hostname)`
 2. `create_info_source(url=url, source_specs=[...])`
-3. `create_info_item(name=..., description=..., owner=..., rep_fields=...)`
+3. `create_info_item(name=..., description=..., owner=current_user.id)`
 4. `add_info_source(info_item_id, info_source_id)` (null role = primary)
 5. Commit → 303 redirect to InfoItem detail.
 
@@ -106,10 +107,11 @@ On error: re-render at the failing step with sticky values. No reset to step 1.
 "URL already registered" card at Step 1 shows:
 - List of existing InfoItems bound to sources at this URL (name linked to detail).
 - Summary of current `source_specs` in use (algorithms).
-- Three actions (in prominence order):
+- Two actions (in prominence order):
   1. **"Register a new Information Item at this URL"** *(default, prominent)* — continues the flow. A second InfoSource at the same URL is valid (non-unique by design post-#48). Use when the user wants a different selector or a semantically distinct item at the same URL.
   2. **"Add a selector to an existing source"** *(secondary)* — short-circuits to the `POST /dashboard/info-sources/{id}/source-specs` edit form for that source. Use when the user wants to extend what's already being watched.
-  3. **"Go to existing Information Item →"** *(link)* — use when the user discovers they were about to duplicate something already registered.
+
+The listed InfoItem names are themselves links to their detail pages — no separate "Go to existing" action needed.
 
 **Case B — URL exists as an InfoSource but not bound to any active InfoItem**
 
@@ -125,51 +127,53 @@ Canonicalization runs server-side on the url-check call. Treat as Case A against
 
 ### 3. InfoItem detail — hub page
 
-Vertical scroll of seven labelled sections. No tabs. Each section has a heading with a `border-bottom` separator. Sections 6–7 sit at the bottom with lighter heading weight and muted background to visually de-emphasise their stub state.
+Vertical scroll of five labelled sections. No tabs. Each section has a heading with a `border-bottom` separator. Sections 3–4 (Watcher, Replicator) sit at the bottom of their service group with lighter heading weight and muted background on stub content.
 
 #### Section 1 — Overview
 
-Name (h1), ULID (with copy-to-clipboard button), domain badge (derived from active primary source; links to domain detail; shows "No primary source" if unbound), description, owner, created_at. Rep Fields moved to its own section (§2).
+Name (h1), ULID (with copy-to-clipboard button), domain badge (derived from active primary source; links to domain detail; shows "No primary source" if unbound), description, owner (AppUser display name), created_at.
 
-#### Section 2 — Rep Fields
-
-Editable. Two sub-areas:
-
-**Suggestions strip:** `sortableChips` component loaded via HTMX on section load (`GET /dashboard/info-items/{id}/suggest-rep-fields`). Server queries `rep_fields` bags of all InfoItems on the same domain (active only), extracts unique keys, counts frequency. Returns chips with `data-frequency` and `data-label` attributes. Chips pre-sorted by frequency descending; `sortableChips` component allows client-side resort to A→Z or Z→A. Chip label format: `key.path ×N` (muted suffix). Clicking a chip inserts the key with empty value into the editor below.
-
-**Editor:** `jsonFieldEditor` textarea for the `rep_fields` JSON object. Inline save via HTMX `PATCH /dashboard/info-items/{id}/rep-fields` (new route). Re-renders section partial on success with a flash "Saved."
-
-#### Section 3 — Information Sources
+#### Section 2 — Information Sources
 
 Table of active `InfoItemSource` bindings: URL (linked to InfoSource detail + external ↗ link), primary indicator (badge), bound date. Primary row visually distinguished (left border accent or subtle background).
 
 Below table: "Bind Existing Information Source" form — `info_source_id` input with same domain-check HTMX hint as registration Step 1. Deactivation confirmation dialog notes when the source being removed is the primary.
 
-#### Section 4 — Replication Specs
+#### Section 3 — Watcher *(stub)*
+
+Muted section. Shows: domain name, primary URL, "View domain in Watcher →" link (Watcher dashboard URL for that hostname, constructed from `WATCHER_BASE_URL` env var if set). Static copy: "Watcher integration — cadence, last fetch, and health will appear here once cross-service status is available."
+
+Future (tracked in #50): Watcher configuration affordance — cadence, last fetch timestamp, HTTP status, backoff state, next scheduled fetch, pause/resume actions via Watcher API.
+
+#### Section 4 — Replicator
+
+Contains all Replicator-related configuration (Rep Fields and Replication Specs), plus a stub for future integration. Replicator is TBD; this section is functional for authoring config but the integration half is stubbed.
+
+**Rep Fields sub-section:**
+
+`sortableChips` component loaded via HTMX on section load (`GET /dashboard/info-items/{id}/suggest-rep-fields`). Server queries `rep_fields` bags of all InfoItems on the same domain (active only), extracts unique keys, counts frequency. Returns chips with `data-frequency` and `data-label` attributes. Pre-sorted by frequency descending; component allows client-side resort to A→Z or Z→A. Chip label format: `key.path ×N` (muted suffix). Clicking a chip inserts the key with empty value into the `jsonFieldEditor` below.
+
+`jsonFieldEditor` textarea for the `rep_fields` JSON object. Inline save via HTMX `PATCH /dashboard/info-items/{id}/rep-fields` (new route). Re-renders section partial on success with a flash "Saved."
+
+**Replication Specs sub-section:**
 
 Table of active `InfoItemRepSpec` assignments: RepSpec name (linked to detail), provider badge, activated_at, public_url (inline edit via existing PATCH route), deactivate action.
 
 Below table: assign form (RepSpec ID input). "Suggest RepSpec" button stubs a `GET /dashboard/info-items/{id}/suggest-rep-specs` route that returns 501 initially — wires up when domain-scoped RepSpec suggestion is implemented.
 
-#### Section 5 — Revision History
+**Replicator integration stub:**
 
-Last 50 `InfoItemSourceRevision` rows ordered by `bound_at desc`. Columns: fingerprint prefix (linked to revision detail), captured_at, cache status pill. Unchanged from current tab.
-
-#### Section 6 — Watcher *(stub)*
-
-Muted section. Shows: domain name, primary URL, "View domain in Watcher →" link (Watcher dashboard URL for that hostname, constructed from `WATCHER_BASE_URL` env var if set). Static copy: "Watcher integration — cadence, last fetch, and health will appear here once cross-service status is available."
-
-Future: cadence, last fetch timestamp, HTTP status, backoff state, next scheduled fetch, pause/resume actions via Watcher API.
-
-#### Section 7 — Replicator *(stub)*
-
-Muted section. Static copy: "Replicator integration — replication job history and public URL writeback will appear here once the Replicator service is available."
+Muted copy at the bottom of the section: "Replicator integration — replication job history and public URL writeback will appear here once the Replicator service is available."
 
 Future: job history, last run status, target storage path.
 
+#### Section 5 — Revision History
+
+Last 50 `InfoItemSourceRevision` rows ordered by `bound_at desc`. Columns: fingerprint prefix (linked to revision detail), captured_at, cache status pill. Positioned last — reference data rather than actionable configuration.
+
 ### 4. Home page
 
-**Quick actions (top):** Single primary CTA: "Register Information Item" → `/dashboard/register`. Secondary text links: "Browse Information Items", "Browse Information Sources", "Browse Replication Specs".
+**Quick actions (top):** Single primary CTA: "Register Information Item" → `/dashboard/register`. Secondary text link: "Browse Information Items" (other entity lists are accessible via navigation).
 
 **Service health strip:** Existing HTMX-polled Archiver badge plus: Watcher badge (polls `{WATCHER_BASE_URL}/health` if `WATCHER_BASE_URL` env var is set; shows "not configured" muted badge if unset), Redis badge (polls reachability of `ARCHIVER_REDIS_URL`; shows "not configured" if unset).
 
