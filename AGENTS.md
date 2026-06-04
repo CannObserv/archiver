@@ -153,7 +153,21 @@ set +a
 
 ## Authoring tools + assignment endpoints (v2)
 
-The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v3.x; see [CHANGELOG.md](CHANGELOG.md) for version history).
+The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v4.x; see [CHANGELOG.md](CHANGELOG.md) for version history).
+
+**Domain endpoints (v4.1+):**
+
+| Endpoint | HTTP | SDK method |
+|---|---|---|
+| List Domains | `GET /domains?is_active=&archived=&limit=&offset=` | `list_domains(is_active=None, archived=None, limit=None, offset=None)` |
+| Get a Domain | `GET /domains/{name}` | `get_domain(name)` |
+| Upsert a Domain | `PATCH /domains/{name}` | `upsert_domain(name, notes=None, is_active=None)` |
+| Delete a Domain | `DELETE /domains/{name}` | `delete_domain(name)` (409 if sources exist) |
+| Archive a Domain | `POST /domains/{name}/archive` | `archive_domain(name)` |
+| Restore a Domain | `POST /domains/{name}/restore` | `restore_domain(name)` |
+
+`InfoSourceOut` gains `domain_name: str | None` (hostname auto-set from URL at create time).
+`GET /info-sources` gains `?domain_name=` filter.
 
 **Read-only tools:**
 
