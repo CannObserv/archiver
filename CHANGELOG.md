@@ -16,6 +16,27 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.1.0 (2026-06-04)
+
+[both] **Domain registry + dashboard UX redesign** (archiver#49).
+
+**Schema (service).**
+- New `information.domains` table: `id` (ULID PK), `name` (VARCHAR 253 UNIQUE), `notes`, `is_active`, `archived_at`, `created_at`, `updated_at`.
+- `info_sources.domain_name VARCHAR(253) NULL REFERENCES domains(name) ON DELETE SET NULL` — auto-populated from URL hostname at create time via `get_or_create_domain`.
+- Three Alembic migrations: `create_domains_table`, `add_domain_name_to_info_sources`, `backfill_info_sources_domain_name`.
+
+**New API routes (service).**
+- `GET/PATCH/DELETE /api/v1/domains/{name}` — upsert/fetch/delete a domain.
+- `POST /api/v1/domains/{name}/archive` + `/restore` — lifecycle transitions.
+- `GET /api/v1/domains` — paginated list with `?is_active=` and `?archived=` filters.
+- `GET /api/v1/info-sources` gains `?domain_name=` filter.
+- `InfoSourceOut` gains `domain_name: str | None`.
+
+**New SDK methods (4.1.0, backward-compatible).**
+- `list_domains`, `get_domain`, `upsert_domain`, `delete_domain`, `archive_domain`, `restore_domain`.
+
+**Dashboard.** New workflow-first layout: Register flow (`/dashboard/register`), Domains pages (`/dashboard/domains/`), InfoItem hub page (5-section scroll replacing tabs), sortableChips Alpine component, expanded home page (CTA, health strip, domain overview, Recent Activity with Item column).
+
 ## v4.0.0 (2026-06-03)
 
 [both] **InfoSource simplification — `source_specs` list, `url` column, no fragments** (archiver#48).
