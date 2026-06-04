@@ -194,17 +194,13 @@ async def list_info_items(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/new", response_class=HTMLResponse)
+@router.get("/new")
 async def new_info_item_form(
     request: Request,
     user=Depends(get_dashboard_user),
-) -> HTMLResponse:
-    """Render the multi-step create wizard."""
-    return _templates.TemplateResponse(
-        request,
-        "info_items/new.html",
-        {"user": user, "errors": {}},
-    )
+) -> RedirectResponse:
+    """301 redirect to the new /dashboard/register flow."""
+    return RedirectResponse(url="/dashboard/register", status_code=301)
 
 
 # ---------------------------------------------------------------------------

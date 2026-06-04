@@ -1,0 +1,7 @@
+{# Re-render at step 2 on validation failure — same base template, step=2 shown #}
+{% extends "base.html" %}
+{% block title %}Register Information Item{% endblock %}
+{% block content %}
+{# Redirect to step1 with error context — use step1 template with error pre-filled #}
+{% include "register/step1.html" ignore missing %}
+{% endblock %}

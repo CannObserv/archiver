@@ -247,10 +247,10 @@ async def test_new_unauthenticated_redirects(client):
 
 
 @pytest.mark.asyncio
-async def test_new_returns_form(client):
-    r = await client.get(_NEW_URL, headers=_HEADERS)
-    assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
+async def test_new_redirects_to_register(client):
+    r = await client.get(_NEW_URL, headers=_HEADERS, follow_redirects=False)
+    assert r.status_code == 301
+    assert "/dashboard/register" in r.headers.get("location", "")
 
 
 # ---------------------------------------------------------------------------
