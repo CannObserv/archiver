@@ -94,15 +94,18 @@ async def patch_info_source_specs(
 @router.get("", response_model=Page[InfoSourceOut])
 async def list_info_sources(
     url: str | None = Query(default=None, description="Filter by exact URL."),
+    domain_name: str | None = Query(default=None, description="Filter by domain hostname."),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db_session),
     _key=Depends(require_api_key),
 ) -> Page[InfoSourceOut]:
-    """List InfoSources with offset pagination, optionally filtered by URL."""
+    """List InfoSources with offset pagination, optionally filtered by URL or domain."""
     stmt = select(InfoSource).order_by(InfoSource.created_at, InfoSource.info_source_id)
     if url is not None:
         stmt = stmt.where(InfoSource.url == url)
+    if domain_name is not None:
+        stmt = stmt.where(InfoSource.domain_name == domain_name)
     stmt = stmt.offset(offset).limit(limit + 1)
     rows = list((await session.execute(stmt)).scalars().all())
     has_more = len(rows) > limit

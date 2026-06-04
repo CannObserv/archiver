@@ -1,6 +1,7 @@
 """Tests for /dashboard/info-items/ routes."""
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -247,10 +248,10 @@ async def test_new_unauthenticated_redirects(client):
 
 
 @pytest.mark.asyncio
-async def test_new_returns_form(client):
-    r = await client.get(_NEW_URL, headers=_HEADERS)
-    assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
+async def test_new_redirects_to_register(client):
+    r = await client.get(_NEW_URL, headers=_HEADERS, follow_redirects=False)
+    assert r.status_code == 301
+    assert "/dashboard/register" in r.headers.get("location", "")
 
 
 # ---------------------------------------------------------------------------
@@ -625,3 +626,90 @@ async def test_bind_revision_creates_binding(client, session):
         )
     )
     assert result.scalar_one_or_none() is not None
+
+
+# ---------------------------------------------------------------------------
+# Hub page — 5-section vertical scroll (#49)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hub_detail_shows_overview_section(client, session):
+    item = _make_item("Hub Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Hub Item" in r.text
+    assert str(item.info_item_id) in r.text
+
+
+@pytest.mark.asyncio
+async def test_hub_detail_shows_sources_section(client, session):
+    item = _make_item("Hub Sources Item")
+    src = _make_source("https://hub.example.com/page")
+    session.add_all([item, src])
+    await session.flush()
+    binding = InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id)
+    session.add(binding)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "https://hub.example.com/page" in r.text
+    assert "Information Sources" in r.text
+
+
+@pytest.mark.asyncio
+async def test_hub_detail_shows_replicator_section(client, session):
+    item = _make_item("Hub Replicator Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Replicator" in r.text
+
+
+@pytest.mark.asyncio
+async def test_hub_detail_shows_revision_history(client, session):
+    item = _make_item("Hub History Item")
+    src = _make_source("https://hub.example.com/hist")
+    session.add_all([item, src])
+    await session.flush()
+    rev = SourceRevision(
+        info_source_id=src.info_source_id,
+        content_fingerprint="sha256:" + "d" * 64,
+        captured_at=datetime.now(UTC),
+    )
+    session.add(rev)
+    await session.flush()
+    hist = InfoItemSourceRevision(
+        info_item_id=item.info_item_id,
+        source_revision_id=rev.source_revision_id,
+        bound_at=datetime.now(UTC),
+    )
+    session.add(hist)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Revision History" in r.text
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_inline_save(client, session):
+    item = _make_item("Rep Fields Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": '{"key1":"value1"}'},
+    )
+    assert r.status_code in (200, 303)
+
+    await session.refresh(item)
+    assert item.rep_fields == {"key1": "value1"}

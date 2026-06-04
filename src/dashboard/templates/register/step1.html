@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Register Information Item{% endblock %}
+
+{% block content %}
+<div class="entity-section" x-data="registerWizard({{ initial_step|default(1) }})">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Register Information Item</h1>
+  </div>
+
+  {# Step indicator #}
+  <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-4);" aria-label="Steps">
+    <span :class="step>=1 ? 'badge badge--primary' : 'badge badge--muted'">1 URL</span>
+    <span :class="step>=2 ? 'badge badge--primary' : 'badge badge--muted'">2 Selector</span>
+    <span :class="step>=3 ? 'badge badge--primary' : 'badge badge--muted'">3 Metadata</span>
+    <span :class="step>=4 ? 'badge badge--primary' : 'badge badge--muted'">4 Review</span>
+  </div>
+
+  <form method="post" action="/dashboard/register" @submit="prepareSubmit">
+
+    {# --- Step 1: URL --- #}
+    <div x-show="step===1">
+      <h2 style="margin-bottom:var(--space-2);">Step 1: URL</h2>
+      <p class="text-muted text-small" style="margin-bottom:var(--space-3);">Enter the URL of the page you want to register.</p>
+
+      {% if errors.url %}
+      <p class="text-danger text-small" style="margin-bottom:var(--space-2);">{{ errors.url }}</p>
+      {% endif %}
+
+      <div style="max-width:40rem;margin-bottom:var(--space-3);">
+        <input type="url" name="url" x-model="url" x-ref="urlInput"
+               class="input" placeholder="https://example.com/page"
+               value="{{ url_value or '' }}"
+               required
+               hx-get="/dashboard/register/url-check"
+               hx-trigger="change delay:300ms"
+               hx-include="[name='url']"
+               hx-target="#url-check-result"
+               hx-swap="innerHTML"
+               style="width:100%;">
+      </div>
+
+      <div id="url-check-result" style="margin-bottom:var(--space-3);min-height:2rem;"></div>
+
+      <button type="button" class="btn btn--primary"
+              :disabled="!url.trim()"
+              @click="step=2; loadSuggestions()">
+        Next: Choose Selector →
+      </button>
+    </div>
+
+    {# --- Step 2: Selector --- #}
+    <div x-show="step===2" style="display:none;">
+      <h2 style="margin-bottom:var(--space-2);">Step 2: Selector</h2>
+      <p class="text-muted text-small" style="margin-bottom:var(--space-3);">
+        Specify the extraction spec (CSS, XPath, or full-page). Use suggestions from the same domain if available.
+      </p>
+
+      {% if errors.source_specs %}
+      <p class="text-danger text-small" style="margin-bottom:var(--space-2);">{{ errors.source_specs }}</p>
+      {% endif %}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-3);">
+        {# Suggestions panel #}
+        <div>
+          <p class="text-small text-muted" style="margin-bottom:var(--space-1);">Suggestions from this domain:</p>
+          <div id="spec-suggestions-panel" hx-swap="innerHTML">
+            <p class="text-muted text-small">Loading suggestions…</p>
+          </div>
+        </div>
+
+        {# Spec editor #}
+        <div>
+          <p class="text-small text-muted" style="margin-bottom:var(--space-1);">source_specs JSON array:</p>
+          <textarea name="source_specs" x-model="sourceSpecs" class="input"
+                    rows="6" placeholder='[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
+                    style="width:100%;font-family:monospace;font-size:0.85rem;">{{ source_specs_value or '' }}</textarea>
+          <div style="margin-top:var(--space-2);">
+            <button type="button" class="btn btn--ghost"
+                    hx-post="/dashboard/register/preview"
+                    hx-vals='{"url": ""}'
+                    hx-include="[name='url'],[name='source_specs']"
+                    hx-target="#preview-result"
+                    hx-swap="innerHTML"
+                    @click="$el.setAttribute('hx-vals', JSON.stringify({url: url}))">
+              Preview extraction →
+            </button>
+          </div>
+          <div id="preview-result" style="margin-top:var(--space-2);"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:var(--space-2);">
+        <button type="button" class="btn btn--ghost" @click="step=1">← Back</button>
+        <button type="button" class="btn btn--primary"
+                :disabled="!sourceSpecs.trim()"
+                @click="step=3">
+          Next: Metadata →
+        </button>
+      </div>
+    </div>
+
+    {# --- Step 3: Metadata --- #}
+    <div x-show="step===3" style="display:none;">
+      <h2 style="margin-bottom:var(--space-2);">Step 3: Metadata</h2>
+
+      {% if errors.name %}
+      <p class="text-danger text-small" style="margin-bottom:var(--space-2);">{{ errors.name }}</p>
+      {% endif %}
+
+      <div style="max-width:40rem;display:flex;flex-direction:column;gap:var(--space-3);margin-bottom:var(--space-3);">
+        <div>
+          <label for="reg-name" class="text-small">Name <span aria-hidden="true">*</span></label>
+          <input type="text" id="reg-name" name="name" x-model="itemName" x-ref="nameInput"
+                 class="input" maxlength="200" required style="width:100%;"
+                 value="{{ name_value or '' }}">
+        </div>
+        <div>
+          <label for="reg-desc" class="text-small">Description</label>
+          <textarea id="reg-desc" name="description" x-model="description" class="input"
+                    rows="3" maxlength="2000" style="width:100%;">{{ description_value or '' }}</textarea>
+        </div>
+        <div>
+          <p class="text-small text-muted">
+            Owner: <strong>{{ user.email }}</strong> (auto-set from your login)
+          </p>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:var(--space-2);">
+        <button type="button" class="btn btn--ghost" @click="step=2">← Back</button>
+        <button type="button" class="btn btn--primary"
+                :disabled="!itemName.trim()"
+                @click="step=4">
+          Review →
+        </button>
+      </div>
+    </div>
+
+    {# --- Step 4: Review & Submit --- #}
+    <div x-show="step===4" style="display:none;">
+      <h2 style="margin-bottom:var(--space-2);">Step 4: Review & Submit</h2>
+      <table class="data-table" style="max-width:40rem;margin-bottom:var(--space-3);">
+        <tbody>
+          <tr>
+            <td class="data-table__cell text-muted text-small">URL</td>
+            <td class="data-table__cell"><span x-text="url"></span>
+              <button type="button" class="btn btn--ghost" style="font-size:0.75rem;padding:0.1rem 0.4rem;" @click="step=1">Edit</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="data-table__cell text-muted text-small">Selector</td>
+            <td class="data-table__cell"><code class="text-small" x-text="sourceSpecs.substring(0,100)"></code>
+              <button type="button" class="btn btn--ghost" style="font-size:0.75rem;padding:0.1rem 0.4rem;" @click="step=2">Edit</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="data-table__cell text-muted text-small">Name</td>
+            <td class="data-table__cell"><span x-text="itemName"></span>
+              <button type="button" class="btn btn--ghost" style="font-size:0.75rem;padding:0.1rem 0.4rem;" @click="step=3">Edit</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="data-table__cell text-muted text-small">Description</td>
+            <td class="data-table__cell"><span x-text="description || '—'"></span></td>
+          </tr>
+          <tr>
+            <td class="data-table__cell text-muted text-small">Owner</td>
+            <td class="data-table__cell">{{ user.email }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="display:flex;gap:var(--space-2);">
+        <button type="button" class="btn btn--ghost" @click="step=3">← Back</button>
+        <button type="submit" class="btn btn--primary">Register Information Item</button>
+      </div>
+    </div>
+
+  </form>
+</div>
+
+<script>
+document.addEventListener("alpine:init", function () {
+  window.Alpine.data("registerWizard", function (initialStep) {
+    return {
+      step: initialStep || 1,
+      url: "",
+      sourceSpecs: "",
+      itemName: "",
+      description: "",
+
+      init: function () {
+        var urlEl = this.$refs.urlInput;
+        if (urlEl && urlEl.value) { this.url = urlEl.value; }
+        var nameEl = this.$refs.nameInput;
+        if (nameEl && nameEl.value) { this.itemName = nameEl.value; }
+      },
+
+      loadSuggestions: function () {
+        var self = this;
+        if (!window.htmx) { return; }
+        window.htmx.ajax("GET",
+          "/dashboard/register/suggest-specs?url=" + encodeURIComponent(self.url),
+          { target: "#spec-suggestions-panel", swap: "innerHTML" }
+        );
+      },
+
+      prepareSubmit: function () {
+        // source_specs textarea is bound via x-model; nothing extra needed
+      }
+    };
+  });
+});
+</script>
+{% endblock %}

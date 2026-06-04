@@ -62,6 +62,7 @@ def info_source_to_out(src: InfoSource) -> InfoSourceOut:
         info_source_id=str(src.info_source_id),
         url=src.url,
         source_specs=src.source_specs,
+        domain_name=src.domain_name,
         created_at=src.created_at,
     )
 

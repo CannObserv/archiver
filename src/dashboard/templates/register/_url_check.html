@@ -1,0 +1,50 @@
+{% if error %}
+<div class="filter-card" style="border-color:var(--color-danger,#c00);">
+  <p class="text-small text-danger">{{ error }}</p>
+</div>
+{% elif case == "A" %}
+<div class="filter-card">
+  <p class="text-small text-muted" style="margin-bottom:var(--space-2);">
+    <strong>URL already registered.</strong>
+    Existing Information Items at this URL:
+  </p>
+  <ul style="margin:0 0 var(--space-2);padding-left:var(--space-3);">
+    {% for item in bound_items %}
+    <li><a href="/dashboard/info-items/{{ item.info_item_id }}" class="text-small">{{ item.name }}</a></li>
+    {% endfor %}
+  </ul>
+  <div style="display:flex;gap:var(--space-2);">
+    <span class="badge badge--primary">Register a new Information Item at this URL (default)</span>
+    {% for src in existing_sources %}
+    <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="btn btn--ghost text-small">
+      Add selector to existing source
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% elif case == "B" %}
+<div class="filter-card">
+  <p class="text-small text-muted">
+    <strong>{{ hostname }}</strong> — This URL has an existing Information Source with no active Information Item bound.
+  </p>
+  <p class="text-small" style="margin-top:var(--space-1);">
+    Proceeding will create a new Information Item and bind this source.
+  </p>
+</div>
+{% elif case == "new" and domain %}
+<div class="filter-card">
+  <p class="text-small">
+    <span class="badge badge--success">Known domain</span>
+    <strong>{{ hostname }}</strong>
+    &nbsp;—&nbsp;
+    <a href="/dashboard/domains/{{ hostname }}" class="text-small">view domain</a>
+  </p>
+</div>
+{% elif case == "new" and not domain %}
+<div class="filter-card">
+  <p class="text-small text-muted">
+    <span class="badge badge--muted">New domain</span>
+    <strong>{{ hostname }}</strong> will be created automatically.
+  </p>
+</div>
+{% endif %}

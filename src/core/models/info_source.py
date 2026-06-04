@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Index, Text, func
+from sqlalchemy import DateTime, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
@@ -31,6 +31,7 @@ class InfoSource(Base):
     )
     url: Mapped[str] = mapped_column(Text, nullable=False)
     source_specs: Mapped[list] = mapped_column(JSONB, nullable=False)
+    domain_name: Mapped[str | None] = mapped_column(String(253), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

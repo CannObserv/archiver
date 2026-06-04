@@ -547,6 +547,87 @@ class ArchiverClient:
         """
         return await _tools.propose_selectors(self, url, description, top_k=top_k)
 
+    # --- Domain endpoints (v4.1+) ---
+
+    async def list_domains(
+        self,
+        *,
+        is_active: bool | None = None,
+        archived: bool | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict:
+        """List domains. Returns the raw Page envelope dict.
+
+        Pass ``is_active=True/False`` to filter by active status.
+        Pass ``archived=True`` to restrict to archived domains.
+        """
+        params: dict = {}
+        if is_active is not None:
+            params["is_active"] = str(is_active).lower()
+        if archived is not None:
+            params["archived"] = str(archived).lower()
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        hx = self._gen_client.get_async_httpx_client()
+        resp = await hx.get("/api/v1/domains", params=params)
+        if 200 <= resp.status_code < 300:
+            return resp.json()
+        raise error_from_response(resp.status_code, resp.content)
+
+    async def get_domain(self, name: str) -> dict:
+        """Fetch a single Domain by hostname."""
+        hx = self._gen_client.get_async_httpx_client()
+        resp = await hx.get(f"/api/v1/domains/{name}")
+        if 200 <= resp.status_code < 300:
+            return resp.json()
+        raise error_from_response(resp.status_code, resp.content)
+
+    async def upsert_domain(
+        self,
+        name: str,
+        *,
+        notes: str | None = None,
+        is_active: bool | None = None,
+    ) -> dict:
+        """Create or update a Domain (upsert by hostname)."""
+        body: dict = {}
+        if notes is not None:
+            body["notes"] = notes
+        if is_active is not None:
+            body["is_active"] = is_active
+        hx = self._gen_client.get_async_httpx_client()
+        resp = await hx.patch(f"/api/v1/domains/{name}", json=body)
+        if 200 <= resp.status_code < 300:
+            return resp.json()
+        raise error_from_response(resp.status_code, resp.content)
+
+    async def delete_domain(self, name: str) -> None:
+        """Delete a Domain. Raises 409 if InfoSources reference it."""
+        hx = self._gen_client.get_async_httpx_client()
+        resp = await hx.delete(f"/api/v1/domains/{name}")
+        if 200 <= resp.status_code < 300:
+            return None
+        raise error_from_response(resp.status_code, resp.content)
+
+    async def archive_domain(self, name: str) -> dict:
+        """Set archived_at on a Domain."""
+        hx = self._gen_client.get_async_httpx_client()
+        resp = await hx.post(f"/api/v1/domains/{name}/archive")
+        if 200 <= resp.status_code < 300:
+            return resp.json()
+        raise error_from_response(resp.status_code, resp.content)
+
+    async def restore_domain(self, name: str) -> dict:
+        """Clear archived_at on a Domain."""
+        hx = self._gen_client.get_async_httpx_client()
+        resp = await hx.post(f"/api/v1/domains/{name}/restore")
+        if 200 <= resp.status_code < 300:
+            return resp.json()
+        raise error_from_response(resp.status_code, resp.content)
+
 
 def _unwrap(response: Any) -> Any:
     """Return parsed body on 2xx; raise typed error otherwise.

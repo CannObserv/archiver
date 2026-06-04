@@ -9,20 +9,42 @@
 ## URL Structure
 
 ```
-/dashboard/                      Home (Epic 7)
-/dashboard/info-items/           Information Items list
-/dashboard/info-items/{id}       Information Item detail
-/dashboard/info-items/new        Create Information Item (multi-step wizard)
-/dashboard/info-sources/         Information Sources list
-/dashboard/info-sources/{id}     Information Source detail
-/dashboard/info-sources/new      Create Information Source
-/dashboard/source-revisions/     Information Source Revisions list
-/dashboard/source-revisions/{id} Information Source Revision detail
-/dashboard/rep-specs/            Replication Specifications list
-/dashboard/rep-specs/{id}        Replication Specification detail
-/dashboard/rep-specs/new         Create Replication Specification
-/dashboard/settings/api-keys     API Keys management
+/dashboard/                          Home — CTA, health strip, Recent Activity, domain overview
+/dashboard/domains/                  Domains list (#49)
+/dashboard/domains/{name}            Domain detail — notes, status, linked sources (#49)
+/dashboard/register                  Register Information Item — 4-step flow (#49)
+/dashboard/info-items/               Information Items list
+/dashboard/info-items/{id}           Information Item detail (hub page — 5-section scroll) (#49)
+/dashboard/info-items/new            → 301 redirect to /dashboard/register (#49)
+/dashboard/info-sources/             Information Sources list
+/dashboard/info-sources/{id}         Information Source detail
+/dashboard/info-sources/new          Create Information Source
+/dashboard/source-revisions/         Information Source Revisions list
+/dashboard/source-revisions/{id}     Information Source Revision detail
+/dashboard/rep-specs/                Replication Specifications list
+/dashboard/rep-specs/{id}            Replication Specification detail
+/dashboard/rep-specs/new             Create Replication Specification
+/dashboard/settings/api-keys         API Keys management
 ```
+
+### Domain pages (`/dashboard/domains/`)  *(#49 — implemented)*
+
+**GET `/dashboard/domains/`** — paginated list. Columns: Domain (linked to detail), Sources (count), Status badge, Created. Filter bar: `?is_active=true|false|` (all). Source counts loaded via a GROUP BY query.
+
+**GET `/dashboard/domains/{name}`** — detail. Status badge, operator notes (HTMX inline edit), linked Information Sources table.
+
+**POST `/dashboard/domains/{name}/notes`** — HTMX partial; replaces `#notes-section` with `domains/_notes_partial.html`. Saves notes inline.
+
+**POST `/dashboard/domains/{name}/archive`** — sets `archived_at`, redirects to detail (303).
+
+**POST `/dashboard/domains/{name}/restore`** — clears `archived_at`, redirects to detail (303).
+
+Templates: `domains/list.html`, `domains/detail.html`, `domains/_notes_partial.html`.
+
+### Registration flow (`/dashboard/register`)  *(#49 — pending Step 6)*
+
+4-step flow: URL → Selector → Metadata → Review & Submit. Replaces `/dashboard/info-items/new`.
+See design doc `docs/plans/2026-06-04-dashboard-ux-redesign-design.md` for full spec.
 
 API stays at `/api/v1/*`. Health/OpenAPI unchanged.
 
@@ -234,6 +256,48 @@ Single-field document editor with client-side JSON parse validation on blur.
 **Methods:** `validate()` — called on `@blur`; attempts `JSON.parse(raw)`, sets `hasError`/`errorMsg`.
 
 **Usage:** `x-data='repSpecEditor({{ document_raw | tojson }}, {{ (selected_provider or "") | tojson }})'` on the create form wrapper, passing server-rendered initial values so Alpine's `x-model` initialises correctly on re-render. Provider `<select x-model="provider">` drives `provider` state for optional template reactions.
+
+### `sortableChips` Alpine Component  *(#49 — implemented)*
+
+Chip strip for selector/rep-field suggestions with client-side re-sort.
+
+**Parameters (factory args):**
+- `defaultSort: string` — initial sort mode: `'frequency'` (default), `'asc'`, or `'desc'`.
+- `targetProp: string` — property name on `$root` to write the clicked chip label into.
+
+**State:** `sort: string`, `chips: Array<{label, frequency}>` (reactive, re-sorted on sort change).
+
+**Methods:**
+- `setSort(mode)` — sets `sort` and re-sorts `chips` in place.
+- `insertChip(label)` — writes `label` into `$root[targetProp]`.
+- `init()` — reads `data-label` and `data-frequency` attributes from child `[data-label]` buttons.
+
+**Sort controls:** Three pill buttons above the chip row — `[Frequency ▾]`, `[A → Z]`, `[Z → A]`. Active button gets `.btn--active`; others get `.btn--ghost`. Sort is purely client-side.
+
+**Server rendering:** Each chip `<button>` must have `data-label="key.path"` and `data-frequency="N"`. The component reads these on `init()`; server output order is irrelevant.
+
+**Chip format:** `key.path ×N` where `×N` is a muted frequency suffix rendered server-side.
+
+**Usage:**
+```html
+<div x-data="sortableChips('frequency', 'selectedSpec')">
+  <div style="display:flex;gap:var(--space-1);margin-bottom:var(--space-2);">
+    <button type="button" :class="sort==='frequency'?'btn btn--active':'btn btn--ghost'" @click="setSort('frequency')">Frequency ▾</button>
+    <button type="button" :class="sort==='asc'?'btn btn--active':'btn btn--ghost'" @click="setSort('asc')">A → Z</button>
+    <button type="button" :class="sort==='desc'?'btn btn--active':'btn btn--ghost'" @click="setSort('desc')">Z → A</button>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
+    <template x-for="chip in chips" :key="chip.label">
+      <button type="button" class="btn btn--ghost" @click="insertChip(chip.label)"
+              :data-label="chip.label" :data-frequency="chip.frequency"
+              x-text="chip.label + ' ×' + chip.frequency"></button>
+    </template>
+  </div>
+  <!-- hidden server-rendered chips for init() to read (rendered inside template) -->
+</div>
+```
+
+JS tests in `tests/js/sortable-chips.test.js` (Vitest).
 
 ### Settings — API Keys (`/dashboard/settings/api-keys`)  *(Epic 2 — implemented)*
 

@@ -38,4 +38,7 @@ class InfoSourceOut(BaseModel):
     info_source_id: str = Field(description="ULID identifying this InfoSource.")
     url: str = Field(description="URL to fetch.")
     source_specs: list[dict[str, Any]] = Field(description="Ordered list of extraction specs.")
+    domain_name: str | None = Field(
+        description="Hostname derived from URL; references the domains table."
+    )
     created_at: datetime = Field(description="UTC timestamp when the InfoSource was created.")
