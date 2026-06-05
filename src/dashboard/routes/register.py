@@ -232,7 +232,7 @@ async def preview(
     try:
         canonical = canonicalize_url(url)
     except ValueError:
-        return HTMLResponse('<p class="text-muted text-small">Invalid URL.</p>')
+        return HTMLResponse('<p class="text-muted text-sm">Invalid URL.</p>')
 
     try:
         specs = json.loads(source_specs)
@@ -240,7 +240,7 @@ async def preview(
             raise ValueError("empty")
         spec = specs[0]
     except (json.JSONDecodeError, ValueError):
-        return HTMLResponse('<p class="text-muted text-small">Invalid source_specs JSON.</p>')
+        return HTMLResponse('<p class="text-muted text-sm">Invalid source_specs JSON.</p>')
 
     try:
         result = await preview_extraction(canonical, spec, fetcher=fetcher)

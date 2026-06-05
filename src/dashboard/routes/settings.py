@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.api.errors import raise_422, raise_envelope
+from src.api.errors import raise_422
 from src.core.models import ApiKey, AppUser
 from src.dashboard.deps import generate_api_key, get_dashboard_user
+from src.dashboard.exceptions import DashboardNotFound
 
 router = APIRouter(prefix="/dashboard/settings", tags=["dashboard-settings"])
 
@@ -31,12 +32,12 @@ async def _resolve_key(key_id: str, user: AppUser, session: AsyncSession) -> Api
     try:
         uid = ULID.from_str(key_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "API key not found", source_exc=e)
+        raise DashboardNotFound("API key not found") from e
 
     result = await session.execute(select(ApiKey).where(ApiKey.id == uid))
     api_key = result.scalar_one_or_none()
     if api_key is None or api_key.user_id != user.id:
-        raise_envelope(404, "lookup", "API key not found")
+        raise DashboardNotFound("API key not found")
     return api_key
 
 

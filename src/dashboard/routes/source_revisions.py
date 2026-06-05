@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.api.errors import raise_envelope
 from src.core.models import (
     InfoItem,
     InfoItemSourceRevision,
@@ -19,6 +18,7 @@ from src.core.models import (
     SourceRevision,
 )
 from src.dashboard.deps import get_dashboard_user
+from src.dashboard.exceptions import DashboardNotFound
 
 router = APIRouter(prefix="/dashboard/source-revisions", tags=["dashboard-source-revisions"])
 
@@ -30,10 +30,10 @@ async def _resolve_revision(rev_id: str, session: AsyncSession) -> SourceRevisio
     try:
         uid = ULID.from_str(rev_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "Information Source Revision not found", source_exc=e)
+        raise DashboardNotFound("Information Source Revision not found") from e
     rev = await session.get(SourceRevision, uid)
     if rev is None:
-        raise_envelope(404, "lookup", "Information Source Revision not found")
+        raise DashboardNotFound("Information Source Revision not found")
     return rev
 
 

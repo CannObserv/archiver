@@ -4,6 +4,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from html import escape as html_escape
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -493,7 +494,8 @@ async def patch_rep_fields(
             raise ValueError("rep_fields must be a JSON object")
     except (json.JSONDecodeError, ValueError) as exc:
         return HTMLResponse(
-            f'<p class="text-danger text-small">Invalid rep_fields: {exc}</p>', status_code=422
+            f'<p class="text-danger text-sm">Invalid rep_fields: {html_escape(str(exc))}</p>',
+            status_code=422,
         )
 
     item.rep_fields = parsed

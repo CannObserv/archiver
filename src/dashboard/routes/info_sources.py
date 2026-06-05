@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.api.errors import raise_envelope
 from src.core.models import (
     InfoItem,
     InfoItemSource,
@@ -36,6 +35,7 @@ from src.core.tools.update_info_source_specs import (
     update_info_source_specs,
 )
 from src.dashboard.deps import get_dashboard_user
+from src.dashboard.exceptions import DashboardNotFound
 
 router = APIRouter(prefix="/dashboard/info-sources", tags=["dashboard-info-sources"])
 
@@ -47,10 +47,10 @@ async def _resolve_source(source_id: str, session: AsyncSession) -> InfoSource:
     try:
         uid = ULID.from_str(source_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "Information Source not found", source_exc=e)
+        raise DashboardNotFound("Information Source not found") from e
     src = await session.get(InfoSource, uid)
     if src is None:
-        raise_envelope(404, "lookup", "Information Source not found")
+        raise DashboardNotFound("Information Source not found")
     return src
 
 

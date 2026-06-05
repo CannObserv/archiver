@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.api.errors import raise_envelope
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
@@ -19,6 +18,7 @@ from src.core.models import (
 )
 from src.core.tools.create_rep_spec import InvalidRepSpecError, create_rep_spec
 from src.dashboard.deps import get_dashboard_user
+from src.dashboard.exceptions import DashboardNotFound
 
 router = APIRouter(prefix="/dashboard/rep-specs", tags=["dashboard-rep-specs"])
 
@@ -32,10 +32,10 @@ async def _resolve_spec(spec_id: str, session: AsyncSession) -> RepSpec:
     try:
         uid = ULID.from_str(spec_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "Replication Specification not found", source_exc=e)
+        raise DashboardNotFound("Replication Specification not found") from e
     spec = await session.get(RepSpec, uid)
     if spec is None:
-        raise_envelope(404, "lookup", "Replication Specification not found")
+        raise DashboardNotFound("Replication Specification not found")
     return spec
 
 

@@ -123,6 +123,7 @@ async def test_delete_other_users_key_returns_404(client, session):
     # Request as _HEADERS user (different user)
     response = await client.delete(f"{_URL}/{str(api_key.id)}", headers=_HEADERS)
     assert response.status_code == 404
+    assert "text/html" in response.headers["content-type"]
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +171,7 @@ async def test_patch_other_users_key_returns_404(client, session):
         headers=_HEADERS,
     )
     assert response.status_code == 404
+    assert "text/html" in response.headers["content-type"]
 
 
 # ---------------------------------------------------------------------------
