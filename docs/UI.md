@@ -282,7 +282,7 @@ Uses the **JSON data island** pattern: chip data is placed in a `<script type="a
 - `insertChip(label, value?)` — dispatches a `chip-insert` `CustomEvent` on `window` with `{ detail: { label: value ?? label } }`. Parent scopes listen via `@chip-insert.window`.
 - `init()` — parses chip data from `<script type="application/json">` inside `$el`; falls back to reading `[data-label]`/`[data-frequency]` DOM attributes.
 
-**Sort controls:** Three pill buttons — `[Frequency ▾]`, `[A → Z]`, `[Z → A]`. Active button gets `.btn--active`; others get `.btn--ghost`. Sort is purely client-side; no server round-trip.
+**Sort controls:** Three pill buttons — `[Frequency ▾]`, `[A → Z]`, `[Z → A]`. Active button gets `.btn--active .btn--sm`; others get `.btn--secondary .btn--sm`. Sort is purely client-side; no server round-trip.
 
 **Usage:**
 ```html
@@ -291,13 +291,13 @@ Uses the **JSON data island** pattern: chip data is placed in a `<script type="a
   <div x-data="sortableChips('frequency')">
     <script type="application/json">{{ suggestions | tojson }}</script>
     <div style="display:flex;gap:var(--space-1);margin-bottom:var(--space-2);">
-      <button type="button" :class="sort==='frequency'?'btn btn--active':'btn btn--ghost'" @click="setSort('frequency')">Frequency ▾</button>
-      <button type="button" :class="sort==='asc'?'btn btn--active':'btn btn--ghost'" @click="setSort('asc')">A → Z</button>
-      <button type="button" :class="sort==='desc'?'btn btn--active':'btn btn--ghost'" @click="setSort('desc')">Z → A</button>
+      <button type="button" :class="sort==='frequency'?'btn btn--active btn--sm':'btn btn--secondary btn--sm'" @click="setSort('frequency')">Frequency ▾</button>
+      <button type="button" :class="sort==='asc'?'btn btn--active btn--sm':'btn btn--secondary btn--sm'" @click="setSort('asc')">A → Z</button>
+      <button type="button" :class="sort==='desc'?'btn btn--active btn--sm':'btn btn--secondary btn--sm'" @click="setSort('desc')">Z → A</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
       <template x-for="chip in chips" :key="chip.label">
-        <button type="button" class="btn btn--ghost text-sm" @click="insertChip(chip.label, chip.value)">
+        <button type="button" class="btn btn--secondary btn--sm" @click="insertChip(chip.label, chip.value)">
           <span x-text="chip.label"></span>&nbsp;<span class="text-muted" x-text="'×' + chip.frequency"></span>
         </button>
       </template>

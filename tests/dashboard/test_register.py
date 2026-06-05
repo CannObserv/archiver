@@ -9,6 +9,7 @@ from src.api.main import app
 from src.core.fetchers.base import FetchResult
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
+from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
 
@@ -314,7 +315,7 @@ _PREVIEW_HTML_NO_TITLE = b"<html><body><div>extracted content</div></body></html
 _PREVIEW_SPEC = '[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
 
 
-class _StubFetcher:
+class _StubFetcher(HttpFetcherProtocol):
     def __init__(self, content: bytes) -> None:
         self._content = content
 
