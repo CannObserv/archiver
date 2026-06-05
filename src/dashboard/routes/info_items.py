@@ -61,6 +61,7 @@ from src.core.tools.deactivate_info_item_source_binding import (
     deactivate_info_item_source_binding,
 )
 from src.dashboard.deps import get_dashboard_user
+from src.dashboard.exceptions import DashboardNotFound
 
 router = APIRouter(prefix="/dashboard/info-items", tags=["dashboard-info-items"])
 
@@ -80,10 +81,10 @@ async def _resolve_item(item_id: str, session: AsyncSession) -> InfoItem:
     try:
         uid = ULID.from_str(item_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "Information Item not found", source_exc=e)
+        raise DashboardNotFound("Information Item not found") from e
     item = await session.get(InfoItem, uid)
     if item is None:
-        raise_envelope(404, "lookup", "Information Item not found")
+        raise DashboardNotFound("Information Item not found")
     return item
 
 
@@ -520,7 +521,7 @@ async def bind_source(
     try:
         item_ulid = ULID.from_str(item_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "Information Item not found", source_exc=e)
+        raise DashboardNotFound("Information Item not found") from e
 
     try:
         source_ulid = ULID.from_str(info_source_id)
@@ -530,9 +531,9 @@ async def bind_source(
     try:
         await bind_info_source(session, info_item_id=item_ulid, info_source_id=source_ulid)
     except BindItemNotFoundError as e:
-        raise_envelope(404, "lookup", "Information Item not found", source_exc=e)
+        raise DashboardNotFound("Information Item not found") from e
     except BindSourceNotFoundError as e:
-        raise_envelope(404, "lookup", "Information Source not found", source_exc=e)
+        raise DashboardNotFound("Information Source not found") from e
     except ActiveBindingAlreadyExistsError as e:
         raise_envelope(
             409, "conflict", "An active binding already exists for this item", source_exc=e
@@ -562,14 +563,14 @@ async def deactivate_source_binding(
         item_ulid = ULID.from_str(item_id)
         source_ulid = ULID.from_str(source_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "Binding not found", source_exc=e)
+        raise DashboardNotFound("Binding not found") from e
 
     try:
         await deactivate_info_item_source_binding(
             session, info_item_id=item_ulid, info_source_id=source_ulid
         )
     except BindingNotFoundError as e:
-        raise_envelope(404, "lookup", "Active binding not found", source_exc=e)
+        raise DashboardNotFound("Active binding not found") from e
 
     await session.commit()
     return Response(status_code=200)
@@ -591,7 +592,7 @@ async def assign_rep_spec_route(
     try:
         item_ulid = ULID.from_str(item_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "Information Item not found", source_exc=e)
+        raise DashboardNotFound("Information Item not found") from e
 
     try:
         rs_ulid = ULID.from_str(rep_spec_id.strip())
@@ -601,9 +602,9 @@ async def assign_rep_spec_route(
     try:
         await assign_rep_spec(session, info_item_id=item_ulid, rep_spec_id=rs_ulid)
     except AssignItemNotFoundError as e:
-        raise_envelope(404, "lookup", "Information Item not found", source_exc=e)
+        raise DashboardNotFound("Information Item not found") from e
     except RepSpecNotFoundError as e:
-        raise_envelope(404, "lookup", "Replication Specification not found", source_exc=e)
+        raise DashboardNotFound("Replication Specification not found") from e
     except RepFieldsIncompleteError as e:
         raise_envelope(422, "domain", "rep_fields incomplete for this RepSpec", source_exc=e)
 
@@ -631,11 +632,11 @@ async def deactivate_rep_spec_assignment(
         item_ulid = ULID.from_str(item_id)
         aid_ulid = ULID.from_str(aid)
     except Exception as e:
-        raise_envelope(404, "lookup", "Assignment not found", source_exc=e)
+        raise DashboardNotFound("Assignment not found") from e
 
     assignment = await session.get(InfoItemRepSpec, aid_ulid)
     if assignment is None or assignment.info_item_id != item_ulid:
-        raise_envelope(404, "lookup", "Assignment not found")
+        raise DashboardNotFound("Assignment not found")
 
     assignment.deactivated_at = datetime.now(UTC)
     await session.flush()
@@ -662,11 +663,11 @@ async def set_assignment_public_url(
         item_ulid = ULID.from_str(item_id)
         aid_ulid = ULID.from_str(aid)
     except Exception as e:
-        raise_envelope(404, "lookup", "Assignment not found", source_exc=e)
+        raise DashboardNotFound("Assignment not found") from e
 
     assignment = await session.get(InfoItemRepSpec, aid_ulid)
     if assignment is None or assignment.info_item_id != item_ulid:
-        raise_envelope(404, "lookup", "Assignment not found")
+        raise DashboardNotFound("Assignment not found")
 
     rs = await session.get(RepSpec, assignment.rep_spec_id)
 
@@ -702,7 +703,7 @@ async def bind_revision_route(
     try:
         item_ulid = ULID.from_str(item_id)
     except Exception as e:
-        raise_envelope(404, "lookup", "Information Item not found", source_exc=e)
+        raise DashboardNotFound("Information Item not found") from e
 
     try:
         rev_ulid = ULID.from_str(source_revision_id.strip())
@@ -712,9 +713,9 @@ async def bind_revision_route(
     try:
         await bind_revision(session, info_item_id=item_ulid, source_revision_id=rev_ulid)
     except BindRevItemNotFoundError as e:
-        raise_envelope(404, "lookup", "Information Item not found", source_exc=e)
+        raise DashboardNotFound("Information Item not found") from e
     except SourceRevisionNotFoundError as e:
-        raise_envelope(404, "lookup", "Source Revision not found", source_exc=e)
+        raise DashboardNotFound("Source Revision not found") from e
 
     await session.commit()
     return RedirectResponse(

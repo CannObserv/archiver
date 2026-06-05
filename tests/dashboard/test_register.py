@@ -160,6 +160,9 @@ async def test_suggest_specs_returns_existing_selectors(client, session):
     )
     assert r.status_code == 200
     assert "css" in r.text or "#main" in r.text
+    # The chip value field must carry the full spec JSON (not just the display label).
+    # tojson encodes the value string as escaped JSON, so check bare key name without quotes.
+    assert "schema_version" in r.text
 
 
 # ---------------------------------------------------------------------------

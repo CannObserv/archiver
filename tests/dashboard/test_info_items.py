@@ -346,6 +346,7 @@ async def test_detail_not_found_returns_404(client):
     fake_id = str(ULID())
     r = await client.get(f"/dashboard/info-items/{fake_id}", headers=_HEADERS)
     assert r.status_code == 404
+    assert "text/html" in r.headers["content-type"]
 
 
 @pytest.mark.asyncio
@@ -444,6 +445,7 @@ async def test_bind_source_unknown_item_returns_404(client):
         headers=_HEADERS,
     )
     assert r.status_code == 404
+    assert "text/html" in r.headers["content-type"]
 
 
 # ---------------------------------------------------------------------------
@@ -517,6 +519,7 @@ async def test_assign_rep_spec_unknown_item_returns_404(client):
         headers=_HEADERS,
     )
     assert r.status_code == 404
+    assert "text/html" in r.headers["content-type"]
 
 
 # ---------------------------------------------------------------------------
@@ -713,3 +716,83 @@ async def test_rep_fields_inline_save(client, session):
 
     await session.refresh(item)
     assert item.rep_fields == {"key1": "value1"}
+
+
+# ---------------------------------------------------------------------------
+# GET /{item_id}/suggest-rep-fields
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_suggest_rep_fields_no_domain_returns_empty(client, session):
+    """Item with no active source binding returns empty suggestions."""
+    item = _make_item("No Source Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/suggest-rep-fields",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "No rep_fields suggestions" in r.text
+
+
+@pytest.mark.asyncio
+async def test_suggest_rep_fields_returns_domain_keys(client, session):
+    """Domain-scoped rep_fields keys appear as sortableChips data island."""
+    from src.core.models.domain import Domain
+
+    domain = Domain(name="repfields.example.com")
+    session.add(domain)
+    await session.flush()
+
+    # Peer item with rep_fields on the same domain
+    peer = _make_item("Peer Item")
+    peer.rep_fields = {"canonical_url": "", "headline": ""}
+    session.add(peer)
+    await session.flush()
+
+    peer_src = InfoSource(
+        url="https://repfields.example.com/peer",
+        source_specs=[_spec()],
+        domain_name="repfields.example.com",
+    )
+    session.add(peer_src)
+    await session.flush()
+
+    peer_binding = InfoItemSource(
+        info_item_id=peer.info_item_id,
+        info_source_id=peer_src.info_source_id,
+    )
+    session.add(peer_binding)
+    await session.flush()
+
+    # Target item bound to the same domain
+    target = _make_item("Target Item")
+    session.add(target)
+    await session.flush()
+
+    target_src = InfoSource(
+        url="https://repfields.example.com/target",
+        source_specs=[_spec()],
+        domain_name="repfields.example.com",
+    )
+    session.add(target_src)
+    await session.flush()
+
+    target_binding = InfoItemSource(
+        info_item_id=target.info_item_id,
+        info_source_id=target_src.info_source_id,
+    )
+    session.add(target_binding)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{target.info_item_id}/suggest-rep-fields",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    # Both keys from the peer item should appear in the JSON data island
+    assert "canonical_url" in r.text
+    assert "headline" in r.text

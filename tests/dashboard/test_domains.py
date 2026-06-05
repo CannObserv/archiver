@@ -87,6 +87,7 @@ async def test_domain_detail_200(client, session):
 async def test_domain_detail_404_when_absent(client):
     r = await client.get("/dashboard/domains/no-such.example.com", headers=_HEADERS)
     assert r.status_code == 404
+    assert "text/html" in r.headers["content-type"]
 
 
 @pytest.mark.asyncio
