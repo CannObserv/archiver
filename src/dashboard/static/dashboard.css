@@ -889,7 +889,9 @@ p:last-child { margin-bottom: 0; }
 [x-cloak] { display: none !important; }
 
 /* ─── Utilities ──────────────────────────────────────────────────────────── */
-.text-muted { color: var(--color-text-muted); }
+.text-muted   { color: var(--color-text-muted); }
+.text-danger  { color: var(--color-danger); }
+.text-success { color: var(--color-success); }
 .text-sm    { font-size: var(--font-size-sm); }
 .text-xs    { font-size: var(--font-size-xs); }
 .text-mono  { font-family: var(--font-mono); }
