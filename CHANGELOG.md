@@ -16,6 +16,12 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.1.1 (2026-06-05)
+
+[service] **`page_title` added to `POST /api/v1/tools/preview-extraction` response.**
+
+`PreviewExtractionResult` gains `page_title: str` — the value of the HTML `<title>` element extracted from the full document before any CSS/XPath selector narrows scope. Empty string when absent. Non-breaking additive field; existing consumers are unaffected.
+
 ## v4.1.0 (2026-06-04)
 
 [both] **Domain registry + dashboard UX redesign** (archiver#49).
