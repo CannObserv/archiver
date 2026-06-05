@@ -243,7 +243,7 @@ async def preview(
         return HTMLResponse('<p class="text-muted text-sm">Invalid source_specs JSON.</p>')
 
     try:
-        result = await preview_extraction(canonical, spec, fetcher=fetcher)
+        result = await preview_extraction(fetcher, canonical, spec)
         text_preview = "\n".join(c.text[:200] for c in result.chunks[:3] if c.text)[:500]
         suggested_name = ""
         for chunk in result.chunks:

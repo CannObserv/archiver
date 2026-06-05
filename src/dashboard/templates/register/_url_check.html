@@ -1,22 +1,22 @@
 {% if error %}
 <div class="filter-card" style="border-color:var(--color-danger,#c00);">
-  <p class="text-small text-danger">{{ error }}</p>
+  <p class="text-sm text-danger">{{ error }}</p>
 </div>
 {% elif case == "A" %}
 <div class="filter-card">
-  <p class="text-small text-muted" style="margin-bottom:var(--space-2);">
+  <p class="text-sm text-muted" style="margin-bottom:var(--space-2);">
     <strong>URL already registered.</strong>
     Existing Information Items at this URL:
   </p>
   <ul style="margin:0 0 var(--space-2);padding-left:var(--space-3);">
     {% for item in bound_items %}
-    <li><a href="/dashboard/info-items/{{ item.info_item_id }}" class="text-small">{{ item.name }}</a></li>
+    <li><a href="/dashboard/info-items/{{ item.info_item_id }}" class="text-sm">{{ item.name }}</a></li>
     {% endfor %}
   </ul>
   <div style="display:flex;gap:var(--space-2);">
-    <span class="badge badge--primary">Register a new Information Item at this URL (default)</span>
+    <span class="badge badge--info">Register a new Information Item at this URL (default)</span>
     {% for src in existing_sources %}
-    <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="btn btn--ghost text-small">
+    <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="btn btn--secondary btn--sm">
       Add selector to existing source
     </a>
     {% endfor %}
@@ -24,27 +24,26 @@
 </div>
 {% elif case == "B" %}
 <div class="filter-card">
-  <p class="text-small text-muted">
+  <p class="text-sm text-muted">
     <strong>{{ hostname }}</strong> — This URL already has an unbound Information Source.
   </p>
-  <p class="text-small" style="margin-top:var(--space-1);">
+  <p class="text-sm" style="margin-top:var(--space-1);">
     Proceeding will create a <strong>new</strong> Information Source and Information Item at this URL.
     To reuse the existing source, bind it manually from the Information Item detail page after registering.
   </p>
 </div>
 {% elif case == "new" and domain %}
-<div class="filter-card">
-  <p class="text-small">
+<div class="filter-card" style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);">
+  <p class="text-sm" style="margin:0;">
     <span class="badge badge--success">Known domain</span>
-    <strong>{{ hostname }}</strong>
-    &nbsp;—&nbsp;
-    <a href="/dashboard/domains/{{ hostname }}" class="text-small">view domain</a>
+    &nbsp;<strong>{{ hostname }}</strong>
   </p>
+  <a href="/dashboard/domains/{{ hostname }}" class="btn btn--secondary btn--sm">View</a>
 </div>
 {% elif case == "new" and not domain %}
 <div class="filter-card">
-  <p class="text-small text-muted">
-    <span class="badge badge--muted">New domain</span>
+  <p class="text-sm text-muted">
+    <span class="badge badge--neutral">New domain</span>
     <strong>{{ hostname }}</strong> will be created automatically.
   </p>
 </div>
