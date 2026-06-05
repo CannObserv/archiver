@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from bs4 import BeautifulSoup
 
 from src.core.extraction_defaults import extraction_config_from_spec
 from src.core.extractors import HtmlExtractor
@@ -37,6 +38,7 @@ class PreviewExtractionResult:
     total_chars: int
     fingerprint_algorithm: str
     computed_fingerprint: str
+    page_title: str
 
 
 class TargetUnreachableError(Exception):
@@ -77,6 +79,11 @@ async def preview_extraction(
     except httpx.HTTPError as e:
         raise TargetUnreachableError(str(e)) from e
 
+    # Extract <title> from the full document before the selector narrows scope.
+    soup = BeautifulSoup(fetch_result.content, "lxml")
+    title_tag = soup.find("title")
+    page_title = title_tag.get_text(strip=True) if title_tag else ""
+
     config = extraction_config_from_spec(source_spec)
     extractor = HtmlExtractor()
     extraction = await extractor.extract(fetch_result.content, config=config)
@@ -98,4 +105,5 @@ async def preview_extraction(
         total_chars=extraction.total_chars,
         fingerprint_algorithm="sha256",
         computed_fingerprint=computed_fingerprint,
+        page_title=page_title,
     )

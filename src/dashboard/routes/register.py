@@ -245,11 +245,7 @@ async def preview(
     try:
         result = await preview_extraction(fetcher, canonical, spec)
         text_preview = "\n".join(c.text[:200] for c in result.chunks[:3] if c.text)[:500]
-        suggested_name = ""
-        for chunk in result.chunks:
-            if chunk.chunk_type == "title" and chunk.text:
-                suggested_name = chunk.text.strip()[:200]
-                break
+        suggested_name = result.page_title[:200]
 
         return _templates.TemplateResponse(
             request,
