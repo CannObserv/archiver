@@ -41,7 +41,7 @@
 
 Templates: `domains/list.html`, `domains/detail.html`, `domains/_notes_partial.html`.
 
-### Registration flow (`/dashboard/register`)  *(#49 — pending Step 6)*
+### Registration flow (`/dashboard/register`)  *(#49 — implemented)*
 
 4-step flow: URL → Selector → Metadata → Review & Submit. Replaces `/dashboard/info-items/new`.
 See design doc `docs/plans/2026-06-04-dashboard-ux-redesign-design.md` for full spec.
@@ -185,28 +185,35 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 **GET `/dashboard/info-items/`** — paginated list with optional `name_contains` search. Filter panel: search input (flex-fill) + Search button (right-aligned via `margin-left:auto`). Columns: name (link to detail), Information Source (primary source URL linked to InfoSource detail; `—` if none), Observed (max `captured_at` of the primary source's revisions formatted `%Y-%m-%d %H:%M`; `—` if none).
 
-**GET `/dashboard/info-items/new`** — three-step `infoItemWizard` form. Step 1: name/description/owner/rep_fields (`jsonFieldEditor`). Step 2: optional `initial_url` text input + `initial_source_specs` JSON array (`jsonFieldEditor`). Step 3: review and submit.
+**GET `/dashboard/info-items/new`** — 301 redirect to `/dashboard/register`. The old 3-step `infoItemWizard` form was replaced by the registration flow in #49.
 
-**POST `/dashboard/info-items/new`** — creates InfoItem (and optionally an initial InfoSource binding). Form fields: `initial_url` (string) + `initial_source_specs` (JSON array). Redirects 303 to detail on success. Returns 422 with re-rendered form on validation error.
+**POST `/dashboard/info-items/new`** — legacy direct-create endpoint (still active). Form fields: `name`, `description`, `owner`, `rep_fields` (JSON), `initial_url` (string), `initial_source_specs` (JSON array). Redirects 303 to detail on success. Returns 422 with re-rendered form on validation error. (New registrations should use `/dashboard/register` instead.)
 
-**GET `/dashboard/info-items/{id}`** — detail page. Header uses `.detail-grid` with `.detail-grid__item` / `.detail-grid__label` / `.detail-grid__value` divs (not `dl`/`dt`/`dd`) to show name, description, owner, rep_fields (shows `—` when empty), created_at. Three Alpine.js tabs rendered with `.tabs` / `.tabs__list` / `.tabs__btn` / `.tabs__btn--active` (not `btn--ghost`, which is topbar-only):
-- *Sources* — table of active `info_item_sources` bindings; URL column shows InfoSource detail link + external `↗` link; bind-source form uses `filter-card filter-card--stacked` (multi-field vertical form).
-- *Replication Specs* — table of active `info_item_rep_specs` assignments + assign form (`filter-card`, single-field).
-- *Revision History* — last 50 `info_item_source_revisions` ordered by `bound_at desc`.
+**GET `/dashboard/info-items/{id}`** — 5-section vertical-scroll hub page (template `info_items/detail.html`):
 
-**POST `/dashboard/info-items/{id}/bind-source`** — binds an existing InfoSource (form field: `info_source_id`). Redirects 303 to detail `?tab=sources`. Returns 409 if an active binding already exists.
+1. **Overview** — `<h1>` name; ULID copy-button (inline Alpine `{copied:false}`); domain badge linking to `/dashboard/domains/{name}` (or muted "No primary source" if unbound); `.detail-grid` with description, owner (if set), created_at.
+2. **Information Sources** — `data-table` of active `info_item_sources` bindings (columns: URL, Domain, Bound, Actions); first row gets a brand left-border to mark it as the primary; `<details>` toggle for "Bind existing Information Source" form (plain POST, `info_source_id` field).
+3. **Watcher** (stub) — shows primary source URL + domain link; placeholder text for future cross-service integration.
+4. **Replicator** — two sub-sections:
+   - *Rep Fields* — `x-data="repFieldsEditor()"` wrapper; HTMX-loaded `sortableChips` suggestions (`hx-trigger="load"`); `<textarea name="rep_fields">` with `PATCH /dashboard/info-items/{id}/rep-fields` inline save; flash target `#rep-fields-flash`.
+   - *Replication Specs* — `data-table` of active `info_item_rep_specs` assignments; assign form (`filter-card`, `rep_spec_id` field); HTMX delete per row.
+5. **Revision History** — `data-table` of `info_item_source_revisions` ordered by `bound_at desc`; columns: Revision (linked to revision detail), Captured, Cache.
 
-**DELETE `/dashboard/info-items/{id}/info-sources/{source_id}`** — HTMX delete; sets `deactivated_at = now()`. Response replaces `<tr id="source-row-{source_id}">` with empty (removes row).
+**POST `/dashboard/info-items/{id}/bind-source`** — binds an existing InfoSource (form field: `info_source_id`). Redirects 303 to detail. Returns 409 if an active binding already exists.
 
-**POST `/dashboard/info-items/{id}/assign-rep-spec`** — assigns a RepSpec (form field: `rep_spec_id`). Redirects 303 to detail `?tab=repspecs`.
+**DELETE `/dashboard/info-items/{id}/info-sources/{source_id}`** — HTMX delete (form POST + route handler); sets `deactivated_at = now()`. Response triggers HTMX redirect to detail.
+
+**POST `/dashboard/info-items/{id}/assign-rep-spec`** — assigns a RepSpec (form field: `rep_spec_id`). Redirects 303 to detail.
 
 **DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** — HTMX delete; sets `deactivated_at = now()`. Removes `<tr id="rs-row-{aid}">`.
 
 **PATCH `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/public-url`** — sets `public_url` on an assignment (form field: `public_url`). Returns `info_items/_rep_spec_row.html` fragment replacing the row.
 
-**POST `/dashboard/info-items/{id}/bind-revision`** — binds a SourceRevision (form field: `source_revision_id`). Redirects 303 to detail `?tab=revisions`.
+**PATCH `/dashboard/info-items/{id}/rep-fields`** — inline save for rep_fields JSONB (form field: `rep_fields` JSON string). Returns flash fragment into `#rep-fields-flash`.
 
-Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment used in detail list and as PATCH public-url response.
+**POST `/dashboard/info-items/{id}/bind-revision`** — binds a SourceRevision (form field: `source_revision_id`). Redirects 303 to detail.
+
+Partial template: `info_items/_rep_spec_row.html` — reusable `<tr>` fragment for rep-spec assignment rows.
 
 ### Information Sources (`/dashboard/info-sources/`)  *(Epic 4 — implemented)*
 
@@ -287,7 +294,7 @@ Chip strip for selector/rep-field suggestions with client-side re-sort.
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
       <template x-for="chip in chips" :key="chip.label">
-        <button type="button" class="btn btn--ghost text-small" @click="insertChip(chip.label, chip.value)">
+        <button type="button" class="btn btn--ghost text-sm" @click="insertChip(chip.label, chip.value)">
           <span x-text="chip.label"></span>&nbsp;<span class="text-muted" x-text="'×' + chip.frequency"></span>
         </button>
       </template>
@@ -298,7 +305,7 @@ Chip strip for selector/rep-field suggestions with client-side re-sort.
 
 JS tests in `tests/js/sortable-chips.test.js` (Vitest).
 
-### `repFieldsEditor` Alpine Component  *(#49 CR — implemented)*
+### `repFieldsEditor` Alpine Component  *(#49 — implemented)*
 
 Wrapper for the `rep_fields` textarea + sortableChips suggestion strip on the InfoItem detail hub page. Handles `chip-insert` window events by merging the clicked key into the existing JSON object (preserving other keys) rather than replacing the whole textarea value.
 

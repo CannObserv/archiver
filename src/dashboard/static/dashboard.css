@@ -439,6 +439,15 @@ p:last-child { margin-bottom: 0; }
   min-height: 32px;
   font-size: var(--font-size-xs);
 }
+.btn--active {
+  background: var(--color-brand-subtle);
+  color: var(--color-brand);
+  border-color: var(--color-brand);
+}
+.btn--active:hover:not(:disabled) {
+  background: var(--color-brand-subtle);
+  border-color: var(--color-brand-dark);
+}
 
 /* ─── Badges ─────────────────────────────────────────────────────────────── */
 .badge {

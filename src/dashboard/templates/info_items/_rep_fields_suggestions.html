@@ -10,7 +10,7 @@
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
     <template x-for="chip in chips" :key="chip.label">
-      <button type="button" class="btn btn--ghost text-small" @click="insertChip(chip.label)">
+      <button type="button" class="btn btn--ghost text-sm" @click="insertChip(chip.label)">
         <span x-text="chip.label"></span>&nbsp;<span class="text-muted" x-text="'×' + chip.frequency"></span>
       </button>
     </template>
