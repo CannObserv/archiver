@@ -180,37 +180,50 @@ document.addEventListener("alpine:init", function () {
     /**
      * Sortable chip strip for selector / rep-field suggestions.
      *
-     * Usage: x-data="sortableChips('frequency', null, chipsJson)" where chipsJson is a
-     * JSON-serialised Array<{label, frequency}> rendered by the server.
+     * Data island pattern: place a <script type="application/json"> child element
+     * inside the component div containing the chip array.  init() reads and parses
+     * it on startup so JSON never appears inside an HTML attribute (which would
+     * require careful escaping).
      *
-     * Sort modes: 'frequency' (desc by data-frequency), 'asc' (A→Z), 'desc' (Z→A).
+     * Usage:
+     *   <div x-data="sortableChips('frequency')">
+     *     <script type="application/json">{{ suggestions | tojson }}</script>
+     *     ... sort controls + <template x-for="chip in chips"> ...
+     *   </div>
+     *
+     * Sort modes: 'frequency' (desc), 'asc' (A→Z), 'desc' (Z→A).
      * Clicking a chip dispatches a window-level 'chip-insert' CustomEvent with
      * { label } so any ancestor or sibling Alpine scope can listen with
-     * @chip-insert.window="...".
+     * @chip-insert.window="...".  The optional 'value' field on a chip overrides
+     * the dispatch payload (used when the injected value differs from display text).
      *
-     * @param {string} defaultSort   Initial sort mode ('frequency', 'asc', or 'desc').
-     * @param {*}      _unused       Reserved for backward compat — pass null.
-     * @param {Array}  initialChips  Server-rendered chip data [{label, frequency}, ...].
+     * @param {string} defaultSort  Initial sort mode ('frequency', 'asc', or 'desc').
      * @returns {object} Alpine component data.
      */
-    window.Alpine.data("sortableChips", function (defaultSort, _unused, initialChips) {
+    window.Alpine.data("sortableChips", function (defaultSort) {
         return {
             sort: defaultSort || "frequency",
             chips: [],
 
             init: function () {
                 var self = this;
-                if (Array.isArray(initialChips) && initialChips.length) {
-                    // Chips passed as JSON from server; preserve optional 'value' field
-                    // for cases where the display label differs from the injected value.
-                    initialChips.forEach(function (c) {
-                        self.chips.push({
-                            label: String(c.label),
-                            frequency: Number(c.frequency) || 0,
-                            value: c.value
+                // Primary: read chip data from a JSON data island inside this element.
+                var dataScript = this.$el.querySelector('script[type="application/json"]');
+                if (dataScript) {
+                    try {
+                        var data = JSON.parse(dataScript.textContent || "[]");
+                        data.forEach(function (c) {
+                            self.chips.push({
+                                label: String(c.label),
+                                frequency: Number(c.frequency) || 0,
+                                value: c.value
+                            });
                         });
-                    });
-                } else {
+                    } catch (e) {
+                        // malformed JSON — fall through to DOM fallback below
+                    }
+                }
+                if (!self.chips.length) {
                     // Fallback: read data-label / data-frequency from child buttons.
                     var buttons = this.$el.querySelectorAll("[data-label]");
                     var i;

@@ -268,17 +268,19 @@ Single-field document editor with client-side JSON parse validation on blur.
 
 Chip strip for selector/rep-field suggestions with client-side re-sort.
 
+Uses the **JSON data island** pattern: chip data is placed in a `<script type="application/json">` child element so JSON never appears inside an HTML attribute (which would require escaping `"` and is fragile). `init()` reads and parses the script element on startup.
+
 **Parameters (factory args):**
 - `defaultSort: string` — initial sort mode: `'frequency'` (default), `'asc'`, or `'desc'`.
-- `_unused: null` — reserved for backward compat; always pass `null`.
-- `initialChips: Array<{label, frequency, value?}>` — server-rendered chip data as a JSON literal (use `{{ suggestions | tojson }}`). The optional `value` field is the injected payload when it differs from the display `label` (e.g. a full spec JSON string vs the human-readable algorithm/selector).
 
 **State:** `sort: string`, `chips: Array<{label, frequency, value?}>` (reactive, re-sorted on sort change).
+
+**Chip shape:** `{label: string, frequency: number, value?: string}`. The optional `value` field is the dispatch payload when it differs from the display `label` (e.g. a full spec JSON array string vs a human-readable `"algorithm: selector"` label).
 
 **Methods:**
 - `setSort(mode)` — sets `sort` and re-sorts `chips` in place.
 - `insertChip(label, value?)` — dispatches a `chip-insert` `CustomEvent` on `window` with `{ detail: { label: value ?? label } }`. Parent scopes listen via `@chip-insert.window`.
-- `init()` — seeds `chips` from `initialChips` JSON arg; falls back to reading `data-label`/`data-frequency` DOM attributes if no arg provided.
+- `init()` — parses chip data from `<script type="application/json">` inside `$el`; falls back to reading `[data-label]`/`[data-frequency]` DOM attributes.
 
 **Sort controls:** Three pill buttons — `[Frequency ▾]`, `[A → Z]`, `[Z → A]`. Active button gets `.btn--active`; others get `.btn--ghost`. Sort is purely client-side; no server round-trip.
 
@@ -286,7 +288,8 @@ Chip strip for selector/rep-field suggestions with client-side re-sort.
 ```html
 <!-- Parent listens for chip-insert events -->
 <div @chip-insert.window="myProp = $event.detail.label">
-  <div x-data="sortableChips('frequency', null, {{ suggestions | tojson }})">
+  <div x-data="sortableChips('frequency')">
+    <script type="application/json">{{ suggestions | tojson }}</script>
     <div style="display:flex;gap:var(--space-1);margin-bottom:var(--space-2);">
       <button type="button" :class="sort==='frequency'?'btn btn--active':'btn btn--ghost'" @click="setSort('frequency')">Frequency ▾</button>
       <button type="button" :class="sort==='asc'?'btn btn--active':'btn btn--ghost'" @click="setSort('asc')">A → Z</button>

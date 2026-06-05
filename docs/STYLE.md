@@ -125,13 +125,32 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `[x-cloak] { display: none !important; }` — prevents FOUC on elements controlled by `x-show`. Add `x-cloak` to any element that should be hidden before Alpine initialises (e.g. collapsible panels). Do **not** add `x-cloak` to elements that should start visible.
 - For elements that are conditionally hidden by `x-show` but start hidden, add `style="display:none;"` as an initial-state hint instead of `x-cloak`; Alpine's `x-show` manages their display after initialisation. This preserves the CSS class's `display` value (e.g. `display:flex` on `.entity-card__actions`) when the element is shown.
 
+### JSON data island pattern
+
+When an Alpine component needs server-rendered data at initialisation, place the data in a `<script type="application/json">` child element rather than embedding JSON inside the `x-data` attribute. Jinja2's `tojson` filter does **not** escape `"`, so JSON in a double-quoted attribute is silently truncated by the HTML parser; single-quoted attributes work but are fragile to copy. The data island avoids both problems:
+
+```html
+<div x-data="myComponent()">
+  <script type="application/json">{{ my_data | tojson }}</script>
+  ...
+</div>
+```
+
+In `init()`, read it with:
+```javascript
+var el = this.$el.querySelector('script[type="application/json"]');
+var data = el ? JSON.parse(el.textContent || "[]") : [];
+```
+
+Notes: `tojson` escapes `<` → `<`, so `</script>` inside JSON values cannot close the tag early. Browsers do not execute `<script type="application/json">`. Alpine and HTMX ignore it. Apply this pattern to any Alpine component that needs a non-trivial server-rendered data structure at startup.
+
 ### Alpine component catalogue (`main.js`)
 
 All components are registered via `window.Alpine.data('name', factory)` inside a `alpine:init` listener before `Alpine.start()`. Do **not** add inline `x-data="{ ... }"` blobs for logic that should be reusable or testable.
 
 | Component | File | Description |
 |---|---|---|
-| `sortableChips` | `main.js` | Chip strip for selector/rep-field suggestions with client-side sort. Pass server chips as JSON: `x-data="sortableChips('frequency', null, chipsJson)"`. Optional `value` field on each chip overrides the dispatch payload (used for spec JSON vs display text). Clicking dispatches `chip-insert` window event; caller listens with `@chip-insert.window`. Full docs in `docs/UI.md`. |
+| `sortableChips` | `main.js` | Chip strip for selector/rep-field suggestions with client-side sort. Uses JSON data island: `x-data="sortableChips('frequency')"` with `<script type="application/json">{{ chips \| tojson }}</script>` inside. Optional `value` field on each chip overrides the dispatch payload. Clicking dispatches `chip-insert` window event; caller listens with `@chip-insert.window`. Full docs in `docs/UI.md`. |
 | `repFieldsEditor` | `main.js` | Wrapper for the rep_fields textarea + suggestion strip. Listens for `chip-insert` window events and merges the key into the existing JSON object. Usage: `x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)"`. Full docs in `docs/UI.md`. |
 | `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
 | `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |

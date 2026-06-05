@@ -1,5 +1,6 @@
 {% if suggestions %}
-<div x-data="sortableChips('frequency', null, {{ suggestions | tojson }})">
+<div x-data="sortableChips('frequency')">
+  <script type="application/json">{{ suggestions | tojson }}</script>
   <div style="display:flex;gap:var(--space-1);margin-bottom:var(--space-2);">
     <button type="button" :class="sort==='frequency'?'btn btn--active':'btn btn--ghost'"
             @click="setSort('frequency')">Frequency ▾</button>
