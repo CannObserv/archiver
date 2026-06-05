@@ -289,6 +289,47 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * Multi-step Information Item registration wizard.
+     *
+     * Manages step navigation, URL, sourceSpecs, itemName, and description.
+     * Server-rendered form field values are read in init() via $refs.
+     * The optional initialStep arg (from x-data="registerWizard(N)") lets the
+     * server re-open the wizard at a specific step on validation errors.
+     *
+     * @param {number} initialStep  Starting step (1–4; defaults to 1).
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("registerWizard", function (initialStep) {
+        return {
+            step: initialStep || 1,
+            url: "",
+            sourceSpecs: "",
+            itemName: "",
+            description: "",
+
+            init: function () {
+                var urlEl = this.$refs.urlInput;
+                if (urlEl && urlEl.value) { this.url = urlEl.value; }
+                var nameEl = this.$refs.nameInput;
+                if (nameEl && nameEl.value) { this.itemName = nameEl.value; }
+            },
+
+            loadSuggestions: function () {
+                var self = this;
+                if (!window.htmx) { return; }
+                window.htmx.ajax("GET",
+                    "/dashboard/register/suggest-specs?url=" + encodeURIComponent(self.url),
+                    { target: "#spec-suggestions-panel", swap: "innerHTML" }
+                );
+            },
+
+            prepareSubmit: function () {
+                // source_specs textarea is bound via x-model; nothing extra needed
+            }
+        };
+    });
+
+    /**
      * Multi-step Information Item create wizard.
      *
      * Manages step navigation and exposes rep_fields / initialSourceSpecsRaw
