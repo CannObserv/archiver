@@ -257,7 +257,7 @@ async def preview(
             {
                 "user": user,
                 "text_preview": text_preview,
-                "fingerprint": result.fingerprint[:24] if result.fingerprint else "",
+                "fingerprint": (result.computed_fingerprint or "")[:24],
                 "errors": [],
                 "suggested_name": suggested_name,
             },
