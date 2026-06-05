@@ -223,6 +223,7 @@ async def preview_extraction_route(
         total_chars=result.total_chars,
         fingerprint_algorithm=result.fingerprint_algorithm,
         computed_fingerprint=result.computed_fingerprint,
+        page_title=result.page_title,
     )
 
 

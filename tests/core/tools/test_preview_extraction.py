@@ -17,6 +17,11 @@ HTML_FIXTURE = (
     b"<html><body><div class='target'>kept content</div><div>dropped content</div></body></html>"
 )
 
+HTML_WITH_TITLE = (
+    b"<html><head><title>My Test Page</title></head>"
+    b"<body><div class='target'>kept content</div></body></html>"
+)
+
 VALID_FULL_PAGE_SPEC = {
     "schema_version": 1,
     "extraction": {"algorithm": "full_page"},
@@ -173,3 +178,17 @@ class TestPreviewExtractionUrlFromSpec:
             _CaptureFetcher(), "https://specific.example.com/path", VALID_FULL_PAGE_SPEC
         )
         assert received_urls == ["https://specific.example.com/path"]
+
+
+class TestPreviewExtractionPageTitle:
+    @pytest.mark.asyncio
+    async def test_page_title_populated_from_title_tag(self):
+        result = await preview_extraction(
+            _stub_fetcher(HTML_WITH_TITLE), DEFAULT_URL, VALID_FULL_PAGE_SPEC
+        )
+        assert result.page_title == "My Test Page"
+
+    @pytest.mark.asyncio
+    async def test_page_title_empty_when_no_title_tag(self):
+        result = await preview_extraction(_stub_fetcher(), DEFAULT_URL, VALID_FULL_PAGE_SPEC)
+        assert result.page_title == ""

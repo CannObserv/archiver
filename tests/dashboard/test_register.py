@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
+from src.api.main import app
+from src.core.fetchers.base import FetchResult
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
 
@@ -296,3 +298,94 @@ async def test_info_items_new_redirects_to_register(client):
     r = await client.get("/dashboard/info-items/new", headers=_HEADERS, follow_redirects=False)
     assert r.status_code == 301
     assert "/dashboard/register" in r.headers.get("location", "")
+
+
+# ---------------------------------------------------------------------------
+# POST /dashboard/register/preview  (HTMX partial)
+# ---------------------------------------------------------------------------
+
+_PREVIEW_HTML = (
+    b"<html><head><title>My Preview Page</title></head>"
+    b"<body><div>extracted content</div></body></html>"
+)
+
+_PREVIEW_HTML_NO_TITLE = b"<html><body><div>extracted content</div></body></html>"
+
+_PREVIEW_SPEC = '[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
+
+
+class _StubFetcher:
+    def __init__(self, content: bytes) -> None:
+        self._content = content
+
+    async def fetch(self, url: str, config: dict | None = None) -> FetchResult:
+        return FetchResult(
+            content=self._content,
+            status_code=200,
+            headers={"content-type": "text/html"},
+            duration_ms=5,
+            fetcher_used="http",
+        )
+
+
+@pytest.mark.asyncio
+async def test_preview_returns_retrieval_success(client):
+    """Happy path: retrieval + extraction render status messages."""
+    original = app.state.http_fetcher
+    app.state.http_fetcher = _StubFetcher(_PREVIEW_HTML)
+    try:
+        r = await client.post(
+            "/dashboard/register/preview",
+            headers=_HEADERS,
+            data={"url": "https://example.com/page", "source_specs": _PREVIEW_SPEC},
+        )
+    finally:
+        app.state.http_fetcher = original
+    assert r.status_code == 200
+    assert "Retrieval successful" in r.text
+    assert "Extraction successful" in r.text
+
+
+@pytest.mark.asyncio
+async def test_preview_shows_suggested_name_from_page_title(client):
+    """When the page has a <title>, the partial shows a Suggested name line."""
+    original = app.state.http_fetcher
+    app.state.http_fetcher = _StubFetcher(_PREVIEW_HTML)
+    try:
+        r = await client.post(
+            "/dashboard/register/preview",
+            headers=_HEADERS,
+            data={"url": "https://example.com/page", "source_specs": _PREVIEW_SPEC},
+        )
+    finally:
+        app.state.http_fetcher = original
+    assert r.status_code == 200
+    assert "My Preview Page" in r.text
+
+
+@pytest.mark.asyncio
+async def test_preview_no_suggested_name_when_no_title(client):
+    """When the page has no <title>, the Suggested name line is absent."""
+    original = app.state.http_fetcher
+    app.state.http_fetcher = _StubFetcher(_PREVIEW_HTML_NO_TITLE)
+    try:
+        r = await client.post(
+            "/dashboard/register/preview",
+            headers=_HEADERS,
+            data={"url": "https://example.com/page", "source_specs": _PREVIEW_SPEC},
+        )
+    finally:
+        app.state.http_fetcher = original
+    assert r.status_code == 200
+    assert "Suggested name" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_preview_returns_error_partial_on_invalid_spec(client):
+    r = await client.post(
+        "/dashboard/register/preview",
+        headers=_HEADERS,
+        data={"url": "https://example.com/page", "source_specs": "not json"},
+    )
+    assert r.status_code == 200
+    assert "Invalid source_specs" in r.text

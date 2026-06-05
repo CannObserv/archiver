@@ -308,6 +308,61 @@ Uses the **JSON data island** pattern: chip data is placed in a `<script type="a
 
 JS tests in `tests/js/sortable-chips.test.js` (Vitest).
 
+### `registerWizard` Alpine Component  *(#49 — implemented)*
+
+Multi-step Information Item registration wizard. Manages step navigation and form state across the 4-step URL → Selector → Metadata → Review flow. Used on `GET /dashboard/register`.
+
+**Factory args:**
+- `initialStep: number` — starting step (1–4; defaults to `1`). The server passes a non-1 value on validation re-renders to re-open at the failing step.
+
+**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`.
+
+**Methods:**
+- `init()` — copies `$refs.urlInput.value` into `url` and `$refs.nameInput.value` into `itemName` so server-rendered field values (e.g. on validation error re-render) populate Alpine state.
+- `loadSuggestions()` — fires an HTMX GET to `/dashboard/register/suggest-specs?url=<encoded>`, targeting `#spec-suggestions-panel`. Called by the step-1 "Next" button.
+- `prepareSubmit()` — no-op; `x-model` keeps the textarea in sync without a manual step.
+
+**Events:**
+- `@chip-insert.window` — receives chip inserts from `sortableChips` and writes the chip value into `sourceSpecs`. Wired on the root element.
+- `@preview-name` — receives bubbled `preview-name` events from `previewNameDispatch` children. Pre-fills `itemName` if still blank: `if (!itemName.trim()) itemName = $event.detail.name`. Wired on the root element.
+
+**Usage:**
+```html
+<div class="entity-section"
+     x-data="registerWizard({{ initial_step|default(1) }})"
+     @chip-insert.window="sourceSpecs = $event.detail.label"
+     @preview-name="if (!itemName.trim()) itemName = $event.detail.name">
+  ...
+  <input x-ref="urlInput" x-model="url" ...>
+  <input x-ref="nameInput" x-model="itemName" ...>
+</div>
+```
+
+### `previewNameDispatch` Alpine Component  *(#49 — implemented)*
+
+One-shot event dispatcher that reads a suggested page title from a JSON data island child element and fires a bubbling `preview-name` custom event. Used inside the `_preview_result.html` HTMX partial so that a successful preview auto-fills the Name field on step 3.
+
+Uses the **JSON data island** pattern (see CSS doc) — the title is placed in a `<script type="application/json">` child rather than an HTML attribute, avoiding double-quote escaping hazards from `tojson`.
+
+**Events dispatched:** `preview-name` (bubbles) with payload `{ name: string }`.
+
+**Usage:**
+```html
+{# Inside _preview_result.html, swapped into step 2 via HTMX #}
+{% if suggested_name %}
+<div x-data="previewNameDispatch">
+  <script type="application/json">{{ suggested_name | tojson }}</script>
+</div>
+{% endif %}
+```
+
+The parent `registerWizard` root element catches the event:
+```html
+@preview-name="if (!itemName.trim()) itemName = $event.detail.name"
+```
+
+**Note:** `init()` fires synchronously during Alpine component initialisation (triggered by the MutationObserver on HTMX swap). The event bubbles up the live DOM tree to the `registerWizard` listener. No listener is needed on `previewNameDispatch` itself.
+
 ### `repFieldsEditor` Alpine Component  *(#49 — implemented)*
 
 Wrapper for the `rep_fields` textarea + sortableChips suggestion strip on the InfoItem detail hub page. Handles `chip-insert` window events by merging the clicked key into the existing JSON object (preserving other keys) rather than replacing the whole textarea value.

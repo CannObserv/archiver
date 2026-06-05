@@ -60,6 +60,7 @@ async def test_preview_extraction_full_page_returns_chunks_and_simhash(client):
     assert body["total_chars"] > 0
     assert body["fingerprint_algorithm"] == "sha256"
     assert body["computed_fingerprint"].startswith("sha256:")
+    assert "page_title" in body
 
 
 @pytest.mark.asyncio

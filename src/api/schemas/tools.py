@@ -184,6 +184,12 @@ class PreviewExtractionResult(BaseModel):
             "sha256 → 64-char hex; simhash → decimal int as a string."
         )
     )
+    page_title: str = Field(
+        description=(
+            "Value of the HTML <title> element extracted from the full document "
+            "before any CSS/XPath selector narrows scope. Empty string when absent."
+        )
+    )
 
 
 # ---------------------------------------------------------------------------

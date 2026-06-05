@@ -119,6 +119,8 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 
 ### Utilities
 - `.text-muted`, `.text-sm`, `.text-xs`, `.text-mono`, `.truncate`, `.sr-only`.
+- `.text-danger` — `color: var(--color-danger)`. Use on inline error messages and destructive-action labels.
+- `.text-success` — `color: var(--color-success)`. Use on inline confirmation/status messages.
 - `.skip-link` — top-of-page accessibility link.
 
 ### Alpine.js integration
