@@ -8,8 +8,8 @@
 <div style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-2);border-radius:var(--radius);margin-top:var(--space-2);">
   <p class="text-sm text-success" style="margin-bottom:var(--space-1);">Retrieval successful.</p>
   {% if suggested_name %}
-  {# Bubble a custom event so registerWizard can pre-fill itemName if still empty. #}
-  <div x-data x-init="$dispatch('preview-name', { name: {{ suggested_name | tojson }} })"></div>
+  {# Data island — avoids embedding tojson output in an HTML attribute (double-quote escaping hazard). #}
+  <div x-data="previewNameDispatch"><script type="application/json">{{ suggested_name | tojson }}</script></div>
   <p class="text-sm text-muted" style="margin-bottom:var(--space-1);">Suggested name: <strong>{{ suggested_name }}</strong></p>
   {% endif %}
   {% if text_preview %}

@@ -262,6 +262,27 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * Preview-name dispatcher — reads a suggested page title from a JSON data
+     * island child element and bubbles a 'preview-name' event to parent scopes.
+     * The registerWizard component catches it with @preview-name and pre-fills
+     * itemName when still empty.
+     *
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("previewNameDispatch", function () {
+        return {
+            init: function () {
+                var s = this.$el.querySelector('script[type="application/json"]');
+                if (!s) { return; }
+                try {
+                    var name = JSON.parse(s.textContent || "");
+                    if (name) { this.$dispatch("preview-name", { name: name }); }
+                } catch (_e) { /* malformed JSON — skip dispatch */ }
+            }
+        };
+    });
+
+    /**
      * Rep-fields JSON editor — wraps the rep_fields <textarea> + the
      * sortableChips suggestion strip that lives above it.
      *
