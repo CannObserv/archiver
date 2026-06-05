@@ -4,7 +4,8 @@
 
 {% block content %}
 <div class="entity-section" x-data="registerWizard({{ initial_step|default(1) }})"
-     @chip-insert.window="sourceSpecs = $event.detail.label">
+     @chip-insert.window="sourceSpecs = $event.detail.label"
+     @preview-name="if (!itemName.trim()) itemName = $event.detail.name">
   <div class="entity-section__header">
     <h1 class="entity-section__title">Register Information Item</h1>
   </div>
