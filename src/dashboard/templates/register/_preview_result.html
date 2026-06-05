@@ -4,19 +4,22 @@
   <p class="text-sm text-danger">{{ err }}</p>
   {% endfor %}
 </div>
-{% elif text_preview %}
+{% else %}
 <div style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-2);border-radius:var(--radius);margin-top:var(--space-2);">
+  <p class="text-sm text-success" style="margin-bottom:var(--space-1);">Retrieval successful.</p>
   {% if suggested_name %}
   {# Bubble a custom event so registerWizard can pre-fill itemName if still empty. #}
   <div x-data x-init="$dispatch('preview-name', { name: {{ suggested_name | tojson }} })"></div>
   <p class="text-sm text-muted" style="margin-bottom:var(--space-1);">Suggested name: <strong>{{ suggested_name }}</strong></p>
   {% endif %}
-  <p class="text-sm text-success" style="margin-bottom:var(--space-1);">Retrieval and extraction successful, excerpt:</p>
+  {% if text_preview %}
+  <p class="text-sm text-success" style="margin-bottom:var(--space-1);">Extraction successful, excerpt:</p>
   <pre style="white-space:pre-wrap;font-size:0.8rem;max-height:10rem;overflow:auto;margin-bottom:var(--space-2);">{{ text_preview }}</pre>
   {% if fingerprint %}
   <p class="text-sm text-muted">Fingerprint: <code>{{ fingerprint }}…</code></p>
   {% endif %}
+  {% else %}
+  <p class="text-sm text-muted">No content extracted.</p>
+  {% endif %}
 </div>
-{% else %}
-<p class="text-muted text-sm">No content extracted.</p>
 {% endif %}
