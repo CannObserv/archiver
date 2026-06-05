@@ -11,10 +11,10 @@
 
   {# Step indicator #}
   <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-4);" aria-label="Steps">
-    <span :class="step>=1 ? 'badge badge--primary' : 'badge badge--muted'">1 URL</span>
-    <span :class="step>=2 ? 'badge badge--primary' : 'badge badge--muted'">2 Selector</span>
-    <span :class="step>=3 ? 'badge badge--primary' : 'badge badge--muted'">3 Metadata</span>
-    <span :class="step>=4 ? 'badge badge--primary' : 'badge badge--muted'">4 Review</span>
+    <span :class="step>=1 ? 'badge badge--info' : 'badge badge--neutral'">1 URL</span>
+    <span :class="step>=2 ? 'badge badge--info' : 'badge badge--neutral'">2 Selector</span>
+    <span :class="step>=3 ? 'badge badge--info' : 'badge badge--neutral'">3 Metadata</span>
+    <span :class="step>=4 ? 'badge badge--info' : 'badge badge--neutral'">4 Review</span>
   </div>
 
   <form method="post" action="/dashboard/register" @submit="prepareSubmit">
@@ -22,23 +22,24 @@
     {# --- Step 1: URL --- #}
     <div x-show="step===1">
       <h2 style="margin-bottom:var(--space-2);">Step 1: URL</h2>
-      <p class="text-muted text-small" style="margin-bottom:var(--space-3);">Enter the URL of the page you want to register.</p>
+      <p class="text-muted text-sm" style="margin-bottom:var(--space-3);">Enter the URL of the page you want to register.</p>
 
       {% if errors.url %}
-      <p class="text-danger text-small" style="margin-bottom:var(--space-2);">{{ errors.url }}</p>
+      <p class="text-danger text-sm" style="margin-bottom:var(--space-2);">{{ errors.url }}</p>
       {% endif %}
 
       <div style="max-width:40rem;margin-bottom:var(--space-3);">
-        <input type="url" name="url" x-model="url" x-ref="urlInput"
-               class="input" placeholder="https://example.com/page"
+        <label for="reg-url" class="form-label">URL</label>
+        <input type="url" id="reg-url" name="url" x-model="url" x-ref="urlInput"
+               class="form-input{% if errors.url %} form-input--error{% endif %}"
+               placeholder="https://example.com/page"
                value="{{ url_value or '' }}"
                required
                hx-get="/dashboard/register/url-check"
                hx-trigger="change delay:300ms"
                hx-include="[name='url']"
                hx-target="#url-check-result"
-               hx-swap="innerHTML"
-               style="width:100%;">
+               hx-swap="innerHTML">
       </div>
 
       <div id="url-check-result" style="margin-bottom:var(--space-3);min-height:2rem;"></div>
@@ -53,31 +54,32 @@
     {# --- Step 2: Selector --- #}
     <div x-show="step===2" style="display:none;">
       <h2 style="margin-bottom:var(--space-2);">Step 2: Selector</h2>
-      <p class="text-muted text-small" style="margin-bottom:var(--space-3);">
-        Specify the extraction spec (CSS, XPath, or full-page). Use suggestions from the same domain if available.
+      <p class="text-muted text-sm" style="margin-bottom:var(--space-3);">
+        Specify the content selection method (CSS, XPath, or full-page). Use suggestions from the same domain if available.
       </p>
 
       {% if errors.source_specs %}
-      <p class="text-danger text-small" style="margin-bottom:var(--space-2);">{{ errors.source_specs }}</p>
+      <p class="text-danger text-sm" style="margin-bottom:var(--space-2);">{{ errors.source_specs }}</p>
       {% endif %}
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-3);">
         {# Suggestions panel #}
         <div>
-          <p class="text-small text-muted" style="margin-bottom:var(--space-1);">Suggestions from this domain:</p>
+          <p class="text-sm text-muted" style="margin-bottom:var(--space-1);">Suggestions from this domain:</p>
           <div id="spec-suggestions-panel" hx-swap="innerHTML">
-            <p class="text-muted text-small">Loading suggestions…</p>
+            <p class="text-muted text-sm">Loading suggestions…</p>
           </div>
         </div>
 
         {# Spec editor #}
         <div>
-          <p class="text-small text-muted" style="margin-bottom:var(--space-1);">source_specs JSON array:</p>
-          <textarea name="source_specs" x-model="sourceSpecs" class="input"
-                    rows="6" placeholder='[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
-                    style="width:100%;font-family:monospace;font-size:0.85rem;">{{ source_specs_value or '' }}</textarea>
+          <label for="reg-source-specs" class="form-label">Information Source Specification (JSON):</label>
+          <textarea id="reg-source-specs" name="source_specs" x-model="sourceSpecs"
+                    class="form-textarea code-block" rows="6"
+                    placeholder='[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
+                    style="font-size:0.85rem;">{{ source_specs_value or '' }}</textarea>
           <div style="margin-top:var(--space-2);">
-            <button type="button" class="btn btn--ghost"
+            <button type="button" class="btn btn--secondary"
                     hx-post="/dashboard/register/preview"
                     hx-vals='{"url": ""}'
                     hx-include="[name='url'],[name='source_specs']"
@@ -92,7 +94,7 @@
       </div>
 
       <div style="display:flex;gap:var(--space-2);">
-        <button type="button" class="btn btn--ghost" @click="step=1">← Back</button>
+        <button type="button" class="btn btn--secondary" @click="step=1">← Back</button>
         <button type="button" class="btn btn--primary"
                 :disabled="!sourceSpecs.trim()"
                 @click="step=3">
@@ -106,30 +108,30 @@
       <h2 style="margin-bottom:var(--space-2);">Step 3: Metadata</h2>
 
       {% if errors.name %}
-      <p class="text-danger text-small" style="margin-bottom:var(--space-2);">{{ errors.name }}</p>
+      <p class="text-danger text-sm" style="margin-bottom:var(--space-2);">{{ errors.name }}</p>
       {% endif %}
 
       <div style="max-width:40rem;display:flex;flex-direction:column;gap:var(--space-3);margin-bottom:var(--space-3);">
         <div>
-          <label for="reg-name" class="text-small">Name <span aria-hidden="true">*</span></label>
+          <label for="reg-name" class="form-label">Name <span aria-hidden="true">*</span></label>
           <input type="text" id="reg-name" name="name" x-model="itemName" x-ref="nameInput"
-                 class="input" maxlength="200" required style="width:100%;"
+                 class="form-input" maxlength="200" required
                  value="{{ name_value or '' }}">
         </div>
         <div>
-          <label for="reg-desc" class="text-small">Description</label>
-          <textarea id="reg-desc" name="description" x-model="description" class="input"
-                    rows="3" maxlength="2000" style="width:100%;">{{ description_value or '' }}</textarea>
+          <label for="reg-desc" class="form-label">Description</label>
+          <textarea id="reg-desc" name="description" x-model="description"
+                    class="form-textarea" rows="3" maxlength="2000">{{ description_value or '' }}</textarea>
         </div>
         <div>
-          <p class="text-small text-muted">
+          <p class="text-sm text-muted">
             Owner: <strong>{{ user.email }}</strong> (auto-set from your login)
           </p>
         </div>
       </div>
 
       <div style="display:flex;gap:var(--space-2);">
-        <button type="button" class="btn btn--ghost" @click="step=2">← Back</button>
+        <button type="button" class="btn btn--secondary" @click="step=2">← Back</button>
         <button type="button" class="btn btn--primary"
                 :disabled="!itemName.trim()"
                 @click="step=4">
@@ -144,36 +146,36 @@
       <table class="data-table" style="max-width:40rem;margin-bottom:var(--space-3);">
         <tbody>
           <tr>
-            <td class="data-table__cell text-muted text-small">URL</td>
+            <td class="data-table__cell text-muted text-sm">URL</td>
             <td class="data-table__cell"><span x-text="url"></span>
-              <button type="button" class="btn btn--ghost" style="font-size:0.75rem;padding:0.1rem 0.4rem;" @click="step=1">Edit</button>
+              <button type="button" class="btn btn--secondary btn--sm" @click="step=1">Edit</button>
             </td>
           </tr>
           <tr>
-            <td class="data-table__cell text-muted text-small">Selector</td>
-            <td class="data-table__cell"><code class="text-small" x-text="sourceSpecs.substring(0,100)"></code>
-              <button type="button" class="btn btn--ghost" style="font-size:0.75rem;padding:0.1rem 0.4rem;" @click="step=2">Edit</button>
+            <td class="data-table__cell text-muted text-sm">Selector</td>
+            <td class="data-table__cell"><code class="text-sm" x-text="sourceSpecs.substring(0,100)"></code>
+              <button type="button" class="btn btn--secondary btn--sm" @click="step=2">Edit</button>
             </td>
           </tr>
           <tr>
-            <td class="data-table__cell text-muted text-small">Name</td>
+            <td class="data-table__cell text-muted text-sm">Name</td>
             <td class="data-table__cell"><span x-text="itemName"></span>
-              <button type="button" class="btn btn--ghost" style="font-size:0.75rem;padding:0.1rem 0.4rem;" @click="step=3">Edit</button>
+              <button type="button" class="btn btn--secondary btn--sm" @click="step=3">Edit</button>
             </td>
           </tr>
           <tr>
-            <td class="data-table__cell text-muted text-small">Description</td>
+            <td class="data-table__cell text-muted text-sm">Description</td>
             <td class="data-table__cell"><span x-text="description || '—'"></span></td>
           </tr>
           <tr>
-            <td class="data-table__cell text-muted text-small">Owner</td>
+            <td class="data-table__cell text-muted text-sm">Owner</td>
             <td class="data-table__cell">{{ user.email }}</td>
           </tr>
         </tbody>
       </table>
 
       <div style="display:flex;gap:var(--space-2);">
-        <button type="button" class="btn btn--ghost" @click="step=3">← Back</button>
+        <button type="button" class="btn btn--secondary" @click="step=3">← Back</button>
         <button type="submit" class="btn btn--primary">Register Information Item</button>
       </div>
     </div>
