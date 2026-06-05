@@ -219,7 +219,7 @@ document.addEventListener("alpine:init", function () {
                                 value: c.value
                             });
                         });
-                    } catch (e) {
+                    } catch (_e) {
                         // malformed JSON — fall through to DOM fallback below
                     }
                 }
@@ -281,7 +281,7 @@ document.addEventListener("alpine:init", function () {
                     var obj = JSON.parse(ta.value || "{}");
                     if (obj[key] === undefined) { obj[key] = ""; }
                     ta.value = JSON.stringify(obj, null, 2);
-                } catch (e) {
+                } catch (_e) {
                     ta.value = JSON.stringify({ [key]: "" }, null, 2);
                 }
             }

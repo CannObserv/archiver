@@ -23,7 +23,7 @@ export default [
             "no-var": "off",          // we allow var for older-style IIFEs
             "prefer-const": "warn",
             "no-console": "warn",
-            "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+            "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "caughtErrorsIgnorePattern": "^_" }]
         }
     },
     {
