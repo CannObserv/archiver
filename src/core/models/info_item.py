@@ -23,6 +23,7 @@ class InfoItem(Base, TimestampMixin):
         server_default="{}",
         default=dict,
     )
+    watcher_item_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     __table_args__ = (
         Index(
