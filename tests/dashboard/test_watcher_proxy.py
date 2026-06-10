@@ -1,0 +1,378 @@
+"""Tests for Watcher proxy dashboard endpoints.
+
+Covers:
+  GET  /dashboard/info-items/{id}/watcher-status
+  POST /dashboard/info-items/{id}/check-now
+  POST /dashboard/info-items/{id}/begin-watching
+  POST /dashboard/info-items/{id}/resync-watcher
+"""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from watcher_client import WatchedItemResponse
+
+from src.api.deps import get_watcher_client
+from src.api.main import app
+from src.core.models import InfoItem, InfoItemSource, InfoSource
+
+_HEADERS = {"X-ExeDev-UserID": "ext-watcher", "X-ExeDev-Email": "watcher@example.com"}
+_WI_ID = "01HZZWATCHER00000000000001"
+_TS = "2026-06-10T12:00:00+00:00"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _wi(health: str = "ok", last_checked_at: str | None = _TS) -> WatchedItemResponse:
+    return WatchedItemResponse.from_dict(
+        {
+            "id": _WI_ID,
+            "name": "Test Item",
+            "description": None,
+            "is_active": True,
+            "archived_at": None,
+            "last_reviewed_at": None,
+            "last_checked_at": last_checked_at,
+            "last_changed_at": None,
+            "health_status": health,
+            "default_schedule_config": None,
+            "default_content_type": None,
+            "default_tags": None,
+            "effective_url": "https://example.com/",
+            "source_specs": [],
+            "created_at": _TS,
+            "updated_at": _TS,
+        }
+    )
+
+
+def _mock_watcher(wi: WatchedItemResponse | None = None) -> MagicMock:
+    m = MagicMock()
+    m.get_watched_item = AsyncMock(return_value=wi or _wi())
+    m.check_now = AsyncMock(return_value=wi or _wi())
+    m.patch_watched_item = AsyncMock(return_value=wi or _wi())
+    m.provision_watched_item = AsyncMock(return_value=wi or _wi())
+    return m
+
+
+@pytest.fixture(autouse=True)
+def _clear_watcher_override():
+    """Ensure get_watcher_client override is removed after each test."""
+    yield
+    app.dependency_overrides.pop(get_watcher_client, None)
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-status — not configured
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_not_configured(client, session):
+    app.dependency_overrides[get_watcher_client] = lambda: None
+    item = InfoItem(name="no watcher item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Watcher not configured" in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-status — not watching (watcher_item_id IS NULL)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_not_watching(client, session):
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="unwatched item", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Not watching" in r.text
+    assert "begin-watching" in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-status — ok state
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_ok(client, session):
+    watcher = _mock_watcher(_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="ok item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "OK" in r.text
+    assert "check-now" in r.text
+    watcher.get_watched_item.assert_awaited_once_with(_WI_ID)
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-status — error state
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_error(client, session):
+    watcher = _mock_watcher(_wi("error"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="error item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "ERROR" in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-status — unknown state
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_unknown(client, session):
+    watcher = _mock_watcher(_wi("unknown", last_checked_at=None))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="unknown item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "UNKNOWN" in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-status — Watcher unreachable (degraded)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_degraded(client, session):
+    from watcher_client import WatcherError
+
+    watcher = MagicMock()
+    watcher.get_watched_item = AsyncMock(side_effect=WatcherError("timeout"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="degraded item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "unavailable" in r.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /check-now — happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_check_now_calls_watcher(client, session):
+    watcher = _mock_watcher(_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="check item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/check-now",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    watcher.check_now.assert_awaited_once_with(_WI_ID)
+    assert "OK" in r.text
+
+
+# ---------------------------------------------------------------------------
+# POST /check-now — no watcher_item_id
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_check_now_not_watching(client, session):
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="no-watch check", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/check-now",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Not watching" in r.text
+    watcher.check_now.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# POST /check-now — Watcher error
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_check_now_watcher_error(client, session):
+    from watcher_client import WatcherError
+
+    watcher = MagicMock()
+    watcher.check_now = AsyncMock(side_effect=WatcherError("failed"))
+    watcher.get_watched_item = AsyncMock(side_effect=WatcherError("failed"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="error check", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/check-now",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "unavailable" in r.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /begin-watching — happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_provisions_item(client, session):
+    watcher = _mock_watcher(_wi("unknown", last_checked_at=None))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="new item", watcher_item_id=None)
+    src = InfoSource(url="https://example.com/page", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=src.info_source_id,
+        )
+    )
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    watcher.provision_watched_item.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# POST /begin-watching — no primary source
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_no_primary_source(client, session):
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="sourceless item", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Not watching" in r.text
+    watcher.provision_watched_item.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# POST /resync-watcher — happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resync_watcher_calls_patch(client, session):
+    watcher = _mock_watcher(_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="resync item", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/updated", source_specs=[{"schema_version": 1}])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=src.info_source_id,
+        )
+    )
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/resync-watcher",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    watcher.patch_watched_item.assert_awaited_once_with(
+        _WI_ID,
+        effective_url="https://example.com/updated",
+        source_specs=[{"schema_version": 1}],
+        archiver_info_source_id=str(src.info_source_id),
+    )
+    assert "OK" in r.text
+
+
+# ---------------------------------------------------------------------------
+# POST /resync-watcher — no watcher_item_id
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resync_watcher_not_watching(client, session):
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="unwatched resync", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/resync-watcher",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Not watching" in r.text
+    watcher.patch_watched_item.assert_not_awaited()

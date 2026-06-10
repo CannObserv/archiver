@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape as html_escape
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -13,9 +14,15 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
+from watcher_client import WatcherError
 
-from src.api.deps import get_db_session
+from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
+from src.core.watcher_provisioning import provision_on_create
+
+if TYPE_CHECKING:
+    from watcher_client import WatchedItemResponse, WatcherClient
+
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
@@ -724,3 +731,227 @@ async def bind_revision_route(
         url=f"/dashboard/info-items/{item_id}?tab=revisions",
         status_code=303,
     )
+
+
+# ---------------------------------------------------------------------------
+# Watcher proxy helpers
+# ---------------------------------------------------------------------------
+
+
+def _format_age(dt: datetime | None) -> str:
+    """Return a human-readable relative age string, or '' when dt is None."""
+    if dt is None:
+        return ""
+    now = datetime.now(UTC)
+    aware = dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+    seconds = max(0, int((now - aware).total_seconds()))
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        m = seconds // 60
+        return f"{m} min ago"
+    if seconds < 86400:
+        h = seconds // 3600
+        return f"{h} hr ago"
+    d = seconds // 86400
+    return f"{d} day{'s' if d != 1 else ''} ago"
+
+
+def _format_cadence(schedule_config: object) -> str:
+    """Return a short cadence string derived from schedule_config, or ''."""
+    if schedule_config is None:
+        return ""
+    try:
+        interval = schedule_config.additional_properties.get("interval_seconds")  # type: ignore[attr-defined]
+    except AttributeError:
+        return ""
+    if interval is None:
+        return ""
+    interval = int(interval)
+    if interval < 3600:
+        return f"~{interval // 60} min"
+    if interval < 86400:
+        return f"~{interval // 3600} hr"
+    d = interval // 86400
+    return f"~{d} day{'s' if d != 1 else ''}"
+
+
+async def _render_status_partial(
+    request: Request,
+    *,
+    item: InfoItem,
+    watcher: "WatcherClient | None",
+    pre_fetched: "WatchedItemResponse | None" = None,
+) -> HTMLResponse:
+    """Render the _watcher_status.html partial for any state."""
+    item_id = str(item.info_item_id)
+
+    if watcher is None:
+        return _templates.TemplateResponse(
+            request,
+            "info_items/_watcher_status.html",
+            {"item_id": item_id, "state": "not_configured"},
+        )
+
+    if not item.watcher_item_id:
+        return _templates.TemplateResponse(
+            request,
+            "info_items/_watcher_status.html",
+            {"item_id": item_id, "state": "not_watching"},
+        )
+
+    wi = pre_fetched
+    if wi is None:
+        try:
+            wi = await watcher.get_watched_item(item.watcher_item_id)
+        except WatcherError as e:
+            return _templates.TemplateResponse(
+                request,
+                "info_items/_watcher_status.html",
+                {"item_id": item_id, "state": "degraded", "error_message": str(e)},
+            )
+
+    return _templates.TemplateResponse(
+        request,
+        "info_items/_watcher_status.html",
+        {
+            "item_id": item_id,
+            "state": "watching",
+            "watched_item": wi,
+            "last_checked_ago": _format_age(wi.last_checked_at),
+            "last_changed_ago": _format_age(wi.last_changed_at),
+            "cadence": _format_cadence(wi.default_schedule_config),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /{item_id}/watcher-status  (HTMX partial)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{item_id}/watcher-status", response_class=HTMLResponse)
+async def watcher_status(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> HTMLResponse:
+    """HTMX partial: load WatchedItem health strip from Watcher."""
+    item = await _resolve_item(item_id, session)
+    return await _render_status_partial(request, item=item, watcher=watcher)
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/check-now
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{item_id}/check-now", response_class=HTMLResponse)
+async def check_now(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> HTMLResponse:
+    """Proxy to Watcher check-now; re-renders the watcher-status partial."""
+    item = await _resolve_item(item_id, session)
+
+    if watcher is None or not item.watcher_item_id:
+        return await _render_status_partial(request, item=item, watcher=watcher)
+
+    wi: WatchedItemResponse | None = None
+    try:
+        wi = await watcher.check_now(item.watcher_item_id)
+    except WatcherError:
+        pass  # fall through; _render_status_partial will show degraded state
+
+    return await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/begin-watching
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{item_id}/begin-watching", response_class=HTMLResponse)
+async def begin_watching(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> HTMLResponse:
+    """Provision a WatchedItem on demand for pre-existing InfoItems."""
+    item = await _resolve_item(item_id, session)
+
+    if item.watcher_item_id:
+        # Already provisioned — just re-render current state.
+        return await _render_status_partial(request, item=item, watcher=watcher)
+
+    # Find the active primary source.
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+    if binding is None:
+        return await _render_status_partial(request, item=item, watcher=watcher)
+
+    primary_src = await session.get(InfoSource, binding.info_source_id)
+    if primary_src is None:
+        return await _render_status_partial(request, item=item, watcher=watcher)
+
+    await provision_on_create(session, watcher, item, primary_src)
+
+    return await _render_status_partial(request, item=item, watcher=watcher)
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/resync-watcher
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{item_id}/resync-watcher", response_class=HTMLResponse)
+async def resync_watcher(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> HTMLResponse:
+    """PATCH WatchedItem with current URL and specs; re-renders status partial."""
+    item = await _resolve_item(item_id, session)
+
+    if watcher is None or not item.watcher_item_id:
+        return await _render_status_partial(request, item=item, watcher=watcher)
+
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+    if binding is not None:
+        primary_src = await session.get(InfoSource, binding.info_source_id)
+        if primary_src is not None:
+            try:
+                await watcher.patch_watched_item(
+                    item.watcher_item_id,
+                    effective_url=primary_src.url,
+                    source_specs=list(primary_src.source_specs),
+                    archiver_info_source_id=str(primary_src.info_source_id),
+                )
+            except WatcherError:
+                pass  # degraded state rendered below
+
+    return await _render_status_partial(request, item=item, watcher=watcher)
