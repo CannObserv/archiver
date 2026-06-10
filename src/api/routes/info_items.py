@@ -2,6 +2,7 @@
 
 import os
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -80,6 +81,9 @@ from src.core.watcher_provisioning import (
     sync_on_source_swap,
 )
 
+if TYPE_CHECKING:
+    from watcher_client import WatcherClient
+
 router = APIRouter(prefix="/info-items", tags=["info-items"])
 
 
@@ -87,7 +91,7 @@ router = APIRouter(prefix="/info-items", tags=["info-items"])
 async def create_info_item(
     body: InfoItemCreate,
     session: AsyncSession = Depends(get_db_session),
-    watcher=Depends(get_watcher_client),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> InfoItemOut:
     """Create an InfoItem.
 
@@ -327,7 +331,7 @@ async def add_info_source(
     info_item_id: ULIDStr,
     body: InfoItemSourceCreate,
     session: AsyncSession = Depends(get_db_session),
-    watcher=Depends(get_watcher_client),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> InfoItemSourceOut:
     """Bind an existing InfoSource to an InfoItem.
 

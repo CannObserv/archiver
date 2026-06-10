@@ -16,7 +16,7 @@ from types import TracebackType
 
 import httpx
 
-from watcher_client.errors import error_from_response
+from watcher_client.errors import WatcherServerError, error_from_response
 from watcher_client.generated.models.change_revision_response import ChangeRevisionResponse
 from watcher_client.generated.models.watched_item_response import WatchedItemResponse
 
@@ -126,6 +126,11 @@ class WatcherClient:
         if resp.is_error:
             raise error_from_response(resp.status_code, resp.content)
         items = resp.json()
+        if not isinstance(items, list):
+            raise WatcherServerError(
+                f"expected list from /api/v1/watched-items, got {type(items).__name__}",
+                status_code=resp.status_code,
+            )
         if not items:
             return None
         return WatchedItemResponse.from_dict(items[0])

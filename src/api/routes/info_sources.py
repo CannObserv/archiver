@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +34,9 @@ from src.core.tools.update_info_source_specs import (
 )
 from src.core.tools.update_info_source_specs import update_info_source_specs
 from src.core.watcher_provisioning import sync_on_spec_update
+
+if TYPE_CHECKING:
+    from watcher_client import WatcherClient
 
 router = APIRouter(prefix="/info-sources", tags=["info-sources"])
 
@@ -69,7 +74,7 @@ async def patch_info_source_specs(
     body: InfoSourcePatch,
     session: AsyncSession = Depends(get_db_session),
     _key=Depends(require_api_key),
-    watcher=Depends(get_watcher_client),
+    watcher: WatcherClient | None = Depends(get_watcher_client),
 ) -> InfoSourceOut:
     """Replace the source_specs list on an existing InfoSource.
 

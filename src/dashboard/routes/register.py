@@ -26,7 +26,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db_session
+from src.api.deps import get_db_session, get_watcher_client
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
 from src.core.tools.create_info_source import (
@@ -37,6 +37,7 @@ from src.core.tools.create_info_source import (
 )
 from src.core.tools.preview_extraction import preview_extraction
 from src.core.url_canonicalization import canonicalize_url
+from src.core.watcher_provisioning import provision_on_create
 from src.dashboard.deps import get_dashboard_user
 
 router = APIRouter(prefix="/dashboard/register", tags=["dashboard-register"])
@@ -286,6 +287,7 @@ async def register_submit(
     description: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
+    watcher=Depends(get_watcher_client),
 ):
     """Atomic: create_info_source → create InfoItem → bind → 303 to detail."""
     errors: dict[str, str] = {}
@@ -388,5 +390,7 @@ async def register_submit(
     session.add(binding)
     await session.commit()
     await session.refresh(item)
+
+    await provision_on_create(session, watcher, item, src)
 
     return RedirectResponse(url=f"/dashboard/info-items/{item.info_item_id}", status_code=303)

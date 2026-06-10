@@ -16,6 +16,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.2.0 (2026-06-10)
+
+[service] **Watcher control-plane integration — provisioning hooks** (archiver#55, Steps 1–3).
+
+`POST /api/v1/info-items` (when `initial_url` is supplied) and `POST /api/v1/info-items/{id}/info-sources` now attempt a best-effort WatchedItem provisioning/sync call to the Watcher service after committing. `PATCH /api/v1/info-sources/{id}/source-specs` pushes updated specs to Watcher for any InfoItem whose active binding points at the updated source. All three calls are post-commit and fire-and-forget: a Watcher failure is logged but does not affect the HTTP response or roll back the Archiver write. Provisioning is a no-op when `WATCHER_BASE_URL` / `WATCHER_API_KEY` are not set.
+
+New DB column: `information.info_items.watcher_item_id VARCHAR(50) NULL` — stores the Watcher-allocated WatchedItem ID once a WatchedItem has been provisioned. Not yet surfaced in `InfoItemOut`.
+
 ## v4.1.1 (2026-06-05)
 
 [service] **`page_title` added to `POST /api/v1/tools/preview-extraction` response.**
