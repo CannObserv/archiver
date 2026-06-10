@@ -5,7 +5,8 @@ template; Alpine.js ``registerWizard`` manages client-side step navigation.
 The final POST submits all fields atomically in a single transaction:
 ``get_or_create_domain`` (inside ``create_info_source``) + ``create_info_source``
 + ``InfoItem`` + ``InfoItemSource`` binding are all flushed before a single
-``session.commit()``.
+``session.commit()``. If Watcher is configured, a second commit follows to
+persist ``watcher_item_id`` on the new InfoItem.
 
 HTMX partials:
   GET  /dashboard/register/url-check     — domain badge + Case A/B/C card
