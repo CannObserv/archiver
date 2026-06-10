@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.api.deps import get_db_session, require_api_key
+from src.api.deps import get_db_session, get_watcher_client, require_api_key
 from src.api.errors import raise_422, raise_envelope
 from src.api.schemas.info_source import InfoSourceCreate, InfoSourceOut, InfoSourcePatch
 from src.api.schemas.pagination import Page
@@ -31,6 +31,7 @@ from src.core.tools.update_info_source_specs import (
     MixedAlgorithmFamilyError as UpdateMixedFamilyError,
 )
 from src.core.tools.update_info_source_specs import update_info_source_specs
+from src.core.watcher_provisioning import sync_on_spec_update
 
 router = APIRouter(prefix="/info-sources", tags=["info-sources"])
 
@@ -68,6 +69,7 @@ async def patch_info_source_specs(
     body: InfoSourcePatch,
     session: AsyncSession = Depends(get_db_session),
     _key=Depends(require_api_key),
+    watcher=Depends(get_watcher_client),
 ) -> InfoSourceOut:
     """Replace the source_specs list on an existing InfoSource.
 
@@ -88,6 +90,9 @@ async def patch_info_source_specs(
 
     await session.commit()
     await session.refresh(src)
+
+    await sync_on_spec_update(session, watcher, ULID.from_str(info_source_id), body.source_specs)
+
     return info_source_to_out(src)
 
 

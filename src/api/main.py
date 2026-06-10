@@ -9,6 +9,7 @@ from importlib.metadata import version as _package_version
 from fastapi import APIRouter, Depends, FastAPI
 from redis.asyncio import Redis as RedisAsync
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from watcher_client import WatcherClient
 
 from src.api.deps import require_api_key
 from src.api.errors import EnvelopeResponse, register_error_handlers
@@ -41,6 +42,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       Redis dependency in dev/test environments.
     """
     app.state.http_fetcher = HttpFetcher()
+
+    # --- Optional WatcherClient ---
+    watcher_base_url = os.environ.get("WATCHER_BASE_URL", "").strip()
+    watcher_api_key = os.environ.get("WATCHER_API_KEY", "").strip()
+    watcher_client: WatcherClient | None = None
+    if watcher_base_url and watcher_api_key:
+        watcher_client = WatcherClient(base_url=watcher_base_url, api_key=watcher_api_key)
+        app.state.watcher_client = watcher_client
+        logger.info("WatcherClient initialised", extra={"base_url": watcher_base_url})
+    else:
+        app.state.watcher_client = None
+        logger.info("WATCHER_BASE_URL/WATCHER_API_KEY not set — Watcher integration disabled")
 
     # --- Optional outbox publisher ---
     redis_url = os.environ.get("ARCHIVER_REDIS_URL")
@@ -83,8 +96,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 pass
         if redis_client is not None:
             await redis_client.aclose()
-        # Then close HTTP fetcher
+        # Then close HTTP fetcher and WatcherClient
         await app.state.http_fetcher.aclose()
+        if watcher_client is not None:
+            await watcher_client.aclose()
 
 
 app = FastAPI(title="archiver", version=_package_version("archiver"), lifespan=lifespan)

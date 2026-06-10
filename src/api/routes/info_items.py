@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.api.deps import get_db_session, require_api_key
+from src.api.deps import get_db_session, get_watcher_client, require_api_key
 from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_item import (
     InfoItemCreate,
@@ -75,13 +75,19 @@ from src.core.tools.deactivate_info_item_source_binding import (
     BindingNotFoundError,
     deactivate_info_item_source_binding,
 )
+from src.core.watcher_provisioning import (
+    provision_on_create,
+    sync_on_source_swap,
+)
 
 router = APIRouter(prefix="/info-items", tags=["info-items"])
 
 
 @router.post("", response_model=InfoItemOut, status_code=201)
 async def create_info_item(
-    body: InfoItemCreate, session: AsyncSession = Depends(get_db_session)
+    body: InfoItemCreate,
+    session: AsyncSession = Depends(get_db_session),
+    watcher=Depends(get_watcher_client),
 ) -> InfoItemOut:
     """Create an InfoItem.
 
@@ -175,6 +181,9 @@ async def create_info_item(
     await session.flush()
     await session.commit()
     await session.refresh(item)
+
+    if info_source is not None:
+        await provision_on_create(session, watcher, item, info_source)
 
     return info_item_to_out(
         item,
@@ -318,6 +327,7 @@ async def add_info_source(
     info_item_id: ULIDStr,
     body: InfoItemSourceCreate,
     session: AsyncSession = Depends(get_db_session),
+    watcher=Depends(get_watcher_client),
 ) -> InfoItemSourceOut:
     """Bind an existing InfoSource to an InfoItem.
 
@@ -397,6 +407,13 @@ async def add_info_source(
     session.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
 
     await session.commit()
+
+    # Best-effort: sync new URL + specs to Watcher
+    new_source = await session.get(InfoSource, source_ulid)
+    item = await session.get(InfoItem, item_ulid)
+    if new_source is not None and item is not None:
+        await sync_on_source_swap(session, watcher, item, new_source)
+
     return info_item_source_to_out(binding)
 
 

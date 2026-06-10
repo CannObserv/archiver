@@ -3,6 +3,7 @@
 import hashlib
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, Request
 from fastapi.security import APIKeyHeader
@@ -14,10 +15,22 @@ from src.core.database import get_session_factory
 from src.core.models import ApiKey
 from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
+if TYPE_CHECKING:
+    from watcher_client import WatcherClient
+
 
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
     async with get_session_factory()() as session:
         yield session
+
+
+def get_watcher_client(request: Request) -> "WatcherClient | None":
+    """Return the lifespan-scoped WatcherClient, or None when Watcher is not configured.
+
+    None is returned when ``WATCHER_BASE_URL`` / ``WATCHER_API_KEY`` are unset.
+    Routes that accept this dependency treat None as "provisioning disabled".
+    """
+    return getattr(request.app.state, "watcher_client", None)
 
 
 def get_http_fetcher(request: Request) -> HttpFetcherProtocol:
