@@ -24,6 +24,7 @@ dependencies = [
     "aiofiles>=24.1.0,<25",
     "python-multipart>=0.0.9,<1",
     "archiver-client",
+    "watcher-client",
 ]
 
 [dependency-groups]
@@ -54,7 +55,7 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = ["skills-vendor/", "clients/python/src/archiver_client/generated/"]
+exclude = ["skills-vendor/", "clients/python/src/archiver_client/generated/", "clients/watcher-python/src/watcher_client/generated/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
@@ -79,3 +80,4 @@ packages = ["src"]
 
 [tool.uv.sources]
 archiver-client = { path = "clients/python", editable = true }
+watcher-client = { path = "clients/watcher-python", editable = true }
