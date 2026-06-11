@@ -298,6 +298,28 @@ async def test_begin_watching_provisions_item(client, session):
 
 
 # ---------------------------------------------------------------------------
+# POST /begin-watching — already provisioned (watcher_item_id already set)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_already_provisioned(client, session):
+    watcher = _mock_watcher(_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="already-watched item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "OK" in r.text
+    watcher.provision_watched_item.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
 # POST /begin-watching — no primary source
 # ---------------------------------------------------------------------------
 
@@ -354,6 +376,42 @@ async def test_resync_watcher_calls_patch(client, session):
         archiver_info_source_id=str(src.info_source_id),
     )
     assert "OK" in r.text
+
+
+# ---------------------------------------------------------------------------
+# POST /resync-watcher — Watcher raises WatcherError (degraded path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resync_watcher_error(client, session):
+    from watcher_client import WatcherError
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock(side_effect=WatcherError("patch failed"))
+    watcher.get_watched_item = AsyncMock(side_effect=WatcherError("get failed"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="resync-error item", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/resync-error", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=src.info_source_id,
+        )
+    )
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/resync-watcher",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "unavailable" in r.text.lower()
+    watcher.patch_watched_item.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

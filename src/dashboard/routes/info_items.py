@@ -18,7 +18,7 @@ from watcher_client import WatcherError
 
 from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
-from src.core.watcher_provisioning import provision_on_create
+from src.core.watcher_provisioning import provision_on_create, sync_on_source_swap
 
 if TYPE_CHECKING:
     from watcher_client import WatchedItemResponse, WatcherClient
@@ -810,16 +810,7 @@ async def swap_primary_source(
     )
     await session.commit()
 
-    if watcher is not None and item.watcher_item_id:
-        try:
-            await watcher.patch_watched_item(
-                item.watcher_item_id,
-                effective_url=new_src.url,
-                source_specs=list(new_src.source_specs),
-                archiver_info_source_id=str(new_src.info_source_id),
-            )
-        except WatcherError:
-            pass
+    await sync_on_source_swap(session, watcher, item, new_src)
 
     return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
 
@@ -874,16 +865,7 @@ async def swap_primary_by_id(
     )
     await session.commit()
 
-    if watcher is not None and item.watcher_item_id:
-        try:
-            await watcher.patch_watched_item(
-                item.watcher_item_id,
-                effective_url=new_src.url,
-                source_specs=list(new_src.source_specs),
-                archiver_info_source_id=str(new_src.info_source_id),
-            )
-        except WatcherError:
-            pass
+    await sync_on_source_swap(session, watcher, item, new_src)
 
     return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
 
