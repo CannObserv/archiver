@@ -1002,7 +1002,7 @@ async def check_now(
     wi: WatchedItemResponse | None = None
     try:
         wi = await watcher.check_now(item.watcher_item_id)
-    except WatcherError:
+    except Exception:
         pass  # wi stays None; _render_status_partial re-fetches — shows degraded if that also fails
 
     return await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
@@ -1081,14 +1081,6 @@ async def resync_watcher(
     if binding is not None:
         primary_src = await session.get(InfoSource, binding.info_source_id)
         if primary_src is not None:
-            try:
-                await watcher.patch_watched_item(
-                    item.watcher_item_id,
-                    effective_url=primary_src.url,
-                    source_specs=list(primary_src.source_specs),
-                    archiver_info_source_id=str(primary_src.info_source_id),
-                )
-            except WatcherError:
-                pass  # degraded state rendered below
+            await sync_on_source_swap(session, watcher, item, primary_src)
 
     return await _render_status_partial(request, item=item, watcher=watcher)
