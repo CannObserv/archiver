@@ -71,60 +71,59 @@
     </h2>
 
     {% if iis_rows %}
-    <table class="data-table" aria-label="Bound Information Sources" style="margin-bottom:var(--space-3);">
-      <thead>
-        <tr>
-          <th class="data-table__th">URL</th>
-          <th class="data-table__th">Domain</th>
-          <th class="data-table__th">Bound</th>
-          <th class="data-table__th">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for binding in iis_rows %}
-        {% set src = sources_by_id.get(binding.info_source_id) %}
-        <tr style="{% if loop.first %}border-left:3px solid var(--color-brand);{% endif %}">
-          <td class="data-table__cell">
-            {% if src %}
-            <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-small">{{ src.url }}</a>
-            <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="text-muted text-small" aria-label="Open in new tab">↗</a>
-            {% else %}
-            <span class="text-muted text-small">{{ binding.info_source_id }}</span>
-            {% endif %}
-          </td>
-          <td class="data-table__cell data-table__cell--muted text-small">
-            {% if src and src.domain_name %}
-            <a href="/dashboard/domains/{{ src.domain_name }}">{{ src.domain_name }}</a>
-            {% else %}—{% endif %}
-          </td>
-          <td class="data-table__cell data-table__cell--muted text-small">
-            {{ binding.created_at.strftime('%Y-%m-%d') }}
-          </td>
-          <td class="data-table__cell">
-            <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/deactivate-source"
-                  style="display:inline;">
-              <input type="hidden" name="info_source_id" value="{{ binding.info_source_id }}">
-              <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;">Deactivate</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {# Wrap table + swap panel in a single Alpine component for toggle #}
+    <div x-data="{swapOpen:false}">
+      <table class="data-table" aria-label="Bound Information Sources" style="margin-bottom:var(--space-3);">
+        <thead>
+          <tr>
+            <th class="data-table__th">URL</th>
+            <th class="data-table__th">Domain</th>
+            <th class="data-table__th">Bound</th>
+            <th class="data-table__th">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for binding in iis_rows %}
+          {% set src = sources_by_id.get(binding.info_source_id) %}
+          <tr style="{% if loop.first %}border-left:3px solid var(--color-brand);{% endif %}">
+            <td class="data-table__cell">
+              {% if src %}
+              <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-small">{{ src.url }}</a>
+              <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="text-muted text-small" aria-label="Open in new tab">↗</a>
+              {% else %}
+              <span class="text-muted text-small">{{ binding.info_source_id }}</span>
+              {% endif %}
+            </td>
+            <td class="data-table__cell data-table__cell--muted text-small">
+              {% if src and src.domain_name %}
+              <a href="/dashboard/domains/{{ src.domain_name }}">{{ src.domain_name }}</a>
+              {% else %}—{% endif %}
+            </td>
+            <td class="data-table__cell data-table__cell--muted text-small">
+              {{ binding.created_at.strftime('%Y-%m-%d') }}
+            </td>
+            <td class="data-table__cell">
+              {% if loop.first %}
+              <button type="button" class="btn btn--ghost" style="font-size:0.75rem;"
+                      @click="swapOpen=!swapOpen"
+                      x-text="swapOpen ? 'Cancel' : 'Swap primary'">Swap primary</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {# Swap primary panel — shown when button toggled #}
+      <div x-show="swapOpen" x-cloak>
+        {% include "info_items/_swap_primary.html" %}
+      </div>
+    </div>
     {% else %}
     <p class="text-muted" style="margin-bottom:var(--space-3);">No active source bindings.</p>
+    {# No active binding: render swap/add panel directly #}
+    {% include "info_items/_swap_primary.html" %}
     {% endif %}
-
-    {# Bind form #}
-    <details style="max-width:30rem;">
-      <summary class="text-small" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind existing Information Source</summary>
-      <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/bind-source"
-            style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
-        <input type="text" name="info_source_id" class="input" placeholder="InfoSource ULID"
-               style="flex:1;" required>
-        <button type="submit" class="btn btn--primary">Bind</button>
-      </form>
-    </details>
   </section>
 
   {# ── Section 3: Watcher (stub) ─────────────────────────────────────── #}

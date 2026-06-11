@@ -68,6 +68,7 @@ from src.core.tools.deactivate_info_item_source_binding import (
     BindingNotFoundError,
     deactivate_info_item_source_binding,
 )
+from src.core.url_canonicalization import canonicalize_url
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 
@@ -731,6 +732,160 @@ async def bind_revision_route(
         url=f"/dashboard/info-items/{item_id}?tab=revisions",
         status_code=303,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/swap-primary-source
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{item_id}/swap-primary-source")
+async def swap_primary_source(
+    item_id: str,
+    request: Request,
+    url: str = Form(default=""),
+    source_specs: str = Form(default="[]"),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> Response:
+    """Author new InfoSource inline, deactivate old primary binding, bind new source.
+
+    Best-effort Watcher patch follows commit if watcher_item_id is set.
+    """
+    item = await _resolve_item(item_id, session)
+
+    try:
+        canonical_url = canonicalize_url(url)
+    except ValueError as exc:
+        return HTMLResponse(
+            f'<p class="text-danger">Invalid URL: {html_escape(str(exc))}</p>'
+            f'<p><a href="/dashboard/info-items/{html_escape(item_id)}">← Back</a></p>',
+            status_code=422,
+        )
+
+    try:
+        specs = json.loads(source_specs) if source_specs.strip() else []
+        if not isinstance(specs, list):
+            raise ValueError("must be a JSON array")
+    except (json.JSONDecodeError, ValueError) as exc:
+        return HTMLResponse(
+            f'<p class="text-danger">Invalid source_specs: {html_escape(str(exc))}</p>'
+            f'<p><a href="/dashboard/info-items/{html_escape(item_id)}">← Back</a></p>',
+            status_code=422,
+        )
+
+    try:
+        new_src = await create_info_source(session, url=canonical_url, source_specs=specs)
+    except (
+        InvalidUrlError,
+        InvalidSourceSpecError,
+        MixedAlgorithmFamilyError,
+        CreateInfoSourceError,
+    ) as exc:
+        return HTMLResponse(
+            f'<p class="text-danger">Could not create source: {html_escape(str(exc))}</p>'
+            f'<p><a href="/dashboard/info-items/{html_escape(item_id)}">← Back</a></p>',
+            status_code=422,
+        )
+
+    # Deactivate old primary binding if present
+    old_binding = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if old_binding is not None:
+        old_binding.deactivated_at = datetime.now(UTC)
+        await session.flush()
+
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=new_src.info_source_id,
+        )
+    )
+    await session.commit()
+
+    if watcher is not None and item.watcher_item_id:
+        try:
+            await watcher.patch_watched_item(
+                item.watcher_item_id,
+                effective_url=new_src.url,
+                source_specs=list(new_src.source_specs),
+                archiver_info_source_id=str(new_src.info_source_id),
+            )
+        except WatcherError:
+            pass
+
+    return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/swap-primary-by-id
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{item_id}/swap-primary-by-id")
+async def swap_primary_by_id(
+    item_id: str,
+    info_source_id: str = Form(...),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> Response:
+    """Swap primary source to an existing InfoSource by ULID.
+
+    Deactivates the current active binding, creates a new one. Best-effort
+    Watcher patch follows commit if watcher_item_id is set.
+    """
+    item = await _resolve_item(item_id, session)
+
+    try:
+        source_ulid = ULID.from_str(info_source_id)
+    except Exception as e:
+        raise_envelope(422, "domain", "info_source_id is not a valid ULID", source_exc=e)
+
+    new_src = await session.get(InfoSource, source_ulid)
+    if new_src is None:
+        raise DashboardNotFound("Information Source not found")
+
+    # Deactivate old primary binding if present
+    old_binding = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if old_binding is not None:
+        old_binding.deactivated_at = datetime.now(UTC)
+        await session.flush()
+
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=new_src.info_source_id,
+        )
+    )
+    await session.commit()
+
+    if watcher is not None and item.watcher_item_id:
+        try:
+            await watcher.patch_watched_item(
+                item.watcher_item_id,
+                effective_url=new_src.url,
+                source_specs=list(new_src.source_specs),
+                archiver_info_source_id=str(new_src.info_source_id),
+            )
+        except WatcherError:
+            pass
+
+    return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------

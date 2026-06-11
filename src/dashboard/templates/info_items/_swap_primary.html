@@ -1,0 +1,48 @@
+{# Swap primary source inline panel — author new source OR bind existing by ULID.
+   Rendered inside a parent x-data="{swapOpen:false}" div; visible when swapOpen is true.
+   For the no-binding empty state, the panel renders unconditionally (no toggle needed). #}
+<div style="margin-top:var(--space-3);padding:var(--space-3);background:var(--color-surface-alt,var(--color-surface));border-radius:var(--radius);max-width:38rem;">
+  <p class="text-small" style="font-weight:500;margin:0 0 var(--space-2);">
+    {% if iis_rows %}Swap primary source{% else %}Add primary source{% endif %}
+  </p>
+
+  {# Author new source form #}
+  <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/swap-primary-source"
+        id="swap-form">
+    <div style="margin-bottom:var(--space-2);">
+      <label class="text-small text-muted" style="display:block;margin-bottom:var(--space-1);">URL</label>
+      <input type="url" name="url" id="swap-url" class="input" required
+             placeholder="https://example.com/page" style="width:100%;">
+    </div>
+    <div style="margin-bottom:var(--space-2);">
+      <label class="text-small text-muted" style="display:block;margin-bottom:var(--space-1);">Source specs <span class="text-muted">(JSON array)</span></label>
+      <textarea name="source_specs" id="swap-specs" class="input" rows="4"
+                style="width:100%;font-family:monospace;font-size:0.82rem;"
+                placeholder='[{"schema_version":1,"extraction":{"algorithm":"css","selector":"h1"},"fingerprint":{}}]'></textarea>
+    </div>
+    <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
+      <button type="submit" class="btn btn--primary" style="font-size:0.85rem;">
+        {% if iis_rows %}Swap source{% else %}Add source{% endif %}
+      </button>
+      <button type="button" class="btn btn--ghost" style="font-size:0.8rem;"
+              hx-post="/dashboard/register/preview"
+              hx-target="#swap-preview"
+              hx-swap="innerHTML"
+              hx-include="#swap-url,#swap-specs">
+        Preview
+      </button>
+    </div>
+    <div id="swap-preview" style="margin-top:var(--space-2);"></div>
+  </form>
+
+  {# Advanced: bind existing InfoSource by ULID #}
+  <details style="margin-top:var(--space-3);">
+    <summary class="text-small text-muted" style="cursor:pointer;">Advanced: bind existing InfoSource by ID</summary>
+    <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/swap-primary-by-id"
+          style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
+      <input type="text" name="info_source_id" class="input" placeholder="InfoSource ULID"
+             style="flex:1;" required>
+      <button type="submit" class="btn btn--ghost" style="font-size:0.85rem;">Bind</button>
+    </form>
+  </details>
+</div>
