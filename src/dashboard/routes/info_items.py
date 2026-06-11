@@ -758,8 +758,9 @@ async def swap_primary_source(
         canonical_url = canonicalize_url(url)
     except ValueError as exc:
         return HTMLResponse(
+            f'<div id="swap-error" role="alert" aria-live="polite" aria-atomic="true">'
             f'<p class="text-danger">Invalid URL: {html_escape(str(exc))}</p>'
-            f'<p><a href="/dashboard/info-items/{html_escape(item_id)}">← Back</a></p>',
+            "</div>",
             status_code=422,
         )
 
@@ -769,8 +770,9 @@ async def swap_primary_source(
             raise ValueError("must be a JSON array")
     except (json.JSONDecodeError, ValueError) as exc:
         return HTMLResponse(
-            f'<p class="text-danger">Invalid source_specs: {html_escape(str(exc))}</p>'
-            f'<p><a href="/dashboard/info-items/{html_escape(item_id)}">← Back</a></p>',
+            f'<div id="swap-error" role="alert" aria-live="polite" aria-atomic="true">'
+            f'<p class="text-danger">Invalid source specs: {html_escape(str(exc))}</p>'
+            "</div>",
             status_code=422,
         )
 
@@ -783,8 +785,9 @@ async def swap_primary_source(
         CreateInfoSourceError,
     ) as exc:
         return HTMLResponse(
+            f'<div id="swap-error" role="alert" aria-live="polite" aria-atomic="true">'
             f'<p class="text-danger">Could not create source: {html_escape(str(exc))}</p>'
-            f'<p><a href="/dashboard/info-items/{html_escape(item_id)}">← Back</a></p>',
+            "</div>",
             status_code=422,
         )
 
@@ -811,7 +814,10 @@ async def swap_primary_source(
 
     await sync_on_source_swap(session, watcher, item, new_src)
 
-    return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
+    return Response(
+        status_code=204,
+        headers={"HX-Redirect": f"/dashboard/info-items/{item_id}"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -836,8 +842,13 @@ async def swap_primary_by_id(
 
     try:
         source_ulid = ULID.from_str(info_source_id)
-    except Exception as e:
-        raise_envelope(422, "domain", "info_source_id is not a valid ULID", source_exc=e)
+    except Exception:
+        return HTMLResponse(
+            '<div id="swap-by-id-error" role="alert" aria-live="polite" aria-atomic="true">'
+            '<p class="text-danger">Invalid InfoSource ID — must be a ULID.</p>'
+            "</div>",
+            status_code=422,
+        )
 
     new_src = await session.get(InfoSource, source_ulid)
     if new_src is None:
@@ -866,7 +877,10 @@ async def swap_primary_by_id(
 
     await sync_on_source_swap(session, watcher, item, new_src)
 
-    return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
+    return Response(
+        status_code=204,
+        headers={"HX-Redirect": f"/dashboard/info-items/{item_id}"},
+    )
 
 
 # ---------------------------------------------------------------------------

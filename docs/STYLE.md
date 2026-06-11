@@ -145,7 +145,7 @@ For non-blocking page sections that call a slow or potentially unavailable servi
 Rules:
 - `hx-trigger="load"` fires the request immediately after the page renders (no user interaction needed).
 - `hx-swap="outerHTML"` replaces the entire placeholder div. The server-rendered partial **must** include the same `id` as the placeholder so subsequent re-renders can re-target it.
-- `aria-live="polite" aria-atomic="false"` is required on every HTMX swap target (see Accessibility section).
+- `aria-live="polite" aria-atomic="false"` is required on async content sections (see Accessibility section). For error announcement targets, use `aria-atomic="true"` instead — see the inline form error pattern below.
 - The placeholder content degrades gracefully if JS is disabled or the request fails.
 - Use this pattern for sections that depend on a sibling service (Watcher, Replicator) so that service outages do not block the dashboard page load.
 
@@ -162,6 +162,25 @@ Rules:
 ```
 
 The server-side action endpoint (e.g. `POST /check-now`) sends `HX-Trigger: {"watcherUpdated":{}}` in the response header. HTMX dispatches `watcherUpdated` on the triggering element; it bubbles to `body`, which causes the section to re-fetch. Use this to keep multiple independent sections in sync without coupling their endpoints.
+
+### HTMX inline form error pattern
+
+For forms that submit via HTMX and need inline validation errors without a full-page reload, use `hx-target-422` from the `htmx-ext-response-targets` extension (vendored as `vendor/htmx-ext-response-targets.min.js` v2.0.4, activated globally via `hx-ext="response-targets"` on `<body>`):
+
+```html
+<form hx-post="/dashboard/path/to/action"
+      hx-target-422="#my-error">
+  <div id="my-error" role="alert" aria-live="polite" aria-atomic="true"></div>
+  <!-- fields -->
+</form>
+```
+
+Rules:
+- `hx-target-422="#my-error"` routes 422 responses into `#my-error`. Requires the `response-targets` extension; without it the attribute is silently ignored and 4xx responses are discarded.
+- The server returns `422` with an HTML fragment: `<div id="my-error" role="alert" aria-live="polite" aria-atomic="true"><p class="text-danger">…</p></div>`. Including the same `id` in the response preserves the element for subsequent submissions (default swap style is `outerHTML`).
+- `aria-live="polite" aria-atomic="true"` is required on the error target so screen readers announce the complete message on each update.
+- On success, the server returns `204` with an `HX-Redirect` header. HTMX follows it as a full-page navigation regardless of `hx-target` settings.
+- Place the error div inside the same Alpine `x-show` container as the form so it stays in DOM when the panel is toggled. Placing it inside the `<form>` element satisfies this by default; outside-form placements (e.g. after `</form>` but within the same `<details>`) are valid if the enclosing container is under the same Alpine toggle.
 
 ### JSON data island pattern
 
@@ -213,7 +232,8 @@ Dashboard UI uses fully qualified domain names. Code, API, and docs use terse fo
 
 Target: **WCAG 2.1 AA**.
 
-- All HTMX swap targets: `aria-live="polite" aria-atomic="false"`.
+- Async content sections (HTMX async partial pattern): `aria-live="polite" aria-atomic="false"`.
+- Inline form error targets (HTMX inline form error pattern): `aria-live="polite" aria-atomic="true"`.
 - Active sidebar link: `aria-current="page"`.
 - Focus rings: `:focus-visible` with 2 px brand-colour outline.
 - Minimum touch targets: 44 × 44 px.

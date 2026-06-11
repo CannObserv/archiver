@@ -93,7 +93,8 @@ async def test_swap_primary_source_creates_binding(client, session):
         headers=_HEADERS,
         follow_redirects=False,
     )
-    assert r.status_code == 303
+    assert r.status_code == 204
+    assert f"/dashboard/info-items/{item.info_item_id}" in r.headers["HX-Redirect"]
 
     await session.refresh(item)
     bindings = list(
@@ -134,7 +135,8 @@ async def test_swap_primary_source_deactivates_old(client, session):
         headers=_HEADERS,
         follow_redirects=False,
     )
-    assert r.status_code == 303
+    assert r.status_code == 204
+    assert f"/dashboard/info-items/{item.info_item_id}" in r.headers["HX-Redirect"]
 
     old_binding = (
         await session.execute(
@@ -173,7 +175,8 @@ async def test_swap_primary_source_patches_watcher(client, session):
         headers=_HEADERS,
         follow_redirects=False,
     )
-    assert r.status_code == 303
+    assert r.status_code == 204
+    assert f"/dashboard/info-items/{item.info_item_id}" in r.headers["HX-Redirect"]
     watcher.patch_watched_item.assert_awaited_once()
     call_kwargs = watcher.patch_watched_item.call_args
     assert call_kwargs.args[0] == _WI_ID
@@ -194,7 +197,8 @@ async def test_swap_primary_source_no_watcher_no_crash(client, session):
         headers=_HEADERS,
         follow_redirects=False,
     )
-    assert r.status_code == 303
+    assert r.status_code == 204
+    assert f"/dashboard/info-items/{item.info_item_id}" in r.headers["HX-Redirect"]
 
 
 @pytest.mark.asyncio
@@ -211,6 +215,8 @@ async def test_swap_primary_source_invalid_url(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 422
+    assert "swap-error" in r.text
+    assert "text-danger" in r.text
 
 
 @pytest.mark.asyncio
@@ -227,6 +233,8 @@ async def test_swap_primary_source_invalid_specs(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 422
+    assert "swap-error" in r.text
+    assert "text-danger" in r.text
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +266,8 @@ async def test_swap_primary_by_id_binds_existing(client, session):
         headers=_HEADERS,
         follow_redirects=False,
     )
-    assert r.status_code == 303
+    assert r.status_code == 204
+    assert f"/dashboard/info-items/{item.info_item_id}" in r.headers["HX-Redirect"]
 
     bindings = list(
         (
@@ -302,7 +311,8 @@ async def test_swap_primary_by_id_patches_watcher(client, session):
         headers=_HEADERS,
         follow_redirects=False,
     )
-    assert r.status_code == 303
+    assert r.status_code == 204
+    assert f"/dashboard/info-items/{item.info_item_id}" in r.headers["HX-Redirect"]
     watcher.patch_watched_item.assert_awaited_once()
     call_kwargs = watcher.patch_watched_item.call_args
     assert call_kwargs.args[0] == _WI_ID
@@ -323,3 +333,5 @@ async def test_swap_primary_by_id_invalid_ulid(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 422
+    assert "swap-by-id-error" in r.text
+    assert "text-danger" in r.text
