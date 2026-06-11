@@ -67,6 +67,9 @@ src/core/                      Domain logic
                                Mirrored from watcher (see "Mirrored content-acquisition code")
   url_canonicalization.py      Write-time URL normalization for info_sources
 clients/python/                archiver_client SDK v3.x (generated + hand-written wrappers)
+clients/watcher-python/        watcher_client SDK — Archiver adapter for the Watcher service
+                               (httpx-based; wraps provision, patch, get, check-now, list-revisions)
+                               Regen: bash clients/watcher-python/scripts/regen.sh
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
@@ -149,6 +152,8 @@ set +a
 - `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name should include `_test` (e.g. `archiver_test`). `conftest.py` asserts this at collection time and fails fast if violated.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis).
 - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance (e.g. `https://archiver.example.com`). When set, InfoItem API responses include `dashboard_url` pointing to the dashboard detail page (`{ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}`). Unset → `dashboard_url` is `null`. Set this to the URL end-users open in a browser, distinct from any internal service-to-service address. Set in `/etc/archiver/.env` on the VM.
+- `WATCHER_BASE_URL` — *optional*. Base URL of the sibling Watcher service (e.g. `https://watcher.example.com`). When set (together with `WATCHER_API_KEY`), the Archiver provisions WatchedItems on InfoItem create and patches them on primary-source swap. Unset → Watcher integration disabled; `watcher_item_id` stays `NULL` on all InfoItems.
+- `WATCHER_API_KEY` — *optional*. API key sent as `X-API-Key` to the Watcher service. Store in `/etc/archiver/.env`. Required when `WATCHER_BASE_URL` is set.
 - `WATCHER_CACHE_DIR`, `WATCHER_CACHE_TTL_SECONDS`, `WATCHER_CACHE_SWEEP_INTERVAL_SECONDS` — Watcher-side, not Archiver-side; documented here because the `content_cache_uri` lifecycle protocol they govern is a registry contract (see design doc Section 2).
 
 ## Authoring tools + assignment endpoints (v2)
@@ -369,6 +374,9 @@ validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachab
 Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
 
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
+  `watcher_item_id VARCHAR(50)` — nullable; stores the Watcher-allocated WatchedItem ID once
+  provisioned. `NULL` means not yet watched (use "Begin watching" in the dashboard or wait for
+  the next `create_info_item` call with Watcher configured).
   **Fetch group invariant:** exactly one URL is fetched (the primary binding's InfoSource URL) and
   exactly one content-kind is produced (HTML/text or JSON). All specs in the bound InfoSource's
   `source_specs` list are evaluated against the same fetched bytes (no chaining off primary's
