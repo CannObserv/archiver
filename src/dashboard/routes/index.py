@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -11,7 +12,11 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db_session
+from src.api.deps import get_db_session, get_redis_client, get_watcher_client
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis as RedisAsync
+    from watcher_client import WatcherClient
 from src.core.models import (
     AppUser,
     InfoItem,
@@ -34,6 +39,38 @@ async def dashboard_health_partial(
 ) -> HTMLResponse:
     """HTMX partial — Archiver health badge."""
     return HTMLResponse('<span class="badge badge--success">ok</span>')
+
+
+@router.get("/health/watcher", response_class=HTMLResponse)
+async def dashboard_health_watcher(
+    user: AppUser = Depends(get_dashboard_user),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> HTMLResponse:
+    """HTMX partial — Watcher service health badge."""
+    if watcher is None:
+        return HTMLResponse('<span class="badge badge--muted">not configured</span>')
+    try:
+        ok = await watcher.health_check()
+        cls = "badge--success" if ok else "badge--danger"
+        label = "ok" if ok else "error"
+        return HTMLResponse(f'<span class="badge {cls}">{label}</span>')
+    except Exception:
+        return HTMLResponse('<span class="badge badge--danger">error</span>')
+
+
+@router.get("/health/redis", response_class=HTMLResponse)
+async def dashboard_health_redis(
+    user: AppUser = Depends(get_dashboard_user),
+    redis: "RedisAsync | None" = Depends(get_redis_client),
+) -> HTMLResponse:
+    """HTMX partial — Redis health badge."""
+    if redis is None:
+        return HTMLResponse('<span class="badge badge--muted">not configured</span>')
+    try:
+        await redis.ping()
+        return HTMLResponse('<span class="badge badge--success">ok</span>')
+    except Exception:
+        return HTMLResponse('<span class="badge badge--danger">error</span>')
 
 
 @router.get("/", response_class=HTMLResponse)

@@ -63,6 +63,13 @@ class WatcherClient:
         """Close the underlying HTTP client."""
         await self._http.aclose()
 
+    # --- Health ---
+
+    async def health_check(self) -> bool:
+        """Return True if Watcher responds 200 to GET /health."""
+        resp = await self._http.get("/health", timeout=3.0)
+        return resp.status_code == 200
+
     # --- Provisioning ---
 
     async def provision_watched_item(

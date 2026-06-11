@@ -16,12 +16,18 @@ from src.core.models import ApiKey
 from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
 if TYPE_CHECKING:
+    from redis.asyncio import Redis as RedisAsync
     from watcher_client import WatcherClient
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
     async with get_session_factory()() as session:
         yield session
+
+
+def get_redis_client(request: Request) -> "RedisAsync | None":
+    """Return the lifespan-scoped Redis client, or None when not configured."""
+    return getattr(request.app.state, "redis_client", None)
 
 
 def get_watcher_client(request: Request) -> "WatcherClient | None":

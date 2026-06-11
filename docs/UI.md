@@ -181,6 +181,10 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 **GET `/dashboard/health`** — HTMX partial. Returns `<span class="badge badge--success">ok</span>`. Auth-gated; unauthenticated requests redirect 307.
 
+**GET `/dashboard/health/watcher`** — HTMX partial. Calls `WatcherClient.health_check()` (`GET /health` on Watcher); returns `badge--success` ("ok"), `badge--danger` ("error"), or `badge--muted` ("not configured") when `WATCHER_BASE_URL` is unset. Auth-gated; unauthenticated requests redirect 307.
+
+**GET `/dashboard/health/redis`** — HTMX partial. Calls `redis.ping()`; returns `badge--success` ("ok"), `badge--danger` ("error"), or `badge--muted` ("not configured") when `ARCHIVER_REDIS_URL` is unset. Auth-gated; unauthenticated requests redirect 307.
+
 ### Information Items (`/dashboard/info-items/`)  *(Epic 3 — implemented)*
 
 **GET `/dashboard/info-items/`** — paginated list with optional `name_contains` search. Filter panel: search input (flex-fill) + Search button (right-aligned via `margin-left:auto`). Columns: name (link to detail), Information Source (primary source URL linked to InfoSource detail; `—` if none), Observed (max `captured_at` of the primary source's revisions formatted `%Y-%m-%d %H:%M`; `—` if none).

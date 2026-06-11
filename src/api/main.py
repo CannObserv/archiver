@@ -73,13 +73,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     stop_event=stop_event,
                 )
             )
+            app.state.redis_client = redis_client
             app.state.publisher_task = pub_task
             app.state.publisher_stop_event = stop_event
             logger.info("Outbox publisher started", extra={"redis_url": redis_url})
         except Exception:
             logger.exception("Failed to initialise outbox publisher; skipping")
             redis_client = None
+            app.state.redis_client = None
     else:
+        app.state.redis_client = None
         logger.info("ARCHIVER_REDIS_URL not set — outbox publisher disabled")
 
     try:
