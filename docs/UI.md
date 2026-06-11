@@ -193,7 +193,7 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 1. **Overview** — `<h1>` name; ULID copy-button (inline Alpine `{copied:false}`); domain badge linking to `/dashboard/domains/{name}` (or muted "No primary source" if unbound); `.detail-grid` with description, owner (if set), created_at. Below the grid: **Watcher health strip** — `<div id="watcher-status-strip">` loaded async via `hx-trigger="load"` + `hx-get="…/watcher-status"` + `hx-swap="outerHTML"`. Renders one of five states: `ok`/`error`/`unknown` (watching), `not_watching`, `not_configured`, or `degraded`. Template: `info_items/_watcher_status.html`.
 2. **Information Sources** — `x-data="{swapOpen:false}"` Alpine wrapper. `data-table` of active `info_item_sources` bindings (columns: URL, Domain, Bound, Actions); first row gets a brand left-border to mark it as the primary. The Actions cell on the primary row contains a "Swap primary" / "Cancel" toggle button (`@click="swapOpen=!swapOpen"`). When `swapOpen` is true, `<div x-show="swapOpen" x-cloak>` reveals `info_items/_swap_primary.html`. When there are no active bindings, the swap panel renders unconditionally with an "Add primary source" title. The old "Bind existing Information Source" `<details>` form was removed in #55.
-3. **Watcher** (stub) — shows primary source URL + domain link; placeholder text for future cross-service integration. *(Step 7 of #55 will replace this with a functional panel.)*
+3. **Watcher** — `<div id="watcher-section">` loaded async via `hx-trigger="load"` + `hx-get="…/watcher-section"` + `hx-swap="outerHTML"`. Root element also carries `hx-trigger="watcherUpdated from:body"` so the panel self-refreshes whenever `check-now` or `resync-watcher` sends `HX-Trigger: {"watcherUpdated":{}}`. Template: `info_items/_watcher_section.html`. Four states: `not_configured`, `not_watching` (shows "Begin watching" button), `degraded`, `watching` (shows URL, spec summary, health badge, timestamps, cadence, "Check now", "Re-sync", "View in Watcher ↗" deeplink).
 4. **Replicator** — two sub-sections:
    - *Rep Fields* — `x-data="repFieldsEditor()"` wrapper; HTMX-loaded `sortableChips` suggestions (`hx-trigger="load"`); `<textarea name="rep_fields">` with `PATCH /dashboard/info-items/{id}/rep-fields` inline save; flash target `#rep-fields-flash`.
    - *Replication Specs* — `data-table` of active `info_item_rep_specs` assignments; assign form (`filter-card`, `rep_spec_id` field); HTMX delete per row.
@@ -201,11 +201,13 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial (`info_items/_watcher_status.html`). Calls Watcher `get_watched_item`; renders ok/error/unknown/not_watching/not_configured/degraded. Used by `hx-trigger="load"` on the health strip and re-renders after check-now, begin-watching, resync-watcher.
 
-**POST `/dashboard/info-items/{id}/check-now`** — proxies to Watcher `check-now`; re-renders `_watcher_status.html`. If `check_now` fails, re-fetches via `get_watched_item`; shows degraded only if that also fails.
+**GET `/dashboard/info-items/{id}/watcher-section`** — HTMX partial (`info_items/_watcher_section.html`). Calls Watcher `get_watched_item`; renders not_configured/not_watching/degraded/watching. The watching state shows URL, spec summary, health badge, timestamps, cadence, and action buttons. Loaded on page init via `hx-trigger="load"`.
+
+**POST `/dashboard/info-items/{id}/check-now`** — proxies to Watcher `check-now`; re-renders `_watcher_status.html`; also sets `HX-Trigger: {"watcherUpdated":{}}` so Section 3 (`#watcher-section`) auto-refreshes. If `check_now` fails, re-fetches via `get_watched_item`; shows degraded only if that also fails.
 
 **POST `/dashboard/info-items/{id}/begin-watching`** — provisions a WatchedItem on demand (for InfoItems without `watcher_item_id`); calls `provision_on_create`; re-renders `_watcher_status.html`.
 
-**POST `/dashboard/info-items/{id}/resync-watcher`** — PATCHes the WatchedItem with the current primary URL and specs; re-renders `_watcher_status.html`.
+**POST `/dashboard/info-items/{id}/resync-watcher`** — PATCHes the WatchedItem with the current primary URL and specs via `sync_on_source_swap`; re-renders `_watcher_status.html`; also sets `HX-Trigger: {"watcherUpdated":{}}` so Section 3 auto-refreshes.
 
 **POST `/dashboard/info-items/{id}/swap-primary-source`** — inline primary-source swap: creates a new InfoSource (form fields: `url`, `source_specs` JSON array), deactivates the old active binding, binds the new source, best-effort `patch_watched_item` post-commit. Redirects 303 to detail on success; returns 422 bare HTMLResponse on validation error.
 
@@ -229,6 +231,7 @@ Partial templates:
 - `info_items/_rep_spec_row.html` — reusable `<tr>` fragment for rep-spec assignment rows.
 - `info_items/_watcher_status.html` — Watcher health strip; replaces `#watcher-status-strip` via `hx-swap="outerHTML"`. Root element carries the `id` so it survives each swap. Five states: `not_configured`, `not_watching`, `degraded`, `watching` (ok/error/unknown). Context keys: `state`, `item_id`, `watched_item`, `last_checked_ago`, `last_changed_ago`, `cadence`, `error_message`.
 - `info_items/_swap_primary.html` — inline swap-primary panel included inside the `x-data="{swapOpen:false}"` wrapper in Section 2. Renders either "Swap primary source" or "Add primary source" depending on whether `iis_rows` is non-empty. Contains: URL input (`id="swap-url"`), source_specs textarea (`id="swap-specs"`), Preview HTMX button (`hx-include="#swap-url,#swap-specs"`), preview target `#swap-preview`, submit to `swap-primary-source`, and an advanced `<details>` for `swap-primary-by-id`.
+- `info_items/_watcher_section.html` — Section 3 Watcher panel; replaces `#watcher-section` via `hx-swap="outerHTML"`. Root element carries both the `id` and `hx-trigger="watcherUpdated from:body"` for event-driven auto-refresh. Four states: `not_configured`, `not_watching`, `degraded`, `watching`. Context keys (watching): `state`, `item_id`, `watched_item`, `spec_summary`, `last_checked_ago`, `last_changed_ago`, `cadence`, `watcher_url`, `error_message`.
 
 ### Information Sources (`/dashboard/info-sources/`)  *(Epic 4 — implemented)*
 

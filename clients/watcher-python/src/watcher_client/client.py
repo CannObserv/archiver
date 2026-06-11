@@ -39,6 +39,11 @@ class WatcherClient:
             timeout=httpx.Timeout(timeout),
         )
 
+    @property
+    def base_url(self) -> str:
+        """Public base URL of the Watcher service (no trailing slash)."""
+        return self._base_url
+
     def __repr__(self) -> str:
         return f"WatcherClient(base_url={self._base_url!r}, api_key={self._mask!r})"
 

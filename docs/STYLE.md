@@ -149,6 +149,20 @@ Rules:
 - The placeholder content degrades gracefully if JS is disabled or the request fails.
 - Use this pattern for sections that depend on a sibling service (Watcher, Replicator) so that service outages do not block the dashboard page load.
 
+**Event-driven refresh variant.** When a panel should auto-refresh in response to actions elsewhere on the page, add `hx-trigger="<event-name> from:body"` alongside `hx-trigger="load"` using HTMX's comma-separated multi-trigger syntax:
+
+```html
+<div id="watcher-section"
+     hx-get="/dashboard/path/to/section"
+     hx-trigger="load, watcherUpdated from:body"
+     hx-swap="outerHTML"
+     aria-live="polite" aria-atomic="false">
+  <p class="text-muted text-small">Loading…</p>
+</div>
+```
+
+The server-side action endpoint (e.g. `POST /check-now`) sends `HX-Trigger: {"watcherUpdated":{}}` in the response header. HTMX dispatches `watcherUpdated` on the triggering element; it bubbles to `body`, which causes the section to re-fetch. Use this to keep multiple independent sections in sync without coupling their endpoints.
+
 ### JSON data island pattern
 
 When an Alpine component needs server-rendered data at initialisation, place the data in a `<script type="application/json">` child element rather than embedding JSON inside the `x-data` attribute. Jinja2's `tojson` filter does **not** escape `"`, so JSON in a double-quoted attribute is silently truncated by the HTML parser; single-quoted attributes work but are fragile to copy. The data island avoids both problems:

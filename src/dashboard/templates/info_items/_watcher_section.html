@@ -1,0 +1,99 @@
+{# Section 3 Watcher panel — loaded async via hx-get /watcher-section.
+   Root div carries hx-trigger="watcherUpdated from:body" so any check-now or
+   resync-watcher response (which sends HX-Trigger: {"watcherUpdated":{}}) causes
+   this section to self-refresh without an explicit swap target. #}
+<div id="watcher-section"
+     aria-live="polite" aria-atomic="false"
+     hx-get="/dashboard/info-items/{{ item_id }}/watcher-section"
+     hx-trigger="watcherUpdated from:body"
+     hx-swap="outerHTML"
+     style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
+
+{% if state == "not_configured" %}
+  <p class="text-muted text-small" style="margin:0;">Watcher not configured.</p>
+
+{% elif state == "not_watching" %}
+  <div style="display:flex;align-items:center;gap:var(--space-2);">
+    <span class="text-muted text-small">Not watching</span>
+    <form hx-post="/dashboard/info-items/{{ item_id }}/begin-watching"
+          hx-target="#watcher-status-strip"
+          hx-swap="outerHTML"
+          style="display:inline;">
+      <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">Begin watching</button>
+    </form>
+  </div>
+
+{% elif state == "degraded" %}
+  <p class="text-muted text-small" style="margin:0;">Watcher unavailable{% if error_message %} — {{ error_message }}{% endif %}.</p>
+
+{% else %}{# state == "watching" #}
+  {% set hs = watched_item.health_status.value %}
+
+  <div class="detail-grid" style="margin-bottom:var(--space-3);">
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">URL</span>
+      <span class="detail-grid__value text-small">
+        <a href="{{ watched_item.effective_url }}" target="_blank" rel="noopener noreferrer">{{ watched_item.effective_url }}</a>
+      </span>
+    </div>
+
+    {% if spec_summary %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Spec</span>
+      <span class="detail-grid__value text-small text-muted">{{ spec_summary }}</span>
+    </div>
+    {% endif %}
+
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Health</span>
+      <span class="detail-grid__value">
+        <span class="badge badge--{{ 'success' if hs == 'ok' else ('danger' if hs == 'error' else 'muted') }}"
+              style="font-size:0.7rem;">{{ hs.upper() }}</span>
+      </span>
+    </div>
+
+    {% if last_checked_ago %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Last checked</span>
+      <span class="detail-grid__value text-small text-muted">{{ last_checked_ago }}</span>
+    </div>
+    {% endif %}
+
+    {% if last_changed_ago %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Last changed</span>
+      <span class="detail-grid__value text-small text-muted">{{ last_changed_ago }}</span>
+    </div>
+    {% endif %}
+
+    {% if cadence %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Cadence</span>
+      <span class="detail-grid__value text-small text-muted">{{ cadence }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
+    <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
+          hx-target="#watcher-status-strip"
+          hx-swap="outerHTML"
+          style="display:inline;">
+      <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">Check now</button>
+    </form>
+
+    <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
+          hx-target="#watcher-status-strip"
+          hx-swap="outerHTML"
+          style="display:inline;">
+      <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">Re-sync</button>
+    </form>
+
+    {% if watcher_url %}
+    <a href="{{ watcher_url }}" target="_blank" rel="noopener noreferrer"
+       class="text-small text-muted" style="margin-left:var(--space-1);">View in Watcher ↗</a>
+    {% endif %}
+  </div>
+{% endif %}
+
+</div>

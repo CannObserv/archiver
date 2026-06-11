@@ -894,6 +894,28 @@ def _format_age(dt: datetime | None) -> str:
     return f"{d} day{'s' if d != 1 else ''} ago"
 
 
+def _format_spec_summary(source_specs: list) -> str:
+    """Return a brief spec summary: '<algorithm> · N spec(s)' or '' when empty.
+
+    Handles both plain dicts and generated attrs models (WatchedItemResponseSourceSpecsItem)
+    which store all fields in additional_properties rather than direct attributes.
+    """
+    if not source_specs:
+        return ""
+    try:
+        spec = source_specs[0]
+        spec_dict: dict = spec.to_dict() if hasattr(spec, "to_dict") else spec
+        algo = spec_dict.get("extraction", {}).get("algorithm", "")
+    except (AttributeError, IndexError, TypeError):
+        algo = ""
+    n = len(source_specs)
+    parts = []
+    if algo:
+        parts.append(algo)
+    parts.append(f"{n} spec{'s' if n != 1 else ''}")
+    return " · ".join(parts)
+
+
 def _format_cadence(schedule_config: object) -> str:
     """Return a short cadence string derived from schedule_config, or ''."""
     if schedule_config is None:
@@ -962,6 +984,56 @@ async def _render_status_partial(
     )
 
 
+async def _render_watcher_section(
+    request: Request,
+    *,
+    item: InfoItem,
+    watcher: "WatcherClient | None",
+) -> HTMLResponse:
+    """Render the _watcher_section.html partial for any state."""
+    item_id = str(item.info_item_id)
+
+    if watcher is None:
+        return _templates.TemplateResponse(
+            request,
+            "info_items/_watcher_section.html",
+            {"item_id": item_id, "state": "not_configured"},
+        )
+
+    if not item.watcher_item_id:
+        return _templates.TemplateResponse(
+            request,
+            "info_items/_watcher_section.html",
+            {"item_id": item_id, "state": "not_watching"},
+        )
+
+    try:
+        wi = await watcher.get_watched_item(item.watcher_item_id)
+    except Exception:
+        return _templates.TemplateResponse(
+            request,
+            "info_items/_watcher_section.html",
+            {"item_id": item_id, "state": "degraded"},
+        )
+
+    watcher_url = f"{watcher.base_url}/watched-items/{item.watcher_item_id}"
+    specs = list(wi.source_specs) if wi.source_specs else []
+    return _templates.TemplateResponse(
+        request,
+        "info_items/_watcher_section.html",
+        {
+            "item_id": item_id,
+            "state": "watching",
+            "watched_item": wi,
+            "spec_summary": _format_spec_summary(specs),
+            "last_checked_ago": _format_age(wi.last_checked_at),
+            "last_changed_ago": _format_age(wi.last_changed_at),
+            "cadence": _format_cadence(wi.default_schedule_config),
+            "watcher_url": watcher_url,
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /{item_id}/watcher-status  (HTMX partial)
 # ---------------------------------------------------------------------------
@@ -978,6 +1050,24 @@ async def watcher_status(
     """HTMX partial: load WatchedItem health strip from Watcher."""
     item = await _resolve_item(item_id, session)
     return await _render_status_partial(request, item=item, watcher=watcher)
+
+
+# ---------------------------------------------------------------------------
+# GET /{item_id}/watcher-section  (HTMX partial — Section 3)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{item_id}/watcher-section", response_class=HTMLResponse)
+async def watcher_section(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> HTMLResponse:
+    """HTMX partial: detailed Watcher panel for Section 3 of the detail page."""
+    item = await _resolve_item(item_id, session)
+    return await _render_watcher_section(request, item=item, watcher=watcher)
 
 
 # ---------------------------------------------------------------------------
@@ -1005,7 +1095,9 @@ async def check_now(
     except Exception:
         pass  # wi stays None; _render_status_partial re-fetches — shows degraded if that also fails
 
-    return await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
+    response = await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
+    response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -1083,4 +1175,6 @@ async def resync_watcher(
         if primary_src is not None:
             await sync_on_source_swap(session, watcher, item, primary_src)
 
-    return await _render_status_partial(request, item=item, watcher=watcher)
+    response = await _render_status_partial(request, item=item, watcher=watcher)
+    response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
+    return response

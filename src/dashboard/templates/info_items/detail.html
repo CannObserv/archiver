@@ -127,24 +127,19 @@
     {% endif %}
   </section>
 
-  {# ── Section 3: Watcher (stub) ─────────────────────────────────────── #}
+  {# ── Section 3: Watcher ───────────────────────────────────────────── #}
   <section aria-label="Watcher" style="margin-bottom:var(--space-5);">
-    <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);font-weight:500;color:var(--color-text-muted);">
+    <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);">
       Watcher
     </h2>
-    <div style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
-      {% if primary_src %}
-      <p class="text-small" style="margin-bottom:var(--space-1);">
-        <span class="text-muted">URL:</span> {{ primary_src.url }}
-      </p>
-      {% if primary_src.domain_name %}
-      <p class="text-small" style="margin-bottom:var(--space-2);">
-        <span class="text-muted">Domain:</span>
-        <a href="/dashboard/domains/{{ primary_src.domain_name }}">{{ primary_src.domain_name }}</a>
-      </p>
-      {% endif %}
-      {% endif %}
-      <p class="text-muted text-small">Watcher integration — cadence, last fetch, and health will appear here once cross-service status is available.</p>
+    {# Loaded async; self-refreshes on watcherUpdated events from check-now/resync-watcher #}
+    <div id="watcher-section"
+         hx-get="/dashboard/info-items/{{ item.info_item_id }}/watcher-section"
+         hx-trigger="load"
+         hx-swap="outerHTML"
+         aria-live="polite" aria-atomic="false"
+         style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
+      <p class="text-muted text-small" style="margin:0;">Loading…</p>
     </div>
   </section>
 
