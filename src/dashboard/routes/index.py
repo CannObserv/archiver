@@ -14,10 +14,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session, get_redis_client, get_watcher_client
-
-if TYPE_CHECKING:
-    from redis.asyncio import Redis as RedisAsync
-    from watcher_client import WatcherClient
 from src.core.logging import get_logger
 from src.core.models import (
     AppUser,
@@ -29,6 +25,10 @@ from src.core.models import (
 )
 from src.core.models.domain import Domain
 from src.dashboard.deps import get_dashboard_user
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis as RedisAsync
+    from watcher_client import WatcherClient
 
 logger = get_logger(__name__)
 
