@@ -434,3 +434,35 @@ async def test_resync_watcher_not_watching(client, session):
     assert r.status_code == 200
     assert "Not watching" in r.text
     watcher.patch_watched_item.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# POST /begin-watching — response includes HX-Trigger: watcherUpdated
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_triggers_watcher_updated(client, session):
+    watcher = _mock_watcher(_wi("unknown", last_checked_at=None))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="begin-watching-trigger", watcher_item_id=None)
+    src = InfoSource(url="https://example.com/begin-trigger", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=src.info_source_id,
+        )
+    )
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx_trigger = r.headers.get("HX-Trigger", "")
+    assert "watcherUpdated" in hx_trigger

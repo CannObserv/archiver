@@ -14,7 +14,6 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
-from watcher_client import WatcherError
 
 from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
@@ -963,7 +962,7 @@ async def _render_status_partial(
     if wi is None:
         try:
             wi = await watcher.get_watched_item(item.watcher_item_id)
-        except WatcherError as e:
+        except Exception as e:
             return _templates.TemplateResponse(
                 request,
                 "info_items/_watcher_status.html",
@@ -1009,11 +1008,11 @@ async def _render_watcher_section(
 
     try:
         wi = await watcher.get_watched_item(item.watcher_item_id)
-    except Exception:
+    except Exception as e:
         return _templates.TemplateResponse(
             request,
             "info_items/_watcher_section.html",
-            {"item_id": item_id, "state": "degraded"},
+            {"item_id": item_id, "state": "degraded", "error_message": str(e)},
         )
 
     watcher_url = f"{watcher.base_url}/watched-items/{item.watcher_item_id}"
@@ -1139,7 +1138,9 @@ async def begin_watching(
 
     await provision_on_create(session, watcher, item, primary_src)
 
-    return await _render_status_partial(request, item=item, watcher=watcher)
+    response = await _render_status_partial(request, item=item, watcher=watcher)
+    response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
+    return response
 
 
 # ---------------------------------------------------------------------------
