@@ -1,6 +1,7 @@
 """Dashboard — Information Items (list, detail, create, sub-resource mutations)."""
 
 import json
+import os
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -1029,7 +1030,8 @@ async def _render_watcher_section(
             {"item_id": item_id, "state": "degraded", "error_message": str(e)},
         )
 
-    watcher_url = f"{watcher.base_url}/watched-items/{item.watcher_item_id}"
+    watcher_display_base = os.environ.get("WATCHER_PUBLIC_BASE_URL", "").strip() or watcher.base_url
+    watcher_url = f"{watcher_display_base}/watched-items/{item.watcher_item_id}"
     specs = list(wi.source_specs) if wi.source_specs else []
     return _templates.TemplateResponse(
         request,

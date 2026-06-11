@@ -205,7 +205,7 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial (`info_items/_watcher_status.html`). Calls Watcher `get_watched_item`; renders ok/error/unknown/not_watching/not_configured/degraded. Used by `hx-trigger="load"` on the health strip and re-renders after check-now, begin-watching, resync-watcher.
 
-**GET `/dashboard/info-items/{id}/watcher-section`** — HTMX partial (`info_items/_watcher_section.html`). Calls Watcher `get_watched_item`; renders not_configured/not_watching/degraded/watching. The watching state shows URL, spec summary, health badge, timestamps, cadence, and action buttons. Loaded on page init via `hx-trigger="load"`.
+**GET `/dashboard/info-items/{id}/watcher-section`** — HTMX partial (`info_items/_watcher_section.html`). Calls Watcher `get_watched_item`; renders not_configured/not_watching/degraded/watching. The watching state shows URL, spec summary, health badge, timestamps, cadence, and action buttons. Loaded on page init via `hx-trigger="load"`. The "View in Watcher ↗" deeplink base is `WATCHER_PUBLIC_BASE_URL` when set, otherwise falls back to `WATCHER_BASE_URL`.
 
 **POST `/dashboard/info-items/{id}/check-now`** — proxies to Watcher `check-now`; re-renders `_watcher_status.html`; also sets `HX-Trigger: {"watcherUpdated":{}}` so Section 3 (`#watcher-section`) auto-refreshes. If `check_now` fails, re-fetches via `get_watched_item`; shows degraded only if that also fails.
 

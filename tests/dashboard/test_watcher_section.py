@@ -143,6 +143,36 @@ async def test_watcher_section_watching_shows_details(client, session):
 
 
 # ---------------------------------------------------------------------------
+# GET /watcher-section — WATCHER_PUBLIC_BASE_URL overrides deeplink
+# ---------------------------------------------------------------------------
+
+_PUBLIC_URL = "https://watcher.exe.xyz:8000"
+
+
+@pytest.mark.asyncio
+async def test_watcher_section_public_base_url_overrides_deeplink(client, session, monkeypatch):
+    """WATCHER_PUBLIC_BASE_URL replaces watcher.base_url in the View-in-Watcher link."""
+    monkeypatch.setenv("WATCHER_PUBLIC_BASE_URL", _PUBLIC_URL)
+
+    wi = _wi("ok", effective_url="https://example.com/page")
+    # base_url is the internal API URL — should NOT appear in the deeplink
+    watcher = _mock_watcher(wi, base_url="http://localhost:8000")
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="section-public-url", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert _PUBLIC_URL in r.text
+    assert "localhost:8000" not in r.text
+
+
+# ---------------------------------------------------------------------------
 # GET /watcher-section — degraded (Watcher raises WatcherError)
 # ---------------------------------------------------------------------------
 
