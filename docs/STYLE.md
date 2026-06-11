@@ -81,7 +81,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
 
 ### Badges & Status
-- `.badge`, `.badge--success/warning/danger/info/neutral` — small inline label.
+- `.badge`, `.badge--success/warning/danger/info/neutral/muted` — small inline label. `neutral` and `muted` are synonyms (same visual — surface-alt bg, muted text); prefer `muted` for "not configured / disabled" states.
 - `.badge--sm` — extra-compact size (use in tight contexts like tab count indicators).
 - `.status-pill--cached/expired/missing` — SourceRevision cache state.
 

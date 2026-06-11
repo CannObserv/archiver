@@ -136,12 +136,9 @@ async def test_health_watcher_ok(client):
     mock_watcher = MagicMock()
     mock_watcher.health_check = AsyncMock(return_value=True)
     app.dependency_overrides[get_watcher_client] = lambda: mock_watcher
-    try:
-        r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
-        assert r.status_code == 200
-        assert "badge--success" in r.text
-    finally:
-        app.dependency_overrides.pop(get_watcher_client, None)
+    r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--success" in r.text
 
 
 @pytest.mark.asyncio
@@ -149,23 +146,18 @@ async def test_health_watcher_degraded(client):
     mock_watcher = MagicMock()
     mock_watcher.health_check = AsyncMock(side_effect=Exception("connection refused"))
     app.dependency_overrides[get_watcher_client] = lambda: mock_watcher
-    try:
-        r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
-        assert r.status_code == 200
-        assert "badge--danger" in r.text
-    finally:
-        app.dependency_overrides.pop(get_watcher_client, None)
+    r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "connection refused" in r.text
 
 
 @pytest.mark.asyncio
 async def test_health_watcher_not_configured(client):
     app.dependency_overrides[get_watcher_client] = lambda: None
-    try:
-        r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
-        assert r.status_code == 200
-        assert "not configured" in r.text.lower()
-    finally:
-        app.dependency_overrides.pop(get_watcher_client, None)
+    r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "not configured" in r.text.lower()
 
 
 @pytest.mark.asyncio
@@ -173,12 +165,9 @@ async def test_health_redis_ok(client):
     mock_redis = MagicMock()
     mock_redis.ping = AsyncMock(return_value=True)
     app.dependency_overrides[get_redis_client] = lambda: mock_redis
-    try:
-        r = await client.get("/dashboard/health/redis", headers=_HEADERS)
-        assert r.status_code == 200
-        assert "badge--success" in r.text
-    finally:
-        app.dependency_overrides.pop(get_redis_client, None)
+    r = await client.get("/dashboard/health/redis", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--success" in r.text
 
 
 @pytest.mark.asyncio
@@ -186,23 +175,18 @@ async def test_health_redis_degraded(client):
     mock_redis = MagicMock()
     mock_redis.ping = AsyncMock(side_effect=Exception("connection refused"))
     app.dependency_overrides[get_redis_client] = lambda: mock_redis
-    try:
-        r = await client.get("/dashboard/health/redis", headers=_HEADERS)
-        assert r.status_code == 200
-        assert "badge--danger" in r.text
-    finally:
-        app.dependency_overrides.pop(get_redis_client, None)
+    r = await client.get("/dashboard/health/redis", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "connection refused" in r.text
 
 
 @pytest.mark.asyncio
 async def test_health_redis_not_configured(client):
     app.dependency_overrides[get_redis_client] = lambda: None
-    try:
-        r = await client.get("/dashboard/health/redis", headers=_HEADERS)
-        assert r.status_code == 200
-        assert "not configured" in r.text.lower()
-    finally:
-        app.dependency_overrides.pop(get_redis_client, None)
+    r = await client.get("/dashboard/health/redis", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "not configured" in r.text.lower()
 
 
 @pytest.mark.asyncio

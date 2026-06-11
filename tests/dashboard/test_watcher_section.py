@@ -61,12 +61,6 @@ def _mock_watcher(wi: WatchedItemResponse | None = None, base_url: str = _BASE_U
     return m
 
 
-@pytest.fixture(autouse=True)
-def _clear_watcher_override():
-    yield
-    app.dependency_overrides.pop(get_watcher_client, None)
-
-
 # ---------------------------------------------------------------------------
 # GET /watcher-section — not configured
 # ---------------------------------------------------------------------------
@@ -115,7 +109,8 @@ async def test_watcher_section_not_watching(client, session):
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_watching_shows_details(client, session):
+async def test_watcher_section_watching_shows_details(client, session, monkeypatch):
+    monkeypatch.delenv("WATCHER_PUBLIC_BASE_URL", raising=False)
     wi = _wi("ok", effective_url="https://example.com/page")
     watcher = _mock_watcher(wi, base_url=_BASE_URL)
     app.dependency_overrides[get_watcher_client] = lambda: watcher

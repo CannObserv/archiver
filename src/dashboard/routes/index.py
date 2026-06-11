@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,7 @@ from src.api.deps import get_db_session, get_redis_client, get_watcher_client
 if TYPE_CHECKING:
     from redis.asyncio import Redis as RedisAsync
     from watcher_client import WatcherClient
+from src.core.logging import get_logger
 from src.core.models import (
     AppUser,
     InfoItem,
@@ -27,6 +29,8 @@ from src.core.models import (
 )
 from src.core.models.domain import Domain
 from src.dashboard.deps import get_dashboard_user
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -51,11 +55,19 @@ async def dashboard_health_watcher(
         return HTMLResponse('<span class="badge badge--muted">not configured</span>')
     try:
         ok = await watcher.health_check()
-        cls = "badge--success" if ok else "badge--danger"
-        label = "ok" if ok else "error"
-        return HTMLResponse(f'<span class="badge {cls}">{label}</span>')
-    except Exception:
-        return HTMLResponse('<span class="badge badge--danger">error</span>')
+        if ok:
+            return HTMLResponse('<span class="badge badge--success">ok</span>')
+        reason = "Watcher returned non-200"
+        logger.warning("Watcher health check degraded", extra={"reason": reason})
+        return HTMLResponse(
+            f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
+        )
+    except Exception as exc:
+        reason = str(exc)
+        logger.warning("Watcher health check failed", extra={"error": reason})
+        return HTMLResponse(
+            f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
+        )
 
 
 @router.get("/health/redis", response_class=HTMLResponse)
@@ -69,8 +81,12 @@ async def dashboard_health_redis(
     try:
         await redis.ping()
         return HTMLResponse('<span class="badge badge--success">ok</span>')
-    except Exception:
-        return HTMLResponse('<span class="badge badge--danger">error</span>')
+    except Exception as exc:
+        reason = str(exc)
+        logger.warning("Redis health check failed", extra={"error": reason})
+        return HTMLResponse(
+            f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
+        )
 
 
 @router.get("/", response_class=HTMLResponse)

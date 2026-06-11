@@ -464,6 +464,7 @@ p:last-child { margin-bottom: 0; }
 .badge--danger  { background: var(--color-danger-bg);  color: var(--color-danger); }
 .badge--info    { background: var(--color-info-bg);    color: var(--color-info); }
 .badge--neutral { background: var(--color-surface-alt); color: var(--color-text-muted); }
+.badge--muted   { background: var(--color-surface-alt); color: var(--color-text-muted); }
 .badge--sm { padding: 0 var(--space-1); font-size: var(--font-size-2xs); }
 
 /* ─── Status pills (SourceRevision cache state) ──────────────────────────── */
