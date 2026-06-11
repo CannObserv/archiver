@@ -59,6 +59,7 @@
          hx-get="/dashboard/info-items/{{ item.info_item_id }}/watcher-status"
          hx-trigger="load"
          hx-swap="outerHTML"
+         aria-live="polite" aria-atomic="false"
          style="margin-top:var(--space-2);">
       <p class="text-muted text-small" style="margin:0;">Loading status…</p>
     </div>

@@ -126,6 +126,28 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 ### Alpine.js integration
 - `[x-cloak] { display: none !important; }` — prevents FOUC on elements controlled by `x-show`. Add `x-cloak` to any element that should be hidden before Alpine initialises (e.g. collapsible panels). Do **not** add `x-cloak` to elements that should start visible.
 - For elements that are conditionally hidden by `x-show` but start hidden, add `style="display:none;"` as an initial-state hint instead of `x-cloak`; Alpine's `x-show` manages their display after initialisation. This preserves the CSS class's `display` value (e.g. `display:flex` on `.entity-card__actions`) when the element is shown.
+- **Inline toggle panel pattern** — when a section needs a togglable sub-panel (e.g. Swap primary source), wrap both the trigger and the panel in `x-data="{open:false}"`. The trigger button uses `@click="open=!open"` and `x-text="open ? 'Cancel' : 'Open'"`. The panel uses `x-show="open" x-cloak`. No named Alpine component needed for single-use panels.
+
+### HTMX async partial pattern
+
+For non-blocking page sections that call a slow or potentially unavailable service, load them after the page renders:
+
+```html
+<div id="target-id"
+     hx-get="/dashboard/path/to/partial"
+     hx-trigger="load"
+     hx-swap="outerHTML"
+     aria-live="polite" aria-atomic="false">
+  <p class="text-muted text-small">Loading…</p>
+</div>
+```
+
+Rules:
+- `hx-trigger="load"` fires the request immediately after the page renders (no user interaction needed).
+- `hx-swap="outerHTML"` replaces the entire placeholder div. The server-rendered partial **must** include the same `id` as the placeholder so subsequent re-renders can re-target it.
+- `aria-live="polite" aria-atomic="false"` is required on every HTMX swap target (see Accessibility section).
+- The placeholder content degrades gracefully if JS is disabled or the request fails.
+- Use this pattern for sections that depend on a sibling service (Watcher, Replicator) so that service outages do not block the dashboard page load.
 
 ### JSON data island pattern
 

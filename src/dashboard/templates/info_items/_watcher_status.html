@@ -1,6 +1,6 @@
 {# Watcher health strip partial — loaded via hx-get; re-rendered by check-now, begin-watching, resync-watcher.
    Must be wrapped in #watcher-status-strip so hx-swap="outerHTML" replaces the whole div. #}
-<div id="watcher-status-strip" style="margin-top:var(--space-2);">
+<div id="watcher-status-strip" aria-live="polite" aria-atomic="false" style="margin-top:var(--space-2);">
 
 {% if state == "not_configured" %}
   <p class="text-muted text-small" style="margin:0;">Watcher not configured.</p>

@@ -1021,7 +1021,7 @@ async def check_now(
     try:
         wi = await watcher.check_now(item.watcher_item_id)
     except WatcherError:
-        pass  # fall through; _render_status_partial will show degraded state
+        pass  # wi stays None; _render_status_partial re-fetches — shows degraded if that also fails
 
     return await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
 
