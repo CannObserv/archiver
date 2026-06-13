@@ -82,7 +82,7 @@ async def dashboard_health_redis(
         await redis.ping()
         return HTMLResponse('<span class="badge badge--success">ok</span>')
     except Exception as exc:
-        reason = f"{type(exc).__name__}: {exc}"
+        reason = str(exc)
         logger.warning("Redis health check failed", extra={"error": reason})
         return HTMLResponse(
             f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'

@@ -149,7 +149,8 @@ async def test_health_watcher_non200_shows_warning_badge_with_status(client):
     r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
     assert r.status_code == 200
     assert "badge--warning" in r.text
-    assert "503" in r.text
+    assert 'title="Watcher returned 503"' in r.text
+    assert ">degraded<" in r.text
     assert "badge--danger" not in r.text
 
 
@@ -183,17 +184,13 @@ async def test_health_redis_ok(client):
 
 
 @pytest.mark.asyncio
-async def test_health_redis_degraded_shows_exception_class(client):
-    class FakeConnectionError(Exception):
-        pass
-
+async def test_health_redis_degraded(client):
     mock_redis = MagicMock()
-    mock_redis.ping = AsyncMock(side_effect=FakeConnectionError("timed out"))
+    mock_redis.ping = AsyncMock(side_effect=Exception("timed out"))
     app.dependency_overrides[get_redis_client] = lambda: mock_redis
     r = await client.get("/dashboard/health/redis", headers=_HEADERS)
     assert r.status_code == 200
     assert "badge--danger" in r.text
-    assert "FakeConnectionError" in r.text
     assert "timed out" in r.text
 
 

@@ -227,3 +227,19 @@ async def test_auth_error_raises_watcher_auth_error(client):
     )
     with pytest.raises(WatcherAuthError):
         await client.get_watched_item(_WI_ID)
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_health_check_returns_200_on_ok(client):
+    respx.get(f"{BASE_URL}/health").mock(return_value=Response(200))
+    result = await client.health_check()
+    assert result == 200
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_health_check_returns_status_code_on_non_200(client):
+    respx.get(f"{BASE_URL}/health").mock(return_value=Response(503))
+    result = await client.health_check()
+    assert result == 503
