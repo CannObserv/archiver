@@ -134,7 +134,7 @@ async def test_home_recent_activity_shows_item_name_when_bound(client, session):
 @pytest.mark.asyncio
 async def test_health_watcher_ok(client):
     mock_watcher = MagicMock()
-    mock_watcher.health_check = AsyncMock(return_value=True)
+    mock_watcher.health_check = AsyncMock(return_value=200)
     app.dependency_overrides[get_watcher_client] = lambda: mock_watcher
     r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
     assert r.status_code == 200
@@ -142,7 +142,19 @@ async def test_health_watcher_ok(client):
 
 
 @pytest.mark.asyncio
-async def test_health_watcher_degraded(client):
+async def test_health_watcher_non200_shows_warning_badge_with_status(client):
+    mock_watcher = MagicMock()
+    mock_watcher.health_check = AsyncMock(return_value=503)
+    app.dependency_overrides[get_watcher_client] = lambda: mock_watcher
+    r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--warning" in r.text
+    assert "503" in r.text
+    assert "badge--danger" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_watcher_network_error_shows_danger_badge(client):
     mock_watcher = MagicMock()
     mock_watcher.health_check = AsyncMock(side_effect=Exception("connection refused"))
     app.dependency_overrides[get_watcher_client] = lambda: mock_watcher
@@ -171,14 +183,18 @@ async def test_health_redis_ok(client):
 
 
 @pytest.mark.asyncio
-async def test_health_redis_degraded(client):
+async def test_health_redis_degraded_shows_exception_class(client):
+    class FakeConnectionError(Exception):
+        pass
+
     mock_redis = MagicMock()
-    mock_redis.ping = AsyncMock(side_effect=Exception("connection refused"))
+    mock_redis.ping = AsyncMock(side_effect=FakeConnectionError("timed out"))
     app.dependency_overrides[get_redis_client] = lambda: mock_redis
     r = await client.get("/dashboard/health/redis", headers=_HEADERS)
     assert r.status_code == 200
     assert "badge--danger" in r.text
-    assert "connection refused" in r.text
+    assert "FakeConnectionError" in r.text
+    assert "timed out" in r.text
 
 
 @pytest.mark.asyncio

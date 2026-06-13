@@ -65,10 +65,10 @@ class WatcherClient:
 
     # --- Health ---
 
-    async def health_check(self) -> bool:
-        """Return True if Watcher responds 200 to GET /health."""
+    async def health_check(self) -> int:
+        """Return the HTTP status code from GET /health. Raises on network error."""
         resp = await self._http.get("/health", timeout=3.0)
-        return resp.status_code == 200
+        return resp.status_code
 
     # --- Provisioning ---
 

@@ -16,6 +16,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.2.1 (2026-06-13)
+
+[service] **Health badges: distinguish non-200 from network error** (archiver#59).
+
+`GET /dashboard/health/watcher` now uses `badge--warning` ("degraded") for reachable-but-non-200 responses, with the status code in the tooltip (e.g. "Watcher returned 503"). Network/connect failures still use `badge--danger` ("error"). `GET /dashboard/health/redis` tooltip now prefixes the exception class name (e.g. "ConnectionError: …") to distinguish timeout from connection refused.
+
+**Breaking change (internal only):** `WatcherClient.health_check()` now returns `int` (HTTP status code) instead of `bool`. Callers must compare `== 200` rather than a truthy check. Only `src/dashboard/routes/index.py` calls this method.
+
 ## v4.2.0 (2026-06-10)
 
 [service] **Watcher control-plane integration — provisioning hooks** (archiver#55, Steps 1–3).

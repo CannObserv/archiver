@@ -54,13 +54,13 @@ async def dashboard_health_watcher(
     if watcher is None:
         return HTMLResponse('<span class="badge badge--muted">not configured</span>')
     try:
-        ok = await watcher.health_check()
-        if ok:
+        status = await watcher.health_check()
+        if status == 200:
             return HTMLResponse('<span class="badge badge--success">ok</span>')
-        reason = "Watcher returned non-200"
+        reason = f"Watcher returned {status}"
         logger.warning("Watcher health check degraded", extra={"reason": reason})
         return HTMLResponse(
-            f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
+            f'<span class="badge badge--warning" title="{html_escape(reason)}">degraded</span>'
         )
     except Exception as exc:
         reason = str(exc)
@@ -82,7 +82,7 @@ async def dashboard_health_redis(
         await redis.ping()
         return HTMLResponse('<span class="badge badge--success">ok</span>')
     except Exception as exc:
-        reason = str(exc)
+        reason = f"{type(exc).__name__}: {exc}"
         logger.warning("Redis health check failed", extra={"error": reason})
         return HTMLResponse(
             f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
