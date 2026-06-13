@@ -2,7 +2,7 @@
    Rendered inside a parent x-data="{swapOpen:false}" div; visible when swapOpen is true.
    For the no-binding empty state, the panel renders unconditionally (no toggle needed). #}
 <div id="swap-panel" style="margin-top:var(--space-3);padding:var(--space-3);background:var(--color-surface-alt,var(--color-surface));border-radius:var(--radius);max-width:38rem;">
-  <p class="text-small" style="font-weight:500;margin:0 0 var(--space-2);">
+  <p class="text-sm" style="font-weight:500;margin:0 0 var(--space-2);">
     {% if iis_rows %}Swap primary source{% else %}Add primary source{% endif %}
   </p>
 
@@ -14,12 +14,12 @@
     <div id="swap-error" role="alert" aria-live="polite" aria-atomic="true"
          style="margin-bottom:var(--space-2);"></div>
     <div style="margin-bottom:var(--space-2);">
-      <label class="text-small text-muted" style="display:block;margin-bottom:var(--space-1);">URL</label>
+      <label class="text-sm text-muted" style="display:block;margin-bottom:var(--space-1);">URL</label>
       <input type="url" name="url" id="swap-url" class="input" required
              placeholder="https://example.com/page" style="width:100%;">
     </div>
     <div style="margin-bottom:var(--space-2);">
-      <label class="text-small text-muted" style="display:block;margin-bottom:var(--space-1);">Source specs <span class="text-muted">(JSON array)</span></label>
+      <label class="text-sm text-muted" style="display:block;margin-bottom:var(--space-1);">Source specs <span class="text-muted">(JSON array)</span></label>
       <textarea name="source_specs" id="swap-specs" class="input" rows="4"
                 style="width:100%;font-family:monospace;font-size:0.82rem;"
                 placeholder='[{"schema_version":1,"extraction":{"algorithm":"css","selector":"h1"},"fingerprint":{}}]'></textarea>
@@ -41,7 +41,7 @@
 
   {# Advanced: bind existing InfoSource by ULID — same HX-Redirect pattern on success. #}
   <details style="margin-top:var(--space-3);">
-    <summary class="text-small text-muted" style="cursor:pointer;">Advanced: bind existing InfoSource by ID</summary>
+    <summary class="text-sm text-muted" style="cursor:pointer;">Advanced: bind existing InfoSource by ID</summary>
     <form hx-post="/dashboard/info-items/{{ item.info_item_id }}/swap-primary-by-id"
           hx-target-422="#swap-by-id-error"
           style="display:flex;gap:var(--space-2);margin-top:var(--space-2);flex-wrap:wrap;">

@@ -7,14 +7,14 @@
   {# ── Section 1: Overview ───────────────────────────────────────────── #}
   <section aria-label="Overview" style="margin-bottom:var(--space-5);">
     <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
-      <a href="/dashboard/info-items/" class="text-muted text-small">Information Items</a>
+      <a href="/dashboard/info-items/" class="text-muted text-sm">Information Items</a>
       <span aria-hidden="true"> / </span>
     </nav>
 
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2);flex-wrap:wrap;">
       <div>
         <h1 style="margin:0 0 var(--space-1);">{{ item.name }}</h1>
-        <p class="text-muted text-small" style="margin:0 0 var(--space-2);">
+        <p class="text-muted text-sm" style="margin:0 0 var(--space-2);">
           <code x-data="{copied:false}">
             <span>{{ item.info_item_id }}</span>
             <button type="button" class="btn btn--ghost" style="font-size:0.7rem;padding:0.1rem 0.4rem;margin-left:0.25rem;"
@@ -61,7 +61,7 @@
          hx-swap="outerHTML"
          aria-live="polite" aria-atomic="false"
          style="margin-top:var(--space-2);">
-      <p class="text-muted text-small" style="margin:0;">Loading status…</p>
+      <p class="text-muted text-sm" style="margin:0;">Loading status…</p>
     </div>
   </section>
 
@@ -89,18 +89,18 @@
           <tr style="{% if loop.first %}border-left:3px solid var(--color-brand);{% endif %}">
             <td class="data-table__cell">
               {% if src %}
-              <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-small">{{ src.url }}</a>
-              <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="text-muted text-small" aria-label="Open in new tab">↗</a>
+              <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-sm">{{ src.url }}</a>
+              <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="text-muted text-sm" aria-label="Open in new tab">↗</a>
               {% else %}
-              <span class="text-muted text-small">{{ binding.info_source_id }}</span>
+              <span class="text-muted text-sm">{{ binding.info_source_id }}</span>
               {% endif %}
             </td>
-            <td class="data-table__cell data-table__cell--muted text-small">
+            <td class="data-table__cell data-table__cell--muted text-sm">
               {% if src and src.domain_name %}
               <a href="/dashboard/domains/{{ src.domain_name }}">{{ src.domain_name }}</a>
               {% else %}—{% endif %}
             </td>
-            <td class="data-table__cell data-table__cell--muted text-small">
+            <td class="data-table__cell data-table__cell--muted text-sm">
               {{ binding.created_at.strftime('%Y-%m-%d') }}
             </td>
             <td class="data-table__cell">
@@ -139,7 +139,7 @@
          hx-swap="outerHTML"
          aria-live="polite" aria-atomic="false"
          style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
-      <p class="text-muted text-small" style="margin:0;">Loading…</p>
+      <p class="text-muted text-sm" style="margin:0;">Loading…</p>
     </div>
   </section>
 
@@ -160,7 +160,7 @@
            hx-trigger="load"
            hx-swap="innerHTML"
            style="margin-bottom:var(--space-2);">
-        <p class="text-muted text-small">Loading suggestions…</p>
+        <p class="text-muted text-sm">Loading suggestions…</p>
       </div>
       <form hx-patch="/dashboard/info-items/{{ item.info_item_id }}/rep-fields"
             hx-target="#rep-fields-flash"
@@ -203,7 +203,7 @@
     {% endif %}
 
     <details style="max-width:30rem;margin-bottom:var(--space-3);">
-      <summary class="text-small" style="cursor:pointer;margin-bottom:var(--space-2);">+ Assign Replication Spec</summary>
+      <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Assign Replication Spec</summary>
       <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/assign-rep-spec"
             style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
         <input type="text" name="rep_spec_id" class="input" placeholder="RepSpec ULID"
@@ -213,7 +213,7 @@
     </details>
 
     <div style="margin-top:var(--space-4);background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
-      <p class="text-muted text-small">Replicator integration — replication job history and public URL writeback will appear here once the Replicator service is available.</p>
+      <p class="text-muted text-sm">Replicator integration — replication job history and public URL writeback will appear here once the Replicator service is available.</p>
     </div>
   </section>
 
@@ -223,7 +223,7 @@
       Revision History
     </h2>
     <details style="margin-bottom:var(--space-3);">
-      <summary class="text-small" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind Revision</summary>
+      <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind Revision</summary>
       <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/bind-revision"
             style="display:flex;gap:var(--space-2);margin-top:var(--space-2);max-width:30rem;">
         <input type="text" name="source_revision_id" class="input" placeholder="SourceRevision ULID"
@@ -247,21 +247,21 @@
         <tr>
           <td class="data-table__cell">
             {% if rev %}
-            <a href="/dashboard/source-revisions/{{ binding.source_revision_id }}" class="text-small">
+            <a href="/dashboard/source-revisions/{{ binding.source_revision_id }}" class="text-sm">
               <code>{{ rev.content_fingerprint[:20] }}…</code>
             </a>
             {% else %}
-            <span class="text-muted text-small">{{ binding.source_revision_id }}</span>
+            <span class="text-muted text-sm">{{ binding.source_revision_id }}</span>
             {% endif %}
           </td>
-          <td class="data-table__cell data-table__cell--muted text-small">
+          <td class="data-table__cell data-table__cell--muted text-sm">
             {% if rev %}{{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
           </td>
           <td class="data-table__cell">
             {% if rev and rev.content_cache_uri %}
-            <span class="badge badge--success text-small">cached</span>
+            <span class="badge badge--success text-sm">cached</span>
             {% else %}
-            <span class="badge badge--muted text-small">—</span>
+            <span class="badge badge--muted text-sm">—</span>
             {% endif %}
           </td>
         </tr>

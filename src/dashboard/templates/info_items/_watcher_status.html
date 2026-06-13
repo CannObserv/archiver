@@ -3,10 +3,10 @@
 <div id="watcher-status-strip" aria-live="polite" aria-atomic="false" style="margin-top:var(--space-2);">
 
 {% if state == "not_configured" %}
-  <p class="text-muted text-small" style="margin:0;">Watcher not configured.</p>
+  <p class="text-muted text-sm" style="margin:0;">Watcher not configured.</p>
 
 {% elif state == "not_watching" %}
-  <span class="text-muted text-small">Not watching</span>
+  <span class="text-muted text-sm">Not watching</span>
   <form hx-post="/dashboard/info-items/{{ item_id }}/begin-watching"
         hx-target="#watcher-status-strip"
         hx-swap="outerHTML"
@@ -15,7 +15,7 @@
   </form>
 
 {% elif state == "degraded" %}
-  <p class="text-muted text-small" style="margin:0;">Watcher unavailable{% if error_message %} — {{ error_message }}{% endif %}.</p>
+  <p class="text-muted text-sm" style="margin:0;">Watcher unavailable{% if error_message %} — {{ error_message }}{% endif %}.</p>
 
 {% else %}{# state == "watching" #}
   {% set hs = watched_item.health_status.value %}
@@ -24,17 +24,17 @@
           style="font-size:0.7rem;">{{ hs.upper() }}</span>
 
     {% if last_checked_ago %}
-    <span class="text-muted text-small">Last checked: {{ last_checked_ago }}</span>
+    <span class="text-muted text-sm">Last checked: {{ last_checked_ago }}</span>
     {% else %}
-    <span class="text-muted text-small">No check yet</span>
+    <span class="text-muted text-sm">No check yet</span>
     {% endif %}
 
     {% if last_changed_ago %}
-    <span class="text-muted text-small">Last changed: {{ last_changed_ago }}</span>
+    <span class="text-muted text-sm">Last changed: {{ last_changed_ago }}</span>
     {% endif %}
 
     {% if cadence %}
-    <span class="text-muted text-small">Cadence: {{ cadence }}</span>
+    <span class="text-muted text-sm">Cadence: {{ cadence }}</span>
     {% endif %}
 
     <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"

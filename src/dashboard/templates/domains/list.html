@@ -10,7 +10,7 @@
 
   {# Filter bar #}
   <form method="get" class="filter-card" style="margin-bottom:var(--space-3);">
-    <label class="text-small" for="is-active-filter">Status:</label>
+    <label class="text-sm" for="is-active-filter">Status:</label>
     <select id="is-active-filter" name="is_active" class="input" style="width:auto;"
             onchange="this.form.submit()">
       <option value="">All</option>
@@ -47,7 +47,7 @@
           <span class="badge badge--success">active</span>
           {% endif %}
         </td>
-        <td class="data-table__cell data-table__cell--muted text-small">
+        <td class="data-table__cell data-table__cell--muted text-sm">
           {{ domain.created_at.strftime('%Y-%m-%d') }}
         </td>
       </tr>

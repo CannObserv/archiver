@@ -9,15 +9,15 @@
     <div class="entity-card__header">
       <div>
         <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
-          <a href="/dashboard/source-revisions/" class="text-muted text-small">
+          <a href="/dashboard/source-revisions/" class="text-muted text-sm">
             Information Source Revisions
           </a>
           <span aria-hidden="true"> / </span>
         </nav>
         <h1 class="entity-card__title">
-          <code class="text-small">{{ rev.content_fingerprint }}</code>
+          <code class="text-sm">{{ rev.content_fingerprint }}</code>
         </h1>
-        <p class="entity-card__id text-small text-muted">{{ rev.source_revision_id }}</p>
+        <p class="entity-card__id text-sm text-muted">{{ rev.source_revision_id }}</p>
       </div>
     </div>
 
@@ -26,7 +26,7 @@
       <dd>
         {% if source %}
         <a href="/dashboard/info-sources/{{ rev.info_source_id }}">
-          <code class="text-small">{{ source.url or rev.info_source_id }}</code>
+          <code class="text-sm">{{ source.url or rev.info_source_id }}</code>
         </a>
         {% else %}
         <span class="text-muted">{{ rev.info_source_id }}</span>
@@ -50,9 +50,9 @@
           {% else %}
           <span class="status-pill status-pill--cached">cached</span>
           {% endif %}
-          <code class="text-small" style="margin-left:var(--space-2);">{{ rev.content_cache_uri }}</code>
+          <code class="text-sm" style="margin-left:var(--space-2);">{{ rev.content_cache_uri }}</code>
           {% if rev.content_cache_expires_at %}
-          <span class="text-small text-muted">
+          <span class="text-sm text-muted">
             (expires {{ rev.content_cache_expires_at.strftime('%Y-%m-%d %H:%M UTC') }})
           </span>
           {% endif %}
@@ -65,7 +65,7 @@
     {% if rev.content_cache_uri %}
     <div class="danger-zone" style="margin-top:var(--space-3);">
       <h3 style="margin-top:0;">Clear Cache Fields</h3>
-      <p class="text-small text-muted">
+      <p class="text-sm text-muted">
         Removes <code>content_cache_uri</code> and <code>content_cache_expires_at</code>.
         Use when the cached content is stale or the URI is no longer valid.
       </p>

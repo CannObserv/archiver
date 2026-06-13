@@ -11,14 +11,14 @@
   {# Primary CTA + secondary link #}
   <div style="margin-bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-3);">
     <a href="/dashboard/register" class="btn btn--primary">Register Information Item</a>
-    <a href="/dashboard/info-items/" class="text-small">Browse Information Items</a>
+    <a href="/dashboard/info-items/" class="text-sm">Browse Information Items</a>
   </div>
 
   {# Service health strip — loaded client-side via HTMX so it doesn't block page render #}
   <div class="filter-card" style="margin-bottom:var(--space-4);display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-3);">
-    <span class="text-small text-muted">Service health:</span>
+    <span class="text-sm text-muted">Service health:</span>
     <span>
-      <span class="text-small text-muted">Archiver</span>&nbsp;
+      <span class="text-sm text-muted">Archiver</span>&nbsp;
       <span id="health-archiver"
             hx-get="/dashboard/health"
             hx-trigger="load"
@@ -28,7 +28,7 @@
     </span>
     {% if watcher_base_url %}
     <span>
-      <span class="text-small text-muted">Watcher</span>&nbsp;
+      <span class="text-sm text-muted">Watcher</span>&nbsp;
       <span id="health-watcher"
             hx-get="/dashboard/health/watcher"
             hx-trigger="load"
@@ -38,13 +38,13 @@
     </span>
     {% else %}
     <span>
-      <span class="text-small text-muted">Watcher</span>&nbsp;
+      <span class="text-sm text-muted">Watcher</span>&nbsp;
       <span class="badge badge--muted">not configured</span>
     </span>
     {% endif %}
     {% if redis_configured %}
     <span>
-      <span class="text-small text-muted">Redis</span>&nbsp;
+      <span class="text-sm text-muted">Redis</span>&nbsp;
       <span id="health-redis"
             hx-get="/dashboard/health/redis"
             hx-trigger="load"
@@ -54,7 +54,7 @@
     </span>
     {% else %}
     <span>
-      <span class="text-small text-muted">Redis</span>&nbsp;
+      <span class="text-sm text-muted">Redis</span>&nbsp;
       <span class="badge badge--muted">not configured</span>
     </span>
     {% endif %}
@@ -63,19 +63,19 @@
   {# Summary counts #}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--space-3);margin-bottom:var(--space-4);">
     <a href="/dashboard/info-items/" class="entity-card" style="text-decoration:none;">
-      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Information Items</p>
+      <p class="text-muted text-sm" style="margin:0 0 var(--space-1);">Information Items</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ item_count }}</p>
     </a>
     <a href="/dashboard/info-sources/" class="entity-card" style="text-decoration:none;">
-      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Information Sources</p>
+      <p class="text-muted text-sm" style="margin:0 0 var(--space-1);">Information Sources</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ source_count }}</p>
     </a>
     <a href="/dashboard/source-revisions/" class="entity-card" style="text-decoration:none;">
-      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Source Revisions</p>
+      <p class="text-muted text-sm" style="margin:0 0 var(--space-1);">Source Revisions</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ revision_count }}</p>
     </a>
     <a href="/dashboard/rep-specs/" class="entity-card" style="text-decoration:none;">
-      <p class="text-muted text-small" style="margin:0 0 var(--space-1);">Replication Specs</p>
+      <p class="text-muted text-sm" style="margin:0 0 var(--space-1);">Replication Specs</p>
       <p style="font-size:2rem;font-weight:700;margin:0;color:var(--color-brand);">{{ rep_spec_count }}</p>
     </a>
   </div>
@@ -99,22 +99,22 @@
       <tr>
         <td class="data-table__cell">
           {% if item %}
-          <a href="/dashboard/info-items/{{ item.info_item_id }}" class="text-small">{{ item.name }}</a>
+          <a href="/dashboard/info-items/{{ item.info_item_id }}" class="text-sm">{{ item.name }}</a>
           {% else %}
-          <span class="text-muted text-small">—</span>
+          <span class="text-muted text-sm">—</span>
           {% endif %}
         </td>
         <td class="data-table__cell">
           {% if src %}
           <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
-             class="text-small">{{ src.url or rev.info_source_id }}</a>
+             class="text-sm">{{ src.url or rev.info_source_id }}</a>
           {% else %}
-          <span class="text-muted text-small">{{ rev.info_source_id }}</span>
+          <span class="text-muted text-sm">{{ rev.info_source_id }}</span>
           {% endif %}
         </td>
         <td class="data-table__cell">
           <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
-            <code class="text-small">{{ rev.content_fingerprint[:20] }}…</code>
+            <code class="text-sm">{{ rev.content_fingerprint[:20] }}…</code>
           </a>
         </td>
         <td class="data-table__cell data-table__cell--muted">
@@ -144,7 +144,7 @@
       {% for row in domain_overview %}
       <tr>
         <td class="data-table__cell">
-          <a href="/dashboard/domains/{{ row.name }}" class="text-small">{{ row.name }}</a>
+          <a href="/dashboard/domains/{{ row.name }}" class="text-sm">{{ row.name }}</a>
         </td>
         <td class="data-table__cell data-table__cell--muted">{{ row.source_count }}</td>
         <td class="data-table__cell data-table__cell--muted">{{ row.item_count }}</td>

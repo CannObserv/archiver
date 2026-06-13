@@ -138,7 +138,7 @@ For non-blocking page sections that call a slow or potentially unavailable servi
      hx-trigger="load"
      hx-swap="outerHTML"
      aria-live="polite" aria-atomic="false">
-  <p class="text-muted text-small">Loading…</p>
+  <p class="text-muted text-sm">Loading…</p>
 </div>
 ```
 
@@ -157,7 +157,7 @@ Rules:
      hx-trigger="load, watcherUpdated from:body"
      hx-swap="outerHTML"
      aria-live="polite" aria-atomic="false">
-  <p class="text-muted text-small">Loading…</p>
+  <p class="text-muted text-sm">Loading…</p>
 </div>
 ```
 

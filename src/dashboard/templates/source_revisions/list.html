@@ -23,7 +23,7 @@
       {% endif %}
     </form>
     {% if filter_source %}
-    <p class="text-small text-muted" style="margin-top:var(--space-2);">
+    <p class="text-sm text-muted" style="margin-top:var(--space-2);">
       Showing revisions for
       <a href="/dashboard/info-sources/{{ filter_source.info_source_id }}">
         <code>{{ filter_source.url or filter_source.info_source_id }}</code>
@@ -48,15 +48,15 @@
       <tr>
         <td class="data-table__cell">
           <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
-            <code class="text-small">{{ rev.content_fingerprint[:24] }}…</code>
+            <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
           </a>
         </td>
         <td class="data-table__cell">
           {% if src %}
           <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
-             class="text-small">{{ src.url or rev.info_source_id }}</a>
+             class="text-sm">{{ src.url or rev.info_source_id }}</a>
           {% else %}
-          <span class="text-muted text-small">{{ rev.info_source_id }}</span>
+          <span class="text-muted text-sm">{{ rev.info_source_id }}</span>
           {% endif %}
         </td>
         <td class="data-table__cell data-table__cell--muted">

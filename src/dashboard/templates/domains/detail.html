@@ -28,7 +28,7 @@
     {% else %}
     <span class="badge badge--success">active</span>
     {% endif %}
-    <span class="text-muted text-small" style="margin-left:var(--space-2);">
+    <span class="text-muted text-sm" style="margin-left:var(--space-2);">
       Created {{ domain.created_at.strftime('%Y-%m-%d') }}
     </span>
   </p>
@@ -52,10 +52,10 @@
       {% for src in sources %}
       <tr>
         <td class="data-table__cell">
-          <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-small">{{ src.url }}</a>
-          <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="text-small text-muted" aria-label="Open {{ src.url }} in new tab">↗</a>
+          <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-sm">{{ src.url }}</a>
+          <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="text-sm text-muted" aria-label="Open {{ src.url }} in new tab">↗</a>
         </td>
-        <td class="data-table__cell data-table__cell--muted text-small">
+        <td class="data-table__cell data-table__cell--muted text-sm">
           {{ src.created_at.strftime('%Y-%m-%d') }}
         </td>
       </tr>

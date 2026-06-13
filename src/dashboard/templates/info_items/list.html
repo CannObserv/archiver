@@ -40,7 +40,7 @@
         <td class="data-table__cell">
           {% if row.primary_info_source_id %}
           <a href="/dashboard/info-sources/{{ row.primary_info_source_id }}"
-             class="text-small">{{ row.primary_url or row.primary_info_source_id }}</a>
+             class="text-sm">{{ row.primary_url or row.primary_info_source_id }}</a>
           {% else %}
           <span aria-label="none">—</span>
           {% endif %}

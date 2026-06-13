@@ -9,13 +9,13 @@
     <div class="entity-card__header">
       <div>
         <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
-          <a href="/dashboard/info-sources/" class="text-muted text-small">Information Sources</a>
+          <a href="/dashboard/info-sources/" class="text-muted text-sm">Information Sources</a>
           <span aria-hidden="true"> / </span>
         </nav>
         <h1 class="entity-card__title">
-          <code class="text-small">{{ src.url }}</code>
+          <code class="text-sm">{{ src.url }}</code>
         </h1>
-        <p class="entity-card__id text-small text-muted">{{ src.info_source_id }}</p>
+        <p class="entity-card__id text-sm text-muted">{{ src.info_source_id }}</p>
       </div>
     </div>
 
@@ -97,7 +97,7 @@
         <tr>
           <td class="data-table__cell">
             <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
-              <code class="text-small">{{ rev.content_fingerprint[:24] }}…</code>
+              <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
             </a>
           </td>
           <td class="data-table__cell data-table__cell--muted">
