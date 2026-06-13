@@ -22,15 +22,22 @@ on create, but **not** `is_active` on create.
 ## Approach
 
 Ship **cadence-only** at registration. Watcher's create/patch bodies accept
-`default_schedule_config` (shape `{interval_seconds: int}`, per `_format_cadence`
-at [info_items.py:933](../../src/dashboard/routes/info_items.py#L933)); the only
-work is plumbing — thread an optional `schedule_config` from a new advanced Step 3
-field, through `provision_on_create`, into `WatcherClient.provision_watched_item`.
-Keep it on the existing **post-commit, best-effort** path so a Watcher failure
-still never fails registration. Defer "paused on create": Watcher's
-`watched_item_create` body has no `is_active` field, so it needs a Watcher-side API
-change — split that into a separate issue. Default cadence = daily; default state =
-active (unchanged behavior).
+`default_schedule_config`; the only work is plumbing — thread an optional
+`schedule_config` from a new advanced Step 3 field, through `provision_on_create`,
+into `WatcherClient.provision_watched_item`. Keep it on the existing **post-commit,
+best-effort** path so a Watcher failure still never fails registration. Defer
+"paused on create": Watcher's `watched_item_create` body has no `is_active` field,
+so it needs a Watcher-side API change — split that into a separate issue. Default
+cadence = daily; default state = active (unchanged behavior).
+
+**Schedule-config shape (verified against Watcher source 2026-06-13).** Watcher's
+`default_schedule_config` is `{"interval": "<N><unit>"}` where unit ∈ `{s,m,h,d}`
+(`parse_interval` in `watcher/src/core/scheduler.py`; system default `{"interval":
+"1d"}`). It is **not** `{"interval_seconds": int}`. Archiver's `_format_cadence`
+([info_items.py:933](../../src/dashboard/routes/info_items.py#L933)) reads the wrong
+key (`interval_seconds`), so cadence has never rendered for provisioned items —
+pre-existing bug, fixed as part of this plan. Registration dropdown maps to:
+hourly → `"1h"`, 6h → `"6h"`, daily → `"1d"` (default), weekly → `"7d"`.
 
 ## Tradeoffs / alternatives
 
@@ -46,42 +53,58 @@ active (unchanged behavior).
 - **Domain-level cadence default instead of per-item** — rejected: Watcher owns
   domain rate-limiting; `default_schedule_config` is per-WatchedItem. Per-item is
   the right altitude for the registration affordance.
+- **Send cadence as `interval_seconds`** — rejected: Watcher's `parse_interval`
+  only accepts duration strings (`30s`/`15m`/`6h`/`1d`); seconds-as-int would be
+  stored but never honored by the scheduler.
 
 ## Steps
 
-1. Extend `WatcherClient.provision_watched_item` (and `patch_watched_item` for
-   parity) to accept an optional `schedule_config: dict | None` and forward it as
-   `default_schedule_config` only when set
+1. Fix `_format_cadence` ([info_items.py:933](../../src/dashboard/routes/info_items.py#L933))
+   to read `default_schedule_config["interval"]` (duration string) instead of
+   `interval_seconds`, and render it directly (e.g. `1d` → "~1 day"). Add a unit
+   test with a `{"interval": "6h"}` config. (Pre-existing display bug — surfaces
+   cadence for all provisioned items, not just newly-registered ones.)
+2. Extend `WatcherClient.provision_watched_item` (and `patch_watched_item` for
+   parity — confirmed in scope) to accept an optional `schedule_config: dict | None`
+   and forward it as `default_schedule_config` only when set
    ([client.py:75](../../clients/watcher-python/src/watcher_client/client.py#L75)).
    Add SDK tests asserting the body carries / omits the field. Bump
    watcher_client version.
-2. Thread `schedule_config: dict | None = None` through `provision_on_create`
+3. Thread `schedule_config: dict | None = None` through `provision_on_create`
    ([watcher_provisioning.py:27](../../src/core/watcher_provisioning.py#L27)) into
    the wrapper call. Update `tests/core/test_watcher_provisioning.py`.
-3. Add a collapsed **"Watcher settings (advanced)"** block to Step 3 in
-   `register/index.html` — a cadence `<select>` (hourly / 6h / daily / weekly)
-   defaulting to daily; Alpine `x-model="cadenceSeconds"`; submit as a form field.
-4. In the register submit handler, parse the cadence field, build
-   `{"interval_seconds": N}` (or `None` if unset/default-sentinel), and pass it to
-   `provision_on_create`. Tests for: field present → schedule forwarded; absent →
-   no `default_schedule_config` in the Watcher call.
-5. Surface the chosen cadence in the Step 4 review summary (read-only, with an
+4. Add a collapsed **"Watcher settings (advanced)"** block to Step 3 in
+   `register/index.html` — a cadence `<select>` with values `1h` / `6h` / `1d` /
+   `7d` (labels Hourly / Every 6h / Daily / Weekly), defaulting to `1d`; Alpine
+   `x-model="cadence"`; submit as a form field.
+5. In the register submit handler, build `{"interval": <selected>}` (always send —
+   daily is explicit per decision) and pass it to `provision_on_create`. Tests:
+   selected non-default → that interval forwarded; default → `{"interval": "1d"}`
+   forwarded.
+6. Surface the chosen cadence in the Step 4 review summary (read-only, with an
    Edit link back to Step 3, consistent with existing review rows).
-6. Update `docs/UI.md` (registration flow — new advanced field) and append a
-   CHANGELOG `[both]` entry (new SDK arg + registration cadence affordance).
-7. File the deferred split-out: Watcher issue to add `is_active` to the
+7. Update `docs/UI.md` (registration flow — new advanced field) and append a
+   CHANGELOG `[both]` entry (new SDK arg + registration cadence affordance +
+   `_format_cadence` fix).
+8. File the deferred split-out: Watcher issue to add `is_active` to the
    `watched_item_create` body, then a follow-up Archiver issue to expose
    paused-on-create at Step 3. Link both from #50.
 
 ## Open questions / risks
 
-- **Cadence vocabulary** — confirm the dropdown buckets (hourly / 6h / daily /
-  weekly) match operationally meaningful intervals; confirm Watcher honors
-  arbitrary `interval_seconds` vs. a fixed enum. Verify against Watcher's
-  schedule-config schema before finalizing the options.
-- **Default cadence** — daily assumed. If Watcher's own default differs and we
-  want to preserve it, send `None` (omit) rather than forcing daily, so Watcher's
-  default wins. Decide: explicit daily vs. defer-to-Watcher.
-- **`patch_watched_item` cadence** — step 1 adds it for parity but no caller sets
-  it yet (no "change cadence" affordance on the detail page). Acceptable as latent
-  capability; flag if reviewers prefer to omit until needed.
+_All resolved 2026-06-13:_
+
+- **Cadence vocabulary** — ✅ agreed. Buckets `1h` / `6h` / `1d` / `7d`, verified
+  against Watcher's `parse_interval` (accepts `s`/`m`/`h`/`d` duration strings).
+- **Default cadence** — ✅ daily (`{"interval": "1d"}`), sent explicitly (matches
+  Watcher's own system default, so behavior is unchanged if omitted; explicit is
+  clearer in the provision call).
+- **`patch_watched_item` cadence** — ✅ include (latent capability; no detail-page
+  "change cadence" affordance yet — possible follow-up, out of scope here).
+
+_New (from Watcher source verification):_
+
+- **`_format_cadence` reads the wrong key today** — fixed in step 1. The fix
+  changes display for *all* watched items, not just newly-registered ones; worth a
+  CHANGELOG `[service]` note. Consider whether to file as a standalone bug or carry
+  it under #50 (carrying it here, since it's the same surface).
