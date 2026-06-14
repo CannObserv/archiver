@@ -136,6 +136,8 @@
             <label for="reg-cadence" class="form-label">Fetch cadence</label>
             <select id="reg-cadence" name="cadence" x-model="cadence" x-ref="cadenceInput"
                     class="form-select" style="max-width:14rem;">
+              {# cadence_labels / default_cadence are Jinja globals set in
+                 src/dashboard/routes/register.py from src/dashboard/cadence.py. #}
               {% for value, label in cadence_labels.items() %}
               <option value="{{ value }}"{% if (cadence_value or default_cadence) == value %} selected{% endif %}>{{ label }}</option>
               {% endfor %}
