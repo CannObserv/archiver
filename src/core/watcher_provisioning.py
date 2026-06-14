@@ -29,11 +29,14 @@ async def provision_on_create(
     watcher: WatcherClient | None,
     item: InfoItem,
     info_source: InfoSource,
+    schedule_config: dict | None = None,
 ) -> None:
     """Provision a WatchedItem for a newly created InfoItem + primary InfoSource.
 
     On success, stores the Watcher-allocated WatchedItem ID on ``item`` and
-    commits. On any failure, logs and returns without raising.
+    commits. On any failure, logs and returns without raising. ``schedule_config``
+    (e.g. ``{"interval": "1d"}``) sets the per-item fetch cadence; None lets
+    Watcher apply its default.
     """
     if watcher is None:
         return
@@ -43,6 +46,7 @@ async def provision_on_create(
             source_specs=list(info_source.source_specs),
             info_item_id=str(item.info_item_id),
             archiver_info_source_id=str(info_source.info_source_id),
+            schedule_config=schedule_config,
         )
         item.watcher_item_id = str(result.id)
         await session.commit()

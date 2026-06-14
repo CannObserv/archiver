@@ -327,6 +327,14 @@ document.addEventListener("alpine:init", function () {
             sourceSpecs: "",
             itemName: "",
             description: "",
+            cadence: "1d",
+
+            // Human-readable label for the selected Watcher fetch cadence,
+            // shown in the Step 4 review summary.
+            get cadenceLabel() {
+                var labels = { "1h": "Hourly", "6h": "Every 6 hours", "1d": "Daily", "7d": "Weekly" };
+                return labels[this.cadence] || this.cadence;
+            },
 
             init: function () {
                 var urlEl = this.$refs.urlInput;

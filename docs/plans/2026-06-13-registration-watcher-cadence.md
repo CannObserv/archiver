@@ -83,9 +83,13 @@ hourly → `"1h"`, 6h → `"6h"`, daily → `"1d"` (default), weekly → `"7d"`.
    forwarded.
 6. Surface the chosen cadence in the Step 4 review summary (read-only, with an
    Edit link back to Step 3, consistent with existing review rows).
-7. Update `docs/UI.md` (registration flow — new advanced field) and append a
-   CHANGELOG `[both]` entry (new SDK arg + registration cadence affordance +
-   `_format_cadence` fix).
+7. Update `docs/UI.md` (registration flow — new advanced field). **No CHANGELOG
+   entry** (deviation from original plan): the change touches `src/dashboard/`,
+   `src/core/`, and `clients/watcher-python/` — none of the gated contract-visible
+   paths (`alembic/versions/`, `src/api/routes/`, `src/api/schemas/`,
+   `clients/python/`), and the changelog policy excludes dashboard-UX/docs changes.
+   The watcher_client SDK (separate version, bumped to 1.2.0) is not covered by
+   this changelog.
 8. File the deferred split-out: Watcher issue to add `is_active` to the
    `watched_item_create` body, then a follow-up Archiver issue to expose
    paused-on-create at Step 3. Link both from #50.

@@ -79,12 +79,15 @@ class WatcherClient:
         source_specs: list[dict],
         info_item_id: str,
         archiver_info_source_id: str,
+        schedule_config: dict | None = None,
     ) -> WatchedItemResponse:
         """Create a WatchedItem in Watcher for an Archiver InfoItem.
 
         ``info_item_id`` links the WatchedItem back to the Archiver InfoItem.
         ``archiver_info_source_id`` identifies the active InfoSource so the
         Watcher drain worker can post SourceRevisions to the correct source.
+        ``schedule_config`` sets the per-item fetch cadence (e.g.
+        ``{"interval": "6h"}``); omitted when None so Watcher applies its default.
         """
         body = {
             "archiver_info_item_id": info_item_id,
@@ -92,6 +95,8 @@ class WatcherClient:
             "source_specs": source_specs,
             "archiver_info_source_id": archiver_info_source_id,
         }
+        if schedule_config is not None:
+            body["default_schedule_config"] = schedule_config
         resp = await self._http.post("/api/v1/watched-items", json=body)
         return _unwrap_watched_item(resp)
 
@@ -102,11 +107,14 @@ class WatcherClient:
         effective_url: str | None = None,
         source_specs: list[dict] | None = None,
         archiver_info_source_id: str | None = None,
+        schedule_config: dict | None = None,
     ) -> WatchedItemResponse:
         """Update mutable fields on an existing WatchedItem.
 
         Only fields explicitly passed (non-None) are included in the PATCH body.
         Used by Archiver on primary-source swap and spec update.
+        ``schedule_config`` updates the per-item fetch cadence (e.g.
+        ``{"interval": "1d"}``).
         """
         body: dict = {}
         if effective_url is not None:
@@ -115,6 +123,8 @@ class WatcherClient:
             body["source_specs"] = source_specs
         if archiver_info_source_id is not None:
             body["archiver_info_source_id"] = archiver_info_source_id
+        if schedule_config is not None:
+            body["default_schedule_config"] = schedule_config
         resp = await self._http.patch(f"/api/v1/watched-items/{watcher_item_id}", json=body)
         return _unwrap_watched_item(resp)
 

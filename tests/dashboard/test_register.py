@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from sqlalchemy import select
 
+from src.api.deps import get_watcher_client
 from src.api.main import app
 from src.core.fetchers.base import FetchResult
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -14,6 +17,14 @@ from src.core.tools.fetch_and_render import HttpFetcherProtocol
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
 
 _VALID_SPEC = '[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
+
+
+def _mock_watcher() -> MagicMock:
+    watcher = MagicMock()
+    result = MagicMock()
+    result.id = "01HZZWATCHER00000000000001"
+    watcher.provision_watched_item = AsyncMock(return_value=result)
+    return watcher
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +257,73 @@ async def test_register_sets_owner_from_dashboard_user(client, session):
     assert item_rows
     # owner should be set from current user (via ext-reg user ID)
     assert item_rows[0].owner is not None
+
+
+# ---------------------------------------------------------------------------
+# Watcher cadence forwarding (#50)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_forwards_selected_cadence(client, session):
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data={
+            "url": "https://cadence.example.com/page",
+            "source_specs": _VALID_SPEC,
+            "name": "Cadence Item",
+            "description": "",
+            "cadence": "6h",
+        },
+    )
+    assert resp.status_code == 303
+    watcher.provision_watched_item.assert_awaited_once()
+    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] == {"interval": "6h"}
+
+
+@pytest.mark.asyncio
+async def test_register_defaults_to_daily_cadence(client, session):
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data={
+            "url": "https://cadencedefault.example.com/page",
+            "source_specs": _VALID_SPEC,
+            "name": "Cadence Default Item",
+            "description": "",
+        },
+    )
+    assert resp.status_code == 303
+    watcher.provision_watched_item.assert_awaited_once()
+    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] == {"interval": "1d"}
+
+
+@pytest.mark.asyncio
+async def test_register_invalid_cadence_falls_back_to_daily(client, session):
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data={
+            "url": "https://cadencebad.example.com/page",
+            "source_specs": _VALID_SPEC,
+            "name": "Cadence Bad Item",
+            "description": "",
+            "cadence": "banana",
+        },
+    )
+    assert resp.status_code == 303
+    watcher.provision_watched_item.assert_awaited_once()
+    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] == {"interval": "1d"}
 
 
 # ---------------------------------------------------------------------------

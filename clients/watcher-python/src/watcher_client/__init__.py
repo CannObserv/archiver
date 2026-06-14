@@ -13,7 +13,7 @@ from watcher_client.generated.models.change_revision_response import ChangeRevis
 from watcher_client.generated.models.watch_health_status import WatchHealthStatus
 from watcher_client.generated.models.watched_item_response import WatchedItemResponse
 
-__version__ = "1.0.0"
+__version__ = "1.2.0"
 
 __all__ = [
     "ChangeRevisionResponse",

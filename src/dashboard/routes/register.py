@@ -45,6 +45,11 @@ router = APIRouter(prefix="/dashboard/register", tags=["dashboard-register"])
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
+# Watcher fetch-cadence options offered at registration (#50). Values are Watcher
+# interval strings (see watcher parse_interval: s/m/h/d). Default is daily.
+_CADENCE_OPTIONS = ("1h", "6h", "1d", "7d")
+_DEFAULT_CADENCE = "1d"
+
 
 # ---------------------------------------------------------------------------
 # GET /dashboard/register  (step 1 landing)
@@ -286,6 +291,7 @@ async def register_submit(
     source_specs: str = Form(default=""),
     name: str = Form(default=""),
     description: str = Form(default=""),
+    cadence: str = Form(default="1d"),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
     watcher=Depends(get_watcher_client),
@@ -392,6 +398,7 @@ async def register_submit(
     await session.commit()
     await session.refresh(item)
 
-    await provision_on_create(session, watcher, item, src)
+    interval = cadence if cadence in _CADENCE_OPTIONS else _DEFAULT_CADENCE
+    await provision_on_create(session, watcher, item, src, schedule_config={"interval": interval})
 
     return RedirectResponse(url=f"/dashboard/info-items/{item.info_item_id}", status_code=303)

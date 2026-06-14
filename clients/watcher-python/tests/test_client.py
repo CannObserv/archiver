@@ -91,6 +91,62 @@ async def test_provision_sets_auth_header(client):
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_provision_forwards_schedule_config(client):
+    route = respx.post(f"{BASE_URL}/api/v1/watched-items").mock(
+        return_value=Response(201, json=_wi_payload())
+    )
+
+    await client.provision_watched_item(
+        url="https://example.com/data",
+        source_specs=[],
+        info_item_id=_INFO_ITEM_ID,
+        archiver_info_source_id=_INFO_SRC_ID,
+        schedule_config={"interval": "6h"},
+    )
+
+    import json
+
+    sent_body = json.loads(route.calls.last.request.content)
+    assert sent_body["default_schedule_config"] == {"interval": "6h"}
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_provision_omits_schedule_config_when_none(client):
+    route = respx.post(f"{BASE_URL}/api/v1/watched-items").mock(
+        return_value=Response(201, json=_wi_payload())
+    )
+
+    await client.provision_watched_item(
+        url="https://example.com/data",
+        source_specs=[],
+        info_item_id=_INFO_ITEM_ID,
+        archiver_info_source_id=_INFO_SRC_ID,
+    )
+
+    import json
+
+    sent_body = json.loads(route.calls.last.request.content)
+    assert "default_schedule_config" not in sent_body
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_patch_forwards_schedule_config(client):
+    route = respx.patch(f"{BASE_URL}/api/v1/watched-items/{_WI_ID}").mock(
+        return_value=Response(200, json=_wi_payload())
+    )
+
+    await client.patch_watched_item(_WI_ID, schedule_config={"interval": "1d"})
+
+    import json
+
+    sent_body = json.loads(route.calls.last.request.content)
+    assert sent_body["default_schedule_config"] == {"interval": "1d"}
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_patch_watched_item_effective_url(client):
     updated = _wi_payload(effective_url="https://example.com/new-data")
     route = respx.patch(f"{BASE_URL}/api/v1/watched-items/{_WI_ID}").mock(

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -930,23 +931,32 @@ def _format_spec_summary(source_specs: list) -> str:
     return " · ".join(parts)
 
 
+_CADENCE_LABELS = {"s": "sec", "m": "min", "h": "hr", "d": "day"}
+
+
 def _format_cadence(schedule_config: object) -> str:
-    """Return a short cadence string derived from schedule_config, or ''."""
+    """Return a short cadence string from a Watcher schedule_config, or ''.
+
+    Watcher stores cadence as ``{"interval": "<N><unit>"}`` where unit is one of
+    ``s``/``m``/``h``/``d`` (see watcher ``parse_interval``). Returns ``""`` when
+    the config is absent or the interval is missing/unparseable.
+    """
     if schedule_config is None:
         return ""
     try:
-        interval = schedule_config.additional_properties.get("interval_seconds")  # type: ignore[attr-defined]
+        interval = schedule_config.additional_properties.get("interval")  # type: ignore[attr-defined]
     except AttributeError:
         return ""
-    if interval is None:
+    if not interval:
         return ""
-    interval = int(interval)
-    if interval < 3600:
-        return f"~{interval // 60} min"
-    if interval < 86400:
-        return f"~{interval // 3600} hr"
-    d = interval // 86400
-    return f"~{d} day{'s' if d != 1 else ''}"
+    match = re.fullmatch(r"(\d+)([smhd])", str(interval).strip())
+    if match is None:
+        return ""
+    amount = int(match.group(1))
+    unit = match.group(2)
+    label = _CADENCE_LABELS[unit]
+    plural = "s" if (unit == "d" and amount != 1) else ""
+    return f"~{amount} {label}{plural}"
 
 
 async def _render_status_partial(

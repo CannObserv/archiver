@@ -129,6 +129,22 @@
             Owner: <strong>{{ user.email }}</strong> (auto-set from your login)
           </p>
         </div>
+
+        <details style="margin-top:var(--space-2);">
+          <summary class="text-sm" style="cursor:pointer;">Watcher settings (advanced)</summary>
+          <div style="margin-top:var(--space-2);">
+            <label for="reg-cadence" class="form-label">Fetch cadence</label>
+            <select id="reg-cadence" name="cadence" x-model="cadence" class="form-input" style="max-width:14rem;">
+              <option value="1h">Hourly</option>
+              <option value="6h">Every 6 hours</option>
+              <option value="1d">Daily</option>
+              <option value="7d">Weekly</option>
+            </select>
+            <p class="text-sm text-muted" style="margin-top:var(--space-1);">
+              How often Watcher checks this source for changes. Defaults to daily.
+            </p>
+          </div>
+        </details>
       </div>
 
       <div style="display:flex;gap:var(--space-2);">
@@ -171,6 +187,12 @@
           <tr>
             <td class="data-table__cell text-muted text-sm">Owner</td>
             <td class="data-table__cell">{{ user.email }}</td>
+          </tr>
+          <tr>
+            <td class="data-table__cell text-muted text-sm">Fetch cadence</td>
+            <td class="data-table__cell"><span x-text="cadenceLabel"></span>
+              <button type="button" class="btn btn--secondary btn--sm" @click="step=3">Edit</button>
+            </td>
           </tr>
         </tbody>
       </table>
