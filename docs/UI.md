@@ -47,12 +47,20 @@ Templates: `domains/list.html`, `domains/detail.html`, `domains/_notes_partial.h
 See design doc `docs/plans/2026-06-04-dashboard-ux-redesign-design.md` for full spec.
 
 **Step 3 (Metadata) — Watcher settings (advanced)** *(#50)*: a collapsed
-`<details>` block exposes a **Fetch cadence** `<select>` (`name="cadence"`,
-`x-model="cadence"`) with options Hourly (`1h`) / Every 6 hours (`6h`) / Daily
-(`1d`, default) / Weekly (`7d`). The value is a Watcher interval string. On submit
-the server passes `{"interval": <value>}` as the WatchedItem `default_schedule_config`
-during provisioning (best-effort, post-commit); an unrecognised value falls back to
-`1d`. Step 4 review shows the human-readable cadence label (`cadenceLabel` getter).
+`<details>` block exposes a **Fetch cadence** `<select.form-select>`
+(`name="cadence"`, `x-model="cadence"`, `x-ref="cadenceInput"`). The options and
+default are rendered server-side from the shared cadence vocabulary
+(`src/dashboard/cadence.py`: Hourly `1h` / Every 6 hours `6h` / Daily `1d` (default)
+/ Weekly `7d`), injected as the `cadence_labels` / `default_cadence` Jinja globals.
+The value is a Watcher interval string. On submit the server forwards
+`{"interval": <value>}` as the WatchedItem `default_schedule_config` during
+provisioning (best-effort, post-commit) **only when the value is a recognised
+option**; otherwise it sends `None` so Watcher applies its own default (the handler
+never fabricates a cadence). The selection is sticky across validation re-renders
+(`cadence_value` → `selected` attribute). Step 4 review shows the human-readable
+cadence label (`cadenceLabel` getter reads it off the selected `<option>`). The
+same vocabulary backs `_format_cadence` on the InfoItem detail Watcher section, so
+recognised cadences display with the same friendly labels.
 
 API stays at `/api/v1/*`. Health/OpenAPI unchanged.
 
@@ -354,10 +362,10 @@ Multi-step Information Item registration wizard. Manages step navigation and for
 **State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`).
 
 **Getters:**
-- `cadenceLabel` — maps the `cadence` interval string to a human-readable label (`1h`→Hourly, `6h`→Every 6 hours, `1d`→Daily, `7d`→Weekly); shown in the Step 4 review row.
+- `cadenceLabel` — returns the human-readable label for the selected cadence by reading the text of the matching `<option>` in `$refs.cadenceInput` (no hardcoded map; the server-rendered options are the single source). Shown in the Step 4 review row.
 
 **Methods:**
-- `init()` — copies `$refs.urlInput.value` into `url` and `$refs.nameInput.value` into `itemName` so server-rendered field values (e.g. on validation error re-render) populate Alpine state.
+- `init()` — copies `$refs.urlInput.value` into `url`, `$refs.nameInput.value` into `itemName`, and `$refs.cadenceInput.value` into `cadence` so server-rendered field values (e.g. on validation error re-render) populate Alpine state.
 - `loadSuggestions()` — fires an HTMX GET to `/dashboard/register/suggest-specs?url=<encoded>`, targeting `#spec-suggestions-panel`. Called by the step-1 "Next" button.
 - `prepareSubmit()` — no-op; `x-model` keeps the textarea in sync without a manual step.
 

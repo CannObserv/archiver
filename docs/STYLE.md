@@ -99,6 +99,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`.
 - `.form-input--error` / `.form-select--error` / `.form-textarea--error` — red border on invalid field.
 - `.form-input--inline` — compact width-auto variant for in-table rename inputs.
+- Use `.form-select` (not `.form-input`) on `<select>` elements so the select-specific focus ring and `.form-select--error` variant apply. Optional advanced/secondary form controls may be nested in a native `<details>`/`<summary>` disclosure (e.g. registration Step 3 "Watcher settings (advanced)") — no dedicated class; the `<summary>` carries `.text-sm`.
 - `.filter-card` — for single-row action/filter bars: heading + inputs in a horizontal flex row (`align-items: flex-end`). Use for simple one-input + submit patterns. For multi-field stacked forms, add `.filter-card--stacked`.
 - `.filter-card--stacked` — modifier; changes `filter-card` to a vertical column (`flex-direction: column; align-items: stretch`). Use when the card contains a heading above multiple stacked form fields.
 

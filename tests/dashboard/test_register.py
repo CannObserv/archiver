@@ -286,7 +286,8 @@ async def test_register_forwards_selected_cadence(client, session):
 
 
 @pytest.mark.asyncio
-async def test_register_defaults_to_daily_cadence(client, session):
+async def test_register_omits_cadence_when_absent(client, session):
+    # No cadence field → send None, let Watcher apply its own default.
     watcher = _mock_watcher()
     app.dependency_overrides[get_watcher_client] = lambda: watcher
 
@@ -302,11 +303,12 @@ async def test_register_defaults_to_daily_cadence(client, session):
     )
     assert resp.status_code == 303
     watcher.provision_watched_item.assert_awaited_once()
-    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] == {"interval": "1d"}
+    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] is None
 
 
 @pytest.mark.asyncio
-async def test_register_invalid_cadence_falls_back_to_daily(client, session):
+async def test_register_invalid_cadence_sends_none(client, session):
+    # Unrecognised value is not fabricated into a default; send None.
     watcher = _mock_watcher()
     app.dependency_overrides[get_watcher_client] = lambda: watcher
 
@@ -323,7 +325,25 @@ async def test_register_invalid_cadence_falls_back_to_daily(client, session):
     )
     assert resp.status_code == 303
     watcher.provision_watched_item.assert_awaited_once()
-    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] == {"interval": "1d"}
+    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] is None
+
+
+@pytest.mark.asyncio
+async def test_register_preserves_cadence_on_validation_error(client):
+    # Blank name re-renders step 3; the chosen cadence must stay selected.
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data={
+            "url": "https://cadencesticky.example.com/page",
+            "source_specs": _VALID_SPEC,
+            "name": "",
+            "description": "",
+            "cadence": "6h",
+        },
+    )
+    assert resp.status_code == 422
+    assert '<option value="6h" selected>' in resp.text
 
 
 # ---------------------------------------------------------------------------

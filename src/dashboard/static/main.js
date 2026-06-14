@@ -329,11 +329,16 @@ document.addEventListener("alpine:init", function () {
             description: "",
             cadence: "1d",
 
-            // Human-readable label for the selected Watcher fetch cadence,
-            // shown in the Step 4 review summary.
+            // Human-readable label for the selected Watcher fetch cadence, shown
+            // in the Step 4 review summary. Reads the label off the server-rendered
+            // <option> so the vocabulary stays single-sourced (no hardcoded map).
             get cadenceLabel() {
-                var labels = { "1h": "Hourly", "6h": "Every 6 hours", "1d": "Daily", "7d": "Weekly" };
-                return labels[this.cadence] || this.cadence;
+                var el = this.$refs.cadenceInput;
+                if (el) {
+                    var opt = el.querySelector('option[value="' + this.cadence + '"]');
+                    if (opt) { return opt.textContent.trim(); }
+                }
+                return this.cadence;
             },
 
             init: function () {
@@ -341,6 +346,8 @@ document.addEventListener("alpine:init", function () {
                 if (urlEl && urlEl.value) { this.url = urlEl.value; }
                 var nameEl = this.$refs.nameInput;
                 if (nameEl && nameEl.value) { this.itemName = nameEl.value; }
+                var cadEl = this.$refs.cadenceInput;
+                if (cadEl && cadEl.value) { this.cadence = cadEl.value; }
             },
 
             loadSuggestions: function () {

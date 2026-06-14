@@ -70,6 +70,7 @@ from src.core.tools.deactivate_info_item_source_binding import (
     deactivate_info_item_source_binding,
 )
 from src.core.url_canonicalization import canonicalize_url
+from src.dashboard.cadence import CADENCE_LABELS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 
@@ -931,15 +932,18 @@ def _format_spec_summary(source_specs: list) -> str:
     return " · ".join(parts)
 
 
-_CADENCE_LABELS = {"s": "sec", "m": "min", "h": "hr", "d": "day"}
+_CADENCE_UNIT_LABELS = {"s": "sec", "m": "min", "h": "hr", "d": "day"}
 
 
 def _format_cadence(schedule_config: object) -> str:
     """Return a short cadence string from a Watcher schedule_config, or ''.
 
     Watcher stores cadence as ``{"interval": "<N><unit>"}`` where unit is one of
-    ``s``/``m``/``h``/``d`` (see watcher ``parse_interval``). Returns ``""`` when
-    the config is absent or the interval is missing/unparseable.
+    ``s``/``m``/``h``/``d`` (see watcher ``parse_interval``). Recognised
+    registration cadences render with their friendly label (e.g. ``7d`` →
+    "Weekly", shared via ``src.dashboard.cadence``); any other valid interval
+    falls back to a generic ``~N unit`` form. Returns ``""`` when the config is
+    absent or the interval is missing/unparseable.
     """
     if schedule_config is None:
         return ""
@@ -949,12 +953,15 @@ def _format_cadence(schedule_config: object) -> str:
         return ""
     if not interval:
         return ""
-    match = re.fullmatch(r"(\d+)([smhd])", str(interval).strip())
+    interval = str(interval).strip()
+    if interval in CADENCE_LABELS:
+        return CADENCE_LABELS[interval]
+    match = re.fullmatch(r"(\d+)([smhd])", interval)
     if match is None:
         return ""
     amount = int(match.group(1))
     unit = match.group(2)
-    label = _CADENCE_LABELS[unit]
+    label = _CADENCE_UNIT_LABELS[unit]
     plural = "s" if (unit == "d" and amount != 1) else ""
     return f"~{amount} {label}{plural}"
 

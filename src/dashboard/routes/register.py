@@ -39,16 +39,17 @@ from src.core.tools.create_info_source import (
 from src.core.tools.preview_extraction import preview_extraction
 from src.core.url_canonicalization import canonicalize_url
 from src.core.watcher_provisioning import provision_on_create
+from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS, DEFAULT_CADENCE
 from src.dashboard.deps import get_dashboard_user
 
 router = APIRouter(prefix="/dashboard/register", tags=["dashboard-register"])
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
-# Watcher fetch-cadence options offered at registration (#50). Values are Watcher
-# interval strings (see watcher parse_interval: s/m/h/d). Default is daily.
-_CADENCE_OPTIONS = ("1h", "6h", "1d", "7d")
-_DEFAULT_CADENCE = "1d"
+# Expose the cadence vocabulary (#50) to every register template render so the
+# dropdown options and default are rendered from a single source.
+_templates.env.globals["cadence_labels"] = CADENCE_LABELS
+_templates.env.globals["default_cadence"] = DEFAULT_CADENCE
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +292,7 @@ async def register_submit(
     source_specs: str = Form(default=""),
     name: str = Form(default=""),
     description: str = Form(default=""),
-    cadence: str = Form(default="1d"),
+    cadence: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
     watcher=Depends(get_watcher_client),
@@ -328,6 +329,7 @@ async def register_submit(
                 "source_specs_value": source_specs,
                 "name_value": name,
                 "description_value": description,
+                "cadence_value": cadence,
                 "initial_step": 2,
             },
             status_code=422,
@@ -346,6 +348,7 @@ async def register_submit(
                 "source_specs_value": source_specs,
                 "name_value": name,
                 "description_value": description,
+                "cadence_value": cadence,
                 "initial_step": 3,
             },
             status_code=422,
@@ -374,6 +377,7 @@ async def register_submit(
                 "source_specs_value": source_specs,
                 "name_value": name,
                 "description_value": description,
+                "cadence_value": cadence,
                 "initial_step": 2,
             },
             status_code=422,
@@ -398,7 +402,9 @@ async def register_submit(
     await session.commit()
     await session.refresh(item)
 
-    interval = cadence if cadence in _CADENCE_OPTIONS else _DEFAULT_CADENCE
-    await provision_on_create(session, watcher, item, src, schedule_config={"interval": interval})
+    # Only forward an explicit, recognised selection; otherwise send None so
+    # Watcher applies its own default cadence (don't fabricate one here).
+    schedule_config = {"interval": cadence} if cadence in CADENCE_OPTIONS else None
+    await provision_on_create(session, watcher, item, src, schedule_config=schedule_config)
 
     return RedirectResponse(url=f"/dashboard/info-items/{item.info_item_id}", status_code=303)
