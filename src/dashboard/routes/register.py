@@ -293,6 +293,7 @@ async def register_submit(
     name: str = Form(default=""),
     description: str = Form(default=""),
     cadence: str = Form(default=""),
+    watch_active: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
     watcher=Depends(get_watcher_client),
@@ -330,6 +331,7 @@ async def register_submit(
                 "name_value": name,
                 "description_value": description,
                 "cadence_value": cadence,
+                "watch_active_value": bool(watch_active),
                 "initial_step": 2,
             },
             status_code=422,
@@ -349,6 +351,7 @@ async def register_submit(
                 "name_value": name,
                 "description_value": description,
                 "cadence_value": cadence,
+                "watch_active_value": bool(watch_active),
                 "initial_step": 3,
             },
             status_code=422,
@@ -378,6 +381,7 @@ async def register_submit(
                 "name_value": name,
                 "description_value": description,
                 "cadence_value": cadence,
+                "watch_active_value": bool(watch_active),
                 "initial_step": 2,
             },
             status_code=422,
@@ -405,6 +409,11 @@ async def register_submit(
     # Only forward an explicit, recognised selection; otherwise send None so
     # Watcher applies its own default cadence (don't fabricate one here).
     schedule_config = {"interval": cadence} if cadence in CADENCE_OPTIONS else None
-    await provision_on_create(session, watcher, item, src, schedule_config=schedule_config)
+    # Checked (default) → omit is_active, Watcher provisions active. Unchecked
+    # (checkbox absent from form) → explicit False to provision paused.
+    is_active = None if watch_active else False
+    await provision_on_create(
+        session, watcher, item, src, schedule_config=schedule_config, is_active=is_active
+    )
 
     return RedirectResponse(url=f"/dashboard/info-items/{item.info_item_id}", status_code=303)

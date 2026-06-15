@@ -328,6 +328,9 @@ document.addEventListener("alpine:init", function () {
             itemName: "",
             description: "",
             cadence: "1d",
+            // "Watch active immediately" — when false, the item is provisioned
+            // paused in Watcher. Defaults on; synced from the checkbox in init().
+            watchActive: true,
 
             // Human-readable label for the selected Watcher fetch cadence, shown
             // in the Step 4 review summary. Reads the label off the server-rendered
@@ -341,6 +344,11 @@ document.addEventListener("alpine:init", function () {
                 return this.cadence;
             },
 
+            // Review-summary label for the active/paused choice.
+            get watchActiveLabel() {
+                return this.watchActive ? "Active immediately" : "Paused";
+            },
+
             init: function () {
                 var urlEl = this.$refs.urlInput;
                 if (urlEl && urlEl.value) { this.url = urlEl.value; }
@@ -348,6 +356,8 @@ document.addEventListener("alpine:init", function () {
                 if (nameEl && nameEl.value) { this.itemName = nameEl.value; }
                 var cadEl = this.$refs.cadenceInput;
                 if (cadEl && cadEl.value) { this.cadence = cadEl.value; }
+                var waEl = this.$refs.watchActiveInput;
+                if (waEl) { this.watchActive = waEl.checked; }
             },
 
             loadSuggestions: function () {

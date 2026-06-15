@@ -145,6 +145,15 @@
             <p class="text-sm text-muted" style="margin-top:var(--space-1);">
               How often Watcher checks this source for changes. Defaults to daily.
             </p>
+
+            <label class="form-label" style="display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3);cursor:pointer;">
+              <input type="checkbox" id="reg-watch-active" name="watch_active" value="on" x-model="watchActive" x-ref="watchActiveInput"{% if watch_active_value|default(true) %} checked{% endif %}>
+              Watch active immediately
+            </label>
+            <p class="text-sm text-muted" style="margin-top:var(--space-1);">
+              Leave checked to start fetching now, or uncheck to register paused
+              (resume later from the item's Watcher panel).
+            </p>
           </div>
         </details>
       </div>
@@ -193,6 +202,12 @@
           <tr>
             <td class="data-table__cell text-muted text-sm">Fetch cadence</td>
             <td class="data-table__cell"><span x-text="cadenceLabel"></span>
+              <button type="button" class="btn btn--secondary btn--sm" @click="step=3">Edit</button>
+            </td>
+          </tr>
+          <tr>
+            <td class="data-table__cell text-muted text-sm">Watch state</td>
+            <td class="data-table__cell"><span x-text="watchActiveLabel"></span>
               <button type="button" class="btn btn--secondary btn--sm" @click="step=3">Edit</button>
             </td>
           </tr>

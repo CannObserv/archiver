@@ -328,6 +328,80 @@ async def test_register_invalid_cadence_sends_none(client, session):
     assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] is None
 
 
+# ---------------------------------------------------------------------------
+# Watcher active/paused forwarding (#60)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_active_when_checkbox_present(client, session):
+    # "Watch active immediately" checked → omit is_active (Watcher defaults active).
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data={
+            "url": "https://active.example.com/page",
+            "source_specs": _VALID_SPEC,
+            "name": "Active Item",
+            "description": "",
+            "watch_active": "on",
+        },
+    )
+    assert resp.status_code == 303
+    watcher.provision_watched_item.assert_awaited_once()
+    assert watcher.provision_watched_item.await_args.kwargs["is_active"] is None
+
+
+@pytest.mark.asyncio
+async def test_register_paused_when_checkbox_absent(client, session):
+    # Unchecked checkbox sends nothing → provision paused (is_active=False).
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data={
+            "url": "https://paused.example.com/page",
+            "source_specs": _VALID_SPEC,
+            "name": "Paused Item",
+            "description": "",
+        },
+    )
+    assert resp.status_code == 303
+    watcher.provision_watched_item.assert_awaited_once()
+    assert watcher.provision_watched_item.await_args.kwargs["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_register_preserves_paused_choice_on_validation_error(client):
+    # Blank name re-renders step 3; an unchecked "watch active" must stay unchecked.
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data={
+            "url": "https://pausedsticky.example.com/page",
+            "source_specs": _VALID_SPEC,
+            "name": "",
+            "description": "",
+        },
+    )
+    assert resp.status_code == 422
+    assert 'id="reg-watch-active"' in resp.text
+    # Unchecked on submit → no `checked` attribute on re-render.
+    assert 'x-ref="watchActiveInput" checked>' not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_register_get_defaults_watch_active_checked(client):
+    resp = await client.get("/dashboard/register", headers=_HEADERS)
+    assert resp.status_code == 200
+    assert 'x-ref="watchActiveInput" checked>' in resp.text
+
+
 @pytest.mark.asyncio
 async def test_register_preserves_cadence_on_validation_error(client):
     # Blank name re-renders step 3; the chosen cadence must stay selected.
