@@ -138,6 +138,53 @@ async def test_watcher_status_ok(client, session):
 
 
 # ---------------------------------------------------------------------------
+# GET /watcher-status — paused: Paused badge, Resume, no check-now (#60)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_paused(client, session):
+    watcher = _mock_watcher(_wi("ok", is_active=False))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="paused item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Paused" in r.text
+    assert "Resume" in r.text
+    # Check-now suppressed while paused (Watcher 409s on check-now of a paused item).
+    assert "check-now" not in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-status — archived: Archived badge (not Paused), no toggle (#60)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_archived(client, session):
+    watcher = _mock_watcher(_wi("ok", is_active=False, archived_at=_TS))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="archived item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Archived" in r.text
+    assert "Paused" not in r.text
+    assert "toggle-watch-active" not in r.text
+
+
+# ---------------------------------------------------------------------------
 # GET /watcher-status — error state
 # ---------------------------------------------------------------------------
 
@@ -270,6 +317,32 @@ async def test_check_now_watcher_error(client, session):
     )
     assert r.status_code == 200
     assert "unavailable" in r.text.lower()
+    # The action failure is surfaced as a flash, not swallowed silently.
+    assert "showFlash" in r.headers.get("HX-Trigger", "")
+
+
+@pytest.mark.asyncio
+async def test_check_now_failure_flashes_but_keeps_status(client, session):
+    # check_now fails but get_watched_item still works → show current status + error flash.
+    from watcher_client import WatcherError
+
+    watcher = MagicMock()
+    watcher.check_now = AsyncMock(side_effect=WatcherError("boom"))
+    watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="flash check", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/check-now",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "watcherUpdated" in hx
+    assert '"level": "error"' in hx
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +572,8 @@ async def test_toggle_pause_calls_patch(client, session):
     # Re-rendered strip reflects the paused state and offers Resume.
     assert "Paused" in r.text
     assert "Resume" in r.text
+    # Check-now suppressed in the strip once paused.
+    assert "check-now" not in r.text
 
 
 @pytest.mark.asyncio
@@ -555,3 +630,28 @@ async def test_toggle_conflict_does_not_crash(client, session):
         data={"active": "false"},
     )
     assert r.status_code == 200
+    # The conflict is surfaced to the operator, not swallowed.
+    assert "showFlash" in r.headers.get("HX-Trigger", "")
+
+
+@pytest.mark.asyncio
+async def test_toggle_failure_flashes_error(client, session):
+    from watcher_client import WatcherError
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock(side_effect=WatcherError("down"))
+    watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="toggle flash", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+        headers=_HEADERS,
+        data={"active": "false"},
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert '"level": "error"' in hx

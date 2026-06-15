@@ -187,6 +187,9 @@ async def test_watcher_section_archived_hides_toggle(client, session):
     )
     assert r.status_code == 200
     assert "toggle-watch-active" not in r.text
+    # Archived is a distinct state — must not be mislabeled "Paused".
+    assert "Archived" in r.text
+    assert "Paused" not in r.text
 
 
 # ---------------------------------------------------------------------------

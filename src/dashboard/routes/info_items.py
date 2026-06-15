@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
+from watcher_client.errors import WatcherConflict
 
 from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
@@ -1066,6 +1067,19 @@ async def _render_watcher_section(
     )
 
 
+def _watcher_hx_trigger(flash: tuple[str, str] | None = None) -> str:
+    """Build the ``HX-Trigger`` header value for Watcher action endpoints.
+
+    Always fires ``watcherUpdated`` so Section 3 self-refreshes. When ``flash``
+    (a ``(level, body)`` pair) is supplied, also fires ``showFlash`` so
+    ``flash.js`` surfaces the message to the operator instead of failing silently.
+    """
+    triggers: dict[str, object] = {"watcherUpdated": {}}
+    if flash is not None:
+        triggers["showFlash"] = {"level": flash[0], "body": flash[1]}
+    return json.dumps(triggers)
+
+
 # ---------------------------------------------------------------------------
 # GET /{item_id}/watcher-status  (HTMX partial)
 # ---------------------------------------------------------------------------
@@ -1122,13 +1136,16 @@ async def check_now(
         return await _render_status_partial(request, item=item, watcher=watcher)
 
     wi: WatchedItemResponse | None = None
+    flash: tuple[str, str] | None = None
     try:
         wi = await watcher.check_now(item.watcher_item_id)
     except Exception:
-        pass  # wi stays None; _render_status_partial re-fetches — shows degraded if that also fails
+        # wi stays None; _render_status_partial re-fetches — shows degraded if that
+        # also fails. Either way, surface the action failure as a flash.
+        flash = ("error", "Couldn't trigger a check — Watcher is unavailable. Try again shortly.")
 
     response = await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
-    response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
+    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
 
 
@@ -1241,11 +1258,19 @@ async def toggle_watch_active(
         return await _render_status_partial(request, item=item, watcher=watcher)
 
     wi: WatchedItemResponse | None = None
+    flash: tuple[str, str] | None = None
     try:
         wi = await watcher.patch_watched_item(item.watcher_item_id, is_active=active == "true")
+    except WatcherConflict:
+        # Watcher rejects pause/resume on an archived item (archive/restore owns
+        # activation there). The toggle is hidden in that state, but guard direct posts.
+        flash = ("error", "Watcher rejected the change — the item may be archived.")
     except Exception:
-        pass  # wi stays None; _render_status_partial re-fetches — shows degraded if that also fails
+        flash = (
+            "error",
+            "Couldn't update the watch state — Watcher is unavailable. Try again shortly.",
+        )
 
     response = await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
-    response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
+    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response

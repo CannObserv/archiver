@@ -23,7 +23,9 @@
     <span class="badge badge--{{ 'success' if hs == 'ok' else ('danger' if hs == 'error' else 'muted') }}"
           style="font-size:0.7rem;">{{ hs.upper() }}</span>
 
-    {% if not watched_item.is_active %}
+    {% if watched_item.archived_at %}
+    <span class="badge badge--muted" style="font-size:0.7rem;">Archived</span>
+    {% elif not watched_item.is_active %}
     <span class="badge badge--muted" style="font-size:0.7rem;">Paused</span>
     {% endif %}
 
