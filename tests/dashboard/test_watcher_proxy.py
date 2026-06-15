@@ -573,6 +573,178 @@ async def test_begin_watching_triggers_watcher_updated(client, session):
 
 
 # ---------------------------------------------------------------------------
+# POST /begin-watching — provisioning failure flashes (#61)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_failure_flashes_error(client, session):
+    # provision_watched_item fails (swallowed by helper) but the item still has
+    # no watcher_item_id → surface an error flash instead of a silent success.
+    from watcher_client import WatcherError
+
+    watcher = _mock_watcher(_wi("unknown", last_checked_at=None))
+    watcher.provision_watched_item = AsyncMock(side_effect=WatcherError("boom"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="begin-fail", watcher_item_id=None)
+    src = InfoSource(url="https://example.com/begin-fail", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "watcherUpdated" in hx
+    assert '"level": "error"' in hx
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_success_no_flash(client, session):
+    watcher = _mock_watcher(_wi("unknown", last_checked_at=None))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="begin-ok", watcher_item_id=None)
+    src = InfoSource(url="https://example.com/begin-ok", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "watcherUpdated" in hx
+    assert "showFlash" not in hx
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_no_primary_source_flashes_error(client, session):
+    # No active binding → nothing to watch. Previously a silent re-render (#61 gap).
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="begin-no-source", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert '"level": "error"' in hx
+    watcher.provision_watched_item.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# POST /resync-watcher — sync failure flashes (#61)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resync_watcher_failure_flashes_error(client, session):
+    # patch fails (swallowed by helper) but get_watched_item still works → the
+    # status partial would look healthy; surface the action failure as a flash.
+    from watcher_client import WatcherError
+
+    watcher = _mock_watcher(_wi("ok"))
+    watcher.patch_watched_item = AsyncMock(side_effect=WatcherError("boom"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="resync-fail", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/resync-fail", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/resync-watcher",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "watcherUpdated" in hx
+    assert '"level": "error"' in hx
+
+
+@pytest.mark.asyncio
+async def test_resync_watcher_success_no_flash(client, session):
+    watcher = _mock_watcher(_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="resync-ok", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/resync-ok", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/resync-watcher",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "watcherUpdated" in hx
+    assert "showFlash" not in hx
+
+
+@pytest.mark.asyncio
+async def test_resync_watcher_no_primary_source_flashes_error(client, session):
+    # Watched item whose active binding is gone → nothing to re-sync (#61 gap).
+    watcher = _mock_watcher(_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="resync-no-source", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/resync-watcher",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert '"level": "error"' in hx
+    watcher.patch_watched_item.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_no_source_unconfigured_watcher_no_flash(client, session):
+    # No primary source AND no Watcher configured → the partial shows
+    # not_configured; suppress the missing-source flash so it doesn't mislead (#61).
+    app.dependency_overrides[get_watcher_client] = lambda: None
+    item = InfoItem(name="begin-no-source-no-watcher", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" not in hx
+
+
+# ---------------------------------------------------------------------------
 # POST /toggle-watch-active — pause / resume (#60)
 # ---------------------------------------------------------------------------
 

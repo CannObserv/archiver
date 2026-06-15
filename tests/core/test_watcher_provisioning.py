@@ -10,6 +10,7 @@ from watcher_client import WatchedItemResponse
 
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.watcher_provisioning import (
+    WatcherSyncOutcome,
     provision_on_create,
     sync_on_source_swap,
     sync_on_spec_update,
@@ -63,8 +64,9 @@ async def test_provision_on_create_sets_watcher_item_id(session):
     await session.flush()
 
     watcher = _mock_watcher(_wi(_WI_ID))
-    await provision_on_create(session, watcher, item, src)
+    outcome = await provision_on_create(session, watcher, item, src)
 
+    assert outcome is WatcherSyncOutcome.OK
     assert item.watcher_item_id == _WI_ID
     watcher.provision_watched_item.assert_awaited_once_with(
         url="https://example.com/",
@@ -126,8 +128,9 @@ async def test_provision_on_create_none_watcher_is_noop(session):
     session.add(src)
     await session.flush()
 
-    await provision_on_create(session, None, item, src)
+    outcome = await provision_on_create(session, None, item, src)
 
+    assert outcome is WatcherSyncOutcome.SKIPPED
     assert item.watcher_item_id is None
 
 
@@ -143,8 +146,9 @@ async def test_provision_on_create_watcher_error_does_not_raise(session):
     watcher.provision_watched_item = AsyncMock(side_effect=Exception("Watcher down"))
 
     # Must not raise
-    await provision_on_create(session, watcher, item, src)
+    outcome = await provision_on_create(session, watcher, item, src)
 
+    assert outcome is WatcherSyncOutcome.FAILED
     assert item.watcher_item_id is None
 
 
@@ -162,8 +166,9 @@ async def test_sync_on_source_swap_calls_patch(session):
     await session.flush()
 
     watcher = _mock_watcher()
-    await sync_on_source_swap(session, watcher, item, src)
+    outcome = await sync_on_source_swap(session, watcher, item, src)
 
+    assert outcome is WatcherSyncOutcome.OK
     watcher.patch_watched_item.assert_awaited_once_with(
         _WI_ID,
         effective_url="https://example.com/new",
@@ -181,8 +186,9 @@ async def test_sync_on_source_swap_no_watcher_item_id_is_noop(session):
     await session.flush()
 
     watcher = _mock_watcher()
-    await sync_on_source_swap(session, watcher, item, src)
+    outcome = await sync_on_source_swap(session, watcher, item, src)
 
+    assert outcome is WatcherSyncOutcome.SKIPPED
     watcher.patch_watched_item.assert_not_awaited()
 
 
@@ -194,7 +200,9 @@ async def test_sync_on_source_swap_none_watcher_is_noop(session):
     session.add(src)
     await session.flush()
 
-    await sync_on_source_swap(session, None, item, src)
+    outcome = await sync_on_source_swap(session, None, item, src)
+
+    assert outcome is WatcherSyncOutcome.SKIPPED
 
 
 @pytest.mark.asyncio
@@ -208,7 +216,9 @@ async def test_sync_on_source_swap_error_does_not_raise(session):
     watcher = MagicMock()
     watcher.patch_watched_item = AsyncMock(side_effect=Exception("Watcher down"))
 
-    await sync_on_source_swap(session, watcher, item, src)
+    outcome = await sync_on_source_swap(session, watcher, item, src)
+
+    assert outcome is WatcherSyncOutcome.FAILED
 
 
 # ---------------------------------------------------------------------------

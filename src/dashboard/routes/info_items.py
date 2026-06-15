@@ -20,7 +20,11 @@ from watcher_client.errors import WatcherConflict
 
 from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
-from src.core.watcher_provisioning import provision_on_create, sync_on_source_swap
+from src.core.watcher_provisioning import (
+    WatcherSyncOutcome,
+    provision_on_create,
+    sync_on_source_swap,
+)
 
 if TYPE_CHECKING:
     from watcher_client import WatchedItemResponse, WatcherClient
@@ -1183,17 +1187,29 @@ async def begin_watching(
         )
     ).scalar_one_or_none()
 
-    if binding is None:
-        return await _render_status_partial(request, item=item, watcher=watcher)
-
-    primary_src = await session.get(InfoSource, binding.info_source_id)
+    primary_src = (
+        await session.get(InfoSource, binding.info_source_id) if binding is not None else None
+    )
     if primary_src is None:
-        return await _render_status_partial(request, item=item, watcher=watcher)
+        # No active primary source to watch — flash rather than silently re-render
+        # (but stay quiet when Watcher is unconfigured: the partial already shows
+        # the not_configured state, and a missing-source flash would mislead).
+        response = await _render_status_partial(request, item=item, watcher=watcher)
+        flash: tuple[str, str] | None = (
+            ("error", "No primary source to watch — bind one first.")
+            if watcher is not None
+            else None
+        )
+        response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
+        return response
 
-    await provision_on_create(session, watcher, item, primary_src)
+    outcome = await provision_on_create(session, watcher, item, primary_src)
+    flash: tuple[str, str] | None = None
+    if outcome is WatcherSyncOutcome.FAILED:
+        flash = ("error", "Couldn't start watching — Watcher is unavailable. Try again shortly.")
 
     response = await _render_status_partial(request, item=item, watcher=watcher)
-    response.headers["HX-Trigger"] = _watcher_hx_trigger()
+    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
 
 
@@ -1225,13 +1241,24 @@ async def resync_watcher(
         )
     ).scalar_one_or_none()
 
-    if binding is not None:
-        primary_src = await session.get(InfoSource, binding.info_source_id)
-        if primary_src is not None:
-            await sync_on_source_swap(session, watcher, item, primary_src)
+    primary_src = (
+        await session.get(InfoSource, binding.info_source_id) if binding is not None else None
+    )
+
+    flash: tuple[str, str] | None = None
+    if primary_src is None:
+        # Watched item with no active primary source — nothing to re-sync.
+        flash = ("error", "No primary source to re-sync — bind one first.")
+    else:
+        outcome = await sync_on_source_swap(session, watcher, item, primary_src)
+        if outcome is WatcherSyncOutcome.FAILED:
+            flash = (
+                "error",
+                "Couldn't re-sync with Watcher — it's unavailable. Try again shortly.",
+            )
 
     response = await _render_status_partial(request, item=item, watcher=watcher)
-    response.headers["HX-Trigger"] = _watcher_hx_trigger()
+    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
 
 

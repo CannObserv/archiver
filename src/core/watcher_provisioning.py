@@ -5,10 +5,16 @@ on failure — they never propagate errors to the caller.
 
 All three functions accept ``watcher: WatcherClient | None``; a None value
 means WATCHER_BASE_URL / WATCHER_API_KEY are unset and all calls are no-ops.
+
+``provision_on_create`` and ``sync_on_source_swap`` return a
+:class:`WatcherSyncOutcome` so dashboard callers can flash a failure without
+re-raising; ``sync_on_spec_update`` patches N items with per-item logging and
+returns ``None``.
 """
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
@@ -24,6 +30,24 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class WatcherSyncOutcome(StrEnum):
+    """Result of a best-effort Watcher provisioning/sync call.
+
+    Lets dashboard callers distinguish a swallowed failure from a no-op so they
+    can surface an error flash only when an attempted call actually failed. The
+    helpers never raise — they always return one of these.
+    """
+
+    OK = "ok"
+    """The Watcher call succeeded."""
+
+    FAILED = "failed"
+    """A call was attempted and raised; the exception was logged and swallowed."""
+
+    SKIPPED = "skipped"
+    """No call was attempted (no Watcher configured or nothing to sync)."""
+
+
 async def provision_on_create(
     session: AsyncSession,
     watcher: WatcherClient | None,
@@ -31,7 +55,7 @@ async def provision_on_create(
     info_source: InfoSource,
     schedule_config: dict | None = None,
     is_active: bool | None = None,
-) -> None:
+) -> WatcherSyncOutcome:
     """Provision a WatchedItem for a newly created InfoItem + primary InfoSource.
 
     On success, stores the Watcher-allocated WatchedItem ID on ``item`` and
@@ -39,9 +63,14 @@ async def provision_on_create(
     (e.g. ``{"interval": "1d"}``) sets the per-item fetch cadence; None lets
     Watcher apply its default. ``is_active`` provisions the item active (``True``)
     or paused (``False``); None lets Watcher apply its default (active).
+
+    Returns a :class:`WatcherSyncOutcome`: ``SKIPPED`` when no Watcher is
+    configured, ``OK`` on success, ``FAILED`` when the call raised (logged and
+    swallowed). API-route callers may ignore the result; the dashboard uses it
+    to flash provisioning failures.
     """
     if watcher is None:
-        return
+        return WatcherSyncOutcome.SKIPPED
     try:
         result = await watcher.provision_watched_item(
             url=info_source.url,
@@ -53,8 +82,10 @@ async def provision_on_create(
         )
         item.watcher_item_id = str(result.id)
         await session.commit()
+        return WatcherSyncOutcome.OK
     except Exception:
         logger.exception("Watcher provisioning failed for InfoItem %s", item.info_item_id)
+        return WatcherSyncOutcome.FAILED
 
 
 async def sync_on_source_swap(
@@ -62,15 +93,19 @@ async def sync_on_source_swap(
     watcher: WatcherClient | None,
     info_item: InfoItem,
     new_info_source: InfoSource,
-) -> None:
+) -> WatcherSyncOutcome:
     """Push updated URL, specs, and source ID to Watcher after a primary swap.
 
     No-op when the InfoItem has no ``watcher_item_id`` (pre-integration item or
     provisioning was never attempted). The "Begin watching" dashboard affordance
     handles on-demand provisioning in that case.
+
+    Returns a :class:`WatcherSyncOutcome`: ``SKIPPED`` when no Watcher is
+    configured or the item isn't watched, ``OK`` on success, ``FAILED`` when the
+    call raised (logged and swallowed).
     """
     if watcher is None or not info_item.watcher_item_id:
-        return
+        return WatcherSyncOutcome.SKIPPED
     try:
         await watcher.patch_watched_item(
             info_item.watcher_item_id,
@@ -78,11 +113,13 @@ async def sync_on_source_swap(
             source_specs=list(new_info_source.source_specs),
             archiver_info_source_id=str(new_info_source.info_source_id),
         )
+        return WatcherSyncOutcome.OK
     except Exception:
         logger.exception(
             "Watcher sync failed for InfoItem %s after primary source swap",
             info_item.info_item_id,
         )
+        return WatcherSyncOutcome.FAILED
 
 
 async def sync_on_spec_update(
