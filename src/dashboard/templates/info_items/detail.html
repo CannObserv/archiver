@@ -141,7 +141,63 @@
     </div>
   </section>
 
-  {# ── Section 4: Replicator ─────────────────────────────────────────── #}
+  {# ── Section 4: Revision History ──────────────────────────────────── #}
+  <section aria-label="Revision History" style="margin-bottom:var(--space-5);">
+    <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);">
+      Revision History
+    </h2>
+    <details style="margin-bottom:var(--space-3);">
+      <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind Revision</summary>
+      <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/bind-revision"
+            style="display:flex;gap:var(--space-2);margin-top:var(--space-2);max-width:30rem;">
+        <input type="text" name="source_revision_id" class="form-input" placeholder="SourceRevision ULID"
+               style="flex:1;" required>
+        <button type="submit" class="btn btn--primary">Bind</button>
+      </form>
+    </details>
+
+    {% if iisr_rows %}
+    <table class="data-table" aria-label="Revision history">
+      <thead>
+        <tr>
+          <th class="data-table__th">Fingerprint</th>
+          <th class="data-table__th">Captured</th>
+          <th class="data-table__th">Cache</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for binding in iisr_rows %}
+        {% set rev = revisions_by_id.get(binding.source_revision_id) %}
+        <tr>
+          <td class="data-table__cell">
+            {% if rev %}
+            <a href="/dashboard/source-revisions/{{ binding.source_revision_id }}" class="text-sm">
+              <code>{{ rev.content_fingerprint[:20] }}…</code>
+            </a>
+            {% else %}
+            <span class="text-muted text-sm">{{ binding.source_revision_id }}</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-sm">
+            {% if rev %}{{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+          </td>
+          <td class="data-table__cell">
+            {% if rev and rev.content_cache_uri %}
+            <span class="badge badge--success text-sm">cached</span>
+            {% else %}
+            <span class="badge badge--muted text-sm">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No revisions bound yet.</p>
+    {% endif %}
+  </section>
+
+  {# ── Section 5: Replicator ─────────────────────────────────────────── #}
   <section aria-label="Replicator" style="margin-bottom:var(--space-5);">
     <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);">
       Replicator
@@ -213,62 +269,6 @@
     <div style="margin-top:var(--space-4);background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
       <p class="text-muted text-sm">Replicator integration — replication job history and public URL writeback will appear here once the Replicator service is available.</p>
     </div>
-  </section>
-
-  {# ── Section 5: Revision History ──────────────────────────────────── #}
-  <section aria-label="Revision History" style="margin-bottom:var(--space-5);">
-    <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);">
-      Revision History
-    </h2>
-    <details style="margin-bottom:var(--space-3);">
-      <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind Revision</summary>
-      <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/bind-revision"
-            style="display:flex;gap:var(--space-2);margin-top:var(--space-2);max-width:30rem;">
-        <input type="text" name="source_revision_id" class="form-input" placeholder="SourceRevision ULID"
-               style="flex:1;" required>
-        <button type="submit" class="btn btn--primary">Bind</button>
-      </form>
-    </details>
-
-    {% if iisr_rows %}
-    <table class="data-table" aria-label="Revision history">
-      <thead>
-        <tr>
-          <th class="data-table__th">Fingerprint</th>
-          <th class="data-table__th">Captured</th>
-          <th class="data-table__th">Cache</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for binding in iisr_rows %}
-        {% set rev = revisions_by_id.get(binding.source_revision_id) %}
-        <tr>
-          <td class="data-table__cell">
-            {% if rev %}
-            <a href="/dashboard/source-revisions/{{ binding.source_revision_id }}" class="text-sm">
-              <code>{{ rev.content_fingerprint[:20] }}…</code>
-            </a>
-            {% else %}
-            <span class="text-muted text-sm">{{ binding.source_revision_id }}</span>
-            {% endif %}
-          </td>
-          <td class="data-table__cell data-table__cell--muted text-sm">
-            {% if rev %}{{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
-          </td>
-          <td class="data-table__cell">
-            {% if rev and rev.content_cache_uri %}
-            <span class="badge badge--success text-sm">cached</span>
-            {% else %}
-            <span class="badge badge--muted text-sm">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="text-muted">No revisions bound yet.</p>
-    {% endif %}
   </section>
 
 </div>
