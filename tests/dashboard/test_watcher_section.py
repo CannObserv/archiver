@@ -29,14 +29,17 @@ def _wi(
     last_checked_at: str | None = _TS,
     effective_url: str = "https://example.com/page",
     source_specs: list | None = None,
+    *,
+    is_active: bool = True,
+    archived_at: str | None = None,
 ) -> WatchedItemResponse:
     return WatchedItemResponse.from_dict(
         {
             "id": _WI_ID,
             "name": "Test Item",
             "description": None,
-            "is_active": True,
-            "archived_at": None,
+            "is_active": is_active,
+            "archived_at": archived_at,
             "last_reviewed_at": None,
             "last_checked_at": last_checked_at,
             "last_changed_at": None,
@@ -135,6 +138,55 @@ async def test_watcher_section_watching_shows_details(client, session, monkeypat
     # Action buttons
     assert "check-now" in r.text
     assert "resync-watcher" in r.text
+    # Active item → Pause affordance present
+    assert "toggle-watch-active" in r.text
+    assert "Pause" in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-section — paused: Resume affordance + Paused badge, no check-now (#60)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_section_paused_shows_resume(client, session):
+    wi = _wi("ok", is_active=False)
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(wi)
+    item = InfoItem(name="section-paused", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "toggle-watch-active" in r.text
+    assert "Resume" in r.text
+    assert "Paused" in r.text
+    # Check-now is suppressed while paused (Watcher 409s on check-now of a paused item).
+    assert "check-now" not in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-section — archived: no pause/resume toggle (Watcher 409s) (#60)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_section_archived_hides_toggle(client, session):
+    wi = _wi("ok", is_active=False, archived_at=_TS)
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(wi)
+    item = InfoItem(name="section-archived", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "toggle-watch-active" not in r.text
 
 
 # ---------------------------------------------------------------------------

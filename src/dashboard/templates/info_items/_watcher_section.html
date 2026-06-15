@@ -49,6 +49,9 @@
       <span class="detail-grid__value">
         <span class="badge badge--{{ 'success' if hs == 'ok' else ('danger' if hs == 'error' else 'muted') }}"
               style="font-size:0.7rem;">{{ hs.upper() }}</span>
+        {% if not watched_item.is_active %}
+        <span class="badge badge--muted" style="font-size:0.7rem;margin-left:var(--space-1);">Paused</span>
+        {% endif %}
       </span>
     </div>
 
@@ -75,12 +78,26 @@
   </div>
 
   <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
+    {# Check-now is hidden while paused — Watcher 409s on check-now of a paused item. #}
+    {% if watched_item.is_active %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
           hx-target="#watcher-status-strip"
           hx-swap="outerHTML"
           style="display:inline;">
       <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">Check now</button>
     </form>
+    {% endif %}
+
+    {# Pause/resume — hidden for archived items (Watcher 409s; archive/restore owns activation). #}
+    {% if not watched_item.archived_at %}
+    <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
+          hx-target="#watcher-status-strip"
+          hx-swap="outerHTML"
+          style="display:inline;">
+      <input type="hidden" name="active" value="{{ 'false' if watched_item.is_active else 'true' }}">
+      <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">{{ 'Pause' if watched_item.is_active else 'Resume' }}</button>
+    </form>
+    {% endif %}
 
     <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
           hx-target="#watcher-status-strip"

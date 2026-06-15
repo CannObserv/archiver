@@ -75,7 +75,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.btn--primary` — brand filled.
 - `.btn--secondary` — outline.
 - `.btn--danger` — destructive action.
-- `.btn--ghost` — transparent with muted text; use for low-emphasis secondary actions (e.g. Copy, Preview, Cancel, Check now). Also used in the topbar where `--color-text-on-brand` applies.
+- `.btn--ghost` — transparent with muted text; use for low-emphasis secondary actions (e.g. Copy, Preview, Cancel, Check now, Pause/Resume). Also used in the topbar where `--color-text-on-brand` applies.
 - `.btn--active` — brand-subtle background with brand text; use for the currently-selected state of a toggle button group (e.g. sort mode buttons in `sortableChips`).
 - `.btn--sm` — compact size.
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
@@ -100,6 +100,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.form-input--error` / `.form-select--error` / `.form-textarea--error` — red border on invalid field.
 - `.form-input--inline` — compact width-auto variant for in-table rename inputs.
 - Use `.form-select` (not `.form-input`) on `<select>` elements so the select-specific focus ring and `.form-select--error` variant apply. Optional advanced/secondary form controls may be nested in a native `<details>`/`<summary>` disclosure (e.g. registration Step 3 "Watcher settings (advanced)") — no dedicated class; the `<summary>` carries `.text-sm`.
+- Checkboxes have no dedicated class: wrap the `<input type="checkbox">` and its caption in a single `<label class="form-label">` set to `display:flex;align-items:center;gap:var(--space-2)` so the box and text sit on one clickable line (e.g. registration Step 3 "Watch active immediately").
 - `.filter-card` — for single-row action/filter bars: heading + inputs in a horizontal flex row (`align-items: flex-end`). Use for simple one-input + submit patterns. For multi-field stacked forms, add `.filter-card--stacked`.
 - `.filter-card--stacked` — modifier; changes `filter-card` to a vertical column (`flex-direction: column; align-items: stretch`). Use when the card contains a heading above multiple stacked form fields.
 

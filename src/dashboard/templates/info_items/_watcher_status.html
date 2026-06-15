@@ -23,6 +23,10 @@
     <span class="badge badge--{{ 'success' if hs == 'ok' else ('danger' if hs == 'error' else 'muted') }}"
           style="font-size:0.7rem;">{{ hs.upper() }}</span>
 
+    {% if not watched_item.is_active %}
+    <span class="badge badge--muted" style="font-size:0.7rem;">Paused</span>
+    {% endif %}
+
     {% if last_checked_ago %}
     <span class="text-muted text-sm">Last checked: {{ last_checked_ago }}</span>
     {% else %}
@@ -37,12 +41,24 @@
     <span class="text-muted text-sm">Cadence: {{ cadence }}</span>
     {% endif %}
 
+    {% if watched_item.is_active %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
           hx-target="#watcher-status-strip"
           hx-swap="outerHTML"
           style="display:inline;">
       <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">Check now</button>
     </form>
+    {% endif %}
+
+    {% if not watched_item.archived_at %}
+    <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
+          hx-target="#watcher-status-strip"
+          hx-swap="outerHTML"
+          style="display:inline;">
+      <input type="hidden" name="active" value="{{ 'false' if watched_item.is_active else 'true' }}">
+      <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">{{ 'Pause' if watched_item.is_active else 'Resume' }}</button>
+    </form>
+    {% endif %}
   </div>
 {% endif %}
 

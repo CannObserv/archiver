@@ -75,9 +75,13 @@ TDD throughout (red → green). Update CHANGELOG `[both]`, `docs/UI.md`, and `do
    `HX-Trigger: watcherUpdated`), the Pause/Resume button + Paused badge, and check-now suppression
    when paused / toggle-hidden when archived. Tests cover toggle both directions, the paused
    check-now path, and the archived 409 path. Verify: dashboard detail tests green.
-5. **Docs + changelog.** CHANGELOG `[both]` entry; `docs/UI.md` (new affordances) and `docs/STYLE.md`
-   (if any new styles). Verify: full `pytest` + `ruff check`/`ruff format --check` green; changelog
-   guard satisfied.
+5. **Docs + changelog.** `docs/UI.md` (new affordances) and `docs/STYLE.md`. **No CHANGELOG entry:**
+   the changelog guard (`scripts/check_changelog_lib.sh`) triggers only on `alembic/versions/`,
+   `src/api/routes/`, `src/api/schemas/`, `clients/python/`. This change touches none — only
+   `src/dashboard/`, `src/core/`, `clients/watcher-python/` (internal Watcher adapter, not the public
+   archiver-client SDK), templates, and JS. CHANGELOG's own policy also excludes dashboard UX. (Plan
+   originally said `[both]`; corrected after confirming the guard scope.) Verify: full `pytest` +
+   `ruff check`/`ruff format --check` green.
 
 ## Open questions / risks
 

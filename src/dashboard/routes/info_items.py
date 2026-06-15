@@ -1212,3 +1212,40 @@ async def resync_watcher(
     response = await _render_status_partial(request, item=item, watcher=watcher)
     response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
     return response
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/toggle-watch-active  (pause / resume)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{item_id}/toggle-watch-active", response_class=HTMLResponse)
+async def toggle_watch_active(
+    item_id: str,
+    request: Request,
+    active: str = Form(default=""),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> HTMLResponse:
+    """Pause or resume a WatchedItem via PATCH is_active; re-renders status partial.
+
+    ``active`` is the desired target state ("true" → resume, anything else →
+    pause); the button submits the opposite of the current state. Watcher rejects
+    pause/resume on an archived item (409) — caught here so the partial re-renders
+    instead of 500ing.
+    """
+    item = await _resolve_item(item_id, session)
+
+    if watcher is None or not item.watcher_item_id:
+        return await _render_status_partial(request, item=item, watcher=watcher)
+
+    wi: WatchedItemResponse | None = None
+    try:
+        wi = await watcher.patch_watched_item(item.watcher_item_id, is_active=active == "true")
+    except Exception:
+        pass  # wi stays None; _render_status_partial re-fetches — shows degraded if that also fails
+
+    response = await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
+    response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
+    return response

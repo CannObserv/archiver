@@ -62,6 +62,15 @@ cadence label (`cadenceLabel` getter reads it off the selected `<option>`). The
 same vocabulary backs `_format_cadence` on the InfoItem detail Watcher section, so
 recognised cadences display with the same friendly labels.
 
+The same `<details>` block also exposes a **Watch active immediately** checkbox
+*(#60)* (`<input type="checkbox" id="reg-watch-active" name="watch_active" value="on"`,
+`x-model="watchActive"`, `x-ref="watchActiveInput"`), checked by default. Checked →
+the server omits `is_active` so Watcher provisions the WatchedItem active; unchecked
+(the checkbox sends nothing) → the server forwards `is_active=False` to provision it
+**paused**. The choice is sticky across validation re-renders (`watch_active_value` →
+`checked` attribute, defaulting to checked via `|default(true)`). Step 4 review shows
+"Active immediately" / "Paused" via the `watchActiveLabel` getter.
+
 API stays at `/api/v1/*`. Health/OpenAPI unchanged.
 
 ---
@@ -219,7 +228,7 @@ Logs a warning on degraded/failure. Auth-gated; unauthenticated requests redirec
 
 1. **Overview** — `<h1>` name; ULID copy-button (inline Alpine `{copied:false}`); domain badge linking to `/dashboard/domains/{name}` (or muted "No primary source" if unbound); `.detail-grid` with description, owner (if set), created_at. Below the grid: **Watcher health strip** — `<div id="watcher-status-strip">` loaded async via `hx-trigger="load"` + `hx-get="…/watcher-status"` + `hx-swap="outerHTML"`. Renders one of five states: `ok`/`error`/`unknown` (watching), `not_watching`, `not_configured`, or `degraded`. Template: `info_items/_watcher_status.html`.
 2. **Information Sources** — `x-data="{swapOpen:false}"` Alpine wrapper. `data-table` of active `info_item_sources` bindings (columns: URL, Domain, Bound, Actions); first row gets a brand left-border to mark it as the primary. The Actions cell on the primary row contains a "Swap primary" / "Cancel" toggle button (`@click="swapOpen=!swapOpen"`). When `swapOpen` is true, `<div x-show="swapOpen" x-cloak>` reveals `info_items/_swap_primary.html`. When there are no active bindings, the swap panel renders unconditionally with an "Add primary source" title. The panel has `id="swap-panel"`. The "author new source" form uses `hx-post` + `hx-target-422="#swap-error"` for inline error display; on success it receives 204 + `HX-Redirect`. The "bind by ID" `<details>` sub-form uses the same pattern with `hx-target-422="#swap-by-id-error"`.
-3. **Watcher** — `<div id="watcher-section">` loaded async via `hx-trigger="load"` + `hx-get="…/watcher-section"` + `hx-swap="outerHTML"`. Root element also carries `hx-trigger="watcherUpdated from:body"` so the panel self-refreshes whenever `check-now` or `resync-watcher` sends `HX-Trigger: {"watcherUpdated":{}}`. Template: `info_items/_watcher_section.html`. Four states: `not_configured`, `not_watching` (shows "Begin watching" button), `degraded`, `watching` (shows URL, spec summary, health badge, timestamps, cadence, "Check now", "Re-sync", "View in Watcher ↗" deeplink).
+3. **Watcher** — `<div id="watcher-section">` loaded async via `hx-trigger="load"` + `hx-get="…/watcher-section"` + `hx-swap="outerHTML"`. Root element also carries `hx-trigger="watcherUpdated from:body"` so the panel self-refreshes whenever `check-now` or `resync-watcher` sends `HX-Trigger: {"watcherUpdated":{}}`. Template: `info_items/_watcher_section.html`. Four states: `not_configured`, `not_watching` (shows "Begin watching" button), `degraded`, `watching` (shows URL, spec summary, health badge, timestamps, cadence, "Check now", "Re-sync", "View in Watcher ↗" deeplink). When the WatchedItem is paused (`is_active=False`) a **Paused** `badge--muted` shows next to the health badge, "Check now" is hidden (Watcher 409s on check-now of a paused item), and the toggle reads "Resume"; otherwise it reads "Pause" *(#60)*. The pause/resume toggle is hidden entirely for archived WatchedItems (`archived_at` set — Watcher 409s; archive/restore owns activation there).
 4. **Replicator** — two sub-sections:
    - *Rep Fields* — `x-data="repFieldsEditor()"` wrapper; HTMX-loaded `sortableChips` suggestions (`hx-trigger="load"`); `<textarea name="rep_fields">` with `PATCH /dashboard/info-items/{id}/rep-fields` inline save; flash target `#rep-fields-flash`.
    - *Replication Specs* — `data-table` of active `info_item_rep_specs` assignments; assign form (`filter-card`, `rep_spec_id` field); HTMX delete per row.
@@ -234,6 +243,8 @@ Logs a warning on degraded/failure. Auth-gated; unauthenticated requests redirec
 **POST `/dashboard/info-items/{id}/begin-watching`** — provisions a WatchedItem on demand (for InfoItems without `watcher_item_id`); calls `provision_on_create`; re-renders `_watcher_status.html`.
 
 **POST `/dashboard/info-items/{id}/resync-watcher`** — PATCHes the WatchedItem with the current primary URL and specs via `sync_on_source_swap`; re-renders `_watcher_status.html`; also sets `HX-Trigger: {"watcherUpdated":{}}` so Section 3 auto-refreshes.
+
+**POST `/dashboard/info-items/{id}/toggle-watch-active`** *(#60)* — pauses or resumes the WatchedItem via `patch_watched_item(is_active=…)`. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current state. Re-renders `_watcher_status.html` and sets `HX-Trigger: {"watcherUpdated":{}}` so Section 3 auto-refreshes. A Watcher 409 (e.g. pause/resume on an archived item) is caught — the partial re-renders rather than 500ing. No-op (no patch) when the InfoItem has no `watcher_item_id`.
 
 **POST `/dashboard/info-items/{id}/swap-primary-source`** — inline primary-source swap: creates a new InfoSource (form fields: `url`, `source_specs` JSON array), deactivates the old active binding, binds the new source, best-effort `patch_watched_item` post-commit. Returns 204 + `HX-Redirect` to detail on success; returns 422 with an `<div id="swap-error">` fragment on validation error (targeted by `hx-target-422="#swap-error"` on the form). Template: `info_items/_swap_primary.html`.
 
@@ -255,7 +266,7 @@ Logs a warning on degraded/failure. Auth-gated; unauthenticated requests redirec
 
 Partial templates:
 - `info_items/_rep_spec_row.html` — reusable `<tr>` fragment for rep-spec assignment rows.
-- `info_items/_watcher_status.html` — Watcher health strip; replaces `#watcher-status-strip` via `hx-swap="outerHTML"`. Root element carries the `id` so it survives each swap. Five states: `not_configured`, `not_watching`, `degraded`, `watching` (ok/error/unknown). Context keys: `state`, `item_id`, `watched_item`, `last_checked_ago`, `last_changed_ago`, `cadence`, `error_message`.
+- `info_items/_watcher_status.html` — Watcher health strip; replaces `#watcher-status-strip` via `hx-swap="outerHTML"`. Root element carries the `id` so it survives each swap. Five states: `not_configured`, `not_watching`, `degraded`, `watching` (ok/error/unknown). In the watching state it shows a **Paused** `badge--muted` and hides "Check now" when `watched_item.is_active` is false, and offers a Pause/Resume toggle (hidden when `watched_item.archived_at` is set) *(#60)*. Context keys: `state`, `item_id`, `watched_item`, `last_checked_ago`, `last_changed_ago`, `cadence`, `error_message`.
 - `info_items/_swap_primary.html` — inline swap-primary panel included inside the `x-data="{swapOpen:false}"` wrapper in Section 2. Renders either "Swap primary source" or "Add primary source" depending on whether `iis_rows` is non-empty. Contains: URL input (`id="swap-url"`), source_specs textarea (`id="swap-specs"`), Preview HTMX button (`hx-include="#swap-url,#swap-specs"`), preview target `#swap-preview`, submit to `swap-primary-source`, and an advanced `<details>` for `swap-primary-by-id`.
 - `info_items/_watcher_section.html` — Section 3 Watcher panel; replaces `#watcher-section` via `hx-swap="outerHTML"`. Root element carries both the `id` and `hx-trigger="watcherUpdated from:body"` for event-driven auto-refresh. Four states: `not_configured`, `not_watching`, `degraded`, `watching`. Context keys (watching): `state`, `item_id`, `watched_item`, `spec_summary`, `last_checked_ago`, `last_changed_ago`, `cadence`, `watcher_url`, `error_message`.
 
@@ -359,13 +370,14 @@ Multi-step Information Item registration wizard. Manages step navigation and for
 **Factory args:**
 - `initialStep: number` — starting step (1–4; defaults to `1`). The server passes a non-1 value on validation re-renders to re-open at the failing step.
 
-**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`).
+**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`), `watchActive: boolean` (default `true`; "Watch active immediately" — false provisions paused).
 
 **Getters:**
 - `cadenceLabel` — returns the human-readable label for the selected cadence by reading the text of the matching `<option>` in `$refs.cadenceInput` (no hardcoded map; the server-rendered options are the single source). Shown in the Step 4 review row.
+- `watchActiveLabel` — returns "Active immediately" / "Paused" for the Step 4 review row.
 
 **Methods:**
-- `init()` — copies `$refs.urlInput.value` into `url`, `$refs.nameInput.value` into `itemName`, and `$refs.cadenceInput.value` into `cadence` so server-rendered field values (e.g. on validation error re-render) populate Alpine state.
+- `init()` — copies `$refs.urlInput.value` into `url`, `$refs.nameInput.value` into `itemName`, `$refs.cadenceInput.value` into `cadence`, and `$refs.watchActiveInput.checked` into `watchActive` so server-rendered field values (e.g. on validation error re-render) populate Alpine state.
 - `loadSuggestions()` — fires an HTMX GET to `/dashboard/register/suggest-specs?url=<encoded>`, targeting `#spec-suggestions-panel`. Called by the step-1 "Next" button.
 - `prepareSubmit()` — no-op; `x-model` keeps the textarea in sync without a manual step.
 

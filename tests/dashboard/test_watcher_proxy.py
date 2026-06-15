@@ -28,14 +28,20 @@ _TS = "2026-06-10T12:00:00+00:00"
 # ---------------------------------------------------------------------------
 
 
-def _wi(health: str = "ok", last_checked_at: str | None = _TS) -> WatchedItemResponse:
+def _wi(
+    health: str = "ok",
+    last_checked_at: str | None = _TS,
+    *,
+    is_active: bool = True,
+    archived_at: str | None = None,
+) -> WatchedItemResponse:
     return WatchedItemResponse.from_dict(
         {
             "id": _WI_ID,
             "name": "Test Item",
             "description": None,
-            "is_active": True,
-            "archived_at": None,
+            "is_active": is_active,
+            "archived_at": archived_at,
             "last_reviewed_at": None,
             "last_checked_at": last_checked_at,
             "last_changed_at": None,
@@ -466,3 +472,86 @@ async def test_begin_watching_triggers_watcher_updated(client, session):
     assert r.status_code == 200
     hx_trigger = r.headers.get("HX-Trigger", "")
     assert "watcherUpdated" in hx_trigger
+
+
+# ---------------------------------------------------------------------------
+# POST /toggle-watch-active — pause / resume (#60)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_toggle_pause_calls_patch(client, session):
+    # Active item, request active=false → patch is_active=False, fires watcherUpdated.
+    watcher = _mock_watcher(_wi("ok", is_active=False))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="pause item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+        headers=_HEADERS,
+        data={"active": "false"},
+    )
+    assert r.status_code == 200
+    watcher.patch_watched_item.assert_awaited_once_with(_WI_ID, is_active=False)
+    assert "watcherUpdated" in r.headers.get("HX-Trigger", "")
+    # Re-rendered strip reflects the paused state and offers Resume.
+    assert "Paused" in r.text
+    assert "Resume" in r.text
+
+
+@pytest.mark.asyncio
+async def test_toggle_resume_calls_patch(client, session):
+    watcher = _mock_watcher(_wi("ok", is_active=True))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="resume item", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+        headers=_HEADERS,
+        data={"active": "true"},
+    )
+    assert r.status_code == 200
+    watcher.patch_watched_item.assert_awaited_once_with(_WI_ID, is_active=True)
+
+
+@pytest.mark.asyncio
+async def test_toggle_not_watching_is_noop(client, session):
+    watcher = _mock_watcher()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="no-watch toggle", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+        headers=_HEADERS,
+        data={"active": "false"},
+    )
+    assert r.status_code == 200
+    assert "Not watching" in r.text
+    watcher.patch_watched_item.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_toggle_conflict_does_not_crash(client, session):
+    # Watcher 409 (e.g. archived item) → re-render, no 500.
+    from watcher_client.errors import WatcherConflict
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock(side_effect=WatcherConflict("archived"))
+    watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="conflict toggle", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+        headers=_HEADERS,
+        data={"active": "false"},
+    )
+    assert r.status_code == 200
