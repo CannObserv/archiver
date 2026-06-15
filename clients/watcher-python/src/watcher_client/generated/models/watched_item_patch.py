@@ -30,6 +30,7 @@ class WatchedItemPatch:
         Attributes:
             name (None | str | Unset):
             description (None | str | Unset):
+            is_active (bool | None | Unset):
             default_schedule_config (None | Unset | WatchedItemPatchDefaultScheduleConfigType0):
             default_content_type (None | str | Unset):
             default_tags (list[str] | None | Unset):
@@ -40,6 +41,7 @@ class WatchedItemPatch:
 
     name: None | str | Unset = UNSET
     description: None | str | Unset = UNSET
+    is_active: bool | None | Unset = UNSET
     default_schedule_config: None | Unset | WatchedItemPatchDefaultScheduleConfigType0 = UNSET
     default_content_type: None | str | Unset = UNSET
     default_tags: list[str] | None | Unset = UNSET
@@ -64,6 +66,12 @@ class WatchedItemPatch:
             description = UNSET
         else:
             description = self.description
+
+        is_active: bool | None | Unset
+        if isinstance(self.is_active, Unset):
+            is_active = UNSET
+        else:
+            is_active = self.is_active
 
         default_schedule_config: dict[str, Any] | None | Unset
         if isinstance(self.default_schedule_config, Unset):
@@ -119,6 +127,8 @@ class WatchedItemPatch:
             field_dict["name"] = name
         if description is not UNSET:
             field_dict["description"] = description
+        if is_active is not UNSET:
+            field_dict["is_active"] = is_active
         if default_schedule_config is not UNSET:
             field_dict["default_schedule_config"] = default_schedule_config
         if default_content_type is not UNSET:
@@ -162,6 +172,15 @@ class WatchedItemPatch:
             return cast(None | str | Unset, data)
 
         description = _parse_description(d.pop("description", UNSET))
+
+        def _parse_is_active(data: object) -> bool | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(bool | None | Unset, data)
+
+        is_active = _parse_is_active(d.pop("is_active", UNSET))
 
         def _parse_default_schedule_config(
             data: object,
@@ -261,6 +280,7 @@ class WatchedItemPatch:
         watched_item_patch = cls(
             name=name,
             description=description,
+            is_active=is_active,
             default_schedule_config=default_schedule_config,
             default_content_type=default_content_type,
             default_tags=default_tags,

@@ -66,6 +66,8 @@ def sync_detailed(
 
     Pre-flight guards:
     - 409 if the WatchedItem is archived.
+    - 409 if the WatchedItem is paused (``is_active=False``) — the task would
+      short-circuit, so reject up front rather than enqueue a silent no-op.
     - 422 if ``effective_url`` is empty (nothing to fetch).
 
     Args:
@@ -101,6 +103,8 @@ def sync(
 
     Pre-flight guards:
     - 409 if the WatchedItem is archived.
+    - 409 if the WatchedItem is paused (``is_active=False``) — the task would
+      short-circuit, so reject up front rather than enqueue a silent no-op.
     - 422 if ``effective_url`` is empty (nothing to fetch).
 
     Args:
@@ -131,6 +135,8 @@ async def asyncio_detailed(
 
     Pre-flight guards:
     - 409 if the WatchedItem is archived.
+    - 409 if the WatchedItem is paused (``is_active=False``) — the task would
+      short-circuit, so reject up front rather than enqueue a silent no-op.
     - 422 if ``effective_url`` is empty (nothing to fetch).
 
     Args:
@@ -164,6 +170,8 @@ async def asyncio(
 
     Pre-flight guards:
     - 409 if the WatchedItem is archived.
+    - 409 if the WatchedItem is paused (``is_active=False``) — the task would
+      short-circuit, so reject up front rather than enqueue a silent no-op.
     - 422 if ``effective_url`` is empty (nothing to fetch).
 
     Args:

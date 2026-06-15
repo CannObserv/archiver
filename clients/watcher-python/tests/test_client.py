@@ -132,6 +132,78 @@ async def test_provision_omits_schedule_config_when_none(client):
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_provision_forwards_is_active_false(client):
+    route = respx.post(f"{BASE_URL}/api/v1/watched-items").mock(
+        return_value=Response(201, json=_wi_payload(is_active=False))
+    )
+
+    await client.provision_watched_item(
+        url="https://example.com/data",
+        source_specs=[],
+        info_item_id=_INFO_ITEM_ID,
+        archiver_info_source_id=_INFO_SRC_ID,
+        is_active=False,
+    )
+
+    import json
+
+    sent_body = json.loads(route.calls.last.request.content)
+    assert sent_body["is_active"] is False
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_provision_omits_is_active_when_none(client):
+    route = respx.post(f"{BASE_URL}/api/v1/watched-items").mock(
+        return_value=Response(201, json=_wi_payload())
+    )
+
+    await client.provision_watched_item(
+        url="https://example.com/data",
+        source_specs=[],
+        info_item_id=_INFO_ITEM_ID,
+        archiver_info_source_id=_INFO_SRC_ID,
+    )
+
+    import json
+
+    sent_body = json.loads(route.calls.last.request.content)
+    assert "is_active" not in sent_body
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_patch_forwards_is_active(client):
+    route = respx.patch(f"{BASE_URL}/api/v1/watched-items/{_WI_ID}").mock(
+        return_value=Response(200, json=_wi_payload(is_active=False))
+    )
+
+    await client.patch_watched_item(_WI_ID, is_active=False)
+
+    import json
+
+    sent_body = json.loads(route.calls.last.request.content)
+    assert sent_body["is_active"] is False
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_patch_omits_is_active_when_none(client):
+    """None must never serialize to JSON null — Watcher rejects explicit null (422)."""
+    route = respx.patch(f"{BASE_URL}/api/v1/watched-items/{_WI_ID}").mock(
+        return_value=Response(200, json=_wi_payload())
+    )
+
+    await client.patch_watched_item(_WI_ID, schedule_config={"interval": "1d"})
+
+    import json
+
+    sent_body = json.loads(route.calls.last.request.content)
+    assert "is_active" not in sent_body
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_patch_forwards_schedule_config(client):
     route = respx.patch(f"{BASE_URL}/api/v1/watched-items/{_WI_ID}").mock(
         return_value=Response(200, json=_wi_payload())

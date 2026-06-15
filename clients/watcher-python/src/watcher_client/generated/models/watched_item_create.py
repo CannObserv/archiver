@@ -41,6 +41,7 @@ class WatchedItemCreate:
             archiver_info_item_id (None | str | Unset):
             name (None | str | Unset):
             description (None | str | Unset):
+            is_active (bool | Unset):  Default: True.
             default_schedule_config (None | Unset | WatchedItemCreateDefaultScheduleConfigType0):
             default_content_type (None | str | Unset):
             default_tags (list[str] | None | Unset):
@@ -52,6 +53,7 @@ class WatchedItemCreate:
     archiver_info_item_id: None | str | Unset = UNSET
     name: None | str | Unset = UNSET
     description: None | str | Unset = UNSET
+    is_active: bool | Unset = True
     default_schedule_config: None | Unset | WatchedItemCreateDefaultScheduleConfigType0 = UNSET
     default_content_type: None | str | Unset = UNSET
     default_tags: list[str] | None | Unset = UNSET
@@ -82,6 +84,8 @@ class WatchedItemCreate:
             description = UNSET
         else:
             description = self.description
+
+        is_active = self.is_active
 
         default_schedule_config: dict[str, Any] | None | Unset
         if isinstance(self.default_schedule_config, Unset):
@@ -139,6 +143,8 @@ class WatchedItemCreate:
             field_dict["name"] = name
         if description is not UNSET:
             field_dict["description"] = description
+        if is_active is not UNSET:
+            field_dict["is_active"] = is_active
         if default_schedule_config is not UNSET:
             field_dict["default_schedule_config"] = default_schedule_config
         if default_content_type is not UNSET:
@@ -191,6 +197,8 @@ class WatchedItemCreate:
             return cast(None | str | Unset, data)
 
         description = _parse_description(d.pop("description", UNSET))
+
+        is_active = d.pop("is_active", UNSET)
 
         def _parse_default_schedule_config(
             data: object,
@@ -291,6 +299,7 @@ class WatchedItemCreate:
             archiver_info_item_id=archiver_info_item_id,
             name=name,
             description=description,
+            is_active=is_active,
             default_schedule_config=default_schedule_config,
             default_content_type=default_content_type,
             default_tags=default_tags,

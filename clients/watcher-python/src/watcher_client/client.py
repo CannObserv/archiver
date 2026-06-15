@@ -80,6 +80,7 @@ class WatcherClient:
         info_item_id: str,
         archiver_info_source_id: str,
         schedule_config: dict | None = None,
+        is_active: bool | None = None,
     ) -> WatchedItemResponse:
         """Create a WatchedItem in Watcher for an Archiver InfoItem.
 
@@ -88,6 +89,8 @@ class WatcherClient:
         Watcher drain worker can post SourceRevisions to the correct source.
         ``schedule_config`` sets the per-item fetch cadence (e.g.
         ``{"interval": "6h"}``); omitted when None so Watcher applies its default.
+        ``is_active`` provisions the item active (``True``) or paused (``False``);
+        omitted when None so Watcher applies its default (active).
         """
         body = {
             "archiver_info_item_id": info_item_id,
@@ -97,6 +100,8 @@ class WatcherClient:
         }
         if schedule_config is not None:
             body["default_schedule_config"] = schedule_config
+        if is_active is not None:
+            body["is_active"] = is_active
         resp = await self._http.post("/api/v1/watched-items", json=body)
         return _unwrap_watched_item(resp)
 
@@ -108,13 +113,16 @@ class WatcherClient:
         source_specs: list[dict] | None = None,
         archiver_info_source_id: str | None = None,
         schedule_config: dict | None = None,
+        is_active: bool | None = None,
     ) -> WatchedItemResponse:
         """Update mutable fields on an existing WatchedItem.
 
         Only fields explicitly passed (non-None) are included in the PATCH body.
         Used by Archiver on primary-source swap and spec update.
         ``schedule_config`` updates the per-item fetch cadence (e.g.
-        ``{"interval": "1d"}``).
+        ``{"interval": "1d"}``). ``is_active`` pauses (``False``) or resumes
+        (``True``) the item, decoupled from archive/restore; None leaves it
+        untouched. Never sends JSON null — Watcher rejects explicit null (422).
         """
         body: dict = {}
         if effective_url is not None:
@@ -125,6 +133,8 @@ class WatcherClient:
             body["archiver_info_source_id"] = archiver_info_source_id
         if schedule_config is not None:
             body["default_schedule_config"] = schedule_config
+        if is_active is not None:
+            body["is_active"] = is_active
         resp = await self._http.patch(f"/api/v1/watched-items/{watcher_item_id}", json=body)
         return _unwrap_watched_item(resp)
 

@@ -74,6 +74,15 @@ def sync_detailed(
 
      Update mutable WatchedItem fields. All fields optional.
 
+    ``is_active`` (pause/resume) cannot be changed on an archived item — the
+    archive/restore lifecycle owns activation while archived. Such a PATCH
+    returns 409; use ``POST /{id}/restore`` to reactivate.
+
+    An ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /
+    ``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the
+    generic ``WATCHED_ITEM_UPDATED`` event, which carries only the other
+    changed fields. A no-op (same value) emits nothing.
+
     Args:
         watched_item_id (str):
         body (WatchedItemPatch): Partial update to a WatchedItem. All fields optional.
@@ -111,6 +120,15 @@ def sync(
 
      Update mutable WatchedItem fields. All fields optional.
 
+    ``is_active`` (pause/resume) cannot be changed on an archived item — the
+    archive/restore lifecycle owns activation while archived. Such a PATCH
+    returns 409; use ``POST /{id}/restore`` to reactivate.
+
+    An ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /
+    ``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the
+    generic ``WATCHED_ITEM_UPDATED`` event, which carries only the other
+    changed fields. A no-op (same value) emits nothing.
+
     Args:
         watched_item_id (str):
         body (WatchedItemPatch): Partial update to a WatchedItem. All fields optional.
@@ -142,6 +160,15 @@ async def asyncio_detailed(
     """Patch Watched Item
 
      Update mutable WatchedItem fields. All fields optional.
+
+    ``is_active`` (pause/resume) cannot be changed on an archived item — the
+    archive/restore lifecycle owns activation while archived. Such a PATCH
+    returns 409; use ``POST /{id}/restore`` to reactivate.
+
+    An ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /
+    ``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the
+    generic ``WATCHED_ITEM_UPDATED`` event, which carries only the other
+    changed fields. A no-op (same value) emits nothing.
 
     Args:
         watched_item_id (str):
@@ -177,6 +204,15 @@ async def asyncio(
     """Patch Watched Item
 
      Update mutable WatchedItem fields. All fields optional.
+
+    ``is_active`` (pause/resume) cannot be changed on an archived item — the
+    archive/restore lifecycle owns activation while archived. Such a PATCH
+    returns 409; use ``POST /{id}/restore`` to reactivate.
+
+    An ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /
+    ``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the
+    generic ``WATCHED_ITEM_UPDATED`` event, which carries only the other
+    changed fields. A no-op (same value) emits nothing.
 
     Args:
         watched_item_id (str):
