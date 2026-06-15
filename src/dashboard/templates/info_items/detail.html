@@ -17,9 +17,9 @@
         <p class="text-muted text-sm" style="margin:0 0 var(--space-2);">
           <code x-data="{copied:false}">
             <span>{{ item.info_item_id }}</span>
-            <button type="button" class="btn btn--ghost" style="font-size:0.7rem;padding:0.1rem 0.4rem;margin-left:0.25rem;"
+            <button type="button" class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
                     @click="navigator.clipboard && navigator.clipboard.writeText('{{ item.info_item_id }}').then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
-                    x-text="copied ? '✓' : 'copy'">copy</button>
+                    x-text="copied ? 'Copied ✓' : 'Copy'">Copy</button>
           </code>
         </p>
         {% set primary_src = sources_by_id.get(iis_rows[0].info_source_id) if iis_rows else none %}
@@ -105,9 +105,9 @@
             </td>
             <td class="data-table__cell">
               {% if loop.first %}
-              <button type="button" class="btn btn--ghost" style="font-size:0.75rem;"
+              <button type="button" class="btn btn--secondary btn--sm"
                       @click="swapOpen=!swapOpen"
-                      x-text="swapOpen ? 'Cancel' : 'Swap primary'">Swap primary</button>
+                      x-text="swapOpen ? 'Cancel' : 'Swap Primary'">Swap Primary</button>
               {% endif %}
             </td>
           </tr>

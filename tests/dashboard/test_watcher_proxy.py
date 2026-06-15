@@ -446,6 +446,45 @@ async def test_begin_watching_no_primary_source(client, session):
 
 
 # ---------------------------------------------------------------------------
+# POST /begin-watching — WatchedItem already exists in Watcher (state desync)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_adopts_existing_on_conflict(client, session):
+    """Reported bug: WatchedItem exists in Watcher but watcher_item_id is NULL.
+
+    Provisioning 409s; begin-watching must adopt the existing WatchedItem and
+    render the watching state rather than staying stuck on "Not watching".
+    """
+    from watcher_client.errors import WatcherConflict
+
+    watcher = _mock_watcher(_wi("ok"))
+    watcher.provision_watched_item = AsyncMock(side_effect=WatcherConflict("already exists"))
+    watcher.get_by_info_item_id = AsyncMock(return_value=_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="desynced item", watcher_item_id=None)
+    src = InfoSource(url="https://example.com/page", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Not watching" not in r.text
+    assert "OK" in r.text  # health badge from the adopted WatchedItem
+    watcher.get_by_info_item_id.assert_awaited_once()
+    await session.refresh(item)
+    assert item.watcher_item_id == _WI_ID
+
+
+# ---------------------------------------------------------------------------
 # POST /resync-watcher — happy path
 # ---------------------------------------------------------------------------
 

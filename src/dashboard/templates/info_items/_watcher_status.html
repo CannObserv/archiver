@@ -11,7 +11,7 @@
         hx-target="#watcher-status-strip"
         hx-swap="outerHTML"
         style="display:inline;margin-left:var(--space-2);">
-    <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">Begin watching</button>
+    <button type="submit" class="btn btn--secondary btn--sm">Begin Watching</button>
   </form>
 
 {% elif state == "degraded" %}
@@ -48,7 +48,7 @@
           hx-target="#watcher-status-strip"
           hx-swap="outerHTML"
           style="display:inline;">
-      <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">Check now</button>
+      <button type="submit" class="btn btn--secondary btn--sm">Check now</button>
     </form>
     {% endif %}
 
@@ -58,7 +58,7 @@
           hx-swap="outerHTML"
           style="display:inline;">
       <input type="hidden" name="active" value="{{ 'false' if watched_item.is_active else 'true' }}">
-      <button type="submit" class="btn btn--ghost" style="font-size:0.75rem;padding:0.2rem 0.6rem;">{{ 'Pause' if watched_item.is_active else 'Resume' }}</button>
+      <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watched_item.is_active else 'Resume' }}</button>
     </form>
     {% endif %}
   </div>

@@ -152,6 +152,54 @@ async def test_provision_on_create_watcher_error_does_not_raise(session):
     assert item.watcher_item_id is None
 
 
+@pytest.mark.asyncio
+async def test_provision_on_create_adopts_existing_on_conflict(session):
+    """409 from Watcher (WatchedItem already exists) → adopt its ID rather than fail.
+
+    Reproduces the state-desync bug: a WatchedItem exists in Watcher but the
+    InfoItem's watcher_item_id is NULL (e.g. a pre-#55 item). Provisioning 409s;
+    we recover by looking up the existing WatchedItem and adopting its ID.
+    """
+    from watcher_client.errors import WatcherConflict
+
+    item = InfoItem(name="desynced item", watcher_item_id=None)
+    src = InfoSource(url="https://example.com/", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+
+    watcher = MagicMock()
+    watcher.provision_watched_item = AsyncMock(side_effect=WatcherConflict("already exists"))
+    watcher.get_by_info_item_id = AsyncMock(return_value=_wi(_WI_ID))
+
+    outcome = await provision_on_create(session, watcher, item, src)
+
+    assert outcome is WatcherSyncOutcome.OK
+    assert item.watcher_item_id == _WI_ID
+    watcher.get_by_info_item_id.assert_awaited_once_with(str(item.info_item_id))
+
+
+@pytest.mark.asyncio
+async def test_provision_on_create_conflict_without_existing_is_failed(session):
+    """409 but lookup finds nothing → genuine failure (don't pretend success)."""
+    from watcher_client.errors import WatcherConflict
+
+    item = InfoItem(name="conflict-no-existing", watcher_item_id=None)
+    src = InfoSource(url="https://example.com/", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+
+    watcher = MagicMock()
+    watcher.provision_watched_item = AsyncMock(side_effect=WatcherConflict("already exists"))
+    watcher.get_by_info_item_id = AsyncMock(return_value=None)
+
+    outcome = await provision_on_create(session, watcher, item, src)
+
+    assert outcome is WatcherSyncOutcome.FAILED
+    assert item.watcher_item_id is None
+
+
 # ---------------------------------------------------------------------------
 # sync_on_source_swap
 # ---------------------------------------------------------------------------

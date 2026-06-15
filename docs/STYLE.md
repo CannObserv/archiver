@@ -73,15 +73,15 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 ### Buttons
 - `.btn` — base; always pair with a modifier.
 - `.btn--primary` — brand filled.
-- `.btn--secondary` — outline.
+- `.btn--secondary` — outline (surface bg + border). Use for low-emphasis in-page actions that still need to read as buttons (e.g. Copy, Swap Primary, Begin Watching, Check now, Pause/Resume, Re-sync); pair with `.btn--sm` for compact contexts.
 - `.btn--danger` — destructive action.
-- `.btn--ghost` — transparent, borderless; use for low-emphasis secondary actions (e.g. Copy, Preview, Cancel, Check now, Pause/Resume). Text defaults to `--color-text` so it stays legible on light page surfaces; `.topbar .btn--ghost` overrides to `--color-text-on-brand` (white) for the brand-colored top bar. Do not assume ghost buttons render white — that only holds inside `.topbar`.
+- `.btn--ghost` — transparent, borderless, no hover chrome beyond a faint fill. Reserved for the brand-colored **topbar** (Sign out, theme toggle), where `.topbar .btn--ghost` renders `--color-text-on-brand` (white). On page surfaces it defaults to `--color-text` but reads as plain text — prefer `.btn--secondary` for actions that should look clickable.
 - `.btn--active` — brand-subtle background with brand text; use for the currently-selected state of a toggle button group (e.g. sort mode buttons in `sortableChips`).
 - `.btn--sm` — compact size.
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
 
 ### Badges & Status
-- `.badge`, `.badge--success/warning/danger/info/neutral/muted` — small inline label. `neutral` and `muted` are synonyms (same visual — surface-alt bg, muted text); prefer `muted` for "not configured / disabled" states.
+- `.badge`, `.badge--primary/success/warning/danger/info/neutral/muted` — small inline label. `primary` is brand-subtle bg + brand text (use for the domain badge / brand-tagged labels). `neutral` and `muted` are synonyms (same visual — surface-alt bg, muted text); prefer `muted` for "not configured / disabled" states. `.badge` sets `text-decoration:none` so badges used as `<a>` links don't render underlined.
 - `.badge--sm` — extra-compact size (use in tight contexts like tab count indicators).
 - `.status-pill--cached/expired/missing` — SourceRevision cache state.
 

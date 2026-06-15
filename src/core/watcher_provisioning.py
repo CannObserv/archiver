@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
+from watcher_client.errors import WatcherConflict
 
 from src.core.logging import get_logger
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -83,9 +84,50 @@ async def provision_on_create(
         item.watcher_item_id = str(result.id)
         await session.commit()
         return WatcherSyncOutcome.OK
+    except WatcherConflict:
+        # Watcher already has a WatchedItem for this InfoItem, but Archiver's
+        # watcher_item_id is unset (a pre-#55 item, or a prior provision that
+        # committed on Watcher but not here). Recover by adopting the existing
+        # WatchedItem's ID instead of failing — otherwise "Begin watching" 409s
+        # forever and the item is stuck in not_watching.
+        return await _adopt_existing(session, watcher, item)
     except Exception:
         logger.exception("Watcher provisioning failed for InfoItem %s", item.info_item_id)
         return WatcherSyncOutcome.FAILED
+
+
+async def _adopt_existing(
+    session: AsyncSession,
+    watcher: WatcherClient,
+    item: InfoItem,
+) -> WatcherSyncOutcome:
+    """Look up the WatchedItem already linked to ``item`` and store its ID.
+
+    Used to recover from a provisioning 409. Returns ``OK`` once adopted,
+    ``FAILED`` if the lookup raises or finds nothing (the conflict is then
+    unexplained and we must not pretend success).
+    """
+    try:
+        existing = await watcher.get_by_info_item_id(str(item.info_item_id))
+    except Exception:
+        logger.exception(
+            "Watcher conflict recovery lookup failed for InfoItem %s", item.info_item_id
+        )
+        return WatcherSyncOutcome.FAILED
+    if existing is None:
+        logger.error(
+            "Watcher reported a conflict for InfoItem %s but no linked WatchedItem was found",
+            item.info_item_id,
+        )
+        return WatcherSyncOutcome.FAILED
+    item.watcher_item_id = str(existing.id)
+    await session.commit()
+    logger.info(
+        "Adopted existing WatchedItem %s for InfoItem %s after provisioning conflict",
+        existing.id,
+        item.info_item_id,
+    )
+    return WatcherSyncOutcome.OK
 
 
 async def sync_on_source_swap(

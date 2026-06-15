@@ -467,7 +467,9 @@ p:last-child { margin-bottom: 0; }
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-pill);
   white-space: nowrap;
+  text-decoration: none; /* badges are often <a>; suppress default link underline */
 }
+.badge--primary { background: var(--color-brand-subtle); color: var(--color-brand); }
 .badge--success { background: var(--color-success-bg); color: var(--color-success); }
 .badge--warning { background: var(--color-warning-bg); color: var(--color-warning); }
 .badge--danger  { background: var(--color-danger-bg);  color: var(--color-danger); }
