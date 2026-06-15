@@ -72,6 +72,7 @@ async def test_provision_on_create_sets_watcher_item_id(session):
         info_item_id=str(item.info_item_id),
         archiver_info_source_id=str(src.info_source_id),
         schedule_config=None,
+        is_active=None,
     )
 
 
@@ -92,6 +93,28 @@ async def test_provision_on_create_forwards_schedule_config(session):
         info_item_id=str(item.info_item_id),
         archiver_info_source_id=str(src.info_source_id),
         schedule_config={"interval": "6h"},
+        is_active=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_provision_on_create_forwards_is_active(session):
+    item = InfoItem(name="test item")
+    src = InfoSource(url="https://example.com/", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+
+    watcher = _mock_watcher(_wi(_WI_ID))
+    await provision_on_create(session, watcher, item, src, is_active=False)
+
+    watcher.provision_watched_item.assert_awaited_once_with(
+        url="https://example.com/",
+        source_specs=[],
+        info_item_id=str(item.info_item_id),
+        archiver_info_source_id=str(src.info_source_id),
+        schedule_config=None,
+        is_active=False,
     )
 
 
