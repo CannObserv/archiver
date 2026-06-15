@@ -29,13 +29,6 @@
   {% set hs = watched_item.health_status.value %}
 
   <div class="detail-grid" style="margin-bottom:var(--space-3);">
-    {% if spec_summary %}
-    <div class="detail-grid__item">
-      <span class="detail-grid__label">Spec</span>
-      <span class="detail-grid__value text-sm text-muted">{{ spec_summary }}</span>
-    </div>
-    {% endif %}
-
     <div class="detail-grid__item">
       <span class="detail-grid__label">Health</span>
       <span class="detail-grid__value">

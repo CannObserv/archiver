@@ -356,6 +356,7 @@ async def detail_info_item(
     )
     source_ids = [b.info_source_id for b in iis_rows]
     sources_by_id: dict[ULID, InfoSource] = {}
+    spec_summary_by_source_id: dict[ULID, str] = {}
     if source_ids:
         for src in (
             await session.execute(
@@ -363,6 +364,9 @@ async def detail_info_item(
             )
         ).scalars():
             sources_by_id[src.info_source_id] = src
+            spec_summary_by_source_id[src.info_source_id] = _format_spec_summary(
+                list(src.source_specs) if src.source_specs else []
+            )
 
     # Active rep_spec assignments + RepSpec rows
     irs_rows = list(
@@ -430,6 +434,7 @@ async def detail_info_item(
             "item": item,
             "iis_rows": iis_rows,
             "sources_by_id": sources_by_id,
+            "spec_summary_by_source_id": spec_summary_by_source_id,
             "irs_rows": irs_rows,
             "rep_specs_by_id": rep_specs_by_id,
             "iisr_rows": iisr_rows,
@@ -1067,7 +1072,6 @@ async def _render_watcher_section(
             {"item_id": item_id, "state": "degraded", "error_message": str(e)},
         )
 
-    specs = list(wi.source_specs) if wi.source_specs else []
     return _templates.TemplateResponse(
         request,
         "info_items/_watcher_section.html",
@@ -1075,7 +1079,6 @@ async def _render_watcher_section(
             "item_id": item_id,
             "state": "watching",
             "watched_item": wi,
-            "spec_summary": _format_spec_summary(specs),
             "last_checked_ago": _format_age(wi.last_checked_at),
             "last_changed_ago": _format_age(wi.last_changed_at),
             "cadence": _format_cadence(wi.default_schedule_config),

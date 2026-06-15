@@ -665,6 +665,23 @@ async def test_hub_detail_shows_sources_section(client, session):
 
 
 @pytest.mark.asyncio
+async def test_hub_detail_sources_table_shows_spec_summary(client, session):
+    """Spec lives in the Information Sources bindings table, not the Watcher section (#62)."""
+    item = _make_item("Hub Spec Item")
+    src = _make_source("https://hub-spec.example.com/page")  # _spec() → algorithm full_page
+    session.add_all([item, src])
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    # Spec column header + summary derived from the InfoSource's source_specs.
+    assert ">Spec</th>" in r.text
+    assert "full_page · 1 spec" in r.text
+
+
+@pytest.mark.asyncio
 async def test_hub_detail_shows_replicator_section(client, session):
     item = _make_item("Hub Replicator Item")
     session.add(item)

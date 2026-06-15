@@ -218,29 +218,24 @@ async def test_watcher_section_degraded(client, session):
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-section — spec summary rendered
+# GET /watcher-section — Spec row removed (moved to Information Sources, #62)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_shows_spec_summary(client, session):
+async def test_watcher_section_omits_spec_row(client, session):
     specs = [
         {
             "schema_version": 1,
             "extraction": {"algorithm": "css", "selector": "h1"},
             "fingerprint": {},
-        },  # noqa: E501
-        {
-            "schema_version": 1,
-            "extraction": {"algorithm": "css", "selector": ".body"},
-            "fingerprint": {},
-        },  # noqa: E501
+        },
     ]
     wi = _wi("ok", source_specs=specs)
     watcher = _mock_watcher(wi)
     app.dependency_overrides[get_watcher_client] = lambda: watcher
 
-    item = InfoItem(name="section-spec-summary", watcher_item_id=_WI_ID)
+    item = InfoItem(name="section-no-spec", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
 
@@ -249,8 +244,8 @@ async def test_watcher_section_shows_spec_summary(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    # Summary should show algorithm name
-    assert "css" in r.text.lower()
+    # Spec now lives in the Information Sources section, not here.
+    assert "Spec" not in r.text
 
 
 # ---------------------------------------------------------------------------

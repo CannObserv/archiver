@@ -69,6 +69,7 @@
           <tr>
             <th class="data-table__th">URL</th>
             <th class="data-table__th">Domain</th>
+            <th class="data-table__th">Spec</th>
             <th class="data-table__th">Bound</th>
             <th class="data-table__th">Actions</th>
           </tr>
@@ -89,6 +90,9 @@
               {% if src and src.domain_name %}
               <a href="/dashboard/domains/{{ src.domain_name }}">{{ src.domain_name }}</a>
               {% else %}—{% endif %}
+            </td>
+            <td class="data-table__cell data-table__cell--muted text-sm">
+              {{ spec_summary_by_source_id.get(binding.info_source_id) or '—' }}
             </td>
             <td class="data-table__cell data-table__cell--muted text-sm">
               {{ binding.created_at.strftime('%Y-%m-%d') }}
