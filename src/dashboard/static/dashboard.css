@@ -427,10 +427,19 @@ p:last-child { margin-bottom: 0; }
 
 .btn--ghost {
   background: transparent;
-  color: var(--color-text-on-brand);
+  color: var(--color-text);
   border-color: transparent;
 }
 .btn--ghost:hover:not(:disabled) {
+  background: var(--color-surface-alt);
+}
+/* Ghost buttons sitting on the brand-colored topbar use on-brand (white) text.
+   Without this scope, .btn--ghost defaults to --color-text, which is readable on
+   light page surfaces (where the rest of the dashboard's ghost buttons live). */
+.topbar .btn--ghost {
+  color: var(--color-text-on-brand);
+}
+.topbar .btn--ghost:hover:not(:disabled) {
   background: rgb(255 255 255 / 0.15);
 }
 

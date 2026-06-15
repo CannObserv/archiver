@@ -75,7 +75,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.btn--primary` — brand filled.
 - `.btn--secondary` — outline.
 - `.btn--danger` — destructive action.
-- `.btn--ghost` — transparent with muted text; use for low-emphasis secondary actions (e.g. Copy, Preview, Cancel, Check now, Pause/Resume). Also used in the topbar where `--color-text-on-brand` applies.
+- `.btn--ghost` — transparent, borderless; use for low-emphasis secondary actions (e.g. Copy, Preview, Cancel, Check now, Pause/Resume). Text defaults to `--color-text` so it stays legible on light page surfaces; `.topbar .btn--ghost` overrides to `--color-text-on-brand` (white) for the brand-colored top bar. Do not assume ghost buttons render white — that only holds inside `.topbar`.
 - `.btn--active` — brand-subtle background with brand text; use for the currently-selected state of a toggle button group (e.g. sort mode buttons in `sortableChips`).
 - `.btn--sm` — compact size.
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
