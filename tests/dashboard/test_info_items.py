@@ -676,6 +676,36 @@ async def test_hub_detail_shows_replicator_section(client, session):
 
 
 @pytest.mark.asyncio
+async def test_hub_detail_watcher_header_links_to_watcher(client, session, monkeypatch):
+    """Watched item → "Watcher" header is a deeplink; public base URL wins (#62)."""
+    monkeypatch.setenv("WATCHER_PUBLIC_BASE_URL", "https://watcher.exe.xyz:8000")
+    monkeypatch.setenv("WATCHER_BASE_URL", "http://localhost:8000")
+    item = _make_item("Watched Hub Item", watcher_item_id="01HZZWATCHER00000000000001")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "https://watcher.exe.xyz:8000/watched-items/01HZZWATCHER00000000000001" in r.text
+    # Internal base must not leak into the browser deeplink.
+    assert "localhost:8000" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_hub_detail_watcher_header_plain_when_not_watched(client, session, monkeypatch):
+    """Unwatched item (watcher_item_id is NULL) → plain "Watcher" header, no link."""
+    monkeypatch.setenv("WATCHER_PUBLIC_BASE_URL", "https://watcher.exe.xyz:8000")
+    item = _make_item("Unwatched Hub Item", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Watcher" in r.text
+    assert "/watched-items/" not in r.text
+
+
+@pytest.mark.asyncio
 async def test_hub_detail_shows_revision_history(client, session):
     item = _make_item("Hub History Item")
     src = _make_source("https://hub.example.com/hist")

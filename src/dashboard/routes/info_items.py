@@ -408,6 +408,20 @@ async def detail_info_item(
         ).scalars():
             revisions_by_id[rev.source_revision_id] = rev
 
+    # Browser deeplink to the Watcher item, used to link the "Watcher" section
+    # header. Prefers WATCHER_PUBLIC_BASE_URL (browser-facing) over the internal
+    # WATCHER_BASE_URL, mirroring _render_watcher_section. None when the item is
+    # not yet watched or no Watcher base is configured.
+    watcher_base = (
+        os.environ.get("WATCHER_PUBLIC_BASE_URL", "").strip()
+        or os.environ.get("WATCHER_BASE_URL", "").strip()
+    )
+    watcher_deeplink = (
+        f"{watcher_base}/watched-items/{item.watcher_item_id}"
+        if watcher_base and item.watcher_item_id
+        else None
+    )
+
     return _templates.TemplateResponse(
         request,
         "info_items/detail.html",
@@ -420,6 +434,7 @@ async def detail_info_item(
             "rep_specs_by_id": rep_specs_by_id,
             "iisr_rows": iisr_rows,
             "revisions_by_id": revisions_by_id,
+            "watcher_deeplink": watcher_deeplink,
         },
     )
 
@@ -1052,8 +1067,6 @@ async def _render_watcher_section(
             {"item_id": item_id, "state": "degraded", "error_message": str(e)},
         )
 
-    watcher_display_base = os.environ.get("WATCHER_PUBLIC_BASE_URL", "").strip() or watcher.base_url
-    watcher_url = f"{watcher_display_base}/watched-items/{item.watcher_item_id}"
     specs = list(wi.source_specs) if wi.source_specs else []
     return _templates.TemplateResponse(
         request,
@@ -1066,7 +1079,6 @@ async def _render_watcher_section(
             "last_checked_ago": _format_age(wi.last_checked_at),
             "last_changed_ago": _format_age(wi.last_changed_at),
             "cadence": _format_cadence(wi.default_schedule_config),
-            "watcher_url": watcher_url,
         },
     )
 

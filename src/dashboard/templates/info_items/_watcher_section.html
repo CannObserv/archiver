@@ -16,8 +16,7 @@
   <div style="display:flex;align-items:center;gap:var(--space-2);">
     <span class="text-muted text-sm">Not watching</span>
     <form hx-post="/dashboard/info-items/{{ item_id }}/begin-watching"
-          hx-target="#watcher-status-strip"
-          hx-swap="outerHTML"
+          hx-swap="none"
           style="display:inline;">
       <button type="submit" class="btn btn--secondary btn--sm">Begin Watching</button>
     </form>
@@ -30,13 +29,6 @@
   {% set hs = watched_item.health_status.value %}
 
   <div class="detail-grid" style="margin-bottom:var(--space-3);">
-    <div class="detail-grid__item">
-      <span class="detail-grid__label">URL</span>
-      <span class="detail-grid__value text-sm">
-        <a href="{{ watched_item.effective_url }}" target="_blank" rel="noopener noreferrer">{{ watched_item.effective_url }}</a>
-      </span>
-    </div>
-
     {% if spec_summary %}
     <div class="detail-grid__item">
       <span class="detail-grid__label">Spec</span>
@@ -83,8 +75,7 @@
     {# Check-now is hidden while paused — Watcher 409s on check-now of a paused item. #}
     {% if watched_item.is_active %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
-          hx-target="#watcher-status-strip"
-          hx-swap="outerHTML"
+          hx-swap="none"
           style="display:inline;">
       <button type="submit" class="btn btn--secondary btn--sm">Check now</button>
     </form>
@@ -93,8 +84,7 @@
     {# Pause/resume — hidden for archived items (Watcher 409s; archive/restore owns activation). #}
     {% if not watched_item.archived_at %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
-          hx-target="#watcher-status-strip"
-          hx-swap="outerHTML"
+          hx-swap="none"
           style="display:inline;">
       <input type="hidden" name="active" value="{{ 'false' if watched_item.is_active else 'true' }}">
       <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watched_item.is_active else 'Resume' }}</button>
@@ -102,16 +92,10 @@
     {% endif %}
 
     <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
-          hx-target="#watcher-status-strip"
-          hx-swap="outerHTML"
+          hx-swap="none"
           style="display:inline;">
       <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
     </form>
-
-    {% if watcher_url %}
-    <a href="{{ watcher_url }}" target="_blank" rel="noopener noreferrer"
-       class="text-sm text-muted" style="margin-left:var(--space-1);">View in Watcher ↗</a>
-    {% endif %}
   </div>
 {% endif %}
 
