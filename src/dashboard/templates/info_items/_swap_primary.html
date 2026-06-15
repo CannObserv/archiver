@@ -1,7 +1,7 @@
 {# Swap primary source inline panel — author new source OR bind existing by ULID.
    Rendered inside a parent x-data="{swapOpen:false}" div; visible when swapOpen is true.
    For the no-binding empty state, the panel renders unconditionally (no toggle needed). #}
-<div id="swap-panel" style="margin-top:var(--space-3);padding:var(--space-3);background:var(--color-surface-alt,var(--color-surface));border-radius:var(--radius);max-width:38rem;">
+<div id="swap-panel" style="margin-top:var(--space-3);padding:var(--space-3);background:var(--color-surface-alt,var(--color-surface));border-radius:var(--radius);">
   <p class="text-sm" style="font-weight:500;margin:0 0 var(--space-2);">
     {% if iis_rows %}Swap primary source{% else %}Add primary source{% endif %}
   </p>
@@ -15,12 +15,12 @@
          style="margin-bottom:var(--space-2);"></div>
     <div style="margin-bottom:var(--space-2);">
       <label class="text-sm text-muted" style="display:block;margin-bottom:var(--space-1);">URL</label>
-      <input type="url" name="url" id="swap-url" class="input" required
+      <input type="url" name="url" id="swap-url" class="form-input" required
              placeholder="https://example.com/page" style="width:100%;">
     </div>
     <div style="margin-bottom:var(--space-2);">
       <label class="text-sm text-muted" style="display:block;margin-bottom:var(--space-1);">Source specs <span class="text-muted">(JSON array)</span></label>
-      <textarea name="source_specs" id="swap-specs" class="input" rows="4"
+      <textarea name="source_specs" id="swap-specs" class="form-textarea" rows="4"
                 style="width:100%;font-family:monospace;font-size:0.82rem;"
                 placeholder='[{"schema_version":1,"extraction":{"algorithm":"css","selector":"h1"},"fingerprint":{}}]'></textarea>
     </div>
@@ -28,7 +28,7 @@
       <button type="submit" class="btn btn--primary" style="font-size:0.85rem;">
         {% if iis_rows %}Swap source{% else %}Add source{% endif %}
       </button>
-      <button type="button" class="btn btn--ghost" style="font-size:0.8rem;"
+      <button type="button" class="btn btn--secondary" style="font-size:0.85rem;"
               hx-post="/dashboard/register/preview"
               hx-target="#swap-preview"
               hx-swap="innerHTML"
@@ -45,9 +45,9 @@
     <form hx-post="/dashboard/info-items/{{ item.info_item_id }}/swap-primary-by-id"
           hx-target-422="#swap-by-id-error"
           style="display:flex;gap:var(--space-2);margin-top:var(--space-2);flex-wrap:wrap;">
-      <input type="text" name="info_source_id" class="input" placeholder="InfoSource ULID"
+      <input type="text" name="info_source_id" class="form-input" placeholder="InfoSource ULID"
              style="flex:1;" required>
-      <button type="submit" class="btn btn--ghost" style="font-size:0.85rem;">Bind</button>
+      <button type="submit" class="btn btn--secondary" style="font-size:0.85rem;">Bind</button>
     </form>
     <div id="swap-by-id-error" role="alert" aria-live="polite" aria-atomic="true"
          style="margin-top:var(--space-1);"></div>

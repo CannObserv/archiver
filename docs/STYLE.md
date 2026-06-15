@@ -96,7 +96,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.detail-grid`, `.detail-grid__item`, `.detail-grid__label`, `.detail-grid__value`.
 
 ### Forms
-- `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`.
+- `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`. **There is no `.input` class** — `<input>`/`<textarea>`/`<select>` must use `.form-input`/`.form-textarea`/`.form-select` or they render unstyled (browser default).
 - `.form-input--error` / `.form-select--error` / `.form-textarea--error` — red border on invalid field.
 - `.form-input--inline` — compact width-auto variant for in-table rename inputs.
 - Use `.form-select` (not `.form-input`) on `<select>` elements so the select-specific focus ring and `.form-select--error` variant apply. Optional advanced/secondary form controls may be nested in a native `<details>`/`<summary>` disclosure (e.g. registration Step 3 "Watcher settings (advanced)") — no dedicated class; the `<summary>` carries `.text-sm`.

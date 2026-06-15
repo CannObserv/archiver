@@ -164,7 +164,7 @@
             hx-target="#rep-fields-flash"
             hx-swap="innerHTML"
             style="max-width:40rem;">
-        <textarea name="rep_fields" class="input"
+        <textarea name="rep_fields" class="form-textarea"
                   rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;margin-bottom:var(--space-2);"
                   placeholder='{"key": "value"}'>{{ item.rep_fields | tojson(indent=2) if item.rep_fields else '{}' }}</textarea>
         <div style="display:flex;align-items:center;gap:var(--space-2);">
@@ -204,7 +204,7 @@
       <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Assign Replication Spec</summary>
       <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/assign-rep-spec"
             style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
-        <input type="text" name="rep_spec_id" class="input" placeholder="RepSpec ULID"
+        <input type="text" name="rep_spec_id" class="form-input" placeholder="RepSpec ULID"
                style="flex:1;" required>
         <button type="submit" class="btn btn--primary">Assign</button>
       </form>
@@ -224,7 +224,7 @@
       <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind Revision</summary>
       <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/bind-revision"
             style="display:flex;gap:var(--space-2);margin-top:var(--space-2);max-width:30rem;">
-        <input type="text" name="source_revision_id" class="input" placeholder="SourceRevision ULID"
+        <input type="text" name="source_revision_id" class="form-input" placeholder="SourceRevision ULID"
                style="flex:1;" required>
         <button type="submit" class="btn btn--primary">Bind</button>
       </form>
