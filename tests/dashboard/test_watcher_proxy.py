@@ -322,6 +322,31 @@ async def test_check_now_watcher_error(client, session):
 
 
 @pytest.mark.asyncio
+async def test_check_now_conflict_flashes_paused_message(client, session):
+    # check-now on a paused item → Watcher 409; flash the paused-specific reason,
+    # not a generic "unavailable".
+    from watcher_client.errors import WatcherConflict
+
+    watcher = MagicMock()
+    watcher.check_now = AsyncMock(side_effect=WatcherConflict("paused"))
+    watcher.get_watched_item = AsyncMock(return_value=_wi("ok", is_active=False))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="paused check", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/check-now",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "paused" in hx.lower()
+    assert "unavailable" not in hx.lower()
+
+
+@pytest.mark.asyncio
 async def test_check_now_failure_flashes_but_keeps_status(client, session):
     # check_now fails but get_watched_item still works → show current status + error flash.
     from watcher_client import WatcherError

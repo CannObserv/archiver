@@ -1139,6 +1139,10 @@ async def check_now(
     flash: tuple[str, str] | None = None
     try:
         wi = await watcher.check_now(item.watcher_item_id)
+    except WatcherConflict:
+        # Watcher 409s on check-now of a paused item. The button is hidden when
+        # paused, but guard direct posts with the accurate reason.
+        flash = ("error", "Can't check a paused item — resume it first.")
     except Exception:
         # wi stays None; _render_status_partial re-fetches — shows degraded if that
         # also fails. Either way, surface the action failure as a flash.
@@ -1189,7 +1193,7 @@ async def begin_watching(
     await provision_on_create(session, watcher, item, primary_src)
 
     response = await _render_status_partial(request, item=item, watcher=watcher)
-    response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
+    response.headers["HX-Trigger"] = _watcher_hx_trigger()
     return response
 
 
@@ -1227,7 +1231,7 @@ async def resync_watcher(
             await sync_on_source_swap(session, watcher, item, primary_src)
 
     response = await _render_status_partial(request, item=item, watcher=watcher)
-    response.headers["HX-Trigger"] = '{"watcherUpdated":{}}'
+    response.headers["HX-Trigger"] = _watcher_hx_trigger()
     return response
 
 
