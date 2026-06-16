@@ -56,7 +56,7 @@ assert_no_trigger "core internals (non-contract)" \
 src/core/extractors/html.py"
 
 assert_no_trigger "scripts only" \
-    "scripts/smoke_phase4.sh"
+    "scripts/dump_openapi.py"
 
 assert_no_trigger "conftest / pyproject root" \
     "conftest.py

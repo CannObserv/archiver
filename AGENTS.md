@@ -73,7 +73,7 @@ clients/watcher-python/        watcher_client SDK — Archiver adapter for the W
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
-scripts/                       dump_openapi.py + smoke_phase4.sh +
+scripts/                       dump_openapi.py +
                                check_changelog_on_push.sh (pre-push guard;
                                wired via .pre-commit-config.yaml)
 deploy/                        Systemd unit (archiver.service)
@@ -134,7 +134,7 @@ uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload
 
 Two env files load in order (later overrides earlier):
 
-1. `/etc/archiver/.env` — production secrets (`ARCHIVER_DATABASE_URL`, `ARCHIVER_API_KEY`). Persistent, managed manually on the VM.
+1. `/etc/archiver/.env` — production secrets (`ARCHIVER_DATABASE_URL`). Persistent, managed manually on the VM.
 2. `.env` (repo root, git-ignored) — dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit.
 
 ```bash
@@ -148,7 +148,6 @@ set +a
 
 **Key variables:**
 - `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
-- `ARCHIVER_API_KEY` — convenience alias for a registered API key value (SHA-256 hash stored in `api_keys` table). The service does **not** read this env var for auth — `require_api_key` does a DB hash lookup. Used by `smoke_phase4.sh` and manual `curl` calls. The value must match a key registered via the dashboard Settings page.
 - `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name should include `_test` (e.g. `archiver_test`). `conftest.py` asserts this at collection time and fails fast if violated.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis).
 - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance (e.g. `https://archiver.example.com`). When set, InfoItem API responses include `dashboard_url` pointing to the dashboard detail page (`{ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}`). Unset → `dashboard_url` is `null`. Set this to the URL end-users open in a browser, distinct from any internal service-to-service address. Set in `/etc/archiver/.env` on the VM.
@@ -235,8 +234,6 @@ use `ConfigDict(extra="ignore")` (or `model_construct`) on the
 consumer-side mirror so additive producer fields do not raise
 `ValidationError`. Branch on `schema_version` before destructuring when
 the version is one the consumer recognises differently.
-
-**Smoke:** `bash scripts/smoke_phase4.sh` exercises the v2 authoring loop end-to-end against the dev server (port 8021). Step 9 (Redis stream check) is skipped unless `ARCHIVER_REDIS_URL` is set.
 
 ## Agent Skills
 
