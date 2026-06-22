@@ -16,10 +16,11 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
-from watcher_client.errors import WatcherConflict
+from watcher_client.errors import WatcherConflict, WatcherNotFound
 
 from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
+from src.core.logging import get_logger
 from src.core.watcher_provisioning import (
     WatcherSyncOutcome,
     provision_on_create,
@@ -82,6 +83,8 @@ from src.dashboard.exceptions import DashboardNotFound
 router = APIRouter(prefix="/dashboard/info-items", tags=["dashboard-info-items"])
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -991,9 +994,30 @@ def _format_cadence(schedule_config: object) -> str:
     return f"~{amount} {label}{plural}"
 
 
+async def _clear_stale_watcher_link(session: AsyncSession, item: InfoItem) -> None:
+    """NULL a watcher_item_id after Watcher reports the WatchedItem gone (404).
+
+    A permanently deleted WatchedItem 404s on every read. Without this the
+    InfoItem sticks in the ``degraded`` state forever — indistinguishable from a
+    transient Watcher outage — and "Begin Watching" never reappears (it is gated
+    on a NULL ``watcher_item_id``). Clearing the pointer lets the item fall back
+    to ``not_watching`` so an operator can re-provision. Only a confirmed 404
+    clears the link; transient failures keep it so a brief outage never drops it.
+    """
+    stale_id = item.watcher_item_id
+    item.watcher_item_id = None
+    await session.commit()
+    logger.info(
+        "Cleared stale watcher_item_id %s for InfoItem %s (WatchedItem 404)",
+        stale_id,
+        item.info_item_id,
+    )
+
+
 async def _render_status_partial(
     request: Request,
     *,
+    session: AsyncSession,
     item: InfoItem,
     watcher: "WatcherClient | None",
     pre_fetched: "WatchedItemResponse | None" = None,
@@ -1019,6 +1043,13 @@ async def _render_status_partial(
     if wi is None:
         try:
             wi = await watcher.get_watched_item(item.watcher_item_id)
+        except WatcherNotFound:
+            await _clear_stale_watcher_link(session, item)
+            return _templates.TemplateResponse(
+                request,
+                "info_items/_watcher_status.html",
+                {"item_id": item_id, "state": "not_watching"},
+            )
         except Exception as e:
             return _templates.TemplateResponse(
                 request,
@@ -1043,6 +1074,7 @@ async def _render_status_partial(
 async def _render_watcher_section(
     request: Request,
     *,
+    session: AsyncSession,
     item: InfoItem,
     watcher: "WatcherClient | None",
 ) -> HTMLResponse:
@@ -1065,6 +1097,13 @@ async def _render_watcher_section(
 
     try:
         wi = await watcher.get_watched_item(item.watcher_item_id)
+    except WatcherNotFound:
+        await _clear_stale_watcher_link(session, item)
+        return _templates.TemplateResponse(
+            request,
+            "info_items/_watcher_section.html",
+            {"item_id": item_id, "state": "not_watching"},
+        )
     except Exception as e:
         return _templates.TemplateResponse(
             request,
@@ -1114,7 +1153,7 @@ async def watcher_status(
 ) -> HTMLResponse:
     """HTMX partial: load WatchedItem health strip from Watcher."""
     item = await _resolve_item(item_id, session)
-    return await _render_status_partial(request, item=item, watcher=watcher)
+    return await _render_status_partial(request, session=session, item=item, watcher=watcher)
 
 
 # ---------------------------------------------------------------------------
@@ -1132,7 +1171,7 @@ async def watcher_section(
 ) -> HTMLResponse:
     """HTMX partial: detailed Watcher panel for Section 3 of the detail page."""
     item = await _resolve_item(item_id, session)
-    return await _render_watcher_section(request, item=item, watcher=watcher)
+    return await _render_watcher_section(request, session=session, item=item, watcher=watcher)
 
 
 # ---------------------------------------------------------------------------
@@ -1152,12 +1191,17 @@ async def check_now(
     item = await _resolve_item(item_id, session)
 
     if watcher is None or not item.watcher_item_id:
-        return await _render_status_partial(request, item=item, watcher=watcher)
+        return await _render_status_partial(request, session=session, item=item, watcher=watcher)
 
     wi: WatchedItemResponse | None = None
     flash: tuple[str, str] | None = None
     try:
         wi = await watcher.check_now(item.watcher_item_id)
+    except WatcherNotFound:
+        # The WatchedItem is gone (deleted in Watcher). Clear the stale link so
+        # the partial falls back to not_watching instead of looping on 404.
+        await _clear_stale_watcher_link(session, item)
+        flash = ("error", "This item is no longer watched — it was removed in Watcher.")
     except WatcherConflict:
         # Watcher 409s on check-now of a paused item. The button is hidden when
         # paused, but guard direct posts with the accurate reason.
@@ -1167,7 +1211,9 @@ async def check_now(
         # also fails. Either way, surface the action failure as a flash.
         flash = ("error", "Couldn't trigger a check — Watcher is unavailable. Try again shortly.")
 
-    response = await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
+    response = await _render_status_partial(
+        request, session=session, item=item, watcher=watcher, pre_fetched=wi
+    )
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
 
@@ -1190,7 +1236,7 @@ async def begin_watching(
 
     if item.watcher_item_id:
         # Already provisioned — just re-render current state.
-        return await _render_status_partial(request, item=item, watcher=watcher)
+        return await _render_status_partial(request, session=session, item=item, watcher=watcher)
 
     # Find the active primary source.
     binding = (
@@ -1209,7 +1255,9 @@ async def begin_watching(
         # No active primary source to watch — flash rather than silently re-render
         # (but stay quiet when Watcher is unconfigured: the partial already shows
         # the not_configured state, and a missing-source flash would mislead).
-        response = await _render_status_partial(request, item=item, watcher=watcher)
+        response = await _render_status_partial(
+            request, session=session, item=item, watcher=watcher
+        )
         flash: tuple[str, str] | None = (
             ("error", "No primary source to watch — bind one first.")
             if watcher is not None
@@ -1223,7 +1271,7 @@ async def begin_watching(
     if outcome is WatcherSyncOutcome.FAILED:
         flash = ("error", "Couldn't start watching — Watcher is unavailable. Try again shortly.")
 
-    response = await _render_status_partial(request, item=item, watcher=watcher)
+    response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
 
@@ -1245,7 +1293,7 @@ async def resync_watcher(
     item = await _resolve_item(item_id, session)
 
     if watcher is None or not item.watcher_item_id:
-        return await _render_status_partial(request, item=item, watcher=watcher)
+        return await _render_status_partial(request, session=session, item=item, watcher=watcher)
 
     binding = (
         await session.execute(
@@ -1272,7 +1320,7 @@ async def resync_watcher(
                 "Couldn't re-sync with Watcher — it's unavailable. Try again shortly.",
             )
 
-    response = await _render_status_partial(request, item=item, watcher=watcher)
+    response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
 
@@ -1301,12 +1349,17 @@ async def toggle_watch_active(
     item = await _resolve_item(item_id, session)
 
     if watcher is None or not item.watcher_item_id:
-        return await _render_status_partial(request, item=item, watcher=watcher)
+        return await _render_status_partial(request, session=session, item=item, watcher=watcher)
 
     wi: WatchedItemResponse | None = None
     flash: tuple[str, str] | None = None
     try:
         wi = await watcher.patch_watched_item(item.watcher_item_id, is_active=active == "true")
+    except WatcherNotFound:
+        # The WatchedItem is gone (deleted in Watcher). Clear the stale link so
+        # the partial falls back to not_watching instead of looping on 404.
+        await _clear_stale_watcher_link(session, item)
+        flash = ("error", "This item is no longer watched — it was removed in Watcher.")
     except WatcherConflict:
         # Watcher rejects pause/resume on an archived item (archive/restore owns
         # activation there). The toggle is hidden in that state, but guard direct posts.
@@ -1317,6 +1370,8 @@ async def toggle_watch_active(
             "Couldn't update the watch state — Watcher is unavailable. Try again shortly.",
         )
 
-    response = await _render_status_partial(request, item=item, watcher=watcher, pre_fetched=wi)
+    response = await _render_status_partial(
+        request, session=session, item=item, watcher=watcher, pre_fetched=wi
+    )
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
