@@ -253,3 +253,56 @@ async def test_watcher_section_404_commit_failure_stays_degraded_and_retains_lin
     assert "Watcher unavailable" in r.text
     assert "Not watching" not in r.text
     assert item.watcher_item_id == _WI_ID
+
+
+@pytest.mark.asyncio
+async def test_check_now_404_commit_failure_degrades_with_flash_and_retains_link(
+    client, session, monkeypatch
+):
+    """check-now 404 + failed reconcile commit: degrade (200) with the reconcile
+    flash, never 500, and keep the link — no not_watching/flash mismatch (finding 6)."""
+    app.dependency_overrides[get_watcher_client] = lambda: _watcher_404()
+    item = InfoItem(name="check-now-404-commitfail", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.commit()  # durable so the helper's rollback preserves the row
+
+    monkeypatch.setattr(session, "commit", _boom)
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/check-now",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Watcher unavailable" in r.text
+    assert "Not watching" not in r.text
+    hx_trigger = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx_trigger
+    assert "the local record" in hx_trigger
+    assert item.watcher_item_id == _WI_ID
+
+
+@pytest.mark.asyncio
+async def test_toggle_404_commit_failure_degrades_with_flash_and_retains_link(
+    client, session, monkeypatch
+):
+    """toggle 404 + failed reconcile commit: degrade (200) with the reconcile flash,
+    never 500, and keep the link (findings 6/9)."""
+    app.dependency_overrides[get_watcher_client] = lambda: _watcher_404()
+    item = InfoItem(name="toggle-404-commitfail", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.commit()  # durable so the helper's rollback preserves the row
+
+    monkeypatch.setattr(session, "commit", _boom)
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+        headers=_HEADERS,
+        data={"active": "false"},
+    )
+    assert r.status_code == 200
+    assert "Watcher unavailable" in r.text
+    assert "Not watching" not in r.text
+    hx_trigger = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx_trigger
+    assert "the local record" in hx_trigger
+    assert item.watcher_item_id == _WI_ID

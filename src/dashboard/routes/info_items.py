@@ -994,6 +994,37 @@ def _format_cadence(schedule_config: object) -> str:
     return f"~{amount} {label}{plural}"
 
 
+# Copy for the WatchedItem-deleted (404) reconcile paths — shared so the flash
+# and degraded-panel wording stay aligned across the render and action handlers.
+_WATCHER_REMOVED_FLASH = "This item is no longer watched — it was removed in Watcher."
+_RECONCILE_FAILED_FLASH = (
+    "Watcher reports this item gone, but the local record couldn't be updated — retrying shortly."
+)
+_RECONCILE_FAILED_MSG = "couldn't update the local record after Watcher reported it gone"
+
+
+def _status_degraded(request: Request, item_id: str, error_message: str) -> HTMLResponse:
+    """Render the _watcher_status.html partial in the degraded state from an id alone.
+
+    Takes ``item_id`` (not an ``InfoItem``) so it is safe to call after a failed
+    reconcile, when the ORM object may have expired attributes.
+    """
+    return _templates.TemplateResponse(
+        request,
+        "info_items/_watcher_status.html",
+        {"item_id": item_id, "state": "degraded", "error_message": error_message},
+    )
+
+
+def _section_degraded(request: Request, item_id: str, error_message: str) -> HTMLResponse:
+    """Render the _watcher_section.html partial in the degraded state from an id alone."""
+    return _templates.TemplateResponse(
+        request,
+        "info_items/_watcher_section.html",
+        {"item_id": item_id, "state": "degraded", "error_message": error_message},
+    )
+
+
 async def _clear_stale_watcher_link(session: AsyncSession, item: InfoItem) -> bool:
     """Best-effort NULL of a watcher_item_id after Watcher reports the WatchedItem
     gone (404). Returns ``True`` when the link was durably cleared, ``False`` when
@@ -1069,28 +1100,15 @@ async def _render_status_partial(
         try:
             wi = await watcher.get_watched_item(item.watcher_item_id)
         except WatcherNotFound:
-            cleared = await _clear_stale_watcher_link(session, item)
-            if cleared:
+            if await _clear_stale_watcher_link(session, item):
                 return _templates.TemplateResponse(
                     request,
                     "info_items/_watcher_status.html",
                     {"item_id": item_id, "state": "not_watching"},
                 )
-            return _templates.TemplateResponse(
-                request,
-                "info_items/_watcher_status.html",
-                {
-                    "item_id": item_id,
-                    "state": "degraded",
-                    "error_message": "couldn't update the local watch record",
-                },
-            )
+            return _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
         except Exception as e:
-            return _templates.TemplateResponse(
-                request,
-                "info_items/_watcher_status.html",
-                {"item_id": item_id, "state": "degraded", "error_message": str(e)},
-            )
+            return _status_degraded(request, item_id, str(e))
 
     return _templates.TemplateResponse(
         request,
@@ -1133,28 +1151,15 @@ async def _render_watcher_section(
     try:
         wi = await watcher.get_watched_item(item.watcher_item_id)
     except WatcherNotFound:
-        cleared = await _clear_stale_watcher_link(session, item)
-        if cleared:
+        if await _clear_stale_watcher_link(session, item):
             return _templates.TemplateResponse(
                 request,
                 "info_items/_watcher_section.html",
                 {"item_id": item_id, "state": "not_watching"},
             )
-        return _templates.TemplateResponse(
-            request,
-            "info_items/_watcher_section.html",
-            {
-                "item_id": item_id,
-                "state": "degraded",
-                "error_message": "couldn't update the local watch record",
-            },
-        )
+        return _section_degraded(request, item_id, _RECONCILE_FAILED_MSG)
     except Exception as e:
-        return _templates.TemplateResponse(
-            request,
-            "info_items/_watcher_section.html",
-            {"item_id": item_id, "state": "degraded", "error_message": str(e)},
-        )
+        return _section_degraded(request, item_id, str(e))
 
     return _templates.TemplateResponse(
         request,
@@ -1240,15 +1245,17 @@ async def check_now(
 
     wi: WatchedItemResponse | None = None
     flash: tuple[str, str] | None = None
+    reconcile_failed = False
     try:
         wi = await watcher.check_now(item.watcher_item_id)
     except WatcherNotFound:
         # The WatchedItem is gone (deleted in Watcher). Clear the stale link so
         # the partial falls back to not_watching instead of looping on 404.
         if await _clear_stale_watcher_link(session, item):
-            flash = ("error", "This item is no longer watched — it was removed in Watcher.")
+            flash = ("error", _WATCHER_REMOVED_FLASH)
         else:
-            flash = ("error", "This item is gone in Watcher, but updating the local record failed.")
+            flash = ("error", _RECONCILE_FAILED_FLASH)
+            reconcile_failed = True
     except WatcherConflict:
         # Watcher 409s on check-now of a paused item. The button is hidden when
         # paused, but guard direct posts with the accurate reason.
@@ -1258,9 +1265,14 @@ async def check_now(
         # also fails. Either way, surface the action failure as a flash.
         flash = ("error", "Couldn't trigger a check — Watcher is unavailable. Try again shortly.")
 
-    response = await _render_status_partial(
-        request, session=session, item=item, watcher=watcher, pre_fetched=wi
-    )
+    if reconcile_failed:
+        # Clearing the link failed to commit; render degraded straight from the path
+        # id — don't re-render through the item (attrs may be expired) or re-fetch.
+        response = _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
+    else:
+        response = await _render_status_partial(
+            request, session=session, item=item, watcher=watcher, pre_fetched=wi
+        )
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
 
@@ -1400,15 +1412,17 @@ async def toggle_watch_active(
 
     wi: WatchedItemResponse | None = None
     flash: tuple[str, str] | None = None
+    reconcile_failed = False
     try:
         wi = await watcher.patch_watched_item(item.watcher_item_id, is_active=active == "true")
     except WatcherNotFound:
         # The WatchedItem is gone (deleted in Watcher). Clear the stale link so
         # the partial falls back to not_watching instead of looping on 404.
         if await _clear_stale_watcher_link(session, item):
-            flash = ("error", "This item is no longer watched — it was removed in Watcher.")
+            flash = ("error", _WATCHER_REMOVED_FLASH)
         else:
-            flash = ("error", "This item is gone in Watcher, but updating the local record failed.")
+            flash = ("error", _RECONCILE_FAILED_FLASH)
+            reconcile_failed = True
     except WatcherConflict:
         # Watcher rejects pause/resume on an archived item (archive/restore owns
         # activation there). The toggle is hidden in that state, but guard direct posts.
@@ -1419,8 +1433,13 @@ async def toggle_watch_active(
             "Couldn't update the watch state — Watcher is unavailable. Try again shortly.",
         )
 
-    response = await _render_status_partial(
-        request, session=session, item=item, watcher=watcher, pre_fetched=wi
-    )
+    if reconcile_failed:
+        # Clearing the link failed to commit; render degraded straight from the path
+        # id — don't re-render through the item (attrs may be expired) or re-fetch.
+        response = _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
+    else:
+        response = await _render_status_partial(
+            request, session=session, item=item, watcher=watcher, pre_fetched=wi
+        )
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
