@@ -37,13 +37,16 @@ class WatchedItemCreate:
     ``source_specs`` seeds the local pipeline extraction config. Optional at
     create time; updatable later via PATCH.
 
+    ``content_media_type`` is normally auto-detected from the first successful
+    fetch (#168); supplying it here pre-seeds an operator override.
+
         Attributes:
             archiver_info_item_id (None | str | Unset):
             name (None | str | Unset):
             description (None | str | Unset):
             is_active (bool | Unset):  Default: True.
             default_schedule_config (None | Unset | WatchedItemCreateDefaultScheduleConfigType0):
-            default_content_type (None | str | Unset):
+            content_media_type (None | str | Unset):
             default_tags (list[str] | None | Unset):
             url (None | str | Unset):
             source_specs (list[WatchedItemCreateSourceSpecsType0Item] | None | Unset):
@@ -55,7 +58,7 @@ class WatchedItemCreate:
     description: None | str | Unset = UNSET
     is_active: bool | Unset = True
     default_schedule_config: None | Unset | WatchedItemCreateDefaultScheduleConfigType0 = UNSET
-    default_content_type: None | str | Unset = UNSET
+    content_media_type: None | str | Unset = UNSET
     default_tags: list[str] | None | Unset = UNSET
     url: None | str | Unset = UNSET
     source_specs: list[WatchedItemCreateSourceSpecsType0Item] | None | Unset = UNSET
@@ -95,11 +98,11 @@ class WatchedItemCreate:
         else:
             default_schedule_config = self.default_schedule_config
 
-        default_content_type: None | str | Unset
-        if isinstance(self.default_content_type, Unset):
-            default_content_type = UNSET
+        content_media_type: None | str | Unset
+        if isinstance(self.content_media_type, Unset):
+            content_media_type = UNSET
         else:
-            default_content_type = self.default_content_type
+            content_media_type = self.content_media_type
 
         default_tags: list[str] | None | Unset
         if isinstance(self.default_tags, Unset):
@@ -147,8 +150,8 @@ class WatchedItemCreate:
             field_dict["is_active"] = is_active
         if default_schedule_config is not UNSET:
             field_dict["default_schedule_config"] = default_schedule_config
-        if default_content_type is not UNSET:
-            field_dict["default_content_type"] = default_content_type
+        if content_media_type is not UNSET:
+            field_dict["content_media_type"] = content_media_type
         if default_tags is not UNSET:
             field_dict["default_tags"] = default_tags
         if url is not UNSET:
@@ -223,14 +226,14 @@ class WatchedItemCreate:
             d.pop("default_schedule_config", UNSET)
         )
 
-        def _parse_default_content_type(data: object) -> None | str | Unset:
+        def _parse_content_media_type(data: object) -> None | str | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(None | str | Unset, data)
 
-        default_content_type = _parse_default_content_type(d.pop("default_content_type", UNSET))
+        content_media_type = _parse_content_media_type(d.pop("content_media_type", UNSET))
 
         def _parse_default_tags(data: object) -> list[str] | None | Unset:
             if data is None:
@@ -301,7 +304,7 @@ class WatchedItemCreate:
             description=description,
             is_active=is_active,
             default_schedule_config=default_schedule_config,
-            default_content_type=default_content_type,
+            content_media_type=content_media_type,
             default_tags=default_tags,
             url=url,
             source_specs=source_specs,

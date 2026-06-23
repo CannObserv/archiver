@@ -47,7 +47,10 @@ def sync_detailed(
 ) -> Response[Any]:
     """Notification Template New Page
 
-     Full page: create a new notification template.
+     Full page: create a new global notification template.
+
+    The library page creates ``visibility='global'`` templates; domain- and
+    item-scoped templates are created from the domain and item detail pages (#200).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -72,7 +75,10 @@ async def asyncio_detailed(
 ) -> Response[Any]:
     """Notification Template New Page
 
-     Full page: create a new notification template.
+     Full page: create a new global notification template.
+
+    The library page creates ``visibility='global'`` templates; domain- and
+    item-scoped templates are created from the domain and item detail pages (#200).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

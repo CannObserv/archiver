@@ -105,7 +105,9 @@ def sync_detailed(
 
      Toggle domain active status.
 
-    Deactivating suspends all active watches; reactivating restores them.
+    Deactivating suspends every WatchedItem on the domain (``domain_suspended``);
+    reactivating clears the flag. ``domain_suspended`` gates scheduling and the
+    pause/resume toggle directly — the WatchedItem is the single monitored entity.
 
     Args:
         name (str):
@@ -153,7 +155,9 @@ def sync(
 
      Toggle domain active status.
 
-    Deactivating suspends all active watches; reactivating restores them.
+    Deactivating suspends every WatchedItem on the domain (``domain_suspended``);
+    reactivating clears the flag. ``domain_suspended`` gates scheduling and the
+    pause/resume toggle directly — the WatchedItem is the single monitored entity.
 
     Args:
         name (str):
@@ -196,7 +200,9 @@ async def asyncio_detailed(
 
      Toggle domain active status.
 
-    Deactivating suspends all active watches; reactivating restores them.
+    Deactivating suspends every WatchedItem on the domain (``domain_suspended``);
+    reactivating clears the flag. ``domain_suspended`` gates scheduling and the
+    pause/resume toggle directly — the WatchedItem is the single monitored entity.
 
     Args:
         name (str):
@@ -242,7 +248,9 @@ async def asyncio(
 
      Toggle domain active status.
 
-    Deactivating suspends all active watches; reactivating restores them.
+    Deactivating suspends every WatchedItem on the domain (``domain_suspended``);
+    reactivating clears the flag. ``domain_suspended`` gates scheduling and the
+    pause/resume toggle directly — the WatchedItem is the single monitored entity.
 
     Args:
         name (str):

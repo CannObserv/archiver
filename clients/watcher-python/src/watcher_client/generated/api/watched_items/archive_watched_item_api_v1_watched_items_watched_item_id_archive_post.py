@@ -62,12 +62,11 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Archive Watched Item
 
-     Archive a WatchedItem and cascade-archive all child Watches.
+     Archive a WatchedItem (the single monitored entity, #191).
 
-    The cascade flips ``is_active`` to False and ``is_archived`` to True on
-    every child Watch in a single transaction; the WatchedItem's fetch
-    cycle stops within one ``schedule_tick`` interval because the tick
-    filters on ``WatchedItem.archived_at IS NULL``.
+    Sets ``archived_at`` and flips ``is_active`` to False; the fetch cycle stops
+    within one ``schedule_tick`` interval because the tick filters on
+    ``WatchedItem.archived_at IS NULL``.
 
     Args:
         watched_item_id (str):
@@ -98,12 +97,11 @@ def sync(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Archive Watched Item
 
-     Archive a WatchedItem and cascade-archive all child Watches.
+     Archive a WatchedItem (the single monitored entity, #191).
 
-    The cascade flips ``is_active`` to False and ``is_archived`` to True on
-    every child Watch in a single transaction; the WatchedItem's fetch
-    cycle stops within one ``schedule_tick`` interval because the tick
-    filters on ``WatchedItem.archived_at IS NULL``.
+    Sets ``archived_at`` and flips ``is_active`` to False; the fetch cycle stops
+    within one ``schedule_tick`` interval because the tick filters on
+    ``WatchedItem.archived_at IS NULL``.
 
     Args:
         watched_item_id (str):
@@ -129,12 +127,11 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Archive Watched Item
 
-     Archive a WatchedItem and cascade-archive all child Watches.
+     Archive a WatchedItem (the single monitored entity, #191).
 
-    The cascade flips ``is_active`` to False and ``is_archived`` to True on
-    every child Watch in a single transaction; the WatchedItem's fetch
-    cycle stops within one ``schedule_tick`` interval because the tick
-    filters on ``WatchedItem.archived_at IS NULL``.
+    Sets ``archived_at`` and flips ``is_active`` to False; the fetch cycle stops
+    within one ``schedule_tick`` interval because the tick filters on
+    ``WatchedItem.archived_at IS NULL``.
 
     Args:
         watched_item_id (str):
@@ -163,12 +160,11 @@ async def asyncio(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Archive Watched Item
 
-     Archive a WatchedItem and cascade-archive all child Watches.
+     Archive a WatchedItem (the single monitored entity, #191).
 
-    The cascade flips ``is_active`` to False and ``is_archived`` to True on
-    every child Watch in a single transaction; the WatchedItem's fetch
-    cycle stops within one ``schedule_tick`` interval because the tick
-    filters on ``WatchedItem.archived_at IS NULL``.
+    Sets ``archived_at`` and flips ``is_active`` to False; the fetch cycle stops
+    within one ``schedule_tick`` interval because the tick filters on
+    ``WatchedItem.archived_at IS NULL``.
 
     Args:
         watched_item_id (str):

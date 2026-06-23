@@ -19,7 +19,7 @@ class ProfileResponse:
 
     Attributes:
         id (str):
-        watch_id (str):
+        watched_item_id (str):
         profile_type (ProfileType): Type of temporal profile controlling schedule escalation behavior.
         reference_date (datetime.date | None):
         date_range_start (datetime.date | None):
@@ -32,7 +32,7 @@ class ProfileResponse:
     """
 
     id: str
-    watch_id: str
+    watched_item_id: str
     profile_type: ProfileType
     reference_date: datetime.date | None
     date_range_start: datetime.date | None
@@ -47,7 +47,7 @@ class ProfileResponse:
     def to_dict(self) -> dict[str, Any]:
         id = self.id
 
-        watch_id = self.watch_id
+        watched_item_id = self.watched_item_id
 
         profile_type = self.profile_type.value
 
@@ -84,7 +84,7 @@ class ProfileResponse:
         field_dict.update(
             {
                 "id": id,
-                "watch_id": watch_id,
+                "watched_item_id": watched_item_id,
                 "profile_type": profile_type,
                 "reference_date": reference_date,
                 "date_range_start": date_range_start,
@@ -104,7 +104,7 @@ class ProfileResponse:
         d = dict(src_dict)
         id = d.pop("id")
 
-        watch_id = d.pop("watch_id")
+        watched_item_id = d.pop("watched_item_id")
 
         profile_type = ProfileType(d.pop("profile_type"))
 
@@ -165,7 +165,7 @@ class ProfileResponse:
 
         profile_response = cls(
             id=id,
-            watch_id=watch_id,
+            watched_item_id=watched_item_id,
             profile_type=profile_type,
             reference_date=reference_date,
             date_range_start=date_range_start,

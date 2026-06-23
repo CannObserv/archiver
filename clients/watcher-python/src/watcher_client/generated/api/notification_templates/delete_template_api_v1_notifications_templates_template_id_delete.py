@@ -60,7 +60,7 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Delete Template
 
-     Delete a template. Returns 409 if any watch or domain references it.
+     Delete a template. Templates are standalone post-#200 — no ref check needed.
 
     Args:
         template_id (str):
@@ -91,7 +91,7 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """Delete Template
 
-     Delete a template. Returns 409 if any watch or domain references it.
+     Delete a template. Templates are standalone post-#200 — no ref check needed.
 
     Args:
         template_id (str):
@@ -117,7 +117,7 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Delete Template
 
-     Delete a template. Returns 409 if any watch or domain references it.
+     Delete a template. Templates are standalone post-#200 — no ref check needed.
 
     Args:
         template_id (str):
@@ -146,7 +146,7 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """Delete Template
 
-     Delete a template. Returns 409 if any watch or domain references it.
+     Delete a template. Templates are standalone post-#200 — no ref check needed.
 
     Args:
         template_id (str):

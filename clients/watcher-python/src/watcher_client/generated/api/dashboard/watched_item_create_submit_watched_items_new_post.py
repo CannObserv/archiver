@@ -69,7 +69,9 @@ def sync_detailed(
 
      Create a standalone WatchedItem from the dashboard form.
 
-    Accepts a URL directly; probes it for effective_url + domain_name.
+    Accepts a URL directly; probes it for effective_url + domain_name. The
+    content media type is auto-detected from the first fetch (#168), not
+    collected here. Unchecking ``is_active`` provisions the item paused (#188).
     Audit row uses ``source=\"dashboard\"``.
 
     Args:
@@ -103,7 +105,9 @@ def sync(
 
      Create a standalone WatchedItem from the dashboard form.
 
-    Accepts a URL directly; probes it for effective_url + domain_name.
+    Accepts a URL directly; probes it for effective_url + domain_name. The
+    content media type is auto-detected from the first fetch (#168), not
+    collected here. Unchecking ``is_active`` provisions the item paused (#188).
     Audit row uses ``source=\"dashboard\"``.
 
     Args:
@@ -132,7 +136,9 @@ async def asyncio_detailed(
 
      Create a standalone WatchedItem from the dashboard form.
 
-    Accepts a URL directly; probes it for effective_url + domain_name.
+    Accepts a URL directly; probes it for effective_url + domain_name. The
+    content media type is auto-detected from the first fetch (#168), not
+    collected here. Unchecking ``is_active`` provisions the item paused (#188).
     Audit row uses ``source=\"dashboard\"``.
 
     Args:
@@ -164,7 +170,9 @@ async def asyncio(
 
      Create a standalone WatchedItem from the dashboard form.
 
-    Accepts a URL directly; probes it for effective_url + domain_name.
+    Accepts a URL directly; probes it for effective_url + domain_name. The
+    content media type is auto-detected from the first fetch (#168), not
+    collected here. Unchecking ``is_active`` provisions the item paused (#188).
     Audit row uses ``source=\"dashboard\"``.
 
     Args:

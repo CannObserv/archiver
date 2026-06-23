@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
+
+if TYPE_CHECKING:
+    from ..models.domain_response_default_schedule_config_type_0 import (
+        DomainResponseDefaultScheduleConfigType0,
+    )
+
 
 T = TypeVar("T", bound="DomainResponse")
 
@@ -23,6 +29,7 @@ class DomainResponse:
         last_request_at (datetime.datetime | None):
         decay_window (float):
         notes (None | str):
+        default_schedule_config (DomainResponseDefaultScheduleConfigType0 | None):
         archived_at (datetime.datetime | None):
         created_at (datetime.datetime):
         updated_at (datetime.datetime):
@@ -36,12 +43,17 @@ class DomainResponse:
     last_request_at: datetime.datetime | None
     decay_window: float
     notes: None | str
+    default_schedule_config: DomainResponseDefaultScheduleConfigType0 | None
     archived_at: datetime.datetime | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.domain_response_default_schedule_config_type_0 import (
+            DomainResponseDefaultScheduleConfigType0,
+        )
+
         id = self.id
 
         name = self.name
@@ -62,6 +74,12 @@ class DomainResponse:
 
         notes: None | str
         notes = self.notes
+
+        default_schedule_config: dict[str, Any] | None
+        if isinstance(self.default_schedule_config, DomainResponseDefaultScheduleConfigType0):
+            default_schedule_config = self.default_schedule_config.to_dict()
+        else:
+            default_schedule_config = self.default_schedule_config
 
         archived_at: None | str
         if isinstance(self.archived_at, datetime.datetime):
@@ -85,6 +103,7 @@ class DomainResponse:
                 "last_request_at": last_request_at,
                 "decay_window": decay_window,
                 "notes": notes,
+                "default_schedule_config": default_schedule_config,
                 "archived_at": archived_at,
                 "created_at": created_at,
                 "updated_at": updated_at,
@@ -95,6 +114,10 @@ class DomainResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.domain_response_default_schedule_config_type_0 import (
+            DomainResponseDefaultScheduleConfigType0,
+        )
+
         d = dict(src_dict)
         id = d.pop("id")
 
@@ -130,6 +153,25 @@ class DomainResponse:
 
         notes = _parse_notes(d.pop("notes"))
 
+        def _parse_default_schedule_config(
+            data: object,
+        ) -> DomainResponseDefaultScheduleConfigType0 | None:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                default_schedule_config_type_0 = DomainResponseDefaultScheduleConfigType0.from_dict(
+                    data
+                )
+
+                return default_schedule_config_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(DomainResponseDefaultScheduleConfigType0 | None, data)
+
+        default_schedule_config = _parse_default_schedule_config(d.pop("default_schedule_config"))
+
         def _parse_archived_at(data: object) -> datetime.datetime | None:
             if data is None:
                 return data
@@ -158,6 +200,7 @@ class DomainResponse:
             last_request_at=last_request_at,
             decay_window=decay_window,
             notes=notes,
+            default_schedule_config=default_schedule_config,
             archived_at=archived_at,
             created_at=created_at,
             updated_at=updated_at,

@@ -16,7 +16,11 @@ from types import TracebackType
 
 import httpx
 
-from watcher_client.errors import WatcherServerError, error_from_response
+from watcher_client.errors import (
+    WatcherResponseError,
+    WatcherServerError,
+    error_from_response,
+)
 from watcher_client.generated.models.change_revision_response import ChangeRevisionResponse
 from watcher_client.generated.models.watched_item_response import WatchedItemResponse
 
@@ -165,7 +169,7 @@ class WatcherClient:
             )
         if not items:
             return None
-        return WatchedItemResponse.from_dict(items[0])
+        return _parse_watched_item(items[0])
 
     async def check_now(self, watcher_item_id: str) -> WatchedItemResponse:
         """Enqueue an immediate fetch cycle for a WatchedItem.
@@ -190,4 +194,23 @@ def _unwrap_watched_item(resp: httpx.Response) -> WatchedItemResponse:
     """Parse a WatchedItemResponse on 2xx; raise WatcherError otherwise."""
     if resp.is_error:
         raise error_from_response(resp.status_code, resp.content)
-    return WatchedItemResponse.from_dict(resp.json())
+    return _parse_watched_item(resp.json())
+
+
+def _parse_watched_item(data: object) -> WatchedItemResponse:
+    """Build a WatchedItemResponse from a decoded 2xx body.
+
+    Translates parse failures (a missing/renamed required field — i.e. the live
+    Watcher API drifted from this generated SDK) into a typed
+    ``WatcherResponseError`` instead of leaking a bare ``KeyError``/``TypeError``
+    from generated code. Without this, contract drift is indistinguishable from a
+    transport outage to callers and shows up as an opaque traceback in logs.
+    """
+    try:
+        return WatchedItemResponse.from_dict(data)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise WatcherResponseError(
+            "could not parse Watcher WatchedItem response "
+            f"({type(exc).__name__}: {exc}) — the watcher_client SDK is likely "
+            "stale; regenerate via clients/watcher-python/scripts/regen.sh"
+        ) from exc

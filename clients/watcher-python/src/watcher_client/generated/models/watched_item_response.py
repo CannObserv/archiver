@@ -36,16 +36,19 @@ class WatchedItemResponse:
             last_reviewed_at (datetime.datetime | None):
             last_checked_at (datetime.datetime | None):
             last_changed_at (datetime.datetime | None):
-            health_status (WatchHealthStatus): Health state of a watched item, updated after each check cycle.
-
-                Kept in watch.py for import stability (WatchedItem and tasks both use it).
+            health_status (WatchHealthStatus): Health state of a WatchedItem, updated after each check cycle.
             default_schedule_config (None | WatchedItemResponseDefaultScheduleConfigType0):
-            default_content_type (None | str):
+            content_media_type (None | str):
             default_tags (list[str] | None):
             effective_url (str):
             source_specs (list[WatchedItemResponseSourceSpecsItem]):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
+            media_type_essence (None | str): The resolved extractor-dispatch essence — the same value the pipeline
+                dispatches on (`resolve_dispatch_essence`): the observed/overridden
+                ``content_media_type`` essence, with a URL-extension tiebreaker for
+                mislabeled (octet-stream/text-plain/absent) headers. Computed, not stored
+                (#168), so it always reflects the actual dispatch decision.
             archiver_info_item_id (None | str | Unset):
             archiver_info_source_id (None | str | Unset):
             domain_name (None | str | Unset):
@@ -62,12 +65,13 @@ class WatchedItemResponse:
     last_changed_at: datetime.datetime | None
     health_status: WatchHealthStatus
     default_schedule_config: None | WatchedItemResponseDefaultScheduleConfigType0
-    default_content_type: None | str
+    content_media_type: None | str
     default_tags: list[str] | None
     effective_url: str
     source_specs: list[WatchedItemResponseSourceSpecsItem]
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    media_type_essence: None | str
     archiver_info_item_id: None | str | Unset = UNSET
     archiver_info_source_id: None | str | Unset = UNSET
     domain_name: None | str | Unset = UNSET
@@ -120,8 +124,8 @@ class WatchedItemResponse:
         else:
             default_schedule_config = self.default_schedule_config
 
-        default_content_type: None | str
-        default_content_type = self.default_content_type
+        content_media_type: None | str
+        content_media_type = self.content_media_type
 
         default_tags: list[str] | None
         if isinstance(self.default_tags, list):
@@ -140,6 +144,9 @@ class WatchedItemResponse:
         created_at = self.created_at.isoformat()
 
         updated_at = self.updated_at.isoformat()
+
+        media_type_essence: None | str
+        media_type_essence = self.media_type_essence
 
         archiver_info_item_id: None | str | Unset
         if isinstance(self.archiver_info_item_id, Unset):
@@ -175,12 +182,13 @@ class WatchedItemResponse:
                 "last_changed_at": last_changed_at,
                 "health_status": health_status,
                 "default_schedule_config": default_schedule_config,
-                "default_content_type": default_content_type,
+                "content_media_type": content_media_type,
                 "default_tags": default_tags,
                 "effective_url": effective_url,
                 "source_specs": source_specs,
                 "created_at": created_at,
                 "updated_at": updated_at,
+                "media_type_essence": media_type_essence,
             }
         )
         if archiver_info_item_id is not UNSET:
@@ -298,12 +306,12 @@ class WatchedItemResponse:
 
         default_schedule_config = _parse_default_schedule_config(d.pop("default_schedule_config"))
 
-        def _parse_default_content_type(data: object) -> None | str:
+        def _parse_content_media_type(data: object) -> None | str:
             if data is None:
                 return data
             return cast(None | str, data)
 
-        default_content_type = _parse_default_content_type(d.pop("default_content_type"))
+        content_media_type = _parse_content_media_type(d.pop("content_media_type"))
 
         def _parse_default_tags(data: object) -> list[str] | None:
             if data is None:
@@ -332,6 +340,13 @@ class WatchedItemResponse:
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
 
         updated_at = datetime.datetime.fromisoformat(d.pop("updated_at"))
+
+        def _parse_media_type_essence(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        media_type_essence = _parse_media_type_essence(d.pop("media_type_essence"))
 
         def _parse_archiver_info_item_id(data: object) -> None | str | Unset:
             if data is None:
@@ -375,12 +390,13 @@ class WatchedItemResponse:
             last_changed_at=last_changed_at,
             health_status=health_status,
             default_schedule_config=default_schedule_config,
-            default_content_type=default_content_type,
+            content_media_type=content_media_type,
             default_tags=default_tags,
             effective_url=effective_url,
             source_specs=source_specs,
             created_at=created_at,
             updated_at=updated_at,
+            media_type_essence=media_type_essence,
             archiver_info_item_id=archiver_info_item_id,
             archiver_info_source_id=archiver_info_source_id,
             domain_name=domain_name,

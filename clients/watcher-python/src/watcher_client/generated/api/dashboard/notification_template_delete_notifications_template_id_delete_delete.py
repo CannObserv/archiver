@@ -60,7 +60,9 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Notification Template Delete
 
-     Delete a notification template (reject if refs exist). Returns refreshed list.
+     Delete a notification template. Returns refreshed list.
+
+    Templates are standalone post-#200 — no junction refs to block deletion.
 
     Args:
         template_id (str):
@@ -91,7 +93,9 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """Notification Template Delete
 
-     Delete a notification template (reject if refs exist). Returns refreshed list.
+     Delete a notification template. Returns refreshed list.
+
+    Templates are standalone post-#200 — no junction refs to block deletion.
 
     Args:
         template_id (str):
@@ -117,7 +121,9 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Notification Template Delete
 
-     Delete a notification template (reject if refs exist). Returns refreshed list.
+     Delete a notification template. Returns refreshed list.
+
+    Templates are standalone post-#200 — no junction refs to block deletion.
 
     Args:
         template_id (str):
@@ -146,7 +152,9 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """Notification Template Delete
 
-     Delete a notification template (reject if refs exist). Returns refreshed list.
+     Delete a notification template. Returns refreshed list.
+
+    Templates are standalone post-#200 — no junction refs to block deletion.
 
     Args:
         template_id (str):

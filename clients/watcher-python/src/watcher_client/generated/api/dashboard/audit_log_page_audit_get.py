@@ -12,7 +12,7 @@ from ...types import UNSET, Response, Unset
 def _get_kwargs(
     *,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
@@ -24,12 +24,12 @@ def _get_kwargs(
         json_event_type = event_type
     params["event_type"] = json_event_type
 
-    json_watch_id: None | str | Unset
-    if isinstance(watch_id, Unset):
-        json_watch_id = UNSET
+    json_watched_item_id: None | str | Unset
+    if isinstance(watched_item_id, Unset):
+        json_watched_item_id = UNSET
     else:
-        json_watch_id = watch_id
-    params["watch_id"] = json_watch_id
+        json_watched_item_id = watched_item_id
+    params["watched_item_id"] = json_watched_item_id
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -75,7 +75,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
 ) -> Response[Any | HTTPValidationError]:
     """Audit Log Page
 
@@ -83,7 +83,7 @@ def sync_detailed(
 
     Args:
         event_type (None | str | Unset):
-        watch_id (None | str | Unset):
+        watched_item_id (None | str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -95,7 +95,7 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         event_type=event_type,
-        watch_id=watch_id,
+        watched_item_id=watched_item_id,
     )
 
     response = client.get_httpx_client().request(
@@ -109,7 +109,7 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
 ) -> Any | HTTPValidationError | None:
     """Audit Log Page
 
@@ -117,7 +117,7 @@ def sync(
 
     Args:
         event_type (None | str | Unset):
-        watch_id (None | str | Unset):
+        watched_item_id (None | str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -130,7 +130,7 @@ def sync(
     return sync_detailed(
         client=client,
         event_type=event_type,
-        watch_id=watch_id,
+        watched_item_id=watched_item_id,
     ).parsed
 
 
@@ -138,7 +138,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
 ) -> Response[Any | HTTPValidationError]:
     """Audit Log Page
 
@@ -146,7 +146,7 @@ async def asyncio_detailed(
 
     Args:
         event_type (None | str | Unset):
-        watch_id (None | str | Unset):
+        watched_item_id (None | str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -158,7 +158,7 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         event_type=event_type,
-        watch_id=watch_id,
+        watched_item_id=watched_item_id,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -170,7 +170,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
 ) -> Any | HTTPValidationError | None:
     """Audit Log Page
 
@@ -178,7 +178,7 @@ async def asyncio(
 
     Args:
         event_type (None | str | Unset):
-        watch_id (None | str | Unset):
+        watched_item_id (None | str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -192,6 +192,6 @@ async def asyncio(
         await asyncio_detailed(
             client=client,
             event_type=event_type,
-            watch_id=watch_id,
+            watched_item_id=watched_item_id,
         )
     ).parsed

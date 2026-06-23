@@ -63,7 +63,7 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Domain Nc Default Remove
 
-     Remove a notification template default from a domain.
+     Delete a domain-scoped notification template (#200: removal = delete the row).
 
     Args:
         domain_name (str):
@@ -97,7 +97,7 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """Domain Nc Default Remove
 
-     Remove a notification template default from a domain.
+     Delete a domain-scoped notification template (#200: removal = delete the row).
 
     Args:
         domain_name (str):
@@ -126,7 +126,7 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Domain Nc Default Remove
 
-     Remove a notification template default from a domain.
+     Delete a domain-scoped notification template (#200: removal = delete the row).
 
     Args:
         domain_name (str):
@@ -158,7 +158,7 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """Domain Nc Default Remove
 
-     Remove a notification template default from a domain.
+     Delete a domain-scoped notification template (#200: removal = delete the row).
 
     Args:
         domain_name (str):

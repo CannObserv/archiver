@@ -67,13 +67,18 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | NotificationTemplateResponse]:
     """Create Template
 
-     Create a new shared notification template.
+     Create a notification template at the requested visibility scope.
+
+    The scope/ref shape is validated by the schema; here we confirm the
+    referenced Domain/WatchedItem actually exists so a bad ref returns 404
+    rather than a 500 from the FK violation.
 
     Args:
-        body (NotificationTemplateCreate): `str_strip_whitespace` runs before length validation,
-            so a
-            whitespace-only `channel_hint` collapses to ``""`` and trips
-            `min_length=1`.
+        body (NotificationTemplateCreate): Create a notification template at any visibility scope.
+
+            ``str_strip_whitespace`` runs before length validation, so a whitespace-only
+            ``channel_hint`` collapses to ``""`` and trips ``min_length=1``. The
+            ``visibility``/ref consistency rule mirrors the DB CHECK constraint.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -101,13 +106,18 @@ def sync(
 ) -> HTTPValidationError | NotificationTemplateResponse | None:
     """Create Template
 
-     Create a new shared notification template.
+     Create a notification template at the requested visibility scope.
+
+    The scope/ref shape is validated by the schema; here we confirm the
+    referenced Domain/WatchedItem actually exists so a bad ref returns 404
+    rather than a 500 from the FK violation.
 
     Args:
-        body (NotificationTemplateCreate): `str_strip_whitespace` runs before length validation,
-            so a
-            whitespace-only `channel_hint` collapses to ``""`` and trips
-            `min_length=1`.
+        body (NotificationTemplateCreate): Create a notification template at any visibility scope.
+
+            ``str_strip_whitespace`` runs before length validation, so a whitespace-only
+            ``channel_hint`` collapses to ``""`` and trips ``min_length=1``. The
+            ``visibility``/ref consistency rule mirrors the DB CHECK constraint.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -130,13 +140,18 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | NotificationTemplateResponse]:
     """Create Template
 
-     Create a new shared notification template.
+     Create a notification template at the requested visibility scope.
+
+    The scope/ref shape is validated by the schema; here we confirm the
+    referenced Domain/WatchedItem actually exists so a bad ref returns 404
+    rather than a 500 from the FK violation.
 
     Args:
-        body (NotificationTemplateCreate): `str_strip_whitespace` runs before length validation,
-            so a
-            whitespace-only `channel_hint` collapses to ``""`` and trips
-            `min_length=1`.
+        body (NotificationTemplateCreate): Create a notification template at any visibility scope.
+
+            ``str_strip_whitespace`` runs before length validation, so a whitespace-only
+            ``channel_hint`` collapses to ``""`` and trips ``min_length=1``. The
+            ``visibility``/ref consistency rule mirrors the DB CHECK constraint.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -162,13 +177,18 @@ async def asyncio(
 ) -> HTTPValidationError | NotificationTemplateResponse | None:
     """Create Template
 
-     Create a new shared notification template.
+     Create a notification template at the requested visibility scope.
+
+    The scope/ref shape is validated by the schema; here we confirm the
+    referenced Domain/WatchedItem actually exists so a bad ref returns 404
+    rather than a 500 from the FK violation.
 
     Args:
-        body (NotificationTemplateCreate): `str_strip_whitespace` runs before length validation,
-            so a
-            whitespace-only `channel_hint` collapses to ``""`` and trips
-            `min_length=1`.
+        body (NotificationTemplateCreate): Create a notification template at any visibility scope.
+
+            ``str_strip_whitespace`` runs before length validation, so a whitespace-only
+            ``channel_hint`` collapses to ``""`` and trips ``min_length=1``. The
+            ``visibility``/ref consistency rule mirrors the DB CHECK constraint.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

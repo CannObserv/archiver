@@ -24,12 +24,12 @@ class NotificationTemplateResponse:
         title (str):
         channel_hint (str):
         events (list[str]):
-        is_global_default (bool):
+        visibility (str):
         is_active (bool):
         created_at (datetime.datetime):
         updated_at (datetime.datetime):
-        watch_ref_count (int | Unset):  Default: 0.
-        domain_ref_count (int | Unset):  Default: 0.
+        domain_name (None | str | Unset):
+        watched_item_id (None | str | Unset):
         content_config (ContentConfig | None | Unset):
         remote_channel_id (None | str | Unset):
     """
@@ -38,12 +38,12 @@ class NotificationTemplateResponse:
     title: str
     channel_hint: str
     events: list[str]
-    is_global_default: bool
+    visibility: str
     is_active: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
-    watch_ref_count: int | Unset = 0
-    domain_ref_count: int | Unset = 0
+    domain_name: None | str | Unset = UNSET
+    watched_item_id: None | str | Unset = UNSET
     content_config: ContentConfig | None | Unset = UNSET
     remote_channel_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -59,7 +59,7 @@ class NotificationTemplateResponse:
 
         events = self.events
 
-        is_global_default = self.is_global_default
+        visibility = self.visibility
 
         is_active = self.is_active
 
@@ -67,9 +67,17 @@ class NotificationTemplateResponse:
 
         updated_at = self.updated_at.isoformat()
 
-        watch_ref_count = self.watch_ref_count
+        domain_name: None | str | Unset
+        if isinstance(self.domain_name, Unset):
+            domain_name = UNSET
+        else:
+            domain_name = self.domain_name
 
-        domain_ref_count = self.domain_ref_count
+        watched_item_id: None | str | Unset
+        if isinstance(self.watched_item_id, Unset):
+            watched_item_id = UNSET
+        else:
+            watched_item_id = self.watched_item_id
 
         content_config: dict[str, Any] | None | Unset
         if isinstance(self.content_config, Unset):
@@ -93,16 +101,16 @@ class NotificationTemplateResponse:
                 "title": title,
                 "channel_hint": channel_hint,
                 "events": events,
-                "is_global_default": is_global_default,
+                "visibility": visibility,
                 "is_active": is_active,
                 "created_at": created_at,
                 "updated_at": updated_at,
             }
         )
-        if watch_ref_count is not UNSET:
-            field_dict["watch_ref_count"] = watch_ref_count
-        if domain_ref_count is not UNSET:
-            field_dict["domain_ref_count"] = domain_ref_count
+        if domain_name is not UNSET:
+            field_dict["domain_name"] = domain_name
+        if watched_item_id is not UNSET:
+            field_dict["watched_item_id"] = watched_item_id
         if content_config is not UNSET:
             field_dict["content_config"] = content_config
         if remote_channel_id is not UNSET:
@@ -123,7 +131,7 @@ class NotificationTemplateResponse:
 
         events = cast(list[str], d.pop("events"))
 
-        is_global_default = d.pop("is_global_default")
+        visibility = d.pop("visibility")
 
         is_active = d.pop("is_active")
 
@@ -131,9 +139,23 @@ class NotificationTemplateResponse:
 
         updated_at = datetime.datetime.fromisoformat(d.pop("updated_at"))
 
-        watch_ref_count = d.pop("watch_ref_count", UNSET)
+        def _parse_domain_name(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
 
-        domain_ref_count = d.pop("domain_ref_count", UNSET)
+        domain_name = _parse_domain_name(d.pop("domain_name", UNSET))
+
+        def _parse_watched_item_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        watched_item_id = _parse_watched_item_id(d.pop("watched_item_id", UNSET))
 
         def _parse_content_config(data: object) -> ContentConfig | None | Unset:
             if data is None:
@@ -166,12 +188,12 @@ class NotificationTemplateResponse:
             title=title,
             channel_hint=channel_hint,
             events=events,
-            is_global_default=is_global_default,
+            visibility=visibility,
             is_active=is_active,
             created_at=created_at,
             updated_at=updated_at,
-            watch_ref_count=watch_ref_count,
-            domain_ref_count=domain_ref_count,
+            domain_name=domain_name,
+            watched_item_id=watched_item_id,
             content_config=content_config,
             remote_channel_id=remote_channel_id,
         )

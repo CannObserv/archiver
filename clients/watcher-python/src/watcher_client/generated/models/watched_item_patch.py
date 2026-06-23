@@ -32,7 +32,7 @@ class WatchedItemPatch:
             description (None | str | Unset):
             is_active (bool | None | Unset):
             default_schedule_config (None | Unset | WatchedItemPatchDefaultScheduleConfigType0):
-            default_content_type (None | str | Unset):
+            content_media_type (None | str | Unset):
             default_tags (list[str] | None | Unset):
             effective_url (None | str | Unset):
             source_specs (list[WatchedItemPatchSourceSpecsType0Item] | None | Unset):
@@ -43,7 +43,7 @@ class WatchedItemPatch:
     description: None | str | Unset = UNSET
     is_active: bool | None | Unset = UNSET
     default_schedule_config: None | Unset | WatchedItemPatchDefaultScheduleConfigType0 = UNSET
-    default_content_type: None | str | Unset = UNSET
+    content_media_type: None | str | Unset = UNSET
     default_tags: list[str] | None | Unset = UNSET
     effective_url: None | str | Unset = UNSET
     source_specs: list[WatchedItemPatchSourceSpecsType0Item] | None | Unset = UNSET
@@ -81,11 +81,11 @@ class WatchedItemPatch:
         else:
             default_schedule_config = self.default_schedule_config
 
-        default_content_type: None | str | Unset
-        if isinstance(self.default_content_type, Unset):
-            default_content_type = UNSET
+        content_media_type: None | str | Unset
+        if isinstance(self.content_media_type, Unset):
+            content_media_type = UNSET
         else:
-            default_content_type = self.default_content_type
+            content_media_type = self.content_media_type
 
         default_tags: list[str] | None | Unset
         if isinstance(self.default_tags, Unset):
@@ -131,8 +131,8 @@ class WatchedItemPatch:
             field_dict["is_active"] = is_active
         if default_schedule_config is not UNSET:
             field_dict["default_schedule_config"] = default_schedule_config
-        if default_content_type is not UNSET:
-            field_dict["default_content_type"] = default_content_type
+        if content_media_type is not UNSET:
+            field_dict["content_media_type"] = content_media_type
         if default_tags is not UNSET:
             field_dict["default_tags"] = default_tags
         if effective_url is not UNSET:
@@ -205,14 +205,14 @@ class WatchedItemPatch:
             d.pop("default_schedule_config", UNSET)
         )
 
-        def _parse_default_content_type(data: object) -> None | str | Unset:
+        def _parse_content_media_type(data: object) -> None | str | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(None | str | Unset, data)
 
-        default_content_type = _parse_default_content_type(d.pop("default_content_type", UNSET))
+        content_media_type = _parse_content_media_type(d.pop("content_media_type", UNSET))
 
         def _parse_default_tags(data: object) -> list[str] | None | Unset:
             if data is None:
@@ -282,7 +282,7 @@ class WatchedItemPatch:
             description=description,
             is_active=is_active,
             default_schedule_config=default_schedule_config,
-            default_content_type=default_content_type,
+            content_media_type=content_media_type,
             default_tags=default_tags,
             effective_url=effective_url,
             source_specs=source_specs,

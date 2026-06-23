@@ -62,7 +62,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Restore Watched Item
 
-     Restore the WatchedItem only. Child Watches stay archived.
+     Restore the WatchedItem — clears ``archived_at`` and re-activates.
 
     Args:
         watched_item_id (str):
@@ -93,7 +93,7 @@ def sync(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Restore Watched Item
 
-     Restore the WatchedItem only. Child Watches stay archived.
+     Restore the WatchedItem — clears ``archived_at`` and re-activates.
 
     Args:
         watched_item_id (str):
@@ -119,7 +119,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Restore Watched Item
 
-     Restore the WatchedItem only. Child Watches stay archived.
+     Restore the WatchedItem — clears ``archived_at`` and re-activates.
 
     Args:
         watched_item_id (str):
@@ -148,7 +148,7 @@ async def asyncio(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Restore Watched Item
 
-     Restore the WatchedItem only. Child Watches stay archived.
+     Restore the WatchedItem — clears ``archived_at`` and re-activates.
 
     Args:
         watched_item_id (str):

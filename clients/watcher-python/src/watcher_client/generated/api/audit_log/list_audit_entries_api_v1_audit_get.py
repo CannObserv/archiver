@@ -13,7 +13,7 @@ from ...types import UNSET, Response, Unset
 def _get_kwargs(
     *,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
     offset: int | Unset = 0,
 ) -> dict[str, Any]:
@@ -27,12 +27,12 @@ def _get_kwargs(
         json_event_type = event_type
     params["event_type"] = json_event_type
 
-    json_watch_id: None | str | Unset
-    if isinstance(watch_id, Unset):
-        json_watch_id = UNSET
+    json_watched_item_id: None | str | Unset
+    if isinstance(watched_item_id, Unset):
+        json_watched_item_id = UNSET
     else:
-        json_watch_id = watch_id
-    params["watch_id"] = json_watch_id
+        json_watched_item_id = watched_item_id
+    params["watched_item_id"] = json_watched_item_id
 
     params["limit"] = limit
 
@@ -88,7 +88,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
     offset: int | Unset = 0,
 ) -> Response[HTTPValidationError | list[AuditLogResponse]]:
@@ -96,9 +96,12 @@ def sync_detailed(
 
      List audit log entries with optional filters and pagination.
 
+    The WatchedItem association lives in the JSONB ``payload`` (the dedicated
+    ``watch_id`` FK column was retired with the Watch table in #191).
+
     Args:
         event_type (None | str | Unset):
-        watch_id (None | str | Unset):
+        watched_item_id (None | str | Unset):
         limit (int | Unset):  Default: 50.
         offset (int | Unset):  Default: 0.
 
@@ -112,7 +115,7 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         event_type=event_type,
-        watch_id=watch_id,
+        watched_item_id=watched_item_id,
         limit=limit,
         offset=offset,
     )
@@ -128,7 +131,7 @@ def sync(
     *,
     client: AuthenticatedClient,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
     offset: int | Unset = 0,
 ) -> HTTPValidationError | list[AuditLogResponse] | None:
@@ -136,9 +139,12 @@ def sync(
 
      List audit log entries with optional filters and pagination.
 
+    The WatchedItem association lives in the JSONB ``payload`` (the dedicated
+    ``watch_id`` FK column was retired with the Watch table in #191).
+
     Args:
         event_type (None | str | Unset):
-        watch_id (None | str | Unset):
+        watched_item_id (None | str | Unset):
         limit (int | Unset):  Default: 50.
         offset (int | Unset):  Default: 0.
 
@@ -153,7 +159,7 @@ def sync(
     return sync_detailed(
         client=client,
         event_type=event_type,
-        watch_id=watch_id,
+        watched_item_id=watched_item_id,
         limit=limit,
         offset=offset,
     ).parsed
@@ -163,7 +169,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
     offset: int | Unset = 0,
 ) -> Response[HTTPValidationError | list[AuditLogResponse]]:
@@ -171,9 +177,12 @@ async def asyncio_detailed(
 
      List audit log entries with optional filters and pagination.
 
+    The WatchedItem association lives in the JSONB ``payload`` (the dedicated
+    ``watch_id`` FK column was retired with the Watch table in #191).
+
     Args:
         event_type (None | str | Unset):
-        watch_id (None | str | Unset):
+        watched_item_id (None | str | Unset):
         limit (int | Unset):  Default: 50.
         offset (int | Unset):  Default: 0.
 
@@ -187,7 +196,7 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         event_type=event_type,
-        watch_id=watch_id,
+        watched_item_id=watched_item_id,
         limit=limit,
         offset=offset,
     )
@@ -201,7 +210,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     event_type: None | str | Unset = UNSET,
-    watch_id: None | str | Unset = UNSET,
+    watched_item_id: None | str | Unset = UNSET,
     limit: int | Unset = 50,
     offset: int | Unset = 0,
 ) -> HTTPValidationError | list[AuditLogResponse] | None:
@@ -209,9 +218,12 @@ async def asyncio(
 
      List audit log entries with optional filters and pagination.
 
+    The WatchedItem association lives in the JSONB ``payload`` (the dedicated
+    ``watch_id`` FK column was retired with the Watch table in #191).
+
     Args:
         event_type (None | str | Unset):
-        watch_id (None | str | Unset):
+        watched_item_id (None | str | Unset):
         limit (int | Unset):  Default: 50.
         offset (int | Unset):  Default: 0.
 
@@ -227,7 +239,7 @@ async def asyncio(
         await asyncio_detailed(
             client=client,
             event_type=event_type,
-            watch_id=watch_id,
+            watched_item_id=watched_item_id,
             limit=limit,
             offset=offset,
         )

@@ -98,6 +98,9 @@ def sync_detailed(
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
 
+            ``content_media_type`` is normally auto-detected from the first successful
+            fetch (#168); supplying it here pre-seeds an operator override.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -155,6 +158,9 @@ def sync(
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
 
+            ``content_media_type`` is normally auto-detected from the first successful
+            fetch (#168); supplying it here pre-seeds an operator override.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -206,6 +212,9 @@ async def asyncio_detailed(
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
+
+            ``content_media_type`` is normally auto-detected from the first successful
+            fetch (#168); supplying it here pre-seeds an operator override.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -261,6 +270,9 @@ async def asyncio(
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
+
+            ``content_media_type`` is normally auto-detected from the first successful
+            fetch (#168); supplying it here pre-seeds an operator override.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

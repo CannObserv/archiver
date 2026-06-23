@@ -17,18 +17,18 @@ T = TypeVar("T", bound="NotificationTemplateUpdate")
 
 @_attrs_define
 class NotificationTemplateUpdate:
-    """`channel_hint` stays nullable on Update so the route can use
+    """Partial update. ``visibility`` and its refs are intrinsic and not updatable
+    here — re-scoping a template means delete + recreate.
+
+    ``channel_hint`` stays nullable on Update so the route can use
     ``model_fields_set`` to distinguish "not provided" (no-op) from a
-    user-supplied value. Same pattern as ``title``. The Create schema
-    is `str` (always present, default `"remote"`) — the asymmetry is
-    intentional.
+    user-supplied value. Same pattern as ``title``.
 
         Attributes:
             title (None | str | Unset):
             remote_channel_id (None | str | Unset):
             channel_hint (None | str | Unset):
             events (list[str] | None | Unset):
-            is_global_default (bool | None | Unset):
             is_active (bool | None | Unset):
             content_config (ContentConfig | None | Unset):
     """
@@ -37,7 +37,6 @@ class NotificationTemplateUpdate:
     remote_channel_id: None | str | Unset = UNSET
     channel_hint: None | str | Unset = UNSET
     events: list[str] | None | Unset = UNSET
-    is_global_default: bool | None | Unset = UNSET
     is_active: bool | None | Unset = UNSET
     content_config: ContentConfig | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -72,12 +71,6 @@ class NotificationTemplateUpdate:
         else:
             events = self.events
 
-        is_global_default: bool | None | Unset
-        if isinstance(self.is_global_default, Unset):
-            is_global_default = UNSET
-        else:
-            is_global_default = self.is_global_default
-
         is_active: bool | None | Unset
         if isinstance(self.is_active, Unset):
             is_active = UNSET
@@ -103,8 +96,6 @@ class NotificationTemplateUpdate:
             field_dict["channel_hint"] = channel_hint
         if events is not UNSET:
             field_dict["events"] = events
-        if is_global_default is not UNSET:
-            field_dict["is_global_default"] = is_global_default
         if is_active is not UNSET:
             field_dict["is_active"] = is_active
         if content_config is not UNSET:
@@ -162,15 +153,6 @@ class NotificationTemplateUpdate:
 
         events = _parse_events(d.pop("events", UNSET))
 
-        def _parse_is_global_default(data: object) -> bool | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(bool | None | Unset, data)
-
-        is_global_default = _parse_is_global_default(d.pop("is_global_default", UNSET))
-
         def _parse_is_active(data: object) -> bool | None | Unset:
             if data is None:
                 return data
@@ -202,7 +184,6 @@ class NotificationTemplateUpdate:
             remote_channel_id=remote_channel_id,
             channel_hint=channel_hint,
             events=events,
-            is_global_default=is_global_default,
             is_active=is_active,
             content_config=content_config,
         )

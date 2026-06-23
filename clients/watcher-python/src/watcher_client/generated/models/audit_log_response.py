@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
@@ -21,14 +21,12 @@ class AuditLogResponse:
     Attributes:
         id (str):
         event_type (str):
-        watch_id (None | str):
         payload (AuditLogResponsePayload):
         created_at (datetime.datetime):
     """
 
     id: str
     event_type: str
-    watch_id: None | str
     payload: AuditLogResponsePayload
     created_at: datetime.datetime
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -37,9 +35,6 @@ class AuditLogResponse:
         id = self.id
 
         event_type = self.event_type
-
-        watch_id: None | str
-        watch_id = self.watch_id
 
         payload = self.payload.to_dict()
 
@@ -51,7 +46,6 @@ class AuditLogResponse:
             {
                 "id": id,
                 "event_type": event_type,
-                "watch_id": watch_id,
                 "payload": payload,
                 "created_at": created_at,
             }
@@ -68,13 +62,6 @@ class AuditLogResponse:
 
         event_type = d.pop("event_type")
 
-        def _parse_watch_id(data: object) -> None | str:
-            if data is None:
-                return data
-            return cast(None | str, data)
-
-        watch_id = _parse_watch_id(d.pop("watch_id"))
-
         payload = AuditLogResponsePayload.from_dict(d.pop("payload"))
 
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
@@ -82,7 +69,6 @@ class AuditLogResponse:
         audit_log_response = cls(
             id=id,
             event_type=event_type,
-            watch_id=watch_id,
             payload=payload,
             created_at=created_at,
         )

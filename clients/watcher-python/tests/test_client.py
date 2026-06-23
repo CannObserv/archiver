@@ -9,6 +9,7 @@ from watcher_client.errors import (
     WatcherAuthError,
     WatcherConflict,
     WatcherNotFound,
+    WatcherResponseError,
     WatcherValidationError,
 )
 
@@ -31,7 +32,8 @@ def _wi_payload(wi_id: str = _WI_ID, **overrides) -> dict:
         "last_changed_at": None,
         "health_status": "unknown",
         "default_schedule_config": None,
-        "default_content_type": None,
+        "content_media_type": None,
+        "media_type_essence": None,
         "default_tags": None,
         "effective_url": "https://example.com/data",
         "source_specs": [],
@@ -49,6 +51,46 @@ def _wi_payload(wi_id: str = _WI_ID, **overrides) -> dict:
 @pytest.fixture
 def client():
     return WatcherClient(base_url=BASE_URL, api_key="test-key")
+
+
+def test_from_dict_parses_current_watcher_response_shape():
+    """Regression for the schema drift that broke all dashboard Watcher actions.
+
+    Watcher's WatchedItemResponse dropped ``default_content_type`` and added
+    ``content_media_type`` + ``media_type_essence`` (both required). The stale
+    generated model did an unconditional ``d.pop("default_content_type")`` and
+    raised ``KeyError`` on every live response. The model must parse the current
+    shape — without the retired field, with the two new ones.
+    """
+    payload = {
+        "id": _WI_ID,
+        "name": "Test WatchedItem",
+        "description": None,
+        "is_active": True,
+        "archived_at": None,
+        "last_reviewed_at": None,
+        "last_checked_at": None,
+        "last_changed_at": None,
+        "health_status": "ok",
+        "default_schedule_config": None,
+        "default_tags": None,
+        "content_media_type": "text/html; charset=utf-8",
+        "media_type_essence": "text/html",
+        "effective_url": "https://example.com/data",
+        "source_specs": [],
+        "archiver_info_item_id": _INFO_ITEM_ID,
+        "archiver_info_source_id": _INFO_SRC_ID,
+        "domain_name": "example.com",
+        "domain_suspended": False,
+        "created_at": _TS,
+        "updated_at": _TS,
+    }
+
+    wi = WatchedItemResponse.from_dict(payload)
+
+    assert wi.id == _WI_ID
+    assert wi.content_media_type == "text/html; charset=utf-8"
+    assert wi.media_type_essence == "text/html"
 
 
 @respx.mock
@@ -266,6 +308,24 @@ async def test_get_watched_item(client):
     )
     result = await client.get_watched_item(_WI_ID)
     assert result.id == _WI_ID
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_unparseable_2xx_raises_typed_contract_error(client):
+    """A 2xx body missing a required field must raise a typed WatcherResponseError
+    (response/SDK contract drift), not a bare KeyError from generated code, so the
+    failure is legible in logs and distinct from a transport outage."""
+    incomplete = _wi_payload()
+    del incomplete["effective_url"]  # a required field
+    respx.get(f"{BASE_URL}/api/v1/watched-items/{_WI_ID}").mock(
+        return_value=Response(200, json=incomplete)
+    )
+
+    with pytest.raises(WatcherResponseError) as exc_info:
+        await client.get_watched_item(_WI_ID)
+
+    assert "effective_url" in str(exc_info.value)
 
 
 @respx.mock

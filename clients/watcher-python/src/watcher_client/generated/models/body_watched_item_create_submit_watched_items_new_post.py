@@ -19,16 +19,16 @@ class BodyWatchedItemCreateSubmitWatchedItemsNewPost:
         name (str | Unset):  Default: ''.
         description (str | Unset):  Default: ''.
         default_schedule_interval (str | Unset):  Default: ''.
-        default_content_type (str | Unset):  Default: ''.
         default_tags (str | Unset):  Default: ''.
+        is_active (str | Unset):  Default: ''.
     """
 
     url: str | Unset = ""
     name: str | Unset = ""
     description: str | Unset = ""
     default_schedule_interval: str | Unset = ""
-    default_content_type: str | Unset = ""
     default_tags: str | Unset = ""
+    is_active: str | Unset = ""
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -40,9 +40,9 @@ class BodyWatchedItemCreateSubmitWatchedItemsNewPost:
 
         default_schedule_interval = self.default_schedule_interval
 
-        default_content_type = self.default_content_type
-
         default_tags = self.default_tags
+
+        is_active = self.is_active
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -55,10 +55,10 @@ class BodyWatchedItemCreateSubmitWatchedItemsNewPost:
             field_dict["description"] = description
         if default_schedule_interval is not UNSET:
             field_dict["default_schedule_interval"] = default_schedule_interval
-        if default_content_type is not UNSET:
-            field_dict["default_content_type"] = default_content_type
         if default_tags is not UNSET:
             field_dict["default_tags"] = default_tags
+        if is_active is not UNSET:
+            field_dict["is_active"] = is_active
 
         return field_dict
 
@@ -73,17 +73,17 @@ class BodyWatchedItemCreateSubmitWatchedItemsNewPost:
 
         default_schedule_interval = d.pop("default_schedule_interval", UNSET)
 
-        default_content_type = d.pop("default_content_type", UNSET)
-
         default_tags = d.pop("default_tags", UNSET)
+
+        is_active = d.pop("is_active", UNSET)
 
         body_watched_item_create_submit_watched_items_new_post = cls(
             url=url,
             name=name,
             description=description,
             default_schedule_interval=default_schedule_interval,
-            default_content_type=default_content_type,
             default_tags=default_tags,
+            is_active=is_active,
         )
 
         body_watched_item_create_submit_watched_items_new_post.additional_properties = d

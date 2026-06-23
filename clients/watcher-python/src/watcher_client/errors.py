@@ -54,6 +54,16 @@ class WatcherServerError(WatcherError):
     """5xx from the Watcher service."""
 
 
+class WatcherResponseError(WatcherError):
+    """A 2xx response whose body could not be parsed into the expected model.
+
+    Signals a response/SDK contract drift — the Watcher API changed shape and the
+    generated ``watcher_client`` is stale — as opposed to a transport outage or an
+    HTTP error status. Regenerate the SDK (``clients/watcher-python/scripts/regen.sh``)
+    when this is raised.
+    """
+
+
 def _parse_detail(body_text: str) -> tuple[str, str, list[dict[str, Any]], dict[str, Any] | None]:
     """Return (kind, message, errors, data) from a response body.
 

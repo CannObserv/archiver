@@ -72,16 +72,17 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | NotificationTemplateResponse]:
     """Update Template
 
-     Partially update a notification template.
+     Partially update a notification template (visibility/refs are immutable).
 
     Args:
         template_id (str):
-        body (NotificationTemplateUpdate): `channel_hint` stays nullable on Update so the route
-            can use
+        body (NotificationTemplateUpdate): Partial update. ``visibility`` and its refs are
+            intrinsic and not updatable
+            here — re-scoping a template means delete + recreate.
+
+            ``channel_hint`` stays nullable on Update so the route can use
             ``model_fields_set`` to distinguish "not provided" (no-op) from a
-            user-supplied value. Same pattern as ``title``. The Create schema
-            is `str` (always present, default `"remote"`) — the asymmetry is
-            intentional.
+            user-supplied value. Same pattern as ``title``.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -111,16 +112,17 @@ def sync(
 ) -> HTTPValidationError | NotificationTemplateResponse | None:
     """Update Template
 
-     Partially update a notification template.
+     Partially update a notification template (visibility/refs are immutable).
 
     Args:
         template_id (str):
-        body (NotificationTemplateUpdate): `channel_hint` stays nullable on Update so the route
-            can use
+        body (NotificationTemplateUpdate): Partial update. ``visibility`` and its refs are
+            intrinsic and not updatable
+            here — re-scoping a template means delete + recreate.
+
+            ``channel_hint`` stays nullable on Update so the route can use
             ``model_fields_set`` to distinguish "not provided" (no-op) from a
-            user-supplied value. Same pattern as ``title``. The Create schema
-            is `str` (always present, default `"remote"`) — the asymmetry is
-            intentional.
+            user-supplied value. Same pattern as ``title``.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -145,16 +147,17 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | NotificationTemplateResponse]:
     """Update Template
 
-     Partially update a notification template.
+     Partially update a notification template (visibility/refs are immutable).
 
     Args:
         template_id (str):
-        body (NotificationTemplateUpdate): `channel_hint` stays nullable on Update so the route
-            can use
+        body (NotificationTemplateUpdate): Partial update. ``visibility`` and its refs are
+            intrinsic and not updatable
+            here — re-scoping a template means delete + recreate.
+
+            ``channel_hint`` stays nullable on Update so the route can use
             ``model_fields_set`` to distinguish "not provided" (no-op) from a
-            user-supplied value. Same pattern as ``title``. The Create schema
-            is `str` (always present, default `"remote"`) — the asymmetry is
-            intentional.
+            user-supplied value. Same pattern as ``title``.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -182,16 +185,17 @@ async def asyncio(
 ) -> HTTPValidationError | NotificationTemplateResponse | None:
     """Update Template
 
-     Partially update a notification template.
+     Partially update a notification template (visibility/refs are immutable).
 
     Args:
         template_id (str):
-        body (NotificationTemplateUpdate): `channel_hint` stays nullable on Update so the route
-            can use
+        body (NotificationTemplateUpdate): Partial update. ``visibility`` and its refs are
+            intrinsic and not updatable
+            here — re-scoping a template means delete + recreate.
+
+            ``channel_hint`` stays nullable on Update so the route can use
             ``model_fields_set`` to distinguish "not provided" (no-op) from a
-            user-supplied value. Same pattern as ``title``. The Create schema
-            is `str` (always present, default `"remote"`) — the asymmetry is
-            intentional.
+            user-supplied value. Same pattern as ``title``.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
