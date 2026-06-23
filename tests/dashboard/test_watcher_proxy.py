@@ -639,6 +639,7 @@ async def test_resync_watcher_contract_error_flashes_stale_not_unavailable(clien
         headers=_HEADERS,
     )
     assert r.status_code == 200
+    watcher.patch_watched_item.assert_awaited_once()
     hx = r.headers.get("HX-Trigger", "")
     assert "showFlash" in hx
     assert "out of date" in hx.lower()
@@ -979,6 +980,7 @@ async def test_toggle_contract_error_flashes_stale_not_unavailable(client, sessi
         data={"active": "false"},
     )
     assert r.status_code == 200
+    watcher.patch_watched_item.assert_awaited_once()
     hx = r.headers.get("HX-Trigger", "")
     assert "showFlash" in hx
     assert "out of date" in hx.lower()

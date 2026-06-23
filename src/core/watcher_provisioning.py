@@ -8,8 +8,9 @@ means WATCHER_BASE_URL / WATCHER_API_KEY are unset and all calls are no-ops.
 
 ``provision_on_create`` and ``sync_on_source_swap`` return a
 :class:`WatcherSyncOutcome` so dashboard callers can flash a failure without
-re-raising; ``sync_on_spec_update`` patches N items with per-item logging and
-returns ``None``.
+re-raising — including ``CONTRACT_ERROR`` (the response couldn't be parsed; the
+SDK is stale) distinct from a transport ``FAILED``. ``sync_on_spec_update``
+patches N items with per-item logging and returns ``None``.
 """
 
 from __future__ import annotations
@@ -72,7 +73,8 @@ async def provision_on_create(
     or paused (``False``); None lets Watcher apply its default (active).
 
     Returns a :class:`WatcherSyncOutcome`: ``SKIPPED`` when no Watcher is
-    configured, ``OK`` on success, ``FAILED`` when the call raised (logged and
+    configured, ``OK`` on success, ``CONTRACT_ERROR`` when the response couldn't
+    be parsed (stale SDK), ``FAILED`` when the call otherwise raised (logged and
     swallowed). API-route callers may ignore the result; the dashboard uses it
     to flash provisioning failures.
     """
@@ -163,8 +165,9 @@ async def sync_on_source_swap(
     handles on-demand provisioning in that case.
 
     Returns a :class:`WatcherSyncOutcome`: ``SKIPPED`` when no Watcher is
-    configured or the item isn't watched, ``OK`` on success, ``FAILED`` when the
-    call raised (logged and swallowed).
+    configured or the item isn't watched, ``OK`` on success, ``CONTRACT_ERROR``
+    when the response couldn't be parsed (stale SDK), ``FAILED`` when the call
+    otherwise raised (logged and swallowed).
     """
     if watcher is None or not info_item.watcher_item_id:
         return WatcherSyncOutcome.SKIPPED
