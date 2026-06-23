@@ -615,6 +615,37 @@ async def test_resync_watcher_error(client, session):
     watcher.patch_watched_item.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_resync_watcher_contract_error_flashes_stale_not_unavailable(client, session):
+    """sync_on_source_swap returns CONTRACT_ERROR (response drift) → resync flashes
+    an honest 'out of date' message, not the transport 'unavailable' copy."""
+    from watcher_client.errors import WatcherResponseError
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
+    watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="resync-contract item", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/resync-contract", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/resync-watcher",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "out of date" in hx.lower()
+    assert "unavailable" not in hx.lower()
+    assert "try again" not in hx.lower()
+
+
 # ---------------------------------------------------------------------------
 # POST /resync-watcher — no watcher_item_id
 # ---------------------------------------------------------------------------
@@ -926,6 +957,33 @@ async def test_toggle_conflict_does_not_crash(client, session):
     assert r.status_code == 200
     # The conflict is surfaced to the operator, not swallowed.
     assert "showFlash" in r.headers.get("HX-Trigger", "")
+
+
+@pytest.mark.asyncio
+async def test_toggle_contract_error_flashes_stale_not_unavailable(client, session):
+    """WatcherResponseError (stale SDK / response drift) → honest 'out of date'
+    flash, not the transport 'unavailable. Try again shortly.'"""
+    from watcher_client.errors import WatcherResponseError
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
+    watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="contract toggle", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+        headers=_HEADERS,
+        data={"active": "false"},
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "out of date" in hx.lower()
+    assert "unavailable" not in hx.lower()
+    assert "try again" not in hx.lower()
 
 
 @pytest.mark.asyncio

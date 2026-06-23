@@ -372,3 +372,34 @@ async def test_sync_on_spec_update_error_does_not_raise(session):
     watcher.patch_watched_item = AsyncMock(side_effect=Exception("Watcher down"))
 
     await sync_on_spec_update(session, watcher, src.info_source_id, [])
+
+
+@pytest.mark.asyncio
+async def test_sync_on_spec_update_contract_error_logs_stale_sdk(session, monkeypatch):
+    """A WatcherResponseError during per-item spec sync logs the contract-mismatch
+    signal (distinct from the generic message) and does not raise.
+
+    Spies the module logger rather than using caplog: configure_logging() replaces
+    root.handlers, which defeats pytest's capture handler.
+    """
+    from watcher_client.errors import WatcherResponseError
+
+    import src.core.watcher_provisioning as wp
+
+    item = InfoItem(name="test", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
+
+    spy = MagicMock()
+    monkeypatch.setattr(wp.logger, "exception", spy)
+    await sync_on_spec_update(session, watcher, src.info_source_id, [])
+
+    spy.assert_called_once()
+    assert "contract mismatch" in spy.call_args.args[0]

@@ -220,5 +220,11 @@ async def sync_on_spec_update(
                 item.watcher_item_id,  # type: ignore[arg-type]
                 source_specs=new_source_specs,
             )
+        except WatcherResponseError:
+            logger.exception(
+                "Watcher spec sync failed for InfoItem %s: response contract mismatch "
+                "(watcher_client SDK may be stale)",
+                item.info_item_id,
+            )
         except Exception:
             logger.exception("Watcher spec sync failed for InfoItem %s", item.info_item_id)

@@ -1005,8 +1005,8 @@ _RECONCILE_FAILED_MSG = "couldn't update the local record after Watcher reported
 # watcher_client SDK is stale relative to the live Watcher API, not that Watcher is
 # down. Deliberately omits "try again" — retrying a contract mismatch never helps.
 _WATCHER_CONTRACT_SUFFIX = (
-    "Watcher returned an unexpected response — the integration may be out of date. "
-    "Check the logs; retrying won't help."
+    "Watcher returned an unexpected response; the integration may be out of date. "
+    "Check the logs — retrying won't help."
 )
 
 
