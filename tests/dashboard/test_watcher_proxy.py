@@ -323,6 +323,33 @@ async def test_check_now_watcher_error(client, session):
 
 
 @pytest.mark.asyncio
+async def test_check_now_contract_error_flashes_stale_not_unavailable(client, session):
+    """A WatcherResponseError (stale SDK / response drift) must flash an honest
+    'out of date' message, not 'unavailable. Try again shortly' — retrying a
+    contract mismatch never helps."""
+    from watcher_client.errors import WatcherResponseError
+
+    watcher = MagicMock()
+    watcher.check_now = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
+    watcher.get_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    item = InfoItem(name="contract check", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/check-now",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "out of date" in hx.lower()
+    assert "unavailable" not in hx.lower()
+    assert "try again" not in hx.lower()
+
+
+@pytest.mark.asyncio
 async def test_check_now_conflict_flashes_paused_message(client, session):
     # check-now on a paused item → Watcher 409; flash the paused-specific reason,
     # not a generic "unavailable".
@@ -400,6 +427,36 @@ async def test_begin_watching_provisions_item(client, session):
     )
     assert r.status_code == 200
     watcher.provision_watched_item.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_begin_watching_contract_error_flashes_stale_not_unavailable(client, session):
+    """provision_on_create returns CONTRACT_ERROR (response drift) → begin-watching
+    flashes an honest 'out of date' message, not the transport 'unavailable' copy."""
+    from watcher_client.errors import WatcherResponseError
+
+    watcher = _mock_watcher()
+    watcher.provision_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
+
+    item = InfoItem(name="contract item", watcher_item_id=None)
+    src = InfoSource(url="https://example.com/page", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/begin-watching",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "out of date" in hx.lower()
+    assert "unavailable" not in hx.lower()
+    assert "try again" not in hx.lower()
 
 
 # ---------------------------------------------------------------------------

@@ -409,6 +409,31 @@ async def test_list_revisions(client):
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_list_revisions_unparseable_raises_typed_contract_error(client):
+    """list_revisions must translate parse failures into WatcherResponseError too,
+    not leak a bare KeyError — the same drift-masking class as the WatchedItem path.
+    """
+    revision = {
+        "id": "01HZZREV000000000000000001",
+        "watched_item_id": _WI_ID,
+        # content_fingerprint omitted — a required field
+        "captured_at": _TS,
+        "content_size_bytes": 1024,
+        "archiver_revision_id": None,
+        "schema_version": 1,
+    }
+    respx.get(f"{BASE_URL}/api/v1/watched-items/{_WI_ID}/revisions").mock(
+        return_value=Response(200, json=[revision])
+    )
+
+    with pytest.raises(WatcherResponseError) as exc_info:
+        await client.list_revisions(_WI_ID)
+
+    assert "content_fingerprint" in str(exc_info.value)
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_auth_error_raises_watcher_auth_error(client):
     respx.get(f"{BASE_URL}/api/v1/watched-items/{_WI_ID}").mock(
         return_value=Response(403, json={"detail": "Forbidden"})

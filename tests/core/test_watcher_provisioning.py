@@ -154,6 +154,47 @@ async def test_provision_on_create_watcher_error_does_not_raise(session):
 
 
 @pytest.mark.asyncio
+async def test_provision_on_create_contract_error_on_unparseable_response(session):
+    """A WatcherResponseError (SDK can't parse the response — contract drift) is
+    classified CONTRACT_ERROR, distinct from a transport outage's FAILED, so the
+    dashboard can flash accurate, non-'try again' guidance."""
+    from watcher_client.errors import WatcherResponseError
+
+    item = InfoItem(name="test item")
+    src = InfoSource(url="https://example.com/", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+
+    watcher = MagicMock()
+    watcher.provision_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
+
+    outcome = await provision_on_create(session, watcher, item, src)
+
+    assert outcome is WatcherSyncOutcome.CONTRACT_ERROR
+    assert item.watcher_item_id is None
+
+
+@pytest.mark.asyncio
+async def test_sync_on_source_swap_contract_error_on_unparseable_response(session):
+    """sync_on_source_swap also maps WatcherResponseError → CONTRACT_ERROR."""
+    from watcher_client.errors import WatcherResponseError
+
+    item = InfoItem(name="test item", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/new", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
+
+    outcome = await sync_on_source_swap(session, watcher, item, src)
+
+    assert outcome is WatcherSyncOutcome.CONTRACT_ERROR
+
+
+@pytest.mark.asyncio
 async def test_provision_on_create_adopts_existing_on_conflict(session):
     """409 from Watcher (WatchedItem already exists) → adopt its ID rather than fail.
 

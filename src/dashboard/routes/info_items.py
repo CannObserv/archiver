@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
-from watcher_client.errors import WatcherConflict, WatcherNotFound
+from watcher_client.errors import WatcherConflict, WatcherNotFound, WatcherResponseError
 
 from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
@@ -1001,6 +1001,13 @@ _RECONCILE_FAILED_FLASH = (
     "Watcher reports this item gone, but the local record couldn't be updated — retrying shortly."
 )
 _RECONCILE_FAILED_MSG = "couldn't update the local record after Watcher reported it gone"
+# Suffix for the honest "contract drift" flash: a WatcherResponseError means the
+# watcher_client SDK is stale relative to the live Watcher API, not that Watcher is
+# down. Deliberately omits "try again" — retrying a contract mismatch never helps.
+_WATCHER_CONTRACT_SUFFIX = (
+    "Watcher returned an unexpected response — the integration may be out of date. "
+    "Check the logs; retrying won't help."
+)
 
 
 def _status_degraded(request: Request, item_id: str, error_message: str) -> HTMLResponse:
@@ -1260,6 +1267,10 @@ async def check_now(
         # Watcher 409s on check-now of a paused item. The button is hidden when
         # paused, but guard direct posts with the accurate reason.
         flash = ("error", "Can't check a paused item — resume it first.")
+    except WatcherResponseError:
+        # Response couldn't be parsed — the watcher_client SDK is stale, not a
+        # transport outage. Flash honestly so the operator doesn't keep retrying.
+        flash = ("error", f"Couldn't trigger a check — {_WATCHER_CONTRACT_SUFFIX}")
     except Exception:
         # wi stays None; _render_status_partial re-fetches — shows degraded if that
         # also fails. Either way, surface the action failure as a flash.
@@ -1329,6 +1340,8 @@ async def begin_watching(
     flash: tuple[str, str] | None = None
     if outcome is WatcherSyncOutcome.FAILED:
         flash = ("error", "Couldn't start watching — Watcher is unavailable. Try again shortly.")
+    elif outcome is WatcherSyncOutcome.CONTRACT_ERROR:
+        flash = ("error", f"Couldn't start watching — {_WATCHER_CONTRACT_SUFFIX}")
 
     response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
@@ -1378,6 +1391,8 @@ async def resync_watcher(
                 "error",
                 "Couldn't re-sync with Watcher — it's unavailable. Try again shortly.",
             )
+        elif outcome is WatcherSyncOutcome.CONTRACT_ERROR:
+            flash = ("error", f"Couldn't re-sync with Watcher — {_WATCHER_CONTRACT_SUFFIX}")
 
     response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
@@ -1427,6 +1442,10 @@ async def toggle_watch_active(
         # Watcher rejects pause/resume on an archived item (archive/restore owns
         # activation there). The toggle is hidden in that state, but guard direct posts.
         flash = ("error", "Watcher rejected the change — the item may be archived.")
+    except WatcherResponseError:
+        # Response couldn't be parsed — the watcher_client SDK is stale, not a
+        # transport outage. Flash honestly so the operator doesn't keep retrying.
+        flash = ("error", f"Couldn't update the watch state — {_WATCHER_CONTRACT_SUFFIX}")
     except Exception:
         flash = (
             "error",

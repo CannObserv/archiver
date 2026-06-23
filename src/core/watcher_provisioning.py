@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
-from watcher_client.errors import WatcherConflict
+from watcher_client.errors import WatcherConflict, WatcherResponseError
 
 from src.core.logging import get_logger
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -47,6 +47,12 @@ class WatcherSyncOutcome(StrEnum):
 
     SKIPPED = "skipped"
     """No call was attempted (no Watcher configured or nothing to sync)."""
+
+    CONTRACT_ERROR = "contract_error"
+    """A call was attempted but the response could not be parsed
+    (``WatcherResponseError``) — the watcher_client SDK is stale relative to the
+    live Watcher API. Distinct from ``FAILED`` (a transport/HTTP failure) so
+    callers can surface accurate, non-"try again" guidance; retrying never helps."""
 
 
 async def provision_on_create(
@@ -91,6 +97,13 @@ async def provision_on_create(
         # WatchedItem's ID instead of failing — otherwise "Begin watching" 409s
         # forever and the item is stuck in not_watching.
         return await _adopt_existing(session, watcher, item)
+    except WatcherResponseError:
+        logger.exception(
+            "Watcher provisioning failed for InfoItem %s: response contract mismatch "
+            "(watcher_client SDK may be stale)",
+            item.info_item_id,
+        )
+        return WatcherSyncOutcome.CONTRACT_ERROR
     except Exception:
         logger.exception("Watcher provisioning failed for InfoItem %s", item.info_item_id)
         return WatcherSyncOutcome.FAILED
@@ -109,6 +122,13 @@ async def _adopt_existing(
     """
     try:
         existing = await watcher.get_by_info_item_id(str(item.info_item_id))
+    except WatcherResponseError:
+        logger.exception(
+            "Watcher conflict recovery lookup failed for InfoItem %s: response contract "
+            "mismatch (watcher_client SDK may be stale)",
+            item.info_item_id,
+        )
+        return WatcherSyncOutcome.CONTRACT_ERROR
     except Exception:
         logger.exception(
             "Watcher conflict recovery lookup failed for InfoItem %s", item.info_item_id
@@ -156,6 +176,13 @@ async def sync_on_source_swap(
             archiver_info_source_id=str(new_info_source.info_source_id),
         )
         return WatcherSyncOutcome.OK
+    except WatcherResponseError:
+        logger.exception(
+            "Watcher sync failed for InfoItem %s after primary source swap: response "
+            "contract mismatch (watcher_client SDK may be stale)",
+            info_item.info_item_id,
+        )
+        return WatcherSyncOutcome.CONTRACT_ERROR
     except Exception:
         logger.exception(
             "Watcher sync failed for InfoItem %s after primary source swap",

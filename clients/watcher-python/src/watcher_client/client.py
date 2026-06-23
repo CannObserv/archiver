@@ -13,6 +13,7 @@ Async-only. No sync facade.
 from __future__ import annotations
 
 from types import TracebackType
+from typing import Any, TypeVar
 
 import httpx
 
@@ -169,7 +170,7 @@ class WatcherClient:
             )
         if not items:
             return None
-        return _parse_watched_item(items[0])
+        return _parse(WatchedItemResponse, items[0])
 
     async def check_now(self, watcher_item_id: str) -> WatchedItemResponse:
         """Enqueue an immediate fetch cycle for a WatchedItem.
@@ -187,18 +188,21 @@ class WatcherClient:
         resp = await self._http.get(f"/api/v1/watched-items/{watcher_item_id}/revisions")
         if resp.is_error:
             raise error_from_response(resp.status_code, resp.content)
-        return [ChangeRevisionResponse.from_dict(r) for r in resp.json()]
+        return [_parse(ChangeRevisionResponse, r) for r in resp.json()]
 
 
 def _unwrap_watched_item(resp: httpx.Response) -> WatchedItemResponse:
     """Parse a WatchedItemResponse on 2xx; raise WatcherError otherwise."""
     if resp.is_error:
         raise error_from_response(resp.status_code, resp.content)
-    return _parse_watched_item(resp.json())
+    return _parse(WatchedItemResponse, resp.json())
 
 
-def _parse_watched_item(data: object) -> WatchedItemResponse:
-    """Build a WatchedItemResponse from a decoded 2xx body.
+T = TypeVar("T")
+
+
+def _parse(model_cls: type[T], data: dict[str, Any]) -> T:
+    """Build a generated model from a decoded 2xx body.
 
     Translates parse failures (a missing/renamed required field — i.e. the live
     Watcher API drifted from this generated SDK) into a typed
@@ -207,10 +211,10 @@ def _parse_watched_item(data: object) -> WatchedItemResponse:
     transport outage to callers and shows up as an opaque traceback in logs.
     """
     try:
-        return WatchedItemResponse.from_dict(data)
+        return model_cls.from_dict(data)
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise WatcherResponseError(
-            "could not parse Watcher WatchedItem response "
+            f"could not parse Watcher {model_cls.__name__} response "
             f"({type(exc).__name__}: {exc}) — the watcher_client SDK is likely "
             "stale; regenerate via clients/watcher-python/scripts/regen.sh"
         ) from exc
