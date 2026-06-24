@@ -28,6 +28,8 @@ Usage::
 
     python scripts/check_client_drift.py [CLIENT ...]   # check (default: all)
     python scripts/check_client_drift.py --write CLIENT  # regen committed tree from snapshot
+
+Exit: 0 no drift · 1 drift · 2 regen/format error.
 """
 
 from __future__ import annotations
@@ -37,6 +39,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -175,12 +179,22 @@ def _regenerate(client: Client, dest: Path) -> None:
     _run(["uv", "run", "ruff", "format", str(dest)], cwd=client.sdk_dir)
 
 
-def check_client(client: Client) -> list[tuple[str, str]]:
-    """Regenerate ``client`` from its snapshot into a temp dir and diff vs committed."""
-    # Temp dir inside the SDK tree so ruff resolves the same config regen.sh does.
+@contextmanager
+def _regenerate_in_tree(client: Client) -> Iterator[Path]:
+    """Regenerate ``client`` into an in-tree temp dir; yield the generated path.
+
+    The temp dir lives inside the SDK tree so ``ruff`` resolves the same config
+    regen.sh does (see ``_regenerate``); it is removed on exit.
+    """
     with tempfile.TemporaryDirectory(dir=client.sdk_dir, prefix=".drift-") as tmp:
         dest = Path(tmp) / "generated"
         _regenerate(client, dest)
+        yield dest
+
+
+def check_client(client: Client) -> list[tuple[str, str]]:
+    """Regenerate ``client`` from its snapshot into a temp dir and diff vs committed."""
+    with _regenerate_in_tree(client) as dest:
         return diff_trees(client.generated_dir, dest)
 
 
@@ -191,9 +205,7 @@ def write_client(client: Client) -> None:
     once generation succeeds, so a mid-regen failure cannot leave the committed
     tree deleted.
     """
-    with tempfile.TemporaryDirectory(dir=client.sdk_dir, prefix=".drift-") as tmp:
-        staging = Path(tmp) / "generated"
-        _regenerate(client, staging)
+    with _regenerate_in_tree(client) as staging:
         if client.generated_dir.exists():
             shutil.rmtree(client.generated_dir)
         shutil.copytree(

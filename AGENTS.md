@@ -73,8 +73,10 @@ clients/watcher-python/        watcher_client SDK — Archiver adapter for the W
                                watcher-openapi.json: committed OpenAPI snapshot
                                (contract-of-record). CI `client-drift` job fails
                                if generated/ != regen-from-snapshot (catches the
-                               #66 stale-client drift). Fix: python
-                               scripts/check_client_drift.py --write watcher.
+                               #66 stale-client drift). Fix hand-edits: python
+                               scripts/check_client_drift.py --write watcher; on
+                               a real Watcher change re-run regen.sh (refreshes
+                               snapshot + tree).
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior

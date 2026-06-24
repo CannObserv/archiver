@@ -28,7 +28,7 @@ curl -sf http://localhost:8000/openapi.json -o "${TMP_SPEC}"
 # Canonicalize into the committed snapshot: pretty-print, order-preserving.
 # NOT sort_keys — openapi-python-client emits model fields in spec property
 # order, so sorting would reshape (not just reformat) the generated tree.
-python3 -c "import json,sys; d=json.load(open(sys.argv[1])); open(sys.argv[2],'w').write(json.dumps(d, indent=2)+'\n')" \
+uv run --no-project python -c "import json,sys; d=json.load(open(sys.argv[1])); open(sys.argv[2],'w').write(json.dumps(d, indent=2)+'\n')" \
     "${TMP_SPEC}" "${SNAPSHOT}"
 
 cd "${SDK_DIR}"

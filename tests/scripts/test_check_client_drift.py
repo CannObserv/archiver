@@ -149,3 +149,29 @@ def test_main_write_returns_2_on_subprocess_error(monkeypatch, capsys):
     monkeypatch.setattr(mod, "write_client", boom)
     assert mod.main(["--write", "watcher"]) == 2
     assert "regen failed" in capsys.readouterr().err
+
+
+# --- _run subprocess error surfacing (real subprocesses, no SDK) --------------
+
+
+def test_run_succeeds_silently_on_zero_exit(tmp_path):
+    # Returns None and does not raise on a clean exit.
+    assert mod._run([sys.executable, "-c", "print('ok')"], cwd=tmp_path) is None
+
+
+def test_run_raises_with_captured_output_on_failure(tmp_path):
+    with pytest.raises(mod.DriftCheckError) as excinfo:
+        mod._run(
+            [sys.executable, "-c", "import sys; sys.stderr.write('boom'); sys.exit(3)"],
+            cwd=tmp_path,
+        )
+    message = str(excinfo.value)
+    assert "exit 3" in message
+    assert "boom" in message  # captured stderr is folded into the error
+
+
+def test_run_raises_on_timeout(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "_SUBPROCESS_TIMEOUT", 0.1)
+    with pytest.raises(mod.DriftCheckError) as excinfo:
+        mod._run([sys.executable, "-c", "import time; time.sleep(5)"], cwd=tmp_path)
+    assert "timed out" in str(excinfo.value)
