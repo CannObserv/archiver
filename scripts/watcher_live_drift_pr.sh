@@ -52,18 +52,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 0. Keep the deploy clone current so the detector compares live vs origin/main's
-#    snapshot, not a stale checkout (a lagging clone yields false-positive drift
-#    that step 4 would then no-op on). Best-effort + safe: fast-forward ONLY a
-#    clean checkout of main, never clobber. regen below reuses this same fetch.
-git fetch --quiet origin main || log "warning: git fetch failed; using current checkout"
-if [ "$(git symbolic-ref --quiet --short HEAD || true)" = "main" ] &&
-  git diff --quiet && git diff --cached --quiet; then
-  git merge --quiet --ff-only origin/main ||
-    log "warning: main is not fast-forwardable; using current checkout"
-else
-  log "warning: deploy clone is not a clean main; skipping fast-forward"
-fi
+# 0. Refresh origin/main for the detector compare + the worktree below. This is
+#    read-only on purpose: keeping the *checkout* current (fast-forward) is the
+#    job of the systemd ExecStartPre (scripts/ff_deploy_clone.sh), so this
+#    long-running script never mutates the clone it executes from.
+git fetch --quiet origin main || log "warning: git fetch failed; using current origin/main"
 
 # 1. Detect (stdlib-only; --no-project skips the root sync). Toggle set +e only
 #    around the capture so a non-zero (drift) exit doesn't abort before we read rc.

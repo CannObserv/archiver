@@ -20,6 +20,12 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/etc/archiver/.env
 EnvironmentFile=-/home/exedev/archiver/.env
 
+# Keep the checkout current BEFORE the wrapper is read/executed, so the wrapper
+# never fast-forwards the clone it is running from. Leading '-' = never block the
+# detection run on a skipped/failed fast-forward (the script always exits 0
+# anyway; the '-' is belt-and-suspenders).
+ExecStartPre=-/bin/bash /home/exedev/archiver/scripts/ff_deploy_clone.sh
+
 ExecStart=/bin/bash /home/exedev/archiver/scripts/watcher_live_drift_pr.sh
 
 # Non-blocking by design: a down/unreachable Watcher exits 0 (skip). A non-zero

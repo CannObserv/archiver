@@ -93,6 +93,8 @@ scripts/                       dump_openapi.py +
                                snapshot stale vs LIVE Watcher) +
                                watcher_live_drift_pr.sh (timer remediation:
                                regen + open PR on live drift) +
+                               ff_deploy_clone.sh (timer ExecStartPre: best-effort
+                               fast-forward clean main to origin/main) +
                                check_changelog_on_push.sh (pre-push guard;
                                wired via .pre-commit-config.yaml)
 deploy/                        Systemd units: archiver.service +
