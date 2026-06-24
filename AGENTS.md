@@ -70,10 +70,18 @@ clients/python/                archiver_client SDK v3.x (generated + hand-writte
 clients/watcher-python/        watcher_client SDK — Archiver adapter for the Watcher service
                                (httpx-based; wraps provision, patch, get, check-now, list-revisions)
                                Regen: bash clients/watcher-python/scripts/regen.sh
+                               watcher-openapi.json: committed OpenAPI snapshot
+                               (contract-of-record). CI `client-drift` job fails
+                               if generated/ != regen-from-snapshot (catches the
+                               #66 stale-client drift). Fix: python
+                               scripts/check_client_drift.py --write watcher.
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
 scripts/                       dump_openapi.py +
+                               check_client_drift.py (regen vendored clients from
+                               committed OpenAPI snapshots; diff vs generated/;
+                               CI gate, see client-drift job) +
                                check_changelog_on_push.sh (pre-push guard;
                                wired via .pre-commit-config.yaml)
 deploy/                        Systemd unit (archiver.service)
@@ -83,8 +91,10 @@ skills-vendor/                 Git submodules for external skill repos
 .claude/skills/                Claude Code skill discovery (symlinks → ../../skills/<name>)
 .github/workflows/             CI — lint job (ruff check + ruff format --check),
                                test job (Postgres service container, alembic upgrade,
-                               pytest), and changelog job (feat/fix changes must
-                               touch CHANGELOG.md; opt out via `no-changelog` PR
+                               pytest), client-drift job (regen vendored clients
+                               from committed OpenAPI snapshots, fail on diff),
+                               and changelog job (feat/fix changes must touch
+                               CHANGELOG.md; opt out via `no-changelog` PR
                                label). Triggers on push/PR to main.
 .pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks
                                (pre-commit stage), plus a pre-push guard

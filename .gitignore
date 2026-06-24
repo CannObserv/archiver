@@ -10,3 +10,7 @@ htmlcov/
 .worktrees/
 .claude/settings.local.json
 node_modules/
+
+# Ephemeral regen dirs from scripts/check_client_drift.py (cleaned on exit;
+# ignored so an interrupted run can't be committed accidentally).
+.drift-*/

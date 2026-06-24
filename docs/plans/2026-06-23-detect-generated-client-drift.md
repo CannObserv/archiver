@@ -1,7 +1,7 @@
 ---
 title: Detect generated API-client drift in CI (watcher_client / archiver-client)
 date: 2026-06-23
-status: draft
+status: in-progress
 ---
 
 # Detect generated API-client drift in CI
@@ -123,3 +123,32 @@ Layers C and D are scoped here but deferred to follow-up issues/PRs.
   runners (not `localhost`/proxy — hairpin NAT note in CLAUDE.md is VM-internal
   and doesn't apply to runners). `openapi.json` is public per `regen.sh`, so
   likely no API key. Confirm when Layer C is built.
+
+## Execution notes (2026-06-23)
+
+Decision: **split — ship Layer B (watcher_client) now**; defer Layer A
+(archiver-client) to its own issue. Two findings drove the split and shaped the
+implementation:
+
+1. **Layer A is bigger than a gate.** `clients/python`'s committed generated
+   tree is genuinely stale (missing the `/api/v1/domains` v4.1+ models — the
+   hand wrappers return raw `dict`) AND `regen.sh`/`dump_openapi.py` don't prune
+   the 45 `/dashboard/*` HTML routes, so a clean regen isn't reproducible today.
+   Fixing it means a canonical dashboard-pruned regen + a real public-surface SDK
+   refresh (+ CHANGELOG) — filed separately, not bundled into the CI-tooling PR.
+
+2. **watcher_client needed no tree change.** Live Watcher matches the committed
+   tree semantically; the apparent "6-file drift" was a self-inflicted artifact
+   of formatting the regen in a temp dir *outside* the repo, where `ruff`
+   discovers no config and falls back to line-length 88 (wrapping borderline
+   imports the in-repo line-length-100 tree leaves on one line). The gate must
+   format exactly as `regen.sh` does — via config **discovery**, not `--config`
+   (empirically `--config <pyproject>` still wrapped; only an in-tree path
+   reproduces HEAD). Fix: `check_client` regens into a temp dir *inside* the SDK
+   tree (`.drift-*`, gitignored). Result: the gate is green against the pristine
+   HEAD tree; this PR only **adds** `watcher-openapi.json` + the checker + CI.
+
+Shipped in this PR (Layer B): committed `clients/watcher-python/watcher-openapi.json`
+snapshot; `scripts/check_client_drift.py` (regen-from-snapshot + `diff_trees`,
+plus `--write` remediation); `tests/scripts/test_check_client_drift.py`; a
+`client-drift` CI job. Layers A, C, D tracked as follow-ups.

@@ -103,6 +103,28 @@ jobs:
       - name: pytest (integration)
         run: uv run pytest -v -m integration
 
+  client-drift:
+    name: client-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      # Regenerate each vendored generated client from its committed OpenAPI
+      # snapshot and fail on any diff vs the committed generated/ tree — turns a
+      # stale client (the #66 failure mode) into a red build. Stdlib-only driver
+      # (--no-project skips the root sync); the per-SDK regen syncs that SDK's
+      # own lockfile, pinning its openapi-python-client + ruff versions.
+      - name: detect generated-client drift vs committed OpenAPI snapshot
+        run: uv run --no-project --python 3.12 python scripts/check_client_drift.py
+
   changelog:
     name: changelog
     runs-on: ubuntu-latest
