@@ -76,7 +76,12 @@ clients/watcher-python/        watcher_client SDK — Archiver adapter for the W
                                #66 stale-client drift). Fix hand-edits: python
                                scripts/check_client_drift.py --write watcher; on
                                a real Watcher change re-run regen.sh (refreshes
-                               snapshot + tree).
+                               snapshot + tree). The `client-drift` gate is
+                               consistency-only; a daily on-VM systemd timer
+                               (Layer C, #70) — check_watcher_live_drift.py +
+                               watcher_live_drift_pr.sh — detects the snapshot
+                               going stale vs LIVE Watcher (localhost:8000) and
+                               opens a regen PR. See deploy/watcher-live-drift.*.
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
@@ -84,9 +89,15 @@ scripts/                       dump_openapi.py +
                                check_client_drift.py (regen vendored clients from
                                committed OpenAPI snapshots; diff vs generated/;
                                CI gate, see client-drift job) +
+                               check_watcher_live_drift.py (Layer C #70: detect
+                               snapshot stale vs LIVE Watcher) +
+                               watcher_live_drift_pr.sh (timer remediation:
+                               regen + open PR on live drift) +
                                check_changelog_on_push.sh (pre-push guard;
                                wired via .pre-commit-config.yaml)
-deploy/                        Systemd unit (archiver.service)
+deploy/                        Systemd units: archiver.service +
+                               watcher-live-drift.{service,timer} (Layer C #70
+                               daily live-drift check; install: see deploy/README.md)
 docs/                          Reference docs (SKILLS) + plans/ + research/
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
 skills-vendor/                 Git submodules for external skill repos

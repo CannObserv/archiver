@@ -95,11 +95,13 @@ Layers C and D are scoped here but deferred to follow-up issues/PRs.
    changes (the SDKs/snapshot are tooling; likely a tooling/no-changelog change —
    confirm against the `clients/python/` trigger path). Note the new gate in
    `CLAUDE.md` CI section if warranted.
-6. **Layer C (follow-up).** Scheduled GH Action: fetch live Watcher
-   `/openapi.json` (public), diff vs committed `watcher-openapi.json`; on drift
-   run `regen.sh` and open a PR. Non-blocking. Prefer a Watcher-side push
-   (`repository_dispatch` / Watcher CI opens the bump PR here) over archiver
-   polling — same owner, cleaner signal. File as its own issue.
+6. **Layer C (follow-up — shipped, see execution note 2026-06-24).** Scheduled
+   fetch of live Watcher `/openapi.json` (public), diff vs committed
+   `watcher-openapi.json`; on drift run `regen.sh` and open a PR. Non-blocking.
+   *Built as an on-VM systemd timer, not a GH Action* — the issue's two options
+   both rest on assumptions that proved false (no public Watcher URL for
+   runners; Watcher repo has no CI and no committed spec for a push). File as
+   its own issue. → CannObserv/archiver#70.
 7. **Layer D (follow-up).** Runtime canary using the existing
    `WatcherResponseError` typed signal: startup/health probe parses a known
    Watcher response and alerts on drift. Backstop, not gate. File as its own
@@ -155,3 +157,45 @@ a `client-drift` CI job. `regen.sh` now writes the snapshot *and* the tree in
 lockstep (snapshot is generated-from, authoritative) so running it after a
 legitimate Watcher change refreshes both and leaves the gate a no-op. Layers A,
 C, D tracked as follow-ups.
+
+## Execution notes (2026-06-24) — Layer C (#70)
+
+Checked the issue's two proposed mechanisms against sibling-repo reality first;
+both rest on false assumptions:
+
+1. **Option 1 (scheduled GH Action polling live Watcher) — rejected.** There is
+   no public, stable Watcher URL for external runners. `WATCHER_PUBLIC_BASE_URL`
+   points at the exe.dev proxy on the shared dev VM (`watcher.exe.xyz:8000`), not
+   a prod host, and `regen.sh` already fetches `http://localhost:8000`. A runner
+   poll would be flaky and couldn't reuse `regen.sh`.
+2. **Option 2 (Watcher-side `repository_dispatch` push) — deferred, not "small."**
+   `CannObserv/watcher` has **no `.github/` at all** (no CI) and commits **no
+   OpenAPI snapshot**, so there is nothing to fire the dispatch and nothing to
+   diff "did the spec change" against. It's the cleaner long-term design but is
+   gated on first standing up Watcher CI + a committed/diffed Watcher spec —
+   file that against the watcher repo, then retire the timer below.
+
+**Shipped: an on-VM systemd timer** (the option the issue didn't consider).
+On-VM localhost reaches Watcher with no public-URL / hairpin / uptime coupling
+and reuses `regen.sh` as-is. Artifacts:
+
+- `scripts/check_watcher_live_drift.py` — pure stdlib detector: fetch live
+  `/openapi.json`, `canonicalize` (a byte-for-byte mirror of `regen.sh`'s
+  emitter; the committed snapshot is its fixed point), byte-compare. Exit `0`
+  no drift · `1` drift (prints `SPEC_SHA256=`) · `3` unreachable/non-JSON (skip).
+  Tested in `tests/scripts/test_check_watcher_live_drift.py` (parity fixed-point
+  + drift + exit codes).
+- `scripts/watcher_live_drift_pr.sh` — remediation the timer runs: on exit 1,
+  regen snapshot + tree in an isolated worktree off `origin/main` and open a PR.
+  Branch keyed on the live spec SHA → one PR per upstream shape (de-dup). The
+  PR runs the Layer-B gate (a no-op post-regen) + tests; `clients/watcher-python/**`
+  is outside the changelog trigger so no CHANGELOG entry is needed.
+- `deploy/watcher-live-drift.{service,timer}` + `deploy/README.md` — daily
+  oneshot, `Persistent=true`, install via `systemctl enable --now` (manual sudo
+  step, intentionally not auto-enabled).
+
+Validated on the VM: detector reports no-drift against the in-sync snapshot
+(exit 0); a faked-drift `--dry-run` exercised detect → worktree → `regen.sh` →
+correct no-op (worktree off `origin/main` already matches live, so nothing to
+commit) → clean worktree teardown. The live commit/push/PR path can only be
+exercised by genuine upstream drift. Layers A and D remain follow-ups.
