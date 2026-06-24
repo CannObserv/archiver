@@ -24,6 +24,11 @@ PR instead of a prod incident.
 - `scripts/watcher_live_drift_pr.sh` — remediation: on drift, regen snapshot +
   tree via `regen.sh` in an isolated worktree off `origin/main`, then open a PR.
   Branch is keyed on the live spec SHA, so re-runs while a PR is open are no-ops.
+  Before detecting, it best-effort **fast-forwards the deploy clone** to
+  `origin/main` — but only when the checkout is a clean `main` (never clobbers;
+  a dirty or detached clone is left untouched and just logged). This keeps the
+  detector comparing against `origin/main`'s snapshot rather than a stale tree.
+  The running `archiver.service` is unaffected until its next restart.
 
 ### Install (one-time, needs sudo)
 

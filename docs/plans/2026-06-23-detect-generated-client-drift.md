@@ -182,7 +182,9 @@ and reuses `regen.sh` as-is. Artifacts:
 - `scripts/check_watcher_live_drift.py` — pure stdlib detector: fetch live
   `/openapi.json`, `canonicalize` (a byte-for-byte mirror of `regen.sh`'s
   emitter; the committed snapshot is its fixed point), byte-compare. Exit `0`
-  no drift · `1` drift (prints `SPEC_SHA256=`) · `3` unreachable/non-JSON (skip).
+  no drift · `1` drift (prints `SPEC_SHA256=`) · `2` internal error (missing
+  snapshot / unexpected crash, kept distinct so the wrapper never acts on a
+  phantom drift) · `3` unreachable/non-JSON (skip).
   Tested in `tests/scripts/test_check_watcher_live_drift.py` (parity fixed-point
   + drift + exit codes).
 - `scripts/watcher_live_drift_pr.sh` — remediation the timer runs: on exit 1,

@@ -104,21 +104,6 @@ def fetch_spec(url: str, *, timeout: float = _FETCH_TIMEOUT) -> bytes:
         raise SpecFetchError(f"could not reach Watcher at {url}: {e}") from e
 
 
-def detect_drift(committed: bytes, live_raw: bytes) -> bool:
-    """Return ``True`` if the live spec, canonicalized, differs from ``committed``."""
-    return canonicalize(live_raw) != committed
-
-
-def spec_sha256(live_raw: bytes) -> str:
-    """SHA-256 of the live spec's canonical form — a stable handle for the PR branch.
-
-    Hashing the canonical (not wire) bytes makes the digest independent of how
-    Watcher happens to format the response, so the remediation wrapper keys one
-    branch per distinct upstream shape.
-    """
-    return hashlib.sha256(canonicalize(live_raw)).hexdigest()
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -171,6 +156,9 @@ if __name__ == "__main__":
     # the remediation wrapper into acting on a non-existent drift.
     try:
         sys.exit(main())
-    except Exception as e:  # noqa: BLE001 — surface any bug as EXIT_ERROR, not drift
+    except Exception as e:
+        # Deliberately broad: surface ANY unexpected bug as EXIT_ERROR (2), never
+        # as exit 1 (drift). SystemExit/KeyboardInterrupt are BaseException, so
+        # the normal sys.exit path and Ctrl-C still propagate.
         print(f"ERROR: unexpected failure: {e}", file=sys.stderr)
         sys.exit(EXIT_ERROR)

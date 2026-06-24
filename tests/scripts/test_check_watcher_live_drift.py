@@ -9,6 +9,7 @@ byte-compare is meaningful. The network fetch is stubbed here; ``canonicalize``
 is exercised against the real committed snapshot.
 """
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -64,30 +65,6 @@ def test_canonicalize_raises_on_invalid_json():
         mod.canonicalize(b"not json{")
 
 
-# --- detect_drift / spec_sha256 ----------------------------------------------
-
-
-def test_detect_drift_false_when_live_canonicalizes_to_committed():
-    committed = _SNAPSHOT.read_bytes()
-    # Live served compactly but semantically identical -> no drift after canon.
-    compact = json.dumps(json.loads(committed), separators=(",", ":")).encode()
-    assert mod.detect_drift(committed, compact) is False
-
-
-def test_detect_drift_true_when_upstream_shape_changes():
-    committed = _SNAPSHOT.read_bytes()
-    doc = json.loads(committed)
-    doc["info"]["version"] = "9.9.9-changed"
-    assert mod.detect_drift(committed, json.dumps(doc).encode()) is True
-
-
-def test_spec_sha256_is_hash_of_canonical_form():
-    committed = _SNAPSHOT.read_bytes()
-    compact = json.dumps(json.loads(committed), separators=(",", ":")).encode()
-    # Same canonical bytes -> same hash regardless of wire formatting.
-    assert mod.spec_sha256(compact) == mod.spec_sha256(committed)
-
-
 # --- fetch_spec ---------------------------------------------------------------
 
 
@@ -119,8 +96,11 @@ def test_main_returns_1_and_prints_sha_on_drift(monkeypatch, capsys):
 
     assert mod.main([]) == mod.EXIT_DRIFT
     captured = capsys.readouterr()
-    # The machine-readable handle for the remediation wrapper goes to stdout.
-    assert f"SPEC_SHA256={mod.spec_sha256(drifted)}" in captured.out
+    # The machine-readable handle for the remediation wrapper goes to stdout; it
+    # is the SHA-256 of the canonical (not wire) form, so it keys one branch per
+    # distinct upstream shape regardless of how Watcher formats the response.
+    expected_sha = hashlib.sha256(mod.canonicalize(drifted)).hexdigest()
+    assert f"SPEC_SHA256={expected_sha}" in captured.out
     assert "DRIFT" in captured.err
     assert "regen.sh" in captured.err
 

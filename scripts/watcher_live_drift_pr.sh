@@ -52,6 +52,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# 0. Keep the deploy clone current so the detector compares live vs origin/main's
+#    snapshot, not a stale checkout (a lagging clone yields false-positive drift
+#    that step 4 would then no-op on). Best-effort + safe: fast-forward ONLY a
+#    clean checkout of main, never clobber. regen below reuses this same fetch.
+git fetch --quiet origin main || log "warning: git fetch failed; using current checkout"
+if [ "$(git symbolic-ref --quiet --short HEAD || true)" = "main" ] &&
+  git diff --quiet && git diff --cached --quiet; then
+  git merge --quiet --ff-only origin/main ||
+    log "warning: main is not fast-forwardable; using current checkout"
+else
+  log "warning: deploy clone is not a clean main; skipping fast-forward"
+fi
+
 # 1. Detect (stdlib-only; --no-project skips the root sync). Toggle set +e only
 #    around the capture so a non-zero (drift) exit doesn't abort before we read rc.
 set +e
@@ -84,8 +97,8 @@ fi
 # 3. Regenerate in an isolated worktree off the latest origin/main so the deploy
 #    clone's working tree is never disturbed. --detach (not -b): a named branch
 #    survives `worktree remove`, so re-runs would collide / leak refs; we create
-#    the remote branch only at push time (HEAD:refs/heads/<branch>).
-git fetch --quiet origin main
+#    the remote branch only at push time (HEAD:refs/heads/<branch>). origin/main
+#    is already fresh from the step-0 fetch.
 worktree_base="$(mktemp -d -t watcher-live-drift-XXXXXX)"
 worktree="${worktree_base}/wt"
 git worktree add --quiet --detach "${worktree}" origin/main
@@ -112,11 +125,8 @@ if [ "${DRY_RUN}" = "1" ]; then
   exit 0
 fi
 
-# Push detached HEAD straight to a new remote branch — no local branch ref to leak.
-git -C "${worktree}" push --quiet origin "HEAD:refs/heads/${branch}"
-gh pr create --base main --head "${branch}" \
-  --title "chore: refresh watcher_client from live Watcher OpenAPI drift" \
-  --body "$(cat <<'BODY'
+# Build the PR body first so the gh call below stays a clean if-condition.
+pr_body="$(cat <<'BODY'
 Automated by the Layer C live-drift timer (`scripts/watcher_live_drift_pr.sh`, #70).
 
 Live Watcher `/openapi.json` drifted from the committed
@@ -130,4 +140,19 @@ post-regen; the test suite covers shape-breaking changes. No CHANGELOG entry
 required (watcher_client is outside the changelog trigger).
 BODY
 )"
+
+# Push detached HEAD straight to a new remote branch — no local branch ref to leak.
+git -C "${worktree}" push --quiet origin "HEAD:refs/heads/${branch}"
+
+# If PR creation fails after the push, delete the just-pushed branch so the next
+# run retries from scratch — otherwise a re-push of the same shape (same tree,
+# new commit timestamp) is non-fast-forward and wedges the branch.
+if ! gh pr create --base main --head "${branch}" \
+     --title "chore: refresh watcher_client from live Watcher OpenAPI drift" \
+     --body "${pr_body}"; then
+  log "gh pr create failed; deleting pushed branch ${branch} for a clean retry"
+  git -C "${worktree}" push --quiet origin --delete "${branch}" \
+    || log "warning: could not delete remote branch ${branch}"
+  exit 1
+fi
 log "opened PR for ${branch}"
