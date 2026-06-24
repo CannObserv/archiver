@@ -192,9 +192,13 @@ and reuses `regen.sh` as-is. Artifacts:
   Branch keyed on the live spec SHA → one PR per upstream shape (de-dup). The
   PR runs the Layer-B gate (a no-op post-regen) + tests; `clients/watcher-python/**`
   is outside the changelog trigger so no CHANGELOG entry is needed.
+- `scripts/ff_deploy_clone.sh` — run by the service's `ExecStartPre` (a separate
+  process, before the wrapper is read) to best-effort fast-forward a *clean* main
+  to `origin/main`, so the detector compares against `origin/main`'s snapshot
+  without the wrapper ever mutating the clone it executes from.
 - `deploy/watcher-live-drift.{service,timer}` + `deploy/README.md` — daily
-  oneshot, `Persistent=true`, install via `systemctl enable --now` (manual sudo
-  step, intentionally not auto-enabled).
+  oneshot, `Persistent=true`, `ExecStartPre` currency fast-forward, install via
+  `systemctl enable --now` (manual sudo step, intentionally not auto-enabled).
 
 Validated on the VM: detector reports no-drift against the in-sync snapshot
 (exit 0); a faked-drift `--dry-run` exercised detect → worktree → `regen.sh` →

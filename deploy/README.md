@@ -32,12 +32,14 @@ PR instead of a prod incident.
   locally-ahead/diverged clone is left untouched and just logged (the wrapper's
   no-op guard still backstops a stale tree). The running `archiver.service` is
   unaffected until its next restart.
-  - **Currency caveat:** the fast-forward is skipped whenever the clone's `main`
-    is ahead of or diverged from `origin/main` (unpushed local commits, the
-    skills-submodule auto-commit hook, etc.). In that state the detector reads
-    the local tree — harmless (no bad PR; the regen-off-`origin/main` no-op guard
-    catches it) but the currency benefit is lost until the clone tracks
-    `origin/main` again.
+  - **Currency caveat:** the fast-forward only refreshes the tree when `main`
+    can fast-forward to `origin/main`. If the clone's `main` has *diverged*
+    (local commits origin lacks **and** origin commits the clone lacks), the
+    fast-forward is skipped and the detector reads a tree missing origin's
+    latest snapshot — harmless (no bad PR; the regen-off-`origin/main` no-op
+    guard catches it) but stale until the clone reconverges. (A clone merely
+    *ahead* of `origin/main` is not stale — it already contains origin's
+    snapshot — so that case is a safe no-op, not a currency loss.)
 
 ### Install (one-time, needs sudo)
 
