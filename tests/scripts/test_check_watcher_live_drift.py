@@ -138,3 +138,14 @@ def test_main_returns_3_on_malformed_live_spec(monkeypatch, capsys):
     monkeypatch.setattr(mod, "fetch_spec", lambda url, **_k: b"<html>503</html>")
     assert mod.main([]) == mod.EXIT_UNREACHABLE
     assert "SKIP" in capsys.readouterr().err
+
+
+def test_main_returns_2_when_snapshot_missing(monkeypatch, tmp_path, capsys):
+    # A non-drift failure must NOT exit 1 (== drift), so the wrapper never acts on
+    # a phantom drift. Snapshot read fails before any fetch is attempted.
+    called = []
+    monkeypatch.setattr(mod, "fetch_spec", lambda url, **_k: called.append(url) or b"{}")
+    rc = mod.main(["--snapshot", str(tmp_path / "missing.json")])
+    assert rc == mod.EXIT_ERROR
+    assert called == []  # bailed before fetching
+    assert "ERROR" in capsys.readouterr().err

@@ -40,17 +40,31 @@ set +a
 
 log() { printf '[watcher-live-drift] %s\n' "$*"; }
 
-# 1. Detect (stdlib-only; --no-project skips the root sync).
+# Single EXIT trap cleans up everything created below, on every exit path.
+err_file="$(mktemp -t watcher-live-drift-err-XXXXXX)"
+worktree_base=""
+cleanup() {
+  [ -n "${worktree_base}" ] && {
+    git worktree remove --force "${worktree_base}/wt" 2>/dev/null || true
+    rm -rf "${worktree_base}"
+  }
+  rm -f "${err_file}"
+}
+trap cleanup EXIT
+
+# 1. Detect (stdlib-only; --no-project skips the root sync). Toggle set +e only
+#    around the capture so a non-zero (drift) exit doesn't abort before we read rc.
 set +e
-detector_out="$(uv run --no-project python scripts/check_watcher_live_drift.py 2>/tmp/watcher-live-drift.err)"
+detector_out="$(uv run --no-project python scripts/check_watcher_live_drift.py 2>"${err_file}")"
 rc=$?
 set -e
-cat /tmp/watcher-live-drift.err >&2 || true
+cat "${err_file}" >&2 || true
 
 case "${rc}" in
   0) log "no drift; committed snapshot matches live Watcher"; exit 0 ;;
   3) log "Watcher unreachable / non-JSON; skipping run (non-blocking)"; exit 0 ;;
   1) : ;;  # drift -> remediate below
+  2) log "detector internal error (exit 2; see stderr above); aborting"; exit 1 ;;
   *) log "detector failed unexpectedly (exit ${rc}); aborting"; exit 1 ;;
 esac
 
@@ -59,20 +73,22 @@ sha="$(printf '%s\n' "${detector_out}" | sed -n 's/^SPEC_SHA256=//p')"
 branch="chore/watcher-openapi-drift-${sha:0:12}"
 log "drift detected; live spec sha ${sha:0:12}; target branch ${branch}"
 
-# 2. De-dup: one PR per distinct upstream shape.
-if gh pr list --head "${branch}" --state open --json number --jq '.[].number' | grep -q .; then
-  log "open PR already exists for ${branch}; nothing to do"
+# 2. De-dup: one PR per distinct upstream shape. Capture on its own line so a
+#    failed gh call aborts (set -e) instead of being read as "no open PR".
+existing_pr="$(gh pr list --head "${branch}" --state open --json number --jq '.[].number')"
+if [ -n "${existing_pr}" ]; then
+  log "open PR already exists for ${branch} (#$(printf '%s' "${existing_pr}" | head -1)); nothing to do"
   exit 0
 fi
 
 # 3. Regenerate in an isolated worktree off the latest origin/main so the deploy
-#    clone's working tree is never disturbed.
+#    clone's working tree is never disturbed. --detach (not -b): a named branch
+#    survives `worktree remove`, so re-runs would collide / leak refs; we create
+#    the remote branch only at push time (HEAD:refs/heads/<branch>).
 git fetch --quiet origin main
 worktree_base="$(mktemp -d -t watcher-live-drift-XXXXXX)"
 worktree="${worktree_base}/wt"
-cleanup() { git worktree remove --force "${worktree}" 2>/dev/null || true; rm -rf "${worktree_base}"; }
-trap cleanup EXIT
-git worktree add --quiet -b "${branch}" "${worktree}" origin/main
+git worktree add --quiet --detach "${worktree}" origin/main
 
 # regen.sh re-fetches localhost:8000 and writes snapshot + generated tree in lockstep.
 ( cd "${worktree}" && bash clients/watcher-python/scripts/regen.sh )
@@ -96,7 +112,8 @@ if [ "${DRY_RUN}" = "1" ]; then
   exit 0
 fi
 
-git -C "${worktree}" push --quiet -u origin "${branch}"
+# Push detached HEAD straight to a new remote branch — no local branch ref to leak.
+git -C "${worktree}" push --quiet origin "HEAD:refs/heads/${branch}"
 gh pr create --base main --head "${branch}" \
   --title "chore: refresh watcher_client from live Watcher OpenAPI drift" \
   --body "$(cat <<'BODY'

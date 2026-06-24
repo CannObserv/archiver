@@ -19,7 +19,8 @@ PR instead of a prod incident.
 
 - `scripts/check_watcher_live_drift.py` — pure detector (stdlib): fetch live
   `/openapi.json`, canonicalize as `regen.sh` does, byte-compare to the snapshot.
-  Exit `0` no drift · `1` drift · `3` unreachable (skip).
+  Exit `0` no drift · `1` drift · `2` internal error (e.g. missing snapshot) ·
+  `3` unreachable (skip).
 - `scripts/watcher_live_drift_pr.sh` — remediation: on drift, regen snapshot +
   tree via `regen.sh` in an isolated worktree off `origin/main`, then open a PR.
   Branch is keyed on the live spec SHA, so re-runs while a PR is open are no-ops.
@@ -45,6 +46,12 @@ bash scripts/watcher_live_drift_pr.sh --dry-run     # detect + prepare commit, n
 
 - Live Watcher reachable at `http://localhost:8000` (the detector and `regen.sh`
   both fetch it). A down Watcher just makes the run a no-op (exit 0).
-- `GH_TOKEN` in `/etc/archiver/.env` (for `gh pr create`) and push auth on the
-  repo's `origin` remote.
+- `GH_TOKEN` in `/etc/archiver/.env` (for `gh pr create`).
+- **Non-interactive push auth for `origin`.** The remediation `git push` runs
+  under systemd as `User=exedev` in a non-login shell, so it cannot prompt. The
+  SSH deploy key must be usable without a passphrase/agent, and `HOME`
+  (`/home/exedev`) plus `~/.ssh/config` must resolve the `origin` remote's host
+  (e.g. the `github-archiver` alias). Verify once after install with
+  `sudo systemctl start watcher-live-drift.service` and check the journal — a
+  silent push failure here is the one path the `--dry-run` smoke test can't cover.
 - `/openapi.json` is public, so no `WATCHER_API_KEY` is needed for the fetch.

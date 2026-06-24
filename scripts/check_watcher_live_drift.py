@@ -29,6 +29,8 @@ wrapper ``scripts/watcher_live_drift_pr.sh``; this module only DETECTS.
 Exit codes:
   0  no drift — committed snapshot matches live Watcher
   1  drift — snapshot is stale vs live; also prints ``SPEC_SHA256=<hex>`` (stdout)
+  2  could-not-check — internal error (e.g. missing snapshot, unexpected crash);
+     kept distinct from 1 so the wrapper never mistakes a failure for drift
   3  could-not-check — Watcher unreachable or served a non-JSON body (non-blocking
      skip; a down dev Watcher must not be reported as drift)
 """
@@ -45,13 +47,21 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SNAPSHOT = REPO_ROOT / "clients" / "watcher-python" / "watcher-openapi.json"
+# Same endpoint clients/watcher-python/scripts/regen.sh fetches — keep the two in
+# sync if Watcher's local port ever moves (both are intentionally localhost: the
+# detector and the regen it triggers must read the same live Watcher).
 DEFAULT_URL = "http://localhost:8000/openapi.json"
 
 # Live Watcher is on the same VM; a short bound turns a hung server into a skip.
 _FETCH_TIMEOUT = 30
 
+# Exit 1 is reserved for *drift* (conventional, like ``diff``/``grep``); the
+# remediation wrapper acts only on it. So a non-drift failure (missing snapshot,
+# unexpected crash) must NOT also exit 1 — it returns EXIT_ERROR so the wrapper
+# can tell "could not check" apart from "the client is stale".
 EXIT_NO_DRIFT = 0
 EXIT_DRIFT = 1
+EXIT_ERROR = 2
 EXIT_UNREACHABLE = 3
 
 
@@ -124,15 +134,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    committed = args.snapshot.read_bytes()
+    try:
+        committed = args.snapshot.read_bytes()
+    except OSError as e:
+        print(f"ERROR: cannot read snapshot {args.snapshot}: {e}", file=sys.stderr)
+        return EXIT_ERROR
+
     try:
         live_raw = fetch_spec(args.url)
-        canonicalize(live_raw)  # parse-validate now so a bad body is a skip, not a crash
+        # Canonicalize once: this both parse-validates the live body (a bad body
+        # raises SpecFetchError -> skip) and yields the bytes used for the
+        # compare and the SHA, so the ~185 KB doc is processed a single time.
+        live_canonical = canonicalize(live_raw)
     except SpecFetchError as e:
         print(f"SKIP: {e} — not reporting as drift", file=sys.stderr)
         return EXIT_UNREACHABLE
 
-    if not detect_drift(committed, live_raw):
+    if live_canonical == committed:
         print(f"OK: committed snapshot matches live Watcher at {args.url}")
         return EXIT_NO_DRIFT
 
@@ -144,9 +162,15 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
     # Machine-readable handle for the remediation wrapper (branch keying / dedup).
-    print(f"SPEC_SHA256={spec_sha256(live_raw)}")
+    print(f"SPEC_SHA256={hashlib.sha256(live_canonical).hexdigest()}")
     return EXIT_DRIFT
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Last-resort guard: an unexpected crash must not exit 1 (== drift) and trip
+    # the remediation wrapper into acting on a non-existent drift.
+    try:
+        sys.exit(main())
+    except Exception as e:  # noqa: BLE001 — surface any bug as EXIT_ERROR, not drift
+        print(f"ERROR: unexpected failure: {e}", file=sys.stderr)
+        sys.exit(EXIT_ERROR)

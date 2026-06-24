@@ -1,7 +1,10 @@
 [Unit]
 Description=Detect watcher_client snapshot drift vs live Watcher, open a PR (Layer C, archiver#70)
-# Needs live Watcher on localhost:8000 (same VM) for both the detector fetch and regen.sh.
-After=network.target archiver.service
+# Needs live Watcher on localhost:8000 (same VM) for both the detector fetch and
+# regen.sh. Watcher readiness is intentionally NOT ordered here: it's a separate
+# unit, and an unreachable Watcher is handled by the detector's exit-3 skip, so
+# ordering after it would buy nothing.
+After=network.target
 
 [Service]
 Type=oneshot
