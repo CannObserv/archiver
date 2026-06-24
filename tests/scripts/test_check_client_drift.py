@@ -103,3 +103,49 @@ def test_results_are_sorted_and_aggregate_all_drift(trees):
         ("only_in_actual", "models/b.py"),
         ("only_in_expected", "models/c.py"),
     ]
+
+
+# --- main() exit-code orchestration (regen stubbed; no subprocess) ------------
+
+
+def test_main_returns_0_when_no_drift(monkeypatch, capsys):
+    monkeypatch.setattr(mod, "check_client", lambda client: [])
+    assert mod.main([]) == 0
+    assert "OK:" in capsys.readouterr().out
+
+
+def test_main_returns_1_on_drift(monkeypatch, capsys):
+    monkeypatch.setattr(mod, "check_client", lambda client: [("changed", "models/x.py")])
+    assert mod.main([]) == 1
+    out = capsys.readouterr().out
+    assert "DRIFT:" in out
+    assert "models/x.py" in out
+    # Both remediation paths are surfaced (hand-edit vs upstream change).
+    assert "--write" in out
+    assert "regen.sh" in out
+
+
+def test_main_returns_2_on_subprocess_error(monkeypatch, capsys):
+    def boom(client):
+        raise mod.DriftCheckError("generator exploded")
+
+    monkeypatch.setattr(mod, "check_client", boom)
+    assert mod.main([]) == 2
+    assert "generator exploded" in capsys.readouterr().err
+
+
+def test_main_write_invokes_write_client_and_returns_0(monkeypatch, capsys):
+    called = []
+    monkeypatch.setattr(mod, "write_client", lambda client: called.append(client.name))
+    assert mod.main(["--write", "watcher"]) == 0
+    assert called == ["watcher"]
+    assert "wrote:" in capsys.readouterr().out
+
+
+def test_main_write_returns_2_on_subprocess_error(monkeypatch, capsys):
+    def boom(client):
+        raise mod.DriftCheckError("regen failed")
+
+    monkeypatch.setattr(mod, "write_client", boom)
+    assert mod.main(["--write", "watcher"]) == 2
+    assert "regen failed" in capsys.readouterr().err

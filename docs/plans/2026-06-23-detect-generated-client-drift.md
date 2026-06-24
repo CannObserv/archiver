@@ -150,5 +150,8 @@ implementation:
 
 Shipped in this PR (Layer B): committed `clients/watcher-python/watcher-openapi.json`
 snapshot; `scripts/check_client_drift.py` (regen-from-snapshot + `diff_trees`,
-plus `--write` remediation); `tests/scripts/test_check_client_drift.py`; a
-`client-drift` CI job. Layers A, C, D tracked as follow-ups.
+plus non-destructive `--write` remediation); `tests/scripts/test_check_client_drift.py`;
+a `client-drift` CI job. `regen.sh` now writes the snapshot *and* the tree in
+lockstep (snapshot is generated-from, authoritative) so running it after a
+legitimate Watcher change refreshes both and leaves the gate a no-op. Layers A,
+C, D tracked as follow-ups.

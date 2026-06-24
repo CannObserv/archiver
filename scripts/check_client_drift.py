@@ -8,11 +8,13 @@ turns that silent staleness into a red build: it regenerates the client from the
 committed OpenAPI snapshot (the contract-of-record) into a temp dir and diffs the
 result against the committed ``generated/`` tree. A non-empty diff is drift.
 
-The regen mirrors the SDK's ``scripts/regen.sh`` exactly — same
-``openapi-python-client`` invocation, same post-generation ``ruff format`` — and
-runs inside the SDK's own ``uv`` environment so the generator and ``ruff``
-versions are pinned by that SDK's lockfile (a shared/floating toolchain would
-yield spurious formatting diffs).
+The regen mirrors the SDK's ``scripts/regen.sh`` generate+format invocation
+(against the committed snapshot rather than live) — same ``openapi-python-client``
+flags, same post-generation ``ruff format`` — and runs inside the SDK's own
+``uv`` environment so the generator and ``ruff`` versions are pinned by that
+SDK's lockfile (a shared/floating toolchain would yield spurious formatting
+diffs). ``regen.sh`` writes both the snapshot and the tree from live Watcher, so
+running it leaves this check a no-op.
 
 Scope: only ``watcher`` (the ``watcher_client`` SDK) is wired today. ``watcher``
 diffs against a committed ``watcher-openapi.json`` snapshot — a hermetic,
@@ -42,6 +44,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Directory names that are build/cache artifacts, never part of the contract.
 IGNORE_DIRS = {"__pycache__", ".ruff_cache"}
+
+# Upper bound for a single regen/format step (cold CI includes a uv sync). A
+# bounded wait turns a hung generator into a clear error instead of a stuck job.
+_SUBPROCESS_TIMEOUT = 300
+
+
+class DriftCheckError(RuntimeError):
+    """A regen/format subprocess failed — distinct from detected drift."""
 
 
 @dataclass(frozen=True)
@@ -108,6 +118,33 @@ def diff_trees(expected: Path, actual: Path) -> list[tuple[str, str]]:
     return sorted(drift, key=lambda entry: (entry[1], entry[0]))
 
 
+def _run(cmd: list[str], *, cwd: Path) -> None:
+    """Run a regen/format step, surfacing failures as ``DriftCheckError``.
+
+    ``capture_output`` keeps the generator's noise off CI logs on success; on
+    failure the captured stdout/stderr is folded into the raised message so the
+    real error is visible instead of a bare ``CalledProcessError`` traceback.
+    """
+    try:
+        subprocess.run(
+            cmd,
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=_SUBPROCESS_TIMEOUT,
+        )
+    except subprocess.CalledProcessError as e:
+        raise DriftCheckError(
+            f"command failed (exit {e.returncode}): {' '.join(cmd)}\n"
+            f"--- stdout ---\n{e.stdout}\n--- stderr ---\n{e.stderr}"
+        ) from e
+    except subprocess.TimeoutExpired as e:
+        raise DriftCheckError(
+            f"command timed out after {_SUBPROCESS_TIMEOUT}s: {' '.join(cmd)}"
+        ) from e
+
+
 def _regenerate(client: Client, dest: Path) -> None:
     """Regenerate ``client`` from its snapshot into ``dest``, mirroring regen.sh.
 
@@ -119,7 +156,7 @@ def _regenerate(client: Client, dest: Path) -> None:
     wraps borderline imports the committed tree leaves on one line — spurious
     drift.) ``check_client`` and ``write_client`` both pass in-tree paths.
     """
-    subprocess.run(
+    _run(
         [
             "uv",
             "run",
@@ -134,17 +171,8 @@ def _regenerate(client: Client, dest: Path) -> None:
             "--overwrite",
         ],
         cwd=client.sdk_dir,
-        check=True,
-        capture_output=True,
-        text=True,
     )
-    subprocess.run(
-        ["uv", "run", "ruff", "format", str(dest)],
-        cwd=client.sdk_dir,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    _run(["uv", "run", "ruff", "format", str(dest)], cwd=client.sdk_dir)
 
 
 def check_client(client: Client) -> list[tuple[str, str]]:
@@ -157,10 +185,22 @@ def check_client(client: Client) -> list[tuple[str, str]]:
 
 
 def write_client(client: Client) -> None:
-    """Regenerate the committed tree in place from the snapshot (drift remediation)."""
-    if client.generated_dir.exists():
-        shutil.rmtree(client.generated_dir)
-    _regenerate(client, client.generated_dir)
+    """Regenerate the committed tree from the snapshot (drift remediation).
+
+    Regenerates into an in-tree staging dir first and only swaps it into place
+    once generation succeeds, so a mid-regen failure cannot leave the committed
+    tree deleted.
+    """
+    with tempfile.TemporaryDirectory(dir=client.sdk_dir, prefix=".drift-") as tmp:
+        staging = Path(tmp) / "generated"
+        _regenerate(client, staging)
+        if client.generated_dir.exists():
+            shutil.rmtree(client.generated_dir)
+        shutil.copytree(
+            staging,
+            client.generated_dir,
+            ignore=shutil.ignore_patterns(*IGNORE_DIRS),
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -181,14 +221,22 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.write:
         for name in names:
-            write_client(CLIENTS[name])
+            try:
+                write_client(CLIENTS[name])
+            except DriftCheckError as e:
+                print(f"ERROR: could not write {name} client: {e}", file=sys.stderr)
+                return 2
             print(f"wrote: {CLIENTS[name].generated_dir.relative_to(REPO_ROOT)}")
         return 0
 
     any_drift = False
     for name in names:
         client = CLIENTS[name]
-        drift = check_client(client)
+        try:
+            drift = check_client(client)
+        except DriftCheckError as e:
+            print(f"ERROR: could not check {name} client: {e}", file=sys.stderr)
+            return 2
         if not drift:
             print(f"OK: {name} client matches {client.spec_path.name}")
             continue
@@ -196,8 +244,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"DRIFT: {name} client is stale vs {client.spec_path.name}")
         for status, rel in drift:
             print(f"  {status:16} {rel}")
-        rel_script = Path("scripts") / "check_client_drift.py"
-        print(f"  → fix: python {rel_script} --write {name}  (then commit)")
+        # Two distinct causes need opposite fixes:
+        rel_regen = (client.sdk_dir / "scripts" / "regen.sh").relative_to(REPO_ROOT)
+        print(
+            "  → hand-edited generated/? discard edits, regenerate from the snapshot:\n"
+            f"      python scripts/check_client_drift.py --write {name}"
+        )
+        print(
+            f"  → {name} legitimately changed upstream? refresh snapshot + tree together:\n"
+            f"      bash {rel_regen}"
+        )
+        print("    (then commit)")
     return 1 if any_drift else 0
 
 
