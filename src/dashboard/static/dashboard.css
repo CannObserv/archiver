@@ -506,7 +506,20 @@ p:last-child { margin-bottom: 0; }
 .alert--info    { background: var(--color-info-bg);    color: var(--color-info);    border-color: var(--color-info); }
 
 /* ─── Flash messages ─────────────────────────────────────────────────────── */
-#flash-region { margin-bottom: var(--space-4); }
+/* Viewport-anchored toast overlay — stays visible regardless of scroll
+   position (archiver#65). position:fixed so it never consumes layout space;
+   pointer-events pass through the gaps but land on the toasts themselves. */
+#flash-region {
+  position: fixed;
+  top: calc(var(--topbar-height) + var(--space-4));   /* clear the fixed topbar */
+  right: var(--space-4);
+  z-index: 1000;                 /* above header (100); below skip-link (9999) */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(360px, calc(100vw - 2 * var(--space-4)));
+  pointer-events: none;
+}
 
 .flash {
   display: flex;
@@ -515,7 +528,8 @@ p:last-child { margin-bottom: 0; }
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
-  margin-bottom: var(--space-2);
+  box-shadow: var(--shadow-md);
+  pointer-events: auto;          /* re-enable clicks on the toast itself */
   animation: flash-in var(--transition-fast) ease-out;
 }
 @keyframes flash-in {
@@ -538,6 +552,16 @@ p:last-child { margin-bottom: 0; }
   line-height: 1;
 }
 .flash__close:hover { opacity: 1; }
+
+/* Narrow viewports: full-width toast strip pinned to the top. */
+@media (max-width: 640px) {
+  #flash-region {
+    top: calc(var(--topbar-height) + var(--space-2));   /* clear the fixed topbar */
+    left: var(--space-2);
+    right: var(--space-2);
+    width: auto;
+  }
+}
 
 /* ─── Data table ─────────────────────────────────────────────────────────── */
 .data-table {

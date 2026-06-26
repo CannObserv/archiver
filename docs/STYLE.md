@@ -87,7 +87,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 
 ### Alerts & Flash
 - `.alert`, `.alert--success/warning/danger/info` — static inline alerts.
-- `.flash`, `.flash--success/warning/error/info` — ephemeral notifications injected by `flash.js`. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`.
+- `.flash`, `.flash--success/warning/error/info` — toast notifications injected by `flash.js` into the `#flash-region` overlay. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`. `#flash-region` is `position: fixed` (top-right on desktop, full-width top on ≤640px), `z-index: 1000` — anchored to the viewport so toasts stay visible at any scroll position (archiver#65). `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until dismissed. Capped at 4 visible — transient toasts evicted before persistent ones, so errors aren't pushed out by success spam.
 
 ### Data display
 - `.data-table` — standard table; applies to `<table>`.

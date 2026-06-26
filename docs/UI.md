@@ -97,7 +97,11 @@ Server returns a partial HTML fragment with `HX-Reswap: outerHTML` / `HX-Retarge
 
 ### Flash messages
 
-Server returns `HX-Trigger: {"showFlash": {"level": "success", "body": "Saved."}}` alongside any mutating response. `flash.js` (loaded in `base.html`) injects `.flash--*` divs into `#flash-region`. Auto-dismisses after 6 s. **Note:** `flash.js` must be in the `base.html` script list — if it is dropped, every `showFlash` is silently ignored site-wide (CannObserv/archiver#62).
+Server returns `HX-Trigger: {"showFlash": {"level": "success", "body": "Saved."}}` alongside any mutating response. `flash.js` (loaded in `base.html`) injects `.flash--*` divs into `#flash-region` — a `position: fixed` viewport overlay (a direct `<body>` child, outside `<main>`, so HTMX content swaps can't wipe live toasts) anchored top-right on desktop and full-width top on narrow viewports, so toasts stay visible at any scroll position (archiver#65). **Note:** `flash.js` must be in the `base.html` script list — if it is dropped, every `showFlash` is silently ignored site-wide (CannObserv/archiver#62).
+
+Dismissal is severity-based: `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until the operator clicks `.flash__close` (failures must not vanish unseen). At most 4 toasts are visible at once; when a 5th arrives the oldest *transient* toast is evicted first, so persistent error/warning toasts are not pushed out by success/info spam. If all 4 visible toasts are persistent, the incoming transient is dropped (and the oldest persistent is evicted only when the newcomer is itself persistent).
+
+Accessibility: `#flash-region` carries `aria-live="polite"`; each toast gets `role="alert"` (errors — interrupts assistive tech) or `role="status"` (other levels). The `flash-in` animation is suppressed under `prefers-reduced-motion` via the global reduced-motion block in `dashboard.css`.
 
 Levels: `"success"` | `"warning"` | `"error"` | `"info"`.
 

@@ -23,6 +23,10 @@
 <body hx-boost="true" hx-ext="response-targets">
   <a href="#main-content" class="skip-link">Skip to content</a>
 
+  {# Toast overlay (archiver#65) — direct <body> child, outside <main>, so HTMX
+     swaps can't wipe live toasts. Populated by flash.js; see docs/UI.md. #}
+  <div id="flash-region" aria-live="polite"></div>
+
   <header class="topbar" role="banner">
     <a href="/dashboard/" class="topbar__brand">Archiver</a>
     <nav class="topbar__actions" aria-label="User actions">
@@ -91,9 +95,6 @@
     </nav>
 
     <main id="main-content" class="main-content" role="main">
-      {# Flash region — populated by flash.js on HX-Trigger showFlash events #}
-      <div id="flash-region" aria-live="polite" aria-atomic="true"></div>
-
       {% block content %}{% endblock %}
     </main>
   </div>
