@@ -87,7 +87,8 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 
 ### Alerts & Flash
 - `.alert`, `.alert--success/warning/danger/info` — static inline alerts.
-- `.flash`, `.flash--success/warning/error/info` — toast notifications injected by `flash.js` into the `#flash-region` overlay. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`. `#flash-region` is `position: fixed` (top-right on desktop, full-width top on ≤640px), `z-index: 1000` — anchored to the viewport so toasts stay visible at any scroll position (archiver#65). `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until dismissed. Capped at 4 visible — transient toasts evicted before persistent ones, so errors aren't pushed out by success spam.
+- `.flash`, `.flash--success/warning/error/info` — toast notifications injected by `flash.js` into the `#flash-region` overlay. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`. `#flash-region` is `position: fixed` (top-right on desktop, full-width top on ≤640px), `z-index: 1000` — anchored to the viewport so toasts stay visible at any scroll position (archiver#65). `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until dismissed. Capped at 4 visible slots; on overflow a transient still flashes as a single lane and persistent excess collapses behind a `+N more` counter (archiver#73 — see `docs/UI.md` "Flash messages").
+- `.flash__more` — the `+N more` overflow counter button occupying the 4th slot when more than four persistent toasts stack; dashed-border, surface-alt pill. Click/Enter expands the overlay to reveal all (no re-collapse). Announcement is carried by the visually-hidden `#flash-announcer-assertive` / `#flash-announcer-polite` live regions (`.sr-only`), not the visible toasts.
 
 ### Data display
 - `.data-table` — standard table; applies to `<table>`.
@@ -236,6 +237,7 @@ Target: **WCAG 2.1 AA**.
 
 - Async content sections (HTMX async partial pattern): `aria-live="polite" aria-atomic="false"`.
 - Inline form error targets (HTMX inline form error pattern): `aria-live="polite" aria-atomic="true"`.
+- Toast announcers (archiver#73): `#flash-announcer-assertive` (errors) / `#flash-announcer-polite` (other levels), both `.sr-only`. `flash.js` writes every message here so announcement is decoupled from the visible `#flash-region` cap; visible toasts carry no live role.
 - Active sidebar link: `aria-current="page"`.
 - Focus rings: `:focus-visible` with 2 px brand-colour outline.
 - Minimum touch targets: 44 × 44 px.

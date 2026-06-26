@@ -105,12 +105,12 @@ TDD throughout (Red → Green → Refactor); JS tests are vitest + happy-dom in
 
 ## Open questions / risks
 
-- **Collapse order for persistent overflow:** show newest-3 + "+N older", or
-  oldest-3 + "+N newer"? Default proposed: **newest-3 visible** (active errors in
-  view, counter for the backlog). Confirm.
-- **Announcer ownership:** create the live regions in `flash.js` on first use, or
-  add static markup to `base.html`? Leaning `base.html` (declarative, no
-  first-event race). Confirm.
+- **Collapse order for persistent overflow:** RESOLVED — **newest-3 visible**,
+  counter holds the older backlog.
+- **Announcer ownership:** RESOLVED — **static markup in `base.html`**
+  (declarative, no first-event race).
+- **Persistent-eviction change:** RESOLVED — **include** it (stop silently
+  evicting the oldest error; collapse into "+N more" instead).
 - **Region height when expanded** on short viewports: scroll within the overlay
   vs. let it run; plan uses `max-height: calc(100vh - …)` + `overflow:auto`.
 - **Pre-existing-behavior change:** step 5 stops silently evicting the oldest

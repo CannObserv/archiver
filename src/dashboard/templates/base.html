@@ -23,9 +23,16 @@
 <body hx-boost="true" hx-ext="response-targets">
   <a href="#main-content" class="skip-link">Skip to content</a>
 
+  {# Toast announcers (archiver#73) — visually-hidden live regions. flash.js
+     writes every message here so assistive tech hears it even when the visible
+     cap suppresses or collapses the toast; visible toasts therefore carry no
+     live role. Errors are assertive; all other levels polite. #}
+  <div id="flash-announcer-assertive" class="sr-only" aria-live="assertive" aria-atomic="false"></div>
+  <div id="flash-announcer-polite" class="sr-only" aria-live="polite" aria-atomic="false"></div>
+
   {# Toast overlay (archiver#65) — direct <body> child, outside <main>, so HTMX
      swaps can't wipe live toasts. Populated by flash.js; see docs/UI.md. #}
-  <div id="flash-region" aria-live="polite"></div>
+  <div id="flash-region"></div>
 
   <header class="topbar" role="banner">
     <a href="/dashboard/" class="topbar__brand">Archiver</a>

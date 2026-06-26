@@ -520,6 +520,14 @@ p:last-child { margin-bottom: 0; }
   width: min(360px, calc(100vw - 2 * var(--space-4)));
   pointer-events: none;
 }
+/* Expanded persistent overflow (archiver#73) can exceed the viewport; cap the
+   height and scroll only in that state, so the default overlay never clips toast
+   shadows. pointer-events re-enabled so the scroll container is reachable. */
+#flash-region.flash-region--expanded {
+  max-height: calc(100vh - var(--topbar-height) - 2 * var(--space-4));
+  overflow-y: auto;
+  pointer-events: auto;
+}
 
 .flash {
   display: flex;
@@ -532,6 +540,10 @@ p:last-child { margin-bottom: 0; }
   pointer-events: auto;          /* re-enable clicks on the toast itself */
   animation: flash-in var(--transition-fast) ease-out;
 }
+/* Collapsed persistent toasts (archiver#73): `.flash{display:flex}` is an author
+   rule and so overrides the UA `[hidden]{display:none}` regardless of specificity
+   — hide explicitly, matching the `.tabs__panel[hidden]` precedent below. */
+.flash[hidden] { display: none; }
 @keyframes flash-in {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -553,6 +565,36 @@ p:last-child { margin-bottom: 0; }
 }
 .flash__close:hover { opacity: 1; }
 
+/* "+N more" overflow counter (archiver#73): occupies the 4th slot when more than
+   four persistent toasts stack; click/Enter expands to reveal all (no re-collapse). */
+.flash__more {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+.flash__more:hover {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
+}
+/* Brand focus ring on the toast controls — the counter is the keyboard entry to
+   the expand affordance and the close button is its focus landing (archiver#73);
+   matches the project convention (docs/STYLE.md "Focus rings"). */
+.flash__more:focus-visible,
+.flash__close:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
 /* Narrow viewports: full-width toast strip pinned to the top. */
 @media (max-width: 640px) {
   #flash-region {
@@ -560,6 +602,11 @@ p:last-child { margin-bottom: 0; }
     left: var(--space-2);
     right: var(--space-2);
     width: auto;
+  }
+  /* Match the tighter top offset so the expanded scroll region uses the full
+     available height here (archiver#73). */
+  #flash-region.flash-region--expanded {
+    max-height: calc(100vh - var(--topbar-height) - 2 * var(--space-2));
   }
 }
 
