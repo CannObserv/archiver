@@ -2101,6 +2101,38 @@
               "type": "string",
               "title": "Watched Item Id"
             }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "title": "Event Type"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -4100,7 +4132,7 @@
           "dashboard"
         ],
         "summary": "Audit Log Page",
-        "description": "Audit log page with filtering.",
+        "description": "Audit log page with chip filtering + pagination.\n\n``event_type`` is repeatable (``?event_type=a&event_type=b``) and OR-matched.",
         "operationId": "audit_log_page_audit_get",
         "parameters": [
           {
@@ -4108,31 +4140,31 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
               "title": "Event Type"
             }
           },
           {
-            "name": "watched_item_id",
+            "name": "page",
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Watched Item Id"
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
             }
           }
         ],
@@ -4164,7 +4196,7 @@
           "dashboard"
         ],
         "summary": "Partial Audit Table",
-        "description": "HTMX partial: filtered audit log table.",
+        "description": "HTMX partial: filtered, paginated audit table (shared by /audit + detail).",
         "operationId": "partial_audit_table_partials_audit_table_get",
         "parameters": [
           {
@@ -4172,14 +4204,10 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
               "title": "Event Type"
             }
           },
@@ -4197,6 +4225,26 @@
                 }
               ],
               "title": "Watched Item Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
             }
           }
         ],

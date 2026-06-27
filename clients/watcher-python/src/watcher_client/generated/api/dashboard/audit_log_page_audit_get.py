@@ -11,25 +11,22 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    event_type: None | str | Unset = UNSET,
-    watched_item_id: None | str | Unset = UNSET,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
 
-    json_event_type: None | str | Unset
-    if isinstance(event_type, Unset):
-        json_event_type = UNSET
-    else:
+    json_event_type: list[str] | Unset = UNSET
+    if not isinstance(event_type, Unset):
         json_event_type = event_type
+
     params["event_type"] = json_event_type
 
-    json_watched_item_id: None | str | Unset
-    if isinstance(watched_item_id, Unset):
-        json_watched_item_id = UNSET
-    else:
-        json_watched_item_id = watched_item_id
-    params["watched_item_id"] = json_watched_item_id
+    params["page"] = page
+
+    params["page_size"] = page_size
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -74,16 +71,20 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
-    event_type: None | str | Unset = UNSET,
-    watched_item_id: None | str | Unset = UNSET,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> Response[Any | HTTPValidationError]:
     """Audit Log Page
 
-     Audit log page with filtering.
+     Audit log page with chip filtering + pagination.
+
+    ``event_type`` is repeatable (``?event_type=a&event_type=b``) and OR-matched.
 
     Args:
-        event_type (None | str | Unset):
-        watched_item_id (None | str | Unset):
+        event_type (list[str] | Unset):
+        page (int | Unset):  Default: 1.
+        page_size (int | Unset):  Default: 25.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -95,7 +96,8 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         event_type=event_type,
-        watched_item_id=watched_item_id,
+        page=page,
+        page_size=page_size,
     )
 
     response = client.get_httpx_client().request(
@@ -108,16 +110,20 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient | Client,
-    event_type: None | str | Unset = UNSET,
-    watched_item_id: None | str | Unset = UNSET,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> Any | HTTPValidationError | None:
     """Audit Log Page
 
-     Audit log page with filtering.
+     Audit log page with chip filtering + pagination.
+
+    ``event_type`` is repeatable (``?event_type=a&event_type=b``) and OR-matched.
 
     Args:
-        event_type (None | str | Unset):
-        watched_item_id (None | str | Unset):
+        event_type (list[str] | Unset):
+        page (int | Unset):  Default: 1.
+        page_size (int | Unset):  Default: 25.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -130,23 +136,28 @@ def sync(
     return sync_detailed(
         client=client,
         event_type=event_type,
-        watched_item_id=watched_item_id,
+        page=page,
+        page_size=page_size,
     ).parsed
 
 
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
-    event_type: None | str | Unset = UNSET,
-    watched_item_id: None | str | Unset = UNSET,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> Response[Any | HTTPValidationError]:
     """Audit Log Page
 
-     Audit log page with filtering.
+     Audit log page with chip filtering + pagination.
+
+    ``event_type`` is repeatable (``?event_type=a&event_type=b``) and OR-matched.
 
     Args:
-        event_type (None | str | Unset):
-        watched_item_id (None | str | Unset):
+        event_type (list[str] | Unset):
+        page (int | Unset):  Default: 1.
+        page_size (int | Unset):  Default: 25.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -158,7 +169,8 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         event_type=event_type,
-        watched_item_id=watched_item_id,
+        page=page,
+        page_size=page_size,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -169,16 +181,20 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient | Client,
-    event_type: None | str | Unset = UNSET,
-    watched_item_id: None | str | Unset = UNSET,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> Any | HTTPValidationError | None:
     """Audit Log Page
 
-     Audit log page with filtering.
+     Audit log page with chip filtering + pagination.
+
+    ``event_type`` is repeatable (``?event_type=a&event_type=b``) and OR-matched.
 
     Args:
-        event_type (None | str | Unset):
-        watched_item_id (None | str | Unset):
+        event_type (list[str] | Unset):
+        page (int | Unset):  Default: 1.
+        page_size (int | Unset):  Default: 25.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -192,6 +208,7 @@ async def asyncio(
         await asyncio_detailed(
             client=client,
             event_type=event_type,
-            watched_item_id=watched_item_id,
+            page=page,
+            page_size=page_size,
         )
     ).parsed
