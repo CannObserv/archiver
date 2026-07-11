@@ -2101,6 +2101,38 @@
               "type": "string",
               "title": "Watched Item Id"
             }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "title": "Event Type"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -4100,7 +4132,7 @@
           "dashboard"
         ],
         "summary": "Audit Log Page",
-        "description": "Audit log page with filtering.",
+        "description": "Audit log page with chip filtering + pagination.\n\n``event_type`` is repeatable (``?event_type=a&event_type=b``) and OR-matched.",
         "operationId": "audit_log_page_audit_get",
         "parameters": [
           {
@@ -4108,31 +4140,31 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
               "title": "Event Type"
             }
           },
           {
-            "name": "watched_item_id",
+            "name": "page",
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Watched Item Id"
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
             }
           }
         ],
@@ -4164,7 +4196,7 @@
           "dashboard"
         ],
         "summary": "Partial Audit Table",
-        "description": "HTMX partial: filtered audit log table.",
+        "description": "HTMX partial: filtered, paginated audit table (shared by /audit + detail).",
         "operationId": "partial_audit_table_partials_audit_table_get",
         "parameters": [
           {
@@ -4172,14 +4204,10 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
               "title": "Event Type"
             }
           },
@@ -4197,6 +4225,26 @@
                 }
               ],
               "title": "Watched Item Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
             }
           }
         ],
@@ -5239,23 +5287,6 @@
       },
       "ContentOptions": {
         "properties": {
-          "include_diff_snippet": {
-            "type": "boolean",
-            "title": "Include Diff Snippet",
-            "default": false
-          },
-          "diff_snippet_lines": {
-            "type": "integer",
-            "maximum": 200.0,
-            "minimum": 1.0,
-            "title": "Diff Snippet Lines",
-            "default": 25
-          },
-          "include_diff_full": {
-            "type": "boolean",
-            "title": "Include Diff Full",
-            "default": false
-          },
           "include_temporal_context": {
             "type": "boolean",
             "title": "Include Temporal Context",
@@ -5269,16 +5300,6 @@
           "include_last_changed_at": {
             "type": "boolean",
             "title": "Include Last Changed At",
-            "default": false
-          },
-          "include_significance": {
-            "type": "boolean",
-            "title": "Include Significance",
-            "default": false
-          },
-          "include_change_dashboard_url": {
-            "type": "boolean",
-            "title": "Include Change Dashboard Url",
             "default": false
           },
           "include_tags": {
@@ -5316,7 +5337,7 @@
         },
         "type": "object",
         "title": "ContentOptions",
-        "description": "Field toggles controlling what extra information appears in a notification body."
+        "description": "Field toggles controlling what extra information appears in a notification body.\n\nThe diff/significance toggles (`include_diff_snippet`, `diff_snippet_lines`,\n`include_diff_full`, `include_significance`) and the `include_change_dashboard_url`\ntoggle were removed in #221: the diff pipeline was dropped in Phase 5 (#156),\nso those had no observable effect, and the dashboard-URL toggle duplicated the\nalways-present ITEM link. Diff restoration is tracked in #222."
       },
       "DomainPatch": {
         "properties": {

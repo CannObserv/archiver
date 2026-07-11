@@ -15,29 +15,25 @@ T = TypeVar("T", bound="ContentOptions")
 class ContentOptions:
     """Field toggles controlling what extra information appears in a notification body.
 
-    Attributes:
-        include_diff_snippet (bool | Unset):  Default: False.
-        diff_snippet_lines (int | Unset):  Default: 25.
-        include_diff_full (bool | Unset):  Default: False.
-        include_temporal_context (bool | Unset):  Default: False.
-        include_domain (bool | Unset):  Default: False.
-        include_last_changed_at (bool | Unset):  Default: False.
-        include_significance (bool | Unset):  Default: False.
-        include_change_dashboard_url (bool | Unset):  Default: False.
-        include_tags (bool | Unset):  Default: False.
-        include_description (bool | Unset):  Default: False.
-        title_template (None | str | Unset):
-        body_template (None | str | Unset):
+    The diff/significance toggles (`include_diff_snippet`, `diff_snippet_lines`,
+    `include_diff_full`, `include_significance`) and the `include_change_dashboard_url`
+    toggle were removed in #221: the diff pipeline was dropped in Phase 5 (#156),
+    so those had no observable effect, and the dashboard-URL toggle duplicated the
+    always-present ITEM link. Diff restoration is tracked in #222.
+
+        Attributes:
+            include_temporal_context (bool | Unset):  Default: False.
+            include_domain (bool | Unset):  Default: False.
+            include_last_changed_at (bool | Unset):  Default: False.
+            include_tags (bool | Unset):  Default: False.
+            include_description (bool | Unset):  Default: False.
+            title_template (None | str | Unset):
+            body_template (None | str | Unset):
     """
 
-    include_diff_snippet: bool | Unset = False
-    diff_snippet_lines: int | Unset = 25
-    include_diff_full: bool | Unset = False
     include_temporal_context: bool | Unset = False
     include_domain: bool | Unset = False
     include_last_changed_at: bool | Unset = False
-    include_significance: bool | Unset = False
-    include_change_dashboard_url: bool | Unset = False
     include_tags: bool | Unset = False
     include_description: bool | Unset = False
     title_template: None | str | Unset = UNSET
@@ -45,21 +41,11 @@ class ContentOptions:
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        include_diff_snippet = self.include_diff_snippet
-
-        diff_snippet_lines = self.diff_snippet_lines
-
-        include_diff_full = self.include_diff_full
-
         include_temporal_context = self.include_temporal_context
 
         include_domain = self.include_domain
 
         include_last_changed_at = self.include_last_changed_at
-
-        include_significance = self.include_significance
-
-        include_change_dashboard_url = self.include_change_dashboard_url
 
         include_tags = self.include_tags
 
@@ -80,22 +66,12 @@ class ContentOptions:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({})
-        if include_diff_snippet is not UNSET:
-            field_dict["include_diff_snippet"] = include_diff_snippet
-        if diff_snippet_lines is not UNSET:
-            field_dict["diff_snippet_lines"] = diff_snippet_lines
-        if include_diff_full is not UNSET:
-            field_dict["include_diff_full"] = include_diff_full
         if include_temporal_context is not UNSET:
             field_dict["include_temporal_context"] = include_temporal_context
         if include_domain is not UNSET:
             field_dict["include_domain"] = include_domain
         if include_last_changed_at is not UNSET:
             field_dict["include_last_changed_at"] = include_last_changed_at
-        if include_significance is not UNSET:
-            field_dict["include_significance"] = include_significance
-        if include_change_dashboard_url is not UNSET:
-            field_dict["include_change_dashboard_url"] = include_change_dashboard_url
         if include_tags is not UNSET:
             field_dict["include_tags"] = include_tags
         if include_description is not UNSET:
@@ -110,21 +86,11 @@ class ContentOptions:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        include_diff_snippet = d.pop("include_diff_snippet", UNSET)
-
-        diff_snippet_lines = d.pop("diff_snippet_lines", UNSET)
-
-        include_diff_full = d.pop("include_diff_full", UNSET)
-
         include_temporal_context = d.pop("include_temporal_context", UNSET)
 
         include_domain = d.pop("include_domain", UNSET)
 
         include_last_changed_at = d.pop("include_last_changed_at", UNSET)
-
-        include_significance = d.pop("include_significance", UNSET)
-
-        include_change_dashboard_url = d.pop("include_change_dashboard_url", UNSET)
 
         include_tags = d.pop("include_tags", UNSET)
 
@@ -149,14 +115,9 @@ class ContentOptions:
         body_template = _parse_body_template(d.pop("body_template", UNSET))
 
         content_options = cls(
-            include_diff_snippet=include_diff_snippet,
-            diff_snippet_lines=diff_snippet_lines,
-            include_diff_full=include_diff_full,
             include_temporal_context=include_temporal_context,
             include_domain=include_domain,
             include_last_changed_at=include_last_changed_at,
-            include_significance=include_significance,
-            include_change_dashboard_url=include_change_dashboard_url,
             include_tags=include_tags,
             include_description=include_description,
             title_template=title_template,
