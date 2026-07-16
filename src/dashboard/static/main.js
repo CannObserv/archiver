@@ -356,7 +356,6 @@ document.addEventListener("alpine:init", function () {
             // Last url-check result, delivered by the urlCheckDispatch data
             // island inside the HTMX #url-check-result fragment (#53).
             checkHostname: "",
-            checkCase: "",
             checkDomainKnown: null,
 
             // Human-readable label for the selected Watcher fetch cadence, shown
@@ -401,15 +400,18 @@ document.addEventListener("alpine:init", function () {
             // the JSON doesn't parse (operator mid-edit).
             get selectorSummary() {
                 var raw = this.sourceSpecs.trim();
+                var truncate = function (s) {
+                    return s.length > 80 ? s.substring(0, 80) + "…" : s;
+                };
                 if (!raw) { return ""; }
                 var specs;
                 try {
                     specs = JSON.parse(raw);
                 } catch (_e) {
-                    return raw.substring(0, 80);
+                    return truncate(raw);
                 }
                 if (!Array.isArray(specs) || specs.length === 0) {
-                    return raw.substring(0, 80);
+                    return truncate(raw);
                 }
                 var algos = specs.map(function (s) {
                     return (s && s.extraction && s.extraction.algorithm) || "?";
@@ -440,10 +442,11 @@ document.addEventListener("alpine:init", function () {
             },
 
             // Handler for the url-check event bubbled by urlCheckDispatch.
+            // The payload's `case` field (A/B/new) is intentionally unconsumed
+            // here — only the domain fact feeds the summary bar.
             onUrlCheck: function (detail) {
                 if (!detail) { return; }
                 this.checkHostname = detail.hostname || "";
-                this.checkCase = detail.case || "";
                 this.checkDomainKnown = (detail.domain_known === undefined)
                     ? null
                     : Boolean(detail.domain_known);

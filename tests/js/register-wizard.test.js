@@ -109,11 +109,18 @@ describe("registerWizard selectorSummary", function () {
         expect(comp.selectorSummary).toBe("2 specs (css + regex)");
     });
 
-    it("falls back to truncated raw text on invalid JSON", function () {
+    it("falls back to truncated raw text with ellipsis on invalid JSON", function () {
         var comp = wizard({});
         comp.sourceSpecs = "not json {{{" + "x".repeat(200);
-        expect(comp.selectorSummary.length).toBeLessThanOrEqual(81);
         expect(comp.selectorSummary.startsWith("not json {{{")).toBe(true);
+        expect(comp.selectorSummary.endsWith("…")).toBe(true);
+        expect(comp.selectorSummary.length).toBe(81);
+    });
+
+    it("short invalid JSON is shown whole, no ellipsis", function () {
+        var comp = wizard({});
+        comp.sourceSpecs = "not json";
+        expect(comp.selectorSummary).toBe("not json");
     });
 });
 

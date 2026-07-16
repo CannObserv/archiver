@@ -46,8 +46,9 @@ Templates: `domains/list.html`, `domains/detail.html`, `domains/_notes_partial.h
 4-step flow: URL → Selector → Metadata → Review & Submit. Replaces `/dashboard/info-items/new`.
 See design doc `docs/plans/2026-06-04-dashboard-ux-redesign-design.md` for full spec.
 
-**Rolling step-summary bar** *(#53)*: `#wizard-summary`, rendered between the
-step-indicator badges and the form, visible from step 2 on (`x-show="step>=2"`).
+**Rolling step-summary bar** *(#53)*: `#wizard-summary` (`role="group"`,
+`aria-label="Completed steps"`), rendered between the step-indicator badges and
+the form, visible from step 2 on (`x-show="step>=2"`).
 Shows the values of completed steps as clickable chips (`.btn.btn--secondary.btn--sm`)
 that jump back to their step — same semantics as the step-4 Edit buttons:
 
@@ -395,18 +396,18 @@ Multi-step Information Item registration wizard. Manages step navigation and for
 **Factory args:**
 - `initialStep: number` — starting step (1–4; defaults to `1`). The server passes a non-1 value on validation re-renders to re-open at the failing step.
 
-**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`), `watchActive: boolean` (default `true`; "Watch active immediately" — false provisions paused), `checkHostname: string` / `checkCase: string` / `checkDomainKnown: boolean|null` (last url-check result, fed by `urlCheckDispatch`; `null` = no check landed yet) *(#53)*.
+**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`), `watchActive: boolean` (default `true`; "Watch active immediately" — false provisions paused), `checkHostname: string` / `checkDomainKnown: boolean|null` (last url-check result, fed by `urlCheckDispatch`; `null` = no check landed yet; the payload's `case` field is intentionally not stored — only the domain fact feeds the summary bar) *(#53)*.
 
 **Getters:**
 - `cadenceLabel` — returns the human-readable label for the selected cadence by reading the text of the matching `<option>` in `$refs.cadenceInput` (no hardcoded map; the server-rendered options are the single source). Shown in the Step 4 review row.
 - `watchActiveLabel` — returns "Active immediately" / "Paused" for the Step 4 review row.
 - `urlHostname` *(#53)* — hostname parsed client-side from `url` via `new URL()`; `""` when the URL doesn't parse.
 - `domainSummary` *(#53)* — `"known domain"` / `"new domain"` when the last url-check result matches the *current* `urlHostname` (guards against stale checks after the user edits the URL), else `""`.
-- `selectorSummary` *(#53)* — compact human summary of the `sourceSpecs` JSON: `css: .rule-title` (single spec), `full_page` (no selector), `2 specs (css + regex)` (multiple). Falls back to the raw text truncated to 80 chars while the JSON doesn't parse (operator mid-edit). Used by the summary bar and the Step 4 review Selector row.
+- `selectorSummary` *(#53)* — compact human summary of the `sourceSpecs` JSON: `css: .rule-title` (single spec), `full_page` (no selector), `2 specs (css + regex)` (multiple). Falls back to the raw text truncated to 80 chars + `…` while the JSON doesn't parse (operator mid-edit). Used by the summary bar and the Step 4 review Selector row (where `:title="sourceSpecs"` keeps the full JSON inspectable as a tooltip).
 
 **Methods:**
 - `init()` — copies **all** server-rendered field values into Alpine state via `$refs`: `urlInput` → `url`, `sourceSpecsInput` → `sourceSpecs`, `nameInput` → `itemName`, `descriptionInput` → `description`, `cadenceInput` → `cadence`, `watchActiveInput.checked` → `watchActive`. **Every `x-model`-bound field must be synced here** — `x-model` is data-authoritative at bind time, so any unsynced server-rendered value is wiped to `""` on validation-error re-renders (#53 regression; pinned by `tests/js/register-wizard-alpine.test.js` against the real Alpine build).
-- `onUrlCheck(detail)` *(#53)* — stores a bubbled url-check result (`{hostname, case, domain_known}`) into `checkHostname` / `checkCase` / `checkDomainKnown`.
+- `onUrlCheck(detail)` *(#53)* — stores a bubbled url-check result (`{hostname, case, domain_known}`) into `checkHostname` / `checkDomainKnown`.
 - `loadSuggestions()` — fires an HTMX GET to `/dashboard/register/suggest-specs?url=<encoded>`, targeting `#spec-suggestions-panel`. Called by the step-1 "Next" button.
 - `prepareSubmit()` — no-op; `x-model` keeps the textarea in sync without a manual step.
 

@@ -138,9 +138,13 @@ async def test_url_check_invalid_url_returns_400(client):
 
 
 def _dispatch_island(html: str) -> dict:
-    """Extract + parse the urlCheckDispatch JSON data island from a fragment."""
+    """Extract + parse the urlCheckDispatch JSON data island from a fragment.
+
+    Two-step match (element, then its first JSON script block) so template
+    whitespace/attribute reshuffles don't break the tests.
+    """
     m = re.search(
-        r'x-data="urlCheckDispatch"><script type="application/json">(.*?)</script>',
+        r'x-data="urlCheckDispatch"[^>]*>\s*<script type="application/json">(.*?)</script>',
         html,
         re.DOTALL,
     )
@@ -226,6 +230,26 @@ async def test_register_page_has_summary_bar(client):
     r = await client.get("/dashboard/register", headers=_HEADERS)
     assert r.status_code == 200
     assert 'id="wizard-summary"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_summary_bar_is_labelled_group(client):
+    """The summary bar is exposed to AT as a labelled group (#53 CR round 2)."""
+    r = await client.get("/dashboard/register", headers=_HEADERS)
+    # Attribute-aware tag match — a bare [^>]* would stop at the ">" inside
+    # x-show="step>=2".
+    m = re.search(r'<div id="wizard-summary"(?:[^>"]|"[^"]*")*>', r.text)
+    assert m, "wizard-summary element not found"
+    assert 'role="group"' in m.group(0)
+    assert 'aria-label="Completed steps"' in m.group(0)
+
+
+@pytest.mark.asyncio
+async def test_review_selector_row_exposes_full_specs_in_title(client):
+    """Step-4 review Selector cell carries the raw source_specs as a tooltip so
+    multi-spec bags stay inspectable despite the compact summary (#53 CR)."""
+    r = await client.get("/dashboard/register", headers=_HEADERS)
+    assert ':title="sourceSpecs"' in r.text
 
 
 @pytest.mark.asyncio

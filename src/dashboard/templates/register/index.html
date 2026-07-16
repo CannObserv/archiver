@@ -22,7 +22,8 @@
   {# Rolling step-summary bar (#53) — values from completed steps, visible from
      step 2 on. Each chip jumps back to its step (same semantics as the step-4
      Edit buttons). Values are reactive Alpine state; no server round-trips. #}
-  <div id="wizard-summary" x-show="step>=2" style="display:none;margin-bottom:var(--space-4);">
+  <div id="wizard-summary" x-show="step>=2" role="group" aria-label="Completed steps"
+       style="display:none;margin-bottom:var(--space-4);">
     <div style="display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;">
       <button type="button" class="btn btn--secondary btn--sm"
               @click="step=1" :title="'Edit step 1 — ' + url">
@@ -208,7 +209,7 @@
           </tr>
           <tr>
             <td class="data-table__cell text-muted text-sm">Selector</td>
-            <td class="data-table__cell"><code class="text-sm" x-text="selectorSummary"></code>
+            <td class="data-table__cell"><code class="text-sm" x-text="selectorSummary" :title="sourceSpecs"></code>
               <button type="button" class="btn btn--secondary btn--sm" @click="step=2">Edit</button>
             </td>
           </tr>
