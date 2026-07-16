@@ -140,11 +140,13 @@ async def test_url_check_invalid_url_returns_400(client):
 def _dispatch_island(html: str) -> dict:
     """Extract + parse the urlCheckDispatch JSON data island from a fragment.
 
-    Two-step match (element, then its first JSON script block) so template
-    whitespace/attribute reshuffles don't break the tests.
+    Attribute-aware element match (quoted attribute values may contain ">",
+    e.g. x-show="step>=2") followed by the element's first JSON script block,
+    so template whitespace/attribute reshuffles don't break the tests.
     """
     m = re.search(
-        r'x-data="urlCheckDispatch"[^>]*>\s*<script type="application/json">(.*?)</script>',
+        r'x-data="urlCheckDispatch"(?:[^>"]|"[^"]*")*>\s*'
+        r'<script type="application/json">(.*?)</script>',
         html,
         re.DOTALL,
     )
@@ -249,7 +251,9 @@ async def test_review_selector_row_exposes_full_specs_in_title(client):
     """Step-4 review Selector cell carries the raw source_specs as a tooltip so
     multi-spec bags stay inspectable despite the compact summary (#53 CR)."""
     r = await client.get("/dashboard/register", headers=_HEADERS)
-    assert ':title="sourceSpecs"' in r.text
+    # Adjacent to the summary binding — pins the tooltip to the review cell
+    # itself, not just anywhere on the page.
+    assert 'x-text="selectorSummary" :title="sourceSpecs"' in r.text
 
 
 @pytest.mark.asyncio
