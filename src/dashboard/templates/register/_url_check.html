@@ -1,3 +1,8 @@
+{% if not error and hostname %}
+{# Data island — bubbles the check result up to registerWizard for the rolling
+   step-summary bar (#53). Same pattern as previewNameDispatch. #}
+<div x-data="urlCheckDispatch"><script type="application/json">{{ {"hostname": hostname, "case": case, "domain_known": domain is not none} | tojson }}</script></div>
+{% endif %}
 {% if error %}
 <div class="filter-card" style="border-color:var(--color-danger,#c00);">
   <p class="text-sm text-danger">{{ error }}</p>

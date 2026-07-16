@@ -46,6 +46,24 @@ Templates: `domains/list.html`, `domains/detail.html`, `domains/_notes_partial.h
 4-step flow: URL → Selector → Metadata → Review & Submit. Replaces `/dashboard/info-items/new`.
 See design doc `docs/plans/2026-06-04-dashboard-ux-redesign-design.md` for full spec.
 
+**Rolling step-summary bar** *(#53)*: `#wizard-summary`, rendered between the
+step-indicator badges and the form, visible from step 2 on (`x-show="step>=2"`).
+Shows the values of completed steps as clickable chips (`.btn.btn--secondary.btn--sm`)
+that jump back to their step — same semantics as the step-4 Edit buttons:
+
+- **URL chip** (step ≥ 2) — the entered URL (CSS-truncated at 20rem, full value
+  in `title`) plus a parenthesised domain note: `(known domain: <host>)` /
+  `(new domain: <host>)` when a url-check result has landed for the current
+  hostname (`domainSummary` getter), else just `(<host>)` (`urlHostname` getter).
+- **Selector chip** (step ≥ 3) — `selectorSummary` getter: compact form of the
+  source_specs JSON (`css: .rule-title`, `full_page`, `2 specs (css + regex)`).
+  Also reused for the step-4 review Selector row.
+- **Name chip** (step ≥ 4) — `itemName`.
+
+Domain data reaches the wizard via the `urlCheckDispatch` data island inside the
+`_url_check.html` fragment (see component docs below); the root element listens
+with `@url-check.window="onUrlCheck($event.detail)"`.
+
 **Step 3 (Metadata) — Watcher settings (advanced)** *(#50)*: a collapsed
 `<details>` block exposes a **Fetch cadence** `<select.form-select>`
 (`name="cadence"`, `x-model="cadence"`, `x-ref="cadenceInput"`). The options and
@@ -377,31 +395,55 @@ Multi-step Information Item registration wizard. Manages step navigation and for
 **Factory args:**
 - `initialStep: number` — starting step (1–4; defaults to `1`). The server passes a non-1 value on validation re-renders to re-open at the failing step.
 
-**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`), `watchActive: boolean` (default `true`; "Watch active immediately" — false provisions paused).
+**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`), `watchActive: boolean` (default `true`; "Watch active immediately" — false provisions paused), `checkHostname: string` / `checkCase: string` / `checkDomainKnown: boolean|null` (last url-check result, fed by `urlCheckDispatch`; `null` = no check landed yet) *(#53)*.
 
 **Getters:**
 - `cadenceLabel` — returns the human-readable label for the selected cadence by reading the text of the matching `<option>` in `$refs.cadenceInput` (no hardcoded map; the server-rendered options are the single source). Shown in the Step 4 review row.
 - `watchActiveLabel` — returns "Active immediately" / "Paused" for the Step 4 review row.
+- `urlHostname` *(#53)* — hostname parsed client-side from `url` via `new URL()`; `""` when the URL doesn't parse.
+- `domainSummary` *(#53)* — `"known domain"` / `"new domain"` when the last url-check result matches the *current* `urlHostname` (guards against stale checks after the user edits the URL), else `""`.
+- `selectorSummary` *(#53)* — compact human summary of the `sourceSpecs` JSON: `css: .rule-title` (single spec), `full_page` (no selector), `2 specs (css + regex)` (multiple). Falls back to the raw text truncated to 80 chars while the JSON doesn't parse (operator mid-edit). Used by the summary bar and the Step 4 review Selector row.
 
 **Methods:**
-- `init()` — copies `$refs.urlInput.value` into `url`, `$refs.nameInput.value` into `itemName`, `$refs.cadenceInput.value` into `cadence`, and `$refs.watchActiveInput.checked` into `watchActive` so server-rendered field values (e.g. on validation error re-render) populate Alpine state.
+- `init()` — copies **all** server-rendered field values into Alpine state via `$refs`: `urlInput` → `url`, `sourceSpecsInput` → `sourceSpecs`, `nameInput` → `itemName`, `descriptionInput` → `description`, `cadenceInput` → `cadence`, `watchActiveInput.checked` → `watchActive`. **Every `x-model`-bound field must be synced here** — `x-model` is data-authoritative at bind time, so any unsynced server-rendered value is wiped to `""` on validation-error re-renders (#53 regression; pinned by `tests/js/register-wizard-alpine.test.js` against the real Alpine build).
+- `onUrlCheck(detail)` *(#53)* — stores a bubbled url-check result (`{hostname, case, domain_known}`) into `checkHostname` / `checkCase` / `checkDomainKnown`.
 - `loadSuggestions()` — fires an HTMX GET to `/dashboard/register/suggest-specs?url=<encoded>`, targeting `#spec-suggestions-panel`. Called by the step-1 "Next" button.
 - `prepareSubmit()` — no-op; `x-model` keeps the textarea in sync without a manual step.
 
 **Events:**
 - `@chip-insert.window` — receives chip inserts from `sortableChips` and writes the chip value into `sourceSpecs`. Wired on the root element.
 - `@preview-name` — receives bubbled `preview-name` events from `previewNameDispatch` children. Pre-fills `itemName` if still blank: `if (!itemName.trim()) itemName = $event.detail.name`. Wired on the root element.
+- `@url-check.window` *(#53)* — receives bubbled `url-check` events from `urlCheckDispatch` islands: `onUrlCheck($event.detail)`. Wired on the root element.
 
 **Usage:**
 ```html
 <div class="entity-section"
      x-data="registerWizard({{ initial_step|default(1) }})"
      @chip-insert.window="sourceSpecs = $event.detail.label"
-     @preview-name="if (!itemName.trim()) itemName = $event.detail.name">
+     @preview-name="if (!itemName.trim()) itemName = $event.detail.name"
+     @url-check.window="onUrlCheck($event.detail)">
   ...
   <input x-ref="urlInput" x-model="url" ...>
+  <textarea x-ref="sourceSpecsInput" x-model="sourceSpecs" ...></textarea>
   <input x-ref="nameInput" x-model="itemName" ...>
+  <textarea x-ref="descriptionInput" x-model="description" ...></textarea>
 </div>
+```
+
+JS tests: `tests/js/register-wizard.test.js` (unit, stub Alpine) and `tests/js/register-wizard-alpine.test.js` (init-sync regression against the real vendored Alpine).
+
+### `urlCheckDispatch` Alpine Component  *(#53 — implemented)*
+
+One-shot event dispatcher, identical in shape to `previewNameDispatch`: reads the url-check result from a JSON data island child element and fires a bubbling `url-check` custom event. Emitted by the `_url_check.html` HTMX partial (all non-error branches) so the wizard's rolling summary bar can show `known domain` / `new domain` beside the URL after step 1.
+
+**Events dispatched:** `url-check` (bubbles) with payload `{ hostname: string, case: "A"|"B"|"new", domain_known: boolean }`.
+
+**Usage:**
+```html
+{# Top of _url_check.html, before the case cards #}
+{% if not error and hostname %}
+<div x-data="urlCheckDispatch"><script type="application/json">{{ {"hostname": hostname, "case": case, "domain_known": domain is not none} | tojson }}</script></div>
+{% endif %}
 ```
 
 ### `previewNameDispatch` Alpine Component  *(#49 — implemented)*

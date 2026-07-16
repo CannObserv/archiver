@@ -16,7 +16,9 @@ export default [
                 navigator: "readonly",
                 setTimeout: "readonly",
                 clearTimeout: "readonly",
-                CustomEvent: "readonly"
+                CustomEvent: "readonly",
+                Event: "readonly",
+                URL: "readonly"
             }
         },
         rules: {

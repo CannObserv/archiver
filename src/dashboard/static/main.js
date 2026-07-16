@@ -283,6 +283,28 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * Url-check dispatcher — reads the url-check result ({hostname, case,
+     * domain_known}) from a JSON data island child element and bubbles a
+     * 'url-check' event to parent scopes. The registerWizard component
+     * catches it with @url-check.window and feeds the rolling step-summary
+     * bar (#53).
+     *
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("urlCheckDispatch", function () {
+        return {
+            init: function () {
+                var s = this.$el.querySelector('script[type="application/json"]');
+                if (!s) { return; }
+                try {
+                    var payload = JSON.parse(s.textContent || "");
+                    if (payload) { this.$dispatch("url-check", payload); }
+                } catch (_e) { /* malformed JSON — skip dispatch */ }
+            }
+        };
+    });
+
+    /**
      * Rep-fields JSON editor — wraps the rep_fields <textarea> + the
      * sortableChips suggestion strip that lives above it.
      *
@@ -331,6 +353,11 @@ document.addEventListener("alpine:init", function () {
             // "Watch active immediately" — when false, the item is provisioned
             // paused in Watcher. Defaults on; synced from the checkbox in init().
             watchActive: true,
+            // Last url-check result, delivered by the urlCheckDispatch data
+            // island inside the HTMX #url-check-result fragment (#53).
+            checkHostname: "",
+            checkCase: "",
+            checkDomainKnown: null,
 
             // Human-readable label for the selected Watcher fetch cadence, shown
             // in the Step 4 review summary. Reads the label off the server-rendered
@@ -349,15 +376,77 @@ document.addEventListener("alpine:init", function () {
                 return this.watchActive ? "Active immediately" : "Paused";
             },
 
+            // Hostname derived client-side from the url field; empty when the
+            // url doesn't parse. Used by the rolling summary bar (#53).
+            get urlHostname() {
+                try {
+                    return new URL(this.url).hostname;
+                } catch (_e) {
+                    return "";
+                }
+            },
+
+            // "known domain" / "new domain" from the last url-check, or "" when
+            // no check has landed for the *current* hostname (guards against a
+            // stale check after the user edits the URL).
+            get domainSummary() {
+                if (!this.urlHostname || this.checkHostname !== this.urlHostname) { return ""; }
+                if (this.checkDomainKnown === null) { return ""; }
+                return this.checkDomainKnown ? "known domain" : "new domain";
+            },
+
+            // Compact human summary of the sourceSpecs JSON for the summary bar
+            // and the step-4 review table: "css: .rule-title", "full_page", or
+            // "2 specs (css + regex)". Falls back to truncated raw text when
+            // the JSON doesn't parse (operator mid-edit).
+            get selectorSummary() {
+                var raw = this.sourceSpecs.trim();
+                if (!raw) { return ""; }
+                var specs;
+                try {
+                    specs = JSON.parse(raw);
+                } catch (_e) {
+                    return raw.substring(0, 80);
+                }
+                if (!Array.isArray(specs) || specs.length === 0) {
+                    return raw.substring(0, 80);
+                }
+                var algos = specs.map(function (s) {
+                    return (s && s.extraction && s.extraction.algorithm) || "?";
+                });
+                if (specs.length > 1) {
+                    return specs.length + " specs (" + algos.join(" + ") + ")";
+                }
+                var extraction = (specs[0] && specs[0].extraction) || {};
+                if (extraction.selector) {
+                    return algos[0] + ": " + extraction.selector;
+                }
+                return algos[0];
+            },
+
             init: function () {
                 var urlEl = this.$refs.urlInput;
                 if (urlEl && urlEl.value) { this.url = urlEl.value; }
+                var specsEl = this.$refs.sourceSpecsInput;
+                if (specsEl && specsEl.value) { this.sourceSpecs = specsEl.value; }
                 var nameEl = this.$refs.nameInput;
                 if (nameEl && nameEl.value) { this.itemName = nameEl.value; }
+                var descEl = this.$refs.descriptionInput;
+                if (descEl && descEl.value) { this.description = descEl.value; }
                 var cadEl = this.$refs.cadenceInput;
                 if (cadEl && cadEl.value) { this.cadence = cadEl.value; }
                 var waEl = this.$refs.watchActiveInput;
                 if (waEl) { this.watchActive = waEl.checked; }
+            },
+
+            // Handler for the url-check event bubbled by urlCheckDispatch.
+            onUrlCheck: function (detail) {
+                if (!detail) { return; }
+                this.checkHostname = detail.hostname || "";
+                this.checkCase = detail.case || "";
+                this.checkDomainKnown = (detail.domain_known === undefined)
+                    ? null
+                    : Boolean(detail.domain_known);
             },
 
             loadSuggestions: function () {

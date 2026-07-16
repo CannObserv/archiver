@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -133,6 +135,106 @@ async def test_url_check_invalid_url_returns_400(client):
         headers=_HEADERS,
     )
     assert r.status_code in (200, 400, 422)
+
+
+def _dispatch_island(html: str) -> dict:
+    """Extract + parse the urlCheckDispatch JSON data island from a fragment."""
+    m = re.search(
+        r'x-data="urlCheckDispatch"><script type="application/json">(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    assert m, "urlCheckDispatch data island not found in fragment"
+    return json.loads(m.group(1))
+
+
+@pytest.mark.asyncio
+async def test_url_check_dispatch_island_known_domain(client, session):
+    """url-check fragment carries a JSON island for the wizard summary bar (#53)."""
+    session.add(Domain(name="island-known.example.com"))
+    await session.flush()
+
+    r = await client.get(
+        "/dashboard/register/url-check?url=https://island-known.example.com/p",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    payload = _dispatch_island(r.text)
+    assert payload == {
+        "hostname": "island-known.example.com",
+        "case": "new",
+        "domain_known": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_url_check_dispatch_island_new_domain(client):
+    r = await client.get(
+        "/dashboard/register/url-check?url=https://island-new.example.com/p",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    payload = _dispatch_island(r.text)
+    assert payload == {
+        "hostname": "island-new.example.com",
+        "case": "new",
+        "domain_known": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_url_check_dispatch_island_case_a(client, session):
+    """The island is emitted on Case A/B cards too, not just the domain badge."""
+    src = InfoSource(
+        url="https://island-a.example.com/page",
+        source_specs=[
+            {"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}
+        ],
+    )
+    item = InfoItem(name="Island Item A")
+    session.add_all([src, item])
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    r = await client.get(
+        "/dashboard/register/url-check?url=https://island-a.example.com/page",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    payload = _dispatch_island(r.text)
+    assert payload["hostname"] == "island-a.example.com"
+    assert payload["case"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_url_check_invalid_url_has_no_dispatch_island(client):
+    r = await client.get(
+        "/dashboard/register/url-check?url=not-a-url",
+        headers=_HEADERS,
+    )
+    assert "urlCheckDispatch" not in r.text
+
+
+# ---------------------------------------------------------------------------
+# Rolling step-summary bar (#53)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_page_has_summary_bar(client):
+    r = await client.get("/dashboard/register", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'id="wizard-summary"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_register_page_textareas_carry_sync_refs(client):
+    """source_specs / description textareas expose x-refs so registerWizard
+    init() can re-sync server-rendered values on validation-error re-renders."""
+    r = await client.get("/dashboard/register", headers=_HEADERS)
+    assert 'x-ref="sourceSpecsInput"' in r.text
+    assert 'x-ref="descriptionInput"' in r.text
 
 
 # ---------------------------------------------------------------------------

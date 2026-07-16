@@ -214,7 +214,9 @@ All components are registered via `window.Alpine.data('name', factory)` inside a
 | `repFieldsEditor` | `main.js` | Wrapper for the rep_fields textarea + suggestion strip. Listens for `chip-insert` window events and merges the key into the existing JSON object. Usage: `x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)"`. Full docs in `docs/UI.md`. |
 | `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
 | `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
-| `registerWizard` | `register/index.html` | 4-step registration wizard (client-side only; inline script in the template). |
+| `registerWizard` | `main.js` | 4-step registration wizard state: step navigation, field state synced from server-rendered values in `init()` (every `x-model` field must be synced there or validation re-renders wipe it — #53), rolling step-summary bar getters (`urlHostname`, `domainSummary`, `selectorSummary`). Full docs in `docs/UI.md`. |
+| `previewNameDispatch` | `main.js` | One-shot dispatcher: bubbles a `preview-name` event from a JSON data island inside the preview-result fragment. Full docs in `docs/UI.md`. |
+| `urlCheckDispatch` | `main.js` | One-shot dispatcher (#53): bubbles a `url-check` event (`{hostname, case, domain_known}`) from a JSON data island inside the `_url_check.html` fragment; feeds the wizard's rolling summary bar. Full docs in `docs/UI.md`. |
 
 ---
 

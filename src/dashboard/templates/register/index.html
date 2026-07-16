@@ -5,7 +5,8 @@
 {% block content %}
 <div class="entity-section" x-data="registerWizard({{ initial_step|default(1) }})"
      @chip-insert.window="sourceSpecs = $event.detail.label"
-     @preview-name="if (!itemName.trim()) itemName = $event.detail.name">
+     @preview-name="if (!itemName.trim()) itemName = $event.detail.name"
+     @url-check.window="onUrlCheck($event.detail)">
   <div class="entity-section__header">
     <h1 class="entity-section__title">Register Information Item</h1>
   </div>
@@ -16,6 +17,32 @@
     <span :class="step>=2 ? 'badge badge--info' : 'badge badge--neutral'">2 Selector</span>
     <span :class="step>=3 ? 'badge badge--info' : 'badge badge--neutral'">3 Metadata</span>
     <span :class="step>=4 ? 'badge badge--info' : 'badge badge--neutral'">4 Review</span>
+  </div>
+
+  {# Rolling step-summary bar (#53) — values from completed steps, visible from
+     step 2 on. Each chip jumps back to its step (same semantics as the step-4
+     Edit buttons). Values are reactive Alpine state; no server round-trips. #}
+  <div id="wizard-summary" x-show="step>=2" style="display:none;margin-bottom:var(--space-4);">
+    <div style="display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;">
+      <button type="button" class="btn btn--secondary btn--sm"
+              @click="step=1" :title="'Edit step 1 — ' + url">
+        <span class="text-muted">URL</span>
+        <span x-text="url"
+              style="max-width:20rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom;"></span>
+        <span class="text-muted" x-show="urlHostname"
+              x-text="domainSummary ? '(' + domainSummary + ': ' + urlHostname + ')' : '(' + urlHostname + ')'"></span>
+      </button>
+      <button type="button" class="btn btn--secondary btn--sm" x-show="step>=3"
+              @click="step=2" title="Edit step 2 — selector">
+        <span class="text-muted">Selector</span>
+        <code class="text-sm" x-text="selectorSummary"></code>
+      </button>
+      <button type="button" class="btn btn--secondary btn--sm" x-show="step>=4"
+              @click="step=3" title="Edit step 3 — metadata">
+        <span class="text-muted">Name</span>
+        <span x-text="itemName"></span>
+      </button>
+    </div>
   </div>
 
   <form method="post" action="/dashboard/register" @submit="prepareSubmit">
@@ -75,7 +102,7 @@
         {# Spec editor #}
         <div>
           <label for="reg-source-specs" class="form-label">Information Source Specification (JSON):</label>
-          <textarea id="reg-source-specs" name="source_specs" x-model="sourceSpecs"
+          <textarea id="reg-source-specs" name="source_specs" x-model="sourceSpecs" x-ref="sourceSpecsInput"
                     class="form-textarea code-block" rows="6"
                     placeholder='[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
                     style="font-size:0.85rem;">{{ source_specs_value or '' }}</textarea>
@@ -121,7 +148,7 @@
         </div>
         <div>
           <label for="reg-desc" class="form-label">Description</label>
-          <textarea id="reg-desc" name="description" x-model="description"
+          <textarea id="reg-desc" name="description" x-model="description" x-ref="descriptionInput"
                     class="form-textarea" rows="3" maxlength="2000">{{ description_value or '' }}</textarea>
         </div>
         <div>
@@ -181,7 +208,7 @@
           </tr>
           <tr>
             <td class="data-table__cell text-muted text-sm">Selector</td>
-            <td class="data-table__cell"><code class="text-sm" x-text="sourceSpecs.substring(0,100)"></code>
+            <td class="data-table__cell"><code class="text-sm" x-text="selectorSummary"></code>
               <button type="button" class="btn btn--secondary btn--sm" @click="step=2">Edit</button>
             </td>
           </tr>
