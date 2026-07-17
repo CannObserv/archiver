@@ -224,6 +224,59 @@ Textarea-based JSON object editor with format-on-blur and inline validation.
 
 ---
 
+## Detail Screen Conventions
+
+Canonical patterns for entity **detail** pages. The Source Revision detail
+(`source_revisions/detail.html` + `_detail_card.html`) is the reference
+implementation (archiver#78); other detail screens should converge on these.
+
+**Header.** An `.entity-card` whose `.entity-card__header` contains, in order:
+1. An `.eyebrow` kicker naming the entity kind, singular (e.g. "Information
+   Source Revision"). Non-interactive — replaces the older breadcrumb `<nav>`.
+2. An `<h1 class="entity-card__title" id="…-heading" tabindex="-1">` whose
+   content is the entity's identity — for ULID-keyed entities, the copyable
+   ULID (see `copyable`). The `id`+`tabindex="-1"` make it a focus target for
+   post-swap focus moves (see HTMX mutations).
+
+**Detail grid.** `.detail-grid` with `.detail-grid__item` → `.detail-grid__label`
++ `.detail-grid__value` children (never bare `<dl><dt><dd>` — those misalign
+against the CSS grid). Long single-line values (fingerprints, URLs) go on a
+full-width row via `.detail-grid__item--full` so they extend horizontally
+instead of cramping into one ~200px track. Timestamps are UTC-suffixed
+(`%Y-%m-%d %H:%M UTC`) everywhere, including table cells.
+
+**Copy affordance.** `copyable(value)` (currently in `_detail_card.html`;
+being promoted to `_macros.html`) — a monospace value plus a `.btn--secondary
+.btn--sm` "Copy" button ("Copy"→"Copied ✓" for 1.5 s). The value is bound via
+`|tojson` to an Alpine data prop and copied through it — never spliced into the
+handler's JS source — so arbitrary DB strings cannot break out of the JS
+context.
+
+**External-open affordance.** `open_button(url, label="Open")` from
+`_macros.html` — a link styled as a `.btn--secondary .btn--sm` button ("Open
+↗"), `target=_blank rel=noopener noreferrer`, modeled on the Copy button so
+opening a URL reads as a distinct action separated from the displayed value.
+Used for every external URL (source URLs, RepSpec `public_url`, http(s)
+`content_cache_uri`). Section-header deeplinks styled as headings (e.g. the
+InfoItem "Watcher ↗" `<h2>`) are intentionally exempt.
+
+**HTMX mutations.** A mutating action on a detail page re-renders the affected
+region in place rather than full-page reloading: extract the region to a
+partial with a stable `id`, post via `hx-post`/`hx-patch` with
+`hx-target="#…" hx-swap="outerHTML"` (+ `hx-confirm` for destructive ones), and
+return the re-rendered partial with `HX-Trigger: {"showFlash": {...}}` for a
+success toast (see **Flash messages**). Keep a `method`/`action` fallback on the
+form so it still works as a plain POST→303 without JS (progressive
+enhancement). Emit a focus-move `<script>` in the swap response only (gated on a
+`swapped` flag) so keyboard focus lands on the region heading rather than
+`<body>`.
+
+**Related-collection tables.** `.data-table` with the row count in the `<h2>`
+heading (e.g. "Bound Information Items (3)"). Cache state uses the
+`.status-pill--cached/expired/missing` pills, not `.badge` variants. A
+succession/currency status (e.g. a revision being an item's "current pin" vs
+"superseded") is a `.badge--primary`/`.badge--muted` column.
+
 ## Page Inventory
 
 ### Home (`/dashboard/`)  *(Epic 7 — implemented)*
