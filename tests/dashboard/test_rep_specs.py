@@ -185,6 +185,33 @@ async def test_detail_public_url_open_button(client, session):
     assert ">Open ↗</a>" in r.text
 
 
+@pytest.mark.asyncio
+async def test_detail_non_http_public_url_gets_no_open_button(client, session):
+    """A non-http(s) public_url (gs://, or a javascript: injection attempt) gets
+    no clickable Open affordance — open_button guards the scheme (#78 CR7)."""
+    spec = _make_rep_spec("Non-HTTP Spec")
+    session.add(spec)
+    await session.flush()
+
+    item = InfoItem(name="Non-HTTP Item")
+    session.add(item)
+    await session.flush()
+
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+        public_url="javascript:alert(document.cookie)",
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert ">Open ↗</a>" not in r.text
+    assert 'href="javascript:' not in r.text
+
+
 # ---------------------------------------------------------------------------
 # GET /dashboard/rep-specs/new
 # ---------------------------------------------------------------------------

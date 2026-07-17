@@ -136,6 +136,20 @@ async def test_domain_detail_archive_in_danger_zone(client, session):
 
 
 @pytest.mark.asyncio
+async def test_domain_archive_confirm_is_static(client, session):
+    """The Archive confirm message is static — the domain name is not spliced
+    into the onclick JS (names are unvalidated; avoid injection) (#78 CR8)."""
+    # A crafted name with a quote would break an interpolated confirm() string.
+    session.add(_make_domain("ev'il.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/ev'il.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "confirm('Archive this domain?')" in r.text
+    assert "Archive ev'il.example.com?" not in r.text
+
+
+@pytest.mark.asyncio
 async def test_domain_detail_archived_shows_restore_in_danger_zone(client, session):
     """Archived domain: Restore action lives in the danger-zone block (#82)."""
     session.add(

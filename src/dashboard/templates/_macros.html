@@ -19,9 +19,16 @@
 {# External-open affordance. A link styled as a small secondary button (modeled
    on the "Copy" affordance) so opening a target URL reads as a distinct action,
    cleanly separated from the displayed value. Always opens in a new tab with
-   rel=noopener. Anchor (not <button>) because it is navigation. #}
+   rel=noopener. Anchor (not <button>) because it is navigation.
+
+   Scheme-guarded: only http(s) URLs get a clickable link. Non-http values
+   (provider-native gs://, s3://, or a javascript: injection attempt) render
+   nothing — you can't browser-open them, and this neutralizes javascript: URLs
+   from unvalidated fields like RepSpec public_url (archiver#78). #}
 {% macro open_button(url, label="Open") -%}
+{%- if url and (url.startswith('http://') or url.startswith('https://')) -%}
 <a href="{{ url }}" target="_blank" rel="noopener noreferrer"
    class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
    aria-label="Open {{ url }} in new tab">{{ label }} ↗</a>
+{%- endif -%}
 {%- endmacro %}
