@@ -159,7 +159,7 @@ async def detail_source_revision(
             .scalars()
             .all()
         )
-        latest: dict[ULID, tuple] = {}
+        latest: dict[ULID, tuple[tuple[datetime, str], ULID]] = {}
         for b in all_bindings:
             key = (b.bound_at, str(b.source_revision_id))
             cur = latest.get(b.info_item_id)
@@ -211,7 +211,13 @@ async def clear_revision_cache(
         response = _templates.TemplateResponse(
             request,
             "source_revisions/_detail_card.html",
-            {"user": user, "rev": rev, "source": source, "now": datetime.now(UTC)},
+            {
+                "user": user,
+                "rev": rev,
+                "source": source,
+                "now": datetime.now(UTC),
+                "swapped": True,
+            },
         )
         response.headers["HX-Trigger"] = json.dumps(
             {"showFlash": {"level": "success", "body": "Cache fields cleared."}}

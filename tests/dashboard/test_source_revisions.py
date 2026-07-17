@@ -327,6 +327,52 @@ async def test_detail_http_cache_uri_is_linked(client, session):
 
 
 @pytest.mark.asyncio
+async def test_copyable_binds_cache_uri_as_data_no_js_breakout(client, session):
+    """A crafted cache URI cannot break out of the copy handler's JS context (#78 CR1).
+
+    The value is bound via ``|tojson`` and copied through a reactive property, so a
+    single quote is escaped (``\\u0027``) rather than spliced raw into ``writeText('…')``.
+    """
+    src = _make_source("https://example.com/rev-copy-escape")
+    session.add(src)
+    await session.flush()
+    rev = SourceRevision(
+        info_source_id=src.info_source_id,
+        content_fingerprint="sha256:" + "a" * 64,
+        captured_at=datetime(2026, 3, 1, tzinfo=UTC),
+        content_cache_uri="gs://bucket/x'quote",
+    )
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    # Copied via the reactive property, never spliced into JS source.
+    assert "writeText(v)" in r.text
+    assert "writeText('" not in r.text
+    # The single quote is escaped in the bound data, and the raw form never appears.
+    assert "x'quote" not in r.text
+    assert "x\\u0027quote" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_full_page_does_not_steal_focus(client, session):
+    """Full-page render exposes a focusable heading but does not auto-focus it (#78 CR3)."""
+    src = _make_source("https://example.com/rev-focus")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "b" * 64)
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'id="revision-heading"' in r.text
+    # No focus-move script on a plain page load — only after an HTMX swap.
+    assert 'getElementById("revision-heading")' not in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_nonhttp_cache_uri_shown_not_linked(client, session):
     """A gs:// cache URI is shown (copyable) but not wrapped in an href (#78)."""
     src = _make_source("https://example.com/rev-gs-cache")
@@ -418,6 +464,8 @@ async def test_clear_cache_htmx_returns_partial_and_flash(client, session):
     assert r.status_code == 200
     assert "showFlash" in r.headers.get("HX-Trigger", "")
     assert "not cached" in r.text
+    # Focus moves to the heading after the swap (#78 CR3).
+    assert 'getElementById("revision-heading")' in r.text
     await session.refresh(rev)
     assert rev.content_cache_uri is None
     assert rev.content_cache_expires_at is None

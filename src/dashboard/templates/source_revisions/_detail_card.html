@@ -1,8 +1,13 @@
+{# Copy affordance. The value is bound as data via |tojson (properly-escaped JS
+   literal) and copied through the reactive `v` property — never spliced into the
+   handler's JS source — so arbitrary DB strings (e.g. content_cache_uri) cannot
+   break out of the string context (archiver#78). Single-quoted x-data attribute
+   because tojson escapes ' but not " (its JSON strings use "). #}
 {% macro copyable(value) %}
-<code x-data="{copied:false}">
+<code x-data='{ "copied": false, "v": {{ value|string|tojson }} }'>
   <span>{{ value }}</span>
   <button type="button" class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
-          @click="navigator.clipboard && navigator.clipboard.writeText('{{ value }}').then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
+          @click="navigator.clipboard && navigator.clipboard.writeText(v).then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
           x-text="copied ? 'Copied ✓' : 'Copy'">Copy</button>
 </code>
 {% endmacro %}
@@ -17,7 +22,7 @@
         </a>
         <span aria-hidden="true"> / </span>
       </nav>
-      <h1 class="entity-card__title">
+      <h1 class="entity-card__title" id="revision-heading" tabindex="-1">
         <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
       </h1>
       <p class="entity-card__id text-sm text-muted">{{ copyable(rev.source_revision_id) }}</p>
@@ -109,5 +114,18 @@
       <button type="submit" class="btn btn--danger btn--sm">Clear Cache</button>
     </form>
   </div>
+  {% endif %}
+
+  {% if swapped %}
+  {# After an HTMX card swap the Clear-Cache button is gone; move focus to the
+     heading so keyboard users aren't dropped to <body> (archiver#78). Rendered
+     only for the swap response — never on a full page load, to avoid focus theft.
+     htmx executes inline scripts in swapped fragments. #}
+  <script>
+    (function () {
+      var h = document.getElementById("revision-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
   {% endif %}
 </div>
