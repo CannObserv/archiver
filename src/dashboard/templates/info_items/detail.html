@@ -89,7 +89,7 @@
               {{ spec_summary_by_source_id.get(binding.info_source_id) or '—' }}
             </td>
             <td class="data-table__cell data-table__cell--muted text-sm">
-              {{ binding.created_at.strftime('%Y-%m-%d') }}
+              {{ binding.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
             </td>
             <td class="data-table__cell">
               {% if loop.first %}
@@ -173,13 +173,17 @@
             {% endif %}
           </td>
           <td class="data-table__cell data-table__cell--muted text-sm">
-            {% if rev %}{{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+            {% if rev %}{{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}—{% endif %}
           </td>
           <td class="data-table__cell">
             {% if rev and rev.content_cache_uri %}
-            <span class="badge badge--success text-sm">cached</span>
+              {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
+              <span class="status-pill status-pill--expired">expired</span>
+              {% else %}
+              <span class="status-pill status-pill--cached">cached</span>
+              {% endif %}
             {% else %}
-            <span class="badge badge--muted text-sm">—</span>
+            <span class="status-pill status-pill--missing">—</span>
             {% endif %}
           </td>
         </tr>

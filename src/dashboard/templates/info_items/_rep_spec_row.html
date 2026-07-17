@@ -1,4 +1,5 @@
 {# Partial: single rep-spec assignment row — returned by PATCH public-url. #}
+{% from "_macros.html" import open_button %}
 <tr id="rs-row-{{ assignment.id }}">
   <td class="data-table__cell">
     {% if rep_spec %}
@@ -9,7 +10,7 @@
     {% endif %}
   </td>
   <td class="data-table__cell data-table__cell--muted">
-    {{ assignment.activated_at.strftime('%Y-%m-%d') }}
+    {{ assignment.activated_at.strftime('%Y-%m-%d %H:%M UTC') }}
   </td>
   <td class="data-table__cell">
     <form hx-patch="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}/public-url"
@@ -20,6 +21,7 @@
              class="form-input form-input--inline" placeholder="https://…"
              aria-label="Public URL for {{ rep_spec.name if rep_spec else assignment.rep_spec_id }}">
       <button type="submit" class="btn btn--sm btn--ghost">Save</button>
+      {% if assignment.public_url %}{{ open_button(assignment.public_url) }}{% endif %}
     </form>
   </td>
   <td class="data-table__cell">

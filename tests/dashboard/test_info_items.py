@@ -391,6 +391,69 @@ async def test_detail_uses_entity_card_eyebrow(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_revision_history_uses_status_pill(client, session):
+    """Revision History cache column uses status-pill (cached/expired/missing),
+    not badge--success, and captured_at is UTC-suffixed (#81)."""
+    item = _make_item("Rev-Pill Item")
+    session.add(item)
+    await session.flush()
+    source = _make_source("https://example.com/rev-pill")
+    session.add(source)
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    rev = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:" + "a" * 10,
+        captured_at=datetime(2026, 2, 3, 8, 15, tzinfo=UTC),
+        content_cache_uri="gs://bucket/x.json",
+    )
+    session.add(rev)
+    await session.flush()
+    session.add(
+        InfoItemSourceRevision(
+            info_item_id=item.info_item_id,
+            source_revision_id=rev.source_revision_id,
+            bound_at=datetime(2026, 2, 3, 8, 15, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "status-pill status-pill--cached" in r.text
+    assert "badge--success" not in r.text
+    assert "2026-02-03 08:15 UTC" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_rep_spec_public_url_open_button(client, session):
+    """Replicator assignment public_url gets an Open button; activated_at UTC (#81)."""
+    item = _make_item("Pub-Open Item")
+    session.add(item)
+    await session.flush()
+    rs = _make_rep_spec("Pub-Open Spec")
+    session.add(rs)
+    await session.flush()
+    session.add(
+        InfoItemRepSpec(
+            info_item_id=item.info_item_id,
+            rep_spec_id=rs.rep_spec_id,
+            activated_at=datetime(2026, 2, 4, 9, 0, tzinfo=UTC),
+            public_url="https://cdn.example.com/out.json",
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'href="https://cdn.example.com/out.json"' in r.text
+    assert ">Open ↗</a>" in r.text
+    assert "2026-02-04 09:00 UTC" in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_shows_active_source_binding(client, session):
     item = _make_item("Tabbed Item")
     session.add(item)
