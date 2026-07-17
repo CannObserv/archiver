@@ -245,8 +245,8 @@ full-width row via `.detail-grid__item--full` so they extend horizontally
 instead of cramping into one ~200px track. Timestamps are UTC-suffixed
 (`%Y-%m-%d %H:%M UTC`) everywhere, including table cells.
 
-**Copy affordance.** `copyable(value)` (currently in `_detail_card.html`;
-being promoted to `_macros.html`) — a monospace value plus a `.btn--secondary
+**Copy affordance.** `copyable(value)` from `_macros.html` — a monospace value
+plus a `.btn--secondary
 .btn--sm` "Copy" button ("Copy"→"Copied ✓" for 1.5 s). The value is bound via
 `|tojson` to an Alpine data prop and copied through it — never spliced into the
 handler's JS source — so arbitrary DB strings cannot break out of the JS

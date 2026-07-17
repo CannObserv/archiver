@@ -1,17 +1,4 @@
-{% from "_macros.html" import open_button %}
-{# Copy affordance. The value is bound as data via |tojson (properly-escaped JS
-   literal) and copied through the reactive `v` property — never spliced into the
-   handler's JS source — so arbitrary DB strings (e.g. content_cache_uri) cannot
-   break out of the string context (archiver#78). Single-quoted x-data attribute
-   because tojson escapes ' but not " (its JSON strings use "). #}
-{% macro copyable(value) %}
-<code x-data='{ "copied": false, "v": {{ value|string|tojson }} }'>
-  <span>{{ value }}</span>
-  <button type="button" class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
-          @click="navigator.clipboard && navigator.clipboard.writeText(v).then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
-          x-text="copied ? 'Copied ✓' : 'Copy'">Copy</button>
-</code>
-{% endmacro %}
+{% from "_macros.html" import copyable, open_button %}
 
 {# Header card — swapped in place by the HTMX clear-cache action (id target). #}
 <div class="entity-card" id="revision-card">

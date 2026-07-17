@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import open_button %}
+{% from "_macros.html" import copyable, open_button %}
 {% block title %}{{ item.name }}{% endblock %}
 
 {% block content %}
@@ -16,12 +16,7 @@
       <div>
         <h1 style="margin:0 0 var(--space-1);">{{ item.name }}</h1>
         <p class="text-muted text-sm" style="margin:0 0 var(--space-2);">
-          <code x-data="{copied:false}">
-            <span>{{ item.info_item_id }}</span>
-            <button type="button" class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
-                    @click="navigator.clipboard && navigator.clipboard.writeText('{{ item.info_item_id }}').then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
-                    x-text="copied ? 'Copied ✓' : 'Copy'">Copy</button>
-          </code>
+          {{ copyable(item.info_item_id) }}
         </p>
         {% set primary_src = sources_by_id.get(iis_rows[0].info_source_id) if iis_rows else none %}
         {% if primary_src and primary_src.domain_name %}

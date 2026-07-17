@@ -1,6 +1,20 @@
 {# Shared dashboard Jinja macros. Import per-template:
-     {% from "_macros.html" import open_button %}
+     {% from "_macros.html" import copyable, open_button %}
    Keep these presentational and dependency-free. #}
+
+{# Copy affordance. The value is bound as data via |tojson (properly-escaped JS
+   literal) and copied through the reactive `v` property — never spliced into the
+   handler's JS source — so arbitrary DB strings cannot break out of the string
+   context (archiver#78). Single-quoted x-data attribute because tojson escapes '
+   but not " (its JSON strings use "). #}
+{% macro copyable(value) -%}
+<code x-data='{ "copied": false, "v": {{ value|string|tojson }} }'>
+  <span>{{ value }}</span>
+  <button type="button" class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
+          @click="navigator.clipboard && navigator.clipboard.writeText(v).then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
+          x-text="copied ? 'Copied ✓' : 'Copy'">Copy</button>
+</code>
+{%- endmacro %}
 
 {# External-open affordance. A link styled as a small secondary button (modeled
    on the "Copy" affordance) so opening a target URL reads as a distinct action,

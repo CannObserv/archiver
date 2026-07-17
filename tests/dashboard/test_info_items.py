@@ -361,6 +361,21 @@ async def test_detail_returns_200_with_name(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_ulid_uses_shared_copyable_macro(client, session):
+    """The ULID copy affordance uses the shared, hardened `copyable` macro
+    (value bound via |tojson → writeText(v)), not an inline writeText('...')."""
+    item = _make_item("Copyable Canary")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "navigator.clipboard" in r.text
+    assert "writeText(v)" in r.text
+    assert "writeText('" not in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_shows_active_source_binding(client, session):
     item = _make_item("Tabbed Item")
     session.add(item)
