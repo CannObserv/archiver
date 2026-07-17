@@ -1,41 +1,42 @@
 {% extends "base.html" %}
-{% from "_macros.html" import open_button %}
+{% from "_macros.html" import copyable, open_button %}
 
 {% block title %}{{ domain.name }}{% endblock %}
 
 {% block content %}
 <div class="entity-section">
-  <div class="entity-section__header">
-    <h1 class="entity-section__title">{{ domain.name }}</h1>
-    <div style="display:flex;gap:var(--space-2);">
-      {% if domain.archived_at %}
-      <form method="post" action="/dashboard/domains/{{ domain.name }}/restore">
-        <button type="submit" class="btn btn--ghost">Restore</button>
-      </form>
-      {% else %}
-      <form method="post" action="/dashboard/domains/{{ domain.name }}/archive">
-        <button type="submit" class="btn btn--ghost">Archive</button>
-      </form>
-      {% endif %}
+
+  {# Header #}
+  <div class="entity-card">
+    <div class="entity-card__header">
+      <div>
+        <p class="eyebrow">Domain</p>
+        <h1 class="entity-card__title" id="domain-heading" tabindex="-1">{{ copyable(domain.name) }}</h1>
+      </div>
+    </div>
+
+    <div class="detail-grid">
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Status</span>
+        <span class="detail-grid__value">
+          {% if domain.archived_at %}
+          <span class="badge badge--warning">archived</span>
+          {% elif not domain.is_active %}
+          <span class="badge badge--muted">inactive</span>
+          {% else %}
+          <span class="badge badge--success">active</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Created</span>
+        <span class="detail-grid__value text-muted">{{ domain.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      </div>
     </div>
   </div>
 
-  {# Status badge #}
-  <p style="margin-bottom:var(--space-3);">
-    {% if domain.archived_at %}
-    <span class="badge badge--warning">archived</span>
-    {% elif not domain.is_active %}
-    <span class="badge badge--muted">inactive</span>
-    {% else %}
-    <span class="badge badge--success">active</span>
-    {% endif %}
-    <span class="text-muted text-sm" style="margin-left:var(--space-2);">
-      Created {{ domain.created_at.strftime('%Y-%m-%d') }}
-    </span>
-  </p>
-
   {# Notes — inline edit via HTMX #}
-  <div id="notes-section" style="margin-bottom:var(--space-4);">
+  <div id="notes-section" style="margin-top:var(--space-3);margin-bottom:var(--space-4);">
     {% include "domains/_notes_partial.html" %}
   </div>
 
@@ -78,6 +79,29 @@
   {% else %}
   <p class="text-muted">No Information Sources registered for this domain yet.</p>
   {% endif %}
+
+  {# Danger zone — administrative state (archive / restore) #}
+  <div class="danger-zone" style="margin-top:var(--space-4);">
+    {% if domain.archived_at %}
+    <h3 style="margin-top:0;">Restore Domain</h3>
+    <p class="text-sm text-muted">
+      Return this domain to active use. Its Information Sources are unaffected.
+    </p>
+    <form method="post" action="/dashboard/domains/{{ domain.name }}/restore">
+      <button type="submit" class="btn btn--secondary btn--sm">Restore</button>
+    </form>
+    {% else %}
+    <h3 style="margin-top:0;">Archive Domain</h3>
+    <p class="text-sm text-muted">
+      Hide this domain from active use. Its Information Sources are preserved and it
+      can be restored later.
+    </p>
+    <form method="post" action="/dashboard/domains/{{ domain.name }}/archive">
+      <button type="submit" class="btn btn--danger btn--sm"
+              onclick="return confirm('Archive {{ domain.name }}?')">Archive</button>
+    </form>
+    {% endif %}
+  </div>
 
 </div>
 {% endblock %}

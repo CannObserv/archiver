@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from src.core.models import InfoSource
@@ -105,6 +107,50 @@ async def test_domain_detail_shows_linked_sources(client, session):
     # External-open affordance is a shared "Open ↗" button (modeled on Copy).
     assert 'href="https://linked.example.com/page"' in r.text
     assert ">Open ↗</a>" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_uses_entity_card_eyebrow(client, session):
+    """Domain detail converges on the entity-card + eyebrow header (#82)."""
+    session.add(_make_domain("card.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/card.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'class="eyebrow">Domain<' in r.text
+    assert "entity-card__header" in r.text
+    # Header action slot is gone — Archive/Restore moved to the danger zone.
+    assert "entity-section__header" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_archive_in_danger_zone(client, session):
+    """Active domain: Archive action lives in a danger-zone block (#82)."""
+    session.add(_make_domain("dz-active.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/dz-active.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "danger-zone" in r.text
+    assert "/dashboard/domains/dz-active.example.com/archive" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_archived_shows_restore_in_danger_zone(client, session):
+    """Archived domain: Restore action lives in the danger-zone block (#82)."""
+    session.add(
+        _make_domain(
+            "dz-archived.example.com",
+            is_active=False,
+            archived_at=datetime(2026, 5, 1, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/dz-archived.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "danger-zone" in r.text
+    assert "/dashboard/domains/dz-archived.example.com/restore" in r.text
 
 
 # ---------------------------------------------------------------------------

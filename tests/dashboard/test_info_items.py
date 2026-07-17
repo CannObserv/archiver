@@ -376,6 +376,21 @@ async def test_detail_ulid_uses_shared_copyable_macro(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_uses_entity_card_eyebrow(client, session):
+    """InfoItem detail converges on the entity-card + eyebrow header (#81)."""
+    item = _make_item("Eyebrow Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'class="eyebrow">Information Item<' in r.text
+    assert "entity-card__header" in r.text
+    assert 'aria-label="Breadcrumb"' not in r.text
+    assert 'id="info-item-heading"' in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_shows_active_source_binding(client, session):
     item = _make_item("Tabbed Item")
     session.add(item)

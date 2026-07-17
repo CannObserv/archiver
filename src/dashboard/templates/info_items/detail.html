@@ -7,46 +7,44 @@
 
   {# ── Section 1: Overview ───────────────────────────────────────────── #}
   <section aria-label="Overview" style="margin-bottom:var(--space-5);">
-    <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
-      <a href="/dashboard/info-items/" class="text-muted text-sm">Information Items</a>
-      <span aria-hidden="true"> / </span>
-    </nav>
+    <div class="entity-card">
+      <div class="entity-card__header">
+        <div>
+          <p class="eyebrow">Information Item</p>
+          <h1 class="entity-card__title" id="info-item-heading" tabindex="-1">{{ item.name }}</h1>
+          <p class="entity-card__id text-sm text-muted" style="margin:var(--space-1) 0 var(--space-2);">
+            {{ copyable(item.info_item_id) }}
+          </p>
+          {% set primary_src = sources_by_id.get(iis_rows[0].info_source_id) if iis_rows else none %}
+          {% if primary_src and primary_src.domain_name %}
+          <p style="margin:0;">
+            <a href="/dashboard/domains/{{ primary_src.domain_name }}" class="badge badge--primary">{{ primary_src.domain_name }}</a>
+          </p>
+          {% else %}
+          <p style="margin:0;">
+            <span class="badge badge--muted">No primary source</span>
+          </p>
+          {% endif %}
+        </div>
+      </div>
 
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2);flex-wrap:wrap;">
-      <div>
-        <h1 style="margin:0 0 var(--space-1);">{{ item.name }}</h1>
-        <p class="text-muted text-sm" style="margin:0 0 var(--space-2);">
-          {{ copyable(item.info_item_id) }}
-        </p>
-        {% set primary_src = sources_by_id.get(iis_rows[0].info_source_id) if iis_rows else none %}
-        {% if primary_src and primary_src.domain_name %}
-        <p style="margin:0 0 var(--space-2);">
-          <a href="/dashboard/domains/{{ primary_src.domain_name }}" class="badge badge--primary">{{ primary_src.domain_name }}</a>
-        </p>
-        {% else %}
-        <p style="margin:0 0 var(--space-2);">
-          <span class="badge badge--muted">No primary source</span>
-        </p>
+      <div class="detail-grid">
+        {% if item.description %}
+        <div class="detail-grid__item">
+          <span class="detail-grid__label">Description</span>
+          <span class="detail-grid__value">{{ item.description }}</span>
+        </div>
         {% endif %}
-      </div>
-    </div>
-
-    <div class="detail-grid">
-      {% if item.description %}
-      <div class="detail-grid__item">
-        <span class="detail-grid__label">Description</span>
-        <span class="detail-grid__value">{{ item.description }}</span>
-      </div>
-      {% endif %}
-      {% if item.owner %}
-      <div class="detail-grid__item">
-        <span class="detail-grid__label">Owner</span>
-        <span class="detail-grid__value">{{ item.owner }}</span>
-      </div>
-      {% endif %}
-      <div class="detail-grid__item">
-        <span class="detail-grid__label">Created</span>
-        <span class="detail-grid__value text-muted">{{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+        {% if item.owner %}
+        <div class="detail-grid__item">
+          <span class="detail-grid__label">Owner</span>
+          <span class="detail-grid__value">{{ item.owner }}</span>
+        </div>
+        {% endif %}
+        <div class="detail-grid__item">
+          <span class="detail-grid__label">Created</span>
+          <span class="detail-grid__value text-muted">{{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+        </div>
       </div>
     </div>
   </section>
