@@ -21,6 +21,12 @@
         <span class="detail-grid__value">
           {% if domain.archived_at %}
           <span class="badge badge--warning">archived</span>
+          {# Restore is recovery, not destructive — hoisted here next to the state
+             badge rather than the danger zone (#82). #}
+          <form method="post" action="/dashboard/domains/{{ domain.name }}/restore"
+                style="display:inline;margin-left:var(--space-2);">
+            <button type="submit" class="btn btn--secondary btn--sm">Restore</button>
+          </form>
           {% elif not domain.is_active %}
           <span class="badge badge--muted">inactive</span>
           {% else %}
@@ -80,17 +86,10 @@
   <p class="text-muted">No Information Sources registered for this domain yet.</p>
   {% endif %}
 
-  {# Danger zone — administrative state (archive / restore) #}
+  {# Danger zone — archive only (destructive). Restore is hoisted to the Status
+     badge in the header, so once archived there is nothing here to show (#82). #}
+  {% if not domain.archived_at %}
   <div class="danger-zone" style="margin-top:var(--space-4);">
-    {% if domain.archived_at %}
-    <h3 style="margin-top:0;">Restore Domain</h3>
-    <p class="text-sm text-muted">
-      Return this domain to active use. Its Information Sources are unaffected.
-    </p>
-    <form method="post" action="/dashboard/domains/{{ domain.name }}/restore">
-      <button type="submit" class="btn btn--secondary btn--sm">Restore</button>
-    </form>
-    {% else %}
     <h3 style="margin-top:0;">Archive Domain</h3>
     <p class="text-sm text-muted">
       Hide this domain from active use. Its Information Sources are preserved and it
@@ -100,8 +99,8 @@
       <button type="submit" class="btn btn--danger btn--sm"
               onclick="return confirm('Archive this domain?')">Archive</button>
     </form>
-    {% endif %}
   </div>
+  {% endif %}
 
 </div>
 {% endblock %}

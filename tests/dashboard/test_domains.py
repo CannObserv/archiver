@@ -150,8 +150,9 @@ async def test_domain_archive_confirm_is_static(client, session):
 
 
 @pytest.mark.asyncio
-async def test_domain_detail_archived_shows_restore_in_danger_zone(client, session):
-    """Archived domain: Restore action lives in the danger-zone block (#82)."""
+async def test_domain_detail_archived_hoists_restore_out_of_danger_zone(client, session):
+    """Archived domain: Restore is hoisted next to the Status badge in the header,
+    and the danger zone (Archive-only) is hidden — nothing destructive remains (#82)."""
     session.add(
         _make_domain(
             "dz-archived.example.com",
@@ -163,8 +164,10 @@ async def test_domain_detail_archived_shows_restore_in_danger_zone(client, sessi
 
     r = await client.get("/dashboard/domains/dz-archived.example.com", headers=_HEADERS)
     assert r.status_code == 200
-    assert "danger-zone" in r.text
     assert "/dashboard/domains/dz-archived.example.com/restore" in r.text
+    # Restore lives up top now, not in a danger zone; the zone is archive-only.
+    assert "danger-zone" not in r.text
+    assert "/dashboard/domains/dz-archived.example.com/archive" not in r.text
 
 
 # ---------------------------------------------------------------------------

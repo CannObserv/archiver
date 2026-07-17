@@ -31,7 +31,7 @@
 
 **GET `/dashboard/domains/`** — paginated list. Columns: Domain (linked to detail), Sources (count), Status badge, Created. Filter bar: `?is_active=true|false|` (all). Source counts loaded via a GROUP BY query.
 
-**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (converged on the canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name → `.detail-grid` (Status badge, created_at UTC). Operator notes (HTMX inline edit); linked Information Sources table (source URLs carry the `open_button` affordance). Archive/Restore moved out of the header into a `.danger-zone` block at the bottom (Archive: `.btn--danger` + confirm; Restore: `.btn--secondary`).
+**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (converged on the canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name → `.detail-grid` (Status badge, created_at UTC). Operator notes (HTMX inline edit); linked Information Sources table (source URLs carry the `open_button` affordance). **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destructive, so it's hoisted into the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely.
 
 **POST `/dashboard/domains/{name}/notes`** — HTMX partial; replaces `#notes-section` with `domains/_notes_partial.html`. Saves notes inline.
 
