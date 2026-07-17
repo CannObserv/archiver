@@ -1,5 +1,6 @@
 """Dashboard — Information Source Revisions (list, detail, cache-clear)."""
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -134,6 +135,7 @@ async def detail_source_revision(
     )
     item_ids = [r.info_item_id for r in iisr_rows]
     items_by_id: dict[ULID, InfoItem] = {}
+    current_rev_by_item: dict[ULID, ULID] = {}
     if item_ids:
         item_rows = list(
             (await session.execute(select(InfoItem).where(InfoItem.info_item_id.in_(item_ids))))
@@ -141,6 +143,29 @@ async def detail_source_revision(
             .all()
         )
         items_by_id = {i.info_item_id: i for i in item_rows}
+
+        # Each bound item's *current* pin is its most-recent InfoItemSourceRevision
+        # (append-only history). This revision is "current pin" for an item when it
+        # equals that latest binding, else "superseded". Tie-break on the revision
+        # ULID (lexically monotonic) so equal bound_at is still deterministic.
+        all_bindings = list(
+            (
+                await session.execute(
+                    select(InfoItemSourceRevision).where(
+                        InfoItemSourceRevision.info_item_id.in_(item_ids)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        latest: dict[ULID, tuple] = {}
+        for b in all_bindings:
+            key = (b.bound_at, str(b.source_revision_id))
+            cur = latest.get(b.info_item_id)
+            if cur is None or key > cur[0]:
+                latest[b.info_item_id] = (key, b.source_revision_id)
+        current_rev_by_item = {iid: v[1] for iid, v in latest.items()}
 
     now = datetime.now(UTC)
     return _templates.TemplateResponse(
@@ -152,6 +177,7 @@ async def detail_source_revision(
             "source": source,
             "iisr_rows": iisr_rows,
             "items_by_id": items_by_id,
+            "current_rev_by_item": current_rev_by_item,
             "now": now,
         },
     )
@@ -165,14 +191,33 @@ async def detail_source_revision(
 @router.post("/{rev_id}/clear-cache")
 async def clear_revision_cache(
     rev_id: str,
+    request: Request,
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Clear content_cache_uri and content_cache_expires_at."""
+    """Clear content_cache_uri and content_cache_expires_at.
+
+    HTMX requests get the re-rendered header card swapped in place plus a
+    ``showFlash`` success toast (archiver#73). Non-HTMX requests (JS disabled)
+    fall back to a 303 redirect to the detail page.
+    """
     rev = await _resolve_revision(rev_id, session)
     rev.content_cache_uri = None
     rev.content_cache_expires_at = None
     await session.commit()
+
+    if request.headers.get("HX-Request"):
+        source = await session.get(InfoSource, rev.info_source_id)
+        response = _templates.TemplateResponse(
+            request,
+            "source_revisions/_detail_card.html",
+            {"user": user, "rev": rev, "source": source, "now": datetime.now(UTC)},
+        )
+        response.headers["HX-Trigger"] = json.dumps(
+            {"showFlash": {"level": "success", "body": "Cache fields cleared."}}
+        )
+        return response
+
     return RedirectResponse(
         url=f"/dashboard/source-revisions/{rev.source_revision_id}",
         status_code=303,

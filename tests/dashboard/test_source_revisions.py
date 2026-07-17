@@ -167,6 +167,71 @@ async def test_detail_shows_bound_items(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_bound_item_current_pin_badge(client, session):
+    """This revision is the item's latest binding → 'current pin' (#78 #9)."""
+    src = _make_source("https://example.com/rev-pin-a")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "7" * 64)
+    session.add(rev)
+    await session.flush()
+
+    item = InfoItem(name="Current-Pin Item")
+    session.add(item)
+    await session.flush()
+    session.add(
+        InfoItemSourceRevision(
+            info_item_id=item.info_item_id,
+            source_revision_id=rev.source_revision_id,
+            bound_at=datetime(2026, 3, 10, 9, 0, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert ">current pin<" in r.text
+    assert ">superseded<" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_bound_item_superseded_badge(client, session):
+    """Item later bound to a newer revision → this one is 'superseded' (#78 #9)."""
+    src = _make_source("https://example.com/rev-older")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "8" * 64)
+    rev_newer = _make_revision(src, "9" * 64)
+    session.add(rev)
+    session.add(rev_newer)
+    await session.flush()
+
+    item = InfoItem(name="Older-Binding Item")
+    session.add(item)
+    await session.flush()
+    session.add(
+        InfoItemSourceRevision(
+            info_item_id=item.info_item_id,
+            source_revision_id=rev.source_revision_id,
+            bound_at=datetime(2026, 3, 10, 9, 0, tzinfo=UTC),
+        )
+    )
+    session.add(
+        InfoItemSourceRevision(
+            info_item_id=item.info_item_id,
+            source_revision_id=rev_newer.source_revision_id,
+            bound_at=datetime(2026, 3, 11, 9, 0, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert ">superseded<" in r.text
+    assert ">current pin<" not in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_uses_detail_grid_item_markup(client, session):
     """Normalize to the InfoItem detail grid convention (#78): grid __item
     wrappers, not bare <dl><dt><dd> which misaligns against .detail-grid CSS."""
@@ -324,6 +389,35 @@ async def test_clear_cache_clears_fields_and_redirects(client, session):
         follow_redirects=False,
     )
     assert r.status_code in (302, 303)
+    await session.refresh(rev)
+    assert rev.content_cache_uri is None
+    assert rev.content_cache_expires_at is None
+
+
+@pytest.mark.asyncio
+async def test_clear_cache_htmx_returns_partial_and_flash(client, session):
+    """HTMX clear-cache re-renders the card in place and fires a success toast (#78 #6)."""
+    src = _make_source("https://example.com/cache-htmx")
+    session.add(src)
+    await session.flush()
+    rev = SourceRevision(
+        info_source_id=src.info_source_id,
+        content_fingerprint="sha256:" + "f" * 64,
+        captured_at=datetime(2026, 3, 1, tzinfo=UTC),
+        content_cache_uri="gs://bucket/htmx.json",
+        content_cache_expires_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(rev)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/source-revisions/{rev.source_revision_id}/clear-cache",
+        headers={**_HEADERS, "HX-Request": "true"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 200
+    assert "showFlash" in r.headers.get("HX-Trigger", "")
+    assert "not cached" in r.text
     await session.refresh(rev)
     assert rev.content_cache_uri is None
     assert rev.content_cache_expires_at is None

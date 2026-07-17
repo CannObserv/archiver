@@ -1,0 +1,113 @@
+{% macro copyable(value) %}
+<code x-data="{copied:false}">
+  <span>{{ value }}</span>
+  <button type="button" class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
+          @click="navigator.clipboard && navigator.clipboard.writeText('{{ value }}').then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
+          x-text="copied ? 'Copied ✓' : 'Copy'">Copy</button>
+</code>
+{% endmacro %}
+
+{# Header card — swapped in place by the HTMX clear-cache action (id target). #}
+<div class="entity-card" id="revision-card">
+  <div class="entity-card__header">
+    <div>
+      <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
+        <a href="/dashboard/source-revisions/" class="text-muted text-sm">
+          Information Source Revisions
+        </a>
+        <span aria-hidden="true"> / </span>
+      </nav>
+      <h1 class="entity-card__title">
+        <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
+      </h1>
+      <p class="entity-card__id text-sm text-muted">{{ copyable(rev.source_revision_id) }}</p>
+    </div>
+  </div>
+
+  <div class="detail-grid">
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Fingerprint</span>
+      <span class="detail-grid__value">{{ copyable(rev.content_fingerprint) }}</span>
+    </div>
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Information Source</span>
+      <span class="detail-grid__value">
+        {% if source %}
+        <a href="/dashboard/info-sources/{{ rev.info_source_id }}">
+          <code class="text-sm">{{ source.url or rev.info_source_id }}</code>
+        </a>
+        {% else %}
+        <span class="text-muted">{{ rev.info_source_id }}</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Captured</span>
+      <span class="detail-grid__value text-muted">{{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+    </div>
+    {% if rev.content_size_bytes %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Size</span>
+      <span class="detail-grid__value text-muted">{{ rev.content_size_bytes | filesizeformat }}</span>
+    </div>
+    {% endif %}
+    {% if rev.content_media_type %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Media Type</span>
+      <span class="detail-grid__value"><code>{{ rev.content_media_type }}</code></span>
+    </div>
+    {% endif %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Cache</span>
+      <span class="detail-grid__value">
+        {% if rev.content_cache_uri %}
+          {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
+          <span class="status-pill status-pill--expired">expired</span>
+          {% else %}
+          <span class="status-pill status-pill--cached">cached</span>
+          {% endif %}
+          <div style="margin-top:var(--space-1);">
+            {% if rev.content_cache_uri.startswith(('http://', 'https://')) %}
+            <a href="{{ rev.content_cache_uri }}" target="_blank" rel="noopener noreferrer"
+               class="text-sm"><code>{{ rev.content_cache_uri }}</code> ↗</a>
+            {% else %}
+            {{ copyable(rev.content_cache_uri) }}
+            {% endif %}
+          </div>
+          {% if rev.content_cache_expires_at %}
+          <div class="text-sm text-muted" style="margin-top:var(--space-1);">
+            expires {{ rev.content_cache_expires_at.strftime('%Y-%m-%d %H:%M UTC') }}
+          </div>
+          {% endif %}
+        {% else %}
+        <span class="status-pill status-pill--missing">not cached</span>
+        {% endif %}
+      </span>
+    </div>
+  </div>
+
+  <p class="text-sm" style="margin-top:var(--space-2);">
+    <a href="/dashboard/source-revisions/?info_source_id={{ rev.info_source_id }}">
+      View all revisions for this source →
+    </a>
+  </p>
+
+  {% if rev.content_cache_uri %}
+  <div class="danger-zone" style="margin-top:var(--space-3);">
+    <h3 style="margin-top:0;">Clear Cache Fields</h3>
+    <p class="text-sm text-muted">
+      Removes <code>content_cache_uri</code> and <code>content_cache_expires_at</code>.
+      Use when the cached content is stale or the URI is no longer valid.
+    </p>
+    {# HTMX swaps the card in place + fires a success toast (flash.js). The
+       method/action fallback keeps it working as a plain POST→303 without JS. #}
+    <form hx-post="/dashboard/source-revisions/{{ rev.source_revision_id }}/clear-cache"
+          hx-target="#revision-card" hx-swap="outerHTML"
+          hx-confirm="Clear cache fields for this revision?"
+          method="POST"
+          action="/dashboard/source-revisions/{{ rev.source_revision_id }}/clear-cache">
+      <button type="submit" class="btn btn--danger btn--sm">Clear Cache</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
