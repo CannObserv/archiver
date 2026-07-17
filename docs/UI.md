@@ -317,7 +317,7 @@ Partial templates:
 
 **GET `/dashboard/source-revisions/`** — paginated list ordered by `captured_at desc`. Optional `info_source_id` filter (ULID). Columns: truncated fingerprint (link to detail), source URL (link to InfoSource detail), captured date, cache status pill (`.status-pill--cached` / `.status-pill--expired` / `.status-pill--missing`).
 
-**GET `/dashboard/source-revisions/{id}`** — detail page. Shows full fingerprint, source link, captured_at, size, media type, cache status + URI + expiry. Danger-zone form for cache clearing (shown only when `content_cache_uri` is set). Bound Information Items table.
+**GET `/dashboard/source-revisions/{id}`** — detail page. Header: truncated fingerprint (`<h1>`), copyable `source_revision_id` (shared Alpine copy idiom — `.btn--secondary .btn--sm`, "Copy"→"Copied ✓" for 1.5 s). `.detail-grid` (normalized to the InfoItem convention — `.detail-grid__item/__label/__value`, not bare `<dl><dt><dd>`) with: copyable full fingerprint, Information Source link, captured_at (UTC-suffixed), size (if set), media type (if set), and cache status. Cache value shows a status pill plus the `content_cache_uri` — rendered as an openable `↗` link when `http(s)`, otherwise copyable — and an expiry line. "View all revisions for this source →" link (deeplinks the list `?info_source_id=`). Danger-zone form for cache clearing (shown only when `content_cache_uri` is set). Bound Information Items table (count in heading; `bound_at` UTC-suffixed).
 
 **POST `/dashboard/source-revisions/{id}/clear-cache`** — sets `content_cache_uri = NULL` and `content_cache_expires_at = NULL`. Redirects 303 to detail. No request body required.
 

@@ -166,6 +166,122 @@ async def test_detail_shows_bound_items(client, session):
     assert "Rev-Bound Item" in r.text
 
 
+@pytest.mark.asyncio
+async def test_detail_uses_detail_grid_item_markup(client, session):
+    """Normalize to the InfoItem detail grid convention (#78): grid __item
+    wrappers, not bare <dl><dt><dd> which misaligns against .detail-grid CSS."""
+    src = _make_source("https://example.com/rev-grid")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "1" * 64)
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "detail-grid__item" in r.text
+    assert "<dt>" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_bound_timestamp_labeled_utc(client, session):
+    """Bound Items timestamp carries a UTC suffix like the rest of the screen (#78)."""
+    src = _make_source("https://example.com/rev-utc")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "2" * 64)
+    session.add(rev)
+    await session.flush()
+
+    item = InfoItem(name="UTC-Label Item")
+    session.add(item)
+    await session.flush()
+
+    session.add(
+        InfoItemSourceRevision(
+            info_item_id=item.info_item_id,
+            source_revision_id=rev.source_revision_id,
+            bound_at=datetime(2026, 3, 10, 11, 30, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "11:30 UTC" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_has_sibling_revisions_link(client, session):
+    """Detail links to all revisions for the same source (#78)."""
+    src = _make_source("https://example.com/rev-sibling")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "3" * 64)
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert f"/dashboard/source-revisions/?info_source_id={src.info_source_id}" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_has_copy_affordance(client, session):
+    """Fingerprint / revision id are copyable via the shared Alpine idiom (#78)."""
+    src = _make_source("https://example.com/rev-copy")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "4" * 64)
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "navigator.clipboard" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_http_cache_uri_is_linked(client, session):
+    """An http(s) cache URI renders as an openable link (#78)."""
+    src = _make_source("https://example.com/rev-http-cache")
+    session.add(src)
+    await session.flush()
+    rev = SourceRevision(
+        info_source_id=src.info_source_id,
+        content_fingerprint="sha256:" + "5" * 64,
+        captured_at=datetime(2026, 3, 1, tzinfo=UTC),
+        content_cache_uri="https://cache.example.com/blob/xyz",
+    )
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'href="https://cache.example.com/blob/xyz"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_nonhttp_cache_uri_shown_not_linked(client, session):
+    """A gs:// cache URI is shown (copyable) but not wrapped in an href (#78)."""
+    src = _make_source("https://example.com/rev-gs-cache")
+    session.add(src)
+    await session.flush()
+    rev = SourceRevision(
+        info_source_id=src.info_source_id,
+        content_fingerprint="sha256:" + "6" * 64,
+        captured_at=datetime(2026, 3, 1, tzinfo=UTC),
+        content_cache_uri="gs://bucket/path.json",
+    )
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "gs://bucket/path.json" in r.text
+    assert 'href="gs://bucket/path.json"' not in r.text
+
+
 # ---------------------------------------------------------------------------
 # POST /dashboard/source-revisions/{id}/clear-cache
 # ---------------------------------------------------------------------------

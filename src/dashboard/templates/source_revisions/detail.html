@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Revision {{ rev.content_fingerprint[:16] }}…{% endblock %}
 
+{% macro copyable(value) %}
+<code x-data="{copied:false}">
+  <span>{{ value }}</span>
+  <button type="button" class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
+          @click="navigator.clipboard && navigator.clipboard.writeText('{{ value }}').then(()=>{copied=true;setTimeout(()=>{copied=false},1500)})"
+          x-text="copied ? 'Copied ✓' : 'Copy'">Copy</button>
+</code>
+{% endmacro %}
+
 {% block content %}
 <div class="entity-section">
 
@@ -15,52 +24,79 @@
           <span aria-hidden="true"> / </span>
         </nav>
         <h1 class="entity-card__title">
-          <code class="text-sm">{{ rev.content_fingerprint }}</code>
+          <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
         </h1>
-        <p class="entity-card__id text-sm text-muted">{{ rev.source_revision_id }}</p>
+        <p class="entity-card__id text-sm text-muted">{{ copyable(rev.source_revision_id) }}</p>
       </div>
     </div>
 
-    <dl class="detail-grid">
-      <dt>Information Source</dt>
-      <dd>
-        {% if source %}
-        <a href="/dashboard/info-sources/{{ rev.info_source_id }}">
-          <code class="text-sm">{{ source.url or rev.info_source_id }}</code>
-        </a>
-        {% else %}
-        <span class="text-muted">{{ rev.info_source_id }}</span>
-        {% endif %}
-      </dd>
-      <dt>Captured</dt>
-      <dd class="text-muted">{{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+    <div class="detail-grid">
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Fingerprint</span>
+        <span class="detail-grid__value">{{ copyable(rev.content_fingerprint) }}</span>
+      </div>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Information Source</span>
+        <span class="detail-grid__value">
+          {% if source %}
+          <a href="/dashboard/info-sources/{{ rev.info_source_id }}">
+            <code class="text-sm">{{ source.url or rev.info_source_id }}</code>
+          </a>
+          {% else %}
+          <span class="text-muted">{{ rev.info_source_id }}</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Captured</span>
+        <span class="detail-grid__value text-muted">{{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      </div>
       {% if rev.content_size_bytes %}
-      <dt>Size</dt>
-      <dd class="text-muted">{{ rev.content_size_bytes | filesizeformat }}</dd>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Size</span>
+        <span class="detail-grid__value text-muted">{{ rev.content_size_bytes | filesizeformat }}</span>
+      </div>
       {% endif %}
       {% if rev.content_media_type %}
-      <dt>Media Type</dt>
-      <dd><code>{{ rev.content_media_type }}</code></dd>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Media Type</span>
+        <span class="detail-grid__value"><code>{{ rev.content_media_type }}</code></span>
+      </div>
       {% endif %}
-      <dt>Cache</dt>
-      <dd>
-        {% if rev.content_cache_uri %}
-          {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
-          <span class="status-pill status-pill--expired">expired</span>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Cache</span>
+        <span class="detail-grid__value">
+          {% if rev.content_cache_uri %}
+            {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
+            <span class="status-pill status-pill--expired">expired</span>
+            {% else %}
+            <span class="status-pill status-pill--cached">cached</span>
+            {% endif %}
+            <div style="margin-top:var(--space-1);">
+              {% if rev.content_cache_uri.startswith(('http://', 'https://')) %}
+              <a href="{{ rev.content_cache_uri }}" target="_blank" rel="noopener noreferrer"
+                 class="text-sm"><code>{{ rev.content_cache_uri }}</code> ↗</a>
+              {% else %}
+              {{ copyable(rev.content_cache_uri) }}
+              {% endif %}
+            </div>
+            {% if rev.content_cache_expires_at %}
+            <div class="text-sm text-muted" style="margin-top:var(--space-1);">
+              expires {{ rev.content_cache_expires_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            </div>
+            {% endif %}
           {% else %}
-          <span class="status-pill status-pill--cached">cached</span>
+          <span class="status-pill status-pill--missing">not cached</span>
           {% endif %}
-          <code class="text-sm" style="margin-left:var(--space-2);">{{ rev.content_cache_uri }}</code>
-          {% if rev.content_cache_expires_at %}
-          <span class="text-sm text-muted">
-            (expires {{ rev.content_cache_expires_at.strftime('%Y-%m-%d %H:%M UTC') }})
-          </span>
-          {% endif %}
-        {% else %}
-        <span class="status-pill status-pill--missing">not cached</span>
-        {% endif %}
-      </dd>
-    </dl>
+        </span>
+      </div>
+    </div>
+
+    <p class="text-sm" style="margin-top:var(--space-2);">
+      <a href="/dashboard/source-revisions/?info_source_id={{ rev.info_source_id }}">
+        View all revisions for this source →
+      </a>
+    </p>
 
     {% if rev.content_cache_uri %}
     <div class="danger-zone" style="margin-top:var(--space-3);">
@@ -82,7 +118,7 @@
 
   {# Bound Information Items #}
   <div style="margin-top:var(--space-3);">
-    <h2>Bound Information Items</h2>
+    <h2>Bound Information Items{% if iisr_rows %} ({{ iisr_rows | length }}){% endif %}</h2>
     {% if iisr_rows %}
     <table class="data-table" aria-label="Bound Information Items">
       <thead>
@@ -103,7 +139,7 @@
             {% endif %}
           </td>
           <td class="data-table__cell data-table__cell--muted">
-            {{ iisr.bound_at.strftime('%Y-%m-%d %H:%M') }}
+            {{ iisr.bound_at.strftime('%Y-%m-%d %H:%M UTC') }}
           </td>
         </tr>
         {% endfor %}
