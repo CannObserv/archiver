@@ -109,6 +109,37 @@ async def test_detail_shows_url(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_uses_entity_card_eyebrow(client, session):
+    """InfoSource detail converges on entity-card + eyebrow; grid uses __item (#79)."""
+    src = _make_source("https://example.com/eyebrow-src")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'class="eyebrow">Information Source<' in r.text
+    assert "entity-card__header" in r.text
+    assert 'aria-label="Breadcrumb"' not in r.text
+    assert 'id="info-source-heading"' in r.text
+    # detail-grid uses __item wrappers, not bare <dl><dt><dd> (the misalignment bug).
+    assert "<dt>" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_id_copyable_and_url_open_button(client, session):
+    """InfoSource id is copyable (shared macro) and the URL has an Open button (#79)."""
+    src = _make_source("https://example.com/copy-open-src")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "writeText(v)" in r.text
+    assert 'href="https://example.com/copy-open-src"' in r.text
+    assert ">Open ↗</a>" in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_shows_bound_items(client, session):
     src = _make_source("https://example.com/bound-item-test")
     session.add(src)

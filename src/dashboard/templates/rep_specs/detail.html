@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import open_button %}
+{% from "_macros.html" import copyable, open_button %}
 {% block title %}{{ spec.name }}{% endblock %}
 
 {% block content %}
@@ -9,21 +9,22 @@
   <div class="entity-card">
     <div class="entity-card__header">
       <div>
-        <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
-          <a href="/dashboard/rep-specs/" class="text-muted text-sm">Replication Specifications</a>
-          <span aria-hidden="true"> / </span>
-        </nav>
-        <h1 class="entity-card__title">{{ spec.name }}</h1>
-        <p class="entity-card__id text-sm text-muted">{{ spec.rep_spec_id }}</p>
+        <p class="eyebrow">Replication Specification</p>
+        <h1 class="entity-card__title" id="rep-spec-heading" tabindex="-1">{{ spec.name }}</h1>
+        <p class="entity-card__id text-sm text-muted">{{ copyable(spec.rep_spec_id) }}</p>
       </div>
     </div>
 
-    <dl class="detail-grid">
-      <dt>Provider</dt>
-      <dd><span class="badge badge--info">{{ spec.provider }}</span></dd>
-      <dt>Created</dt>
-      <dd class="text-muted">{{ spec.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
-    </dl>
+    <div class="detail-grid">
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Provider</span>
+        <span class="detail-grid__value"><span class="badge badge--info">{{ spec.provider }}</span></span>
+      </div>
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Created</span>
+        <span class="detail-grid__value text-muted">{{ spec.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      </div>
+    </div>
   </div>
 
   {# Document JSON #}
@@ -34,7 +35,7 @@
 
   {# Active Assignments #}
   <div style="margin-top:var(--space-3);">
-    <h2>Active Assignments</h2>
+    <h2>Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
     {% if assignments %}
     <table class="data-table" aria-label="Active assignments">
       <thead>
@@ -56,7 +57,7 @@
             {% endif %}
           </td>
           <td class="data-table__cell data-table__cell--muted">
-            {{ assignment.activated_at.strftime('%Y-%m-%d') }}
+            {{ assignment.activated_at.strftime('%Y-%m-%d %H:%M UTC') }}
           </td>
           <td class="data-table__cell">
             {% if assignment.public_url %}

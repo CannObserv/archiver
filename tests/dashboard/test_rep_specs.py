@@ -142,6 +142,24 @@ async def test_detail_shows_active_assignments(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_uses_entity_card_eyebrow(client, session):
+    """RepSpec detail converges on entity-card + eyebrow; grid uses __item; id copyable (#80)."""
+    spec = _make_rep_spec("Eyebrow Spec")
+    session.add(spec)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'class="eyebrow">Replication Specification<' in r.text
+    assert "entity-card__header" in r.text
+    assert 'aria-label="Breadcrumb"' not in r.text
+    assert 'id="rep-spec-heading"' in r.text
+    # detail-grid uses __item wrappers, not bare <dl><dt><dd> (the misalignment bug).
+    assert "<dt>" not in r.text
+    assert "writeText(v)" in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_public_url_open_button(client, session):
     """A public_url writeback target opens via the shared 'Open ↗' button."""
     spec = _make_rep_spec("Public-URL Spec")

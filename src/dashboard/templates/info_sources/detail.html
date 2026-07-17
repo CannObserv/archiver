@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import copyable, open_button %}
 {% block title %}Information Source {{ src.info_source_id }}{% endblock %}
 
 {% block content %}
@@ -8,21 +9,23 @@
   <div class="entity-card">
     <div class="entity-card__header">
       <div>
-        <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
-          <a href="/dashboard/info-sources/" class="text-muted text-sm">Information Sources</a>
-          <span aria-hidden="true"> / </span>
-        </nav>
-        <h1 class="entity-card__title">
+        <p class="eyebrow">Information Source</p>
+        <h1 class="entity-card__title" id="info-source-heading" tabindex="-1">
           <code class="text-sm">{{ src.url }}</code>
         </h1>
-        <p class="entity-card__id text-sm text-muted">{{ src.info_source_id }}</p>
+        <p style="margin:var(--space-1) 0 0;">{{ open_button(src.url) }}</p>
+        <p class="entity-card__id text-sm text-muted" style="margin-top:var(--space-2);">
+          {{ copyable(src.info_source_id) }}
+        </p>
       </div>
     </div>
 
-    <dl class="detail-grid">
-      <dt>Created</dt>
-      <dd class="text-muted">{{ src.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
-    </dl>
+    <div class="detail-grid">
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Created</span>
+        <span class="detail-grid__value text-muted">{{ src.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      </div>
+    </div>
   </div>
 
   {# Source Specs JSON #}
@@ -48,7 +51,7 @@
 
   {# Bound Information Items #}
   <div style="margin-top:var(--space-3);">
-    <h2>Bound Information Items</h2>
+    <h2>Bound Information Items{% if bindings %} ({{ bindings | length }}){% endif %}</h2>
     {% if bindings %}
     <table class="data-table" aria-label="Bound Information Items">
       <thead>
@@ -69,7 +72,7 @@
             {% endif %}
           </td>
           <td class="data-table__cell data-table__cell--muted">
-            {{ binding.created_at.strftime('%Y-%m-%d') }}
+            {{ binding.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
           </td>
         </tr>
         {% endfor %}
@@ -82,7 +85,7 @@
 
   {# Revision History #}
   <div style="margin-top:var(--space-3);">
-    <h2>Revision History</h2>
+    <h2>Revision History{% if revisions %} ({{ revisions | length }}){% endif %}</h2>
     {% if revisions %}
     <table class="data-table" aria-label="Revision history">
       <thead>
@@ -101,7 +104,7 @@
             </a>
           </td>
           <td class="data-table__cell data-table__cell--muted">
-            {{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}
+            {{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}
           </td>
           <td class="data-table__cell">
             {% if rev.content_cache_uri %}

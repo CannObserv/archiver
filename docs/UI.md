@@ -358,11 +358,11 @@ Partial templates:
 **POST `/dashboard/info-sources/new`** — form fields: `url` (string), `source_specs` (JSON array string). Calls `create_info_source` tool. Redirects 303 to detail on success. Re-renders form with `errors` dict on `InvalidUrlError`, `InvalidSourceSpecError`, `MixedAlgorithmFamilyError`.
 
 **GET `/dashboard/info-sources/{id}`** — detail page. Sections:
-- Header: `info_source_id`, `url`, created_at. No parent link (fragments removed).
+- Header: `.entity-card` (canonical pattern, #79) — `.eyebrow` "Information Source" → `<h1 class="entity-card__title" id="info-source-heading" tabindex="-1">` with the `url` in `<code>` → an `open_button` to the URL → copyable `info_source_id` → `.detail-grid` (created_at UTC). Grid uses `.detail-grid__item` (was bare `<dl><dt><dd>`, which misaligned).
 - Source Specs JSON array — displayed in `<pre class="code-block">`.
 - Edit Specs form — `PATCH /dashboard/info-sources/{id}/source-specs` textarea replaces the specs list. URL is immutable.
-- Bound Information Items — table of active `info_item_sources` bindings (item name link, bound date). Role column removed.
-- Revision History — last 50 `source_revisions` ordered by `captured_at desc` (fingerprint truncated, captured date, cache status pill).
+- Bound Information Items — table of active `info_item_sources` bindings (count in heading; item name link, bound date UTC). Role column removed.
+- Revision History — last 50 `source_revisions` ordered by `captured_at desc` (count in heading; fingerprint truncated, captured date UTC, cache status pill).
 
 **POST `/dashboard/info-sources/{id}/source-specs`** — replaces `source_specs` list on an existing InfoSource (form field: `source_specs` JSON array). Redirects 303 to detail on success. Re-renders detail page with `specs_error` inline error on JSON parse failure, schema validation failure, or mixed-family error (422).
 
@@ -382,7 +382,7 @@ Partial templates:
 
 **POST `/dashboard/rep-specs/new`** — form fields: `provider`, `name`, `document` (JSON string). Calls `create_rep_spec` tool. Redirects 303 to detail on success. Re-renders form with errors on missing provider, missing name, invalid JSON, or `InvalidRepSpecError`.
 
-**GET `/dashboard/rep-specs/{id}`** — detail page. Header: name, provider badge, rep_spec_id, created_at. Document JSON in `<pre class="code-block">`. Active assignments table (item name link, activated_at, public_url).
+**GET `/dashboard/rep-specs/{id}`** — detail page. Header: `.entity-card` (canonical pattern, #80) — `.eyebrow` "Replication Specification" → `<h1 class="entity-card__title" id="rep-spec-heading" tabindex="-1">` name → copyable `rep_spec_id` → `.detail-grid` (provider badge, created_at UTC). Grid uses `.detail-grid__item` (was bare `<dl><dt><dd>`). Document JSON in `<pre class="code-block">`. Active assignments table (count in heading; item name link, activated_at UTC, `public_url` shown with an `open_button`).
 
 ### `repSpecEditor` Alpine Component
 
