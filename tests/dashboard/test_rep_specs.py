@@ -142,6 +142,34 @@ async def test_detail_shows_active_assignments(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_assignment_has_deactivate_button(client, session):
+    """Assignments can be deactivated from the RepSpec screen too (#80), reusing
+    the existing DELETE /info-items/{id}/rep-spec-assignments/{aid} endpoint."""
+    spec = _make_rep_spec("Deactivatable Spec")
+    session.add(spec)
+    await session.flush()
+    item = InfoItem(name="Assigned Item 2")
+    session.add(item)
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert f'id="rs-assignment-{assignment.id}"' in r.text
+    assert (
+        f'hx-delete="/dashboard/info-items/{item.info_item_id}'
+        f'/rep-spec-assignments/{assignment.id}"' in r.text
+    )
+    assert "Deactivate" in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_uses_entity_card_eyebrow(client, session):
     """RepSpec detail converges on entity-card + eyebrow; grid uses __item; id copyable (#80)."""
     spec = _make_rep_spec("Eyebrow Spec")

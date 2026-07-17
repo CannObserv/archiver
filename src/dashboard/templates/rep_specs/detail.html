@@ -43,12 +43,13 @@
           <th class="data-table__th">Information Item</th>
           <th class="data-table__th">Activated</th>
           <th class="data-table__th">Public URL</th>
+          <th class="data-table__th">Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for assignment in assignments %}
         {% set item = items_by_id.get(assignment.info_item_id) %}
-        <tr>
+        <tr id="rs-assignment-{{ assignment.id }}">
           <td class="data-table__cell">
             {% if item %}
             <a href="/dashboard/info-items/{{ assignment.info_item_id }}">{{ item.name }}</a>
@@ -65,6 +66,18 @@
             {% else %}
             <span class="text-muted">—</span>
             {% endif %}
+          </td>
+          <td class="data-table__cell">
+            {# Deactivate reuses the InfoItem endpoint (keyed by info_item_id); an
+               empty 200 swaps the row out. Managed from either screen (#80). #}
+            <button class="btn btn--sm btn--danger"
+                    hx-delete="/dashboard/info-items/{{ assignment.info_item_id }}/rep-spec-assignments/{{ assignment.id }}"
+                    hx-target="#rs-assignment-{{ assignment.id }}"
+                    hx-swap="outerHTML"
+                    hx-confirm="Deactivate this replication spec assignment?"
+                    aria-label="Deactivate assignment {{ assignment.id }}">
+              Deactivate
+            </button>
           </td>
         </tr>
         {% endfor %}

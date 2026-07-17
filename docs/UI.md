@@ -382,7 +382,7 @@ Partial templates:
 
 **POST `/dashboard/rep-specs/new`** — form fields: `provider`, `name`, `document` (JSON string). Calls `create_rep_spec` tool. Redirects 303 to detail on success. Re-renders form with errors on missing provider, missing name, invalid JSON, or `InvalidRepSpecError`.
 
-**GET `/dashboard/rep-specs/{id}`** — detail page. Header: `.entity-card` (canonical pattern, #80) — `.eyebrow` "Replication Specification" → `<h1 class="entity-card__title" id="rep-spec-heading" tabindex="-1">` name → copyable `rep_spec_id` → `.detail-grid` (provider badge, created_at UTC). Grid uses `.detail-grid__item` (was bare `<dl><dt><dd>`). Document JSON in `<pre class="code-block">`. Active assignments table (count in heading; item name link, activated_at UTC, `public_url` shown with an `open_button`).
+**GET `/dashboard/rep-specs/{id}`** — detail page. Header: `.entity-card` (canonical pattern, #80) — `.eyebrow` "Replication Specification" → `<h1 class="entity-card__title" id="rep-spec-heading" tabindex="-1">` name → copyable `rep_spec_id` → `.detail-grid` (provider badge, created_at UTC). Grid uses `.detail-grid__item` (was bare `<dl><dt><dd>`). Document JSON in `<pre class="code-block">`. Active assignments table (count in heading; item name link, activated_at UTC, `public_url` shown with an `open_button`, and a **Deactivate** action — `hx-delete` to the InfoItem assignment endpoint `/dashboard/info-items/{item_id}/rep-spec-assignments/{aid}`, empty-200 swaps the row out; assignments are manageable from either the RepSpec or the InfoItem screen, #80).
 
 ### `repSpecEditor` Alpine Component
 
