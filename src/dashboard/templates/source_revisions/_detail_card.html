@@ -1,3 +1,4 @@
+{% from "_macros.html" import open_button %}
 {# Copy affordance. The value is bound as data via |tojson (properly-escaped JS
    literal) and copied through the reactive `v` property — never spliced into the
    handler's JS source — so arbitrary DB strings (e.g. content_cache_uri) cannot
@@ -35,10 +36,7 @@
         <a href="/dashboard/info-sources/{{ rev.info_source_id }}">
           <code class="text-sm">{{ source.url or rev.info_source_id }}</code>
         </a>
-        {% if source.url %}
-        <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer"
-           class="text-muted text-sm" aria-label="Open {{ source.url }} in new tab">↗</a>
-        {% endif %}
+        {% if source.url %}{{ open_button(source.url) }}{% endif %}
         {% else %}
         <span class="text-muted">{{ rev.info_source_id }}</span>
         {% endif %}
@@ -71,8 +69,7 @@
           {% endif %}
           <div style="margin-top:var(--space-1);">
             {% if rev.content_cache_uri.startswith(('http://', 'https://')) %}
-            <a href="{{ rev.content_cache_uri }}" target="_blank" rel="noopener noreferrer"
-               class="text-sm"><code>{{ rev.content_cache_uri }}</code> ↗</a>
+            <code class="text-sm">{{ rev.content_cache_uri }}</code>{{ open_button(rev.content_cache_uri) }}
             {% else %}
             {{ copyable(rev.content_cache_uri) }}
             {% endif %}

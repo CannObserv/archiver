@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import open_button %}
 {% block title %}{{ spec.name }}{% endblock %}
 
 {% block content %}
@@ -59,8 +60,7 @@
           </td>
           <td class="data-table__cell">
             {% if assignment.public_url %}
-            <a href="{{ assignment.public_url }}" target="_blank" rel="noopener noreferrer"
-               class="text-sm">{{ assignment.public_url }}</a>
+            <span class="text-sm" style="word-break:break-all;">{{ assignment.public_url }}</span>{{ open_button(assignment.public_url) }}
             {% else %}
             <span class="text-muted">—</span>
             {% endif %}

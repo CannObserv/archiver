@@ -115,6 +115,10 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.modal-backdrop` — fixed overlay.
 - `.modal`, `.modal__header`, `.modal__title`, `.modal__close`, `.modal__body`, `.modal__footer`.
 
+### Shared Jinja macros (`templates/_macros.html`)
+- Import per-template: `{% from "_macros.html" import open_button %}` (works from any subdir — Jinja resolves import paths from the loader root).
+- `open_button(url, label="Open")` — external-open affordance rendered as a link styled as a small secondary button (`.btn .btn--secondary .btn--sm`), modeled on the "Copy" affordance so opening a target URL reads as a distinct action, cleanly separated from the displayed value. Always `target=_blank rel=noopener noreferrer`; anchor (not `<button>`) because it is navigation. Used site-wide for external URLs: InfoItem/domain/revision source URLs, RepSpec `public_url`, and http(s) `content_cache_uri`. (Section-header deeplinks like the InfoItem "Watcher ↗" `<h2>` are intentionally not buttons — they are heading affordances, not value-adjacent ones.)
+
 ### Code
 - `.code-block` — monospace card for JSON display. Also used as `class="form-textarea code-block"` on `<textarea>` elements that contain JSON (e.g. `source_specs` array editor on InfoSource create/edit forms) to give the input a monospace font matching the display block.
 

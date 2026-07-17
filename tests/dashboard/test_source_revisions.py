@@ -266,6 +266,9 @@ async def test_detail_info_source_has_external_link(client, session):
     assert r.status_code == 200
     assert 'href="https://example.com/rev-extlink"' in r.text
     assert 'target="_blank"' in r.text
+    # Modeled on the Copy affordance — an "Open ↗" button, not a bare icon link.
+    assert "btn btn--secondary btn--sm" in r.text
+    assert ">Open ↗</a>" in r.text
 
 
 @pytest.mark.asyncio
@@ -377,6 +380,8 @@ async def test_detail_http_cache_uri_is_linked(client, session):
     r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
     assert r.status_code == 200
     assert 'href="https://cache.example.com/blob/xyz"' in r.text
+    # http(s) cache URI opens via the shared "Open ↗" button affordance.
+    assert ">Open ↗</a>" in r.text
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import open_button %}
 {% block title %}{{ item.name }}{% endblock %}
 
 {% block content %}
@@ -81,7 +82,7 @@
             <td class="data-table__cell">
               {% if src %}
               <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-sm">{{ src.url }}</a>
-              <a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="text-muted text-sm" aria-label="Open in new tab">↗</a>
+              {{ open_button(src.url) }}
               {% else %}
               <span class="text-muted text-sm">{{ binding.info_source_id }}</span>
               {% endif %}

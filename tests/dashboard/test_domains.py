@@ -102,6 +102,9 @@ async def test_domain_detail_shows_linked_sources(client, session):
     r = await client.get("/dashboard/domains/linked.example.com", headers=_HEADERS)
     assert r.status_code == 200
     assert "https://linked.example.com/page" in r.text
+    # External-open affordance is a shared "Open ↗" button (modeled on Copy).
+    assert 'href="https://linked.example.com/page"' in r.text
+    assert ">Open ↗</a>" in r.text
 
 
 # ---------------------------------------------------------------------------

@@ -378,6 +378,9 @@ async def test_detail_shows_active_source_binding(client, session):
     r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
     assert r.status_code == 200
     assert "https://example.com/tabbed" in r.text
+    # External-open affordance is a shared "Open ↗" button (modeled on Copy).
+    assert 'href="https://example.com/tabbed"' in r.text
+    assert ">Open ↗</a>" in r.text
 
 
 @pytest.mark.asyncio

@@ -141,6 +141,32 @@ async def test_detail_shows_active_assignments(client, session):
     assert "Assigned Item" in r.text
 
 
+@pytest.mark.asyncio
+async def test_detail_public_url_open_button(client, session):
+    """A public_url writeback target opens via the shared 'Open ↗' button."""
+    spec = _make_rep_spec("Public-URL Spec")
+    session.add(spec)
+    await session.flush()
+
+    item = InfoItem(name="Public-URL Item")
+    session.add(item)
+    await session.flush()
+
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+        public_url="https://cdn.example.com/items/thing.json",
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'href="https://cdn.example.com/items/thing.json"' in r.text
+    assert ">Open ↗</a>" in r.text
+
+
 # ---------------------------------------------------------------------------
 # GET /dashboard/rep-specs/new
 # ---------------------------------------------------------------------------

@@ -1,0 +1,13 @@
+{# Shared dashboard Jinja macros. Import per-template:
+     {% from "_macros.html" import open_button %}
+   Keep these presentational and dependency-free. #}
+
+{# External-open affordance. A link styled as a small secondary button (modeled
+   on the "Copy" affordance) so opening a target URL reads as a distinct action,
+   cleanly separated from the displayed value. Always opens in a new tab with
+   rel=noopener. Anchor (not <button>) because it is navigation. #}
+{% macro open_button(url, label="Open") -%}
+<a href="{{ url }}" target="_blank" rel="noopener noreferrer"
+   class="btn btn--secondary btn--sm" style="margin-left:0.25rem;"
+   aria-label="Open {{ url }} in new tab">{{ label }} ↗</a>
+{%- endmacro %}
