@@ -232,6 +232,59 @@ async def test_detail_bound_item_superseded_badge(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_header_eyebrow_replaces_breadcrumb(client, session):
+    """Header shows a singular 'Information Source Revision' eyebrow, not a
+    breadcrumb, and drops the truncated fingerprint (full one lives in the grid)."""
+    src = _make_source("https://example.com/rev-eyebrow")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "d" * 64)
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'class="eyebrow"' in r.text
+    assert "Information Source Revision</p>" in r.text
+    assert 'aria-label="Breadcrumb"' not in r.text
+    # Truncated fingerprint removed from the header; full one remains below.
+    assert ("d" * 24 + "…") not in r.text
+    assert "d" * 64 in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_info_source_has_external_link(client, session):
+    """The Information Source value carries an external ↗ link to the target URL."""
+    src = _make_source("https://example.com/rev-extlink")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "e" * 64)
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'href="https://example.com/rev-extlink"' in r.text
+    assert 'target="_blank"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_wide_items_span_full_width(client, session):
+    """Fingerprint + Information Source get full-width grid cells so long values
+    extend horizontally at wide viewports."""
+    src = _make_source("https://example.com/rev-wide")
+    session.add(src)
+    await session.flush()
+    rev = _make_revision(src, "c" * 64)
+    session.add(rev)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert r.text.count("detail-grid__item--full") == 2
+
+
+@pytest.mark.asyncio
 async def test_detail_uses_detail_grid_item_markup(client, session):
     """Normalize to the InfoItem detail grid convention (#78): grid __item
     wrappers, not bare <dl><dt><dd> which misaligns against .detail-grid CSS."""

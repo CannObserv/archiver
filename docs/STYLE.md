@@ -93,8 +93,9 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 ### Data display
 - `.data-table` — standard table; applies to `<table>`.
 - `.entity-card`, `.entity-card__header`, `.entity-card__title`, `.entity-card__meta`, `.entity-card__actions`.
+- `.eyebrow` — small uppercase kicker label above an `.entity-card__title` (e.g. the entity kind). Non-interactive; distinct from a breadcrumb.
 - `.entity-section`, `.entity-section__header`, `.entity-section__title`.
-- `.detail-grid`, `.detail-grid__item`, `.detail-grid__label`, `.detail-grid__value`.
+- `.detail-grid`, `.detail-grid__item`, `.detail-grid__label`, `.detail-grid__value`. `.detail-grid__item--full` spans every grid column (`grid-column: 1 / -1`) so long values (fingerprints, URLs) extend horizontally at wide viewports instead of cramping into one track.
 
 ### Forms
 - `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`. **There is no `.input` class** — `<input>`/`<textarea>`/`<select>` must use `.form-input`/`.form-textarea`/`.form-select` or they render unstyled (browser default).

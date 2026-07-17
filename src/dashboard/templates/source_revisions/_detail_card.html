@@ -16,31 +16,29 @@
 <div class="entity-card" id="revision-card">
   <div class="entity-card__header">
     <div>
-      <nav aria-label="Breadcrumb" style="margin-bottom:var(--space-1);">
-        <a href="/dashboard/source-revisions/" class="text-muted text-sm">
-          Information Source Revisions
-        </a>
-        <span aria-hidden="true"> / </span>
-      </nav>
+      <p class="eyebrow">Information Source Revision</p>
       <h1 class="entity-card__title" id="revision-heading" tabindex="-1">
-        <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
+        {{ copyable(rev.source_revision_id) }}
       </h1>
-      <p class="entity-card__id text-sm text-muted">{{ copyable(rev.source_revision_id) }}</p>
     </div>
   </div>
 
   <div class="detail-grid">
-    <div class="detail-grid__item">
+    <div class="detail-grid__item detail-grid__item--full">
       <span class="detail-grid__label">Fingerprint</span>
       <span class="detail-grid__value">{{ copyable(rev.content_fingerprint) }}</span>
     </div>
-    <div class="detail-grid__item">
+    <div class="detail-grid__item detail-grid__item--full">
       <span class="detail-grid__label">Information Source</span>
       <span class="detail-grid__value">
         {% if source %}
         <a href="/dashboard/info-sources/{{ rev.info_source_id }}">
           <code class="text-sm">{{ source.url or rev.info_source_id }}</code>
         </a>
+        {% if source.url %}
+        <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer"
+           class="text-muted text-sm" aria-label="Open {{ source.url }} in new tab">↗</a>
+        {% endif %}
         {% else %}
         <span class="text-muted">{{ rev.info_source_id }}</span>
         {% endif %}

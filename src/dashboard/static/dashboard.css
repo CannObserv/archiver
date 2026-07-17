@@ -651,6 +651,16 @@ p:last-child { margin-bottom: 0; }
   font-weight: var(--font-weight-bold);
   margin: 0;
 }
+/* Eyebrow: a small uppercase kicker label above an entity-card title (e.g. the
+   entity kind). Non-interactive — distinct from a breadcrumb. */
+.eyebrow {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 var(--space-1);
+}
 .entity-card__meta {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
@@ -684,6 +694,9 @@ p:last-child { margin-bottom: 0; }
   margin-bottom: var(--space-6);
 }
 .detail-grid__item { }
+/* Full-bleed cell: spans every grid column so long values (fingerprints, URLs)
+   extend horizontally at wide viewports instead of cramping into one track. */
+.detail-grid__item--full { grid-column: 1 / -1; }
 .detail-grid__label {
   display: block;
   font-size: var(--font-size-xs);
