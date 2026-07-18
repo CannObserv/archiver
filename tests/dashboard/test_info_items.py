@@ -665,6 +665,43 @@ async def test_deactivate_rep_spec_assignment(client, session):
     assert assignment.deactivated_at == first_ts
 
 
+@pytest.mark.asyncio
+async def test_deactivate_one_of_several_rerenders_remaining(client, session):
+    """Deactivating one assignment re-renders the section with the others intact
+    (multi-row branch of _rep_spec_assignments.html) (#81 CR16)."""
+    item = _make_item("Multi-Assign Item")
+    session.add(item)
+    await session.flush()
+    rs_keep = _make_rep_spec("Keep Spec")
+    rs_drop = _make_rep_spec("Drop Spec")
+    session.add(rs_keep)
+    session.add(rs_drop)
+    await session.flush()
+    keep = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=rs_keep.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    drop = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=rs_drop.rep_spec_id,
+        activated_at=datetime(2026, 4, 2, tzinfo=UTC),
+    )
+    session.add(keep)
+    session.add(drop)
+    await session.flush()
+
+    r = await client.delete(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{drop.id}",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert 'id="ii-rep-spec-assignments"' in r.text
+    assert "Keep Spec" in r.text
+    assert "Drop Spec" not in r.text
+    assert "No active Replication Spec assignments." not in r.text
+
+
 # ---------------------------------------------------------------------------
 # PATCH /{item_id}/rep-spec-assignments/{aid}/public-url
 # ---------------------------------------------------------------------------
