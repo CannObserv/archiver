@@ -110,6 +110,46 @@ async def test_domain_detail_shows_linked_sources(client, session):
 
 
 @pytest.mark.asyncio
+async def test_domain_detail_shows_source_count_in_heading(client, session):
+    """Related-collection tables carry the row count in the <h2> (#82, docs/UI.md)."""
+    session.add(_make_domain("count-head.example.com"))
+    await session.flush()
+    for i in range(3):
+        session.add(_make_source(f"https://count-head.example.com/{i}", "count-head.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/count-head.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Information Sources (3)" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_source_count_is_total_not_page(client, session):
+    """Count is a route COUNT over all rows, not the current page's length (#82)."""
+    session.add(_make_domain("count-page.example.com"))
+    await session.flush()
+    for i in range(3):
+        session.add(_make_source(f"https://count-page.example.com/{i}", "count-page.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/count-page.example.com?limit=2", headers=_HEADERS)
+    assert r.status_code == 200
+    # Page shows 2 rows but the heading must report the full total.
+    assert "Information Sources (3)" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_source_count_zero(client, session):
+    """Empty state still reports a count (#82)."""
+    session.add(_make_domain("count-zero.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/count-zero.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Information Sources (0)" in r.text
+
+
+@pytest.mark.asyncio
 async def test_domain_detail_uses_entity_card_eyebrow(client, session):
     """Domain detail converges on the entity-card + eyebrow header (#82)."""
     session.add(_make_domain("card.example.com"))

@@ -50,7 +50,8 @@
   </div>
 
   {# Linked Information Sources #}
-  <h2 style="margin-bottom:var(--space-2);">Information Sources</h2>
+  {# Count comes from a route COUNT, not |length — the table below is paginated. #}
+  <h2 style="margin-bottom:var(--space-2);">Information Sources ({{ source_total }})</h2>
   {% if sources %}
   <table class="data-table" aria-label="Information Sources on {{ domain.name }}">
     <thead>

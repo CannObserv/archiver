@@ -118,6 +118,14 @@ async def detail_domain(
     has_more = len(src_rows) > limit
     src_rows = src_rows[:limit]
 
+    # Exact total for the section heading — the table is paginated, so a template
+    # `|length` would report only the current page (#82).
+    source_total = (
+        await session.execute(
+            select(func.count()).select_from(InfoSource).where(InfoSource.domain_name == name)
+        )
+    ).scalar_one()
+
     return _templates.TemplateResponse(
         request,
         "domains/detail.html",
@@ -125,6 +133,7 @@ async def detail_domain(
             "user": user,
             "domain": domain,
             "sources": src_rows,
+            "source_total": source_total,
             "has_more": has_more,
             "limit": limit,
             "offset": offset,

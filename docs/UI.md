@@ -31,7 +31,7 @@
 
 **GET `/dashboard/domains/`** — paginated list. Columns: Domain (linked to detail), Sources (count), Status badge, Created. Filter bar: `?is_active=true|false|` (all). Source counts loaded via a GROUP BY query.
 
-**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (converged on the canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name → `.detail-grid` (Status badge, created_at UTC). Operator notes (HTMX inline edit); linked Information Sources table (source URLs carry the `open_button` affordance). **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destructive, so it's hoisted into the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely.
+**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (converged on the canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name → `.detail-grid` (Status badge, created_at UTC). Operator notes (HTMX inline edit); linked Information Sources table (count in heading from a route `COUNT`, so it stays accurate across pagination — #82; source URLs carry the `open_button` affordance). **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). Archive/restore stay full-page POST→303 by design — see the *allowed variant* note under **HTMX mutations**. **Restore** is recovery, not destructive, so it's hoisted into the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely.
 
 **POST `/dashboard/domains/{name}/notes`** — HTMX partial; replaces `#notes-section` with `domains/_notes_partial.html`. Saves notes inline.
 
@@ -271,8 +271,24 @@ enhancement). Emit a focus-move `<script>` in the swap response only (gated on a
 `swapped` flag) so keyboard focus lands on the region heading rather than
 `<body>`.
 
+*Allowed variant — full-page POST→303.* HTMX partial-swap applies to mutations
+whose visible effect is **contained within a single card or section**. When a
+mutation changes page-level state across **disjoint regions**, a plain
+POST→303 is the correct implementation, not a shortfall to be migrated later.
+Domain archive/restore is the reference case (#82): it moves the header Status
+badge, the inline Restore button beside it, *and* the presence of the
+`.danger-zone` block — three separate DOM regions, which HTMX would need
+`hx-swap-oob` or a body-spanning partial to cover. Contrast SourceRevision
+clear-cache, which swaps the one contiguous `#revision-card` partial. The 303
+also preserves correct back-button semantics for a state transition.
+
 **Related-collection tables.** `.data-table` with the row count in the `<h2>`
-heading (e.g. "Bound Information Items (3)"). Cache state uses the
+heading (e.g. "Bound Information Items (3)"). When the table is **paginated**,
+the count must come from a route-level `COUNT` over the full result set, never
+a template `|length` — that would report only the current page. Domain detail
+(`source_total`) is the reference; InfoSource detail's "Other Sources at This
+URL" uses the capped `limit+1` "50+" probe instead, appropriate where the
+section is truncated rather than paged. Cache state uses the
 `.status-pill--cached/expired/missing` pills, not `.badge` variants. A
 succession/currency status (e.g. a revision being an item's "current pin" vs
 "superseded") is a `.badge--primary`/`.badge--muted` column.
