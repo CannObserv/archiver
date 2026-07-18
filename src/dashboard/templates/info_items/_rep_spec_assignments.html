@@ -1,0 +1,41 @@
+{# Replication Specs assignments section — included by info_items/detail.html and
+   returned by DELETE /dashboard/info-items/{id}/rep-spec-assignments/{aid} so a
+   deactivate re-renders the table + empty-state in one swap and can move focus
+   (#81). Row-level public-url edits still swap the individual row. Requires
+   `item_id`, `irs_rows`, `rep_specs_by_id` in context. #}
+<div id="ii-rep-spec-assignments">
+  <h3 id="ii-rep-spec-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Replication Specs</h3>
+  {% if irs_rows %}
+  <table class="data-table" aria-label="Active Replication Spec assignments" style="margin-bottom:var(--space-3);">
+    <thead>
+      <tr>
+        <th class="data-table__th">Spec</th>
+        <th class="data-table__th">Provider</th>
+        <th class="data-table__th">Activated</th>
+        <th class="data-table__th">Public URL</th>
+        <th class="data-table__th">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for assignment in irs_rows %}
+      {% set rep_spec = rep_specs_by_id.get(assignment.rep_spec_id) %}
+      {% include "info_items/_rep_spec_row.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted" style="margin-bottom:var(--space-3);">No active Replication Spec assignments.</p>
+  {% endif %}
+
+  {% if swapped %}
+  {# After the deactivate swap, focus the section heading so keyboard users aren't
+     dropped to <body> when the clicked button is removed. Rendered only on the
+     swap response, never the initial include. htmx runs scripts in swaps. #}
+  <script>
+    (function () {
+      var h = document.getElementById("ii-rep-spec-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>

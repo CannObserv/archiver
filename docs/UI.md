@@ -311,7 +311,7 @@ Logs a warning on degraded/failure. Auth-gated; unauthenticated requests redirec
 4. **Revision History** — `data-table` of `info_item_source_revisions` ordered by `bound_at desc`; columns: Revision (linked to revision detail), Captured (UTC), Cache (`.status-pill--cached/expired/missing`, matching the rest of the app — was a `.badge--success`/`—`). Replicator assignment rows (`_rep_spec_row.html`) show `activated_at` UTC and an `open_button` next to the `public_url` input when a value is set.
 5. **Replicator** — two sub-sections:
    - *Rep Fields* — `x-data="repFieldsEditor()"` wrapper; HTMX-loaded `sortableChips` suggestions (`hx-trigger="load"`); `<textarea name="rep_fields">` with `PATCH /dashboard/info-items/{id}/rep-fields` inline save; flash target `#rep-fields-flash`.
-   - *Replication Specs* — `data-table` of active `info_item_rep_specs` assignments; assign form (`filter-card`, `rep_spec_id` field); HTMX delete per row.
+   - *Replication Specs* — `info_items/_rep_spec_assignments.html` section (wrapper `#ii-rep-spec-assignments`, heading `#ii-rep-spec-heading`): `data-table` of active `info_item_rep_specs` assignments; assign form (`filter-card`, `rep_spec_id` field). HTMX deactivate re-renders the whole section (table + empty-state) and focuses the heading; per-row public-url edits still swap the individual row.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial (`info_items/_watcher_status.html`). Calls Watcher `get_watched_item`; renders ok/error/unknown/not_watching/not_configured/degraded. Used by `hx-trigger="load"` on the health strip and re-renders after check-now, begin-watching, resync-watcher. **Self-heal on 404:** a `WatcherNotFound` (the WatchedItem was permanently deleted in Watcher) NULLs the stale `watcher_item_id` (commits) and renders `not_watching` so "Begin Watching" reappears — only a confirmed 404 clears the link; transient failures (network/5xx) still render `degraded` and retain it (CannObserv/archiver#63).
 
@@ -335,7 +335,7 @@ Logs a warning on degraded/failure. Auth-gated; unauthenticated requests redirec
 
 **POST `/dashboard/info-items/{id}/assign-rep-spec`** — assigns a RepSpec (form field: `rep_spec_id`). Redirects 303 to detail.
 
-**DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** — HTMX delete; sets `deactivated_at = now()`. Removes `<tr id="rs-row-{aid}">`.
+**DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** — HTMX delete; sets `deactivated_at = now()` (idempotent — skipped if already deactivated). Returns the re-rendered `info_items/_rep_spec_assignments.html` section fragment (targets `#ii-rep-spec-assignments`), which updates the table/empty-state and moves focus to the section heading.
 
 **PATCH `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/public-url`** — sets `public_url` on an assignment (form field: `public_url`). Returns `info_items/_rep_spec_row.html` fragment replacing the row.
 

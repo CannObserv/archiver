@@ -27,7 +27,7 @@
   <td class="data-table__cell">
     <button class="btn btn--sm btn--danger"
             hx-delete="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}"
-            hx-target="#rs-row-{{ assignment.id }}"
+            hx-target="#ii-rep-spec-assignments"
             hx-swap="outerHTML"
             hx-confirm="Deactivate this replication spec assignment?"
             aria-label="Deactivate assignment {{ assignment.id }}">

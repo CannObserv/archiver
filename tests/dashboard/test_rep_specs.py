@@ -219,6 +219,66 @@ async def test_deactivate_assignment_rerenders_section(client, session):
 
 
 @pytest.mark.asyncio
+async def test_deactivate_assignment_moves_focus_on_swap_only(client, session):
+    """The swap fragment focuses the section heading; a plain page load does not (#80 CR15)."""
+    spec = _make_rep_spec("Focus Spec")
+    session.add(spec)
+    await session.flush()
+    item = InfoItem(name="Focus Item")
+    session.add(item)
+    await session.flush()
+    a = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(a)
+    await session.flush()
+
+    page = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert 'id="rep-spec-assignments-heading"' in page.text
+    assert 'getElementById("rep-spec-assignments-heading")' not in page.text  # no focus on load
+
+    swap = await client.delete(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{a.id}", headers=_HEADERS
+    )
+    assert 'getElementById("rep-spec-assignments-heading")' in swap.text  # focus after swap
+
+
+@pytest.mark.asyncio
+async def test_deactivate_assignment_is_idempotent(client, session):
+    """A repeat deactivate does not overwrite the original deactivated_at (#80 CR14)."""
+    spec = _make_rep_spec("Idem Spec")
+    session.add(spec)
+    await session.flush()
+    item = InfoItem(name="Idem Item")
+    session.add(item)
+    await session.flush()
+    a = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(a)
+    await session.flush()
+
+    r1 = await client.delete(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{a.id}", headers=_HEADERS
+    )
+    assert r1.status_code == 200
+    await session.refresh(a)
+    first_ts = a.deactivated_at
+    assert first_ts is not None
+
+    r2 = await client.delete(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{a.id}", headers=_HEADERS
+    )
+    assert r2.status_code == 200
+    await session.refresh(a)
+    assert a.deactivated_at == first_ts  # unchanged
+
+
+@pytest.mark.asyncio
 async def test_deactivate_assignment_wrong_spec_404(client, session):
     """An assignment under a different spec cannot be deactivated via this spec (#80)."""
     spec_a = _make_rep_spec("Spec A")

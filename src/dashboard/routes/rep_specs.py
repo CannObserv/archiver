@@ -231,9 +231,11 @@ async def deactivate_assignment(
     if assignment is None or assignment.rep_spec_id != spec.rep_spec_id:
         raise DashboardNotFound("Assignment not found")
 
-    assignment.deactivated_at = datetime.now(UTC)
-    await session.flush()
-    await session.commit()
+    # Idempotent: don't overwrite the original deactivation timestamp on a repeat call.
+    if assignment.deactivated_at is None:
+        assignment.deactivated_at = datetime.now(UTC)
+        await session.flush()
+        await session.commit()
 
     assignment_rows, items_by_id = await _load_active_assignments(spec, session)
     return _templates.TemplateResponse(
@@ -244,5 +246,6 @@ async def deactivate_assignment(
             "spec": spec,
             "assignments": assignment_rows,
             "items_by_id": items_by_id,
+            "swapped": True,
         },
     )

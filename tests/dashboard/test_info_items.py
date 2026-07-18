@@ -646,9 +646,23 @@ async def test_deactivate_rep_spec_assignment(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
+    # Re-renders the assignments section (with focus move) rather than an empty 200 (#81 CR15).
+    assert 'id="ii-rep-spec-assignments"' in r.text
+    assert 'getElementById("ii-rep-spec-heading")' in r.text
+    assert "No active Replication Spec assignments." in r.text  # last one removed
 
     await session.refresh(assignment)
     assert assignment.deactivated_at is not None
+
+    # Idempotent: a repeat deactivate does not overwrite the timestamp (#81 CR14).
+    first_ts = assignment.deactivated_at
+    r2 = await client.delete(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}",
+        headers=_HEADERS,
+    )
+    assert r2.status_code == 200
+    await session.refresh(assignment)
+    assert assignment.deactivated_at == first_ts
 
 
 # ---------------------------------------------------------------------------

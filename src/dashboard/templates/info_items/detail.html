@@ -228,31 +228,10 @@
       </form>
     </div>
 
-    {# Replication Specs sub-section #}
-    <h3 style="margin-bottom:var(--space-2);font-size:1rem;">Replication Specs</h3>
-
-    {% if irs_rows %}
-    <table class="data-table" aria-label="Active Replication Spec assignments" style="margin-bottom:var(--space-3);">
-      <thead>
-        <tr>
-          <th class="data-table__th">Spec</th>
-          <th class="data-table__th">Provider</th>
-          <th class="data-table__th">Activated</th>
-          <th class="data-table__th">Public URL</th>
-          <th class="data-table__th">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for assignment in irs_rows %}
-        {% set rep_spec = rep_specs_by_id.get(assignment.rep_spec_id) %}
-        {% set item_id = item.info_item_id %}
-        {% include "info_items/_rep_spec_row.html" %}
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="text-muted" style="margin-bottom:var(--space-3);">No active Replication Spec assignments.</p>
-    {% endif %}
+    {# Replication Specs sub-section — extracted so deactivate re-renders it in
+       place (count/empty-state + focus move). #}
+    {% set item_id = item.info_item_id %}
+    {% include "info_items/_rep_spec_assignments.html" %}
 
     <details style="max-width:30rem;margin-bottom:var(--space-3);">
       <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Assign Replication Spec</summary>

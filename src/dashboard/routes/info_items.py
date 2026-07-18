@@ -329,6 +329,32 @@ async def create_info_item(
     )
 
 
+async def _load_active_rep_spec_assignments(
+    item_id: ULID, session: AsyncSession
+) -> tuple[list[InfoItemRepSpec], dict[ULID, RepSpec]]:
+    """Active (non-deactivated) RepSpec assignments for *item_id* + their RepSpecs."""
+    irs_rows = list(
+        (
+            await session.execute(
+                select(InfoItemRepSpec).where(
+                    InfoItemRepSpec.info_item_id == item_id,
+                    InfoItemRepSpec.deactivated_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    rs_ids = [a.rep_spec_id for a in irs_rows]
+    rep_specs_by_id: dict[ULID, RepSpec] = {}
+    if rs_ids:
+        for rs in (
+            await session.execute(select(RepSpec).where(RepSpec.rep_spec_id.in_(rs_ids)))
+        ).scalars():
+            rep_specs_by_id[rs.rep_spec_id] = rs
+    return irs_rows, rep_specs_by_id
+
+
 # ---------------------------------------------------------------------------
 # GET /dashboard/info-items/{item_id}
 # ---------------------------------------------------------------------------
@@ -372,25 +398,7 @@ async def detail_info_item(
             )
 
     # Active rep_spec assignments + RepSpec rows
-    irs_rows = list(
-        (
-            await session.execute(
-                select(InfoItemRepSpec).where(
-                    InfoItemRepSpec.info_item_id == item.info_item_id,
-                    InfoItemRepSpec.deactivated_at.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    rs_ids = [a.rep_spec_id for a in irs_rows]
-    rep_specs_by_id: dict[ULID, RepSpec] = {}
-    if rs_ids:
-        for rs in (
-            await session.execute(select(RepSpec).where(RepSpec.rep_spec_id.in_(rs_ids)))
-        ).scalars():
-            rep_specs_by_id[rs.rep_spec_id] = rs
+    irs_rows, rep_specs_by_id = await _load_active_rep_spec_assignments(item.info_item_id, session)
 
     # Revision history (last 50)
     iisr_rows = list(
@@ -660,14 +668,19 @@ async def assign_rep_spec_route(
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/{item_id}/rep-spec-assignments/{aid}")
+@router.delete("/{item_id}/rep-spec-assignments/{aid}", response_class=HTMLResponse)
 async def deactivate_rep_spec_assignment(
     item_id: str,
     aid: str,
+    request: Request,
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-) -> Response:
-    """Deactivate a RepSpec assignment (HTMX — removes row)."""
+) -> HTMLResponse:
+    """Deactivate a RepSpec assignment and re-render the assignments section (HTMX).
+
+    The re-rendered `_rep_spec_assignments.html` fragment updates the table +
+    empty-state in one swap and moves focus to the section heading.
+    """
     try:
         item_ulid = ULID.from_str(item_id)
         aid_ulid = ULID.from_str(aid)
@@ -678,10 +691,24 @@ async def deactivate_rep_spec_assignment(
     if assignment is None or assignment.info_item_id != item_ulid:
         raise DashboardNotFound("Assignment not found")
 
-    assignment.deactivated_at = datetime.now(UTC)
-    await session.flush()
-    await session.commit()
-    return Response(status_code=200)
+    # Idempotent: don't overwrite the original deactivation timestamp on a repeat call.
+    if assignment.deactivated_at is None:
+        assignment.deactivated_at = datetime.now(UTC)
+        await session.flush()
+        await session.commit()
+
+    irs_rows, rep_specs_by_id = await _load_active_rep_spec_assignments(item_ulid, session)
+    return _templates.TemplateResponse(
+        request,
+        "info_items/_rep_spec_assignments.html",
+        {
+            "user": user,
+            "item_id": item_ulid,
+            "irs_rows": irs_rows,
+            "rep_specs_by_id": rep_specs_by_id,
+            "swapped": True,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

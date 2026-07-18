@@ -3,7 +3,7 @@
    and empty-state re-render in one HTMX swap (#80). Self-imports the macro. #}
 {% from "_macros.html" import open_button %}
 <div id="rep-spec-assignments" style="margin-top:var(--space-3);">
-  <h2>Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
+  <h2 id="rep-spec-assignments-heading" tabindex="-1">Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
   {% if assignments %}
   <table class="data-table" aria-label="Active assignments">
     <thead>
@@ -53,5 +53,17 @@
   </table>
   {% else %}
   <p class="text-muted">No active assignments.</p>
+  {% endif %}
+
+  {% if swapped %}
+  {# After the deactivate swap, focus the section heading so keyboard users aren't
+     dropped to <body> when the clicked button is removed. Rendered only on the
+     swap response (not the initial include). htmx runs scripts in swaps. #}
+  <script>
+    (function () {
+      var h = document.getElementById("rep-spec-assignments-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
   {% endif %}
 </div>
