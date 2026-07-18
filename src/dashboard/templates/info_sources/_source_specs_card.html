@@ -1,0 +1,40 @@
+{# Source Specs editor card — swapped in place by the HTMX update-specs action
+   (id target). The hx-* attributes drive the in-place swap + success toast;
+   the method/action fallback keeps it working as a plain POST→303 without JS
+   (progressive enhancement). See docs/UI.md Detail Screen Conventions. #}
+<div class="entity-card" id="source-specs-card" style="margin-top:var(--space-3);">
+  <h2 id="source-specs-heading" tabindex="-1" style="margin-top:0;">Source Specs</h2>
+  {# <pre> always shows the live stored specs; the textarea echoes the operator's
+     submitted text (specs_input) so an invalid submission isn't discarded on error. #}
+  <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ specs_json }}</code></pre>
+  <form hx-post="/dashboard/info-sources/{{ src.info_source_id }}/source-specs"
+        hx-target="#source-specs-card" hx-swap="outerHTML"
+        method="POST"
+        action="/dashboard/info-sources/{{ src.info_source_id }}/source-specs"
+        style="margin-top:var(--space-3);">
+    <div>
+      <label for="source-specs-edit" class="form-label">Update Source Specs</label>
+      <textarea id="source-specs-edit" name="source_specs"
+                class="form-textarea code-block{% if specs_error %} form-textarea--error{% endif %}"
+                rows="8">{{ specs_input | default(specs_json, true) }}</textarea>
+      {% if specs_error %}
+      <p class="alert alert--error" role="alert">{{ specs_error }}</p>
+      {% endif %}
+    </div>
+    <div style="text-align:right;margin-top:var(--space-2);">
+      <button type="submit" class="btn btn--sm btn--primary">Update Specs</button>
+    </div>
+  </form>
+
+  {% if swapped %}
+  {# After an HTMX swap move focus to the heading so keyboard users land on the
+     re-rendered card rather than being dropped to <body> (archiver#78 pattern).
+     Rendered only for the swap response — never on full page load. #}
+  <script>
+    (function () {
+      var h = document.getElementById("source-specs-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>

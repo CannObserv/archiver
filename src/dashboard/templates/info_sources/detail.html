@@ -28,26 +28,37 @@
     </div>
   </div>
 
-  {# Source Specs JSON #}
-  <div class="entity-card" style="margin-top:var(--space-3);">
-    <h2 style="margin-top:0;">Source Specs</h2>
-    <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ specs_json }}</code></pre>
-    <form method="POST" action="/dashboard/info-sources/{{ src.info_source_id }}/source-specs"
-          style="margin-top:var(--space-3);">
-      <div>
-        <label for="source-specs-edit" class="form-label">Update Source Specs</label>
-        <textarea id="source-specs-edit" name="source_specs"
-                  class="form-textarea code-block{% if specs_error %} form-textarea--error{% endif %}"
-                  rows="8">{{ specs_json }}</textarea>
-        {% if specs_error %}
-        <p class="alert alert--error">{{ specs_error }}</p>
-        {% endif %}
-      </div>
-      <div style="text-align:right;margin-top:var(--space-2);">
-        <button type="submit" class="btn btn--sm btn--primary">Update Specs</button>
-      </div>
-    </form>
+  {# Source Specs editor (HTMX in-place swap; extracted partial) #}
+  {% include "info_sources/_source_specs_card.html" %}
+
+  {# Other Sources at This URL — multiple InfoSources may share a URL (#8) #}
+  {% if siblings %}
+  <div style="margin-top:var(--space-3);">
+    <h2>Other Sources at This URL ({{ siblings | length }}{% if siblings_has_more %}+{% endif %})</h2>
+    <table class="data-table" aria-label="Other sources at this URL">
+      <thead>
+        <tr>
+          <th class="data-table__th">Source</th>
+          <th class="data-table__th">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sib in siblings %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/info-sources/{{ sib.info_source_id }}">
+              <code class="text-sm">{{ sib.info_source_id }}</code>
+            </a>
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ sib.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
+  {% endif %}
 
   {# Bound Information Items #}
   <div style="margin-top:var(--space-3);">

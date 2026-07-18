@@ -54,12 +54,16 @@ async def _resolve_source(source_id: str, session: AsyncSession) -> InfoSource:
     return src
 
 
+_SIBLING_DISPLAY_LIMIT = 50
+
+
 async def _detail_context(
     src: InfoSource,
     user,
     session: AsyncSession,
     *,
     specs_error: str | None = None,
+    specs_input: str | None = None,
 ) -> dict:
     """Build the template context dict for the InfoSource detail page."""
     binding_rows = list(
@@ -95,13 +99,35 @@ async def _detail_context(
         .scalars()
         .all()
     )
+    # limit+1 probe so the heading can show "50+" rather than a misleading exact
+    # count when more sources share this URL than we display.
+    sibling_rows = list(
+        (
+            await session.execute(
+                select(InfoSource)
+                .where(
+                    InfoSource.url == src.url,
+                    InfoSource.info_source_id != src.info_source_id,
+                )
+                .order_by(InfoSource.created_at, InfoSource.info_source_id)
+                .limit(_SIBLING_DISPLAY_LIMIT + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    siblings_has_more = len(sibling_rows) > _SIBLING_DISPLAY_LIMIT
+    sibling_rows = sibling_rows[:_SIBLING_DISPLAY_LIMIT]
     return {
         "user": user,
         "src": src,
         "bindings": binding_rows,
         "items_by_id": items_by_id,
         "revisions": revision_rows,
+        "siblings": sibling_rows,
+        "siblings_has_more": siblings_has_more,
         "specs_json": json.dumps(src.source_specs, indent=2),
+        "specs_input": specs_input,
         "now": datetime.now(UTC),
         "specs_error": specs_error,
     }
@@ -244,11 +270,37 @@ async def update_info_source_specs_view(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Replace source_specs on an existing InfoSource. Re-renders detail page on error."""
+    """Replace source_specs on an existing InfoSource.
+
+    HTMX requests (``HX-Request``) get the re-rendered ``_source_specs_card.html``
+    partial swapped in place: success carries an ``HX-Trigger: showFlash`` toast;
+    a validation error swaps the card back with an inline error (status 200 so
+    htmx performs the swap) that is announced (``role="alert"``), moves focus to
+    the heading, and preserves the operator's submitted text. Non-HTMX requests
+    keep the plain full-page POST→303 (success) / 422 re-render (error, also
+    preserving submitted text) fallback (progressive enhancement). See docs/UI.md
+    Detail Screen Conventions.
+    """
     src = await _resolve_source(source_id, session)
+    is_htmx = bool(request.headers.get("HX-Request"))
 
     async def _rerender(error: str) -> HTMLResponse:
-        ctx = await _detail_context(src, user, session, specs_error=error)
+        if is_htmx:
+            # 200 so htmx swaps the card; inline error stays visible. Echo the
+            # submitted text back (specs_input) so the operator's edit isn't lost,
+            # move focus to the heading, and role="alert" announces the error.
+            return _templates.TemplateResponse(
+                request,
+                "info_sources/_source_specs_card.html",
+                {
+                    "src": src,
+                    "specs_json": json.dumps(src.source_specs, indent=2),
+                    "specs_input": source_specs,
+                    "specs_error": error,
+                    "swapped": True,
+                },
+            )
+        ctx = await _detail_context(src, user, session, specs_error=error, specs_input=source_specs)
         return _templates.TemplateResponse(
             request, "info_sources/detail.html", ctx, status_code=422
         )
@@ -272,6 +324,24 @@ async def update_info_source_specs_view(
         return await _rerender(str(e))
 
     await session.commit()
+
+    if is_htmx:
+        await session.refresh(src)
+        response = _templates.TemplateResponse(
+            request,
+            "info_sources/_source_specs_card.html",
+            {
+                "src": src,
+                "specs_json": json.dumps(src.source_specs, indent=2),
+                "specs_error": None,
+                "swapped": True,
+            },
+        )
+        response.headers["HX-Trigger"] = json.dumps(
+            {"showFlash": {"level": "success", "body": "Source specs updated."}}
+        )
+        return response
+
     return RedirectResponse(
         url=f"/dashboard/info-sources/{source_id}",
         status_code=303,

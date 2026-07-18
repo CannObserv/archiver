@@ -359,12 +359,12 @@ Partial templates:
 
 **GET `/dashboard/info-sources/{id}`** — detail page. Sections:
 - Header: `.entity-card` (canonical pattern, #79) — `.eyebrow` "Information Source" → `<h1 class="entity-card__title" id="info-source-heading" tabindex="-1">` with the `url` in `<code>` → an `open_button` to the URL → copyable `info_source_id` → `.detail-grid` (created_at UTC). Grid uses `.detail-grid__item` (was bare `<dl><dt><dd>`, which misaligned).
-- Source Specs JSON array — displayed in `<pre class="code-block">`.
-- Edit Specs form — `PATCH /dashboard/info-sources/{id}/source-specs` textarea replaces the specs list. URL is immutable.
+- Source Specs editor — the `info_sources/_source_specs_card.html` partial (extracted so the update-specs action can swap it in place — root `#source-specs-card`, heading `#source-specs-heading`). Shows the current `source_specs` JSON array in `<pre class="code-block">` plus a textarea form that replaces the specs list (`POST .../source-specs`). URL is immutable.
+- Other Sources at This URL — shown only when other InfoSources share this `url` (the model allows multiple sources per URL, #79 #8); count in heading (capped at 50 via a limit+1 probe, rendered "50+" when more exist), each linked by `info_source_id` with created date UTC.
 - Bound Information Items — table of active `info_item_sources` bindings (count in heading; item name link, bound date UTC). Role column removed.
 - Revision History — last 50 `source_revisions` ordered by `captured_at desc` (count in heading; fingerprint truncated, captured date UTC, cache status pill).
 
-**POST `/dashboard/info-sources/{id}/source-specs`** — replaces `source_specs` list on an existing InfoSource (form field: `source_specs` JSON array). Redirects 303 to detail on success. Re-renders detail page with `specs_error` inline error on JSON parse failure, schema validation failure, or mixed-family error (422).
+**POST `/dashboard/info-sources/{id}/source-specs`** — replaces `source_specs` list on an existing InfoSource (form field: `source_specs` JSON array). HTMX requests (`hx-post`, `hx-target="#source-specs-card"`, `hx-swap="outerHTML"`) get the re-rendered `_source_specs_card.html` partial swapped in place: success carries an `HX-Trigger: showFlash` toast and moves focus to the section heading (#79 #7); a validation error swaps the card back with the inline `specs_error` (`role="alert"`) visible, moves focus to the heading, and echoes the submitted text back into the textarea so the edit isn't discarded (status 200 so htmx performs the swap). Non-HTMX requests fall back to a 303 redirect on success / full-page 422 re-render (also preserving submitted text) on JSON parse, schema validation, or mixed-family failure (progressive enhancement).
 
 ### Information Source Revisions (`/dashboard/source-revisions/`)  *(Epic 5 — implemented)*
 

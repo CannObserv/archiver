@@ -191,6 +191,24 @@ Rules:
 - On success, the server returns `204` with an `HX-Redirect` header. HTMX follows it as a full-page navigation regardless of `hx-target` settings.
 - Place the error div inside the same Alpine `x-show` container as the form so it stays in DOM when the panel is toggled. Placing it inside the `<form>` element satisfies this by default; outside-form placements (e.g. after `</form>` but within the same `<details>`) are valid if the enclosing container is under the same Alpine toggle.
 
+### HTMX action-swaps-card pattern
+
+For a mutating action on a detail page (submit a form, click a button) that should update just the affected card without a full-page reload, swap the card in place and toast the result. Used by clear-cache (`source_revisions/_detail_card.html`) and the Source Specs editor (`info_sources/_source_specs_card.html`).
+
+```html
+<form hx-post="/dashboard/path/to/action"
+      hx-target="#the-card" hx-swap="outerHTML"
+      method="POST" action="/dashboard/path/to/action">
+  <!-- fields + submit -->
+</form>
+```
+
+Rules:
+- Extract the card into its own partial whose root carries the target `id` (e.g. `#the-card`). The route renders that same partial for HTMX requests so the swap re-targets cleanly on subsequent actions.
+- **Progressive enhancement:** keep `method`/`action` (and, for buttons, a real submit) alongside the `hx-*` attributes so the action still works as a plain POST→303 when JS is disabled. Branch server-side on the `HX-Request` header: HTMX → partial; non-HTMX → 303 redirect (success) / full-page re-render (error).
+- On success the route sends `HX-Trigger: {"showFlash": {...}}` for a toast, and moves focus to the card heading (`tabindex="-1"`, focused by an inline `<script>` gated on a `swapped` flag) so keyboard users are not dropped to `<body>` after the swap (archiver#78).
+- **Validation errors** return the partial with the inline error at status **200** (not 422) so HTMX performs the swap — otherwise a 4xx is discarded unless the `response-targets` extension is wired (see the inline form error pattern above, which is the alternative when you want the error routed to a separate `#error` div rather than re-swapping the whole card). Give the inline error `<p>` `role="alert"` so screen readers announce it after the swap (focus lands on `<body>` otherwise), move focus to the card heading on the error swap too, and echo the operator's submitted input back into the field so a rejected edit isn't discarded.
+
 ### JSON data island pattern
 
 When an Alpine component needs server-rendered data at initialisation, place the data in a `<script type="application/json">` child element rather than embedding JSON inside the `x-data` attribute. Jinja2's `tojson` filter does **not** escape `"`, so JSON in a double-quoted attribute is silently truncated by the HTML parser; single-quoted attributes work but are fragile to copy. The data island avoids both problems:

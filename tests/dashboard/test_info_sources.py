@@ -177,6 +177,51 @@ async def test_detail_shows_revisions(client, session):
     assert "2026-01-15" in r.text
 
 
+@pytest.mark.asyncio
+async def test_detail_shows_sibling_sources_at_same_url(client, session):
+    """Finding #8: cross-link other InfoSources sharing this URL."""
+    url = "https://example.com/shared-url"
+    src = _make_source(url)
+    sibling = _make_source(url)
+    other = _make_source("https://example.com/unrelated-url")
+    session.add_all([src, sibling, other])
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Other Sources at This URL" in r.text
+    # Sibling is linked; self and unrelated source are not listed here.
+    assert f"/dashboard/info-sources/{sibling.info_source_id}" in r.text
+    assert str(other.info_source_id) not in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_hides_sibling_section_when_no_siblings(client, session):
+    """No other sources at the URL → section absent."""
+    src = _make_source("https://example.com/lonely-url")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Other Sources at This URL" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_sibling_count_caps_at_fifty_plus(client, session):
+    """More than 50 siblings → heading shows '(50+)' via a limit+1 probe (#79 CR 4)."""
+    url = "https://example.com/crowded-url"
+    src = _make_source(url)
+    session.add(src)
+    # 51 other sources at the same URL → display caps at 50, count reads "50+".
+    session.add_all([_make_source(url) for _ in range(51)])
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Other Sources at This URL (50+)" in r.text
+
+
 # ---------------------------------------------------------------------------
 # GET /dashboard/info-sources/new
 # ---------------------------------------------------------------------------
@@ -307,3 +352,74 @@ async def test_update_specs_schema_error_rerenders_html_with_error(client, sessi
     )
     assert r.status_code == 422
     assert "text/html" in r.headers["content-type"]
+
+
+@pytest.mark.asyncio
+async def test_update_specs_htmx_swaps_card_and_flashes(client, session):
+    """Finding #7: HTMX success swaps the specs card in place + fires a success toast."""
+    src = _make_source("https://example.com/update-specs-htmx-ok")
+    session.add(src)
+    await session.flush()
+
+    xpath_spec = {
+        "schema_version": 1,
+        "extraction": {"algorithm": "xpath", "selector": "//h2"},
+        "fingerprint": {},
+    }
+    specs = json.dumps([xpath_spec])
+    r = await client.post(
+        f"/dashboard/info-sources/{src.info_source_id}/source-specs",
+        data={"source_specs": specs},
+        headers={**_HEADERS, "HX-Request": "true"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 200
+    assert "showFlash" in r.headers.get("HX-Trigger", "")
+    # Card partial swapped in place — id target present, not a full page.
+    assert 'id="source-specs-card"' in r.text
+    assert "<h1" not in r.text
+    # Reflects the newly-saved spec.
+    assert "//h2" in r.text
+    await session.refresh(src)
+    assert src.source_specs == [xpath_spec]
+
+
+@pytest.mark.asyncio
+async def test_update_specs_htmx_error_swaps_card_with_inline_error(client, session):
+    """HTMX validation error swaps the card back with the inline error (200 so htmx swaps)."""
+    src = _make_source("https://example.com/update-specs-htmx-err")
+    session.add(src)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-sources/{src.info_source_id}/source-specs",
+        data={"source_specs": "not-valid-json{oops"},
+        headers={**_HEADERS, "HX-Request": "true"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 200
+    assert 'id="source-specs-card"' in r.text
+    assert "JSON" in r.text  # inline error visible
+    assert "<h1" not in r.text  # partial, not full page
+    # Error is announced (role="alert") and focus moves to the heading (#79 CR 1,2).
+    assert 'role="alert"' in r.text
+    assert 'getElementById("source-specs-heading")' in r.text
+    # Submitted (invalid) text is preserved in the textarea, not discarded (#79 CR 3).
+    assert "not-valid-json{oops" in r.text
+
+
+@pytest.mark.asyncio
+async def test_update_specs_nonhtmx_error_preserves_submitted_text(client, session):
+    """Non-HTMX 422 re-render also echoes the submitted invalid text back (#79 CR 3)."""
+    src = _make_source("https://example.com/update-specs-nonhtmx-preserve")
+    session.add(src)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-sources/{src.info_source_id}/source-specs",
+        data={"source_specs": "still-bad-json{"},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 422
+    assert "still-bad-json{" in r.text
