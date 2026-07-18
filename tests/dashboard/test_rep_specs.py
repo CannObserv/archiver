@@ -161,12 +161,110 @@ async def test_detail_assignment_has_deactivate_button(client, session):
 
     r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
     assert r.status_code == 200
-    assert f'id="rs-assignment-{assignment.id}"' in r.text
+    assert 'id="rep-spec-assignments"' in r.text
     assert (
-        f'hx-delete="/dashboard/info-items/{item.info_item_id}'
-        f'/rep-spec-assignments/{assignment.id}"' in r.text
+        f'hx-delete="/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{assignment.id}"' in r.text
     )
+    assert 'hx-target="#rep-spec-assignments"' in r.text
     assert "Deactivate" in r.text
+
+
+@pytest.mark.asyncio
+async def test_deactivate_assignment_rerenders_section(client, session):
+    """Deactivating re-renders the whole Active Assignments section: the row is
+    gone, the count decrements, and the empty-state shows once none remain (#80)."""
+    spec = _make_rep_spec("Section Spec")
+    session.add(spec)
+    await session.flush()
+    item_a = InfoItem(name="Assign-A")
+    item_b = InfoItem(name="Assign-B")
+    session.add(item_a)
+    session.add(item_b)
+    await session.flush()
+    a = InfoItemRepSpec(
+        info_item_id=item_a.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    b = InfoItemRepSpec(
+        info_item_id=item_b.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 2, tzinfo=UTC),
+    )
+    session.add(a)
+    session.add(b)
+    await session.flush()
+
+    # Deactivate A → section re-renders with only B and count (1).
+    r = await client.delete(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{a.id}", headers=_HEADERS
+    )
+    assert r.status_code == 200
+    assert 'id="rep-spec-assignments"' in r.text
+    assert "Assign-B" in r.text
+    assert "Assign-A" not in r.text
+    assert "Active Assignments (1)" in r.text
+
+    # Reload consistency: A stays gone, B remains.
+    r2 = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert "Assign-A" not in r2.text
+    assert "Assign-B" in r2.text
+
+    # Deactivate B → empty-state.
+    r3 = await client.delete(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{b.id}", headers=_HEADERS
+    )
+    assert r3.status_code == 200
+    assert "No active assignments." in r3.text
+
+
+@pytest.mark.asyncio
+async def test_deactivate_assignment_wrong_spec_404(client, session):
+    """An assignment under a different spec cannot be deactivated via this spec (#80)."""
+    spec_a = _make_rep_spec("Spec A")
+    spec_b = _make_rep_spec("Spec B")
+    session.add(spec_a)
+    session.add(spec_b)
+    await session.flush()
+    item = InfoItem(name="Cross Item")
+    session.add(item)
+    await session.flush()
+    assignment_b = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec_b.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(assignment_b)
+    await session.flush()
+
+    r = await client.delete(
+        f"/dashboard/rep-specs/{spec_a.rep_spec_id}/assignments/{assignment_b.id}",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_deactivate_assignment_unauthenticated_redirects(client, session):
+    spec = _make_rep_spec("Auth Spec")
+    session.add(spec)
+    await session.flush()
+    item = InfoItem(name="Auth Item")
+    session.add(item)
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.delete(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{assignment.id}",
+        follow_redirects=False,
+    )
+    assert r.status_code == 307
 
 
 @pytest.mark.asyncio

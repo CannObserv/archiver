@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import copyable, open_button %}
+{% from "_macros.html" import copyable %}
 {% block title %}{{ spec.name }}{% endblock %}
 
 {% block content %}
@@ -33,60 +33,8 @@
     <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ doc_json }}</code></pre>
   </div>
 
-  {# Active Assignments #}
-  <div style="margin-top:var(--space-3);">
-    <h2>Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
-    {% if assignments %}
-    <table class="data-table" aria-label="Active assignments">
-      <thead>
-        <tr>
-          <th class="data-table__th">Information Item</th>
-          <th class="data-table__th">Activated</th>
-          <th class="data-table__th">Public URL</th>
-          <th class="data-table__th">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for assignment in assignments %}
-        {% set item = items_by_id.get(assignment.info_item_id) %}
-        <tr id="rs-assignment-{{ assignment.id }}">
-          <td class="data-table__cell">
-            {% if item %}
-            <a href="/dashboard/info-items/{{ assignment.info_item_id }}">{{ item.name }}</a>
-            {% else %}
-            <span class="text-muted">{{ assignment.info_item_id }}</span>
-            {% endif %}
-          </td>
-          <td class="data-table__cell data-table__cell--muted">
-            {{ assignment.activated_at.strftime('%Y-%m-%d %H:%M UTC') }}
-          </td>
-          <td class="data-table__cell">
-            {% if assignment.public_url %}
-            <span class="text-sm" style="word-break:break-all;">{{ assignment.public_url }}</span>{{ open_button(assignment.public_url) }}
-            {% else %}
-            <span class="text-muted">—</span>
-            {% endif %}
-          </td>
-          <td class="data-table__cell">
-            {# Deactivate reuses the InfoItem endpoint (keyed by info_item_id); an
-               empty 200 swaps the row out. Managed from either screen (#80). #}
-            <button class="btn btn--sm btn--danger"
-                    hx-delete="/dashboard/info-items/{{ assignment.info_item_id }}/rep-spec-assignments/{{ assignment.id }}"
-                    hx-target="#rs-assignment-{{ assignment.id }}"
-                    hx-swap="outerHTML"
-                    hx-confirm="Deactivate this replication spec assignment?"
-                    aria-label="Deactivate assignment {{ assignment.id }}">
-              Deactivate
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="text-muted">No active assignments.</p>
-    {% endif %}
-  </div>
+  {# Active Assignments (extracted so the deactivate action re-renders it in place) #}
+  {% include "rep_specs/_assignments.html" %}
 
 </div>
 {% endblock %}

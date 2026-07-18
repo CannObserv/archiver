@@ -21,18 +21,21 @@
         <span class="detail-grid__value">
           {% if domain.archived_at %}
           <span class="badge badge--warning">archived</span>
-          {# Restore is recovery, not destructive — hoisted here next to the state
-             badge rather than the danger zone (#82). #}
-          <form method="post" action="/dashboard/domains/{{ domain.name }}/restore"
-                style="display:inline;margin-left:var(--space-2);">
-            <button type="submit" class="btn btn--secondary btn--sm">Restore</button>
-          </form>
           {% elif not domain.is_active %}
           <span class="badge badge--muted">inactive</span>
           {% else %}
           <span class="badge badge--success">active</span>
           {% endif %}
         </span>
+        {# Restore is recovery, not destructive — hoisted next to the state badge
+           rather than the danger zone (#82). Form is a sibling of the value span
+           (not nested inside it) so the markup stays valid. #}
+        {% if domain.archived_at %}
+        <form method="post" action="/dashboard/domains/{{ domain.name }}/restore"
+              style="display:inline;margin-left:var(--space-2);">
+          <button type="submit" class="btn btn--secondary btn--sm">Restore</button>
+        </form>
+        {% endif %}
       </div>
       <div class="detail-grid__item">
         <span class="detail-grid__label">Created</span>

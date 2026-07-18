@@ -1,0 +1,57 @@
+{# Active Assignments section — included by rep_specs/detail.html and returned
+   standalone by DELETE /dashboard/rep-specs/{id}/assignments/{aid} so the count
+   and empty-state re-render in one HTMX swap (#80). Self-imports the macro. #}
+{% from "_macros.html" import open_button %}
+<div id="rep-spec-assignments" style="margin-top:var(--space-3);">
+  <h2>Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
+  {% if assignments %}
+  <table class="data-table" aria-label="Active assignments">
+    <thead>
+      <tr>
+        <th class="data-table__th">Information Item</th>
+        <th class="data-table__th">Activated</th>
+        <th class="data-table__th">Public URL</th>
+        <th class="data-table__th">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for assignment in assignments %}
+      {% set item = items_by_id.get(assignment.info_item_id) %}
+      <tr>
+        <td class="data-table__cell">
+          {% if item %}
+          <a href="/dashboard/info-items/{{ assignment.info_item_id }}">{{ item.name }}</a>
+          {% else %}
+          <span class="text-muted">{{ assignment.info_item_id }}</span>
+          {% endif %}
+        </td>
+        <td class="data-table__cell data-table__cell--muted">
+          {{ assignment.activated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+        </td>
+        <td class="data-table__cell">
+          {% if assignment.public_url %}
+          <span class="text-sm" style="word-break:break-all;">{{ assignment.public_url }}</span>{{ open_button(assignment.public_url) }}
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td class="data-table__cell">
+          {# Deactivate re-renders this whole section (count + empty-state) via a
+             RepSpec-scoped route, so the swap target is the section wrapper. #}
+          <button class="btn btn--sm btn--danger"
+                  hx-delete="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}"
+                  hx-target="#rep-spec-assignments"
+                  hx-swap="outerHTML"
+                  hx-confirm="Deactivate this replication spec assignment?"
+                  aria-label="Deactivate assignment {{ assignment.id }}">
+            Deactivate
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No active assignments.</p>
+  {% endif %}
+</div>
