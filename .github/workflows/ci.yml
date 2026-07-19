@@ -40,6 +40,12 @@ jobs:
       - name: ruff format --check
         run: uv run ruff format --check .
 
+      # pyproject [project].version must equal the newest ## vX.Y.Z heading in
+      # CHANGELOG.md (the source of truth) — catches the #85 silent drift that
+      # left /openapi.json reporting a stale version. Stdlib-only.
+      - name: check version lockstep (pyproject vs CHANGELOG)
+        run: uv run --no-project --python 3.12 python scripts/check_version_lockstep.py
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
