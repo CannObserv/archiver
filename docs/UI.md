@@ -304,8 +304,13 @@ succession/currency status (e.g. a revision being an item's "current pin" vs
 **Pagination params are clamped, not validated.** Every paginated dashboard
 route takes `page: Pagination = Depends(pagination)`
 (`src/dashboard/pagination.py`) rather than declaring bare `limit`/`offset`
-ints. `limit` is clamped to `[1, 200]`, `offset` floored at 0 — out-of-range
-values render a sensible page instead of erroring (#84). This is a **deliberate
+ints. `limit` is clamped to `[1, 200]`, `offset` to `[0, 2**63 - 1]` —
+out-of-range values render a sensible page instead of erroring (#84). That
+upper offset bound is a storage limit rather than a product judgement: the query
+binds offset to `OFFSET $2::BIGINT`, and asyncpg rejects anything wider with
+`DataError: value out of int64 range`, which surfaced as a 500 until it was
+capped. Capping changes nothing else, since any offset that large already yields
+an empty page. This is a **deliberate
 divergence from the API layer**, which uses `Query(ge=…, le=…)` and returns 422:
 the API is a contract surface where a bad `limit` is a client bug worth
 surfacing loudly, while the dashboard is a human surface reached by hand-edited
@@ -315,21 +320,58 @@ handler in `src/api/errors.py`, which always returns JSON, and HTMX does not
 swap non-2xx responses, so a 422 on a partial silently does nothing. Clamping
 removes the error path rather than styling it.
 
-The bounds still reach OpenAPI — via `json_schema_extra={"minimum": …,
-"maximum": …}` rather than `ge`/`le`, which would re-enable the 422 the clamp
-exists to avoid. Each param's `description` says out-of-range values are
-*clamped*, so the published bounds don't imply a rejection the route will never
-perform. Both the schema and the arithmetic read the same `MIN_LIMIT` /
-`MAX_LIMIT` / `MIN_OFFSET` constants, and
+**The params are declared `str`, not `int`, and parsed in the dependency**
+(#86). Under `int` annotations FastAPI coerced *before* the dependency ran, so
+`?limit=abc` still raised `RequestValidationError` and answered a browser with
+a raw JSON envelope — clamping had removed the out-of-range triggers but not
+the type-coercion one. Parsing inside `clamp_pagination` closes it: unparseable
+input falls back to the default (`int()`'s tolerance of surrounding whitespace
+is kept, so `?limit=%2025%20` still means 25), and each param is handled
+independently so one bad value doesn't discard the other. Since `limit` and
+`offset` are the only non-`str` request params on any dashboard route — every
+form field is `str`, path params are `str` ULIDs — this leaves no
+`RequestValidationError` reachable from a dashboard URL. Form-level validation
+errors are a separate mechanism and keep using `hx-target-422` (see the
+InfoSource specs route below).
+
+That completeness claim is enforced, not just asserted:
+`test_pagination.py::test_no_dashboard_route_declares_a_coercible_param` walks
+every `/dashboard` route's flattened dependant and fails if any query, path, or
+body param is annotated as anything but `str` (`str | None` is fine —
+optionality is absence, not coercion). **A new dashboard route must take its
+params as `str`**; declaring `page: int` or `after: date` reopens the raw-JSON
+422 that #86 closed, because coercion happens during dependency solving before
+any dashboard code runs.
+
+The bounds still reach OpenAPI — via `json_schema_extra={"type": "integer",
+"minimum": …, "maximum": …}` rather than `ge`/`le`, which would re-enable the
+422 the clamp exists to avoid. The published type stays `integer` because
+consumers should send one; tolerating garbage is a robustness concession to
+hand-edited URLs, not part of the contract. Each param's `description` says
+out-of-range values are *clamped* and unparseable ones fall back, so the
+published bounds don't imply a rejection the route will never perform. Both the
+schema and the arithmetic read the same `MIN_LIMIT` / `MAX_LIMIT` /
+`MIN_OFFSET` constants, and
 `test_pagination.py::test_openapi_bounds_agree_with_the_clamp` asserts each
 published bound against what `clamp_pagination` actually returns for an
-out-of-range input — so the spec cannot drift from enforced behaviour.
+out-of-range input — so the spec cannot drift from enforced behaviour. One
+known wart: the published `default` is the string `"50"` against that integer
+type, because FastAPI reads `default` off the signature and it outranks
+`json_schema_extra`. Not worth chasing — these HTML routes are in the OpenAPI
+document only because nothing sets `include_in_schema=False` on the dashboard
+routers.
 
 The dependency is `async` so FastAPI resolves it inline rather than paying a
-`run_in_threadpool` hop for two comparisons; the arithmetic lives in a sync
-`clamp_pagination()` helper so it stays unit-testable without reaching through
-`Query` defaults. New paginated routes must use the dependency; do not reintroduce bare
-`limit: int = 50`.
+`run_in_threadpool` hop for two comparisons; the parse and arithmetic live in a
+sync `clamp_pagination()` helper so they stay unit-testable without reaching
+through `Query` defaults. New paginated routes must use the dependency; do not
+reintroduce bare `limit: int = 50`.
+
+If a dashboard route ever needs a typed param that *cannot* be clamped into
+something sensible — a date filter, say — this approach runs out, and the HTML
+error-page work sketched in #86 (a `_422.html` plus a dashboard-owned
+`RequestValidationError` handler registered from `register_dashboard`) becomes
+the answer.
 
 ## Page Inventory
 
