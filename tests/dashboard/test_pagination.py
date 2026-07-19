@@ -1,16 +1,17 @@
 """Tests for dashboard pagination clamping (#84, #86).
 
-Three layers, matching the section headers below:
+Two layers, matching the section headers below:
 
 * **Unit** — the boundary matrix over ``clamp_pagination()``, where both the
   parse and the arithmetic live. Inputs are raw query strings, because that is
   what the dependency now hands over (#86).
-* **OpenAPI** — that the published bounds agree with what the clamp enforces.
-  The two are decoupled by design (``json_schema_extra`` rather than
-  ``ge``/``le``), so nothing but this test stops the spec from drifting.
 * **HTTP** — that each paginated route routes its params through the
   dependency, and that the clamp bounds the render rather than merely avoiding
   the 500 that motivated the issue.
+
+(An OpenAPI layer used to pin the published bounds against the clamp; it went
+away with #87, which excludes dashboard routes from the schema entirely — see
+``test_openapi_exclusion.py``.)
 """
 
 from __future__ import annotations
@@ -30,7 +31,6 @@ from src.dashboard.pagination import (
     DEFAULT_OFFSET,
     MAX_LIMIT,
     MAX_OFFSET,
-    MIN_OFFSET,
     clamp_pagination,
 )
 
@@ -175,50 +175,6 @@ def test_no_dashboard_route_declares_a_coercible_param():
         "the HTML error page sketched in #86 is the answer; see "
         "src/dashboard/pagination.py."
     )
-
-
-# ---------------------------------------------------------------------------
-# OpenAPI: bounds are published even though they are not enforced
-# ---------------------------------------------------------------------------
-
-
-def test_openapi_bounds_agree_with_the_clamp():
-    """The published schema must match what the clamp actually enforces.
-
-    Bounds reach the spec via `json_schema_extra` rather than `ge`/`le`, since
-    `ge`/`le` would re-enable the 422 the clamp exists to avoid. That decoupling
-    is the risk: the schema could drift into advertising a range the route no
-    longer honours. So assert each published bound against the value
-    `clamp_pagination` actually produces for an out-of-range input, rather than
-    against a constant — restating the constant would only prove the schema
-    reads it, not that the arithmetic agrees.
-    """
-    params = app.openapi()["paths"]["/dashboard/domains/"]["get"]["parameters"]
-    by_name = {p["name"]: p for p in params}
-    huge, tiny = str(10**6), str(-(10**6))
-
-    assert by_name["limit"]["schema"]["minimum"] == clamp_pagination(limit=tiny, offset="0").limit
-    assert by_name["limit"]["schema"]["maximum"] == clamp_pagination(limit=huge, offset="0").limit
-    # Published as a *string* default against an integer type — FastAPI reads
-    # `default` off the signature and it outranks `json_schema_extra`. Asserting
-    # the parsed value rather than the literal, so this pins the default that
-    # actually applies without pretending the type mismatch is absent.
-    assert int(by_name["limit"]["schema"]["default"]) == DEFAULT_LIMIT
-    assert int(by_name["offset"]["schema"]["default"]) == MIN_OFFSET
-    assert (
-        by_name["offset"]["schema"]["minimum"] == clamp_pagination(limit=None, offset=tiny).offset
-    )
-
-    # Published as integers even though the handler now takes the raw string
-    # (#86). Consumers should still be told to send an integer; tolerating
-    # garbage is a robustness concession, not part of the contract.
-    assert by_name["limit"]["schema"]["type"] == "integer"
-    assert by_name["offset"]["schema"]["type"] == "integer"
-
-    # The description must say "clamped", so the published bounds don't imply a
-    # rejection the route will never perform.
-    assert "clamped" in by_name["limit"]["description"]
-    assert "clamped" in by_name["offset"]["description"]
 
 
 # ---------------------------------------------------------------------------

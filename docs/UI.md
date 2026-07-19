@@ -343,23 +343,17 @@ params as `str`**; declaring `page: int` or `after: date` reopens the raw-JSON
 422 that #86 closed, because coercion happens during dependency solving before
 any dashboard code runs.
 
-The bounds still reach OpenAPI — via `json_schema_extra={"type": "integer",
-"minimum": …, "maximum": …}` rather than `ge`/`le`, which would re-enable the
-422 the clamp exists to avoid. The published type stays `integer` because
-consumers should send one; tolerating garbage is a robustness concession to
-hand-edited URLs, not part of the contract. Each param's `description` says
-out-of-range values are *clamped* and unparseable ones fall back, so the
-published bounds don't imply a rejection the route will never perform. Both the
-schema and the arithmetic read the same `MIN_LIMIT` / `MAX_LIMIT` /
-`MIN_OFFSET` constants, and
-`test_pagination.py::test_openapi_bounds_agree_with_the_clamp` asserts each
-published bound against what `clamp_pagination` actually returns for an
-out-of-range input — so the spec cannot drift from enforced behaviour. One
-known wart: the published `default` is the string `"50"` against that integer
-type, because FastAPI reads `default` off the signature and it outranks
-`json_schema_extra`. Not worth chasing — these HTML routes are in the OpenAPI
-document only because nothing sets `include_in_schema=False` on the dashboard
-routers.
+None of this reaches OpenAPI. Dashboard routers are included with
+`include_in_schema=False` (#87): `clients/python/scripts/regen.sh` generates
+the public SDK from `app.openapi()`, so any dashboard path in the schema is one
+routine regen away from shipping as `archiver_client` API surface — HTML
+responses under proxy-header auth, useless as client methods.
+`test_openapi_exclusion.py` pins the exclusion, and **a ninth dashboard router
+must be added to the loop in `register_dashboard`** rather than via its own
+`app.include_router(...)` call, so it cannot forget the flag. (Before #87 the
+clamp bounds were published via `json_schema_extra`; that machinery is gone —
+each param's `description` still documents the clamp-don't-reject behaviour
+for readers of the code.)
 
 The dependency is `async` so FastAPI resolves it inline rather than paying a
 `run_in_threadpool` hop for two comparisons; the parse and arithmetic live in a

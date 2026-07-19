@@ -23,19 +23,11 @@ default; out-of-range input clamps to the nearest bound, including at the top
 of ``offset``, where the bound is what the ``::BIGINT`` bind can carry rather
 than a product judgement.
 
-The published schema stays integer-typed, with bounds supplied via
-``json_schema_extra`` rather than ``ge``/``le``, which would re-enable the 422
-this module exists to avoid. Consumers should still be told to send an integer
-within range — tolerating garbage is a robustness concession to hand-edited
-URLs, not part of the contract. The ``description`` spells out that
-out-of-range values are clamped, so the spec does not imply a rejection it will
-not perform.
-
-One wart follows from that: FastAPI takes ``default`` from the Python signature
-and it outranks ``json_schema_extra``, so the published default is the *string*
-``"50"`` against a declared integer type. Not worth chasing — these are HTML
-routes that appear in the OpenAPI document at all only because nothing sets
-``include_in_schema=False`` on the dashboard routers.
+None of this reaches OpenAPI: dashboard routers are included with
+``include_in_schema=False`` (#87), so there is no published schema to keep
+honest. The ``description`` on each ``Query`` survives for anyone reading the
+code — it spells out that out-of-range values clamp and unparseable ones fall
+back, which is exactly the behaviour a bare ``str`` annotation hides.
 
 If a dashboard route ever needs a typed param that *cannot* be clamped into
 something sensible, this trick runs out and the HTML error page proposed in #86
@@ -106,10 +98,7 @@ def clamp_pagination(limit: str | None, offset: str | None) -> Pagination:
 
     Split out from ``pagination`` so the parse and the arithmetic are directly
     testable — the dependency itself is ``async`` and carries ``Query``
-    defaults, neither of which a unit test wants to reach through. Both this
-    function and the ``Query`` declarations below read the same bound
-    constants, so the published schema cannot drift from the enforced
-    behaviour.
+    defaults, neither of which a unit test wants to reach through.
     """
     return Pagination(
         limit=_bounded(limit, DEFAULT_LIMIT, MIN_LIMIT, MAX_LIMIT),
@@ -118,24 +107,8 @@ def clamp_pagination(limit: str | None, offset: str | None) -> Pagination:
 
 
 async def pagination(
-    limit: str = Query(
-        default=str(DEFAULT_LIMIT),
-        description=_LIMIT_DESCRIPTION,
-        json_schema_extra={
-            "type": "integer",
-            "minimum": MIN_LIMIT,
-            "maximum": MAX_LIMIT,
-        },
-    ),
-    offset: str = Query(
-        default=str(DEFAULT_OFFSET),
-        description=_OFFSET_DESCRIPTION,
-        json_schema_extra={
-            "type": "integer",
-            "minimum": MIN_OFFSET,
-            "maximum": MAX_OFFSET,
-        },
-    ),
+    limit: str = Query(default=str(DEFAULT_LIMIT), description=_LIMIT_DESCRIPTION),
+    offset: str = Query(default=str(DEFAULT_OFFSET), description=_OFFSET_DESCRIPTION),
 ) -> Pagination:
     """FastAPI dependency yielding a clamped page window.
 

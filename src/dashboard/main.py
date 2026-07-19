@@ -45,11 +45,17 @@ def register_dashboard(app: FastAPI) -> None:
     )
     app.add_exception_handler(DashboardAuthRequired, _dashboard_auth_redirect)
     app.add_exception_handler(DashboardNotFound, _dashboard_not_found)
-    app.include_router(domains_router)
-    app.include_router(register_router)
-    app.include_router(index_router)
-    app.include_router(info_items_router)
-    app.include_router(info_sources_router)
-    app.include_router(rep_specs_router)
-    app.include_router(source_revisions_router)
-    app.include_router(settings_router)
+    # include_in_schema=False on every router: dashboard routes are HTML +
+    # proxy-header auth, and clients/python/scripts/regen.sh generates the SDK
+    # from app.openapi() — any leaked path becomes public client surface (#87).
+    for router in (
+        domains_router,
+        register_router,
+        index_router,
+        info_items_router,
+        info_sources_router,
+        rep_specs_router,
+        source_revisions_router,
+        settings_router,
+    ):
+        app.include_router(router, include_in_schema=False)
