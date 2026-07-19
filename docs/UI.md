@@ -301,6 +301,21 @@ collapsing them makes the heading contradict the body. Cache state uses the
 succession/currency status (e.g. a revision being an item's "current pin" vs
 "superseded") is a `.badge--primary`/`.badge--muted` column.
 
+**Pagination params are clamped, not validated.** Every paginated dashboard
+route takes `page: Pagination = Depends(pagination)`
+(`src/dashboard/pagination.py`) rather than declaring bare `limit`/`offset`
+ints. `limit` is clamped to `[1, 200]`, `offset` floored at 0 — out-of-range
+values render a sensible page instead of erroring (#84). This is a **deliberate
+divergence from the API layer**, which uses `Query(ge=…, le=…)` and returns 422:
+the API is a contract surface where a bad `limit` is a client bug worth
+surfacing loudly, while the dashboard is a human surface reached by hand-edited
+URLs and stale bookmarks. The dashboard also has no HTML rendering path for
+validation errors — `RequestValidationError` falls through to the app-wide
+handler in `src/api/errors.py`, which always returns JSON, and HTMX does not
+swap non-2xx responses, so a 422 on a partial silently does nothing. Clamping
+removes the error path rather than styling it. New paginated routes must use
+the dependency; do not reintroduce bare `limit: int = 50`.
+
 ## Page Inventory
 
 ### Home (`/dashboard/`)  *(Epic 7 — implemented)*

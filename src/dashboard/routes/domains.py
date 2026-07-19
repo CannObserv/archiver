@@ -16,6 +16,7 @@ from src.core.models import InfoSource
 from src.core.models.domain import Domain
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
+from src.dashboard.pagination import Pagination, pagination
 
 router = APIRouter(prefix="/dashboard/domains", tags=["dashboard-domains"])
 
@@ -39,12 +40,12 @@ async def _get_domain_or_404(name: str, session: AsyncSession) -> Domain:
 async def list_domains(
     request: Request,
     is_active: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    page: Pagination = Depends(pagination),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated domain list with optional active filter."""
+    limit, offset = page.limit, page.offset
     stmt = select(Domain).order_by(Domain.name)
     if is_active == "true":
         stmt = stmt.where(Domain.is_active.is_(True))
@@ -94,12 +95,12 @@ async def list_domains(
 async def detail_domain(
     name: str,
     request: Request,
-    limit: int = 50,
-    offset: int = 0,
+    page: Pagination = Depends(pagination),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Domain detail: notes, status, linked InfoSources."""
+    limit, offset = page.limit, page.offset
     domain = await _get_domain_or_404(name, session)
 
     # Exact total for the section heading — the table is paginated, so a template

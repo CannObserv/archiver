@@ -20,6 +20,7 @@ from src.core.models import (
 )
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
+from src.dashboard.pagination import Pagination, pagination
 
 router = APIRouter(prefix="/dashboard/source-revisions", tags=["dashboard-source-revisions"])
 
@@ -47,12 +48,12 @@ async def _resolve_revision(rev_id: str, session: AsyncSession) -> SourceRevisio
 async def list_source_revisions(
     request: Request,
     info_source_id: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    page: Pagination = Depends(pagination),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated list; optional filter by info_source_id."""
+    limit, offset = page.limit, page.offset
     stmt = select(SourceRevision).order_by(
         SourceRevision.captured_at.desc(), SourceRevision.source_revision_id
     )

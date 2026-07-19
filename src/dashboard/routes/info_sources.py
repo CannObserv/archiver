@@ -36,6 +36,7 @@ from src.core.tools.update_info_source_specs import (
 )
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
+from src.dashboard.pagination import Pagination, pagination
 
 router = APIRouter(prefix="/dashboard/info-sources", tags=["dashboard-info-sources"])
 
@@ -142,12 +143,12 @@ async def _detail_context(
 async def list_info_sources(
     request: Request,
     url_contains: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    page: Pagination = Depends(pagination),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated list with optional URL filter."""
+    limit, offset = page.limit, page.offset
     stmt = select(InfoSource).order_by(InfoSource.created_at, InfoSource.info_source_id)
     if url_contains:
         stmt = stmt.where(InfoSource.url.ilike(f"%{url_contains}%"))

@@ -79,6 +79,7 @@ from src.core.url_canonicalization import canonicalize_url
 from src.dashboard.cadence import CADENCE_LABELS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
+from src.dashboard.pagination import Pagination, pagination
 
 router = APIRouter(prefix="/dashboard/info-items", tags=["dashboard-info-items"])
 
@@ -116,12 +117,12 @@ async def _resolve_item(item_id: str, session: AsyncSession) -> InfoItem:
 async def list_info_items(
     request: Request,
     name_contains: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    page: Pagination = Depends(pagination),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated list with optional name search."""
+    limit, offset = page.limit, page.offset
     stmt = select(InfoItem).order_by(InfoItem.created_at, InfoItem.info_item_id)
     if name_contains:
         stmt = stmt.where(InfoItem.name.ilike(f"%{name_contains}%"))

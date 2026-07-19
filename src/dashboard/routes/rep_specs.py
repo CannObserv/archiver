@@ -20,6 +20,7 @@ from src.core.models import (
 from src.core.tools.create_rep_spec import InvalidRepSpecError, create_rep_spec
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
+from src.dashboard.pagination import Pagination, pagination
 
 router = APIRouter(prefix="/dashboard/rep-specs", tags=["dashboard-rep-specs"])
 
@@ -77,12 +78,12 @@ async def _load_active_assignments(
 async def list_rep_specs(
     request: Request,
     provider: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    page: Pagination = Depends(pagination),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated list with optional provider filter."""
+    limit, offset = page.limit, page.offset
     stmt = select(RepSpec).order_by(RepSpec.created_at, RepSpec.rep_spec_id)
     if provider:
         stmt = stmt.where(RepSpec.provider == provider)
