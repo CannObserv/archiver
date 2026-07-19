@@ -83,15 +83,14 @@ async def list_rep_specs(
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated list with optional provider filter."""
-    limit, offset = page.limit, page.offset
     stmt = select(RepSpec).order_by(RepSpec.created_at, RepSpec.rep_spec_id)
     if provider:
         stmt = stmt.where(RepSpec.provider == provider)
-    stmt = stmt.offset(offset).limit(limit + 1)
+    stmt = stmt.offset(page.offset).limit(page.limit + 1)
 
     rows = list((await session.execute(stmt)).scalars().all())
-    has_more = len(rows) > limit
-    rows = rows[:limit]
+    has_more = len(rows) > page.limit
+    rows = rows[: page.limit]
 
     return _templates.TemplateResponse(
         request,
@@ -100,8 +99,8 @@ async def list_rep_specs(
             "user": user,
             "specs": rows,
             "has_more": has_more,
-            "limit": limit,
-            "offset": offset,
+            "limit": page.limit,
+            "offset": page.offset,
             "provider": provider,
             "providers": _PROVIDERS,
         },

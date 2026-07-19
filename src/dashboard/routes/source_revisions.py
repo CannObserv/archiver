@@ -53,7 +53,6 @@ async def list_source_revisions(
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated list; optional filter by info_source_id."""
-    limit, offset = page.limit, page.offset
     stmt = select(SourceRevision).order_by(
         SourceRevision.captured_at.desc(), SourceRevision.source_revision_id
     )
@@ -66,11 +65,11 @@ async def list_source_revisions(
         if src_ulid is not None:
             filter_source = await session.get(InfoSource, src_ulid)
             stmt = stmt.where(SourceRevision.info_source_id == src_ulid)
-    stmt = stmt.offset(offset).limit(limit + 1)
+    stmt = stmt.offset(page.offset).limit(page.limit + 1)
 
     rows = list((await session.execute(stmt)).scalars().all())
-    has_more = len(rows) > limit
-    rows = rows[:limit]
+    has_more = len(rows) > page.limit
+    rows = rows[: page.limit]
 
     # Batch-load InfoSources for display
     source_ids = list({r.info_source_id for r in rows})
@@ -98,8 +97,8 @@ async def list_source_revisions(
             "filter_source": filter_source,
             "info_source_id": info_source_id,
             "has_more": has_more,
-            "limit": limit,
-            "offset": offset,
+            "limit": page.limit,
+            "offset": page.offset,
             "now": now,
         },
     )

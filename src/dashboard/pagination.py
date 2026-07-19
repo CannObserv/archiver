@@ -14,14 +14,27 @@ deliberate divergence from the API layer:
 Clamping means there is no error path to render at all. Note this does not
 eliminate 422s entirely — ``?limit=abc`` still fails int coercion before this
 dependency runs — but it removes the plausible triggers.
+
+Bounds are published to OpenAPI via ``json_schema_extra`` rather than ``ge``/
+``le``, which would re-enable the 422 we are deliberately avoiding. The
+``description`` spells out that out-of-range values are clamped, so the spec
+does not imply rejection it will not perform.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from fastapi import Query
+
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
+
+_LIMIT_DESCRIPTION = (
+    f"Rows per page. Values outside [1, {MAX_LIMIT}] are clamped to the nearest "
+    "bound rather than rejected."
+)
+_OFFSET_DESCRIPTION = "Row offset. Negative values are clamped to 0 rather than rejected."
 
 
 @dataclass(frozen=True)
@@ -32,10 +45,34 @@ class Pagination:
     offset: int
 
 
-def pagination(limit: int = DEFAULT_LIMIT, offset: int = 0) -> Pagination:
-    """FastAPI dependency yielding a clamped page window.
+def clamp(limit: int, offset: int) -> Pagination:
+    """Clamp a raw page window into range.
 
     ``limit`` is clamped to ``[1, MAX_LIMIT]``; ``offset`` is floored at 0 with
     no ceiling, since a large offset simply yields an empty page.
+
+    Split out from ``pagination`` so the arithmetic is directly testable — the
+    dependency itself is ``async`` and carries ``Query`` defaults, neither of
+    which a unit test wants to reach through.
     """
     return Pagination(limit=min(max(limit, 1), MAX_LIMIT), offset=max(offset, 0))
+
+
+async def pagination(
+    limit: int = Query(
+        default=DEFAULT_LIMIT,
+        description=_LIMIT_DESCRIPTION,
+        json_schema_extra={"minimum": 1, "maximum": MAX_LIMIT},
+    ),
+    offset: int = Query(
+        default=0,
+        description=_OFFSET_DESCRIPTION,
+        json_schema_extra={"minimum": 0},
+    ),
+) -> Pagination:
+    """FastAPI dependency yielding a clamped page window.
+
+    Declared ``async`` so FastAPI resolves it inline on the event loop instead
+    of dispatching a ``run_in_threadpool`` hop for two comparisons.
+    """
+    return clamp(limit, offset)

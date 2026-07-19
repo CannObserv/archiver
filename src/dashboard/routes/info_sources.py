@@ -148,15 +148,14 @@ async def list_info_sources(
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated list with optional URL filter."""
-    limit, offset = page.limit, page.offset
     stmt = select(InfoSource).order_by(InfoSource.created_at, InfoSource.info_source_id)
     if url_contains:
         stmt = stmt.where(InfoSource.url.ilike(f"%{url_contains}%"))
-    stmt = stmt.offset(offset).limit(limit + 1)
+    stmt = stmt.offset(page.offset).limit(page.limit + 1)
 
     rows = list((await session.execute(stmt)).scalars().all())
-    has_more = len(rows) > limit
-    rows = rows[:limit]
+    has_more = len(rows) > page.limit
+    rows = rows[: page.limit]
 
     return _templates.TemplateResponse(
         request,
@@ -165,8 +164,8 @@ async def list_info_sources(
             "user": user,
             "sources": rows,
             "has_more": has_more,
-            "limit": limit,
-            "offset": offset,
+            "limit": page.limit,
+            "offset": page.offset,
             "url_contains": url_contains,
         },
     )

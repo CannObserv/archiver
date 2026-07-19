@@ -25,12 +25,12 @@ async def get_db_session() -> AsyncGenerator[AsyncSession]:
         yield session
 
 
-def get_redis_client(request: Request) -> "RedisAsync | None":
+async def get_redis_client(request: Request) -> "RedisAsync | None":
     """Return the lifespan-scoped Redis client, or None when not configured."""
     return getattr(request.app.state, "redis_client", None)
 
 
-def get_watcher_client(request: Request) -> "WatcherClient | None":
+async def get_watcher_client(request: Request) -> "WatcherClient | None":
     """Return the lifespan-scoped WatcherClient, or None when Watcher is not configured.
 
     None is returned when ``WATCHER_BASE_URL`` / ``WATCHER_API_KEY`` are unset.
@@ -39,7 +39,7 @@ def get_watcher_client(request: Request) -> "WatcherClient | None":
     return getattr(request.app.state, "watcher_client", None)
 
 
-def get_http_fetcher(request: Request) -> HttpFetcherProtocol:
+async def get_http_fetcher(request: Request) -> HttpFetcherProtocol:
     """Provide the lifespan-scoped HttpFetcher for tool routes.
 
     The fetcher is constructed once at app startup (see ``main.lifespan``) so

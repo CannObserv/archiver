@@ -313,8 +313,20 @@ URLs and stale bookmarks. The dashboard also has no HTML rendering path for
 validation errors — `RequestValidationError` falls through to the app-wide
 handler in `src/api/errors.py`, which always returns JSON, and HTMX does not
 swap non-2xx responses, so a 422 on a partial silently does nothing. Clamping
-removes the error path rather than styling it. New paginated routes must use
-the dependency; do not reintroduce bare `limit: int = 50`.
+removes the error path rather than styling it.
+
+The bounds still reach OpenAPI — via `json_schema_extra={"minimum": …,
+"maximum": …}` rather than `ge`/`le`, which would re-enable the 422 the clamp
+exists to avoid. Each param's `description` says out-of-range values are
+*clamped*, so the published bounds don't imply a rejection the route will never
+perform. `tests/dashboard/test_pagination.py::test_openapi_publishes_bounds`
+locks this in.
+
+The dependency is `async` so FastAPI resolves it inline rather than paying a
+`run_in_threadpool` hop for two comparisons; the arithmetic lives in a sync
+`clamp()` helper so it stays unit-testable without reaching through `Query`
+defaults. New paginated routes must use the dependency; do not reintroduce bare
+`limit: int = 50`.
 
 ## Page Inventory
 

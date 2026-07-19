@@ -122,15 +122,14 @@ async def list_info_items(
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated list with optional name search."""
-    limit, offset = page.limit, page.offset
     stmt = select(InfoItem).order_by(InfoItem.created_at, InfoItem.info_item_id)
     if name_contains:
         stmt = stmt.where(InfoItem.name.ilike(f"%{name_contains}%"))
-    stmt = stmt.offset(offset).limit(limit + 1)
+    stmt = stmt.offset(page.offset).limit(page.limit + 1)
 
     rows = list((await session.execute(stmt)).scalars().all())
-    has_more = len(rows) > limit
-    rows = rows[:limit]
+    has_more = len(rows) > page.limit
+    rows = rows[: page.limit]
 
     item_ids = [r.info_item_id for r in rows]
 
@@ -204,8 +203,8 @@ async def list_info_items(
             "user": user,
             "items": items,
             "has_more": has_more,
-            "limit": limit,
-            "offset": offset,
+            "limit": page.limit,
+            "offset": page.offset,
             "name_contains": name_contains or "",
         },
     )

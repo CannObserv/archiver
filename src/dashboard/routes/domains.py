@@ -45,17 +45,16 @@ async def list_domains(
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Paginated domain list with optional active filter."""
-    limit, offset = page.limit, page.offset
     stmt = select(Domain).order_by(Domain.name)
     if is_active == "true":
         stmt = stmt.where(Domain.is_active.is_(True))
     elif is_active == "false":
         stmt = stmt.where(Domain.is_active.is_(False))
-    stmt = stmt.offset(offset).limit(limit + 1)
+    stmt = stmt.offset(page.offset).limit(page.limit + 1)
 
     rows = list((await session.execute(stmt)).scalars().all())
-    has_more = len(rows) > limit
-    rows = rows[:limit]
+    has_more = len(rows) > page.limit
+    rows = rows[: page.limit]
 
     # Source counts per domain in one query
     if rows:
@@ -79,8 +78,8 @@ async def list_domains(
             "domains": rows,
             "source_counts": source_counts,
             "has_more": has_more,
-            "limit": limit,
-            "offset": offset,
+            "limit": page.limit,
+            "offset": page.offset,
             "is_active": is_active,
         },
     )
@@ -100,7 +99,6 @@ async def detail_domain(
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Domain detail: notes, status, linked InfoSources."""
-    limit, offset = page.limit, page.offset
     domain = await _get_domain_or_404(name, session)
 
     # Exact total for the section heading — the table is paginated, so a template
@@ -123,15 +121,15 @@ async def detail_domain(
                 select(InfoSource)
                 .where(InfoSource.domain_name == name)
                 .order_by(InfoSource.created_at.desc())
-                .offset(offset)
-                .limit(limit + 1)
+                .offset(page.offset)
+                .limit(page.limit + 1)
             )
         )
         .scalars()
         .all()
     )
-    has_more = len(src_rows) > limit
-    src_rows = src_rows[:limit]
+    has_more = len(src_rows) > page.limit
+    src_rows = src_rows[: page.limit]
 
     return _templates.TemplateResponse(
         request,
@@ -142,8 +140,8 @@ async def detail_domain(
             "sources": src_rows,
             "source_total": source_total,
             "has_more": has_more,
-            "limit": limit,
-            "offset": offset,
+            "limit": page.limit,
+            "offset": page.offset,
         },
     )
 

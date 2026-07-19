@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import pytest
 
+from src.api.main import app
 from src.core.models.domain import Domain
-from src.dashboard.pagination import DEFAULT_LIMIT, MAX_LIMIT, pagination
+from src.dashboard.pagination import DEFAULT_LIMIT, MAX_LIMIT, clamp
 
 _HEADERS = {"X-ExeDev-UserID": "ext-page", "X-ExeDev-Email": "page@example.com"}
 
@@ -37,7 +38,7 @@ _HEADERS = {"X-ExeDev-UserID": "ext-page", "X-ExeDev-Email": "page@example.com"}
     ],
 )
 def test_limit_is_clamped(raw: int, expected: int):
-    assert pagination(limit=raw).limit == expected
+    assert clamp(limit=raw, offset=0).limit == expected
 
 
 @pytest.mark.parametrize(
@@ -52,12 +53,37 @@ def test_limit_is_clamped(raw: int, expected: int):
 )
 def test_offset_is_floored_but_not_capped(raw: int, expected: int):
     """Offset has no ceiling — a large offset just yields an empty page."""
-    assert pagination(offset=raw).offset == expected
+    assert clamp(limit=DEFAULT_LIMIT, offset=raw).offset == expected
 
 
-def test_defaults():
-    page = pagination()
-    assert (page.limit, page.offset) == (DEFAULT_LIMIT, 0)
+def test_in_range_values_pass_through():
+    page = clamp(limit=DEFAULT_LIMIT, offset=10)
+    assert (page.limit, page.offset) == (DEFAULT_LIMIT, 10)
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI: bounds are published even though they are not enforced
+# ---------------------------------------------------------------------------
+
+
+def test_openapi_publishes_bounds():
+    """Bounds reach the spec via `json_schema_extra`, not `ge`/`le`.
+
+    `ge`/`le` would re-enable the 422 the clamp exists to avoid, so the schema
+    would otherwise advertise unbounded integers while the server clamps.
+    """
+    params = app.openapi()["paths"]["/dashboard/domains/"]["get"]["parameters"]
+    by_name = {p["name"]: p for p in params}
+
+    assert by_name["limit"]["schema"]["minimum"] == 1
+    assert by_name["limit"]["schema"]["maximum"] == MAX_LIMIT
+    assert by_name["limit"]["schema"]["default"] == DEFAULT_LIMIT
+    assert by_name["offset"]["schema"]["minimum"] == 0
+
+    # The description must say "clamped", so the published bounds don't imply a
+    # rejection the route will never perform.
+    assert "clamped" in by_name["limit"]["description"]
+    assert "clamped" in by_name["offset"]["description"]
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +112,30 @@ async def test_negative_params_render_instead_of_500(client, path: str):
 async def test_oversized_limit_renders(client, path: str):
     r = await client.get(f"{path}?limit=100000", headers=_HEADERS)
     assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_oversized_limit_actually_bounds_the_query(client, session):
+    """The clamp must cap the render, not merely avoid a 500.
+
+    `test_oversized_limit_renders` above would still pass if MAX_LIMIT were
+    raised to 100_000 — it only asserts "no error". This one seeds MAX_LIMIT + 1
+    rows and asserts the page stops at MAX_LIMIT, which is the issue's second
+    stated concern (an unbounded `?limit=` attempting a full-table render).
+    """
+    names = [f"bulk-{i:04d}.example.com" for i in range(MAX_LIMIT + 1)]
+    for name in names:
+        session.add(Domain(name=name))
+    await session.commit()
+
+    r = await client.get("/dashboard/domains/?limit=100000", headers=_HEADERS)
+    assert r.status_code == 200
+
+    # The list orders by name, so the seeded block is contiguous and the
+    # (MAX_LIMIT + 1)-th name is the first one to fall off the page.
+    rendered = [n for n in names if n in r.text]
+    assert len(rendered) == MAX_LIMIT
+    assert names[MAX_LIMIT] not in r.text
 
 
 @pytest.mark.asyncio
