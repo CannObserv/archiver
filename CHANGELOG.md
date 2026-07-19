@@ -67,6 +67,8 @@ New DB column: `information.info_items.watcher_item_id VARCHAR(50) NULL` — sto
 **New SDK methods (4.1.0, backward-compatible).**
 - `list_domains`, `get_domain`, `upsert_domain`, `delete_domain`, `archive_domain`, `restore_domain`.
 
+*Housekeeping (2026-07-19).* `clients/python/uv.lock` now pins `archiver-client` at 4.1.0, matching the version `clients/python/pyproject.toml` has declared since this release. The lock was left at 4.0.0 here and only caught later (archiver#90). No functional change.
+
 **Dashboard.** New workflow-first layout: Register flow (`/dashboard/register`), Domains pages (`/dashboard/domains/`), InfoItem hub page (5-section scroll replacing tabs), sortableChips Alpine component, expanded home page (CTA, health strip, domain overview, Recent Activity with Item column).
 
 ## v4.0.0 (2026-06-03)
