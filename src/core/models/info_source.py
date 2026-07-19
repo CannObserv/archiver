@@ -40,5 +40,10 @@ class InfoSource(Base):
 
     __table_args__ = (
         Index("ix_info_sources_url", "url"),
+        # Three read paths filter or group by domain_name (domain detail page +
+        # its COUNT, domain list GROUP BY). The index was dropped in fff827419c6c
+        # alongside the FK as ORM/DB alignment cleanup, not for cost reasons;
+        # restored here — without the FK — now that the table is expected to grow.
+        Index("ix_info_sources_domain_name", "domain_name"),
         {"schema": "information"},
     )

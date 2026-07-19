@@ -31,7 +31,7 @@
 
 **GET `/dashboard/domains/`** — paginated list. Columns: Domain (linked to detail), Sources (count), Status badge, Created. Filter bar: `?is_active=true|false|` (all). Source counts loaded via a GROUP BY query.
 
-**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (converged on the canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name → `.detail-grid` (Status badge, created_at UTC). Operator notes (HTMX inline edit); linked Information Sources table (count in heading from a route `COUNT`, so it stays accurate across pagination — #82; source URLs carry the `open_button` affordance). **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). Archive/restore stay full-page POST→303 by design — see the *allowed variant* note under **HTMX mutations**. **Restore** is recovery, not destructive, so it's hoisted into the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely.
+**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (converged on the canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name → `.detail-grid` (Status badge, created_at UTC). Operator notes (HTMX inline edit); linked Information Sources table (count in heading from a route `COUNT`, so it stays accurate across pagination — #82; source URLs carry the `open_button` affordance). The same `COUNT` drives `has_more`, so pagination and the heading cannot disagree. Two distinct empty states: an overshot `offset` (stale bookmark, or rows removed mid-session) renders "No sources on this page" with a link back to `?offset=0`, while a genuinely empty collection keeps "No Information Sources registered for this domain yet" — the count in the heading would otherwise contradict the "none registered" copy. **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destructive, so it's hoisted into the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely. Archive and Restore both stay full-page POST→303 by design — see the *allowed variant* note under **HTMX mutations**.
 
 **POST `/dashboard/domains/{name}/notes`** — HTMX partial; replaces `#notes-section` with `domains/_notes_partial.html`. Saves notes inline.
 
@@ -288,7 +288,12 @@ the count must come from a route-level `COUNT` over the full result set, never
 a template `|length` — that would report only the current page. Domain detail
 (`source_total`) is the reference; InfoSource detail's "Other Sources at This
 URL" uses the capped `limit+1` "50+" probe instead, appropriate where the
-section is truncated rather than paged. Cache state uses the
+section is truncated rather than paged. Where a `COUNT` is already being run,
+derive `has_more` from it (`offset + len(rows) < total`) rather than also
+issuing a `limit+1` probe — two sources of truth for one fact can disagree
+under concurrent writes. A section heading with a count needs **two** empty
+states: "nothing here at all" and "nothing on *this page*" (overshot offset);
+collapsing them makes the heading contradict the body. Cache state uses the
 `.status-pill--cached/expired/missing` pills, not `.badge` variants. A
 succession/currency status (e.g. a revision being an item's "current pin" vs
 "superseded") is a `.badge--primary`/`.badge--muted` column.

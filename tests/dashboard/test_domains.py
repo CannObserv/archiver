@@ -150,6 +150,61 @@ async def test_domain_detail_source_count_zero(client, session):
 
 
 @pytest.mark.asyncio
+async def test_domain_detail_offset_past_end_no_contradiction(client, session):
+    """Overshot offset: the empty state must not claim the domain has no sources
+    while the heading reports a nonzero count (CR round 7, finding 1)."""
+    session.add(_make_domain("count-over.example.com"))
+    await session.flush()
+    for i in range(3):
+        session.add(_make_source(f"https://count-over.example.com/{i}", "count-over.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/count-over.example.com?offset=999", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Information Sources (3)" in r.text
+    # The "none registered" copy is reserved for a genuinely empty collection.
+    assert "No Information Sources registered for this domain yet" not in r.text
+    assert "No sources on this page" in r.text
+    # Offers a way back to a populated page (raw `&`, matching the pagination nav).
+    assert "?offset=0&limit=" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_empty_collection_keeps_registered_copy(client, session):
+    """A genuinely empty collection keeps the original empty-state wording."""
+    session.add(_make_domain("count-none.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/count-none.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "No Information Sources registered for this domain yet" in r.text
+    assert "No sources on this page" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_has_more_derived_from_total(client, session):
+    """has_more is derived from the COUNT, not a separate limit+1 probe
+    (CR round 7, finding 6). Page 1 of 3 offers Next; the last page does not."""
+    session.add(_make_domain("pager.example.com"))
+    await session.flush()
+    for i in range(3):
+        session.add(_make_source(f"https://pager.example.com/{i}", "pager.example.com"))
+    await session.flush()
+
+    first = await client.get("/dashboard/domains/pager.example.com?limit=2", headers=_HEADERS)
+    assert first.status_code == 200
+    assert "Next →" in first.text
+    assert "← Previous" not in first.text
+
+    last = await client.get(
+        "/dashboard/domains/pager.example.com?limit=2&offset=2", headers=_HEADERS
+    )
+    assert last.status_code == 200
+    assert "Next →" not in last.text
+    assert "← Previous" in last.text
+
+
+@pytest.mark.asyncio
 async def test_domain_detail_uses_entity_card_eyebrow(client, session):
     """Domain detail converges on the entity-card + eyebrow header (#82)."""
     session.add(_make_domain("card.example.com"))

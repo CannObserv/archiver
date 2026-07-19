@@ -102,6 +102,15 @@ async def detail_domain(
     """Domain detail: notes, status, linked InfoSources."""
     domain = await _get_domain_or_404(name, session)
 
+    # Exact total for the section heading — the table is paginated, so a template
+    # `|length` would report only the current page (#82). It also drives `has_more`,
+    # so there is no second limit+1 probe to disagree with it (CR round 7).
+    source_total = (
+        await session.execute(
+            select(func.count()).select_from(InfoSource).where(InfoSource.domain_name == name)
+        )
+    ).scalar_one()
+
     src_rows = list(
         (
             await session.execute(
@@ -109,22 +118,13 @@ async def detail_domain(
                 .where(InfoSource.domain_name == name)
                 .order_by(InfoSource.created_at.desc())
                 .offset(offset)
-                .limit(limit + 1)
+                .limit(limit)
             )
         )
         .scalars()
         .all()
     )
-    has_more = len(src_rows) > limit
-    src_rows = src_rows[:limit]
-
-    # Exact total for the section heading — the table is paginated, so a template
-    # `|length` would report only the current page (#82).
-    source_total = (
-        await session.execute(
-            select(func.count()).select_from(InfoSource).where(InfoSource.domain_name == name)
-        )
-    ).scalar_one()
+    has_more = offset + len(src_rows) < source_total
 
     return _templates.TemplateResponse(
         request,

@@ -51,7 +51,7 @@
 
   {# Linked Information Sources #}
   {# Count comes from a route COUNT, not |length — the table below is paginated. #}
-  <h2 style="margin-bottom:var(--space-2);">Information Sources ({{ source_total }})</h2>
+  <h2 style="border-bottom:1px solid var(--color-border);padding-bottom:var(--space-1);margin-bottom:var(--space-3);">Information Sources ({{ source_total }})</h2>
   {% if sources %}
   <table class="data-table" aria-label="Information Sources on {{ domain.name }}">
     <thead>
@@ -86,6 +86,13 @@
   </nav>
   {% endif %}
 
+  {% elif source_total %}
+  {# Overshot offset (stale bookmark, or rows removed mid-session): the collection
+     is not empty, so the "none registered" copy would contradict the heading. #}
+  <p class="text-muted">
+    No sources on this page —
+    <a href="?offset=0&limit={{ limit }}">back to the first page</a>.
+  </p>
   {% else %}
   <p class="text-muted">No Information Sources registered for this domain yet.</p>
   {% endif %}
