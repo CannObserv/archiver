@@ -22,7 +22,7 @@ from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
 
-router = APIRouter(prefix="/dashboard/source-revisions", tags=["dashboard-source-revisions"])
+router = APIRouter(prefix="/dashboard/source-revisions")
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 

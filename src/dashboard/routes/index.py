@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/dashboard")
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 

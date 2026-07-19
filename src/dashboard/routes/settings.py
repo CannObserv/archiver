@@ -15,7 +15,7 @@ from src.core.models import ApiKey, AppUser
 from src.dashboard.deps import generate_api_key, get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 
-router = APIRouter(prefix="/dashboard/settings", tags=["dashboard-settings"])
+router = APIRouter(prefix="/dashboard/settings")
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 

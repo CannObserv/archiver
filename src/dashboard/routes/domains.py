@@ -18,7 +18,7 @@ from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
 
-router = APIRouter(prefix="/dashboard/domains", tags=["dashboard-domains"])
+router = APIRouter(prefix="/dashboard/domains")
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 

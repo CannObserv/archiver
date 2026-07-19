@@ -42,7 +42,7 @@ from src.core.watcher_provisioning import provision_on_create
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS, DEFAULT_CADENCE
 from src.dashboard.deps import get_dashboard_user
 
-router = APIRouter(prefix="/dashboard/register", tags=["dashboard-register"])
+router = APIRouter(prefix="/dashboard/register")
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
