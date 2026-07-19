@@ -108,9 +108,12 @@ skills-vendor/                 Git submodules for external skill repos
                                test job (Postgres service container, alembic upgrade,
                                pytest), client-drift job (regen vendored clients
                                from committed OpenAPI snapshots, fail on diff),
-                               and changelog job (feat/fix changes must touch
-                               CHANGELOG.md; opt out via `no-changelog` PR
-                               label). Triggers on push/PR to main.
+                               and changelog job (changes under
+                               alembic/versions/, src/api/routes/,
+                               src/api/schemas/, or clients/python/ must touch
+                               CHANGELOG.md — path-triggered, not commit-type;
+                               opt out via `no-changelog` PR label).
+                               Triggers on push/PR to main.
 .pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks
                                (pre-commit stage), plus a pre-push guard
                                (scripts/check_changelog_on_push.sh) that mirrors
@@ -320,13 +323,25 @@ uv run pre-commit run --all-files            # manual sweep across the repo
 ```
 Types: feat, fix, refactor, docs, test, chore.
 
-**Changelog:** Update `CHANGELOG.md` at the repo root whenever a relevant
-change merges to `main` — new endpoints, new SDK methods or types,
-behaviour changes, breaking changes, public-surface fixes. Skip for
-internal refactors, test-only changes, and docs-only changes. Tag each
-entry `[service]`, `[sdk]`, or `[both]` per the format header in
+**Changelog:** Update `CHANGELOG.md` at the repo root when a change
+touches a **contract-visible path** — and only then. The trigger is
+path-based, not intent-based; CI and the pre-push guard both enforce it
+with the same regex:
+
+```
+^(alembic/versions/|src/api/routes/|src/api/schemas/|clients/python/)
+```
+
+That is: deployed migrations, the HTTP API surface, the Pydantic
+request/response models, and the SDK. Everything else — **dashboard UX
+included** — needs no entry, along with internal refactors, test-only,
+lint/tooling, and docs-only changes. A dashboard-only behaviour fix does
+not get a changelog entry even though it is user-visible; the surface
+that matters here is the contract, not the UI.
+
+Tag each entry `[service]`, `[sdk]`, or `[both]` per the format header in
 `CHANGELOG.md`. The SDK README links here; do not maintain a second
-changelog there.
+changelog there. On a PR, the `no-changelog` label opts out.
 
 **Dashboard living docs:** `docs/STYLE.md` and `docs/UI.md` must be updated in the same commit as any change to `src/dashboard/static/dashboard.css`, a JS module under `src/dashboard/static/`, a Jinja2 template in `src/dashboard/templates/`, or a new dashboard route. Failure to update them is a CR blocker.
 

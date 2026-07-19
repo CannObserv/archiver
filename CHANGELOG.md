@@ -8,8 +8,10 @@ tagged `[service]` (server-only), `[sdk]` (client-only), or `[both]`
 
 **When to add an entry:** only when a contract-visible path changes —
 `alembic/versions/` (deployed migrations), `src/api/routes/` (HTTP surface),
-or `clients/python/` (SDK). Dashboard UX, test-only, lint/tooling, and
-docs-only changes do not need entries. The CI changelog job enforces this.
+`src/api/schemas/` (Pydantic request/response models), or `clients/python/`
+(SDK). Dashboard UX, test-only, lint/tooling, and docs-only changes do not
+need entries. The CI changelog job and the pre-push guard both enforce this
+with the same path regex.
 
 **Versioning:** service and SDK versions are independent. Service version bumps
 with any notable release. SDK version in `clients/python/pyproject.toml` bumps
