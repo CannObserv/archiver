@@ -58,7 +58,7 @@ async def create_rep_spec_route(
 async def list_rep_specs(
     provider: str | None = Query(default=None, min_length=1, max_length=50),
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=2**63 - 1),
     session: AsyncSession = Depends(get_db_session),
 ) -> Page[RepSpecOut]:
     """List RepSpecs with offset pagination, optionally filtered by provider.

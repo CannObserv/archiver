@@ -200,7 +200,7 @@ async def create_info_item(
 @router.get("", response_model=Page[InfoItemOut])
 async def list_info_items(
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=2**63 - 1),
     session: AsyncSession = Depends(get_db_session),
 ) -> Page[InfoItemOut]:
     """List InfoItems with offset pagination, including active sources and rep_spec assignments.
