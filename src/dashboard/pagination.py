@@ -28,13 +28,15 @@ from dataclasses import dataclass
 from fastapi import Query
 
 DEFAULT_LIMIT = 50
+MIN_LIMIT = 1
 MAX_LIMIT = 200
+MIN_OFFSET = 0
 
 _LIMIT_DESCRIPTION = (
-    f"Rows per page. Values outside [1, {MAX_LIMIT}] are clamped to the nearest "
-    "bound rather than rejected."
+    f"Rows per page. Values outside [{MIN_LIMIT}, {MAX_LIMIT}] are clamped to the "
+    "nearest bound rather than rejected."
 )
-_OFFSET_DESCRIPTION = "Row offset. Negative values are clamped to 0 rather than rejected."
+_OFFSET_DESCRIPTION = f"Row offset. Values below {MIN_OFFSET} are clamped rather than rejected."
 
 
 @dataclass(frozen=True)
@@ -45,29 +47,35 @@ class Pagination:
     offset: int
 
 
-def clamp(limit: int, offset: int) -> Pagination:
+def clamp_pagination(limit: int, offset: int) -> Pagination:
     """Clamp a raw page window into range.
 
-    ``limit`` is clamped to ``[1, MAX_LIMIT]``; ``offset`` is floored at 0 with
-    no ceiling, since a large offset simply yields an empty page.
+    ``limit`` is clamped to ``[MIN_LIMIT, MAX_LIMIT]``; ``offset`` is floored at
+    ``MIN_OFFSET`` with no ceiling, since a large offset simply yields an empty
+    page.
 
     Split out from ``pagination`` so the arithmetic is directly testable — the
     dependency itself is ``async`` and carries ``Query`` defaults, neither of
-    which a unit test wants to reach through.
+    which a unit test wants to reach through. Both this function and the
+    ``Query`` declarations below read the same bound constants, so the published
+    schema cannot drift from the enforced behaviour.
     """
-    return Pagination(limit=min(max(limit, 1), MAX_LIMIT), offset=max(offset, 0))
+    return Pagination(
+        limit=min(max(limit, MIN_LIMIT), MAX_LIMIT),
+        offset=max(offset, MIN_OFFSET),
+    )
 
 
 async def pagination(
     limit: int = Query(
         default=DEFAULT_LIMIT,
         description=_LIMIT_DESCRIPTION,
-        json_schema_extra={"minimum": 1, "maximum": MAX_LIMIT},
+        json_schema_extra={"minimum": MIN_LIMIT, "maximum": MAX_LIMIT},
     ),
     offset: int = Query(
-        default=0,
+        default=MIN_OFFSET,
         description=_OFFSET_DESCRIPTION,
-        json_schema_extra={"minimum": 0},
+        json_schema_extra={"minimum": MIN_OFFSET},
     ),
 ) -> Pagination:
     """FastAPI dependency yielding a clamped page window.
@@ -75,4 +83,4 @@ async def pagination(
     Declared ``async`` so FastAPI resolves it inline on the event loop instead
     of dispatching a ``run_in_threadpool`` hop for two comparisons.
     """
-    return clamp(limit, offset)
+    return clamp_pagination(limit, offset)

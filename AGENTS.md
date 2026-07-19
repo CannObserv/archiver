@@ -49,7 +49,9 @@ Prefetch query (run via `ToolSearch` once per session if the SessionStart remind
 
 ```
 src/api/                       FastAPI routes, deps, schemas, serializers
-src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, static/, deps.py)
+src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, static/, deps.py,
+                               pagination.py — shared clamped limit/offset dependency; see
+                               docs/UI.md for why the dashboard clamps where the API 422s)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, info_item_source_revision,

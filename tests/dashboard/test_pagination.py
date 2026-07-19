@@ -11,10 +11,11 @@ Two layers:
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 
 from src.api.main import app
 from src.core.models.domain import Domain
-from src.dashboard.pagination import DEFAULT_LIMIT, MAX_LIMIT, clamp
+from src.dashboard.pagination import DEFAULT_LIMIT, MAX_LIMIT, clamp_pagination
 
 _HEADERS = {"X-ExeDev-UserID": "ext-page", "X-ExeDev-Email": "page@example.com"}
 
@@ -38,7 +39,7 @@ _HEADERS = {"X-ExeDev-UserID": "ext-page", "X-ExeDev-Email": "page@example.com"}
     ],
 )
 def test_limit_is_clamped(raw: int, expected: int):
-    assert clamp(limit=raw, offset=0).limit == expected
+    assert clamp_pagination(limit=raw, offset=0).limit == expected
 
 
 @pytest.mark.parametrize(
@@ -53,11 +54,11 @@ def test_limit_is_clamped(raw: int, expected: int):
 )
 def test_offset_is_floored_but_not_capped(raw: int, expected: int):
     """Offset has no ceiling — a large offset just yields an empty page."""
-    assert clamp(limit=DEFAULT_LIMIT, offset=raw).offset == expected
+    assert clamp_pagination(limit=DEFAULT_LIMIT, offset=raw).offset == expected
 
 
 def test_in_range_values_pass_through():
-    page = clamp(limit=DEFAULT_LIMIT, offset=10)
+    page = clamp_pagination(limit=DEFAULT_LIMIT, offset=10)
     assert (page.limit, page.offset) == (DEFAULT_LIMIT, 10)
 
 
@@ -66,19 +67,28 @@ def test_in_range_values_pass_through():
 # ---------------------------------------------------------------------------
 
 
-def test_openapi_publishes_bounds():
-    """Bounds reach the spec via `json_schema_extra`, not `ge`/`le`.
+def test_openapi_bounds_agree_with_the_clamp():
+    """The published schema must match what the clamp actually enforces.
 
-    `ge`/`le` would re-enable the 422 the clamp exists to avoid, so the schema
-    would otherwise advertise unbounded integers while the server clamps.
+    Bounds reach the spec via `json_schema_extra` rather than `ge`/`le`, since
+    `ge`/`le` would re-enable the 422 the clamp exists to avoid. That decoupling
+    is the risk: the schema could drift into advertising a range the route no
+    longer honours. So assert each published bound against the value
+    `clamp_pagination` actually produces for an out-of-range input, rather than
+    against a constant — restating the constant would only prove the schema
+    reads it, not that the arithmetic agrees.
     """
     params = app.openapi()["paths"]["/dashboard/domains/"]["get"]["parameters"]
     by_name = {p["name"]: p for p in params}
+    huge, tiny = 10**6, -(10**6)
 
-    assert by_name["limit"]["schema"]["minimum"] == 1
-    assert by_name["limit"]["schema"]["maximum"] == MAX_LIMIT
+    assert by_name["limit"]["schema"]["minimum"] == clamp_pagination(limit=tiny, offset=0).limit
+    assert by_name["limit"]["schema"]["maximum"] == clamp_pagination(limit=huge, offset=0).limit
     assert by_name["limit"]["schema"]["default"] == DEFAULT_LIMIT
-    assert by_name["offset"]["schema"]["minimum"] == 0
+    assert (
+        by_name["offset"]["schema"]["minimum"]
+        == clamp_pagination(limit=DEFAULT_LIMIT, offset=tiny).offset
+    )
 
     # The description must say "clamped", so the published bounds don't imply a
     # rejection the route will never perform.
@@ -123,19 +133,28 @@ async def test_oversized_limit_actually_bounds_the_query(client, session):
     rows and asserts the page stops at MAX_LIMIT, which is the issue's second
     stated concern (an unbounded `?limit=` attempting a full-table render).
     """
-    names = [f"bulk-{i:04d}.example.com" for i in range(MAX_LIMIT + 1)]
-    for name in names:
-        session.add(Domain(name=name))
+    for i in range(MAX_LIMIT + 1):
+        session.add(Domain(name=f"bulk-{i:04d}.example.com"))
     await session.commit()
+
+    # Derive the expected page from the DB using the route's own ordering
+    # (Domain.name ascending) rather than assuming the seeded block is the only
+    # data present — that assumption would break confusingly if a session-scoped
+    # Domain fixture were ever added.
+    ordered = list(
+        (await session.execute(select(Domain.name).order_by(Domain.name).limit(MAX_LIMIT + 1)))
+        .scalars()
+        .all()
+    )
+    assert len(ordered) == MAX_LIMIT + 1, "seed must overflow one page"
+    on_page, first_overflow = ordered[:MAX_LIMIT], ordered[MAX_LIMIT]
 
     r = await client.get("/dashboard/domains/?limit=100000", headers=_HEADERS)
     assert r.status_code == 200
 
-    # The list orders by name, so the seeded block is contiguous and the
-    # (MAX_LIMIT + 1)-th name is the first one to fall off the page.
-    rendered = [n for n in names if n in r.text]
-    assert len(rendered) == MAX_LIMIT
-    assert names[MAX_LIMIT] not in r.text
+    missing = [n for n in on_page if n not in r.text]
+    assert not missing, f"{len(missing)} expected rows absent, e.g. {missing[:3]}"
+    assert first_overflow not in r.text
 
 
 @pytest.mark.asyncio

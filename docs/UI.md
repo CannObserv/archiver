@@ -319,13 +319,16 @@ The bounds still reach OpenAPI — via `json_schema_extra={"minimum": …,
 "maximum": …}` rather than `ge`/`le`, which would re-enable the 422 the clamp
 exists to avoid. Each param's `description` says out-of-range values are
 *clamped*, so the published bounds don't imply a rejection the route will never
-perform. `tests/dashboard/test_pagination.py::test_openapi_publishes_bounds`
-locks this in.
+perform. Both the schema and the arithmetic read the same `MIN_LIMIT` /
+`MAX_LIMIT` / `MIN_OFFSET` constants, and
+`test_pagination.py::test_openapi_bounds_agree_with_the_clamp` asserts each
+published bound against what `clamp_pagination` actually returns for an
+out-of-range input — so the spec cannot drift from enforced behaviour.
 
 The dependency is `async` so FastAPI resolves it inline rather than paying a
 `run_in_threadpool` hop for two comparisons; the arithmetic lives in a sync
-`clamp()` helper so it stays unit-testable without reaching through `Query`
-defaults. New paginated routes must use the dependency; do not reintroduce bare
+`clamp_pagination()` helper so it stays unit-testable without reaching through
+`Query` defaults. New paginated routes must use the dependency; do not reintroduce bare
 `limit: int = 50`.
 
 ## Page Inventory
