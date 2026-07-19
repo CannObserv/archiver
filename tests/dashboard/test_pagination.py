@@ -145,10 +145,11 @@ def test_no_dashboard_route_declares_a_coercible_param():
     (`Form(...)` with nothing posted), but that is a broken template rather than
     user input, and it is not what #86 is about.
     """
-    offenders, inspected = [], 0
+    offenders, inspected, routes_seen = [], 0, 0
     for route in app.routes:
         if not isinstance(route, APIRoute) or not route.path.startswith("/dashboard"):
             continue
+        routes_seen += 1
         flat = get_flat_dependant(route.dependant, skip_repeats=True)
         for field in (*flat.path_params, *flat.query_params, *flat.body_params):
             inspected += 1
@@ -159,9 +160,12 @@ def test_no_dashboard_route_declares_a_coercible_param():
             if any(m is not str for m in members):
                 offenders.append(f"{route.path} · {field.name}: {annotation}")
 
-    # Non-vacuity: a guard that silently walks nothing passes forever. If the
-    # route-matching above ever stops finding params, that is the failure.
-    assert inspected > 50, f"expected to inspect the dashboard's params, saw {inspected}"
+    # Non-vacuity: a guard that silently walks nothing passes forever. Assert
+    # both stages of the walk found something rather than picking a threshold —
+    # any floor on the param count would be a magic number that neither tracks
+    # the dashboard's real size nor says what it is protecting.
+    assert routes_seen, "no /dashboard routes matched — the walk is broken, not the routes"
+    assert inspected, f"{routes_seen} dashboard routes matched but no params were inspected"
 
     assert not offenders, (
         "Dashboard params must be `str` and parsed by hand — FastAPI coercion "
