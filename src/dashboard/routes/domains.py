@@ -103,14 +103,19 @@ async def detail_domain(
     domain = await _get_domain_or_404(name, session)
 
     # Exact total for the section heading — the table is paginated, so a template
-    # `|length` would report only the current page (#82). It also drives `has_more`,
-    # so there is no second limit+1 probe to disagree with it (CR round 7).
+    # `|length` would report only the current page (#82).
     source_total = (
         await session.execute(
             select(func.count()).select_from(InfoSource).where(InfoSource.domain_name == name)
         )
     ).scalar_one()
 
+    # `has_more` deliberately does NOT derive from source_total. The limit+1 probe
+    # is self-consistent by construction — one statement, one snapshot — so the
+    # Next link always matches the rows actually rendered. Deriving it from the
+    # COUNT would compare across two statements (two READ COMMITTED snapshots),
+    # letting a concurrent delete produce a Next link into an empty page. The two
+    # values answer different questions; the redundancy is intentional (CR round 8).
     src_rows = list(
         (
             await session.execute(
@@ -118,13 +123,14 @@ async def detail_domain(
                 .where(InfoSource.domain_name == name)
                 .order_by(InfoSource.created_at.desc())
                 .offset(offset)
-                .limit(limit)
+                .limit(limit + 1)
             )
         )
         .scalars()
         .all()
     )
-    has_more = offset + len(src_rows) < source_total
+    has_more = len(src_rows) > limit
+    src_rows = src_rows[:limit]
 
     return _templates.TemplateResponse(
         request,

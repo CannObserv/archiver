@@ -17,6 +17,7 @@ falls under a contract-visible path (mirrors ``scripts/check_changelog_lib.sh``)
   - ``clients/python/``     archiver-client SDK
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -65,13 +66,16 @@ def commit(repo: Path, subject: str, files: dict[str, str] | None = None) -> str
     return _git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
-def run_script(repo: Path, stdin: str) -> subprocess.CompletedProcess[str]:
+def run_script(
+    repo: Path, stdin: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPT)],
         cwd=repo,
         input=stdin,
         text=True,
         capture_output=True,
+        env={**os.environ, **(env or {})},
     )
 
 
@@ -280,7 +284,67 @@ def test_branch_delete_skipped(repo: Path) -> None:
 
 
 def test_empty_stdin_noop(repo: Path) -> None:
-    """No input lines → script exits 0 cleanly."""
+    """No input lines and no pre-commit env → script exits 0 cleanly."""
     result = run_script(repo, "")
 
     assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# pre-commit invocation path
+#
+# pre-commit consumes git's stdin itself and hands the range to pre-push hooks
+# via PRE_COMMIT_FROM_REF / PRE_COMMIT_TO_REF. A stdin-only reader therefore
+# sees EOF immediately and passes unconditionally — the guard was inert this
+# way for its whole life, which is how archiver#82's migration reached CI
+# unchecked. These cover that path (CR round 8).
+
+
+def test_pre_commit_env_range_without_changelog_fails(repo: Path) -> None:
+    """Trigger path via PRE_COMMIT_* env with empty stdin → fails."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(repo, "feat: migration", {"alembic/versions/abc123_add_idx.py": "def up(): ..."})
+
+    result = run_script(repo, "", env={"PRE_COMMIT_FROM_REF": base, "PRE_COMMIT_TO_REF": head})
+
+    assert result.returncode == 1, f"guard passed a contract-visible change: {result.stdout}"
+    assert "alembic/versions/abc123_add_idx.py" in result.stderr
+
+
+def test_pre_commit_env_range_with_changelog_passes(repo: Path) -> None:
+    """Trigger path plus a CHANGELOG.md entry via PRE_COMMIT_* env → passes."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(
+        repo,
+        "feat: migration",
+        {"alembic/versions/abc123_add_idx.py": "def up(): ...", "CHANGELOG.md": "## v1\nentry\n"},
+    )
+
+    result = run_script(repo, "", env={"PRE_COMMIT_FROM_REF": base, "PRE_COMMIT_TO_REF": head})
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_pre_commit_env_non_trigger_passes(repo: Path) -> None:
+    """Internal-only change via PRE_COMMIT_* env → passes."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(repo, "fix: dashboard", {"src/dashboard/routes/domains.py": "x = 1"})
+
+    result = run_script(repo, "", env={"PRE_COMMIT_FROM_REF": base, "PRE_COMMIT_TO_REF": head})
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_pre_commit_env_takes_precedence_over_stdin(repo: Path) -> None:
+    """When both are present the env range wins — pre-commit is authoritative."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(repo, "feat: migration", {"alembic/versions/abc123_add_idx.py": "def up(): ..."})
+
+    # stdin describes an empty (no-op) range; env describes the real one.
+    result = run_script(
+        repo,
+        push_line(base, base),
+        env={"PRE_COMMIT_FROM_REF": base, "PRE_COMMIT_TO_REF": head},
+    )
+
+    assert result.returncode == 1, "env range must be checked even when stdin is benign"

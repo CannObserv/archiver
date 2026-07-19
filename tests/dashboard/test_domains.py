@@ -182,9 +182,10 @@ async def test_domain_detail_empty_collection_keeps_registered_copy(client, sess
 
 
 @pytest.mark.asyncio
-async def test_domain_detail_has_more_derived_from_total(client, session):
-    """has_more is derived from the COUNT, not a separate limit+1 probe
-    (CR round 7, finding 6). Page 1 of 3 offers Next; the last page does not."""
+async def test_domain_detail_pagination_next_prev(client, session):
+    """Pagination nav reflects position: page 1 of 3 offers Next, the last page
+    offers only Previous. `has_more` comes from the limit+1 probe, kept separate
+    from the heading COUNT so it stays snapshot-consistent (CR round 8)."""
     session.add(_make_domain("pager.example.com"))
     await session.flush()
     for i in range(3):

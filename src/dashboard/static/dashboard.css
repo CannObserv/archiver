@@ -686,6 +686,16 @@ p:last-child { margin-bottom: 0; }
   margin: 0;
 }
 
+/* Related-collection section heading on detail screens ("Revision History (12)").
+   Extracted from four verbatim inline-style copies across the detail templates
+   (archiver#82 CR round 8). Distinct from .entity-section__header, which is a
+   flex header with an action slot; this is a plain rule-under-heading. */
+.section-heading {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
 /* ─── Detail grid ────────────────────────────────────────────────────────── */
 .detail-grid {
   display: grid;

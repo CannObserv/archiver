@@ -31,7 +31,7 @@
 
 **GET `/dashboard/domains/`** — paginated list. Columns: Domain (linked to detail), Sources (count), Status badge, Created. Filter bar: `?is_active=true|false|` (all). Source counts loaded via a GROUP BY query.
 
-**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (converged on the canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name → `.detail-grid` (Status badge, created_at UTC). Operator notes (HTMX inline edit); linked Information Sources table (count in heading from a route `COUNT`, so it stays accurate across pagination — #82; source URLs carry the `open_button` affordance). The same `COUNT` drives `has_more`, so pagination and the heading cannot disagree. Two distinct empty states: an overshot `offset` (stale bookmark, or rows removed mid-session) renders "No sources on this page" with a link back to `?offset=0`, while a genuinely empty collection keeps "No Information Sources registered for this domain yet" — the count in the heading would otherwise contradict the "none registered" copy. **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destructive, so it's hoisted into the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely. Archive and Restore both stay full-page POST→303 by design — see the *allowed variant* note under **HTMX mutations**.
+**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (converged on the canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name → `.detail-grid` (Status badge, created_at UTC). Operator notes (HTMX inline edit); linked Information Sources table (count in heading from a route `COUNT`, so it stays accurate across pagination — #82; source URLs carry the `open_button` affordance). `has_more` stays on its own `limit+1` probe (see **Related-collection tables**). Two distinct empty states: an overshot `offset` (stale bookmark, or rows removed mid-session) renders "No sources on this page" with a link back to `?offset=0`, while a genuinely empty collection keeps "No Information Sources registered for this domain yet" — the count in the heading would otherwise contradict the "none registered" copy. **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destructive, so it's hoisted into the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely. Archive and Restore both stay full-page POST→303 by design — see the *allowed variant* note under **HTMX mutations**.
 
 **POST `/dashboard/domains/{name}/notes`** — HTMX partial; replaces `#notes-section` with `domains/_notes_partial.html`. Saves notes inline.
 
@@ -282,16 +282,19 @@ badge, the inline Restore button beside it, *and* the presence of the
 clear-cache, which swaps the one contiguous `#revision-card` partial. The 303
 also preserves correct back-button semantics for a state transition.
 
-**Related-collection tables.** `.data-table` with the row count in the `<h2>`
-heading (e.g. "Bound Information Items (3)"). When the table is **paginated**,
+**Related-collection tables.** `.data-table` under an `<h2 class="section-heading">`
+carrying the row count (e.g. "Bound Information Items (3)"). When the table is **paginated**,
 the count must come from a route-level `COUNT` over the full result set, never
 a template `|length` — that would report only the current page. Domain detail
 (`source_total`) is the reference; InfoSource detail's "Other Sources at This
 URL" uses the capped `limit+1` "50+" probe instead, appropriate where the
-section is truncated rather than paged. Where a `COUNT` is already being run,
-derive `has_more` from it (`offset + len(rows) < total`) rather than also
-issuing a `limit+1` probe — two sources of truth for one fact can disagree
-under concurrent writes. A section heading with a count needs **two** empty
+section is truncated rather than paged. Keep `has_more` on its own `limit+1`
+probe even when a `COUNT` is already being run — the probe is self-consistent
+by construction (one statement, one snapshot), whereas deriving `has_more` from
+the `COUNT` compares two statements under READ COMMITTED and lets a concurrent
+delete render a Next link into an empty page. The apparent redundancy is
+deliberate: the two values answer different questions. A section heading with a
+count needs **two** empty
 states: "nothing here at all" and "nothing on *this page*" (overshot offset);
 collapsing them makes the heading contradict the body. Cache state uses the
 `.status-pill--cached/expired/missing` pills, not `.badge` variants. A

@@ -16,6 +16,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.2.2 (2026-07-19)
+
+[service] **Restore `ix_info_sources_domain_name`** (archiver#82).
+
+Migration `fa99ef9f1dbd` recreates the index on `information.info_sources.domain_name`. It was dropped in `fff827419c6c` together with `fk_info_sources_domain_name` as ORM/DB alignment cleanup after #48 removed both from the model — not because the index was unwanted. Three read paths filter or group by the column (domain detail listing, its heading COUNT, domain list GROUP BY) and the table is expected to grow. **The foreign key stays dropped** — that remains a deliberate model decision; only the index returns.
+
+No API or SDK surface change. Deploy note: plain `CREATE INDEX`, which takes a brief write lock; negligible at current table size, but use `postgresql_concurrently` if applying to a large instance.
+
 ## v4.2.1 (2026-06-13)
 
 [service] **Health badges: distinguish non-200 from network error** (archiver#59).
