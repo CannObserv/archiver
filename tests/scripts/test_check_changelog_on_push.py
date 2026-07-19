@@ -397,3 +397,93 @@ def test_pre_commit_env_takes_precedence_over_stdin(repo: Path) -> None:
     )
 
     assert result.returncode == 1, "env range must be checked even when stdin is benign"
+
+
+# ---------------------------------------------------------------------------
+# Contract test — pre-commit's real env wiring
+#
+# Everything above asserts against the env var names/values this project
+# *believes* pre-commit sets. If that belief were wrong, those tests would all
+# still pass while the guard silently skipped every real push — exactly the
+# failure mode of archiver#82 CR round 8, one layer up. These drive pre-commit's
+# own `hook-impl` (what the installed .git/hooks/pre-push invokes) so the env
+# contract itself is under test (CR round 10).
+
+PRE_COMMIT_CONFIG = """\
+repos:
+  - repo: local
+    hooks:
+      - id: changelog-required
+        name: require CHANGELOG.md
+        language: system
+        entry: {entry}
+        stages: [pre-push]
+        always_run: true
+        pass_filenames: false
+"""
+
+
+def run_hook_impl(repo: Path, stdin: str) -> subprocess.CompletedProcess[str]:
+    """Invoke pre-commit's pre-push hook-impl exactly as .git/hooks/pre-push does."""
+    (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG.format(entry=str(SCRIPT)))
+    return subprocess.run(
+        [
+            "pre-commit",
+            "hook-impl",
+            "--config=.pre-commit-config.yaml",
+            "--hook-type=pre-push",
+            "--hook-dir",
+            str(repo / ".git" / "hooks"),
+            "--",
+            "origin",
+            "https://example.invalid/repo.git",
+        ],
+        cwd=repo,
+        input=stdin,
+        text=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def has_pre_commit() -> None:
+    if subprocess.run(["which", "pre-commit"], capture_output=True).returncode != 0:
+        pytest.skip("pre-commit not on PATH")
+
+
+def test_hook_impl_main_push_without_changelog_fails(repo: Path, has_pre_commit: None) -> None:
+    """Through pre-commit itself: a migration pushed to main without a CHANGELOG
+    entry is blocked. Fails if pre-commit's env-var contract ever changes."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(repo, "feat: migration", {"alembic/versions/abc123_add_idx.py": "def up(): ..."})
+
+    result = run_hook_impl(repo, push_line(head, base))
+
+    assert result.returncode == 1, f"guard did not fire through pre-commit: {result.stdout}"
+    assert "alembic/versions/abc123_add_idx.py" in result.stdout + result.stderr
+
+
+def test_hook_impl_main_push_with_changelog_passes(repo: Path, has_pre_commit: None) -> None:
+    """Same range plus a CHANGELOG entry passes — proves the failure above is the
+    guard firing on its condition, not the harness erroring out."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(
+        repo,
+        "feat: migration",
+        {"alembic/versions/abc123_add_idx.py": "def up(): ...", "CHANGELOG.md": "## v1\n"},
+    )
+
+    result = run_hook_impl(repo, push_line(head, base))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_hook_impl_feature_branch_push_skipped(repo: Path, has_pre_commit: None) -> None:
+    """Feature-branch push is not gated — confirms PRE_COMMIT_REMOTE_BRANCH really
+    carries the remote ref, which is what the main-only filter depends on."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(repo, "feat: migration", {"alembic/versions/abc123_add_idx.py": "def up(): ..."})
+
+    result = run_hook_impl(repo, push_line(head, base, ref=FEATURE))
+
+    assert result.returncode == 0, result.stdout + result.stderr

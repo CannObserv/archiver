@@ -14,7 +14,9 @@
 #      ref on stdin: "<local_ref> <local_sha> <remote_ref> <remote_sha>".
 #
 # The env range wins when present: pre-commit is the authoritative caller, and
-# it is the path that runs on a real `git push`.
+# it is the path that runs on a real `git push`. Both paths are filtered to
+# main — the env path via PRE_COMMIT_REMOTE_BRANCH, the stdin path via the
+# remote ref field.
 #
 # Bypass with `git push --no-verify` if the push is genuinely internal-only.
 set -euo pipefail
@@ -33,9 +35,10 @@ check_range() {
   changed_files=$(git diff --name-only "$range" 2>/dev/null || true)
   [[ -n "$changed_files" ]] || return 0
 
-  # Written as one explicit condition rather than a chain of `|| return` /
-  # `&& return` guards: the failure mode of this script is passing silently, so
-  # the control flow should not depend on subtle `set -e` AND-list semantics.
+  # Explicit `if` rather than a `&& return` chain specifically because this
+  # branch emits the diagnostic: a premature exit here would fail the push with
+  # no explanation of why. The one-line `[[ … ]] && exit` / `|| continue` guards
+  # elsewhere in this file are fine — they only skip, never print.
   if changelog_trigger_paths_changed "$changed_files" &&
      ! printf '%s\n' "$changed_files" | grep -qx 'CHANGELOG.md'; then
     cat >&2 <<EOF
