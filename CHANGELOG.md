@@ -18,6 +18,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.2.3 (2026-07-19)
+
+[service] **`build_id` on `GET /health`; BUILD_ID stamp marks dirty trees** (archiver#89).
+
+`GET /health` now returns `{"status": "ok", "build_id": ...}` — `build_id` is read from the `BUILD_ID` environment variable and is `null` when unset. Additive field; existing consumers checking `status` are unaffected. New response model `HealthOut` in `src/api/schemas/health.py`.
+
+The systemd unit's BUILD_ID stamp (`deploy/archiver.service`) switches from `git rev-parse --short HEAD` to `git describe --always --dirty`, so a service started from an uncommitted working tree reports `<sha>-dirty` instead of a clean SHA. Deploy note: the unit-file change takes effect only after the operator reinstalls the unit (copy to /etc/systemd/system + `systemctl daemon-reload`).
+
 ## v4.2.2 (2026-07-19)
 
 [service] **Restore `ix_info_sources_domain_name`** (archiver#82).
