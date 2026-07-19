@@ -18,6 +18,12 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.2.3 (2026-07-19)
+
+[service] **List routes reject offsets beyond int64 with 422 instead of 500** (archiver#88).
+
+`GET /api/v1/domains`, `/info-items`, `/info-sources`, and `/rep-specs` declared `offset` with `ge=0` but no ceiling, so a value beyond `2**63 - 1` reached SQL as `OFFSET $2::BIGINT` and asyncpg raised `DataError`, surfacing as a 500. All four routes now declare `le=2**63 - 1`, so FastAPI returns a 422 validation error. Offsets up to and including `2**63 - 1` remain accepted. Consistent with the existing convention: the API 422s on out-of-range pagination params where the dashboard clamps (see `docs/UI.md`).
+
 ## v4.2.2 (2026-07-19)
 
 [service] **Restore `ix_info_sources_domain_name`** (archiver#82).
