@@ -33,10 +33,12 @@ check_range() {
   changed_files=$(git diff --name-only "$range" 2>/dev/null || true)
   [[ -n "$changed_files" ]] || return 0
 
-  changelog_trigger_paths_changed "$changed_files" || return 0
-  printf '%s\n' "$changed_files" | grep -qx 'CHANGELOG.md' && return 0
-
-  cat >&2 <<EOF
+  # Written as one explicit condition rather than a chain of `|| return` /
+  # `&& return` guards: the failure mode of this script is passing silently, so
+  # the control flow should not depend on subtle `set -e` AND-list semantics.
+  if changelog_trigger_paths_changed "$changed_files" &&
+     ! printf '%s\n' "$changed_files" | grep -qx 'CHANGELOG.md'; then
+    cat >&2 <<EOF
 ERROR: pushing a change that touches a contract-visible path
        without a CHANGELOG.md entry.
 Range: $range
@@ -45,14 +47,23 @@ $(printf '%s\n' "$changed_files" | grep -E "$CHANGELOG_TRIGGER_RE" | sed 's/^/  
 
 Update CHANGELOG.md, or push with --no-verify if this is genuinely internal.
 EOF
-  exit 1
+    exit 1
+  fi
 }
 
-# Path 1 — pre-commit supplies the range via env. It does not tell us which ref
-# is being pushed, so this path cannot filter on refs/heads/main; it checks
-# whatever range it is handed. Erring toward checking is the right default for
-# a guard that silently passed for its entire life.
+# Path 1 — pre-commit supplies the range via env, plus PRE_COMMIT_REMOTE_BRANCH
+# naming the ref being pushed. Filter on main so this path matches the stdin
+# path's contract: a feature branch carrying a migration is not gated, because
+# forcing --no-verify on routine WIP pushes is how a guard becomes habitually
+# bypassed. If the remote-branch signal is absent, check anyway — this guard
+# already failed silent once (archiver#82 CR round 8), so the safe default when
+# a signal is missing is to check, not to skip.
 if [[ -n "${PRE_COMMIT_FROM_REF:-}" && -n "${PRE_COMMIT_TO_REF:-}" ]]; then
+  if [[ -n "${PRE_COMMIT_REMOTE_BRANCH:-}" &&
+        "$PRE_COMMIT_REMOTE_BRANCH" != "refs/heads/main" &&
+        "$PRE_COMMIT_REMOTE_BRANCH" != "main" ]]; then
+    exit 0
+  fi
   [[ "$PRE_COMMIT_TO_REF" == "$ZERO" ]] && exit 0      # branch delete
   if [[ "$PRE_COMMIT_FROM_REF" == "$ZERO" ]]; then
     echo "new ref; skipping changelog check" >&2

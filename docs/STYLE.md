@@ -95,7 +95,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.entity-card`, `.entity-card__header`, `.entity-card__title`, `.entity-card__meta`, `.entity-card__actions`.
 - `.eyebrow` — small uppercase kicker label above an `.entity-card__title` (e.g. the entity kind). Non-interactive; distinct from a breadcrumb.
 - `.entity-section`, `.entity-section__header`, `.entity-section__title`.
-- `.section-heading` — related-collection section heading on a detail screen (`<h2>Revision History (12)</h2>`): bottom rule + spacing. Use for a plain heading-over-a-table; use `.entity-section__header` instead when the header needs a flex action slot. Declared after `.entity-section__title` in `dashboard.css` so its `margin-bottom` wins when both are applied to one element. Replaced four verbatim inline-style copies (archiver#82).
+- `.section-heading` — related-collection section heading on a detail screen (`<h2>Revision History (12)</h2>`): bottom rule + spacing. Use for a plain heading-over-a-table; use `.entity-section__header` instead when the header needs a flex action slot. Replaced five verbatim inline-style copies (archiver#82). Applied to a bare `<h2>` — do **not** combine with `.entity-section__title`, which is for `<h1>` page titles inside an `.entity-section__header`; base `h2` already supplies the same size and weight, and combining the two made the rendered margin depend on stylesheet source order.
 - `.detail-grid`, `.detail-grid__item`, `.detail-grid__label`, `.detail-grid__value`. `.detail-grid__item--full` spans every grid column (`grid-column: 1 / -1`) so long values (fingerprints, URLs) extend horizontally at wide viewports instead of cramping into one track.
 
 ### Forms

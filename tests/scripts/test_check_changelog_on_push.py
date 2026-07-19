@@ -335,6 +335,55 @@ def test_pre_commit_env_non_trigger_passes(repo: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_pre_commit_env_non_main_remote_branch_skipped(repo: Path) -> None:
+    """Pushing a feature branch is not gated — parity with the stdin path, which
+    only inspects refs/heads/main. Otherwise a WIP branch carrying a migration
+    forces --no-verify, which is how a guard gets habitually bypassed."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(repo, "feat: migration", {"alembic/versions/abc123_add_idx.py": "def up(): ..."})
+
+    result = run_script(
+        repo,
+        "",
+        env={
+            "PRE_COMMIT_FROM_REF": base,
+            "PRE_COMMIT_TO_REF": head,
+            "PRE_COMMIT_REMOTE_BRANCH": "refs/heads/feature-x",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_pre_commit_env_main_remote_branch_checked(repo: Path) -> None:
+    """Explicit refs/heads/main remote branch is gated."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(repo, "feat: migration", {"alembic/versions/abc123_add_idx.py": "def up(): ..."})
+
+    result = run_script(
+        repo,
+        "",
+        env={
+            "PRE_COMMIT_FROM_REF": base,
+            "PRE_COMMIT_TO_REF": head,
+            "PRE_COMMIT_REMOTE_BRANCH": "refs/heads/main",
+        },
+    )
+
+    assert result.returncode == 1, result.stdout
+
+
+def test_pre_commit_env_unset_remote_branch_still_checked(repo: Path) -> None:
+    """No remote-branch signal → check anyway. A guard that already failed silent
+    once should err toward checking rather than skipping."""
+    base = commit(repo, "chore: seed", {"README.md": "x"})
+    head = commit(repo, "feat: migration", {"alembic/versions/abc123_add_idx.py": "def up(): ..."})
+
+    result = run_script(repo, "", env={"PRE_COMMIT_FROM_REF": base, "PRE_COMMIT_TO_REF": head})
+
+    assert result.returncode == 1, result.stdout
+
+
 def test_pre_commit_env_takes_precedence_over_stdin(repo: Path) -> None:
     """When both are present the env range wins — pre-commit is authoritative."""
     base = commit(repo, "chore: seed", {"README.md": "x"})
