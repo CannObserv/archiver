@@ -1,11 +1,15 @@
 """Tests for dashboard pagination clamping (#84).
 
-Two layers:
+Three layers, matching the section headers below:
 
-* Unit tests over ``pagination()`` — the boundary matrix lives here, since that
-  is where the clamp logic actually is.
-* One HTTP test per paginated route — guards the *wiring* (that each route
-  routes its params through the dependency), not the clamp arithmetic.
+* **Unit** — the boundary matrix over ``clamp_pagination()``, where the
+  arithmetic actually lives.
+* **OpenAPI** — that the published bounds agree with what the clamp enforces.
+  The two are decoupled by design (``json_schema_extra`` rather than
+  ``ge``/``le``), so nothing but this test stops the spec from drifting.
+* **HTTP** — that each paginated route routes its params through the
+  dependency, and that the clamp bounds the render rather than merely avoiding
+  the 500 that motivated the issue.
 """
 
 from __future__ import annotations

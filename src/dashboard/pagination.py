@@ -16,7 +16,7 @@ eliminate 422s entirely — ``?limit=abc`` still fails int coercion before this
 dependency runs — but it removes the plausible triggers.
 
 Bounds are published to OpenAPI via ``json_schema_extra`` rather than ``ge``/
-``le``, which would re-enable the 422 we are deliberately avoiding. The
+``le``, which would re-enable the 422 this module exists to avoid. The
 ``description`` spells out that out-of-range values are clamped, so the spec
 does not imply rejection it will not perform.
 """
