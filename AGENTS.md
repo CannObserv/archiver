@@ -99,7 +99,10 @@ scripts/                       dump_openapi.py +
                                ff_deploy_clone.sh (timer ExecStartPre: best-effort
                                fast-forward clean main to origin/main) +
                                check_changelog_on_push.sh (pre-push guard;
-                               wired via .pre-commit-config.yaml)
+                               wired via .pre-commit-config.yaml) +
+                               dev_server.sh (ONLY sanctioned way to start the
+                               8021 dev server; refuses to resolve onto the
+                               production DB — see "Server Lifecycle")
 deploy/                        Systemd units: archiver.service +
                                watcher-live-drift.{service,timer} (Layer C #70
                                daily live-drift check; install: see deploy/README.md)
@@ -141,7 +144,7 @@ These modules are **mirrors** of watcher's `src/core/` — when changing them he
 | Service | Port | Managed by |
 |---|---|---|
 | Archiver (live) | 8020 | `systemctl` (`archiver.service`) |
-| Archiver (dev) | 8021 | manual uvicorn |
+| Archiver (dev) | 8021 | `bash scripts/dev_server.sh` (never hand-rolled uvicorn) |
 
 The exe.dev proxy forwards 3000–9999. Dev server reachable at `https://watcher.exe.xyz:8021/` (the host is shared with the watcher VM).
 
@@ -151,15 +154,40 @@ The exe.dev proxy forwards 3000–9999. Dev server reachable at `https://watcher
 
 After committing to `main`: `sudo systemctl restart archiver`. After DB model changes: `uv run alembic upgrade head` then restart. Logs: `sudo journalctl -u archiver -f`.
 
-Dev server (port 8021):
+Dev server (port 8021) — **always** via the launch script:
 
 ```bash
-set -a
-[ -f /etc/archiver/.env ] && . /etc/archiver/.env
-[ -f .env ] && . .env
-set +a
-uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload
+bash scripts/dev_server.sh
 ```
+
+**Never hand-roll the uvicorn invocation.** The recipe this replaced sourced
+`/etc/archiver/.env` and then ran uvicorn directly, which left
+`ARCHIVER_DATABASE_URL` pointing at **production** — the dev server on 8021 and
+the live service on 8020 shared one database. On 2026-07-18 a dashboard
+verification run drove the dev server and wrote a `verify79.example.com`
+Domain, two InfoSources, and an AppUser into the production registry.
+
+`scripts/dev_server.sh` resolves the dev database from
+`ARCHIVER_DEV_DATABASE_URL`, else `TEST_DATABASE_URL`; refuses to start if that
+resolution equals `ARCHIVER_DATABASE_URL` or `DATABASE_URL`; clears the
+`DATABASE_URL` fallback; refuses port 8020; and runs `alembic upgrade head`
+against the dev database before serving. This mirrors `_check_test_url_safety`
+in `tests/conftest.py`, which guards pytest but not a hand-run server.
+
+Anything that writes — curl against the dashboard, SDK scripts, manual
+verification — must target 8021, never 8020.
+
+| Knob | Effect |
+|---|---|
+| `ARCHIVER_DEV_DATABASE_URL` | Persistent dev DB; wins over `TEST_DATABASE_URL` |
+| `ARCHIVER_DEV_PORT` | Default 8021; 8020 is refused |
+| `ARCHIVER_DEV_SKIP_MIGRATE=1` | Skip the alembic upgrade |
+
+> pytest teardown runs `DROP SCHEMA information CASCADE` against
+> `TEST_DATABASE_URL`. Running the suite while a dev server points at the same
+> database wipes dev data mid-session — survivable, and strictly better than
+> writing to production. Set `ARCHIVER_DEV_DATABASE_URL` to a dedicated
+> database (e.g. `archiver_dev`) if that becomes annoying.
 
 ## Environment Files
 
