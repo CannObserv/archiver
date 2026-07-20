@@ -62,8 +62,9 @@ src/core/                      Domain logic
   rep_fields_schema/           rep_fields meta-schema + validator
   changes/                     Outbox publisher (background asyncio task) +
                                typed Pydantic event payloads
-  tools/                       Authoring helpers (assign_rep_spec, bind_revision,
-                               resolve_rep_fields, preview_extraction, etc.)
+  tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
+                               update_rep_spec, bind_revision, resolve_rep_fields,
+                               preview_extraction, etc.)
   fetchers/, extractors/,
   simhash.py, extraction_defaults.py, logging.py
                                Mirrored from watcher (see "Mirrored content-acquisition code")
