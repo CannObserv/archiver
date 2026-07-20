@@ -22,7 +22,11 @@ from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
 from src.core.changes import publisher as outbox_publisher
 from src.core.database import get_engine
-from src.core.db_safety import ALLOW_PRODUCTION_DB_ENV, assert_production_db_allowed
+from src.core.db_safety import (
+    ALLOW_PRODUCTION_DB_ENV,
+    ProductionDatabaseRefused,
+    assert_production_db_allowed,
+)
 from src.core.fetchers.http import HttpFetcher
 from src.core.logging import configure_logging, get_logger
 from src.dashboard.main import register_dashboard
@@ -47,10 +51,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       Redis dependency in dev/test environments.
     """
     # Before any resource is built or any request is served.
-    assert_production_db_allowed(
-        os.environ.get("ARCHIVER_DATABASE_URL") or os.environ.get("DATABASE_URL") or "",
-        allow_flag=os.environ.get(ALLOW_PRODUCTION_DB_ENV),
-    )
+    try:
+        assert_production_db_allowed(
+            os.environ.get("ARCHIVER_DATABASE_URL") or os.environ.get("DATABASE_URL") or "",
+            allow_flag=os.environ.get(ALLOW_PRODUCTION_DB_ENV),
+        )
+    except ProductionDatabaseRefused as e:
+        # Log before re-raising: under systemd the bare exception surfaces in
+        # journalctl as a lifespan traceback, burying the actionable text.
+        logger.critical("Refusing to start: %s", e)
+        raise
 
     app.state.http_fetcher = HttpFetcher()
 

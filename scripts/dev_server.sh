@@ -26,8 +26,10 @@
 # dedicated database and set ARCHIVER_DEV_DATABASE_URL.
 #
 # Env knobs:
-#   ARCHIVER_DEV_PORT                   default 8021 (8020 is systemd's, refused)
-#   ARCHIVER_DEV_SERVER_DRY_RUN=1       print resolution, do not exec uvicorn
+#   ARCHIVER_DEV_DATABASE_URL             persistent dev DB; wins over TEST_DATABASE_URL
+#   ARCHIVER_DEV_PORT                     default 8021 (8020 is systemd's, refused)
+#   ARCHIVER_DEV_SKIP_MIGRATE=1           skip the alembic upgrade
+#   ARCHIVER_DEV_SERVER_DRY_RUN=1         print resolution, do not exec uvicorn
 #   ARCHIVER_DEV_SERVER_SKIP_ENV_FILES=1  skip sourcing env files (tests)
 set -euo pipefail
 
