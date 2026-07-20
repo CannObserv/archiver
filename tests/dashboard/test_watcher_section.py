@@ -12,7 +12,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from watcher_client import WatchedItemResponse
+from watcher_client import WatchedItemResponse, WatcherError
 
 from src.api.deps import get_watcher_client
 from src.api.main import app
@@ -199,8 +199,6 @@ async def test_watcher_section_archived_hides_toggle(client, session):
 
 @pytest.mark.asyncio
 async def test_watcher_section_degraded(client, session):
-    from watcher_client import WatcherError
-
     watcher = MagicMock()
     watcher.base_url = _BASE_URL
     watcher.get_watched_item = AsyncMock(side_effect=WatcherError("timeout"))

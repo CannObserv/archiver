@@ -1,8 +1,9 @@
 """HTTP-layer tests for DELETE /info-items/{id}/info-sources/{source_id}."""
 
 import pytest
+from sqlalchemy import select
 
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 
 
 def _spec_doc() -> dict:
@@ -120,10 +121,6 @@ async def test_succession_emits_primary_changed_event_with_old_source(
     client, session, active_binding, item
 ):
     """After succession, info_item_primary_changed carries old_info_source_id."""
-    from sqlalchemy import select
-
-    from src.core.models import ChangesOutboxRow
-
     old_src = active_binding
     new_src = InfoSource(url="https://example.com/new", source_specs=[_spec_doc()])
     session.add(new_src)

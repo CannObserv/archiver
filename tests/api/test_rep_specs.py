@@ -8,7 +8,12 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
+from ulid import ULID
+
+from src.core.models import InfoItem, InfoItemRepSpec
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -296,12 +301,6 @@ async def _create_spec(client, *, name: str = "draft", document: dict | None = N
 
 async def _assign_spec(session, spec_id: str, *, deactivated: bool = False) -> None:
     """Attach an assignment row directly, bypassing rep_fields validation."""
-    from datetime import UTC, datetime
-
-    from ulid import ULID
-
-    from src.core.models import InfoItem, InfoItemRepSpec
-
     item = InfoItem(name=f"item-{spec_id[:8]}", rep_fields={})
     session.add(item)
     await session.flush()

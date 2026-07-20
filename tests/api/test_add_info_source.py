@@ -6,8 +6,9 @@ Covers happy path, collision guard, existence errors, and bus event emission.
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import select
 
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -94,10 +95,6 @@ async def test_unknown_info_item_returns_404(client, session):
 
 @pytest.mark.asyncio
 async def test_primary_changed_event_emitted_on_first_assignment(client, session, item):
-    from sqlalchemy import select
-
-    from src.core.models import ChangesOutboxRow
-
     src = await _make_source(session)
     await session.commit()
 
@@ -119,10 +116,6 @@ async def test_primary_changed_event_emitted_on_first_assignment(client, session
 
 @pytest.mark.asyncio
 async def test_primary_changed_event_carries_old_source_on_succession(client, session, item):
-    from sqlalchemy import select
-
-    from src.core.models import ChangesOutboxRow
-
     src_a = await _make_source(session, "https://example.com/a")
     src_b = await _make_source(session, "https://example.com/b")
     session.add(

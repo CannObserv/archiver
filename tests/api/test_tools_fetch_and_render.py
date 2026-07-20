@@ -5,6 +5,7 @@ import pytest
 
 from src.api.deps import get_http_fetcher
 from src.api.main import app
+from src.core.fetchers.base import FetchResult
 from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
 HEADERS = {"X-API-Key": "test-secret-key"}
@@ -15,8 +16,6 @@ def _override_with_response(response: httpx.Response) -> None:
 
     class _StubFetcher:
         async def fetch(self, url: str, config: dict | None = None):
-            from src.core.fetchers.base import FetchResult
-
             return FetchResult(
                 content=response.content,
                 status_code=response.status_code,
@@ -94,8 +93,6 @@ async def test_fetch_and_render_passes_url_to_fetcher(client):
 
     class _SpyFetcher:
         async def fetch(self, url: str, config: dict | None = None):
-            from src.core.fetchers.base import FetchResult
-
             captured["url"] = url
             return FetchResult(
                 content=b"ok", status_code=200, headers={}, duration_ms=1, fetcher_used="http"

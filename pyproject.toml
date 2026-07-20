@@ -59,7 +59,11 @@ exclude = ["skills-vendor/", "clients/python/src/archiver_client/generated/", "c
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
-extend-select = ["B904"]
+# PLC0415 enforces the AGENTS.md "no inline module imports" convention (#97).
+# `if TYPE_CHECKING:` guards are module-level and not flagged. The vendored
+# clients under clients/ resolve their own [tool.ruff] config and are unaffected;
+# their generated code imports lazily to dodge circular imports.
+extend-select = ["B904", "PLC0415"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]

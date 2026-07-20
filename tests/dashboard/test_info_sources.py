@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+from ulid import ULID
 
 from src.core.models import (
     InfoItem,
@@ -90,8 +91,6 @@ async def test_detail_unauthenticated_redirects(client, session):
 
 @pytest.mark.asyncio
 async def test_detail_not_found_returns_404(client):
-    from ulid import ULID
-
     r = await client.get(f"/dashboard/info-sources/{ULID()}", headers=_HEADERS)
     assert r.status_code == 404
     assert "text/html" in r.headers["content-type"]
