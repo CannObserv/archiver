@@ -103,9 +103,7 @@ def sync_detailed(
     extract distinct semantic content from the same URL using different specs.
 
     Args:
-        body (InfoSourceCreate): ``url`` is the URL to fetch (immutable). ``source_specs``
-            is the ordered list of extraction specs; first element is primary, subsequent
-            elements are cross-check alternatives.
+        body (InfoSourceCreate): Request body for POST /info-sources.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -139,9 +137,7 @@ def sync(
     extract distinct semantic content from the same URL using different specs.
 
     Args:
-        body (InfoSourceCreate): ``url`` is the URL to fetch (immutable). ``source_specs``
-            is the ordered list of extraction specs; first element is primary, subsequent
-            elements are cross-check alternatives.
+        body (InfoSourceCreate): Request body for POST /info-sources.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -170,9 +166,7 @@ async def asyncio_detailed(
     extract distinct semantic content from the same URL using different specs.
 
     Args:
-        body (InfoSourceCreate): ``url`` is the URL to fetch (immutable). ``source_specs``
-            is the ordered list of extraction specs; first element is primary, subsequent
-            elements are cross-check alternatives.
+        body (InfoSourceCreate): Request body for POST /info-sources.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -204,9 +198,7 @@ async def asyncio(
     extract distinct semantic content from the same URL using different specs.
 
     Args:
-        body (InfoSourceCreate): ``url`` is the URL to fetch (immutable). ``source_specs``
-            is the ordered list of extraction specs; first element is primary, subsequent
-            elements are cross-check alternatives.
+        body (InfoSourceCreate): Request body for POST /info-sources.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

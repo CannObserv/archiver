@@ -1,33 +1,48 @@
 from http import HTTPStatus
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.envelope_response import EnvelopeResponse
-from ...models.info_item_out import InfoItemOut
+from ...models.page_domain_out import PageDomainOut
 from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
-    info_item_id: str,
     *,
-    include_deactivated: bool | Unset = False,
+    is_active: bool | None | Unset = UNSET,
+    archived: bool | None | Unset = UNSET,
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
 
-    params["include_deactivated"] = include_deactivated
+    json_is_active: bool | None | Unset
+    if isinstance(is_active, Unset):
+        json_is_active = UNSET
+    else:
+        json_is_active = is_active
+    params["is_active"] = json_is_active
+
+    json_archived: bool | None | Unset
+    if isinstance(archived, Unset):
+        json_archived = UNSET
+    else:
+        json_archived = archived
+    params["archived"] = json_archived
+
+    params["limit"] = limit
+
+    params["offset"] = offset
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/info-items/{info_item_id}".format(
-            info_item_id=quote(str(info_item_id), safe=""),
-        ),
+        "url": "/api/v1/domains",
         "params": params,
     }
 
@@ -36,9 +51,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> EnvelopeResponse | InfoItemOut | None:
+) -> EnvelopeResponse | PageDomainOut | None:
     if response.status_code == 200:
-        response_200 = InfoItemOut.from_dict(response.json())
+        response_200 = PageDomainOut.from_dict(response.json())
 
         return response_200
 
@@ -85,7 +100,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[EnvelopeResponse | InfoItemOut]:
+) -> Response[EnvelopeResponse | PageDomainOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -95,35 +110,36 @@ def _build_response(
 
 
 def sync_detailed(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-    include_deactivated: bool | Unset = False,
-) -> Response[EnvelopeResponse | InfoItemOut]:
-    """Get Info Item
+    is_active: bool | None | Unset = UNSET,
+    archived: bool | None | Unset = UNSET,
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> Response[EnvelopeResponse | PageDomainOut]:
+    """List Domains
 
-     Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
-
-    Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+     List domains with offset pagination.
 
     Args:
-        info_item_id (str):
-        include_deactivated (bool | Unset): When true, include deactivated bindings (previous
-            primaries and other deactivated sources) in info_item_sources. When false (default), only
-            active bindings are returned. Default: False.
+        is_active (bool | None | Unset): Filter by active status.
+        archived (bool | None | Unset): When true, return only archived domains.
+        limit (int | Unset):  Default: 100.
+        offset (int | Unset):  Default: 0.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[EnvelopeResponse | InfoItemOut]
+        Response[EnvelopeResponse | PageDomainOut]
     """
 
     kwargs = _get_kwargs(
-        info_item_id=info_item_id,
-        include_deactivated=include_deactivated,
+        is_active=is_active,
+        archived=archived,
+        limit=limit,
+        offset=offset,
     )
 
     response = client.get_httpx_client().request(
@@ -134,69 +150,71 @@ def sync_detailed(
 
 
 def sync(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-    include_deactivated: bool | Unset = False,
-) -> EnvelopeResponse | InfoItemOut | None:
-    """Get Info Item
+    is_active: bool | None | Unset = UNSET,
+    archived: bool | None | Unset = UNSET,
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> EnvelopeResponse | PageDomainOut | None:
+    """List Domains
 
-     Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
-
-    Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+     List domains with offset pagination.
 
     Args:
-        info_item_id (str):
-        include_deactivated (bool | Unset): When true, include deactivated bindings (previous
-            primaries and other deactivated sources) in info_item_sources. When false (default), only
-            active bindings are returned. Default: False.
+        is_active (bool | None | Unset): Filter by active status.
+        archived (bool | None | Unset): When true, return only archived domains.
+        limit (int | Unset):  Default: 100.
+        offset (int | Unset):  Default: 0.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        EnvelopeResponse | InfoItemOut
+        EnvelopeResponse | PageDomainOut
     """
 
     return sync_detailed(
-        info_item_id=info_item_id,
         client=client,
-        include_deactivated=include_deactivated,
+        is_active=is_active,
+        archived=archived,
+        limit=limit,
+        offset=offset,
     ).parsed
 
 
 async def asyncio_detailed(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-    include_deactivated: bool | Unset = False,
-) -> Response[EnvelopeResponse | InfoItemOut]:
-    """Get Info Item
+    is_active: bool | None | Unset = UNSET,
+    archived: bool | None | Unset = UNSET,
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> Response[EnvelopeResponse | PageDomainOut]:
+    """List Domains
 
-     Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
-
-    Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+     List domains with offset pagination.
 
     Args:
-        info_item_id (str):
-        include_deactivated (bool | Unset): When true, include deactivated bindings (previous
-            primaries and other deactivated sources) in info_item_sources. When false (default), only
-            active bindings are returned. Default: False.
+        is_active (bool | None | Unset): Filter by active status.
+        archived (bool | None | Unset): When true, return only archived domains.
+        limit (int | Unset):  Default: 100.
+        offset (int | Unset):  Default: 0.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[EnvelopeResponse | InfoItemOut]
+        Response[EnvelopeResponse | PageDomainOut]
     """
 
     kwargs = _get_kwargs(
-        info_item_id=info_item_id,
-        include_deactivated=include_deactivated,
+        is_active=is_active,
+        archived=archived,
+        limit=limit,
+        offset=offset,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -205,36 +223,37 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    info_item_id: str,
     *,
     client: AuthenticatedClient,
-    include_deactivated: bool | Unset = False,
-) -> EnvelopeResponse | InfoItemOut | None:
-    """Get Info Item
+    is_active: bool | None | Unset = UNSET,
+    archived: bool | None | Unset = UNSET,
+    limit: int | Unset = 100,
+    offset: int | Unset = 0,
+) -> EnvelopeResponse | PageDomainOut | None:
+    """List Domains
 
-     Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
-
-    Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+     List domains with offset pagination.
 
     Args:
-        info_item_id (str):
-        include_deactivated (bool | Unset): When true, include deactivated bindings (previous
-            primaries and other deactivated sources) in info_item_sources. When false (default), only
-            active bindings are returned. Default: False.
+        is_active (bool | None | Unset): Filter by active status.
+        archived (bool | None | Unset): When true, return only archived domains.
+        limit (int | Unset):  Default: 100.
+        offset (int | Unset):  Default: 0.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        EnvelopeResponse | InfoItemOut
+        EnvelopeResponse | PageDomainOut
     """
 
     return (
         await asyncio_detailed(
-            info_item_id=info_item_id,
             client=client,
-            include_deactivated=include_deactivated,
+            is_active=is_active,
+            archived=archived,
+            limit=limit,
+            offset=offset,
         )
     ).parsed

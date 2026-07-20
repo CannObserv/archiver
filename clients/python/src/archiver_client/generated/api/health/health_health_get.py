@@ -5,9 +5,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.health_health_get_response_health_health_get import (
-    HealthHealthGetResponseHealthHealthGet,
-)
+from ...models.health_out import HealthOut
 from ...types import Response
 
 
@@ -23,9 +21,9 @@ def _get_kwargs() -> dict[str, Any]:
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HealthHealthGetResponseHealthHealthGet | None:
+) -> HealthOut | None:
     if response.status_code == 200:
-        response_200 = HealthHealthGetResponseHealthHealthGet.from_dict(response.json())
+        response_200 = HealthOut.from_dict(response.json())
 
         return response_200
 
@@ -37,7 +35,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HealthHealthGetResponseHealthHealthGet]:
+) -> Response[HealthOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -49,17 +47,17 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
-) -> Response[HealthHealthGetResponseHealthHealthGet]:
+) -> Response[HealthOut]:
     """Health
 
-     Liveness probe — returns ok if the process is up.
+     Liveness probe — returns ok if the process is up, plus the deployed build id.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HealthHealthGetResponseHealthHealthGet]
+        Response[HealthOut]
     """
 
     kwargs = _get_kwargs()
@@ -74,17 +72,17 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient | Client,
-) -> HealthHealthGetResponseHealthHealthGet | None:
+) -> HealthOut | None:
     """Health
 
-     Liveness probe — returns ok if the process is up.
+     Liveness probe — returns ok if the process is up, plus the deployed build id.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HealthHealthGetResponseHealthHealthGet
+        HealthOut
     """
 
     return sync_detailed(
@@ -95,17 +93,17 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
-) -> Response[HealthHealthGetResponseHealthHealthGet]:
+) -> Response[HealthOut]:
     """Health
 
-     Liveness probe — returns ok if the process is up.
+     Liveness probe — returns ok if the process is up, plus the deployed build id.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HealthHealthGetResponseHealthHealthGet]
+        Response[HealthOut]
     """
 
     kwargs = _get_kwargs()
@@ -118,17 +116,17 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient | Client,
-) -> HealthHealthGetResponseHealthHealthGet | None:
+) -> HealthOut | None:
     """Health
 
-     Liveness probe — returns ok if the process is up.
+     Liveness probe — returns ok if the process is up, plus the deployed build id.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HealthHealthGetResponseHealthHealthGet
+        HealthOut
     """
 
     return (

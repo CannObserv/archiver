@@ -1,33 +1,40 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="InfoItemSourceCreate")
+T = TypeVar("T", bound="HealthOut")
 
 
 @_attrs_define
-class InfoItemSourceCreate:
-    """Request body for POST /info-items/{id}/info-sources.
+class HealthOut:
+    """Response body for GET /health.
 
     Attributes:
-        info_source_id (str): ULID of an existing InfoSource.
+        build_id (None | str): Deployed build identifier from the BUILD_ID environment variable (git describe --always
+            --dirty at service start). Null when unset.
+        status (str): Liveness indicator; always 'ok' when the process is up.
     """
 
-    info_source_id: str
+    build_id: None | str
+    status: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        info_source_id = self.info_source_id
+        build_id: None | str
+        build_id = self.build_id
+
+        status = self.status
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "info_source_id": info_source_id,
+                "build_id": build_id,
+                "status": status,
             }
         )
 
@@ -36,14 +43,23 @@ class InfoItemSourceCreate:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        info_source_id = d.pop("info_source_id")
 
-        info_item_source_create = cls(
-            info_source_id=info_source_id,
+        def _parse_build_id(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        build_id = _parse_build_id(d.pop("build_id"))
+
+        status = d.pop("status")
+
+        health_out = cls(
+            build_id=build_id,
+            status=status,
         )
 
-        info_item_source_create.additional_properties = d
-        return info_item_source_create
+        health_out.additional_properties = d
+        return health_out
 
     @property
     def additional_keys(self) -> list[str]:
