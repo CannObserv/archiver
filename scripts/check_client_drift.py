@@ -21,11 +21,12 @@ against a committed ``watcher-openapi.json`` snapshot; ``archiver`` (the
 ``archiver_client`` SDK, ``clients/python``) diffs against a committed
 ``archiver-openapi.json`` snapshot (#92). Both are hermetic, PR-blocking
 consistency gates. The check does NOT detect drift of a snapshot itself vs the
-live service; for watcher that is the scheduled live-compare job (see #67,
-"Layer C"), and for archiver the snapshot is refreshed by ``regen.sh`` from the
-in-repo app object, so it can only go stale if regen is skipped after an API
-change — which this gate then surfaces as tree-vs-snapshot consistency plus
-review of the snapshot diff.
+live service: a skipped regen after an API change leaves snapshot and tree
+*consistently* stale, and this hermetic gate passes. For watcher that gap is
+covered by the scheduled live-compare job (see #67, "Layer C"). For archiver
+the app lives in this repo, so freshness is enforced offline by
+``tests/scripts/test_archiver_openapi_snapshot.py`` in the main suite, which
+re-derives the canonical spec from the app and diffs it against the snapshot.
 
 Usage::
 
