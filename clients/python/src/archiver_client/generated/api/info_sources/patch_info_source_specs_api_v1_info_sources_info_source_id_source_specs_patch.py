@@ -1,25 +1,29 @@
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.envelope_response import EnvelopeResponse
-from ...models.info_item_create import InfoItemCreate
-from ...models.info_item_out import InfoItemOut
+from ...models.info_source_out import InfoSourceOut
+from ...models.info_source_patch import InfoSourcePatch
 from ...types import Response
 
 
 def _get_kwargs(
+    info_source_id: str,
     *,
-    body: InfoItemCreate,
+    body: InfoSourcePatch,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/v1/info-items",
+        "method": "patch",
+        "url": "/api/v1/info-sources/{info_source_id}/source-specs".format(
+            info_source_id=quote(str(info_source_id), safe=""),
+        ),
     }
 
     _kwargs["json"] = body.to_dict()
@@ -32,11 +36,11 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> EnvelopeResponse | InfoItemOut | None:
-    if response.status_code == 201:
-        response_201 = InfoItemOut.from_dict(response.json())
+) -> EnvelopeResponse | InfoSourceOut | None:
+    if response.status_code == 200:
+        response_200 = InfoSourceOut.from_dict(response.json())
 
-        return response_201
+        return response_200
 
     if response.status_code == 400:
         response_400 = EnvelopeResponse.from_dict(response.json())
@@ -81,7 +85,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[EnvelopeResponse | InfoItemOut]:
+) -> Response[EnvelopeResponse | InfoSourceOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -91,31 +95,31 @@ def _build_response(
 
 
 def sync_detailed(
+    info_source_id: str,
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> Response[EnvelopeResponse | InfoItemOut]:
-    """Create Info Item
+    body: InfoSourcePatch,
+) -> Response[EnvelopeResponse | InfoSourceOut]:
+    """Patch Info Source Specs
 
-     Create an InfoItem.
+     Replace the source_specs list on an existing InfoSource.
 
-    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
-    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
-    effective-dated RepSpec assignments). All writes are a single transaction; any
-    validation or lookup failure rolls back the whole thing.
+    URL is immutable; only source_specs may be updated.
 
     Args:
-        body (InfoItemCreate):
+        info_source_id (str):
+        body (InfoSourcePatch): Request body for PATCH /info-sources/{id}/source-specs.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[EnvelopeResponse | InfoItemOut]
+        Response[EnvelopeResponse | InfoSourceOut]
     """
 
     kwargs = _get_kwargs(
+        info_source_id=info_source_id,
         body=body,
     )
 
@@ -127,62 +131,62 @@ def sync_detailed(
 
 
 def sync(
+    info_source_id: str,
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> EnvelopeResponse | InfoItemOut | None:
-    """Create Info Item
+    body: InfoSourcePatch,
+) -> EnvelopeResponse | InfoSourceOut | None:
+    """Patch Info Source Specs
 
-     Create an InfoItem.
+     Replace the source_specs list on an existing InfoSource.
 
-    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
-    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
-    effective-dated RepSpec assignments). All writes are a single transaction; any
-    validation or lookup failure rolls back the whole thing.
+    URL is immutable; only source_specs may be updated.
 
     Args:
-        body (InfoItemCreate):
+        info_source_id (str):
+        body (InfoSourcePatch): Request body for PATCH /info-sources/{id}/source-specs.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        EnvelopeResponse | InfoItemOut
+        EnvelopeResponse | InfoSourceOut
     """
 
     return sync_detailed(
+        info_source_id=info_source_id,
         client=client,
         body=body,
     ).parsed
 
 
 async def asyncio_detailed(
+    info_source_id: str,
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> Response[EnvelopeResponse | InfoItemOut]:
-    """Create Info Item
+    body: InfoSourcePatch,
+) -> Response[EnvelopeResponse | InfoSourceOut]:
+    """Patch Info Source Specs
 
-     Create an InfoItem.
+     Replace the source_specs list on an existing InfoSource.
 
-    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
-    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
-    effective-dated RepSpec assignments). All writes are a single transaction; any
-    validation or lookup failure rolls back the whole thing.
+    URL is immutable; only source_specs may be updated.
 
     Args:
-        body (InfoItemCreate):
+        info_source_id (str):
+        body (InfoSourcePatch): Request body for PATCH /info-sources/{id}/source-specs.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[EnvelopeResponse | InfoItemOut]
+        Response[EnvelopeResponse | InfoSourceOut]
     """
 
     kwargs = _get_kwargs(
+        info_source_id=info_source_id,
         body=body,
     )
 
@@ -192,32 +196,32 @@ async def asyncio_detailed(
 
 
 async def asyncio(
+    info_source_id: str,
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> EnvelopeResponse | InfoItemOut | None:
-    """Create Info Item
+    body: InfoSourcePatch,
+) -> EnvelopeResponse | InfoSourceOut | None:
+    """Patch Info Source Specs
 
-     Create an InfoItem.
+     Replace the source_specs list on an existing InfoSource.
 
-    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
-    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
-    effective-dated RepSpec assignments). All writes are a single transaction; any
-    validation or lookup failure rolls back the whole thing.
+    URL is immutable; only source_specs may be updated.
 
     Args:
-        body (InfoItemCreate):
+        info_source_id (str):
+        body (InfoSourcePatch): Request body for PATCH /info-sources/{id}/source-specs.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        EnvelopeResponse | InfoItemOut
+        EnvelopeResponse | InfoSourceOut
     """
 
     return (
         await asyncio_detailed(
+            info_source_id=info_source_id,
             client=client,
             body=body,
         )

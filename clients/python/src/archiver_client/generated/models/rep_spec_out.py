@@ -20,12 +20,13 @@ class RepSpecOut:
     """Projection of a rep_specs row.
 
     Attributes:
-        created_at (datetime.datetime):
-        document (RepSpecOutDocument):
-        name (str):
-        provider (str):
-        rep_spec_id (str):
-        schema_version (int):
+        created_at (datetime.datetime): UTC timestamp when the RepSpec was created.
+        document (RepSpecOutDocument): RepSpec envelope document validated against rep_spec_schema/v1.json and the per-
+            provider sub-schema.
+        name (str): Operator-friendly label for this RepSpec.
+        provider (str): Provider key (e.g. 'gcs', 'gdrive', 'ia').
+        rep_spec_id (str): ULID identifying this RepSpec.
+        schema_version (int): RepSpec envelope schema version; always 1 in the current implementation.
     """
 
     created_at: datetime.datetime

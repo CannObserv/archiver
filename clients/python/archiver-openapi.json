@@ -1,0 +1,5294 @@
+{
+  "components": {
+    "schemas": {
+      "ChunkPreviewOut": {
+        "description": "One chunk in the preview response.",
+        "properties": {
+          "char_count": {
+            "description": "Character count of ``text``.",
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "chunk_type": {
+            "description": "Algorithm-specific type tag (e.g. 'page', 'section').",
+            "title": "Chunk Type",
+            "type": "string"
+          },
+          "index": {
+            "description": "Position of the chunk in extraction order.",
+            "title": "Index",
+            "type": "integer"
+          },
+          "label": {
+            "description": "Operator-readable chunk identifier.",
+            "title": "Label",
+            "type": "string"
+          },
+          "text": {
+            "description": "Extracted chunk text.",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "chunk_type",
+          "label",
+          "text",
+          "char_count"
+        ],
+        "title": "ChunkPreviewOut",
+        "type": "object"
+      },
+      "DomainOut": {
+        "description": "Projection of a domains row.",
+        "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the domain is archived.",
+            "title": "Archived At"
+          },
+          "created_at": {
+            "description": "UTC timestamp when the Domain was created.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "description": "ULID identifying this Domain.",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "True when active and included in suggestions.",
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Hostname (e.g. regulations.cannabis.ca.gov).",
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Operator annotations.",
+            "title": "Notes"
+          },
+          "updated_at": {
+            "description": "UTC timestamp of the last update.",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "notes",
+          "is_active",
+          "archived_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DomainOut",
+        "type": "object"
+      },
+      "DomainPatch": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH /domains/{name} \u2014 upsert fields.",
+        "properties": {
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gates inclusion in suggestions.",
+            "title": "Is Active"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Operator annotations.",
+            "title": "Notes"
+          }
+        },
+        "title": "DomainPatch",
+        "type": "object"
+      },
+      "EnvelopeResponse": {
+        "description": "Outer ``{\"detail\": ErrorEnvelope}`` wrapper for OpenAPI docs.\n\nPublic name (no leading underscore) so ``openapi-python-client`` generates a\ncleanly-named SDK model \u2014 the class name is what surfaces in\n``components/schemas`` and feeds the SDK code generator.",
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ErrorEnvelope"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "EnvelopeResponse",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "description": "Unified error response body.",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional kind-specific structured payload (e.g. conflict id).",
+            "title": "Data"
+          },
+          "errors": {
+            "description": "Field-level problems; empty list when none apply.",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "kind": {
+            "description": "Discriminator for client-side switching.",
+            "enum": [
+              "body",
+              "schema",
+              "domain",
+              "lookup",
+              "conflict",
+              "auth",
+              "unimplemented",
+              "server"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable summary; safe to surface to users.",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "message"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "FetchAndRenderRequest": {
+        "description": "Request body for POST /api/v1/tools/fetch-and-render.",
+        "properties": {
+          "render": {
+            "default": false,
+            "description": "If True, render the page via Playwright before returning. v1 returns 501 \u2014 wired in once the Playwright fetcher (#3) lands.",
+            "title": "Render",
+            "type": "boolean"
+          },
+          "url": {
+            "description": "Target URL to fetch (http/https only).",
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "FetchAndRenderRequest",
+        "type": "object"
+      },
+      "FetchAndRenderResult": {
+        "description": "Response body for POST /api/v1/tools/fetch-and-render.",
+        "properties": {
+          "body": {
+            "description": "Decoded response body, truncated at 5 MiB. ``truncated`` is True when the original payload exceeded the cap.",
+            "title": "Body",
+            "type": "string"
+          },
+          "body_bytes_total": {
+            "description": "Original byte count before any truncation; useful for size sanity checks.",
+            "title": "Body Bytes Total",
+            "type": "integer"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Response headers from the target.",
+            "title": "Headers",
+            "type": "object"
+          },
+          "screenshot_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reserved for the Playwright fetcher path; always None in v1 since screenshot capture isn't wired.",
+            "title": "Screenshot Url"
+          },
+          "status_code": {
+            "description": "HTTP status code from the target.",
+            "title": "Status Code",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "True when ``body`` was truncated to the 5 MiB cap.",
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "url": {
+            "description": "Echo of the requested URL.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "status_code",
+          "headers",
+          "body",
+          "body_bytes_total",
+          "truncated"
+        ],
+        "title": "FetchAndRenderResult",
+        "type": "object"
+      },
+      "FieldError": {
+        "additionalProperties": false,
+        "description": "Single field-level validation problem.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional short machine-readable token (e.g. 'required').",
+            "title": "Code"
+          },
+          "message": {
+            "description": "Human-readable error message.",
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "description": "JSON-Pointer style path to the offending field.",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ],
+        "title": "FieldError",
+        "type": "object"
+      },
+      "HealthOut": {
+        "description": "Response body for GET /health.",
+        "properties": {
+          "build_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deployed build identifier from the BUILD_ID environment variable (git describe --always --dirty at service start). Null when unset.",
+            "title": "Build Id"
+          },
+          "status": {
+            "description": "Liveness indicator; always 'ok' when the process is up.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "build_id"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      },
+      "InfoItemCreate": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "initial_rep_spec_assignments": {
+            "description": "Optional list of RepSpec assignments to atomically create alongside the new InfoItem. Each rep_spec_id must reference an existing RepSpec. rep_fields are validated against each RepSpec's required_fields.",
+            "items": {
+              "$ref": "#/components/schemas/RepSpecAssignmentCreate"
+            },
+            "title": "Initial Rep Spec Assignments",
+            "type": "array"
+          },
+          "initial_source_specs": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Extraction specs for the initial InfoSource. Required when initial_url is set. Each element is a SourceSpec v1 document (schema_version, extraction, fingerprint).",
+            "title": "Initial Source Specs"
+          },
+          "initial_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional URL to atomically create an InfoSource binding for this item.",
+            "title": "Initial Url"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "rep_fields": {
+            "additionalProperties": true,
+            "title": "Rep Fields",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "InfoItemCreate",
+        "type": "object"
+      },
+      "InfoItemOut": {
+        "properties": {
+          "created_at": {
+            "description": "UTC timestamp when the InfoItem was created.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dashboard_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absolute URL of this item's Archiver dashboard detail page. Null when ARCHIVER_PUBLIC_BASE_URL is not configured on the server.",
+            "title": "Dashboard Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional freetext description of the InfoItem's content or purpose.",
+            "title": "Description"
+          },
+          "info_item_id": {
+            "description": "ULID identifying this InfoItem.",
+            "title": "Info Item Id",
+            "type": "string"
+          },
+          "info_item_rep_specs": {
+            "description": "Effective-dated RepSpec assignments for this InfoItem.",
+            "items": {
+              "$ref": "#/components/schemas/InfoItemRepSpecOut"
+            },
+            "title": "Info Item Rep Specs",
+            "type": "array"
+          },
+          "info_item_sources": {
+            "description": "Bound InfoSources. By default only active bindings are returned (is_active=true). Pass include_deactivated=true to also include previous primaries and other deactivated bindings. At most one active binding (is_active=true) exists \u2014 the current primary. Deactivated bindings (is_active=false) are previous primaries, preserved as succession history.",
+            "items": {
+              "$ref": "#/components/schemas/InfoItemSourceOut"
+            },
+            "title": "Info Item Sources",
+            "type": "array"
+          },
+          "name": {
+            "description": "Human-readable label for the InfoItem.",
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional owner identifier (team or individual) for this InfoItem.",
+            "title": "Owner"
+          },
+          "rep_fields": {
+            "additionalProperties": true,
+            "description": "Operator-defined JSONB bag of structured metadata fields for this item.",
+            "title": "Rep Fields",
+            "type": "object"
+          },
+          "updated_at": {
+            "description": "UTC timestamp of the last update to the InfoItem.",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "info_item_id",
+          "name",
+          "description",
+          "owner",
+          "rep_fields",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InfoItemOut",
+        "type": "object"
+      },
+      "InfoItemRepSpecCreate": {
+        "description": "Request body for POST /info-items/{id}/rep-spec-assignments.",
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Effective date; defaults to now() when omitted.",
+            "title": "Activated At"
+          },
+          "rep_spec_id": {
+            "description": "ULID of an existing RepSpec.",
+            "minLength": 1,
+            "title": "Rep Spec Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rep_spec_id"
+        ],
+        "title": "InfoItemRepSpecCreate",
+        "type": "object"
+      },
+      "InfoItemRepSpecOut": {
+        "description": "Projection of an info_item_rep_specs row.",
+        "properties": {
+          "activated_at": {
+            "format": "date-time",
+            "title": "Activated At",
+            "type": "string"
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "public_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Url"
+          },
+          "rep_spec_id": {
+            "title": "Rep Spec Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rep_spec_id",
+          "activated_at",
+          "deactivated_at",
+          "public_url"
+        ],
+        "title": "InfoItemRepSpecOut",
+        "type": "object"
+      },
+      "InfoItemRepSpecPublicUrlPatch": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH /info-items/{id}/rep-spec-assignments/{assignment_id}.\n\nWrites the provider-native public URL back to an assignment row (active or\ndeactivated). Called by Replicator after a successful replication job.",
+        "properties": {
+          "public_url": {
+            "description": "Provider-native public URL of the replicated artefact.",
+            "minLength": 1,
+            "title": "Public Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_url"
+        ],
+        "title": "InfoItemRepSpecPublicUrlPatch",
+        "type": "object"
+      },
+      "InfoItemSourceCreate": {
+        "description": "Request body for POST /info-items/{id}/info-sources.",
+        "properties": {
+          "info_source_id": {
+            "description": "ULID of an existing InfoSource.",
+            "minLength": 1,
+            "title": "Info Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "info_source_id"
+        ],
+        "title": "InfoItemSourceCreate",
+        "type": "object"
+      },
+      "InfoItemSourceOut": {
+        "description": "Light projection of an info_item_sources row.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "UTC timestamp when this binding was deactivated, or null if still active.",
+            "title": "Deactivated At"
+          },
+          "info_source_id": {
+            "title": "Info Source Id",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "True when deactivated_at is null (binding is currently active).",
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "info_source_id",
+          "is_active",
+          "created_at"
+        ],
+        "title": "InfoItemSourceOut",
+        "type": "object"
+      },
+      "InfoItemSourceRevisionCreate": {
+        "description": "Request body for POST /info-items/{id}/source-revisions.",
+        "properties": {
+          "bound_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bind timestamp; defaults to now() when omitted.",
+            "title": "Bound At"
+          },
+          "source_revision_id": {
+            "description": "ULID of an existing SourceRevision.",
+            "minLength": 1,
+            "title": "Source Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_revision_id"
+        ],
+        "title": "InfoItemSourceRevisionCreate",
+        "type": "object"
+      },
+      "InfoItemSourceRevisionOut": {
+        "description": "Projection of an info_item_source_revisions row.",
+        "properties": {
+          "bound_at": {
+            "format": "date-time",
+            "title": "Bound At",
+            "type": "string"
+          },
+          "info_item_id": {
+            "title": "Info Item Id",
+            "type": "string"
+          },
+          "source_revision_id": {
+            "title": "Source Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "info_item_id",
+          "source_revision_id",
+          "bound_at"
+        ],
+        "title": "InfoItemSourceRevisionOut",
+        "type": "object"
+      },
+      "InfoSourceCreate": {
+        "additionalProperties": false,
+        "description": "Request body for POST /info-sources.",
+        "properties": {
+          "source_specs": {
+            "description": "Ordered list of extraction specs. First element is the primary strategy; subsequent elements are cross-check alternatives. All must share a content-kind family (html_text or json). Each element is a SourceSpec v1 document (schema_version, extraction, fingerprint \u2014 no target section).",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Specs",
+            "type": "array"
+          },
+          "url": {
+            "description": "URL to fetch. Immutable after creation.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "source_specs"
+        ],
+        "title": "InfoSourceCreate",
+        "type": "object"
+      },
+      "InfoSourceOut": {
+        "description": "Projection of an info_sources row.",
+        "properties": {
+          "created_at": {
+            "description": "UTC timestamp when the InfoSource was created.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hostname derived from URL; references the domains table.",
+            "title": "Domain Name"
+          },
+          "info_source_id": {
+            "description": "ULID identifying this InfoSource.",
+            "title": "Info Source Id",
+            "type": "string"
+          },
+          "source_specs": {
+            "description": "Ordered list of extraction specs.",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Specs",
+            "type": "array"
+          },
+          "url": {
+            "description": "URL to fetch.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "info_source_id",
+          "url",
+          "source_specs",
+          "domain_name",
+          "created_at"
+        ],
+        "title": "InfoSourceOut",
+        "type": "object"
+      },
+      "InfoSourcePatch": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH /info-sources/{id}/source-specs.",
+        "properties": {
+          "source_specs": {
+            "description": "Replacement source_specs list. Same constraints as on creation.",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Specs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_specs"
+        ],
+        "title": "InfoSourcePatch",
+        "type": "object"
+      },
+      "Page_DomainOut_": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DomainOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[DomainOut]",
+        "type": "object"
+      },
+      "Page_InfoItemOut_": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InfoItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[InfoItemOut]",
+        "type": "object"
+      },
+      "Page_InfoSourceOut_": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InfoSourceOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[InfoSourceOut]",
+        "type": "object"
+      },
+      "Page_RepSpecOut_": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RepSpecOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[RepSpecOut]",
+        "type": "object"
+      },
+      "PreviewExtractionRequest": {
+        "description": "Request body for POST /api/v1/tools/preview-extraction.",
+        "properties": {
+          "source_spec": {
+            "additionalProperties": true,
+            "description": "Candidate SourceSpec document (schema_version, extraction, fingerprint). Validated against the v1 schema before any fetch is attempted; a validation failure returns 422 with the per-field issue list.",
+            "title": "Source Spec",
+            "type": "object"
+          },
+          "url": {
+            "description": "URL to fetch.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "source_spec"
+        ],
+        "title": "PreviewExtractionRequest",
+        "type": "object"
+      },
+      "PreviewExtractionResult": {
+        "description": "Response body for POST /api/v1/tools/preview-extraction.",
+        "properties": {
+          "chunks": {
+            "description": "Extracted chunks in order; empty when extraction yields nothing.",
+            "items": {
+              "$ref": "#/components/schemas/ChunkPreviewOut"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "computed_fingerprint": {
+            "description": "Fingerprint of the joined extracted text under the spec's algorithm. sha256 \u2192 64-char hex; simhash \u2192 decimal int as a string.",
+            "title": "Computed Fingerprint",
+            "type": "string"
+          },
+          "fingerprint_algorithm": {
+            "description": "Algorithm used for ``computed_fingerprint`` (mirrors the spec).",
+            "title": "Fingerprint Algorithm",
+            "type": "string"
+          },
+          "page_title": {
+            "description": "Value of the HTML <title> element extracted from the full document before any CSS/XPath selector narrows scope. Empty string when absent.",
+            "title": "Page Title",
+            "type": "string"
+          },
+          "total_chars": {
+            "description": "Sum of ``char_count`` across all chunks.",
+            "title": "Total Chars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chunks",
+          "total_chars",
+          "fingerprint_algorithm",
+          "computed_fingerprint",
+          "page_title"
+        ],
+        "title": "PreviewExtractionResult",
+        "type": "object"
+      },
+      "ProposeSelectorsRequest": {
+        "description": "Request body for POST /api/v1/tools/propose-selectors.",
+        "properties": {
+          "description": {
+            "description": "Plain-language description of the content the operator wants to extract. Matched against element text via case-insensitive substring search.",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "description": "Maximum candidates to return; ranked by stability score (highest first).",
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          },
+          "url": {
+            "description": "Target URL to fetch and search.",
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "description"
+        ],
+        "title": "ProposeSelectorsRequest",
+        "type": "object"
+      },
+      "RepSpecAssignmentCreate": {
+        "description": "One rep_spec assignment to atomically attach to a new InfoItem.",
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "rep_spec_id": {
+            "minLength": 1,
+            "title": "Rep Spec Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rep_spec_id"
+        ],
+        "title": "RepSpecAssignmentCreate",
+        "type": "object"
+      },
+      "RepSpecCreate": {
+        "additionalProperties": false,
+        "description": "Request body for POST /rep-specs.\n\n``schema_version`` is server-defaulted to 1 \u2014 only v1 exists today, so\naccepting a client-supplied value would be ceremony. Bump the server\ndefault (and add a discriminator) once a v2 envelope ships.",
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "description": "RepSpec envelope document. Validated against rep_spec_schema/v1.json + the per-provider sub-schema at rep_spec_schema/providers/{provider}/v1.json.",
+            "title": "Document",
+            "type": "object"
+          },
+          "name": {
+            "description": "Operator-friendly label for this RepSpec. Not unique by design.",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Provider key (e.g. 'gcs', 'gdrive', 'ia'). Validated via validate_rep_spec.",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "name",
+          "document"
+        ],
+        "title": "RepSpecCreate",
+        "type": "object"
+      },
+      "RepSpecOut": {
+        "description": "Projection of a rep_specs row.",
+        "properties": {
+          "created_at": {
+            "description": "UTC timestamp when the RepSpec was created.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document": {
+            "additionalProperties": true,
+            "description": "RepSpec envelope document validated against rep_spec_schema/v1.json and the per-provider sub-schema.",
+            "title": "Document",
+            "type": "object"
+          },
+          "name": {
+            "description": "Operator-friendly label for this RepSpec.",
+            "title": "Name",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Provider key (e.g. 'gcs', 'gdrive', 'ia').",
+            "title": "Provider",
+            "type": "string"
+          },
+          "rep_spec_id": {
+            "description": "ULID identifying this RepSpec.",
+            "title": "Rep Spec Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "description": "RepSpec envelope schema version; always 1 in the current implementation.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rep_spec_id",
+          "provider",
+          "name",
+          "schema_version",
+          "document",
+          "created_at"
+        ],
+        "title": "RepSpecOut",
+        "type": "object"
+      },
+      "ResolveRepFieldsRequest": {
+        "description": "Request body for POST /api/v1/tools/resolve-rep-fields.",
+        "properties": {
+          "bag": {
+            "additionalProperties": true,
+            "description": "Raw rep_fields bag to enrich with slug companions.",
+            "title": "Bag",
+            "type": "object"
+          }
+        },
+        "required": [
+          "bag"
+        ],
+        "title": "ResolveRepFieldsRequest",
+        "type": "object"
+      },
+      "ResolveRepFieldsResponse": {
+        "description": "Response body for POST /api/v1/tools/resolve-rep-fields.",
+        "properties": {
+          "bag": {
+            "additionalProperties": true,
+            "description": "The slug-enriched bag after resolution.",
+            "title": "Bag",
+            "type": "object"
+          }
+        },
+        "required": [
+          "bag"
+        ],
+        "title": "ResolveRepFieldsResponse",
+        "type": "object"
+      },
+      "SelectorCandidateOut": {
+        "description": "One ranked selector candidate.",
+        "properties": {
+          "sample_text": {
+            "description": "Visible text from the matched element (truncated to 200 chars).",
+            "title": "Sample Text",
+            "type": "string"
+          },
+          "selector": {
+            "description": "CSS selector for the proposed element.",
+            "title": "Selector",
+            "type": "string"
+          },
+          "stability_score": {
+            "description": "Heuristic score in [0, 1]: higher == more stable. Combines id/class structure, text-length proximity to the description, and a volatility penalty for hash-looking class names.",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Stability Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "selector",
+          "sample_text",
+          "stability_score"
+        ],
+        "title": "SelectorCandidateOut",
+        "type": "object"
+      },
+      "SourceRevisionCachePatch": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH /source-revisions/{id}.\n\nBoth fields are optional (omitting leaves the DB column untouched).\nSupplying ``null`` explicitly clears the field.\nUse ``model_dump(exclude_unset=True)`` to distinguish omitted from null.",
+        "properties": {
+          "content_cache_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Cache Expires At"
+          },
+          "content_cache_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Cache Uri"
+          }
+        },
+        "title": "SourceRevisionCachePatch",
+        "type": "object"
+      },
+      "SourceRevisionCreate": {
+        "description": "Request body for POST /source-revisions.\n\n``source_revision_id`` is optional and may be supplied by the client\n(e.g. Watcher) so the scratch file at ``content_cache_uri`` can be\nwritten under its final filename BEFORE the POST round-trips. When\nomitted, the server allocates a ULID. Idempotency on\n``(info_source_id, content_fingerprint)`` still wins on re-POST \u2014\na client-supplied ULID is honored on fresh inserts only; existing\nrows are returned as-is.",
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "content_cache_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Cache Expires At"
+          },
+          "content_cache_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Cache Uri"
+          },
+          "content_fingerprint": {
+            "title": "Content Fingerprint",
+            "type": "string"
+          },
+          "content_media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Media Type"
+          },
+          "content_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Size Bytes"
+          },
+          "info_source_id": {
+            "title": "Info Source Id",
+            "type": "string"
+          },
+          "source_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision Id"
+          }
+        },
+        "required": [
+          "info_source_id",
+          "content_fingerprint",
+          "captured_at"
+        ],
+        "title": "SourceRevisionCreate",
+        "type": "object"
+      },
+      "SourceRevisionOut": {
+        "description": "Response body for source-revision endpoints.",
+        "properties": {
+          "captured_at": {
+            "description": "UTC timestamp when the content was fetched and this revision recorded.",
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "content_cache_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "UTC timestamp after which the cached content at content_cache_uri expires.",
+            "title": "Content Cache Expires At"
+          },
+          "content_cache_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Watcher's scratch-file URI for the cached fetch (e.g. a file:// path). Null after cache expiry or explicit clearance.",
+            "title": "Content Cache Uri"
+          },
+          "content_fingerprint": {
+            "description": "Content hash in 'sha256:<64 hex chars>' format. Together with info_source_id, forms the idempotency key.",
+            "title": "Content Fingerprint",
+            "type": "string"
+          },
+          "content_media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MIME type of the fetched content (e.g. 'text/html'), if recorded.",
+            "title": "Content Media Type"
+          },
+          "content_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Size of the fetched content in bytes, if recorded.",
+            "title": "Content Size Bytes"
+          },
+          "info_source_id": {
+            "description": "ULID of the InfoSource this revision was captured from.",
+            "title": "Info Source Id",
+            "type": "string"
+          },
+          "source_revision_id": {
+            "description": "ULID identifying this SourceRevision.",
+            "title": "Source Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_revision_id",
+          "info_source_id",
+          "content_fingerprint",
+          "captured_at",
+          "content_size_bytes",
+          "content_media_type",
+          "content_cache_uri",
+          "content_cache_expires_at"
+        ],
+        "title": "SourceRevisionOut",
+        "type": "object"
+      },
+      "ValidateRepFieldsRequest": {
+        "description": "Request body for POST /api/v1/tools/validate-rep-fields.",
+        "properties": {
+          "bag": {
+            "additionalProperties": true,
+            "description": "The rep_fields bag to validate.",
+            "title": "Bag",
+            "type": "object"
+          },
+          "required_fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional list of 'ns.key' paths that must be present and non-null. When omitted, only the bag's shape is validated.",
+            "title": "Required Fields"
+          }
+        },
+        "required": [
+          "bag"
+        ],
+        "title": "ValidateRepFieldsRequest",
+        "type": "object"
+      },
+      "ValidateRepFieldsResponse": {
+        "description": "Response body for POST /api/v1/tools/validate-rep-fields.",
+        "properties": {
+          "errors": {
+            "description": "Per-field validation issues; empty when ``valid`` is True.",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "valid": {
+            "description": "True iff the bag passed validation.",
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "ValidateRepFieldsResponse",
+        "type": "object"
+      },
+      "ValidateRepSpecRequest": {
+        "description": "Request body for POST /api/v1/tools/validate-rep-spec.",
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "description": "The RepSpec document to validate against the v1 JSON Schema.",
+            "title": "Document",
+            "type": "object"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "ValidateRepSpecRequest",
+        "type": "object"
+      },
+      "ValidateRepSpecResponse": {
+        "description": "Response body for POST /api/v1/tools/validate-rep-spec.",
+        "properties": {
+          "errors": {
+            "description": "Per-field validation issues; empty when ``valid`` is True.",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "valid": {
+            "description": "True iff the document passed schema validation.",
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "ValidateRepSpecResponse",
+        "type": "object"
+      },
+      "ValidateSourceSpecRequest": {
+        "description": "Request body for POST /api/v1/tools/validate-source-spec.",
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "description": "The SourceSpec document to validate against the v1 JSON Schema.",
+            "title": "Document",
+            "type": "object"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "ValidateSourceSpecRequest",
+        "type": "object"
+      },
+      "ValidateSourceSpecResponse": {
+        "description": "Response body for POST /api/v1/tools/validate-source-spec.",
+        "properties": {
+          "errors": {
+            "description": "Per-field validation issues; empty when ``valid`` is True.",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "valid": {
+            "description": "True iff the document passed schema validation.",
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "ValidateSourceSpecResponse",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "in": "header",
+        "name": "X-API-Key",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "title": "archiver",
+    "version": "4.2.3"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/domains": {
+      "get": {
+        "description": "List domains with offset pagination.",
+        "operationId": "list_domains_api_v1_domains_get",
+        "parameters": [
+          {
+            "description": "Filter by active status.",
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by active status.",
+              "title": "Is Active"
+            }
+          },
+          {
+            "description": "When true, return only archived domains.",
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When true, return only archived domains.",
+              "title": "Archived"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DomainOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Domains",
+        "tags": [
+          "domains"
+        ]
+      }
+    },
+    "/api/v1/domains/{name}": {
+      "delete": {
+        "description": "Delete a Domain. Returns 409 if InfoSources reference it.",
+        "operationId": "delete_domain_api_v1_domains__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Delete Domain",
+        "tags": [
+          "domains"
+        ]
+      },
+      "get": {
+        "description": "Fetch a single Domain by hostname.",
+        "operationId": "get_domain_api_v1_domains__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Domain",
+        "tags": [
+          "domains"
+        ]
+      },
+      "patch": {
+        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates notes and/or is_active on subsequent calls.",
+        "operationId": "upsert_domain_api_v1_domains__name__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Upsert Domain",
+        "tags": [
+          "domains"
+        ]
+      }
+    },
+    "/api/v1/domains/{name}/archive": {
+      "post": {
+        "description": "Set archived_at on a Domain.",
+        "operationId": "archive_domain_api_v1_domains__name__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Archive Domain",
+        "tags": [
+          "domains"
+        ]
+      }
+    },
+    "/api/v1/domains/{name}/restore": {
+      "post": {
+        "description": "Clear archived_at on a Domain.",
+        "operationId": "restore_domain_api_v1_domains__name__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Restore Domain",
+        "tags": [
+          "domains"
+        ]
+      }
+    },
+    "/api/v1/info-items": {
+      "get": {
+        "description": "List InfoItems with offset pagination, including active sources and rep_spec assignments.\n\n``has_more`` is derived via a ``limit+1`` probe; no total count is computed.\nActive ``info_item_sources`` and ``info_item_rep_specs`` are batch-loaded in\ntwo additional queries (not N+1).",
+        "operationId": "list_info_items_api_v1_info_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_InfoItemOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Info Items",
+        "tags": [
+          "info-items"
+        ]
+      },
+      "post": {
+        "description": "Create an InfoItem.\n\nOptionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates\na primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates\neffective-dated RepSpec assignments). All writes are a single transaction; any\nvalidation or lookup failure rolls back the whole thing.",
+        "operationId": "create_info_item_api_v1_info_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Create Info Item",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}": {
+      "get": {
+        "description": "Fetch a single InfoItem by ID, including sources and active rep_spec assignments.\n\nPass ``include_deactivated=true`` to also include previous primaries and other\ndeactivated source bindings in ``info_item_sources``.",
+        "operationId": "get_info_item_api_v1_info_items__info_item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "When true, include deactivated bindings (previous primaries and other deactivated sources) in info_item_sources. When false (default), only active bindings are returned.",
+            "in": "query",
+            "name": "include_deactivated",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "When true, include deactivated bindings (previous primaries and other deactivated sources) in info_item_sources. When false (default), only active bindings are returned.",
+              "title": "Include Deactivated",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Info Item",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/info-sources": {
+      "post": {
+        "description": "Bind an existing InfoSource to an InfoItem.\n\nAt most one active binding per InfoItem. If one already exists, returns 409 with\n``data.existing_info_source_id`` \u2014 deactivate it first via\n``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.\n\nEmits ``info_item_primary_changed`` on the change bus\n(``old_info_source_id`` is ``null`` on first assignment).",
+        "operationId": "add_info_source_api_v1_info_items__info_item_id__info_sources_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemSourceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemSourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Add Info Source",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/info-sources/{info_source_id}": {
+      "delete": {
+        "description": "Deactivate an InfoItemSource binding (sets ``deactivated_at``).\n\nUse this to retire the current primary before binding a new one.\nReturns the deactivated binding row. 404 when no active binding exists.",
+        "operationId": "deactivate_info_source_binding_api_v1_info_items__info_item_id__info_sources__info_source_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "info_source_id",
+            "required": true,
+            "schema": {
+              "title": "Info Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemSourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Deactivate Info Source Binding",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/rep-spec-assignments": {
+      "post": {
+        "description": "Assign a RepSpec to an InfoItem with effective dating.\n\nValidates that the InfoItem exists, the RepSpec exists, and the InfoItem's\nrep_fields satisfies the RepSpec's required_fields. Returns 201 on success.\n\nError responses:\n- 404: InfoItem or RepSpec not found\n- 422: rep_fields incomplete (missing required fields)",
+        "operationId": "add_rep_spec_assignment_api_v1_info_items__info_item_id__rep_spec_assignments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemRepSpecCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemRepSpecOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Add Rep Spec Assignment",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/rep-spec-assignments/{assignment_id}": {
+      "delete": {
+        "description": "Deactivate a RepSpec assignment by setting ``deactivated_at = now()``.\n\nReturns 204 on success. Returns 404 if the assignment doesn't exist or\ndoes not belong to the given InfoItem.",
+        "operationId": "deactivate_rep_spec_assignment_api_v1_info_items__info_item_id__rep_spec_assignments__assignment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Deactivate Rep Spec Assignment",
+        "tags": [
+          "info-items"
+        ]
+      },
+      "patch": {
+        "description": "Write a provider-native public URL back to a RepSpec assignment.\n\nCalled by Replicator after a successful replication job. Works on both\nactive and deactivated rows (history preservation). Returns 404 if the\nassignment doesn't exist or doesn't belong to the given InfoItem.",
+        "operationId": "patch_rep_spec_assignment_public_url_api_v1_info_items__info_item_id__rep_spec_assignments__assignment_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemRepSpecPublicUrlPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemRepSpecOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Patch Rep Spec Assignment Public Url",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/source-revisions": {
+      "post": {
+        "description": "Bind a SourceRevision to an InfoItem (idempotent).\n\nIf a binding for (info_item_id, source_revision_id) already exists, it is\nreturned unchanged. Returns 404 if the InfoItem or SourceRevision doesn't exist.",
+        "operationId": "bind_source_revision_api_v1_info_items__info_item_id__source_revisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemSourceRevisionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemSourceRevisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Bind Source Revision",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-sources": {
+      "get": {
+        "description": "List InfoSources with offset pagination, optionally filtered by URL or domain.",
+        "operationId": "list_info_sources_api_v1_info_sources_get",
+        "parameters": [
+          {
+            "description": "Filter by exact URL.",
+            "in": "query",
+            "name": "url",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by exact URL.",
+              "title": "Url"
+            }
+          },
+          {
+            "description": "Filter by domain hostname.",
+            "in": "query",
+            "name": "domain_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by domain hostname.",
+              "title": "Domain Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_InfoSourceOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Info Sources",
+        "tags": [
+          "info-sources"
+        ]
+      },
+      "post": {
+        "description": "Create a new InfoSource.\n\nMultiple InfoSources with the same URL are valid \u2014 different InfoItems may\nextract distinct semantic content from the same URL using different specs.",
+        "operationId": "create_info_source_route_api_v1_info_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoSourceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoSourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Create Info Source Route",
+        "tags": [
+          "info-sources"
+        ]
+      }
+    },
+    "/api/v1/info-sources/{info_source_id}": {
+      "get": {
+        "description": "Fetch a single InfoSource by ID.",
+        "operationId": "get_info_source_api_v1_info_sources__info_source_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_source_id",
+            "required": true,
+            "schema": {
+              "title": "Info Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoSourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Info Source",
+        "tags": [
+          "info-sources"
+        ]
+      }
+    },
+    "/api/v1/info-sources/{info_source_id}/source-specs": {
+      "patch": {
+        "description": "Replace the source_specs list on an existing InfoSource.\n\nURL is immutable; only source_specs may be updated.",
+        "operationId": "patch_info_source_specs_api_v1_info_sources__info_source_id__source_specs_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_source_id",
+            "required": true,
+            "schema": {
+              "title": "Info Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoSourcePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoSourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Patch Info Source Specs",
+        "tags": [
+          "info-sources"
+        ]
+      }
+    },
+    "/api/v1/rep-specs": {
+      "get": {
+        "description": "List RepSpecs with offset pagination, optionally filtered by provider.\n\n``has_more`` is derived via a ``limit+1`` probe; no total count is computed.\nOrdering is stable on ``(created_at, rep_spec_id)``.",
+        "operationId": "list_rep_specs_api_v1_rep_specs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RepSpecOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Rep Specs",
+        "tags": [
+          "rep-specs"
+        ]
+      },
+      "post": {
+        "description": "Author a new RepSpec.\n\n``schema_version`` is server-defaulted to 1. The ``document`` field is\nvalidated against the v1 envelope and the matching per-provider\nsub-schema. ``body.provider`` and ``document['provider']`` must agree.\n\nErrors use the standard envelope (see ``src/api/errors.py``); ``kind`` is\n``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level\nissues.",
+        "operationId": "create_rep_spec_route_api_v1_rep_specs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepSpecCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepSpecOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Create Rep Spec Route",
+        "tags": [
+          "rep-specs"
+        ]
+      }
+    },
+    "/api/v1/rep-specs/{rep_spec_id}": {
+      "get": {
+        "description": "Fetch a single RepSpec by ID.",
+        "operationId": "get_rep_spec_api_v1_rep_specs__rep_spec_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rep_spec_id",
+            "required": true,
+            "schema": {
+              "title": "Rep Spec Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepSpecOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Rep Spec",
+        "tags": [
+          "rep-specs"
+        ]
+      }
+    },
+    "/api/v1/source-revisions": {
+      "post": {
+        "description": "Create or return an existing SourceRevision.\n\nIdempotent on ``(info_source_id, content_fingerprint)``. Returns **201**\non insert; **200** when the exact pair already exists.\n\nRaises:\n    404: ``info_source_id`` does not reference a known InfoSource.\n    422: ``content_fingerprint`` fails regex validation (Pydantic layer).",
+        "operationId": "create_source_revision_api_v1_source_revisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRevisionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Create Source Revision",
+        "tags": [
+          "source-revisions"
+        ]
+      }
+    },
+    "/api/v1/source-revisions/{source_revision_id}": {
+      "patch": {
+        "description": "Partially update cache fields on an existing SourceRevision.\n\nOnly fields present in the request body are applied; omitted fields are\nleft untouched.  Sending ``null`` explicitly clears the field.\n\nRaises:\n    404: ``source_revision_id`` does not reference a known SourceRevision.\n    422: ``source_revision_id`` is not a valid ULID.",
+        "operationId": "patch_source_revision_api_v1_source_revisions__source_revision_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_revision_id",
+            "required": true,
+            "schema": {
+              "title": "Source Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRevisionCachePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Patch Source Revision",
+        "tags": [
+          "source-revisions"
+        ]
+      }
+    },
+    "/api/v1/tools/fetch-and-render": {
+      "post": {
+        "description": "Fetch a target URL and return its body + headers for downstream tools.\n\nUse during SourceSpec authoring to inspect what the extractor will see (e.g.\npipe the body into ``propose_selectors`` or ``preview_extraction``). Body\npayloads larger than 5 MiB are truncated; ``truncated`` flags the case.\n``render=True`` returns 501 until the Playwright fetcher (#3) lands.",
+        "operationId": "fetch_and_render_route_api_v1_tools_fetch_and_render_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchAndRenderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FetchAndRenderResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Fetch And Render Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/find-info-items": {
+      "get": {
+        "description": "Search Information Items by name or description (substring, case-insensitive).\n\nUse this *before* ``create_info_item`` to avoid duplicating an existing\nInformation Item. Returns up to ``limit`` matches, newest first.",
+        "operationId": "find_info_items_route_api_v1_tools_find_info_items_get",
+        "parameters": [
+          {
+            "description": "Substring matched against name + description (case-insensitive).",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Substring matched against name + description (case-insensitive).",
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum matches to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Maximum matches to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InfoItemOut"
+                  },
+                  "title": "Response Find Info Items Route Api V1 Tools Find Info Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Find Info Items Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/preview-extraction": {
+      "post": {
+        "description": "Validate, fetch, extract, and fingerprint with a candidate SourceSpec.\n\nComposes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor\n+ the spec's fingerprint algorithm so an authoring agent can verify the\nspec yields the expected content before persisting.\n\nReturns 422 with the standard error envelope; ``code`` on each FieldError\ndisambiguates (``target_unreachable``, etc.).",
+        "operationId": "preview_extraction_route_api_v1_tools_preview_extraction_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewExtractionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewExtractionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Preview Extraction Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/propose-selectors": {
+      "post": {
+        "description": "Suggest CSS selector candidates for content matching ``description``.\n\nv1 returns CSS selectors only \u2014 pair with ``extraction.algorithm: \"css\"``\nin the resulting SourceSpec. XPath / JSONPath / regex / full_page proposers\nare on the roadmap; track via #148.\n\nHeuristic v1: substring match + specificity + text-length proximity +\nvolatility penalty (hash-looking class names get demoted). Empty match\nset returns ``[]``. Operators always verify the chosen selector via\n``preview_extraction`` before persisting a SourceSpec.",
+        "operationId": "propose_selectors_route_api_v1_tools_propose_selectors_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeSelectorsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SelectorCandidateOut"
+                  },
+                  "title": "Response Propose Selectors Route Api V1 Tools Propose Selectors Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Propose Selectors Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/resolve-rep-fields": {
+      "post": {
+        "description": "Enrich a raw rep_fields bag with slug companions and acronym_or_title derivations.\n\nIdempotent: existing ``_slug`` keys are preserved. Unknown namespaces and\nnon-string values pass through unchanged.",
+        "operationId": "resolve_rep_fields_route_api_v1_tools_resolve_rep_fields_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRepFieldsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveRepFieldsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Resolve Rep Fields Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/validate-rep-fields": {
+      "post": {
+        "description": "Validate a rep_fields bag against the v1 schema and optional required_fields list.\n\nWhen ``required_fields`` is supplied, also checks that every 'ns.key' path\nresolves to a non-null value in the bag. Always returns 200 \u2014 validation is\nthe purpose.",
+        "operationId": "validate_rep_fields_route_api_v1_tools_validate_rep_fields_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateRepFieldsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateRepFieldsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Validate Rep Fields Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/validate-rep-spec": {
+      "post": {
+        "description": "Validate a RepSpec document against the v1 envelope + provider sub-schema.\n\nAlways returns 200 \u2014 the response body's ``valid`` flag carries the\nvalidation outcome, and ``errors`` carries field-level issues.",
+        "operationId": "validate_rep_spec_route_api_v1_tools_validate_rep_spec_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateRepSpecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateRepSpecResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Validate Rep Spec Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/validate-source-spec": {
+      "post": {
+        "description": "Validate a SourceSpec document against the v1 JSON Schema.\n\nAlways returns 200 \u2014 the response body's ``valid`` flag carries the\nvalidation outcome, and ``errors`` carries field-level issues. This\ndiffers from create/patch routes (which return 422 on invalid input);\nhere, validation IS the purpose, so the result is the response.",
+        "operationId": "validate_source_spec_route_api_v1_tools_validate_source_spec_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateSourceSpecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateSourceSpecResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Validate Source Spec Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Liveness probe \u2014 returns ok if the process is up, plus the deployed build id.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

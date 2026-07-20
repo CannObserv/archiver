@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from attrs import define as _attrs_define
-from attrs import field as _attrs_field
+
+if TYPE_CHECKING:
+    from ..models.info_source_patch_source_specs_item import InfoSourcePatchSourceSpecsItem
 
 
 T = TypeVar("T", bound="InfoSourcePatch")
@@ -15,38 +17,42 @@ class InfoSourcePatch:
     """Request body for PATCH /info-sources/{id}/source-specs.
 
     Attributes:
-        source_specs (list[Any]): Replacement source_specs list.
+        source_specs (list[InfoSourcePatchSourceSpecsItem]): Replacement source_specs list. Same constraints as on
+            creation.
     """
 
-    source_specs: list[Any]
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+    source_specs: list[InfoSourcePatchSourceSpecsItem]
 
     def to_dict(self) -> dict[str, Any]:
+        source_specs = []
+        for source_specs_item_data in self.source_specs:
+            source_specs_item = source_specs_item_data.to_dict()
+            source_specs.append(source_specs_item)
+
         field_dict: dict[str, Any] = {}
-        field_dict.update(self.additional_properties)
-        field_dict.update({"source_specs": self.source_specs})
+
+        field_dict.update(
+            {
+                "source_specs": source_specs,
+            }
+        )
+
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.info_source_patch_source_specs_item import InfoSourcePatchSourceSpecsItem
+
         d = dict(src_dict)
-        source_specs = d.pop("source_specs")
-        obj = cls(source_specs=source_specs)
-        obj.additional_properties = d
-        return obj
+        source_specs = []
+        _source_specs = d.pop("source_specs")
+        for source_specs_item_data in _source_specs:
+            source_specs_item = InfoSourcePatchSourceSpecsItem.from_dict(source_specs_item_data)
 
-    @property
-    def additional_keys(self) -> list[str]:
-        return list(self.additional_properties.keys())
+            source_specs.append(source_specs_item)
 
-    def __getitem__(self, key: str) -> Any:
-        return self.additional_properties[key]
+        info_source_patch = cls(
+            source_specs=source_specs,
+        )
 
-    def __setitem__(self, key: str, value: Any) -> None:
-        self.additional_properties[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self.additional_properties[key]
-
-    def __contains__(self, key: str) -> bool:
-        return key in self.additional_properties
+        return info_source_patch

@@ -16,14 +16,17 @@ class SourceRevisionOut:
     """Response body for source-revision endpoints.
 
     Attributes:
-        captured_at (datetime.datetime):
-        content_cache_expires_at (datetime.datetime | None):
-        content_cache_uri (None | str):
-        content_fingerprint (str):
-        content_media_type (None | str):
-        content_size_bytes (int | None):
-        info_source_id (str):
-        source_revision_id (str):
+        captured_at (datetime.datetime): UTC timestamp when the content was fetched and this revision recorded.
+        content_cache_expires_at (datetime.datetime | None): UTC timestamp after which the cached content at
+            content_cache_uri expires.
+        content_cache_uri (None | str): Watcher's scratch-file URI for the cached fetch (e.g. a file:// path). Null
+            after cache expiry or explicit clearance.
+        content_fingerprint (str): Content hash in 'sha256:<64 hex chars>' format. Together with info_source_id, forms
+            the idempotency key.
+        content_media_type (None | str): MIME type of the fetched content (e.g. 'text/html'), if recorded.
+        content_size_bytes (int | None): Size of the fetched content in bytes, if recorded.
+        info_source_id (str): ULID of the InfoSource this revision was captured from.
+        source_revision_id (str): ULID identifying this SourceRevision.
     """
 
     captured_at: datetime.datetime

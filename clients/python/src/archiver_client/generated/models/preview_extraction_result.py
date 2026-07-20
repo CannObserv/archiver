@@ -22,12 +22,15 @@ class PreviewExtractionResult:
         computed_fingerprint (str): Fingerprint of the joined extracted text under the spec's algorithm. sha256 →
             64-char hex; simhash → decimal int as a string.
         fingerprint_algorithm (str): Algorithm used for ``computed_fingerprint`` (mirrors the spec).
+        page_title (str): Value of the HTML <title> element extracted from the full document before any CSS/XPath
+            selector narrows scope. Empty string when absent.
         total_chars (int): Sum of ``char_count`` across all chunks.
     """
 
     chunks: list[ChunkPreviewOut]
     computed_fingerprint: str
     fingerprint_algorithm: str
+    page_title: str
     total_chars: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -41,6 +44,8 @@ class PreviewExtractionResult:
 
         fingerprint_algorithm = self.fingerprint_algorithm
 
+        page_title = self.page_title
+
         total_chars = self.total_chars
 
         field_dict: dict[str, Any] = {}
@@ -50,6 +55,7 @@ class PreviewExtractionResult:
                 "chunks": chunks,
                 "computed_fingerprint": computed_fingerprint,
                 "fingerprint_algorithm": fingerprint_algorithm,
+                "page_title": page_title,
                 "total_chars": total_chars,
             }
         )
@@ -72,12 +78,15 @@ class PreviewExtractionResult:
 
         fingerprint_algorithm = d.pop("fingerprint_algorithm")
 
+        page_title = d.pop("page_title")
+
         total_chars = d.pop("total_chars")
 
         preview_extraction_result = cls(
             chunks=chunks,
             computed_fingerprint=computed_fingerprint,
             fingerprint_algorithm=fingerprint_algorithm,
+            page_title=page_title,
             total_chars=total_chars,
         )
 

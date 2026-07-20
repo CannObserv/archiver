@@ -6,44 +6,29 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="InfoItemSourceCreate")
+T = TypeVar("T", bound="InfoSourceOutSourceSpecsItem")
 
 
 @_attrs_define
-class InfoItemSourceCreate:
-    """Request body for POST /info-items/{id}/info-sources.
+class InfoSourceOutSourceSpecsItem:
+    """ """
 
-    Attributes:
-        info_source_id (str): ULID of an existing InfoSource.
-    """
-
-    info_source_id: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        info_source_id = self.info_source_id
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update(
-            {
-                "info_source_id": info_source_id,
-            }
-        )
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        info_source_id = d.pop("info_source_id")
+        info_source_out_source_specs_item = cls()
 
-        info_item_source_create = cls(
-            info_source_id=info_source_id,
-        )
-
-        info_item_source_create.additional_properties = d
-        return info_item_source_create
+        info_source_out_source_specs_item.additional_properties = d
+        return info_source_out_source_specs_item
 
     @property
     def additional_keys(self) -> list[str]:

@@ -95,15 +95,13 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
 ) -> Response[EnvelopeResponse | PreviewExtractionResult]:
-    r"""Preview Extraction Route
+    """Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
     Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
     spec yields the expected content before persisting.
-
-    The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
     Returns 422 with the standard error envelope; ``code`` on each FieldError
     disambiguates (``target_unreachable``, etc.).
@@ -135,15 +133,13 @@ def sync(
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
 ) -> EnvelopeResponse | PreviewExtractionResult | None:
-    r"""Preview Extraction Route
+    """Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
     Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
     spec yields the expected content before persisting.
-
-    The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
     Returns 422 with the standard error envelope; ``code`` on each FieldError
     disambiguates (``target_unreachable``, etc.).
@@ -170,15 +166,13 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
 ) -> Response[EnvelopeResponse | PreviewExtractionResult]:
-    r"""Preview Extraction Route
+    """Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
     Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
     spec yields the expected content before persisting.
-
-    The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
     Returns 422 with the standard error envelope; ``code`` on each FieldError
     disambiguates (``target_unreachable``, etc.).
@@ -208,15 +202,13 @@ async def asyncio(
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
 ) -> EnvelopeResponse | PreviewExtractionResult | None:
-    r"""Preview Extraction Route
+    """Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
     Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
     + the spec's fingerprint algorithm so an authoring agent can verify the
     spec yields the expected content before persisting.
-
-    The URL is read from ``source_spec[\"target\"][\"url\"]``.
 
     Returns 422 with the standard error envelope; ``code`` on each FieldError
     disambiguates (``target_unreachable``, etc.).
