@@ -18,22 +18,27 @@ class PreviewExtractionRequest:
     """Request body for POST /api/v1/tools/preview-extraction.
 
     Attributes:
-        source_spec (PreviewExtractionRequestSourceSpec): Candidate SourceSpec document. Must include target.url.
-            Validated against the v1 schema before any fetch is attempted; a validation failure returns 422 with the per-
-            field issue list.
+        source_spec (PreviewExtractionRequestSourceSpec): Candidate SourceSpec document (schema_version, extraction,
+            fingerprint). Validated against the v1 schema before any fetch is attempted; a validation failure returns 422
+            with the per-field issue list.
+        url (str): URL to fetch.
     """
 
     source_spec: PreviewExtractionRequestSourceSpec
+    url: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         source_spec = self.source_spec.to_dict()
+
+        url = self.url
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
                 "source_spec": source_spec,
+                "url": url,
             }
         )
 
@@ -48,8 +53,11 @@ class PreviewExtractionRequest:
         d = dict(src_dict)
         source_spec = PreviewExtractionRequestSourceSpec.from_dict(d.pop("source_spec"))
 
+        url = d.pop("url")
+
         preview_extraction_request = cls(
             source_spec=source_spec,
+            url=url,
         )
 
         preview_extraction_request.additional_properties = d

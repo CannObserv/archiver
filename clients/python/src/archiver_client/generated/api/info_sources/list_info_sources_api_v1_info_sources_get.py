@@ -12,19 +12,27 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    url: None | str | Unset = UNSET,
+    url_query: None | str | Unset = UNSET,
+    domain_name: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
 
-    json_url: None | str | Unset
-    if isinstance(url, Unset):
-        json_url = UNSET
+    json_url_query: None | str | Unset
+    if isinstance(url_query, Unset):
+        json_url_query = UNSET
     else:
-        json_url = url
-    params["url"] = json_url
+        json_url_query = url_query
+    params["url"] = json_url_query
+
+    json_domain_name: None | str | Unset
+    if isinstance(domain_name, Unset):
+        json_domain_name = UNSET
+    else:
+        json_domain_name = domain_name
+    params["domain_name"] = json_domain_name
 
     params["limit"] = limit
 
@@ -104,21 +112,18 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    url: None | str | Unset = UNSET,
+    url_query: None | str | Unset = UNSET,
+    domain_name: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> Response[EnvelopeResponse | PageInfoSourceOut]:
     """List Info Sources
 
-     List InfoSources with offset pagination, optionally filtered by parent.
-
-    Returns at most ``limit`` rows per call. Without ``url``
-    pages across the whole table; with it, restricts to fragments whose
-    ``url`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
+     List InfoSources with offset pagination, optionally filtered by URL or domain.
 
     Args:
-        url (None | str | Unset):
+        url_query (None | str | Unset): Filter by exact URL.
+        domain_name (None | str | Unset): Filter by domain hostname.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -131,7 +136,8 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        url=url,
+        url_query=url_query,
+        domain_name=domain_name,
         limit=limit,
         offset=offset,
     )
@@ -146,21 +152,18 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    url: None | str | Unset = UNSET,
+    url_query: None | str | Unset = UNSET,
+    domain_name: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> EnvelopeResponse | PageInfoSourceOut | None:
     """List Info Sources
 
-     List InfoSources with offset pagination, optionally filtered by parent.
-
-    Returns at most ``limit`` rows per call. Without ``url``
-    pages across the whole table; with it, restricts to fragments whose
-    ``url`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
+     List InfoSources with offset pagination, optionally filtered by URL or domain.
 
     Args:
-        url (None | str | Unset):
+        url_query (None | str | Unset): Filter by exact URL.
+        domain_name (None | str | Unset): Filter by domain hostname.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -174,7 +177,8 @@ def sync(
 
     return sync_detailed(
         client=client,
-        url=url,
+        url_query=url_query,
+        domain_name=domain_name,
         limit=limit,
         offset=offset,
     ).parsed
@@ -183,21 +187,18 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    url: None | str | Unset = UNSET,
+    url_query: None | str | Unset = UNSET,
+    domain_name: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> Response[EnvelopeResponse | PageInfoSourceOut]:
     """List Info Sources
 
-     List InfoSources with offset pagination, optionally filtered by parent.
-
-    Returns at most ``limit`` rows per call. Without ``url``
-    pages across the whole table; with it, restricts to fragments whose
-    ``url`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
+     List InfoSources with offset pagination, optionally filtered by URL or domain.
 
     Args:
-        url (None | str | Unset):
+        url_query (None | str | Unset): Filter by exact URL.
+        domain_name (None | str | Unset): Filter by domain hostname.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -210,7 +211,8 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        url=url,
+        url_query=url_query,
+        domain_name=domain_name,
         limit=limit,
         offset=offset,
     )
@@ -223,21 +225,18 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    url: None | str | Unset = UNSET,
+    url_query: None | str | Unset = UNSET,
+    domain_name: None | str | Unset = UNSET,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
 ) -> EnvelopeResponse | PageInfoSourceOut | None:
     """List Info Sources
 
-     List InfoSources with offset pagination, optionally filtered by parent.
-
-    Returns at most ``limit`` rows per call. Without ``url``
-    pages across the whole table; with it, restricts to fragments whose
-    ``url`` matches. ``has_more`` is derived via a
-    ``limit+1`` probe; no total count is computed.
+     List InfoSources with offset pagination, optionally filtered by URL or domain.
 
     Args:
-        url (None | str | Unset):
+        url_query (None | str | Unset): Filter by exact URL.
+        domain_name (None | str | Unset): Filter by domain hostname.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -252,7 +251,8 @@ async def asyncio(
     return (
         await asyncio_detailed(
             client=client,
-            url=url,
+            url_query=url_query,
+            domain_name=domain_name,
             limit=limit,
             offset=offset,
         )

@@ -247,6 +247,26 @@ def test_error_message_lists_matched_trigger_paths(repo: Path) -> None:
     assert "app.js" not in result.stderr
 
 
+def test_error_message_recommends_label_not_no_verify(repo: Path) -> None:
+    """The failure message points at the `no-changelog` PR label, not --no-verify.
+
+    CI re-runs the identical check remotely (on the PR and, via commit→PR
+    label lookup, on the merge push to main), so `git push --no-verify` on a
+    direct push cannot succeed — it only defers the failure to CI. The guard
+    must not advertise a bypass CI rejects (archiver#91).
+    """
+    base = commit(repo, "chore: seed")
+    head = commit(repo, "feat: new route", {"src/api/routes/info_items.py": "# new\n"})
+
+    result = run_script(repo, push_line(head, base))
+
+    assert result.returncode == 1
+    assert "no-changelog" in result.stderr
+    # The old advice — a clean local bypass — must be gone; --no-verify may
+    # only appear to explain that it merely defers the failure to CI.
+    assert "push with --no-verify if this is genuinely internal" not in result.stderr
+
+
 # ---------------------------------------------------------------------------
 # Skip paths (script exits 0 without enforcing)
 

@@ -16,13 +16,17 @@ SDK's lockfile (a shared/floating toolchain would yield spurious formatting
 diffs). ``regen.sh`` writes both the snapshot and the tree from live Watcher, so
 running it leaves this check a no-op.
 
-Scope: only ``watcher`` (the ``watcher_client`` SDK) is wired today. ``watcher``
-diffs against a committed ``watcher-openapi.json`` snapshot — a hermetic,
-PR-blocking consistency gate. It does NOT detect drift of the snapshot itself
-vs the live Watcher service; that requires a separate scheduled live-compare job
-(see #67, "Layer C"). The ``archiver-client`` (``clients/python``) direction is
-deferred to its own issue (its generated tree first needs a canonical, dashboard-
-pruned regen).
+Scope: two clients are wired. ``watcher`` (the ``watcher_client`` SDK) diffs
+against a committed ``watcher-openapi.json`` snapshot; ``archiver`` (the
+``archiver_client`` SDK, ``clients/python``) diffs against a committed
+``archiver-openapi.json`` snapshot (#92). Both are hermetic, PR-blocking
+consistency gates. The check does NOT detect drift of a snapshot itself vs the
+live service: a skipped regen after an API change leaves snapshot and tree
+*consistently* stale, and this hermetic gate passes. For watcher that gap is
+covered by the scheduled live-compare job (see #67, "Layer C"). For archiver
+the app lives in this repo, so freshness is enforced offline by
+``tests/scripts/test_archiver_openapi_snapshot.py`` in the main suite, which
+re-derives the canonical spec from the app and diffs it against the snapshot.
 
 Usage::
 
@@ -69,8 +73,15 @@ class Client:
 
 
 _WATCHER_SDK = REPO_ROOT / "clients" / "watcher-python"
+_ARCHIVER_SDK = REPO_ROOT / "clients" / "python"
 
 CLIENTS: dict[str, Client] = {
+    "archiver": Client(
+        name="archiver",
+        sdk_dir=_ARCHIVER_SDK,
+        generated_dir=_ARCHIVER_SDK / "src" / "archiver_client" / "generated",
+        spec_path=_ARCHIVER_SDK / "archiver-openapi.json",
+    ),
     "watcher": Client(
         name="watcher",
         sdk_dir=_WATCHER_SDK,

@@ -104,10 +104,12 @@ def sync_detailed(
 
      Bind an existing InfoSource to an InfoItem.
 
-    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
-    primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` for a fragment-shaped InfoSource whose parent equals
-    the InfoItem's active root binding's source.
+    At most one active binding per InfoItem. If one already exists, returns 409 with
+    ``data.existing_info_source_id`` — deactivate it first via
+    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+
+    Emits ``info_item_primary_changed`` on the change bus
+    (``old_info_source_id`` is ``null`` on first assignment).
 
     Args:
         info_item_id (str):
@@ -143,10 +145,12 @@ def sync(
 
      Bind an existing InfoSource to an InfoItem.
 
-    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
-    primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` for a fragment-shaped InfoSource whose parent equals
-    the InfoItem's active root binding's source.
+    At most one active binding per InfoItem. If one already exists, returns 409 with
+    ``data.existing_info_source_id`` — deactivate it first via
+    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+
+    Emits ``info_item_primary_changed`` on the change bus
+    (``old_info_source_id`` is ``null`` on first assignment).
 
     Args:
         info_item_id (str):
@@ -177,10 +181,12 @@ async def asyncio_detailed(
 
      Bind an existing InfoSource to an InfoItem.
 
-    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
-    primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` for a fragment-shaped InfoSource whose parent equals
-    the InfoItem's active root binding's source.
+    At most one active binding per InfoItem. If one already exists, returns 409 with
+    ``data.existing_info_source_id`` — deactivate it first via
+    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+
+    Emits ``info_item_primary_changed`` on the change bus
+    (``old_info_source_id`` is ``null`` on first assignment).
 
     Args:
         info_item_id (str):
@@ -214,10 +220,12 @@ async def asyncio(
 
      Bind an existing InfoSource to an InfoItem.
 
-    ``body.role`` is ``null`` for a root-shaped InfoSource (the InfoItem's
-    primary; at most one active per InfoItem) or one of
-    ``'cross_check'`` for a fragment-shaped InfoSource whose parent equals
-    the InfoItem's active root binding's source.
+    At most one active binding per InfoItem. If one already exists, returns 409 with
+    ``data.existing_info_source_id`` — deactivate it first via
+    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+
+    Emits ``info_item_primary_changed`` on the change bus
+    (``old_info_source_id`` is ``null`` on first assignment).
 
     Args:
         info_item_id (str):

@@ -101,9 +101,11 @@ def sync_detailed(
 ) -> Response[EnvelopeResponse | PageInfoItemOut]:
     """List Info Items
 
-     List InfoItems with offset pagination (no related rows populated).
+     List InfoItems with offset pagination, including active sources and rep_spec assignments.
 
     ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Active ``info_item_sources`` and ``info_item_rep_specs`` are batch-loaded in
+    two additional queries (not N+1).
 
     Args:
         limit (int | Unset):  Default: 100.
@@ -137,9 +139,11 @@ def sync(
 ) -> EnvelopeResponse | PageInfoItemOut | None:
     """List Info Items
 
-     List InfoItems with offset pagination (no related rows populated).
+     List InfoItems with offset pagination, including active sources and rep_spec assignments.
 
     ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Active ``info_item_sources`` and ``info_item_rep_specs`` are batch-loaded in
+    two additional queries (not N+1).
 
     Args:
         limit (int | Unset):  Default: 100.
@@ -168,9 +172,11 @@ async def asyncio_detailed(
 ) -> Response[EnvelopeResponse | PageInfoItemOut]:
     """List Info Items
 
-     List InfoItems with offset pagination (no related rows populated).
+     List InfoItems with offset pagination, including active sources and rep_spec assignments.
 
     ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Active ``info_item_sources`` and ``info_item_rep_specs`` are batch-loaded in
+    two additional queries (not N+1).
 
     Args:
         limit (int | Unset):  Default: 100.
@@ -202,9 +208,11 @@ async def asyncio(
 ) -> EnvelopeResponse | PageInfoItemOut | None:
     """List Info Items
 
-     List InfoItems with offset pagination (no related rows populated).
+     List InfoItems with offset pagination, including active sources and rep_spec assignments.
 
     ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Active ``info_item_sources`` and ``info_item_rep_specs`` are batch-loaded in
+    two additional queries (not N+1).
 
     Args:
         limit (int | Unset):  Default: 100.

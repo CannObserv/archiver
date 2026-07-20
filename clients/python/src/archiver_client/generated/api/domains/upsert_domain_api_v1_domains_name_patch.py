@@ -1,25 +1,29 @@
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
+from ...models.domain_out import DomainOut
+from ...models.domain_patch import DomainPatch
 from ...models.envelope_response import EnvelopeResponse
-from ...models.info_item_create import InfoItemCreate
-from ...models.info_item_out import InfoItemOut
 from ...types import Response
 
 
 def _get_kwargs(
+    name: str,
     *,
-    body: InfoItemCreate,
+    body: DomainPatch,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/v1/info-items",
+        "method": "patch",
+        "url": "/api/v1/domains/{name}".format(
+            name=quote(str(name), safe=""),
+        ),
     }
 
     _kwargs["json"] = body.to_dict()
@@ -32,11 +36,11 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> EnvelopeResponse | InfoItemOut | None:
-    if response.status_code == 201:
-        response_201 = InfoItemOut.from_dict(response.json())
+) -> DomainOut | EnvelopeResponse | None:
+    if response.status_code == 200:
+        response_200 = DomainOut.from_dict(response.json())
 
-        return response_201
+        return response_200
 
     if response.status_code == 400:
         response_400 = EnvelopeResponse.from_dict(response.json())
@@ -81,7 +85,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[EnvelopeResponse | InfoItemOut]:
+) -> Response[DomainOut | EnvelopeResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -91,31 +95,31 @@ def _build_response(
 
 
 def sync_detailed(
+    name: str,
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> Response[EnvelopeResponse | InfoItemOut]:
-    """Create Info Item
+    body: DomainPatch,
+) -> Response[DomainOut | EnvelopeResponse]:
+    """Upsert Domain
 
-     Create an InfoItem.
+     Upsert a Domain by hostname.
 
-    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
-    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
-    effective-dated RepSpec assignments). All writes are a single transaction; any
-    validation or lookup failure rolls back the whole thing.
+    Creates on first call. Updates notes and/or is_active on subsequent calls.
 
     Args:
-        body (InfoItemCreate):
+        name (str):
+        body (DomainPatch): Request body for PATCH /domains/{name} — upsert fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[EnvelopeResponse | InfoItemOut]
+        Response[DomainOut | EnvelopeResponse]
     """
 
     kwargs = _get_kwargs(
+        name=name,
         body=body,
     )
 
@@ -127,62 +131,62 @@ def sync_detailed(
 
 
 def sync(
+    name: str,
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> EnvelopeResponse | InfoItemOut | None:
-    """Create Info Item
+    body: DomainPatch,
+) -> DomainOut | EnvelopeResponse | None:
+    """Upsert Domain
 
-     Create an InfoItem.
+     Upsert a Domain by hostname.
 
-    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
-    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
-    effective-dated RepSpec assignments). All writes are a single transaction; any
-    validation or lookup failure rolls back the whole thing.
+    Creates on first call. Updates notes and/or is_active on subsequent calls.
 
     Args:
-        body (InfoItemCreate):
+        name (str):
+        body (DomainPatch): Request body for PATCH /domains/{name} — upsert fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        EnvelopeResponse | InfoItemOut
+        DomainOut | EnvelopeResponse
     """
 
     return sync_detailed(
+        name=name,
         client=client,
         body=body,
     ).parsed
 
 
 async def asyncio_detailed(
+    name: str,
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> Response[EnvelopeResponse | InfoItemOut]:
-    """Create Info Item
+    body: DomainPatch,
+) -> Response[DomainOut | EnvelopeResponse]:
+    """Upsert Domain
 
-     Create an InfoItem.
+     Upsert a Domain by hostname.
 
-    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
-    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
-    effective-dated RepSpec assignments). All writes are a single transaction; any
-    validation or lookup failure rolls back the whole thing.
+    Creates on first call. Updates notes and/or is_active on subsequent calls.
 
     Args:
-        body (InfoItemCreate):
+        name (str):
+        body (DomainPatch): Request body for PATCH /domains/{name} — upsert fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[EnvelopeResponse | InfoItemOut]
+        Response[DomainOut | EnvelopeResponse]
     """
 
     kwargs = _get_kwargs(
+        name=name,
         body=body,
     )
 
@@ -192,32 +196,32 @@ async def asyncio_detailed(
 
 
 async def asyncio(
+    name: str,
     *,
     client: AuthenticatedClient,
-    body: InfoItemCreate,
-) -> EnvelopeResponse | InfoItemOut | None:
-    """Create Info Item
+    body: DomainPatch,
+) -> DomainOut | EnvelopeResponse | None:
+    """Upsert Domain
 
-     Create an InfoItem.
+     Upsert a Domain by hostname.
 
-    Optionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates
-    a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
-    effective-dated RepSpec assignments). All writes are a single transaction; any
-    validation or lookup failure rolls back the whole thing.
+    Creates on first call. Updates notes and/or is_active on subsequent calls.
 
     Args:
-        body (InfoItemCreate):
+        name (str):
+        body (DomainPatch): Request body for PATCH /domains/{name} — upsert fields.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        EnvelopeResponse | InfoItemOut
+        DomainOut | EnvelopeResponse
     """
 
     return (
         await asyncio_detailed(
+            name=name,
             client=client,
             body=body,
         )

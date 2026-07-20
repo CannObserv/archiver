@@ -32,30 +32,42 @@ def _parse_response(
 ) -> EnvelopeResponse | InfoItemSourceOut | None:
     if response.status_code == 200:
         response_200 = InfoItemSourceOut.from_dict(response.json())
+
         return response_200
 
     if response.status_code == 400:
         response_400 = EnvelopeResponse.from_dict(response.json())
+
         return response_400
 
     if response.status_code == 401:
         response_401 = EnvelopeResponse.from_dict(response.json())
+
         return response_401
 
     if response.status_code == 403:
         response_403 = EnvelopeResponse.from_dict(response.json())
+
         return response_403
 
     if response.status_code == 404:
         response_404 = EnvelopeResponse.from_dict(response.json())
+
         return response_404
+
+    if response.status_code == 409:
+        response_409 = EnvelopeResponse.from_dict(response.json())
+
+        return response_409
 
     if response.status_code == 422:
         response_422 = EnvelopeResponse.from_dict(response.json())
+
         return response_422
 
     if response.status_code == 500:
         response_500 = EnvelopeResponse.from_dict(response.json())
+
         return response_500
 
     if client.raise_on_unexpected_status:
@@ -83,8 +95,9 @@ def sync_detailed(
 ) -> Response[EnvelopeResponse | InfoItemSourceOut]:
     """Deactivate Info Source Binding
 
-     Deactivate an InfoItemSource binding (sets deactivated_at).
+     Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
+    Use this to retire the current primary before binding a new one.
     Returns the deactivated binding row. 404 when no active binding exists.
 
     Args:
@@ -119,8 +132,9 @@ def sync(
 ) -> EnvelopeResponse | InfoItemSourceOut | None:
     """Deactivate Info Source Binding
 
-     Deactivate an InfoItemSource binding (sets deactivated_at).
+     Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
+    Use this to retire the current primary before binding a new one.
     Returns the deactivated binding row. 404 when no active binding exists.
 
     Args:
@@ -150,8 +164,9 @@ async def asyncio_detailed(
 ) -> Response[EnvelopeResponse | InfoItemSourceOut]:
     """Deactivate Info Source Binding
 
-     Deactivate an InfoItemSource binding (sets deactivated_at).
+     Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
+    Use this to retire the current primary before binding a new one.
     Returns the deactivated binding row. 404 when no active binding exists.
 
     Args:
@@ -184,8 +199,9 @@ async def asyncio(
 ) -> EnvelopeResponse | InfoItemSourceOut | None:
     """Deactivate Info Source Binding
 
-     Deactivate an InfoItemSource binding (sets deactivated_at).
+     Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
+    Use this to retire the current primary before binding a new one.
     Returns the deactivated binding row. 404 when no active binding exists.
 
     Args:

@@ -11,8 +11,8 @@ T = TypeVar("T", bound="PreviewExtractionRequestSourceSpec")
 
 @_attrs_define
 class PreviewExtractionRequestSourceSpec:
-    """Candidate SourceSpec document. Must include target.url. Validated against the v1 schema before any fetch is
-    attempted; a validation failure returns 422 with the per-field issue list.
+    """Candidate SourceSpec document (schema_version, extraction, fingerprint). Validated against the v1 schema before any
+    fetch is attempted; a validation failure returns 422 with the per-field issue list.
 
     """
 

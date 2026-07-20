@@ -227,7 +227,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(url, source_specs)` |
 | Update InfoSource specs | `PATCH /info-sources/{id}/source-specs` | `update_info_source_specs(info_source_id, source_specs)` |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
-| List InfoSources (filter by URL, paginated) | `GET /info-sources?url=…&limit=&offset=` | `list_info_sources(url=None, limit=None, offset=None)` |
+| List InfoSources (filter by URL or domain, paginated) | `GET /info-sources?url=…&domain_name=…&limit=&offset=` | `list_info_sources(url=None, domain_name=None, limit=None, offset=None)` |
 | Author a RepSpec | `POST /rep-specs` | `create_rep_spec(provider, name, document)` |
 | Get a RepSpec | `GET /rep-specs/{id}` | `get_rep_spec(id)` |
 | List RepSpecs (filter by provider, paginated) | `GET /rep-specs?provider=…&limit=&offset=` | `list_rep_specs(provider=None, limit=None, offset=None)` |
