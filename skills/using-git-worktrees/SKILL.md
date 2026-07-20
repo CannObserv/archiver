@@ -144,16 +144,26 @@ active, 8021 should not be running.
 # Kill any existing process on 8021 (stale worktree, accidental main, etc.)
 lsof -ti :8021 | xargs -r kill -9 2>/dev/null
 
-# Start dev server from the worktree, backgrounded with reload.
-# Source env files via `set -a; . <file>; set +a` (whitespace/quote-safe).
-[ -f /etc/archiver/.env ] && { set -a; . /etc/archiver/.env; set +a; }
-[ -f .env ] && { set -a; . .env; set +a; }
-uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload &
+# Start the dev server from the worktree via the launch script. It sources the
+# env files, resolves a NON-PRODUCTION database, refuses to start if that
+# database name lacks a _test/_dev suffix, migrates it, then serves on 8021.
+bash scripts/dev_server.sh &
 
 # Verify port is bound
 sleep 2
 ss -tlnp | grep 8021
 ```
+
+**Never hand-roll the `uvicorn` invocation here.** The recipe this replaced
+sourced `/etc/archiver/.env` and ran uvicorn directly, so the worktree dev
+server inherited `ARCHIVER_DATABASE_URL` pointing at **production** — and this
+step runs automatically, with no user prompt, on every worktree. On 2026-07-18
+that wrote a `verify79.example.com` Domain, two InfoSources, and an AppUser
+into the live registry.
+
+A fresh worktree has no `.env` (it is gitignored), so `TEST_DATABASE_URL` is
+unset there and the script exits with a clear message rather than falling back
+to production. Copy or symlink `.env` into the worktree before starting.
 
 Accessible at `https://watcher.exe.xyz:8021/` via the exe.dev proxy.
 

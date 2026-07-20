@@ -7,14 +7,23 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 ## Run locally
 
 ```bash
-set -a
-[ -f /etc/archiver/.env ] && . /etc/archiver/.env
-[ -f .env ] && . .env
-set +a
 uv sync
-uv run alembic upgrade head
-uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload
+bash scripts/dev_server.sh
 ```
+
+`scripts/dev_server.sh` is the only sanctioned way to start a dev server. It
+sources the env files, resolves a **non-production** database
+(`ARCHIVER_DEV_DATABASE_URL`, else `TEST_DATABASE_URL`), refuses to start
+unless that database name ends in `_test`/`_dev`, runs `alembic upgrade head`,
+and serves on 8021.
+
+**Never hand-roll the `uvicorn` invocation.** The recipe this replaced sourced
+`/etc/archiver/.env` and ran uvicorn directly, which left
+`ARCHIVER_DATABASE_URL` pointed at production — on 2026-07-18 that wrote a
+`verify79.example.com` Domain, two InfoSources, and an AppUser into the live
+registry. The application now also refuses to serve a production database
+unless `ARCHIVER_ALLOW_PRODUCTION_DB=1` is set, which only
+`deploy/archiver.service` does.
 
 Production listens on **port 8020** under `archiver.service`. The dev server uses 8021 to leave 8020 alone for systemd.
 

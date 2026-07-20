@@ -1114,6 +1114,8 @@ Also update the header comment block at the top of the file:
 
 If the dev server isn't already running on port 8021:
 
+> **Historical.** The `uvicorn` invocation below predates `scripts/dev_server.sh` and pointed at the **production** database (2026-07-18 incident). Do not copy it; use `bash scripts/dev_server.sh`.
+
 ```bash
 export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)
 uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload &

@@ -965,6 +965,8 @@ git commit -m "#22 docs: bump to 3.1.0; CHANGELOG entry"
 
 - [ ] **Step 1: Restart any running dev server**
 
+> **Historical.** The `uvicorn` invocation below predates `scripts/dev_server.sh` and pointed at the **production** database (2026-07-18 incident). Do not copy it; use `bash scripts/dev_server.sh`.
+
 ```bash
 pkill -f "uvicorn.*8021" || true
 export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)

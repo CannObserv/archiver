@@ -54,29 +54,36 @@ def _check_test_url_safety(test_url: str) -> None:
 
 _check_test_url_safety(TEST_DATABASE_URL)
 
+# Point the application itself at the test database for the whole session.
+#
+# The `client` fixture runs the real FastAPI lifespan, and anything resolving
+# the URL from the environment rather than through the `get_db_session`
+# override — get_engine() for the outbox publisher, alembic's get_url(), and
+# the src.core.db_safety production guard — would otherwise read the
+# *production* ARCHIVER_DATABASE_URL that .env supplies. Pinning it makes the
+# override and the environment agree, and means a test can never reach
+# production even if it bypasses the dependency override.
+#
+# DATABASE_URL is cleared because src.core.database falls back to it.
+#
+# At import rather than in a fixture because it must be in place before *any*
+# fixture resolves the URL, and deliberately never restored — the process
+# exists only to run this suite, and a restore would hand the production URL
+# back. This is the single mechanism managing these two variables.
+os.environ["ARCHIVER_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ.pop("DATABASE_URL", None)
+
 
 def _run_alembic_upgrade() -> None:
     """Run alembic upgrade head against TEST_DATABASE_URL.
 
     Must execute in a thread (via run_in_executor) because alembic/env.py
     calls asyncio.run() internally, which conflicts with a running event loop.
-    Temporarily overrides ARCHIVER_DATABASE_URL so alembic's get_url() resolves
-    to the test database.
+    alembic's get_url() reads ARCHIVER_DATABASE_URL, which the module-level pin
+    above has already set to the test database.
     """
-    original_archiver = os.environ.get("ARCHIVER_DATABASE_URL")
-    original_db = os.environ.get("DATABASE_URL")
-    try:
-        os.environ["ARCHIVER_DATABASE_URL"] = TEST_DATABASE_URL
-        os.environ.pop("DATABASE_URL", None)
-        cfg = AlembicConfig(str(Path(__file__).parent.parent / "alembic.ini"))
-        alembic_command.upgrade(cfg, "head")
-    finally:
-        if original_archiver is None:
-            os.environ.pop("ARCHIVER_DATABASE_URL", None)
-        else:
-            os.environ["ARCHIVER_DATABASE_URL"] = original_archiver
-        if original_db is not None:
-            os.environ["DATABASE_URL"] = original_db
+    cfg = AlembicConfig(str(Path(__file__).parent.parent / "alembic.ini"))
+    alembic_command.upgrade(cfg, "head")
 
 
 @pytest.fixture(scope="session")

@@ -1537,6 +1537,8 @@ git commit -m "#21 docs: bump to 3.0.0; CHANGELOG + CLAUDE.md vocabulary"
 
 If `uvicorn ... --port 8021 --reload` is running, it should pick up the changes; otherwise restart:
 
+> **Historical.** The `uvicorn` invocation below predates `scripts/dev_server.sh` and pointed at the **production** database (2026-07-18 incident). Do not copy it; use `bash scripts/dev_server.sh`.
+
 ```bash
 pkill -f "uvicorn.*8021" || true
 export $(cat /etc/archiver/.env .env 2>/dev/null | xargs)

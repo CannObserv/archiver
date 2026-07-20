@@ -69,6 +69,12 @@ src/core/                      Domain logic
   simhash.py, extraction_defaults.py, logging.py
                                Mirrored from watcher (see "Mirrored content-acquisition code")
   url_canonicalization.py      Write-time URL normalization for info_sources
+  db_safety.py                 Production-DB startup guard — refuses to serve a
+                               database whose name lacks a _test/_dev suffix
+                               unless ARCHIVER_ALLOW_PRODUCTION_DB=1 (set only
+                               by deploy/archiver.service). Called from the
+                               FastAPI lifespan; mirrored in scripts/dev_server.sh
+                               and kept in step by tests/scripts/test_db_guard_parity.py
 clients/python/                archiver_client SDK v3.x (generated + hand-written wrappers)
 clients/watcher-python/        watcher_client SDK — Archiver adapter for the Watcher service
                                (httpx-based; wraps provision, patch, get, check-now, list-revisions)
@@ -87,7 +93,9 @@ clients/watcher-python/        watcher_client SDK — Archiver adapter for the W
                                opens a regen PR. See deploy/watcher-live-drift.*.
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
-                               (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
+                               (HTTP + DB + bus); tests/api/ for single-route HTTP behavior;
+                               tests/deploy/ asserts the installed systemd unit matches
+                               deploy/ (skips when the unit is absent, so CI passes)
 scripts/                       dump_openapi.py +
                                check_client_drift.py (regen vendored clients from
                                committed OpenAPI snapshots; diff vs generated/;
@@ -99,7 +107,10 @@ scripts/                       dump_openapi.py +
                                ff_deploy_clone.sh (timer ExecStartPre: best-effort
                                fast-forward clean main to origin/main) +
                                check_changelog_on_push.sh (pre-push guard;
-                               wired via .pre-commit-config.yaml)
+                               wired via .pre-commit-config.yaml) +
+                               dev_server.sh (ONLY sanctioned way to start the
+                               8021 dev server; refuses to resolve onto the
+                               production DB — see "Server Lifecycle")
 deploy/                        Systemd units: archiver.service +
                                watcher-live-drift.{service,timer} (Layer C #70
                                daily live-drift check; install: see deploy/README.md)
@@ -141,7 +152,7 @@ These modules are **mirrors** of watcher's `src/core/` — when changing them he
 | Service | Port | Managed by |
 |---|---|---|
 | Archiver (live) | 8020 | `systemctl` (`archiver.service`) |
-| Archiver (dev) | 8021 | manual uvicorn |
+| Archiver (dev) | 8021 | `bash scripts/dev_server.sh` (never hand-rolled uvicorn) |
 
 The exe.dev proxy forwards 3000–9999. Dev server reachable at `https://watcher.exe.xyz:8021/` (the host is shared with the watcher VM).
 
@@ -151,15 +162,40 @@ The exe.dev proxy forwards 3000–9999. Dev server reachable at `https://watcher
 
 After committing to `main`: `sudo systemctl restart archiver`. After DB model changes: `uv run alembic upgrade head` then restart. Logs: `sudo journalctl -u archiver -f`.
 
-Dev server (port 8021):
+Dev server (port 8021) — **always** via the launch script:
 
 ```bash
-set -a
-[ -f /etc/archiver/.env ] && . /etc/archiver/.env
-[ -f .env ] && . .env
-set +a
-uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8021 --reload
+bash scripts/dev_server.sh
 ```
+
+**Never hand-roll the uvicorn invocation.** The recipe this replaced sourced
+`/etc/archiver/.env` and then ran uvicorn directly, which left
+`ARCHIVER_DATABASE_URL` pointing at **production** — the dev server on 8021 and
+the live service on 8020 shared one database. On 2026-07-18 a dashboard
+verification run drove the dev server and wrote a `verify79.example.com`
+Domain, two InfoSources, and an AppUser into the production registry.
+
+`scripts/dev_server.sh` resolves the dev database from
+`ARCHIVER_DEV_DATABASE_URL`, else `TEST_DATABASE_URL`; refuses to start if that
+resolution equals `ARCHIVER_DATABASE_URL` or `DATABASE_URL`; clears the
+`DATABASE_URL` fallback; refuses port 8020; and runs `alembic upgrade head`
+against the dev database before serving. This mirrors `_check_test_url_safety`
+in `tests/conftest.py`, which guards pytest but not a hand-run server.
+
+Anything that writes — curl against the dashboard, SDK scripts, manual
+verification — must target 8021, never 8020.
+
+| Knob | Effect |
+|---|---|
+| `ARCHIVER_DEV_DATABASE_URL` | Persistent dev DB; wins over `TEST_DATABASE_URL` |
+| `ARCHIVER_DEV_PORT` | Default 8021; 8020 is refused |
+| `ARCHIVER_DEV_SKIP_MIGRATE=1` | Skip the alembic upgrade |
+
+> pytest teardown runs `DROP SCHEMA information CASCADE` against
+> `TEST_DATABASE_URL`. Running the suite while a dev server points at the same
+> database wipes dev data mid-session — survivable, and strictly better than
+> writing to production. Set `ARCHIVER_DEV_DATABASE_URL` to a dedicated
+> database (e.g. `archiver_dev`) if that becomes annoying.
 
 ## Environment Files
 
@@ -179,7 +215,10 @@ set +a
 
 **Key variables:**
 - `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
-- `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name should include `_test` (e.g. `archiver_test`). `conftest.py` asserts this at collection time and fails fast if violated.
+- `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name **must** end in `_test` (e.g. `archiver_test`) — `scripts/dev_server.sh` enforces the suffix, and `conftest.py` asserts non-equality at collection time and fails fast if violated.
+- `ARCHIVER_ALLOW_PRODUCTION_DB` — *optional*. `1` permits the process to serve a database whose name lacks a `_test`/`_dev` suffix. **Only `deploy/archiver.service` sets it.** Without it `src/core/db_safety.py` refuses to start at lifespan, so a hand-rolled `uvicorn` cannot reach the production registry no matter which env files it sourced (2026-07-18 incident). Never set this in `/etc/archiver/.env` or `.env` — putting it in an env file would re-open the hole for every process that sources them.
+- `ARCHIVER_DEV_DATABASE_URL` — *optional*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Use when pytest's `DROP SCHEMA` teardown wiping your dev data mid-session becomes annoying. Name must end in `_test`/`_dev`.
+- `ARCHIVER_DEV_PORT` — *optional*. Dev server port, default `8021`. `8020` is refused (systemd's). See **Server Lifecycle**.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis).
 - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance (e.g. `https://archiver.example.com`). When set, InfoItem API responses include `dashboard_url` pointing to the dashboard detail page (`{ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}`). Unset → `dashboard_url` is `null`. Set this to the URL end-users open in a browser, distinct from any internal service-to-service address. Set in `/etc/archiver/.env` on the VM.
 - `WATCHER_BASE_URL` — *optional*. Base URL of the sibling Watcher service for **service-to-service API calls** (e.g. `http://localhost:8000`). When set (together with `WATCHER_API_KEY`), the Archiver provisions WatchedItems on InfoItem create and patches them on primary-source swap. Unset → Watcher integration disabled; `watcher_item_id` stays `NULL` on all InfoItems. **Do not use a public proxy URL here on the same VM** — hairpin NAT means the proxy URL won't route from within the VM; use `http://localhost:<port>` instead.
