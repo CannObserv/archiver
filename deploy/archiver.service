@@ -10,8 +10,8 @@ WorkingDirectory=/home/exedev/archiver
 # Create runtime dir (runs as root before User= takes effect with + prefix)
 ExecStartPre=+/bin/bash -c 'mkdir -p /run/archiver && chown exedev:exedev /run/archiver'
 
-# Write current git SHA to a runtime env file before starting
-ExecStartPre=/bin/bash -c 'echo BUILD_ID=$(git rev-parse --short HEAD) > /run/archiver/build-id'
+# Write current build id (<sha>, or <sha>-dirty for an uncommitted tree) before starting
+ExecStartPre=/bin/bash -c 'echo BUILD_ID=$(git describe --always --dirty) > /run/archiver/build-id'
 
 # Load BUILD_ID, then service-specific secrets, then optional repo-local overrides
 EnvironmentFile=-/run/archiver/build-id

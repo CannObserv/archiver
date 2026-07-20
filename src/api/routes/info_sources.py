@@ -106,7 +106,7 @@ async def list_info_sources(
     url: str | None = Query(default=None, description="Filter by exact URL."),
     domain_name: str | None = Query(default=None, description="Filter by domain hostname."),
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=2**63 - 1),
     session: AsyncSession = Depends(get_db_session),
     _key=Depends(require_api_key),
 ) -> Page[InfoSourceOut]:

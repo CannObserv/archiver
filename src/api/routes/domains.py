@@ -42,7 +42,7 @@ async def list_domains(
         default=None, description="When true, return only archived domains."
     ),
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=2**63 - 1),
     session: AsyncSession = Depends(get_db_session),
 ) -> Page[DomainOut]:
     """List domains with offset pagination."""
