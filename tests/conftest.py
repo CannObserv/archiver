@@ -54,6 +54,20 @@ def _check_test_url_safety(test_url: str) -> None:
 
 _check_test_url_safety(TEST_DATABASE_URL)
 
+# Point the application itself at the test database for the whole session.
+#
+# The `client` fixture runs the real FastAPI lifespan, and anything resolving
+# the URL from the environment rather than through the `get_db_session`
+# override — get_engine() for the outbox publisher, and the
+# src.core.db_safety production guard — would otherwise read the *production*
+# ARCHIVER_DATABASE_URL that .env supplies. Pinning it here makes the override
+# and the environment agree, and means a test can never reach production even
+# if it bypasses the dependency override.
+#
+# DATABASE_URL is cleared because src.core.database falls back to it.
+os.environ["ARCHIVER_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ.pop("DATABASE_URL", None)
+
 
 def _run_alembic_upgrade() -> None:
     """Run alembic upgrade head against TEST_DATABASE_URL.

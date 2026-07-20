@@ -22,6 +22,7 @@ from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
 from src.core.changes import publisher as outbox_publisher
 from src.core.database import get_engine
+from src.core.db_safety import ALLOW_PRODUCTION_DB_ENV, assert_production_db_allowed
 from src.core.fetchers.http import HttpFetcher
 from src.core.logging import configure_logging, get_logger
 from src.dashboard.main import register_dashboard
@@ -34,6 +35,10 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Set up shared resources for the process lifetime.
 
+    - Refuses to serve a production database unless the caller opted in via
+      ``ARCHIVER_ALLOW_PRODUCTION_DB=1`` (only ``deploy/archiver.service``
+      does).  Launch-path-independent backstop for the 2026-07-18 incident —
+      see ``src.core.db_safety``.
     - Builds a single shared ``HttpFetcher`` (shared ``httpx.AsyncClient``
       connection pool) for tool routes.
     - Optionally starts the outbox publisher background task when
@@ -41,6 +46,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       absent the publisher is skipped silently so the service starts without a
       Redis dependency in dev/test environments.
     """
+    # Before any resource is built or any request is served.
+    assert_production_db_allowed(
+        os.environ.get("ARCHIVER_DATABASE_URL") or os.environ.get("DATABASE_URL") or "",
+        allow_flag=os.environ.get(ALLOW_PRODUCTION_DB_ENV),
+    )
+
     app.state.http_fetcher = HttpFetcher()
 
     # --- Optional WatcherClient ---

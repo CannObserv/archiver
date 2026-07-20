@@ -18,6 +18,13 @@ EnvironmentFile=-/run/archiver/build-id
 EnvironmentFile=/etc/archiver/.env
 EnvironmentFile=-/home/exedev/archiver/.env
 
+# This unit is the ONLY sanctioned writer of the production registry.
+# src/core/db_safety.py refuses to serve a database whose name lacks a
+# _test/_dev suffix unless this is set, so a hand-rolled uvicorn cannot reach
+# production regardless of which env files it sourced (2026-07-18 incident).
+# Keep this AFTER the EnvironmentFile lines so it cannot be overridden by them.
+Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
+
 ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8020
 Restart=on-failure
 RestartSec=5

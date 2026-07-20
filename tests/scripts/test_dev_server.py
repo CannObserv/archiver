@@ -73,11 +73,17 @@ def test_dedicated_dev_url_wins_over_test_url() -> None:
 
 @pytest.mark.parametrize("prod_var", ["ARCHIVER_DATABASE_URL", "DATABASE_URL"])
 def test_refuses_when_resolution_equals_production(prod_var: str) -> None:
-    """The exact 2026-07-18 failure: dev server resolving onto production."""
+    """The exact 2026-07-18 failure: dev server resolving onto production.
+
+    The refusal is now driven by the database *name* rather than by comparison
+    against ``$prod_var``, so the message names the database instead of the
+    variable — see ``test_refuses_production_database_name_despite_differing_url_string``
+    for why the name is the boundary that actually holds.
+    """
     result = run({prod_var: PROD_URL, "TEST_DATABASE_URL": PROD_URL})
     assert result.returncode != 0
-    assert prod_var in result.stderr
     assert "production" in result.stderr.lower()
+    assert "archiver" in result.stderr
 
 
 def test_refuses_when_no_non_production_url_is_available() -> None:
@@ -104,6 +110,75 @@ def test_refuses_to_bind_the_production_port() -> None:
     result = run({"TEST_DATABASE_URL": TEST_URL, "ARCHIVER_DEV_PORT": "8020"})
     assert result.returncode != 0
     assert "8020" in result.stderr
+
+
+def test_refuses_production_database_name_despite_differing_url_string() -> None:
+    """CR finding 1: string equality is defeated by cosmetic URL differences.
+
+    ``postgresql://…/archiver`` and ``postgresql+asyncpg://…/archiver`` are
+    different strings naming the same database. The pre-fix guard exited 0 here
+    and would have served production.
+    """
+    result = run(
+        {
+            "ARCHIVER_DATABASE_URL": "postgresql+asyncpg://archiver:archiver@localhost:5432/archiver",
+            "TEST_DATABASE_URL": "postgresql://archiver:archiver@localhost:5432/archiver",
+        }
+    )
+    assert result.returncode != 0
+    assert "archiver" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql+asyncpg://archiver:archiver@127.0.0.1:5432/archiver",
+        "postgresql://u:p@otherhost:5432/archiver",
+        "postgresql://u:p@localhost:5432/test_archiver",
+        "postgresql://u:p@localhost:5432/archiver_testing",
+    ],
+)
+def test_requires_a_test_or_dev_database_name(url: str) -> None:
+    """Positive assertion: the dev DB name must carry a _test/_dev suffix.
+
+    Host spelling and driver prefix are not a safety boundary; the database
+    name is. ``test_archiver`` and ``archiver_testing`` are near-misses that
+    a substring check would wrongly accept.
+    """
+    result = run({"TEST_DATABASE_URL": url})
+    assert result.returncode != 0
+    assert "_test" in result.stderr
+
+
+@pytest.mark.parametrize("suffix", ["_test", "_dev"])
+def test_accepts_test_and_dev_suffixed_names(suffix: str) -> None:
+    url = f"postgresql+asyncpg://archiver:archiver@localhost:5432/archiver{suffix}"
+    result = run({"TEST_DATABASE_URL": url, "ARCHIVER_DATABASE_URL": PROD_URL})
+    assert result.returncode == 0, result.stderr
+    assert f"ARCHIVER_DATABASE_URL={url}" in result.stdout
+
+
+def test_sources_env_files_when_not_skipped(tmp_path: Path) -> None:
+    """CR finding 7: cover the env-file sourcing path, not just the skip flag.
+
+    ``ARCHIVER_DEV_SERVER_SKIP_ENV_FILES`` exists only for tests, so without
+    this case the real-world resolution path — read .env, then guard — is never
+    exercised. Runs the script against a throwaway repo root whose .env
+    supplies TEST_DATABASE_URL.
+    """
+    (tmp_path / "scripts").mkdir()
+    script_copy = tmp_path / "scripts" / "dev_server.sh"
+    script_copy.write_bytes(SCRIPT.read_bytes())
+    (tmp_path / ".env").write_text(f"TEST_DATABASE_URL={TEST_URL}\n")
+
+    result = subprocess.run(
+        ["bash", str(script_copy)],
+        env={"PATH": "/usr/bin:/bin", "ARCHIVER_DEV_SERVER_DRY_RUN": "1"},
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"ARCHIVER_DATABASE_URL={TEST_URL}" in result.stdout
 
 
 def test_reports_planned_migration_of_the_dev_database() -> None:

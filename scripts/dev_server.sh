@@ -61,18 +61,36 @@ if [[ -z "$DEV_URL" ]]; then
   exit 1
 fi
 
-# The incident condition: the resolved dev URL IS a production URL. Mirrors
-# _check_test_url_safety in tests/conftest.py.
-for prod_var in ARCHIVER_DATABASE_URL DATABASE_URL; do
-  prod_url="${!prod_var:-}"
-  if [[ -n "$prod_url" && "$DEV_URL" == "$prod_url" ]]; then
-    echo "dev_server: resolved dev database equals \$$prod_var — that is the" >&2
-    echo "  production database. Refusing to start; the dev server would write" >&2
-    echo "  into the production registry (see archiver 2026-07-18 incident)." >&2
-    echo "  Point TEST_DATABASE_URL at a dedicated database ('_test' suffix)." >&2
+# db_name <url> — the database name, i.e. the path segment, minus any query
+# string. Strips scheme://credentials@host:port so an escaped slash inside a
+# password cannot be mistaken for the path.
+db_name() {
+  local url="${1#*://}"      # drop scheme
+  url="${url#*@}"            # drop credentials, if any
+  url="${url#*/}"            # drop host:port, leaving path + query
+  url="${url%%\?*}"          # drop query string
+  printf '%s' "$url"
+}
+
+DEV_DB_NAME="$(db_name "$DEV_URL")"
+
+# Positive assertion, not a comparison against known production URLs. String
+# equality is defeated by cosmetic differences — postgresql://…/archiver and
+# postgresql+asyncpg://…/archiver name the same database, as do localhost and
+# 127.0.0.1. The database NAME is the boundary that actually holds. Mirrors
+# src/core/db_safety.py, which enforces the same rule inside the application.
+case "$DEV_DB_NAME" in
+  *_test | *_dev) ;;
+  *)
+    echo "dev_server: refusing to start against database '${DEV_DB_NAME:-<unparseable>}'." >&2
+    echo "  The dev database name must end in '_test' or '_dev'; anything else" >&2
+    echo "  is treated as production (see archiver 2026-07-18 incident, where" >&2
+    echo "  a dev server on 8021 wrote into the production registry)." >&2
+    echo "  Point TEST_DATABASE_URL or ARCHIVER_DEV_DATABASE_URL at a" >&2
+    echo "  dedicated database, e.g. archiver_test." >&2
     exit 1
-  fi
-done
+    ;;
+esac
 
 # Force the dev URL onto the child, and clear the DATABASE_URL fallback that
 # src/api/deps consults when ARCHIVER_DATABASE_URL is unset — leaving a
@@ -84,9 +102,14 @@ unset DATABASE_URL
 # dev database is frequently schema-less at launch. Migrating here keeps the
 # safe path usable; an operator who finds it broken tends to reach for the old
 # recipe that pointed at production.
+#
+# Decided once, so the dry-run report (which tests assert on) and the executed
+# path cannot drift apart.
 if [[ "${ARCHIVER_DEV_SKIP_MIGRATE:-}" == "1" ]]; then
+  DO_MIGRATE=0
   MIGRATE_REPORT="(skipped)"
 else
+  DO_MIGRATE=1
   MIGRATE_REPORT="$ARCHIVER_DATABASE_URL"
 fi
 
@@ -100,7 +123,7 @@ fi
 
 cd "$REPO_ROOT"
 
-if [[ "${ARCHIVER_DEV_SKIP_MIGRATE:-}" != "1" ]]; then
+if [[ "$DO_MIGRATE" == "1" ]]; then
   echo "dev_server: alembic upgrade head → $ARCHIVER_DATABASE_URL"
   uv run alembic upgrade head
 fi
