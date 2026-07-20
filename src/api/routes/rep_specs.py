@@ -73,6 +73,45 @@ async def create_rep_spec_route(
     return rep_spec_to_out(spec)
 
 
+@router.get("", response_model=Page[RepSpecOut])
+async def list_rep_specs(
+    provider: str | None = Query(default=None, min_length=1, max_length=50),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=2**63 - 1),
+    session: AsyncSession = Depends(get_db_session),
+) -> Page[RepSpecOut]:
+    """List RepSpecs with offset pagination, optionally filtered by provider.
+
+    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
+    Ordering is stable on ``(created_at, rep_spec_id)``.
+    """
+    stmt = select(RepSpec).order_by(RepSpec.created_at, RepSpec.rep_spec_id)
+    if provider is not None:
+        stmt = stmt.where(RepSpec.provider == provider)
+    stmt = stmt.offset(offset).limit(limit + 1)
+    rows = (await session.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return Page[RepSpecOut](
+        items=[rep_spec_to_out(s) for s in rows],
+        has_more=has_more,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/{rep_spec_id}", response_model=RepSpecOut)
+async def get_rep_spec(
+    rep_spec_id: ULIDStr,
+    session: AsyncSession = Depends(get_db_session),
+) -> RepSpecOut:
+    """Fetch a single RepSpec by ID."""
+    spec = await session.get(RepSpec, ULID.from_str(rep_spec_id))
+    if spec is None:
+        raise_envelope(404, "lookup", "RepSpec not found")
+    return rep_spec_to_out(spec)
+
+
 @router.patch("/{rep_spec_id}", response_model=RepSpecOut)
 async def patch_rep_spec(
     rep_spec_id: ULIDStr,
@@ -116,43 +155,4 @@ async def patch_rep_spec(
 
     await session.commit()
     await session.refresh(spec)
-    return rep_spec_to_out(spec)
-
-
-@router.get("", response_model=Page[RepSpecOut])
-async def list_rep_specs(
-    provider: str | None = Query(default=None, min_length=1, max_length=50),
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0, le=2**63 - 1),
-    session: AsyncSession = Depends(get_db_session),
-) -> Page[RepSpecOut]:
-    """List RepSpecs with offset pagination, optionally filtered by provider.
-
-    ``has_more`` is derived via a ``limit+1`` probe; no total count is computed.
-    Ordering is stable on ``(created_at, rep_spec_id)``.
-    """
-    stmt = select(RepSpec).order_by(RepSpec.created_at, RepSpec.rep_spec_id)
-    if provider is not None:
-        stmt = stmt.where(RepSpec.provider == provider)
-    stmt = stmt.offset(offset).limit(limit + 1)
-    rows = (await session.execute(stmt)).scalars().all()
-    has_more = len(rows) > limit
-    rows = rows[:limit]
-    return Page[RepSpecOut](
-        items=[rep_spec_to_out(s) for s in rows],
-        has_more=has_more,
-        limit=limit,
-        offset=offset,
-    )
-
-
-@router.get("/{rep_spec_id}", response_model=RepSpecOut)
-async def get_rep_spec(
-    rep_spec_id: ULIDStr,
-    session: AsyncSession = Depends(get_db_session),
-) -> RepSpecOut:
-    """Fetch a single RepSpec by ID."""
-    spec = await session.get(RepSpec, ULID.from_str(rep_spec_id))
-    if spec is None:
-        raise_envelope(404, "lookup", "RepSpec not found")
     return rep_spec_to_out(spec)

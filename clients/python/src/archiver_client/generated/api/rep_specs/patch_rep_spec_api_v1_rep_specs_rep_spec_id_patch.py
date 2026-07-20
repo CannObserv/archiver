@@ -118,9 +118,13 @@ def sync_detailed(
         rep_spec_id (str):
         body (RepSpecPatch): Request body for PATCH /rep-specs/{rep_spec_id}.
 
-            Both fields are optional; omitted fields are left untouched. ``provider`` is
-            absent by design — it is frozen for the life of the RepSpec, and supplying a
-            ``document`` whose ``provider`` differs from the stored one is a 422.
+            Both fields are optional; **omitting** a field leaves it untouched.
+            Explicitly sending ``null`` is rejected rather than silently treated as
+            omission: both columns are ``NOT NULL``, so ``null`` has no "clear this"
+            meaning, and conflating the two would quietly swallow a malformed request.
+            ``provider`` is absent by design — it is frozen for the life of the RepSpec,
+            and supplying a ``document`` whose ``provider`` differs from the stored one
+            is a 422.
 
             ``document`` is a whole-document *replacement*, not a merge patch: merge
             semantics cannot express key removal, which would make ``object_options``
@@ -170,9 +174,13 @@ def sync(
         rep_spec_id (str):
         body (RepSpecPatch): Request body for PATCH /rep-specs/{rep_spec_id}.
 
-            Both fields are optional; omitted fields are left untouched. ``provider`` is
-            absent by design — it is frozen for the life of the RepSpec, and supplying a
-            ``document`` whose ``provider`` differs from the stored one is a 422.
+            Both fields are optional; **omitting** a field leaves it untouched.
+            Explicitly sending ``null`` is rejected rather than silently treated as
+            omission: both columns are ``NOT NULL``, so ``null`` has no "clear this"
+            meaning, and conflating the two would quietly swallow a malformed request.
+            ``provider`` is absent by design — it is frozen for the life of the RepSpec,
+            and supplying a ``document`` whose ``provider`` differs from the stored one
+            is a 422.
 
             ``document`` is a whole-document *replacement*, not a merge patch: merge
             semantics cannot express key removal, which would make ``object_options``
@@ -217,9 +225,13 @@ async def asyncio_detailed(
         rep_spec_id (str):
         body (RepSpecPatch): Request body for PATCH /rep-specs/{rep_spec_id}.
 
-            Both fields are optional; omitted fields are left untouched. ``provider`` is
-            absent by design — it is frozen for the life of the RepSpec, and supplying a
-            ``document`` whose ``provider`` differs from the stored one is a 422.
+            Both fields are optional; **omitting** a field leaves it untouched.
+            Explicitly sending ``null`` is rejected rather than silently treated as
+            omission: both columns are ``NOT NULL``, so ``null`` has no "clear this"
+            meaning, and conflating the two would quietly swallow a malformed request.
+            ``provider`` is absent by design — it is frozen for the life of the RepSpec,
+            and supplying a ``document`` whose ``provider`` differs from the stored one
+            is a 422.
 
             ``document`` is a whole-document *replacement*, not a merge patch: merge
             semantics cannot express key removal, which would make ``object_options``
@@ -267,9 +279,13 @@ async def asyncio(
         rep_spec_id (str):
         body (RepSpecPatch): Request body for PATCH /rep-specs/{rep_spec_id}.
 
-            Both fields are optional; omitted fields are left untouched. ``provider`` is
-            absent by design — it is frozen for the life of the RepSpec, and supplying a
-            ``document`` whose ``provider`` differs from the stored one is a 422.
+            Both fields are optional; **omitting** a field leaves it untouched.
+            Explicitly sending ``null`` is rejected rather than silently treated as
+            omission: both columns are ``NOT NULL``, so ``null`` has no "clear this"
+            meaning, and conflating the two would quietly swallow a malformed request.
+            ``provider`` is absent by design — it is frozen for the life of the RepSpec,
+            and supplying a ``document`` whose ``provider`` differs from the stored one
+            is a 422.
 
             ``document`` is a whole-document *replacement*, not a merge patch: merge
             semantics cannot express key removal, which would make ``object_options``

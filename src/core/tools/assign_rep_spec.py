@@ -53,7 +53,10 @@ async def assign_rep_spec(
     if item is None:
         raise InfoItemNotFoundError(str(info_item_id))
 
-    spec = await db.get(RepSpec, rep_spec_id)
+    # FOR UPDATE: serializes against update_rep_spec's draft gate, which takes
+    # the same lock. Creating this assignment is what flips the RepSpec out of
+    # draft state, so the two must not interleave (archiver#83 CR).
+    spec = await db.get(RepSpec, rep_spec_id, with_for_update=True)
     if spec is None:
         raise RepSpecNotFoundError(str(rep_spec_id))
 

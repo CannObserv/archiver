@@ -464,3 +464,38 @@ async def test_patch_requires_api_key(client):
     spec = await _create_spec(client)
     resp = await client.patch(f"/api/v1/rep-specs/{spec['rep_spec_id']}", json={"name": "x"})
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_explicit_null_name(client):
+    """`null` is not a way to clear a NOT NULL column — reject rather than no-op."""
+    spec = await _create_spec(client)
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"name": None},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "null" in resp.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_explicit_null_document(client):
+    spec = await _create_spec(client)
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"document": None},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_patch_empty_body_is_a_no_op(client):
+    """Omission still means 'leave untouched' — distinct from explicit null."""
+    spec = await _create_spec(client, name="untouched")
+    resp = await client.patch(f"/api/v1/rep-specs/{spec['rep_spec_id']}", headers=HEADERS, json={})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["name"] == "untouched"
+    assert body["updated_at"] is None

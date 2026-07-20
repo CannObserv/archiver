@@ -266,8 +266,13 @@ async def update_rep_spec_document_view(
     is_htmx = bool(request.headers.get("HX-Request"))
 
     async def _rerender(error: str) -> HTMLResponse:
+        # `swapped` is shared across _document_card.html and _assignments.html
+        # (both gate a focus script on it), so it must stay False on the
+        # full-page path — otherwise the 422 render emits both scripts and the
+        # assignments one steals focus away from the error. Matches
+        # update_info_source_specs_view, whose non-HTMX path never sets it.
         ctx = await _document_card_context(
-            spec, session, doc_error=error, doc_input=document, swapped=True
+            spec, session, doc_error=error, doc_input=document, swapped=is_htmx
         )
         if is_htmx:
             # 200 so htmx swaps the card; the inline error stays visible.

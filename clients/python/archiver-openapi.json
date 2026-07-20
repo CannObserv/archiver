@@ -1156,7 +1156,7 @@
                 "type": "null"
               }
             ],
-            "description": "UTC timestamp of the last edit, or null if the RepSpec has never been edited. Never backfilled from created_at.",
+            "description": "UTC timestamp of the last edit, or null if the RepSpec has never been edited. Never backfilled from created_at. Always present in responses (required, nullable) \u2014 matching the other nullable projections.",
             "title": "Updated At"
           }
         },
@@ -1166,14 +1166,15 @@
           "name",
           "schema_version",
           "document",
-          "created_at"
+          "created_at",
+          "updated_at"
         ],
         "title": "RepSpecOut",
         "type": "object"
       },
       "RepSpecPatch": {
         "additionalProperties": false,
-        "description": "Request body for PATCH /rep-specs/{rep_spec_id}.\n\nBoth fields are optional; omitted fields are left untouched. ``provider`` is\nabsent by design \u2014 it is frozen for the life of the RepSpec, and supplying a\n``document`` whose ``provider`` differs from the stored one is a 422.\n\n``document`` is a whole-document *replacement*, not a merge patch: merge\nsemantics cannot express key removal, which would make ``object_options``\nentries unremovable under the envelope's ``additionalProperties: false``.",
+        "description": "Request body for PATCH /rep-specs/{rep_spec_id}.\n\nBoth fields are optional; **omitting** a field leaves it untouched.\nExplicitly sending ``null`` is rejected rather than silently treated as\nomission: both columns are ``NOT NULL``, so ``null`` has no \"clear this\"\nmeaning, and conflating the two would quietly swallow a malformed request.\n``provider`` is absent by design \u2014 it is frozen for the life of the RepSpec,\nand supplying a ``document`` whose ``provider`` differs from the stored one\nis a 422.\n\n``document`` is a whole-document *replacement*, not a merge patch: merge\nsemantics cannot express key removal, which would make ``object_options``\nentries unremovable under the envelope's ``additionalProperties: false``.",
         "properties": {
           "document": {
             "anyOf": [

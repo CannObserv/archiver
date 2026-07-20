@@ -104,7 +104,11 @@ async def update_rep_spec(
     Raises ``RepSpecNotFoundError``, ``InvalidRepSpecError``, or
     ``RepSpecNotDraftError``.
     """
-    spec = await db.get(RepSpec, rep_spec_id)
+    # FOR UPDATE: the draft gate below is a read-then-write, and assign_rep_spec
+    # takes the same lock. Without it, under READ COMMITTED an assignment can be
+    # inserted between the count and the commit, landing a rewritten document on
+    # an assigned spec — the exact corruption the tiered contract prevents.
+    spec = await db.get(RepSpec, rep_spec_id, with_for_update=True)
     if spec is None:
         raise RepSpecNotFoundError(str(rep_spec_id))
 

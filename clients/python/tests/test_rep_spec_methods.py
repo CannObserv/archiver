@@ -22,6 +22,8 @@ def _gcs_doc() -> dict:
 
 
 def _rep_spec_payload(rep_spec_id: str = "01HZZ00000000000000000000R") -> dict:
+    # updated_at is required-but-nullable in the contract: the server always
+    # emits it, null meaning "never edited".
     return {
         "rep_spec_id": rep_spec_id,
         "provider": "gcs",
@@ -29,6 +31,7 @@ def _rep_spec_payload(rep_spec_id: str = "01HZZ00000000000000000000R") -> dict:
         "schema_version": 1,
         "document": _gcs_doc(),
         "created_at": _TS,
+        "updated_at": None,
     }
 
 

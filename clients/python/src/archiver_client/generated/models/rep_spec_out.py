@@ -8,8 +8,6 @@ from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 from dateutil.parser import isoparse
 
-from ..types import UNSET, Unset
-
 if TYPE_CHECKING:
     from ..models.rep_spec_out_document import RepSpecOutDocument
 
@@ -29,8 +27,9 @@ class RepSpecOut:
         provider (str): Provider key (e.g. 'gcs', 'gdrive', 'ia').
         rep_spec_id (str): ULID identifying this RepSpec.
         schema_version (int): RepSpec envelope schema version; always 1 in the current implementation.
-        updated_at (datetime.datetime | None | Unset): UTC timestamp of the last edit, or null if the RepSpec has never
-            been edited. Never backfilled from created_at.
+        updated_at (datetime.datetime | None): UTC timestamp of the last edit, or null if the RepSpec has never been
+            edited. Never backfilled from created_at. Always present in responses (required, nullable) — matching the other
+            nullable projections.
     """
 
     created_at: datetime.datetime
@@ -39,7 +38,7 @@ class RepSpecOut:
     provider: str
     rep_spec_id: str
     schema_version: int
-    updated_at: datetime.datetime | None | Unset = UNSET
+    updated_at: datetime.datetime | None
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -55,10 +54,8 @@ class RepSpecOut:
 
         schema_version = self.schema_version
 
-        updated_at: None | str | Unset
-        if isinstance(self.updated_at, Unset):
-            updated_at = UNSET
-        elif isinstance(self.updated_at, datetime.datetime):
+        updated_at: None | str
+        if isinstance(self.updated_at, datetime.datetime):
             updated_at = self.updated_at.isoformat()
         else:
             updated_at = self.updated_at
@@ -73,10 +70,9 @@ class RepSpecOut:
                 "provider": provider,
                 "rep_spec_id": rep_spec_id,
                 "schema_version": schema_version,
+                "updated_at": updated_at,
             }
         )
-        if updated_at is not UNSET:
-            field_dict["updated_at"] = updated_at
 
         return field_dict
 
@@ -97,10 +93,8 @@ class RepSpecOut:
 
         schema_version = d.pop("schema_version")
 
-        def _parse_updated_at(data: object) -> datetime.datetime | None | Unset:
+        def _parse_updated_at(data: object) -> datetime.datetime | None:
             if data is None:
-                return data
-            if isinstance(data, Unset):
                 return data
             try:
                 if not isinstance(data, str):
@@ -110,9 +104,9 @@ class RepSpecOut:
                 return updated_at_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(datetime.datetime | None | Unset, data)
+            return cast(datetime.datetime | None, data)
 
-        updated_at = _parse_updated_at(d.pop("updated_at", UNSET))
+        updated_at = _parse_updated_at(d.pop("updated_at"))
 
         rep_spec_out = cls(
             created_at=created_at,

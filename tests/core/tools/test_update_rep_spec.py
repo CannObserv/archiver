@@ -278,3 +278,68 @@ async def test_updated_at_not_stamped_on_no_op(session):
     await session.commit()
 
     assert updated.updated_at is None
+
+
+# ---------------------------------------------------------------------------
+# Concurrency — the draft gate must not be bypassable (CR round 1, finding 1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_document_edit_and_assignment_serialize_on_the_rep_spec_row(test_engine):
+    """A concurrent assignment must not slip past the draft gate.
+
+    Without row locking both writers read a stale view under READ COMMITTED: the
+    editor counts zero assignments, the assigner sees a draft, and both commit —
+    leaving a rewritten document on an assigned RepSpec, which is exactly the
+    audit-trail corruption the tiered contract exists to prevent. Both paths take
+    ``FOR UPDATE`` on the RepSpec row, so the second writer waits.
+
+    Uses real independent transactions (not the SAVEPOINT-scoped ``session``
+    fixture) because row locks are only observable across separate connections.
+    """
+    import asyncio
+
+    from sqlalchemy import delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from src.core.tools.assign_rep_spec import assign_rep_spec
+
+    make_session = async_sessionmaker(test_engine, expire_on_commit=False)
+
+    async with make_session() as setup:
+        spec = await create_rep_spec(setup, provider="gcs", name="race-spec", document=_gcs_doc())
+        item = InfoItem(
+            name="race-item",
+            rep_fields={"info_item": {"slug": "s"}, "source_revision": {"date": "2026-07-20"}},
+        )
+        setup.add(item)
+        await setup.commit()
+        spec_id, item_id = spec.rep_spec_id, item.info_item_id
+
+    try:
+        async with make_session() as editor, make_session() as assigner:
+            # Editor grabs the row lock and holds it — no commit yet.
+            await update_rep_spec(
+                editor,
+                rep_spec_id=spec_id,
+                document=_gcs_doc() | {"path_template": "edited/{info_item.slug}"},
+            )
+
+            task = asyncio.create_task(
+                assign_rep_spec(assigner, info_item_id=item_id, rep_spec_id=spec_id)
+            )
+            done, _ = await asyncio.wait({task}, timeout=1.0)
+            assert not done, "assignment proceeded while the document edit held the row lock"
+
+            await editor.commit()
+            await asyncio.wait_for(task, timeout=10.0)
+            await assigner.commit()
+    finally:
+        async with make_session() as cleanup:
+            await cleanup.execute(
+                delete(InfoItemRepSpec).where(InfoItemRepSpec.rep_spec_id == spec_id)
+            )
+            await cleanup.execute(delete(InfoItem).where(InfoItem.info_item_id == item_id))
+            await cleanup.execute(delete(RepSpec).where(RepSpec.rep_spec_id == spec_id))
+            await cleanup.commit()

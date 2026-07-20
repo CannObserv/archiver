@@ -35,14 +35,15 @@ The freeze is not conservatism for its own sake: `InfoItemRepSpec` is effective-
 `provider` is frozen in every tier, drafts included. Document updates are whole-document **replacement**, not merge patch (merge cannot express key removal, which would make `object_options` entries unremovable under the envelope's `additionalProperties: false`).
 
 Service changes:
-- New `PATCH /api/v1/rep-specs/{rep_spec_id}` accepting `{name?, document?}` (`extra: forbid`). Omitting both is a no-op. Errors: 404 `lookup`, 409 `conflict` with `data.assignment_count`, 422 `schema` (validation failure or attempted provider change).
-- `RepSpecOut` gains `updated_at: datetime | None` (additive). Null means never edited — deliberately not backfilled from `created_at`.
+- New `PATCH /api/v1/rep-specs/{rep_spec_id}` accepting `{name?, document?}` (`extra: forbid`). **Omitting** a field leaves it unchanged; explicitly sending `null` is a 422 (both columns are `NOT NULL`, so `null` has no "clear" meaning — conflating it with omission would silently swallow a malformed request). Omitting both is a no-op. Errors: 404 `lookup`, 409 `conflict` with `data.assignment_count`, 422 `schema` (validation failure or attempted provider change).
+- `RepSpecOut` gains `updated_at: datetime | None` (additive) — **required and nullable**, matching the other nullable projections (`InfoItemRepSpecOut.deactivated_at` etc.): the server always emits it, null meaning never edited. Deliberately not backfilled from `created_at`.
+- Both `update_rep_spec` and `assign_rep_spec` now take `SELECT … FOR UPDATE` on the RepSpec row. The draft gate is a read-then-write; without the lock, under READ COMMITTED a concurrent assignment could be inserted between the count and the commit, landing a rewritten document on an assigned spec.
 - Migration `291c95e00110` adds the nullable `information.rep_specs.updated_at` column. No backfill.
 - Dashboard: document editor on the RepSpec detail screen for drafts; read-only "frozen" notice with the assignment count otherwise. Mirrors the InfoSource source-specs editor (HTMX in-place swap, toast on success, inline `role="alert"` error preserving submitted text, non-HTMX 303/422 fallback).
 
 SDK surface changes (4.2.0 → 4.3.0):
-- New `update_rep_spec(rep_spec_id, *, name=None, document=None) -> RepSpecOut`. Omitted kwargs are not sent (omit-on-`None`, matching `upsert_domain`). Raises `NotFound`, `Conflict` (`data["assignment_count"]`), or `ValidationError`.
-- `RepSpecOut.updated_at` available on responses (additive).
+- New `update_rep_spec(rep_spec_id, *, name=None, document=None) -> RepSpecOut`. Omitted kwargs are not sent (omit-on-`None`, matching `upsert_domain`) — so the SDK never triggers the server's explicit-`null` rejection. Raises `NotFound`, `Conflict` (`data["assignment_count"]`), or `ValidationError`.
+- `RepSpecOut.updated_at` available on responses (additive, required-and-nullable).
 
 ## v4.2.3 (2026-07-19)
 

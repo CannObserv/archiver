@@ -346,7 +346,18 @@ Tag each entry `[service]`, `[sdk]`, or `[both]` per the format header in
 `CHANGELOG.md`. The SDK README links here; do not maintain a second
 changelog there. On a PR, the `no-changelog` label opts out.
 
-**Dashboard living docs:** `docs/STYLE.md` and `docs/UI.md` must be updated in the same commit as any change to `src/dashboard/static/dashboard.css`, a JS module under `src/dashboard/static/`, a Jinja2 template in `src/dashboard/templates/`, or a new dashboard route. Failure to update them is a CR blocker.
+**Dashboard living docs:** each doc is scoped to what it actually documents —
+update the one(s) the change touches, in the same commit. Failure to update an
+applicable doc is a CR blocker.
+
+- `docs/UI.md` — required for any change to a Jinja2 template in
+  `src/dashboard/templates/`, a JS module under `src/dashboard/static/`, or a
+  new/changed dashboard route.
+- `docs/STYLE.md` — required when the change introduces or alters *styling*:
+  `src/dashboard/static/dashboard.css`, or a template that adds a new visual
+  pattern rather than reusing existing classes.
+
+A template change that composes only existing CSS classes needs UI.md alone.
 
 **Logging:**
 ```python

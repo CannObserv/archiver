@@ -688,3 +688,49 @@ async def test_detail_shows_updated_at_once_edited(client, session):
     r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
     assert r.status_code == 200
     assert "2026-06-01" in r.text
+
+
+@pytest.mark.asyncio
+async def test_non_htmx_document_error_rerenders_full_page_without_focus_scripts(client, session):
+    """The no-JS 422 fallback must not emit the HTMX focus scripts (CR round 1).
+
+    `swapped` is shared by _document_card.html and _assignments.html; leaking it
+    into the full-page render made both fire, and the assignments one stole focus
+    away from the announced error.
+    """
+    spec = _make_rep_spec("No JS Error")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    bad = dict(_GCS_DOC)
+    del bad["path_template"]
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers=_HEADERS,  # no HX-Request
+        data={"document": json.dumps(bad)},
+    )
+    assert r.status_code == 422
+    assert 'role="alert"' in r.text  # error is still announced
+    assert "getElementById" not in r.text  # neither focus script rendered
+    assert json.dumps(bad) in r.text or "credentials_alias" in r.text  # input preserved
+
+
+@pytest.mark.asyncio
+async def test_htmx_document_error_still_moves_focus(client, session):
+    """Guard the other side: the HTMX partial must keep its focus script."""
+    spec = _make_rep_spec("Htmx Focus")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    bad = dict(_GCS_DOC)
+    del bad["path_template"]
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"document": json.dumps(bad)},
+    )
+    assert r.status_code == 200
+    assert "rep-spec-document-heading" in r.text
+    assert "getElementById" in r.text

@@ -9,7 +9,7 @@ docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md.
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class RepSpecCreate(BaseModel):
@@ -43,9 +43,13 @@ class RepSpecCreate(BaseModel):
 class RepSpecPatch(BaseModel):
     """Request body for PATCH /rep-specs/{rep_spec_id}.
 
-    Both fields are optional; omitted fields are left untouched. ``provider`` is
-    absent by design — it is frozen for the life of the RepSpec, and supplying a
-    ``document`` whose ``provider`` differs from the stored one is a 422.
+    Both fields are optional; **omitting** a field leaves it untouched.
+    Explicitly sending ``null`` is rejected rather than silently treated as
+    omission: both columns are ``NOT NULL``, so ``null`` has no "clear this"
+    meaning, and conflating the two would quietly swallow a malformed request.
+    ``provider`` is absent by design — it is frozen for the life of the RepSpec,
+    and supplying a ``document`` whose ``provider`` differs from the stored one
+    is a 422.
 
     ``document`` is a whole-document *replacement*, not a merge patch: merge
     semantics cannot express key removal, which would make ``object_options``
@@ -69,6 +73,25 @@ class RepSpecPatch(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def _reject_explicit_nulls(self) -> "RepSpecPatch":
+        """Distinguish an omitted field from one explicitly set to ``null``.
+
+        ``model_fields_set`` is the only way to tell them apart once both have
+        landed as ``None``. Neither column is nullable, so an explicit ``null``
+        is a client error, not a no-op.
+        """
+        nulled = sorted(
+            name
+            for name in ("name", "document")
+            if name in self.model_fields_set and getattr(self, name) is None
+        )
+        if nulled:
+            raise ValueError(
+                f"{', '.join(nulled)}: null is not accepted; omit the field to leave it unchanged"
+            )
+        return self
+
 
 class RepSpecOut(BaseModel):
     """Projection of a rep_specs row."""
@@ -87,9 +110,9 @@ class RepSpecOut(BaseModel):
     )
     created_at: datetime = Field(description="UTC timestamp when the RepSpec was created.")
     updated_at: datetime | None = Field(
-        default=None,
         description=(
             "UTC timestamp of the last edit, or null if the RepSpec has never been "
-            "edited. Never backfilled from created_at."
+            "edited. Never backfilled from created_at. Always present in responses "
+            "(required, nullable) — matching the other nullable projections."
         ),
     )
