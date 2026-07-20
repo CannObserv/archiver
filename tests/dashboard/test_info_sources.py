@@ -139,6 +139,54 @@ async def test_detail_id_copyable_and_url_open_button(client, session):
 
 
 @pytest.mark.asyncio
+async def test_detail_source_specs_card_titled_specification(client, session):
+    """SourceSpecs card is titled 'Source Specification' (issue #100)."""
+    src = _make_source("https://example.com/spec-title")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert ">Source Specification</h2>" in r.text
+    assert ">Source Specs</h2>" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_source_specs_card_starts_in_view_mode(client, session):
+    """Editor is gated behind an Edit action; card opens in view mode (issue #100)."""
+    src = _make_source("https://example.com/spec-viewmode")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    # Alpine toggle starts closed; Edit reveals the textarea, Save/Cancel commit.
+    assert 'x-data="{ editing: false }"' in r.text
+    assert ">Edit</button>" in r.text
+    assert ">Cancel</button>" in r.text
+    assert ">Save</button>" in r.text
+    assert 'x-show="!editing"' in r.text
+    assert 'x-show="editing"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_update_specs_htmx_error_reopens_editor(client, session):
+    """A validation error re-renders the card in edit mode so the error stays visible."""
+    src = _make_source("https://example.com/spec-error-reopen")
+    session.add(src)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-sources/{src.info_source_id}/source-specs",
+        data={"source_specs": "not-json{"},
+        headers={**_HEADERS, "HX-Request": "true"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 200
+    assert 'x-data="{ editing: true }"' in r.text
+
+
+@pytest.mark.asyncio
 async def test_detail_shows_bound_items(client, session):
     src = _make_source("https://example.com/bound-item-test")
     session.add(src)

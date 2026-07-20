@@ -1,20 +1,38 @@
-{# Source Specs editor card — swapped in place by the HTMX update-specs action
-   (id target). The hx-* attributes drive the in-place swap + success toast;
-   the method/action fallback keeps it working as a plain POST→303 without JS
-   (progressive enhancement). See docs/UI.md Detail Screen Conventions. #}
-<div class="entity-card" id="source-specs-card" style="margin-top:var(--space-3);">
-  <h2 id="source-specs-heading" tabindex="-1" style="margin-top:0;">Source Specs</h2>
-  {# <pre> always shows the live stored specs; the textarea echoes the operator's
-     submitted text (specs_input) so an invalid submission isn't discarded on error. #}
-  <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ specs_json }}</code></pre>
-  <form hx-post="/dashboard/info-sources/{{ src.info_source_id }}/source-specs"
+{# Source Specification editor card — swapped in place by the HTMX update-specs
+   action (id target). The hx-* attributes drive the in-place swap + success
+   toast; the method/action fallback keeps it working as a plain POST→303
+   without JS (progressive enhancement — without Alpine both the read-only view
+   and the editor render, and Save posts normally). See docs/UI.md Detail Screen
+   Conventions.
+
+   Alpine `editing` toggle: view mode shows the stored specs + an "Edit" button;
+   edit mode reveals the textarea with "Cancel" + "Save". Opens in edit mode when
+   a validation error is present so the operator's submitted text and the inline
+   error stay visible (mirrors settings/_api_key_row.html). #}
+<div class="entity-card" id="source-specs-card" style="margin-top:var(--space-3);"
+     x-data="{ editing: {{ 'true' if specs_error else 'false' }} }">
+  <h2 id="source-specs-heading" tabindex="-1" style="margin-top:0;">Source Specification</h2>
+
+  {# View mode: live stored specs + Edit action. #}
+  <div x-show="!editing">
+    <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ specs_json }}</code></pre>
+    <div style="text-align:right;margin-top:var(--space-2);">
+      <button type="button" class="btn btn--sm btn--secondary" @click="editing = true">Edit</button>
+    </div>
+  </div>
+
+  {# Edit mode: textarea echoes the operator's submitted text (specs_input) so an
+     invalid submission isn't discarded on error; Cancel resets it to the stored
+     specs and returns to view mode. #}
+  <form x-show="editing"
+        hx-post="/dashboard/info-sources/{{ src.info_source_id }}/source-specs"
         hx-target="#source-specs-card" hx-swap="outerHTML"
         method="POST"
         action="/dashboard/info-sources/{{ src.info_source_id }}/source-specs"
         style="margin-top:var(--space-3);">
     <div>
-      <label for="source-specs-edit" class="form-label">Update Source Specs</label>
-      <textarea id="source-specs-edit" name="source_specs"
+      <label for="source-specs-edit" class="form-label">Update Source Specification</label>
+      <textarea id="source-specs-edit" name="source_specs" x-ref="specsBox"
                 class="form-textarea code-block{% if specs_error %} form-textarea--error{% endif %}"
                 rows="8">{{ specs_input | default(specs_json, true) }}</textarea>
       {% if specs_error %}
@@ -22,7 +40,9 @@
       {% endif %}
     </div>
     <div style="text-align:right;margin-top:var(--space-2);">
-      <button type="submit" class="btn btn--sm btn--primary">Update Specs</button>
+      <button type="button" class="btn btn--sm btn--ghost"
+              @click="editing = false; $refs.specsBox.value = {{ specs_json | tojson }}">Cancel</button>
+      <button type="submit" class="btn btn--sm btn--primary">Save</button>
     </div>
   </form>
 
