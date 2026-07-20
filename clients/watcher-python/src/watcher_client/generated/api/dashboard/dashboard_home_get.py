@@ -49,8 +49,6 @@ def sync_detailed(
 
      Dashboard home page with stats and system health.
 
-    Phase 5 (#156): Recent Changes section removed — Change table dropped.
-
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -75,8 +73,6 @@ async def asyncio_detailed(
     """Dashboard Home
 
      Dashboard home page with stats and system health.
-
-    Phase 5 (#156): Recent Changes section removed — Change table dropped.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
