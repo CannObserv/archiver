@@ -21,6 +21,24 @@ import httpx
 
 from archiver_client import tools as _tools
 from archiver_client.errors import error_from_response
+from archiver_client.generated.api.domains import (
+    archive_domain_api_v1_domains_name_archive_post as _archive_domain,
+)
+from archiver_client.generated.api.domains import (
+    delete_domain_api_v1_domains_name_delete as _delete_domain,
+)
+from archiver_client.generated.api.domains import (
+    get_domain_api_v1_domains_name_get as _get_domain,
+)
+from archiver_client.generated.api.domains import (
+    list_domains_api_v1_domains_get as _list_domains,
+)
+from archiver_client.generated.api.domains import (
+    restore_domain_api_v1_domains_name_restore_post as _restore_domain,
+)
+from archiver_client.generated.api.domains import (
+    upsert_domain_api_v1_domains_name_patch as _upsert_domain,
+)
 from archiver_client.generated.api.info_items import (
     add_info_source_api_v1_info_items_info_item_id_info_sources_post as _add_info_source,
 )
@@ -57,6 +75,9 @@ from archiver_client.generated.api.info_sources import (
 from archiver_client.generated.api.info_sources import (
     list_info_sources_api_v1_info_sources_get as _list_info_sources,
 )
+from archiver_client.generated.api.info_sources import (
+    patch_info_source_specs_api_v1_info_sources_info_source_id_source_specs_patch as _patch_info_source_specs,
+)
 from archiver_client.generated.api.rep_specs import (
     create_rep_spec_route_api_v1_rep_specs_post as _create_rep_spec,
 )
@@ -73,7 +94,12 @@ from archiver_client.generated.api.source_revisions import (
     patch_source_revision_api_v1_source_revisions_source_revision_id_patch as _patch_source_revision,
 )
 from archiver_client.generated.client import AuthenticatedClient
+from archiver_client.generated.models.domain_out import DomainOut
+from archiver_client.generated.models.domain_patch import DomainPatch
 from archiver_client.generated.models.info_item_create import InfoItemCreate
+from archiver_client.generated.models.info_item_create_initial_source_specs_type_0_item import (
+    InfoItemCreateInitialSourceSpecsType0Item,
+)
 from archiver_client.generated.models.info_item_create_rep_fields import InfoItemCreateRepFields
 from archiver_client.generated.models.info_item_out import InfoItemOut
 from archiver_client.generated.models.info_item_rep_spec_create import InfoItemRepSpecCreate
@@ -90,8 +116,15 @@ from archiver_client.generated.models.info_item_source_revision_out import (
     InfoItemSourceRevisionOut,
 )
 from archiver_client.generated.models.info_source_create import InfoSourceCreate
+from archiver_client.generated.models.info_source_create_source_specs_item import (
+    InfoSourceCreateSourceSpecsItem,
+)
 from archiver_client.generated.models.info_source_out import InfoSourceOut
 from archiver_client.generated.models.info_source_patch import InfoSourcePatch
+from archiver_client.generated.models.info_source_patch_source_specs_item import (
+    InfoSourcePatchSourceSpecsItem,
+)
+from archiver_client.generated.models.page_domain_out import PageDomainOut
 from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
 from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
 from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
@@ -174,7 +207,9 @@ class ArchiverClient:
         if initial_url is not None:
             body.initial_url = initial_url
         if initial_source_specs is not None:
-            body.initial_source_specs = initial_source_specs
+            body.initial_source_specs = [
+                InfoItemCreateInitialSourceSpecsType0Item.from_dict(s) for s in initial_source_specs
+            ]
         if initial_rep_spec_assignments is not None:
             body.initial_rep_spec_assignments = [
                 RepSpecAssignmentCreate.from_dict(a) for a in initial_rep_spec_assignments
@@ -359,7 +394,10 @@ class ArchiverClient:
         is the ordered list of extraction specs; first element is primary,
         subsequent elements are cross-check alternatives.
         """
-        body = InfoSourceCreate(url=url, source_specs=source_specs)
+        body = InfoSourceCreate(
+            url=url,
+            source_specs=[InfoSourceCreateSourceSpecsItem.from_dict(s) for s in source_specs],
+        )
         response = await _create_info_source.asyncio_detailed(client=self._gen_client, body=body)
         return _unwrap(response)
 
@@ -372,14 +410,13 @@ class ArchiverClient:
 
         URL is immutable; only source_specs may be updated.
         """
-        body = InfoSourcePatch(source_specs=source_specs)
-        response = await self._gen_client.get_async_httpx_client().patch(
-            f"/api/v1/info-sources/{info_source_id}/source-specs",
-            json=body.to_dict(),
+        body = InfoSourcePatch(
+            source_specs=[InfoSourcePatchSourceSpecsItem.from_dict(s) for s in source_specs],
         )
-        if response.is_error:
-            raise error_from_response(response.status_code, response.content)
-        return InfoSourceOut.from_dict(response.json())
+        response = await _patch_info_source_specs.asyncio_detailed(
+            client=self._gen_client, info_source_id=info_source_id, body=body
+        )
+        return _unwrap(response)
 
     async def get_info_source(self, info_source_id: str) -> InfoSourceOut:
         """Fetch a single InfoSource by ID."""
@@ -392,18 +429,21 @@ class ArchiverClient:
         self,
         *,
         url: str | None = None,
+        domain_name: str | None = None,
         limit: int | None = None,
         offset: int | None = None,
     ) -> PageInfoSourceOut:
         """List InfoSources as a paginated envelope.
 
-        ``url`` filters to exact URL matches. ``limit``/``offset`` are
-        forwarded when set; omit to accept server defaults (limit=100, offset=0).
-        Server caps ``limit`` at 500.
+        ``url`` filters to exact URL matches; ``domain_name`` filters to a
+        single hostname. ``limit``/``offset`` are forwarded when set; omit to
+        accept server defaults (limit=100, offset=0). Server caps ``limit``
+        at 500.
         """
         response = await _list_info_sources.asyncio_detailed(
             client=self._gen_client,
-            url=url if url is not None else UNSET,
+            url_query=url if url is not None else UNSET,
+            domain_name=domain_name if domain_name is not None else UNSET,
             limit=UNSET if limit is None else limit,
             offset=UNSET if offset is None else offset,
         )
@@ -547,7 +587,7 @@ class ArchiverClient:
         """
         return await _tools.propose_selectors(self, url, description, top_k=top_k)
 
-    # --- Domain endpoints (v4.1+) ---
+    # --- Domain endpoints (v4.1+; typed returns since v4.2.0) ---
 
     async def list_domains(
         self,
@@ -556,34 +596,27 @@ class ArchiverClient:
         archived: bool | None = None,
         limit: int | None = None,
         offset: int | None = None,
-    ) -> dict:
-        """List domains. Returns the raw Page envelope dict.
+    ) -> PageDomainOut:
+        """List Domains as a paginated envelope.
 
         Pass ``is_active=True/False`` to filter by active status.
         Pass ``archived=True`` to restrict to archived domains.
+        ``limit``/``offset`` are forwarded when set; omit to accept server
+        defaults (limit=100, offset=0). Server caps ``limit`` at 500.
         """
-        params: dict = {}
-        if is_active is not None:
-            params["is_active"] = str(is_active).lower()
-        if archived is not None:
-            params["archived"] = str(archived).lower()
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-        hx = self._gen_client.get_async_httpx_client()
-        resp = await hx.get("/api/v1/domains", params=params)
-        if 200 <= resp.status_code < 300:
-            return resp.json()
-        raise error_from_response(resp.status_code, resp.content)
+        response = await _list_domains.asyncio_detailed(
+            client=self._gen_client,
+            is_active=is_active if is_active is not None else UNSET,
+            archived=archived if archived is not None else UNSET,
+            limit=UNSET if limit is None else limit,
+            offset=UNSET if offset is None else offset,
+        )
+        return _unwrap(response)
 
-    async def get_domain(self, name: str) -> dict:
+    async def get_domain(self, name: str) -> DomainOut:
         """Fetch a single Domain by hostname."""
-        hx = self._gen_client.get_async_httpx_client()
-        resp = await hx.get(f"/api/v1/domains/{name}")
-        if 200 <= resp.status_code < 300:
-            return resp.json()
-        raise error_from_response(resp.status_code, resp.content)
+        response = await _get_domain.asyncio_detailed(client=self._gen_client, name=name)
+        return _unwrap(response)
 
     async def upsert_domain(
         self,
@@ -591,42 +624,35 @@ class ArchiverClient:
         *,
         notes: str | None = None,
         is_active: bool | None = None,
-    ) -> dict:
-        """Create or update a Domain (upsert by hostname)."""
-        body: dict = {}
-        if notes is not None:
-            body["notes"] = notes
-        if is_active is not None:
-            body["is_active"] = is_active
-        hx = self._gen_client.get_async_httpx_client()
-        resp = await hx.patch(f"/api/v1/domains/{name}", json=body)
-        if 200 <= resp.status_code < 300:
-            return resp.json()
-        raise error_from_response(resp.status_code, resp.content)
+    ) -> DomainOut:
+        """Create or update a Domain (upsert by hostname).
+
+        ``None`` fields are omitted from the PATCH body (left untouched
+        server-side), matching the pre-v4.2.0 behavior.
+        """
+        body = DomainPatch(
+            notes=notes if notes is not None else UNSET,
+            is_active=is_active if is_active is not None else UNSET,
+        )
+        response = await _upsert_domain.asyncio_detailed(
+            client=self._gen_client, name=name, body=body
+        )
+        return _unwrap(response)
 
     async def delete_domain(self, name: str) -> None:
-        """Delete a Domain. Raises 409 if InfoSources reference it."""
-        hx = self._gen_client.get_async_httpx_client()
-        resp = await hx.delete(f"/api/v1/domains/{name}")
-        if 200 <= resp.status_code < 300:
-            return None
-        raise error_from_response(resp.status_code, resp.content)
+        """Delete a Domain. Raises ``Conflict`` (409) if InfoSources reference it."""
+        response = await _delete_domain.asyncio_detailed(client=self._gen_client, name=name)
+        _unwrap_no_content(response)
 
-    async def archive_domain(self, name: str) -> dict:
+    async def archive_domain(self, name: str) -> DomainOut:
         """Set archived_at on a Domain."""
-        hx = self._gen_client.get_async_httpx_client()
-        resp = await hx.post(f"/api/v1/domains/{name}/archive")
-        if 200 <= resp.status_code < 300:
-            return resp.json()
-        raise error_from_response(resp.status_code, resp.content)
+        response = await _archive_domain.asyncio_detailed(client=self._gen_client, name=name)
+        return _unwrap(response)
 
-    async def restore_domain(self, name: str) -> dict:
+    async def restore_domain(self, name: str) -> DomainOut:
         """Clear archived_at on a Domain."""
-        hx = self._gen_client.get_async_httpx_client()
-        resp = await hx.post(f"/api/v1/domains/{name}/restore")
-        if 200 <= resp.status_code < 300:
-            return resp.json()
-        raise error_from_response(resp.status_code, resp.content)
+        response = await _restore_domain.asyncio_detailed(client=self._gen_client, name=name)
+        return _unwrap(response)
 
 
 def _unwrap(response: Any) -> Any:

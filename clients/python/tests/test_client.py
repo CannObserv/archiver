@@ -5,9 +5,12 @@ import pytest
 import respx
 from archiver_client import (
     AuthError,
+    Conflict,
     NotFound,
     ValidationError,
 )
+from archiver_client.generated.models.domain_out import DomainOut
+from archiver_client.generated.models.page_domain_out import PageDomainOut
 
 BASE_URL = "http://archiver.test"
 
@@ -88,7 +91,26 @@ def _top_info_source_payload(
         "source_specs": source_specs
         if source_specs is not None
         else [{"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}],
+        "domain_name": "example.com",
         "created_at": _TS,
+    }
+
+
+def _domain_payload(
+    name: str = "example.com",
+    *,
+    notes: str | None = None,
+    is_active: bool = True,
+    archived_at: str | None = None,
+) -> dict:
+    return {
+        "id": "01HZZ0000000000000000000AA",
+        "name": name,
+        "notes": notes,
+        "is_active": is_active,
+        "archived_at": archived_at,
+        "created_at": _TS,
+        "updated_at": _TS,
     }
 
 
@@ -457,6 +479,7 @@ async def test_get_info_source(client):
         )
         out = await client.get_info_source("01HZZ00000000000000000000F")
     assert out.info_source_id == "01HZZ00000000000000000000F"
+    assert out.domain_name == "example.com"
 
 
 @pytest.mark.asyncio
@@ -541,7 +564,7 @@ async def test_update_info_source_specs(client):
         out = await client.update_info_source_specs("01HZZ00000000000000000000F", new_specs)
     sent_body = route.calls[0].request.read()
     assert b'"source_specs"' in sent_body
-    assert out.source_specs == new_specs
+    assert [spec.to_dict() for spec in out.source_specs] == new_specs
 
 
 @pytest.mark.asyncio
@@ -571,3 +594,161 @@ async def test_update_info_source_specs_not_found_raises(client):
                     }
                 ],
             )
+
+
+# --- Domain endpoints (typed, v4.2.0) ---
+
+
+@pytest.mark.asyncio
+async def test_list_domains_returns_typed_page(client):
+    with respx.mock:
+        route = respx.get(f"{BASE_URL}/api/v1/domains").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [_domain_payload()],
+                    "has_more": False,
+                    "limit": 100,
+                    "offset": 0,
+                },
+            )
+        )
+        out = await client.list_domains(is_active=True)
+    assert isinstance(out, PageDomainOut)
+    assert out.has_more is False
+    assert len(out.items) == 1
+    assert isinstance(out.items[0], DomainOut)
+    assert out.items[0].name == "example.com"
+    assert route.calls.last.request.url.params.get("is_active") == "true"
+
+
+@pytest.mark.asyncio
+async def test_list_domains_forwards_filters_and_pagination(client):
+    with respx.mock:
+        route = respx.get(f"{BASE_URL}/api/v1/domains").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [], "has_more": True, "limit": 5, "offset": 10},
+            )
+        )
+        out = await client.list_domains(archived=True, limit=5, offset=10)
+    params = route.calls.last.request.url.params
+    assert params.get("archived") == "true"
+    assert params.get("limit") == "5"
+    assert params.get("offset") == "10"
+    assert "is_active" not in params
+    assert out.has_more is True
+
+
+@pytest.mark.asyncio
+async def test_get_domain_returns_typed_model(client):
+    with respx.mock:
+        respx.get(f"{BASE_URL}/api/v1/domains/example.com").mock(
+            return_value=httpx.Response(200, json=_domain_payload())
+        )
+        out = await client.get_domain("example.com")
+    assert isinstance(out, DomainOut)
+    assert out.name == "example.com"
+    assert out.is_active is True
+    assert out.archived_at is None
+
+
+@pytest.mark.asyncio
+async def test_get_domain_not_found_raises(client):
+    with respx.mock:
+        respx.get(f"{BASE_URL}/api/v1/domains/nope.example").mock(
+            return_value=httpx.Response(
+                404,
+                json={
+                    "detail": {
+                        "kind": "lookup",
+                        "message": "Domain not found",
+                        "errors": [],
+                        "data": {},
+                    }
+                },
+            )
+        )
+        with pytest.raises(NotFound):
+            await client.get_domain("nope.example")
+
+
+@pytest.mark.asyncio
+async def test_upsert_domain_sends_patch_body_and_returns_typed_model(client):
+    with respx.mock:
+        route = respx.patch(f"{BASE_URL}/api/v1/domains/example.com").mock(
+            return_value=httpx.Response(
+                200, json=_domain_payload(notes="state portal", is_active=False)
+            )
+        )
+        out = await client.upsert_domain("example.com", notes="state portal", is_active=False)
+    sent_body = route.calls[0].request.read()
+    assert b'"notes"' in sent_body
+    assert b'"is_active"' in sent_body
+    assert isinstance(out, DomainOut)
+    assert out.notes == "state portal"
+    assert out.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_upsert_domain_omits_unset_fields(client):
+    with respx.mock:
+        route = respx.patch(f"{BASE_URL}/api/v1/domains/example.com").mock(
+            return_value=httpx.Response(200, json=_domain_payload())
+        )
+        await client.upsert_domain("example.com")
+    sent_body = route.calls[0].request.read()
+    assert b'"notes"' not in sent_body
+    assert b'"is_active"' not in sent_body
+
+
+@pytest.mark.asyncio
+async def test_delete_domain_returns_none(client):
+    with respx.mock:
+        respx.delete(f"{BASE_URL}/api/v1/domains/example.com").mock(
+            return_value=httpx.Response(204)
+        )
+        out = await client.delete_domain("example.com")
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_delete_domain_conflict_raises(client):
+    with respx.mock:
+        respx.delete(f"{BASE_URL}/api/v1/domains/example.com").mock(
+            return_value=httpx.Response(
+                409,
+                json={
+                    "detail": {
+                        "kind": "conflict",
+                        "message": "InfoSources reference this domain",
+                        "errors": [],
+                        "data": {},
+                    }
+                },
+            )
+        )
+        with pytest.raises(Conflict):
+            await client.delete_domain("example.com")
+
+
+@pytest.mark.asyncio
+async def test_archive_domain_returns_typed_model(client):
+    with respx.mock:
+        respx.post(f"{BASE_URL}/api/v1/domains/example.com/archive").mock(
+            return_value=httpx.Response(200, json=_domain_payload(archived_at=_TS))
+        )
+        out = await client.archive_domain("example.com")
+    assert isinstance(out, DomainOut)
+    assert out.archived_at is not None
+
+
+@pytest.mark.asyncio
+async def test_restore_domain_returns_typed_model(client):
+    with respx.mock:
+        respx.post(f"{BASE_URL}/api/v1/domains/example.com/restore").mock(
+            return_value=httpx.Response(200, json=_domain_payload())
+        )
+        out = await client.restore_domain("example.com")
+    assert isinstance(out, DomainOut)
+    assert out.archived_at is None
