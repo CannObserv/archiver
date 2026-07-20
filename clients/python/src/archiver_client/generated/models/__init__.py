@@ -45,6 +45,8 @@ from .rep_spec_create import RepSpecCreate
 from .rep_spec_create_document import RepSpecCreateDocument
 from .rep_spec_out import RepSpecOut
 from .rep_spec_out_document import RepSpecOutDocument
+from .rep_spec_patch import RepSpecPatch
+from .rep_spec_patch_document_type_0 import RepSpecPatchDocumentType0
 from .resolve_rep_fields_request import ResolveRepFieldsRequest
 from .resolve_rep_fields_request_bag import ResolveRepFieldsRequestBag
 from .resolve_rep_fields_response import ResolveRepFieldsResponse
@@ -107,6 +109,8 @@ __all__ = (
     "RepSpecCreateDocument",
     "RepSpecOut",
     "RepSpecOutDocument",
+    "RepSpecPatch",
+    "RepSpecPatchDocumentType0",
     "ResolveRepFieldsRequest",
     "ResolveRepFieldsRequestBag",
     "ResolveRepFieldsResponse",

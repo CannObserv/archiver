@@ -90,6 +90,7 @@ def rep_spec_to_out(spec: RepSpec) -> RepSpecOut:
         schema_version=spec.schema_version,
         document=spec.document,
         created_at=spec.created_at,
+        updated_at=spec.updated_at,
     )
 
 

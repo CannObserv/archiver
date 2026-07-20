@@ -230,6 +230,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | List InfoSources (filter by URL or domain, paginated) | `GET /info-sources?url=…&domain_name=…&limit=&offset=` | `list_info_sources(url=None, domain_name=None, limit=None, offset=None)` |
 | Author a RepSpec | `POST /rep-specs` | `create_rep_spec(provider, name, document)` |
 | Get a RepSpec | `GET /rep-specs/{id}` | `get_rep_spec(id)` |
+| Update a RepSpec (name always; document only while draft) | `PATCH /rep-specs/{id}` | `update_rep_spec(id, name=None, document=None)` |
 | List RepSpecs (filter by provider, paginated) | `GET /rep-specs?provider=…&limit=&offset=` | `list_rep_specs(provider=None, limit=None, offset=None)` |
 | Assign a RepSpec | `POST /info-items/{id}/rep-spec-assignments` | `assign_rep_spec(info_item_id, rep_spec_id, activated_at=None)` |
 | Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
@@ -439,6 +440,11 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 
 - **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
+  **Tiered mutability** (#83): `name` always editable; `document` editable only while the RepSpec is a
+  *draft* — zero `info_item_rep_specs` rows, active **or** deactivated; `provider` frozen always.
+  `updated_at` is nullable and never backfilled (NULL = never edited). An assigned spec is frozen
+  because its assignment rows assert which document produced the artefacts at their `public_url`;
+  clone + migrate is #95. See `docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md`.
 - **`InfoItemRepSpec`** (`info_item_rep_specs`) — effective-dated assignment + `public_url` writeback target.
 - **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
 

@@ -273,3 +273,194 @@ async def test_list_negative_offset_returns_422(client):
 async def test_list_empty_provider_returns_422(client):
     resp = await client.get("/api/v1/rep-specs?provider=", headers=HEADERS)
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/rep-specs/{rep_spec_id}  (archiver#83, tiers 1+2)
+#
+# Contract: `name` always mutable; `document` mutable only while the RepSpec is
+# a draft (zero assignment rows, active or deactivated); `provider` frozen.
+# See docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md.
+# ---------------------------------------------------------------------------
+
+
+async def _create_spec(client, *, name: str = "draft", document: dict | None = None) -> dict:
+    resp = await client.post(
+        "/api/v1/rep-specs",
+        headers=HEADERS,
+        json={"provider": "gcs", "name": name, "document": document or _gcs_doc()},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def _assign_spec(session, spec_id: str, *, deactivated: bool = False) -> None:
+    """Attach an assignment row directly, bypassing rep_fields validation."""
+    from datetime import UTC, datetime
+
+    from ulid import ULID
+
+    from src.core.models import InfoItem, InfoItemRepSpec
+
+    item = InfoItem(name=f"item-{spec_id[:8]}", rep_fields={})
+    session.add(item)
+    await session.flush()
+    session.add(
+        InfoItemRepSpec(
+            info_item_id=item.info_item_id,
+            rep_spec_id=ULID.from_str(spec_id),
+            activated_at=datetime.now(UTC),
+            deactivated_at=datetime.now(UTC) if deactivated else None,
+        )
+    )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_patch_renames_a_draft(client):
+    spec = await _create_spec(client, name="before")
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"name": "after"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "after"
+
+
+@pytest.mark.asyncio
+async def test_patch_replaces_document_on_a_draft(client):
+    spec = await _create_spec(client)
+    new_doc = _gcs_doc() | {"path_template": "corrected/{info_item.slug}.html"}
+
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"document": new_doc},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["document"]["path_template"] == "corrected/{info_item.slug}.html"
+
+
+@pytest.mark.asyncio
+async def test_patch_stamps_updated_at(client):
+    spec = await _create_spec(client)
+    assert spec["updated_at"] is None
+
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"name": "renamed"},
+    )
+    assert resp.json()["updated_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_patch_renames_assigned_spec(client, session):
+    """Tier 1: name is editable regardless of assignment state."""
+    spec = await _create_spec(client, name="before")
+    await _assign_spec(session, spec["rep_spec_id"])
+
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"name": "after"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "after"
+
+
+@pytest.mark.asyncio
+async def test_patch_document_on_assigned_spec_returns_409(client, session):
+    spec = await _create_spec(client)
+    await _assign_spec(session, spec["rep_spec_id"])
+
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"document": _gcs_doc() | {"path_template": "nope/{info_item.slug}"}},
+    )
+    assert resp.status_code == 409, resp.text
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "conflict"
+    assert detail["data"]["assignment_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_patch_document_blocked_by_deactivated_assignment(client, session):
+    """The draft gate counts deactivated assignments too."""
+    spec = await _create_spec(client)
+    await _assign_spec(session, spec["rep_spec_id"], deactivated=True)
+
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"document": _gcs_doc() | {"path_template": "nope/{info_item.slug}"}},
+    )
+    assert resp.status_code == 409, resp.text
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_provider_change(client):
+    spec = await _create_spec(client)
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"document": _gdrive_doc()},
+    )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert any(e["path"] == "/provider" for e in detail["errors"])
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_invalid_document(client):
+    spec = await _create_spec(client)
+    bad = _gcs_doc()
+    del bad["path_template"]
+
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"document": bad},
+    )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert detail["message"] == "invalid rep_spec"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_extra_fields(client):
+    spec = await _create_spec(client)
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"name": "x", "provider": "gdrive"},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_patch_returns_404_for_unknown_id(client):
+    resp = await client.patch(
+        "/api/v1/rep-specs/01J0000000000000000000000Z",
+        headers=HEADERS,
+        json={"name": "x"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["kind"] == "lookup"
+
+
+@pytest.mark.asyncio
+async def test_patch_returns_422_for_malformed_ulid(client):
+    resp = await client.patch("/api/v1/rep-specs/not-a-ulid", headers=HEADERS, json={"name": "x"})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_requires_api_key(client):
+    spec = await _create_spec(client)
+    resp = await client.patch(f"/api/v1/rep-specs/{spec['rep_spec_id']}", json={"name": "x"})
+    assert resp.status_code == 403

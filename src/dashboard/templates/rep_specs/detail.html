@@ -24,14 +24,19 @@
         <span class="detail-grid__label">Created</span>
         <span class="detail-grid__value text-muted">{{ spec.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
       </div>
+      {# Rendered only once edited — a null updated_at means "never edited", and
+         showing created_at here would blur that distinction (archiver#83). #}
+      {% if spec.updated_at %}
+      <div class="detail-grid__item">
+        <span class="detail-grid__label">Updated</span>
+        <span class="detail-grid__value text-muted">{{ spec.updated_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      </div>
+      {% endif %}
     </div>
   </div>
 
-  {# Document JSON #}
-  <div class="entity-card" style="margin-top:var(--space-3);">
-    <h2 style="margin-top:0;">Document</h2>
-    <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ doc_json }}</code></pre>
-  </div>
+  {# Document JSON + editor (extracted so the update action swaps it in place) #}
+  {% include "rep_specs/_document_card.html" %}
 
   {# Active Assignments (extracted so the deactivate action re-renders it in place) #}
   {% include "rep_specs/_assignments.html" %}

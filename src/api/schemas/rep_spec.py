@@ -1,7 +1,9 @@
 """Pydantic IO schemas for top-level /rep-specs endpoints.
 
-RepSpecs are immutable post-create: the API exposes POST/GET only, no
-PATCH/DELETE. Operators reassign a new RepSpec to evolve provider config.
+RepSpecs are *tiered*-mutable post-create (archiver#83): ``name`` is always
+editable, ``document`` only while the RepSpec is a draft (no assignments), and
+``provider`` never. There is no DELETE. See
+docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md.
 """
 
 from datetime import datetime
@@ -38,6 +40,36 @@ class RepSpecCreate(BaseModel):
     )
 
 
+class RepSpecPatch(BaseModel):
+    """Request body for PATCH /rep-specs/{rep_spec_id}.
+
+    Both fields are optional; omitted fields are left untouched. ``provider`` is
+    absent by design — it is frozen for the life of the RepSpec, and supplying a
+    ``document`` whose ``provider`` differs from the stored one is a 422.
+
+    ``document`` is a whole-document *replacement*, not a merge patch: merge
+    semantics cannot express key removal, which would make ``object_options``
+    entries unremovable under the envelope's ``additionalProperties: false``.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="New operator-friendly label. Editable regardless of assignment state.",
+    )
+    document: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Replacement RepSpec envelope document. Accepted only while the RepSpec "
+            "is a draft (zero assignment rows, active or deactivated); otherwise 409. "
+            "Validated exactly as on create."
+        ),
+    )
+
+
 class RepSpecOut(BaseModel):
     """Projection of a rep_specs row."""
 
@@ -54,3 +86,10 @@ class RepSpecOut(BaseModel):
         )
     )
     created_at: datetime = Field(description="UTC timestamp when the RepSpec was created.")
+    updated_at: datetime | None = Field(
+        default=None,
+        description=(
+            "UTC timestamp of the last edit, or null if the RepSpec has never been "
+            "edited. Never backfilled from created_at."
+        ),
+    )

@@ -1145,6 +1145,19 @@
             "description": "RepSpec envelope schema version; always 1 in the current implementation.",
             "title": "Schema Version",
             "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "UTC timestamp of the last edit, or null if the RepSpec has never been edited. Never backfilled from created_at.",
+            "title": "Updated At"
           }
         },
         "required": [
@@ -1156,6 +1169,41 @@
           "created_at"
         ],
         "title": "RepSpecOut",
+        "type": "object"
+      },
+      "RepSpecPatch": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH /rep-specs/{rep_spec_id}.\n\nBoth fields are optional; omitted fields are left untouched. ``provider`` is\nabsent by design \u2014 it is frozen for the life of the RepSpec, and supplying a\n``document`` whose ``provider`` differs from the stored one is a 422.\n\n``document`` is a whole-document *replacement*, not a merge patch: merge\nsemantics cannot express key removal, which would make ``object_options``\nentries unremovable under the envelope's ``additionalProperties: false``.",
+        "properties": {
+          "document": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Replacement RepSpec envelope document. Accepted only while the RepSpec is a draft (zero assignment rows, active or deactivated); otherwise 409. Validated exactly as on create.",
+            "title": "Document"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New operator-friendly label. Editable regardless of assignment state.",
+            "title": "Name"
+          }
+        },
+        "title": "RepSpecPatch",
         "type": "object"
       },
       "ResolveRepFieldsRequest": {
@@ -1561,7 +1609,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.2.3"
+    "version": "4.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -4156,6 +4204,122 @@
           }
         ],
         "summary": "Get Rep Spec",
+        "tags": [
+          "rep-specs"
+        ]
+      },
+      "patch": {
+        "description": "Update a RepSpec's name and/or document under the tiered contract.\n\n``name`` is accepted regardless of assignment state. ``document`` is a\nwhole-document replacement accepted only while the RepSpec is a draft.\nOmitting both fields is a no-op and does not stamp ``updated_at``.\n\nError responses:\n- 404 ``lookup``: RepSpec not found\n- 409 ``conflict``: document edit on an assigned RepSpec; ``data.assignment_count``\n  carries the number of assignment rows (active + deactivated) blocking it\n- 422 ``schema``: document failed validation, or attempted a provider change",
+        "operationId": "patch_rep_spec_api_v1_rep_specs__rep_spec_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rep_spec_id",
+            "required": true,
+            "schema": {
+              "title": "Rep Spec Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepSpecPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepSpecOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Patch Rep Spec",
         "tags": [
           "rep-specs"
         ]

@@ -1,8 +1,11 @@
-"""respx-mocked tests for ArchiverClient.{create,get,list}_rep_spec wrappers."""
+"""respx-mocked tests for ArchiverClient.{create,get,list,update}_rep_spec wrappers."""
+
+import json
 
 import httpx
 import pytest
 import respx
+from archiver_client.errors import Conflict, NotFound, ValidationError
 
 BASE_URL = "http://archiver.test"
 _TS = "2026-05-11T00:00:00Z"
@@ -74,3 +77,94 @@ async def test_list_rep_specs_with_provider_filter(client):
     assert sent.params.get("provider") == "gcs"
     assert sent.params.get("limit") == "10"
     assert sent.params.get("offset") == "0"
+
+
+# ---------------------------------------------------------------------------
+# update_rep_spec (archiver#83)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_rep_spec_sends_name_only(client):
+    rid = "01HZZ00000000000000000000R"
+    with respx.mock:
+        route = respx.patch(f"{BASE_URL}/api/v1/rep-specs/{rid}").mock(
+            return_value=httpx.Response(200, json=_rep_spec_payload(rid) | {"name": "renamed"})
+        )
+        out = await client.update_rep_spec(rid, name="renamed")
+
+    body = json.loads(route.calls[0].request.content)
+    assert body == {"name": "renamed"}  # document omitted, not sent as null
+    assert out.name == "renamed"
+
+
+@pytest.mark.asyncio
+async def test_update_rep_spec_sends_document(client):
+    rid = "01HZZ00000000000000000000R"
+    new_doc = _gcs_doc() | {"path_template": "corrected/{info_item.slug}.html"}
+    with respx.mock:
+        route = respx.patch(f"{BASE_URL}/api/v1/rep-specs/{rid}").mock(
+            return_value=httpx.Response(200, json=_rep_spec_payload(rid) | {"document": new_doc})
+        )
+        out = await client.update_rep_spec(rid, document=new_doc)
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["document"]["path_template"] == "corrected/{info_item.slug}.html"
+    assert "name" not in body
+    assert out.document.to_dict()["path_template"] == "corrected/{info_item.slug}.html"
+
+
+@pytest.mark.asyncio
+async def test_update_rep_spec_conflict_on_assigned_spec(client):
+    """409 carries the assignment count that blocked the edit."""
+    rid = "01HZZ00000000000000000000R"
+    with respx.mock:
+        respx.patch(f"{BASE_URL}/api/v1/rep-specs/{rid}").mock(
+            return_value=httpx.Response(
+                409,
+                json={
+                    "detail": {
+                        "kind": "conflict",
+                        "message": "RepSpec document is frozen once assigned",
+                        "data": {"rep_spec_id": rid, "assignment_count": 3},
+                    }
+                },
+            )
+        )
+        with pytest.raises(Conflict) as exc:
+            await client.update_rep_spec(rid, document=_gcs_doc())
+
+    assert exc.value.data["assignment_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_update_rep_spec_validation_error_on_provider_change(client):
+    rid = "01HZZ00000000000000000000R"
+    with respx.mock:
+        respx.patch(f"{BASE_URL}/api/v1/rep-specs/{rid}").mock(
+            return_value=httpx.Response(
+                422,
+                json={
+                    "detail": {
+                        "kind": "schema",
+                        "message": "invalid rep_spec",
+                        "errors": [{"path": "/provider", "message": "provider is immutable"}],
+                    }
+                },
+            )
+        )
+        with pytest.raises(ValidationError):
+            await client.update_rep_spec(rid, document=_gcs_doc() | {"provider": "gdrive"})
+
+
+@pytest.mark.asyncio
+async def test_update_rep_spec_not_found(client):
+    rid = "01HZZ00000000000000000000R"
+    with respx.mock:
+        respx.patch(f"{BASE_URL}/api/v1/rep-specs/{rid}").mock(
+            return_value=httpx.Response(
+                404, json={"detail": {"kind": "lookup", "message": "RepSpec not found"}}
+            )
+        )
+        with pytest.raises(NotFound):
+            await client.update_rep_spec(rid, name="x")

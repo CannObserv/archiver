@@ -18,6 +18,14 @@ from src.core.models import (
     RepSpec,
 )
 from src.core.tools.create_rep_spec import InvalidRepSpecError, create_rep_spec
+from src.core.tools.update_rep_spec import (
+    InvalidRepSpecError as UpdateInvalidRepSpecError,
+)
+from src.core.tools.update_rep_spec import (
+    RepSpecNotDraftError,
+    assignment_count,
+    update_rep_spec,
+)
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
@@ -67,6 +75,33 @@ async def _load_active_assignments(
         )
         items_by_id = {i.info_item_id: i for i in item_rows}
     return assignment_rows, items_by_id
+
+
+async def _document_card_context(
+    spec: RepSpec,
+    session: AsyncSession,
+    *,
+    doc_error: str | None = None,
+    doc_input: str | None = None,
+    swapped: bool = False,
+) -> dict:
+    """Context for ``rep_specs/_document_card.html``.
+
+    ``is_draft`` gates the editor. It counts *all* assignment rows, not just
+    active ones — ``_load_active_assignments`` filters to ``deactivated_at IS
+    NULL`` and is deliberately not reused here, since a deactivated assignment
+    still means a replication run happened under this document (archiver#83).
+    """
+    count = await assignment_count(session, spec.rep_spec_id)
+    return {
+        "spec": spec,
+        "doc_json": json.dumps(spec.document, indent=2),
+        "doc_input": doc_input,
+        "doc_error": doc_error,
+        "assignment_count": count,
+        "is_draft": count == 0,
+        "swapped": swapped,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +219,7 @@ async def detail_rep_spec(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Detail: provider, name, document JSON, active assignments."""
+    """Detail: provider, name, document (editable while draft), active assignments."""
     spec = await _resolve_spec(spec_id, session)
     assignment_rows, items_by_id = await _load_active_assignments(spec, session)
 
@@ -196,7 +231,7 @@ async def detail_rep_spec(
             "spec": spec,
             "assignments": assignment_rows,
             "items_by_id": items_by_id,
-            "doc_json": json.dumps(spec.document, indent=2),
+            **await _document_card_context(spec, session),
         },
     )
 
@@ -204,6 +239,78 @@ async def detail_rep_spec(
 # ---------------------------------------------------------------------------
 # DELETE /dashboard/rep-specs/{id}/assignments/{aid}
 # ---------------------------------------------------------------------------
+
+
+@router.post("/{spec_id}/document")
+async def update_rep_spec_document_view(
+    spec_id: str,
+    request: Request,
+    document: str = Form(default=""),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Replace the document on a draft RepSpec.
+
+    HTMX requests get the re-rendered ``_document_card.html`` partial swapped in
+    place: success carries an ``HX-Trigger: showFlash`` toast; any rejection
+    swaps the card back with an inline error (status 200 so htmx performs the
+    swap) that is announced (``role="alert"``), moves focus to the heading, and
+    preserves the operator's submitted text. Non-HTMX requests keep the plain
+    full-page POST→303 (success) / 422 re-render (error) fallback. See
+    docs/UI.md Detail Screen Conventions.
+
+    A spec that has acquired an assignment since the page was rendered is
+    rejected here as well as in the template gate — the editor can be stale.
+    """
+    spec = await _resolve_spec(spec_id, session)
+    is_htmx = bool(request.headers.get("HX-Request"))
+
+    async def _rerender(error: str) -> HTMLResponse:
+        ctx = await _document_card_context(
+            spec, session, doc_error=error, doc_input=document, swapped=True
+        )
+        if is_htmx:
+            # 200 so htmx swaps the card; the inline error stays visible.
+            return _templates.TemplateResponse(request, "rep_specs/_document_card.html", ctx)
+        assignment_rows, items_by_id = await _load_active_assignments(spec, session)
+        return _templates.TemplateResponse(
+            request,
+            "rep_specs/detail.html",
+            {"user": user, "assignments": assignment_rows, "items_by_id": items_by_id, **ctx},
+            status_code=422,
+        )
+
+    try:
+        doc = json.loads(document) if document.strip() else None
+        if not isinstance(doc, dict):
+            raise ValueError("not an object")
+    except (json.JSONDecodeError, ValueError):
+        return await _rerender("document must be a JSON object")
+
+    try:
+        await update_rep_spec(session, rep_spec_id=spec.rep_spec_id, document=doc)
+    except RepSpecNotDraftError as e:
+        return await _rerender(str(e))
+    except UpdateInvalidRepSpecError as e:
+        return await _rerender(
+            "; ".join(err.get("message", "") for err in e.errors) if e.errors else str(e)
+        )
+
+    await session.commit()
+
+    if is_htmx:
+        await session.refresh(spec)
+        response = _templates.TemplateResponse(
+            request,
+            "rep_specs/_document_card.html",
+            await _document_card_context(spec, session, swapped=True),
+        )
+        response.headers["HX-Trigger"] = json.dumps(
+            {"showFlash": {"level": "success", "body": "Document updated."}}
+        )
+        return response
+
+    return RedirectResponse(url=f"/dashboard/rep-specs/{spec_id}", status_code=303)
 
 
 @router.delete("/{spec_id}/assignments/{aid}", response_class=HTMLResponse)
