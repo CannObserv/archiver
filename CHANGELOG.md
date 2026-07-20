@@ -20,7 +20,15 @@ service-only patch does not require an SDK bump.
 
 ## v4.2.3 (2026-07-19)
 
-[service] **List routes reject offsets beyond int64 with 422 instead of 500** (archiver#88).
+[sdk] **SDK v4.2.0 — generated tree regenerated (gains `/domains`), typed Domain methods, drift-gated** (archiver#92, 2026-07-20).
+
+The committed `generated/` tree was stale (pre-v4.1: no `api/domains` module, no `DomainOut`/`PageDomainOut`, untyped `/health`). Regenerated from the current 27-path dashboard-pruned spec; a committed `clients/python/archiver-openapi.json` snapshot is now the contract-of-record (mirrors the watcher pattern), `regen.sh` refreshes snapshot + tree in lockstep, and the CI `client-drift` job now also gates `archiver` via `scripts/check_client_drift.py`.
+
+SDK surface changes (4.1.0 → 4.2.0):
+- `list_domains` returns `PageDomainOut`; `get_domain`, `upsert_domain`, `archive_domain`, `restore_domain` return `DomainOut` (previously raw dicts). `delete_domain` still returns `None`. Call signatures unchanged; `upsert_domain` keeps omit-on-`None` PATCH semantics.
+- `list_info_sources` gains a `domain_name=` filter kwarg (additive).
+- `InfoSourceOut.source_specs` (and the other spec-list response fields) now hold typed item models instead of plain dicts — use `.to_dict()` to recover the dict form. Inputs still accept plain dicts.
+- `archiver_client.__version__` fixed — it was left at `4.0.0` by the 4.1.0 bump (the existing `test_version.py` guard now passes).
 
 `GET /api/v1/domains`, `/info-items`, `/info-sources`, and `/rep-specs` declared `offset` with `ge=0` but no ceiling, so a value beyond `2**63 - 1` reached SQL as `OFFSET $2::BIGINT` and asyncpg raised `DataError`, surfacing as a 500. All four routes now declare `le=2**63 - 1`, so FastAPI returns a 422 validation error. Offsets up to and including `2**63 - 1` remain accepted. Consistent with the existing convention: the API 422s on out-of-range pagination params where the dashboard clamps (see `docs/UI.md`).
 
