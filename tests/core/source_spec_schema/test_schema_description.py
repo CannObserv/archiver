@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+from src.core.source_spec_schema.validator import validate_source_spec
+
 SCHEMA = json.loads(
     (Path(__file__).resolve().parents[3] / "src/core/source_spec_schema/v1.json").read_text()
 )
@@ -20,8 +22,6 @@ def test_top_level_description_states_cascade_contract():
 
 def test_existing_extraction_validation_still_works():
     """Top-level description must not break existing schema validation."""
-    from src.core.source_spec_schema.validator import validate_source_spec
-
     ok, errs = validate_source_spec(
         {
             "schema_version": 1,

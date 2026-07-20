@@ -284,8 +284,6 @@ async def test_archive_domain_via_dashboard(client, session):
 
 @pytest.mark.asyncio
 async def test_restore_domain_via_dashboard(client, session):
-    from datetime import UTC, datetime
-
     domain = _make_domain("restore-dash.example.com", archived_at=datetime.now(UTC))
     session.add(domain)
     await session.flush()

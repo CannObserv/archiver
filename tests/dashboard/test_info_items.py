@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
+from ulid import ULID
 
 from src.core.models import (
     InfoItem,
@@ -15,6 +16,7 @@ from src.core.models import (
     RepSpec,
     SourceRevision,
 )
+from src.core.models.domain import Domain
 
 _HEADERS = {"X-ExeDev-UserID": "ext-items", "X-ExeDev-Email": "items@example.com"}
 _LIST_URL = "/dashboard/info-items/"
@@ -188,8 +190,6 @@ async def test_list_primary_source_links_to_info_source_detail(client, session):
 
 @pytest.mark.asyncio
 async def test_list_observed_shows_captured_at_for_primary_source(client, session):
-    from datetime import UTC, datetime
-
     item = _make_item("Observed Item")
     session.add(item)
     await session.flush()
@@ -341,8 +341,6 @@ async def test_detail_unauthenticated_redirects(client, session):
 
 @pytest.mark.asyncio
 async def test_detail_not_found_returns_404(client):
-    from ulid import ULID
-
     fake_id = str(ULID())
     r = await client.get(f"/dashboard/info-items/{fake_id}", headers=_HEADERS)
     assert r.status_code == 404
@@ -478,8 +476,6 @@ async def test_detail_shows_active_source_binding(client, session):
 
 @pytest.mark.asyncio
 async def test_detail_shows_active_rep_spec_assignment(client, session):
-    from datetime import UTC, datetime
-
     item = _make_item("Rep Spec Item")
     session.add(item)
     await session.flush()
@@ -532,8 +528,6 @@ async def test_bind_source_creates_binding(client, session):
 
 @pytest.mark.asyncio
 async def test_bind_source_unknown_item_returns_404(client):
-    from ulid import ULID
-
     fake_id = str(ULID())
     r = await client.post(
         f"/dashboard/info-items/{fake_id}/bind-source",
@@ -606,8 +600,6 @@ async def test_assign_rep_spec_creates_assignment(client, session):
 
 @pytest.mark.asyncio
 async def test_assign_rep_spec_unknown_item_returns_404(client):
-    from ulid import ULID
-
     fake_id = str(ULID())
     r = await client.post(
         f"/dashboard/info-items/{fake_id}/assign-rep-spec",
@@ -625,8 +617,6 @@ async def test_assign_rep_spec_unknown_item_returns_404(client):
 
 @pytest.mark.asyncio
 async def test_deactivate_rep_spec_assignment(client, session):
-    from datetime import UTC, datetime
-
     item = _make_item("Deact RS Item")
     session.add(item)
     await session.flush()
@@ -709,8 +699,6 @@ async def test_deactivate_one_of_several_rerenders_remaining(client, session):
 
 @pytest.mark.asyncio
 async def test_set_public_url_returns_fragment(client, session):
-    from datetime import UTC, datetime
-
     item = _make_item("Pub URL Item")
     session.add(item)
     await session.flush()
@@ -745,8 +733,6 @@ async def test_set_public_url_returns_fragment(client, session):
 
 @pytest.mark.asyncio
 async def test_bind_revision_creates_binding(client, session):
-    from datetime import UTC, datetime
-
     item = _make_item("Rev Bind Item")
     session.add(item)
     await session.flush()
@@ -935,8 +921,6 @@ async def test_suggest_rep_fields_no_domain_returns_empty(client, session):
 @pytest.mark.asyncio
 async def test_suggest_rep_fields_returns_domain_keys(client, session):
     """Domain-scoped rep_fields keys appear as sortableChips data island."""
-    from src.core.models.domain import Domain
-
     domain = Domain(name="repfields.example.com")
     session.add(domain)
     await session.flush()

@@ -370,7 +370,11 @@ Entry points only: call `configure_logging()` once.
 **Date & Time:** All UTC. ISO 8601: `YYYY-MM-DDTHH:MM:SS.ffffffZ` (timestamps), `YYYY-MM-DD` (dates).
 
 **General:**
-- No inline module imports; all at file top
+- No inline module imports; all at file top — `src/`, `tests/`, `scripts/`, and
+  `alembic/` alike. Ruff `PLC0415` enforces this in CI (archiver#97); `if
+  TYPE_CHECKING:` guards are module-level and pass. The vendored SDKs under
+  `clients/` resolve their own `[tool.ruff]` config and are exempt — their
+  generated code imports lazily to dodge circular imports.
 - Docstrings for public modules, classes, functions
 - Test structure mirrors source (`src/foo.py` → `tests/test_foo.py`)
 - Explicit imports only

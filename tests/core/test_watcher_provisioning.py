@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from watcher_client import WatchedItemResponse
+from watcher_client.errors import WatcherConflict, WatcherResponseError
 
+import src.core.watcher_provisioning as wp
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.watcher_provisioning import (
     WatcherSyncOutcome,
@@ -158,8 +160,6 @@ async def test_provision_on_create_contract_error_on_unparseable_response(sessio
     """A WatcherResponseError (SDK can't parse the response — contract drift) is
     classified CONTRACT_ERROR, distinct from a transport outage's FAILED, so the
     dashboard can flash accurate, non-'try again' guidance."""
-    from watcher_client.errors import WatcherResponseError
-
     item = InfoItem(name="test item")
     src = InfoSource(url="https://example.com/", source_specs=[])
     session.add(item)
@@ -178,8 +178,6 @@ async def test_provision_on_create_contract_error_on_unparseable_response(sessio
 @pytest.mark.asyncio
 async def test_sync_on_source_swap_contract_error_on_unparseable_response(session):
     """sync_on_source_swap also maps WatcherResponseError → CONTRACT_ERROR."""
-    from watcher_client.errors import WatcherResponseError
-
     item = InfoItem(name="test item", watcher_item_id=_WI_ID)
     src = InfoSource(url="https://example.com/new", source_specs=[])
     session.add(item)
@@ -202,8 +200,6 @@ async def test_provision_on_create_adopts_existing_on_conflict(session):
     InfoItem's watcher_item_id is NULL (e.g. a pre-#55 item). Provisioning 409s;
     we recover by looking up the existing WatchedItem and adopting its ID.
     """
-    from watcher_client.errors import WatcherConflict
-
     item = InfoItem(name="desynced item", watcher_item_id=None)
     src = InfoSource(url="https://example.com/", source_specs=[])
     session.add(item)
@@ -224,8 +220,6 @@ async def test_provision_on_create_adopts_existing_on_conflict(session):
 @pytest.mark.asyncio
 async def test_provision_on_create_conflict_without_existing_is_failed(session):
     """409 but lookup finds nothing → genuine failure (don't pretend success)."""
-    from watcher_client.errors import WatcherConflict
-
     item = InfoItem(name="conflict-no-existing", watcher_item_id=None)
     src = InfoSource(url="https://example.com/", source_specs=[])
     session.add(item)
@@ -382,10 +376,6 @@ async def test_sync_on_spec_update_contract_error_logs_stale_sdk(session, monkey
     Spies the module logger rather than using caplog: configure_logging() replaces
     root.handlers, which defeats pytest's capture handler.
     """
-    from watcher_client.errors import WatcherResponseError
-
-    import src.core.watcher_provisioning as wp
-
     item = InfoItem(name="test", watcher_item_id=_WI_ID)
     src = InfoSource(url="https://example.com/", source_specs=[])
     session.add(item)

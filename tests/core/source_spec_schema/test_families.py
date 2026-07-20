@@ -1,5 +1,8 @@
 """Tests for the algorithm-family taxonomy."""
 
+import json
+from pathlib import Path
+
 import pytest
 
 from src.core.source_spec_schema.families import (
@@ -33,9 +36,6 @@ def test_taxonomy_covers_every_algorithm_in_the_schema():
     without classifying it here would make bind_info_source raise
     UnknownAlgorithmError on every fragment binding using it.
     """
-    import json
-    from pathlib import Path
-
     schema = json.loads(
         (Path(__file__).resolve().parents[3] / "src/core/source_spec_schema/v1.json").read_text()
     )

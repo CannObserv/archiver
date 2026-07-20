@@ -12,7 +12,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from watcher_client import WatchedItemResponse
+from watcher_client import WatchedItemResponse, WatcherError
+from watcher_client.errors import WatcherConflict, WatcherResponseError
 
 from src.api.deps import get_watcher_client
 from src.api.main import app
@@ -234,8 +235,6 @@ async def test_watcher_status_unknown(client, session):
 
 @pytest.mark.asyncio
 async def test_watcher_status_degraded(client, session):
-    from watcher_client import WatcherError
-
     watcher = MagicMock()
     watcher.get_watched_item = AsyncMock(side_effect=WatcherError("timeout"))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
@@ -302,8 +301,6 @@ async def test_check_now_not_watching(client, session):
 
 @pytest.mark.asyncio
 async def test_check_now_watcher_error(client, session):
-    from watcher_client import WatcherError
-
     watcher = MagicMock()
     watcher.check_now = AsyncMock(side_effect=WatcherError("failed"))
     watcher.get_watched_item = AsyncMock(side_effect=WatcherError("failed"))
@@ -327,8 +324,6 @@ async def test_check_now_contract_error_flashes_stale_not_unavailable(client, se
     """A WatcherResponseError (stale SDK / response drift) must flash an honest
     'out of date' message, not 'unavailable. Try again shortly' — retrying a
     contract mismatch never helps."""
-    from watcher_client.errors import WatcherResponseError
-
     watcher = MagicMock()
     watcher.check_now = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
     watcher.get_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
@@ -353,8 +348,6 @@ async def test_check_now_contract_error_flashes_stale_not_unavailable(client, se
 async def test_check_now_conflict_flashes_paused_message(client, session):
     # check-now on a paused item → Watcher 409; flash the paused-specific reason,
     # not a generic "unavailable".
-    from watcher_client.errors import WatcherConflict
-
     watcher = MagicMock()
     watcher.check_now = AsyncMock(side_effect=WatcherConflict("paused"))
     watcher.get_watched_item = AsyncMock(return_value=_wi("ok", is_active=False))
@@ -377,8 +370,6 @@ async def test_check_now_conflict_flashes_paused_message(client, session):
 @pytest.mark.asyncio
 async def test_check_now_failure_flashes_but_keeps_status(client, session):
     # check_now fails but get_watched_item still works → show current status + error flash.
-    from watcher_client import WatcherError
-
     watcher = MagicMock()
     watcher.check_now = AsyncMock(side_effect=WatcherError("boom"))
     watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
@@ -433,8 +424,6 @@ async def test_begin_watching_provisions_item(client, session):
 async def test_begin_watching_contract_error_flashes_stale_not_unavailable(client, session):
     """provision_on_create returns CONTRACT_ERROR (response drift) → begin-watching
     flashes an honest 'out of date' message, not the transport 'unavailable' copy."""
-    from watcher_client.errors import WatcherResponseError
-
     watcher = _mock_watcher()
     watcher.provision_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
@@ -515,8 +504,6 @@ async def test_begin_watching_adopts_existing_on_conflict(client, session):
     Provisioning 409s; begin-watching must adopt the existing WatchedItem and
     render the watching state rather than staying stuck on "Not watching".
     """
-    from watcher_client.errors import WatcherConflict
-
     watcher = _mock_watcher(_wi("ok"))
     watcher.provision_watched_item = AsyncMock(side_effect=WatcherConflict("already exists"))
     watcher.get_by_info_item_id = AsyncMock(return_value=_wi("ok"))
@@ -586,8 +573,6 @@ async def test_resync_watcher_calls_patch(client, session):
 
 @pytest.mark.asyncio
 async def test_resync_watcher_error(client, session):
-    from watcher_client import WatcherError
-
     watcher = MagicMock()
     watcher.patch_watched_item = AsyncMock(side_effect=WatcherError("patch failed"))
     watcher.get_watched_item = AsyncMock(side_effect=WatcherError("get failed"))
@@ -619,8 +604,6 @@ async def test_resync_watcher_error(client, session):
 async def test_resync_watcher_contract_error_flashes_stale_not_unavailable(client, session):
     """sync_on_source_swap returns CONTRACT_ERROR (response drift) → resync flashes
     an honest 'out of date' message, not the transport 'unavailable' copy."""
-    from watcher_client.errors import WatcherResponseError
-
     watcher = MagicMock()
     watcher.patch_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
     watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
@@ -710,8 +693,6 @@ async def test_begin_watching_triggers_watcher_updated(client, session):
 async def test_begin_watching_failure_flashes_error(client, session):
     # provision_watched_item fails (swallowed by helper) but the item still has
     # no watcher_item_id → surface an error flash instead of a silent success.
-    from watcher_client import WatcherError
-
     watcher = _mock_watcher(_wi("unknown", last_checked_at=None))
     watcher.provision_watched_item = AsyncMock(side_effect=WatcherError("boom"))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
@@ -787,8 +768,6 @@ async def test_begin_watching_no_primary_source_flashes_error(client, session):
 async def test_resync_watcher_failure_flashes_error(client, session):
     # patch fails (swallowed by helper) but get_watched_item still works → the
     # status partial would look healthy; surface the action failure as a flash.
-    from watcher_client import WatcherError
-
     watcher = _mock_watcher(_wi("ok"))
     watcher.patch_watched_item = AsyncMock(side_effect=WatcherError("boom"))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
@@ -940,8 +919,6 @@ async def test_toggle_not_watching_is_noop(client, session):
 @pytest.mark.asyncio
 async def test_toggle_conflict_does_not_crash(client, session):
     # Watcher 409 (e.g. archived item) → re-render, no 500.
-    from watcher_client.errors import WatcherConflict
-
     watcher = MagicMock()
     watcher.patch_watched_item = AsyncMock(side_effect=WatcherConflict("archived"))
     watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
@@ -964,8 +941,6 @@ async def test_toggle_conflict_does_not_crash(client, session):
 async def test_toggle_contract_error_flashes_stale_not_unavailable(client, session):
     """WatcherResponseError (stale SDK / response drift) → honest 'out of date'
     flash, not the transport 'unavailable. Try again shortly.'"""
-    from watcher_client.errors import WatcherResponseError
-
     watcher = MagicMock()
     watcher.patch_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
     watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
@@ -990,8 +965,6 @@ async def test_toggle_contract_error_flashes_stale_not_unavailable(client, sessi
 
 @pytest.mark.asyncio
 async def test_toggle_failure_flashes_error(client, session):
-    from watcher_client import WatcherError
-
     watcher = MagicMock()
     watcher.patch_watched_item = AsyncMock(side_effect=WatcherError("down"))
     watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
