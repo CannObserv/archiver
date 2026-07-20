@@ -47,6 +47,17 @@ CORPUS: list[tuple[str, bool]] = [
     # Escaped slash in the password must not be read as the path.
     ("postgresql://u:p%2Fw@host:5432/archiver", False),
     ("postgresql://u:p%2Fw@host:5432/archiver_test", True),
+    # An '@' inside the query string, on a CREDENTIAL-LESS URL, must not be
+    # mistaken for the credentials delimiter (archiver#99, found in watcher's
+    # CR). The old bash db_name() stripped credentials before the query, so
+    # `#*@` ate through the query's '@' and returned its tail 'b_test' as the
+    # name — bash-accepting a URL that names the production database 'archiver'.
+    ("postgresql://host:5432/archiver?options=endpoint%3Da@b_test", False),
+    # …and the verdict must survive an '@' in the query for a legit test DB too.
+    ("postgresql://host:5432/archiver_test?options=endpoint%3Da@b", True),
+    # A bare non-URL has no scheme: fail closed. The old bash version returned
+    # the string unchanged (no '://' to strip) and accepted it.
+    ("archiver_test", False),
     # Unparseable — both must fail closed.
     ("not-a-url", False),
 ]
