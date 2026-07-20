@@ -18,7 +18,13 @@
 # main — the env path via PRE_COMMIT_REMOTE_BRANCH, the stdin path via the
 # remote ref field.
 #
-# Bypass with `git push --no-verify` if the push is genuinely internal-only.
+# There is no clean local bypass: CI's `changelog` job re-runs this same
+# check remotely — on the PR, and on the merge push to main (where it
+# resolves the merged PR's labels via the commits/{sha}/pulls API). The
+# legitimate escape for a genuinely internal change that touches a
+# contract-visible path is a PR carrying the `no-changelog` label.
+# `git push --no-verify` on a direct push to main only defers the failure
+# to CI.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,7 +54,10 @@ Range: $range
 Trigger paths matched (alembic/versions/, src/api/routes/, src/api/schemas/, clients/python/):
 $(printf '%s\n' "$changed_files" | grep -E "$CHANGELOG_TRIGGER_RE" | sed 's/^/  /')
 
-Update CHANGELOG.md, or push with --no-verify if this is genuinely internal.
+Update CHANGELOG.md. If this change is genuinely internal, land it via a PR
+carrying the 'no-changelog' label instead — CI re-runs this same check on
+the PR and on the merge push to main, so bypassing locally with --no-verify
+on a direct push only defers the failure to CI.
 EOF
     exit 1
   fi

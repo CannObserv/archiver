@@ -134,6 +134,13 @@ jobs:
   changelog:
     name: changelog
     runs-on: ubuntu-latest
+    # pull-requests: read — the push branch resolves the merged PR's labels
+    # via the commits/{sha}/pulls API so a `no-changelog` opt-out survives
+    # the merge (archiver#91). Job-level grant; the workflow default is
+    # contents-only.
+    permissions:
+      contents: read
+      pull-requests: read
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -150,6 +157,8 @@ jobs:
           PR_HAS_OPT_OUT: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           PUSH_AFTER_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # Path-based trigger — mirrors scripts/check_changelog_lib.sh CHANGELOG_TRIGGER_RE.
@@ -176,6 +185,24 @@ jobs:
               echo "no prior SHA on push (initial or force-with-lease edge); skipping"
               exit 0
             fi
+
+            # A labelled PR's `no-changelog` opt-out must survive the merge:
+            # this push run has no label in the event payload, so resolve the
+            # PR whose merge produced the pushed commit (merge, squash, and
+            # rebase merges all leave merge_commit_sha == the pushed head) and
+            # skip when it carries the label. No associated PR (direct push to
+            # main) → empty label list → fall through to the path check,
+            # preserving today's strictness. Fail OPEN on API errors: the
+            # trailing `|| true` swallows any gh/jq failure so a network
+            # hiccup degrades to the plain path check, never a crashed job.
+            pr_labels="$(gh api "repos/${REPO}/commits/${head}/pulls" 2>/dev/null \
+              | jq -r --arg sha "$head" \
+                  '.[] | select(.merge_commit_sha == $sha) | .labels[].name' \
+              || true)"
+            if printf '%s\n' "$pr_labels" | grep -qx 'no-changelog'; then
+              echo "merged PR carries the no-changelog label; skipping"
+              exit 0
+            fi
           fi
 
           changed_files="$(git diff --name-only "$base" "$head")"
@@ -186,7 +213,8 @@ jobs:
               echo "Matched trigger paths:"
               printf '%s\n' "$changed_files" | grep -E "$TRIGGER_RE" | sed 's/^/  /'
               echo
-              echo "Update CHANGELOG.md, or apply the 'no-changelog' label (PR only)."
+              echo "Update CHANGELOG.md, or apply the 'no-changelog' label to the PR"
+              echo "(honored on the PR run and, via commit->PR lookup, on the merge push)."
               exit 1
             fi
           fi
