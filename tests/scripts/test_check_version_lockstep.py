@@ -101,6 +101,32 @@ def test_check_fails_when_changelog_has_no_version_heading(tmp_path: Path, capsy
     assert "CHANGELOG.md" in capsys.readouterr().err
 
 
+def test_check_fails_cleanly_when_changelog_file_is_missing(tmp_path: Path, capsys):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "archiver"\nversion = "1.0.0"\n')
+    assert mod.check(tmp_path) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("version lockstep FAIL:")
+    assert "CHANGELOG.md" in err
+
+
+def test_check_fails_cleanly_when_pyproject_lacks_version(tmp_path: Path, capsys):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "archiver"\n')
+    (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n## v1.0.0 (2026-07-19)\n")
+    assert mod.check(tmp_path) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("version lockstep FAIL:")
+    assert "pyproject.toml" in err
+
+
+def test_check_fails_cleanly_on_invalid_toml(tmp_path: Path, capsys):
+    (tmp_path / "pyproject.toml").write_text("[project\nnot toml")
+    (tmp_path / "CHANGELOG.md").write_text("## v1.0.0\n")
+    assert mod.check(tmp_path) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("version lockstep FAIL:")
+    assert "pyproject.toml" in err
+
+
 def test_real_repo_is_in_lockstep():
     """The repo itself must satisfy its own gate (self-consistency for #85)."""
     repo_root = Path(__file__).resolve().parents[2]

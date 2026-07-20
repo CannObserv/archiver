@@ -53,8 +53,23 @@ def check(repo_root: Path) -> int:
     pyproject_path = repo_root / "pyproject.toml"
     changelog_path = repo_root / "CHANGELOG.md"
 
-    project_version = pyproject_version(pyproject_path)
-    changelog_version = newest_changelog_version(changelog_path.read_text())
+    try:
+        project_version = pyproject_version(pyproject_path)
+    except (OSError, KeyError, tomllib.TOMLDecodeError) as e:
+        print(
+            f"version lockstep FAIL: cannot read [project].version from {pyproject_path}: {e!r}",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        changelog_version = newest_changelog_version(changelog_path.read_text())
+    except OSError as e:
+        print(
+            f"version lockstep FAIL: cannot read {changelog_path}: {e!r}",
+            file=sys.stderr,
+        )
+        return 1
 
     if changelog_version is None:
         print(
