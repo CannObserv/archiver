@@ -162,3 +162,31 @@ async def client(test_engine, session) -> AsyncGenerator[AsyncClient]:
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def committed_rows(test_engine) -> AsyncGenerator[list]:
+    """Track rows a test really COMMITs, and delete them on teardown.
+
+    Nearly every test runs inside the SAVEPOINT-scoped ``session`` fixture and
+    rolls back automatically. A few can't — row-lock behaviour is only
+    observable across independent connections, which means real commits. Those
+    rows are visible to every other test in the run, and several assert exact
+    page sizes over global listings (see tests/api/test_rep_specs.py pagination
+    tests), so a leak surfaces as a confusing failure in an unrelated module.
+
+    Usage: append ``(Model, primary_key)`` pairs as you commit them. Deletion is
+    LIFO so children go before parents.
+    """
+    tracked: list = []
+    yield tracked
+
+    if not tracked:
+        return
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        for model, pk in reversed(tracked):
+            obj = await s.get(model, pk)
+            if obj is not None:
+                await s.delete(obj)
+        await s.commit()

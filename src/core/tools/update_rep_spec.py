@@ -104,11 +104,14 @@ async def update_rep_spec(
     Raises ``RepSpecNotFoundError``, ``InvalidRepSpecError``, or
     ``RepSpecNotDraftError``.
     """
-    # FOR UPDATE: the draft gate below is a read-then-write, and assign_rep_spec
-    # takes the same lock. Without it, under READ COMMITTED an assignment can be
-    # inserted between the count and the commit, landing a rewritten document on
-    # an assigned spec — the exact corruption the tiered contract prevents.
-    spec = await db.get(RepSpec, rep_spec_id, with_for_update=True)
+    # FOR UPDATE only when a document edit is actually requested: that is the
+    # path with the read-then-write draft gate below, and assign_rep_spec /
+    # lock_rep_specs take the same lock. Without it, under READ COMMITTED an
+    # assignment can be inserted between the count and the commit, landing a
+    # rewritten document on an assigned spec — the exact corruption the tiered
+    # contract prevents. A name-only edit consults no gate, so it does not need
+    # to serialize against assignments.
+    spec = await db.get(RepSpec, rep_spec_id, with_for_update=document is not None)
     if spec is None:
         raise RepSpecNotFoundError(str(rep_spec_id))
 

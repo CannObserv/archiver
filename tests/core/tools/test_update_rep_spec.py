@@ -13,11 +13,15 @@ docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md):
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
+from src.core.tools.assign_rep_spec import assign_rep_spec, lock_rep_specs
 from src.core.tools.create_rep_spec import create_rep_spec
 from src.core.tools.update_rep_spec import (
     InvalidRepSpecError,
@@ -231,8 +235,6 @@ async def test_invalid_document_does_not_mutate_the_row(session):
 
 @pytest.mark.asyncio
 async def test_raises_not_found_for_unknown_id(session):
-    from ulid import ULID
-
     with pytest.raises(RepSpecNotFoundError):
         await update_rep_spec(session, rep_spec_id=ULID(), name="x")
 
@@ -286,7 +288,9 @@ async def test_updated_at_not_stamped_on_no_op(session):
 
 
 @pytest.mark.asyncio
-async def test_document_edit_and_assignment_serialize_on_the_rep_spec_row(test_engine):
+async def test_document_edit_and_assignment_serialize_on_the_rep_spec_row(
+    test_engine, committed_rows
+):
     """A concurrent assignment must not slip past the draft gate.
 
     Without row locking both writers read a stale view under READ COMMITTED: the
@@ -298,13 +302,6 @@ async def test_document_edit_and_assignment_serialize_on_the_rep_spec_row(test_e
     Uses real independent transactions (not the SAVEPOINT-scoped ``session``
     fixture) because row locks are only observable across separate connections.
     """
-    import asyncio
-
-    from sqlalchemy import delete
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    from src.core.tools.assign_rep_spec import assign_rep_spec
-
     make_session = async_sessionmaker(test_engine, expire_on_commit=False)
 
     async with make_session() as setup:
@@ -316,30 +313,70 @@ async def test_document_edit_and_assignment_serialize_on_the_rep_spec_row(test_e
         setup.add(item)
         await setup.commit()
         spec_id, item_id = spec.rep_spec_id, item.info_item_id
+        committed_rows += [(RepSpec, spec_id), (InfoItem, item_id)]
 
-    try:
-        async with make_session() as editor, make_session() as assigner:
-            # Editor grabs the row lock and holds it — no commit yet.
-            await update_rep_spec(
-                editor,
-                rep_spec_id=spec_id,
-                document=_gcs_doc() | {"path_template": "edited/{info_item.slug}"},
-            )
+    async with make_session() as editor, make_session() as assigner:
+        # Editor grabs the row lock and holds it — no commit yet.
+        await update_rep_spec(
+            editor,
+            rep_spec_id=spec_id,
+            document=_gcs_doc() | {"path_template": "edited/{info_item.slug}"},
+        )
 
-            task = asyncio.create_task(
-                assign_rep_spec(assigner, info_item_id=item_id, rep_spec_id=spec_id)
-            )
-            done, _ = await asyncio.wait({task}, timeout=1.0)
-            assert not done, "assignment proceeded while the document edit held the row lock"
+        task = asyncio.create_task(
+            assign_rep_spec(assigner, info_item_id=item_id, rep_spec_id=spec_id)
+        )
+        done, _ = await asyncio.wait({task}, timeout=1.0)
+        assert not done, "assignment proceeded while the document edit held the row lock"
 
-            await editor.commit()
-            await asyncio.wait_for(task, timeout=10.0)
-            await assigner.commit()
-    finally:
-        async with make_session() as cleanup:
-            await cleanup.execute(
-                delete(InfoItemRepSpec).where(InfoItemRepSpec.rep_spec_id == spec_id)
-            )
-            await cleanup.execute(delete(InfoItem).where(InfoItem.info_item_id == item_id))
-            await cleanup.execute(delete(RepSpec).where(RepSpec.rep_spec_id == spec_id))
-            await cleanup.commit()
+        await editor.commit()
+        assignment = await asyncio.wait_for(task, timeout=10.0)
+        await assigner.commit()
+        committed_rows.append((InfoItemRepSpec, assignment.id))
+
+
+@pytest.mark.asyncio
+async def test_lock_rep_specs_blocks_a_concurrent_document_edit(test_engine, committed_rows):
+    """The atomic-create path must take the same lock as assign_rep_spec.
+
+    ``POST /info-items`` inserts InfoItemRepSpec rows directly rather than going
+    through ``assign_rep_spec``, so it needs ``lock_rep_specs`` to close the same
+    race (CR round 2, finding 8).
+    """
+    make_session = async_sessionmaker(test_engine, expire_on_commit=False)
+
+    async with make_session() as setup:
+        spec = await create_rep_spec(setup, provider="gcs", name="lock-helper", document=_gcs_doc())
+        await setup.commit()
+        spec_id = spec.rep_spec_id
+        committed_rows.append((RepSpec, spec_id))
+
+    async with make_session() as editor, make_session() as creator:
+        await update_rep_spec(
+            editor,
+            rep_spec_id=spec_id,
+            document=_gcs_doc() | {"path_template": "edited/{info_item.slug}"},
+        )
+
+        task = asyncio.create_task(lock_rep_specs(creator, [str(spec_id)]))
+        done, _ = await asyncio.wait({task}, timeout=1.0)
+        assert not done, "atomic-create lookup proceeded while the edit held the row lock"
+
+        await editor.commit()
+        locked = await asyncio.wait_for(task, timeout=10.0)
+        assert str(spec_id) in locked
+        await creator.rollback()
+
+
+@pytest.mark.asyncio
+async def test_lock_rep_specs_returns_empty_for_no_ids(session):
+    assert await lock_rep_specs(session, []) == {}
+
+
+@pytest.mark.asyncio
+async def test_lock_rep_specs_omits_unknown_ids(session):
+    """Callers detect 404s by absence, so unknown IDs must simply not appear."""
+    spec = await _draft(session, name="known")
+    await session.commit()
+    found = await lock_rep_specs(session, [str(spec.rep_spec_id), "01J0000000000000000000000Z"])
+    assert list(found) == [str(spec.rep_spec_id)]
