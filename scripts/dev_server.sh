@@ -63,14 +63,31 @@ if [[ -z "$DEV_URL" ]]; then
   exit 1
 fi
 
-# db_name <url> — the database name, i.e. the path segment, minus any query
-# string. Strips scheme://credentials@host:port so an escaped slash inside a
-# password cannot be mistaken for the path.
+# db_name <url> — the database name (the path segment), or empty when the input
+# is not a connection URL. Mirrors urlsplit() in src/core/db_safety.py; the
+# ordering here is load-bearing (archiver#99):
+#
+#   1. Require '://'. A bare string like `archiver_test` is not a URL — return
+#      nothing so the caller fails closed, matching urlsplit's scheme check.
+#   2. Strip the query string BEFORE credentials. An '@' can appear inside a
+#      query (e.g. ?options=endpoint%3Da@b); stripping credentials first with
+#      `#*@` would eat through it and return the query tail as the name.
+#   3. Then strip credentials, then host:port.
+#   4. Require a path segment ('/after/host'); without one there is no database
+#      name, so return nothing (matches urlsplit's empty-path -> None).
 db_name() {
-  local url="${1#*://}"      # drop scheme
-  url="${url#*@}"            # drop credentials, if any
-  url="${url#*/}"            # drop host:port, leaving path + query
-  url="${url%%\?*}"          # drop query string
+  local url="$1"
+  case "$url" in
+    *://*) ;;
+    *) return 0 ;;          # not a URL — no name
+  esac
+  url="${url#*://}"         # drop scheme://
+  url="${url%%\?*}"         # drop query string FIRST (may contain '@')
+  url="${url#*@}"           # drop credentials, if any
+  case "$url" in
+    */*) url="${url#*/}" ;; # drop host:port, leaving the path
+    *) return 0 ;;          # no path segment — no name
+  esac
   printf '%s' "$url"
 }
 
