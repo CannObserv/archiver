@@ -68,21 +68,34 @@ def _bash_accepts(url: str) -> bool:
     return result.returncode == 0
 
 
+@pytest.fixture(scope="module")
+def bash_verdicts() -> dict[str, bool]:
+    """One bash invocation per corpus entry, shared by every test below.
+
+    Each call spawns a subprocess, so evaluating the corpus per-test made
+    subprocess spawning the dominant cost of this module and scaled
+    multiplicatively with corpus size.
+    """
+    return {url: _bash_accepts(url) for url, _ in CORPUS}
+
+
 @pytest.mark.parametrize(("url", "accepted"), CORPUS, ids=[c[0] for c in CORPUS])
 def test_python_guard_matches_corpus(url: str, accepted: bool) -> None:
     assert is_non_production_database(url) is accepted
 
 
 @pytest.mark.parametrize(("url", "accepted"), CORPUS, ids=[c[0] for c in CORPUS])
-def test_bash_guard_matches_corpus(url: str, accepted: bool) -> None:
-    assert _bash_accepts(url) is accepted
+def test_bash_guard_matches_corpus(
+    url: str, accepted: bool, bash_verdicts: dict[str, bool]
+) -> None:
+    assert bash_verdicts[url] is accepted
 
 
 @pytest.mark.parametrize("url", [c[0] for c in CORPUS])
-def test_both_implementations_agree(url: str) -> None:
+def test_both_implementations_agree(url: str, bash_verdicts: dict[str, bool]) -> None:
     """The parity assertion itself, independent of the expected column.
 
     If someone changes one implementation and updates CORPUS to match, the two
     tests above still pass. This one fails unless *both* moved together.
     """
-    assert is_non_production_database(url) is _bash_accepts(url)
+    assert is_non_production_database(url) is bash_verdicts[url]

@@ -69,6 +69,12 @@ src/core/                      Domain logic
   simhash.py, extraction_defaults.py, logging.py
                                Mirrored from watcher (see "Mirrored content-acquisition code")
   url_canonicalization.py      Write-time URL normalization for info_sources
+  db_safety.py                 Production-DB startup guard — refuses to serve a
+                               database whose name lacks a _test/_dev suffix
+                               unless ARCHIVER_ALLOW_PRODUCTION_DB=1 (set only
+                               by deploy/archiver.service). Called from the
+                               FastAPI lifespan; mirrored in scripts/dev_server.sh
+                               and kept in step by tests/scripts/test_db_guard_parity.py
 clients/python/                archiver_client SDK v3.x (generated + hand-written wrappers)
 clients/watcher-python/        watcher_client SDK — Archiver adapter for the Watcher service
                                (httpx-based; wraps provision, patch, get, check-now, list-revisions)
@@ -87,7 +93,9 @@ clients/watcher-python/        watcher_client SDK — Archiver adapter for the W
                                opens a regen PR. See deploy/watcher-live-drift.*.
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
-                               (HTTP + DB + bus); tests/api/ for single-route HTTP behavior
+                               (HTTP + DB + bus); tests/api/ for single-route HTTP behavior;
+                               tests/deploy/ asserts the installed systemd unit matches
+                               deploy/ (skips when the unit is absent, so CI passes)
 scripts/                       dump_openapi.py +
                                check_client_drift.py (regen vendored clients from
                                committed OpenAPI snapshots; diff vs generated/;

@@ -50,6 +50,9 @@ def database_name(url: str) -> str | None:
         # password containing an escaped slash cannot be mistaken for a path.
         parts = urlsplit(url)
     except ValueError:
+        # urlsplit raises only for a malformed IPv6 literal (an unclosed
+        # bracket in the netloc). Every other malformed input comes back with
+        # empty parts and is caught by the scheme/netloc check below.
         return None
     # Without a scheme and host this is not a connection URL at all —
     # urlsplit would hand back the whole string as `path`, which would then

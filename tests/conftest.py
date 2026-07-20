@@ -66,17 +66,10 @@ _check_test_url_safety(TEST_DATABASE_URL)
 #
 # DATABASE_URL is cleared because src.core.database falls back to it.
 #
-# This runs at import rather than in a fixture because it must be in place
-# before *any* fixture resolves the URL, and it is deliberately not restored:
-# the value is process-scoped, the process exists only to run this suite, and
-# a restore would hand the production URL back to whatever ran last. Under
-# pytest-xdist each worker is a separate process that imports this module, so
-# every worker gets its own pin.
-#
-# This is the single mechanism managing these two variables. `_run_alembic_upgrade`
-# used to save/restore them independently; with the pin in place that was a
-# no-op wrapped around a no-op, and two mechanisms owning one variable is how
-# they drift.
+# At import rather than in a fixture because it must be in place before *any*
+# fixture resolves the URL, and deliberately never restored — the process
+# exists only to run this suite, and a restore would hand the production URL
+# back. This is the single mechanism managing these two variables.
 os.environ["ARCHIVER_DATABASE_URL"] = TEST_DATABASE_URL
 os.environ.pop("DATABASE_URL", None)
 

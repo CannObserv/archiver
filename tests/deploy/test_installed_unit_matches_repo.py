@@ -24,11 +24,17 @@ REPO_UNIT = Path(__file__).resolve().parents[2] / "deploy" / "archiver.service"
 INSTALLED_UNIT = Path("/etc/systemd/system/archiver.service")
 
 
-def _read(path: Path) -> str | None:
-    """Return the file's text, or None if absent/unreadable."""
+def _read_if_installed(path: Path) -> str | None:
+    """Return the unit's text, or None when it is genuinely not installed.
+
+    Only ``FileNotFoundError`` means "not installed". A ``PermissionError`` is
+    deliberately allowed to propagate: swallowing it would turn an unreadable
+    unit into a silent pass, and a drift check that cannot fail is worse than
+    no check at all — it reads as coverage while asserting nothing.
+    """
     try:
         return path.read_text()
-    except (FileNotFoundError, PermissionError):
+    except FileNotFoundError:
         return None
 
 
@@ -44,7 +50,7 @@ def test_repo_unit_declares_the_production_opt_in() -> None:
 
 
 def test_installed_unit_matches_repo() -> None:
-    installed = _read(INSTALLED_UNIT)
+    installed = _read_if_installed(INSTALLED_UNIT)
     if installed is None:
         pytest.skip(f"{INSTALLED_UNIT} not present — not a host running the service")
     assert installed == REPO_UNIT.read_text(), (
