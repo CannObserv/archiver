@@ -472,3 +472,265 @@ async def test_create_invalid_schema_rerenders_form(client):
     assert r.status_code == 200
     assert "error" in r.text.lower() or "invalid" in r.text.lower()
     assert "Bad Schema" in r.text  # name round-trips into server response
+
+
+# ---------------------------------------------------------------------------
+# Document editing (archiver#83, tiers 1+2)
+#
+# The card is editable only while the RepSpec is a draft (zero assignment rows,
+# active or deactivated). Assigned specs render read-only with the assignment
+# count and a pointer to the clone+migrate flow (#95).
+# ---------------------------------------------------------------------------
+
+_DOC_URL = "/dashboard/rep-specs/{}/document"
+
+
+async def _assigned_spec(session, *, name: str = "Assigned", deactivated: bool = False) -> RepSpec:
+    spec = _make_rep_spec(name)
+    session.add(spec)
+    await session.flush()
+    item = InfoItem(name=f"item-{name}")
+    session.add(item)
+    await session.flush()
+    session.add(
+        InfoItemRepSpec(
+            info_item_id=item.info_item_id,
+            rep_spec_id=spec.rep_spec_id,
+            activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+            deactivated_at=datetime(2026, 5, 1, tzinfo=UTC) if deactivated else None,
+        )
+    )
+    await session.flush()
+    return spec
+
+
+@pytest.mark.asyncio
+async def test_draft_detail_shows_document_editor(client, session):
+    spec = _make_rep_spec("Draft Spec")
+    session.add(spec)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'id="rep-spec-document-card"' in r.text
+    assert f'hx-post="{_DOC_URL.format(spec.rep_spec_id)}"' in r.text
+    assert 'name="document"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_assigned_detail_hides_document_editor(client, session):
+    spec = await _assigned_spec(session, name="Frozen Spec")
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'name="document"' not in r.text
+    assert "frozen" in r.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_deactivated_assignment_still_freezes_editor(client, session):
+    """A deactivated assignment still means a run happened under this document."""
+    spec = await _assigned_spec(session, name="Once Assigned", deactivated=True)
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'name="document"' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_update_document_on_draft_persists(client, session):
+    spec = _make_rep_spec("Editable")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    new_doc = dict(_GCS_DOC, path_template="corrected/{info_item_id}.json")
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers=_HEADERS,
+        data={"document": json.dumps(new_doc)},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303, r.text
+
+    await session.refresh(spec)
+    assert spec.document["path_template"] == "corrected/{info_item_id}.json"
+    assert spec.updated_at is not None
+
+
+@pytest.mark.asyncio
+async def test_update_document_htmx_swaps_card_with_toast(client, session):
+    spec = _make_rep_spec("Htmx Editable")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    new_doc = dict(_GCS_DOC, path_template="swapped/{info_item_id}.json")
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"document": json.dumps(new_doc)},
+    )
+    assert r.status_code == 200
+    assert 'id="rep-spec-document-card"' in r.text
+    assert "showFlash" in r.headers.get("HX-Trigger", "")
+    assert "swapped/" in r.text
+
+
+@pytest.mark.asyncio
+async def test_update_document_invalid_json_rerenders_with_error(client, session):
+    spec = _make_rep_spec("Bad JSON")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+    original = dict(spec.document)
+
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"document": "{not json"},
+    )
+    assert r.status_code == 200
+    assert 'role="alert"' in r.text
+    assert "{not json" in r.text  # operator's text preserved
+
+    await session.refresh(spec)
+    assert spec.document == original
+
+
+@pytest.mark.asyncio
+async def test_update_document_schema_error_rerenders_with_error(client, session):
+    spec = _make_rep_spec("Bad Schema")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    bad = dict(_GCS_DOC)
+    del bad["path_template"]
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"document": json.dumps(bad)},
+    )
+    assert r.status_code == 200
+    assert 'role="alert"' in r.text
+    assert "path_template" in r.text
+
+
+@pytest.mark.asyncio
+async def test_update_document_provider_change_rejected(client, session):
+    spec = _make_rep_spec("Provider Freeze")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    swapped = dict(_GCS_DOC, provider="gdrive")
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"document": json.dumps(swapped)},
+    )
+    assert r.status_code == 200
+    assert 'role="alert"' in r.text
+    assert "immutable" in r.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_update_document_on_assigned_spec_rejected(client, session):
+    spec = await _assigned_spec(session, name="Frozen Post")
+    await session.commit()
+    original = dict(spec.document)
+
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"document": json.dumps(dict(_GCS_DOC, path_template="nope/{info_item_id}"))},
+    )
+    assert r.status_code == 200
+    assert 'role="alert"' in r.text
+
+    await session.refresh(spec)
+    assert spec.document == original
+
+
+@pytest.mark.asyncio
+async def test_update_document_unauthenticated_redirects(client, session):
+    spec = _make_rep_spec("Unauth Doc")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        data={"document": json.dumps(_GCS_DOC)},
+        follow_redirects=False,
+    )
+    assert r.status_code == 307
+
+
+@pytest.mark.asyncio
+async def test_update_document_not_found_returns_404(client):
+    r = await client.post(
+        _DOC_URL.format("01J0000000000000000000000Z"),
+        headers=_HEADERS,
+        data={"document": json.dumps(_GCS_DOC)},
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_detail_shows_updated_at_once_edited(client, session):
+    spec = _make_rep_spec("Edited Spec")
+    spec.updated_at = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
+    session.add(spec)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "2026-06-01" in r.text
+
+
+@pytest.mark.asyncio
+async def test_non_htmx_document_error_rerenders_full_page_without_focus_scripts(client, session):
+    """The no-JS 422 fallback must not emit the HTMX focus scripts (CR round 1).
+
+    `swapped` is shared by _document_card.html and _assignments.html; leaking it
+    into the full-page render made both fire, and the assignments one stole focus
+    away from the announced error.
+    """
+    spec = _make_rep_spec("No JS Error")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    bad = dict(_GCS_DOC)
+    del bad["path_template"]
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers=_HEADERS,  # no HX-Request
+        data={"document": json.dumps(bad)},
+    )
+    assert r.status_code == 422
+    assert 'role="alert"' in r.text  # error is still announced
+    assert "getElementById" not in r.text  # neither focus script rendered
+    assert json.dumps(bad) in r.text or "credentials_alias" in r.text  # input preserved
+
+
+@pytest.mark.asyncio
+async def test_htmx_document_error_still_moves_focus(client, session):
+    """Guard the other side: the HTMX partial must keep its focus script."""
+    spec = _make_rep_spec("Htmx Focus")
+    session.add(spec)
+    await session.flush()
+    await session.commit()
+
+    bad = dict(_GCS_DOC)
+    del bad["path_template"]
+    r = await client.post(
+        _DOC_URL.format(spec.rep_spec_id),
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"document": json.dumps(bad)},
+    )
+    assert r.status_code == 200
+    assert "rep-spec-document-heading" in r.text
+    assert "getElementById" in r.text

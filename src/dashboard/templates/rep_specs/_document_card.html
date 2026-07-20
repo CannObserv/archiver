@@ -1,0 +1,62 @@
+{# RepSpec Document card — swapped in place by the HTMX update-document action
+   (id target), mirroring info_sources/_source_specs_card.html.
+
+   The editor renders only when `is_draft` is true. A RepSpec with any
+   assignment row (active *or* deactivated) is frozen: the document it was
+   assigned under is what produced the artefacts at those assignments'
+   public_urls, and rewriting it in place would make that unverifiable. See
+   archiver#83 and docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md.
+   The clone + migrate escape hatch is archiver#95. #}
+<div class="entity-card" id="rep-spec-document-card" style="margin-top:var(--space-3);">
+  <h2 id="rep-spec-document-heading" tabindex="-1" style="margin-top:0;">Document</h2>
+
+  {# <pre> always shows the live stored document; on error the textarea below
+     echoes the operator's submitted text so the edit isn't discarded. #}
+  <pre class="code-block" style="overflow-x:auto;white-space:pre-wrap;"><code>{{ doc_json }}</code></pre>
+
+  {% if is_draft %}
+  <form hx-post="/dashboard/rep-specs/{{ spec.rep_spec_id }}/document"
+        hx-target="#rep-spec-document-card" hx-swap="outerHTML"
+        method="POST"
+        action="/dashboard/rep-specs/{{ spec.rep_spec_id }}/document"
+        style="margin-top:var(--space-3);">
+    <div>
+      <label for="rep-spec-document-edit" class="form-label">Update Document</label>
+      <textarea id="rep-spec-document-edit" name="document"
+                class="form-textarea code-block{% if doc_error %} form-textarea--error{% endif %}"
+                rows="12">{{ doc_input | default(doc_json, true) }}</textarea>
+      <p class="text-sm text-muted" style="margin-top:var(--space-1);">
+        Replaces the whole document. <code>provider</code> is immutable. Editing
+        is disabled once this specification is assigned to an Information Item.
+      </p>
+      {% if doc_error %}
+      <p class="alert alert--error" role="alert">{{ doc_error }}</p>
+      {% endif %}
+    </div>
+    <div style="text-align:right;margin-top:var(--space-2);">
+      <button type="submit" class="btn btn--sm btn--primary">Update Document</button>
+    </div>
+  </form>
+  {% else %}
+  <p class="alert alert--info" style="margin-top:var(--space-3);"
+     {% if doc_error %}role="alert"{% endif %}>
+    This document is <strong>frozen</strong>: it has
+    {{ assignment_count }} assignment{{ '' if assignment_count == 1 else 's' }}
+    (including deactivated ones), and those replicated artefacts were produced
+    under it. To change replication behaviour, author a new specification and
+    reassign the affected Information Items.
+  </p>
+  {% endif %}
+
+  {% if swapped %}
+  {# After an HTMX swap move focus to the heading so keyboard users land on the
+     re-rendered card rather than being dropped to <body> (archiver#78 pattern).
+     Rendered only for the swap response — never on full page load. #}
+  <script>
+    (function () {
+      var h = document.getElementById("rep-spec-document-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>

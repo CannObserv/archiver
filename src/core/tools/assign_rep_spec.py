@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -31,6 +32,36 @@ class RepFieldsIncompleteError(AssignmentError):
         super().__init__(f"rep_fields incomplete: {missing}")
 
 
+async def lock_rep_specs(
+    db: AsyncSession,
+    rep_spec_ids: list[str],
+) -> dict[str, RepSpec]:
+    """Lock the given RepSpec rows ``FOR UPDATE`` and return them keyed by ULID string.
+
+    For callers that create ``InfoItemRepSpec`` rows directly instead of going
+    through :func:`assign_rep_spec` — notably the atomic ``POST /info-items``
+    path, which needs the rows for ``required_fields`` validation anyway. Taking
+    the same lock keeps them serialized against ``update_rep_spec``'s draft gate
+    (archiver#83 CR).
+
+    IDs are deduplicated and locked in sorted order so two concurrent callers
+    naming the same specs in different request order cannot deadlock. Unknown
+    IDs are simply absent from the result — callers raise their own 404s.
+    """
+    if not rep_spec_ids:
+        return {}
+
+    ordered = sorted({str(rid) for rid in rep_spec_ids})
+    stmt = (
+        select(RepSpec)
+        .where(RepSpec.rep_spec_id.in_(ordered))
+        .order_by(RepSpec.rep_spec_id)
+        .with_for_update()
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return {str(row.rep_spec_id): row for row in rows}
+
+
 async def assign_rep_spec(
     db: AsyncSession,
     *,
@@ -53,7 +84,10 @@ async def assign_rep_spec(
     if item is None:
         raise InfoItemNotFoundError(str(info_item_id))
 
-    spec = await db.get(RepSpec, rep_spec_id)
+    # FOR UPDATE: serializes against update_rep_spec's draft gate, which takes
+    # the same lock. Creating this assignment is what flips the RepSpec out of
+    # draft state, so the two must not interleave (archiver#83 CR).
+    spec = await db.get(RepSpec, rep_spec_id, with_for_update=True)
     if spec is None:
         raise RepSpecNotFoundError(str(rep_spec_id))
 

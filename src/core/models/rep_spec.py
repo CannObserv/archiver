@@ -31,6 +31,14 @@ class RepSpec(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
+    # Nullable, never defaulted: NULL means "never edited". Defaulting to
+    # created_at would assert an edit that did not happen. Stamped by
+    # src/core/tools/update_rep_spec.py, and only when a field actually changes.
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
 
     __table_args__ = (
         Index("ix_rep_specs_provider", "provider"),

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
@@ -27,6 +27,9 @@ class RepSpecOut:
         provider (str): Provider key (e.g. 'gcs', 'gdrive', 'ia').
         rep_spec_id (str): ULID identifying this RepSpec.
         schema_version (int): RepSpec envelope schema version; always 1 in the current implementation.
+        updated_at (datetime.datetime | None): UTC timestamp of the last edit, or null if the RepSpec has never been
+            edited. Never backfilled from created_at. Always present in responses (required, nullable) — matching the other
+            nullable projections.
     """
 
     created_at: datetime.datetime
@@ -35,6 +38,7 @@ class RepSpecOut:
     provider: str
     rep_spec_id: str
     schema_version: int
+    updated_at: datetime.datetime | None
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -50,6 +54,12 @@ class RepSpecOut:
 
         schema_version = self.schema_version
 
+        updated_at: None | str
+        if isinstance(self.updated_at, datetime.datetime):
+            updated_at = self.updated_at.isoformat()
+        else:
+            updated_at = self.updated_at
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -60,6 +70,7 @@ class RepSpecOut:
                 "provider": provider,
                 "rep_spec_id": rep_spec_id,
                 "schema_version": schema_version,
+                "updated_at": updated_at,
             }
         )
 
@@ -82,6 +93,21 @@ class RepSpecOut:
 
         schema_version = d.pop("schema_version")
 
+        def _parse_updated_at(data: object) -> datetime.datetime | None:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                updated_at_type_0 = isoparse(data)
+
+                return updated_at_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(datetime.datetime | None, data)
+
+        updated_at = _parse_updated_at(d.pop("updated_at"))
+
         rep_spec_out = cls(
             created_at=created_at,
             document=document,
@@ -89,6 +115,7 @@ class RepSpecOut:
             provider=provider,
             rep_spec_id=rep_spec_id,
             schema_version=schema_version,
+            updated_at=updated_at,
         )
 
         rep_spec_out.additional_properties = d

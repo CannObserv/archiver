@@ -47,6 +47,7 @@ from src.core.tools.assign_rep_spec import (
     RepFieldsIncompleteError,
     RepSpecNotFoundError,
     assign_rep_spec,
+    lock_rep_specs,
 )
 from src.core.tools.bind_info_source import (
     ActiveBindingAlreadyExistsError,
@@ -101,12 +102,19 @@ async def create_info_item(
     validation or lookup failure rolls back the whole thing.
     """
     # --- 1. Look up RepSpecs + validate rep_fields against required_fields ---
+    # Locked FOR UPDATE: step 4 below inserts InfoItemRepSpec rows directly
+    # rather than going through assign_rep_spec, so without the lock a
+    # concurrent update_rep_spec could rewrite a document between this read and
+    # our commit — landing an edit on a spec that is being assigned right now
+    # (archiver#83 CR). lock_rep_specs sorts IDs to avoid deadlocking against
+    # another create naming the same specs in a different order.
+    locked_rep_specs = await lock_rep_specs(
+        session, [a.rep_spec_id for a in body.initial_rep_spec_assignments]
+    )
+
     rep_spec_rows: list[RepSpec] = []
     for assignment in body.initial_rep_spec_assignments:
-        result = await session.execute(
-            select(RepSpec).where(RepSpec.rep_spec_id == assignment.rep_spec_id)
-        )
-        rep_spec = result.scalar_one_or_none()
+        rep_spec = locked_rep_specs.get(str(assignment.rep_spec_id))
         if rep_spec is None:
             raise_envelope(
                 404,

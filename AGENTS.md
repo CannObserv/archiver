@@ -62,8 +62,9 @@ src/core/                      Domain logic
   rep_fields_schema/           rep_fields meta-schema + validator
   changes/                     Outbox publisher (background asyncio task) +
                                typed Pydantic event payloads
-  tools/                       Authoring helpers (assign_rep_spec, bind_revision,
-                               resolve_rep_fields, preview_extraction, etc.)
+  tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
+                               update_rep_spec, bind_revision, resolve_rep_fields,
+                               preview_extraction, etc.)
   fetchers/, extractors/,
   simhash.py, extraction_defaults.py, logging.py
                                Mirrored from watcher (see "Mirrored content-acquisition code")
@@ -230,6 +231,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | List InfoSources (filter by URL or domain, paginated) | `GET /info-sources?url=…&domain_name=…&limit=&offset=` | `list_info_sources(url=None, domain_name=None, limit=None, offset=None)` |
 | Author a RepSpec | `POST /rep-specs` | `create_rep_spec(provider, name, document)` |
 | Get a RepSpec | `GET /rep-specs/{id}` | `get_rep_spec(id)` |
+| Update a RepSpec (name always; document only while draft) | `PATCH /rep-specs/{id}` | `update_rep_spec(id, name=None, document=None)` |
 | List RepSpecs (filter by provider, paginated) | `GET /rep-specs?provider=…&limit=&offset=` | `list_rep_specs(provider=None, limit=None, offset=None)` |
 | Assign a RepSpec | `POST /info-items/{id}/rep-spec-assignments` | `assign_rep_spec(info_item_id, rep_spec_id, activated_at=None)` |
 | Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
@@ -345,7 +347,18 @@ Tag each entry `[service]`, `[sdk]`, or `[both]` per the format header in
 `CHANGELOG.md`. The SDK README links here; do not maintain a second
 changelog there. On a PR, the `no-changelog` label opts out.
 
-**Dashboard living docs:** `docs/STYLE.md` and `docs/UI.md` must be updated in the same commit as any change to `src/dashboard/static/dashboard.css`, a JS module under `src/dashboard/static/`, a Jinja2 template in `src/dashboard/templates/`, or a new dashboard route. Failure to update them is a CR blocker.
+**Dashboard living docs:** each doc is scoped to what it actually documents —
+update the one(s) the change touches, in the same commit. Failure to update an
+applicable doc is a CR blocker.
+
+- `docs/UI.md` — required for any change to a Jinja2 template in
+  `src/dashboard/templates/`, a JS module under `src/dashboard/static/`, or a
+  new/changed dashboard route.
+- `docs/STYLE.md` — required when the change introduces or alters *styling*:
+  `src/dashboard/static/dashboard.css`, or a template that adds a new visual
+  pattern rather than reusing existing classes.
+
+A template change that composes only existing CSS classes needs UI.md alone.
 
 **Logging:**
 ```python
@@ -439,6 +452,11 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 
 - **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
+  **Tiered mutability** (#83): `name` always editable; `document` editable only while the RepSpec is a
+  *draft* — zero `info_item_rep_specs` rows, active **or** deactivated; `provider` frozen always.
+  `updated_at` is nullable and never backfilled (NULL = never edited). An assigned spec is frozen
+  because its assignment rows assert which document produced the artefacts at their `public_url`;
+  clone + migrate is #95. See `docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md`.
 - **`InfoItemRepSpec`** (`info_item_rep_specs`) — effective-dated assignment + `public_url` writeback target.
 - **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
 

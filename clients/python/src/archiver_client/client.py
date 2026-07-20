@@ -87,6 +87,9 @@ from archiver_client.generated.api.rep_specs import (
 from archiver_client.generated.api.rep_specs import (
     list_rep_specs_api_v1_rep_specs_get as _list_rep_specs,
 )
+from archiver_client.generated.api.rep_specs import (
+    patch_rep_spec_api_v1_rep_specs_rep_spec_id_patch as _patch_rep_spec,
+)
 from archiver_client.generated.api.source_revisions import (
     create_source_revision_api_v1_source_revisions_post as _create_source_revision,
 )
@@ -132,6 +135,10 @@ from archiver_client.generated.models.rep_spec_assignment_create import RepSpecA
 from archiver_client.generated.models.rep_spec_create import RepSpecCreate
 from archiver_client.generated.models.rep_spec_create_document import RepSpecCreateDocument
 from archiver_client.generated.models.rep_spec_out import RepSpecOut
+from archiver_client.generated.models.rep_spec_patch import RepSpecPatch
+from archiver_client.generated.models.rep_spec_patch_document_type_0 import (
+    RepSpecPatchDocumentType0,
+)
 from archiver_client.generated.models.source_revision_cache_patch import SourceRevisionCachePatch
 from archiver_client.generated.models.source_revision_create import SourceRevisionCreate
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
@@ -316,6 +323,38 @@ class ArchiverClient:
             document=RepSpecCreateDocument.from_dict(document),
         )
         response = await _create_rep_spec.asyncio_detailed(client=self._gen_client, body=body)
+        return _unwrap(response)
+
+    async def update_rep_spec(
+        self,
+        rep_spec_id: str,
+        *,
+        name: str | None = None,
+        document: dict | None = None,
+    ) -> RepSpecOut:
+        """Update a RepSpec's name and/or document under the tiered contract.
+
+        ``name`` is accepted regardless of assignment state. ``document`` is a
+        whole-document *replacement* accepted only while the RepSpec is a draft
+        — zero assignment rows, active or deactivated. ``provider`` cannot be
+        changed; supplying a document with a different provider is a
+        ``ValidationError``.
+
+        Omitted arguments are left untouched; omitting both is a server-side
+        no-op that does not stamp ``updated_at``.
+
+        Raises ``NotFound`` (unknown ID), ``Conflict`` (document edit on an
+        assigned RepSpec — ``data["assignment_count"]`` carries the number of
+        assignment rows blocking it), or ``ValidationError`` (schema failure or
+        attempted provider change).
+        """
+        body = RepSpecPatch(
+            name=UNSET if name is None else name,
+            document=(UNSET if document is None else RepSpecPatchDocumentType0.from_dict(document)),
+        )
+        response = await _patch_rep_spec.asyncio_detailed(
+            client=self._gen_client, rep_spec_id=rep_spec_id, body=body
+        )
         return _unwrap(response)
 
     async def get_rep_spec(self, rep_spec_id: str) -> RepSpecOut:
