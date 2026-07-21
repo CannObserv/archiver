@@ -398,26 +398,28 @@ async def detail_info_item(
     # history) — newest first. The item's content timeline is a query over its
     # bindings, not the info_item_source_revisions pin table (which nothing
     # auto-populates; see archiver#101).
-    all_binding_source_ids = list(
-        {
-            sid
-            for sid in (
-                await session.execute(
-                    select(InfoItemSource.info_source_id).where(
-                        InfoItemSource.info_item_id == item.info_item_id
-                    )
-                )
-            ).scalars()
-        }
-    )
+    #
+    # One join yields the distinct bound InfoSources; it doubles as the
+    # Source/URL lookup (covering deactivated previous primaries, absent from the
+    # active-only sources_by_id) and the id set for the revisions query.
+    rev_sources_by_id: dict[ULID, InfoSource] = {
+        src.info_source_id: src
+        for src in (
+            await session.execute(
+                select(InfoSource)
+                .join(InfoItemSource, InfoItemSource.info_source_id == InfoSource.info_source_id)
+                .where(InfoItemSource.info_item_id == item.info_item_id)
+                .distinct()
+            )
+        ).scalars()
+    }
     revisions: list[SourceRevision] = []
-    rev_sources_by_id: dict[ULID, InfoSource] = {}
-    if all_binding_source_ids:
+    if rev_sources_by_id:
         revisions = list(
             (
                 await session.execute(
                     select(SourceRevision)
-                    .where(SourceRevision.info_source_id.in_(all_binding_source_ids))
+                    .where(SourceRevision.info_source_id.in_(list(rev_sources_by_id)))
                     .order_by(
                         SourceRevision.captured_at.desc(),
                         SourceRevision.source_revision_id.desc(),
@@ -428,14 +430,6 @@ async def detail_info_item(
             .scalars()
             .all()
         )
-        # InfoSources for the Source/URL column — covers deactivated previous
-        # primaries, which are absent from sources_by_id (active-only).
-        for src in (
-            await session.execute(
-                select(InfoSource).where(InfoSource.info_source_id.in_(all_binding_source_ids))
-            )
-        ).scalars():
-            rev_sources_by_id[src.info_source_id] = src
 
     # Browser deeplink to the Watcher item, used to link the "Watcher" section
     # header. Prefers WATCHER_PUBLIC_BASE_URL (browser-facing) over the internal

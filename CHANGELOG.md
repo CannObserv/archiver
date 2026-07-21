@@ -26,7 +26,7 @@ The per-item revision *pin* table served two purposes that both dissolved across
 
 Service changes:
 - **Removed** `POST /api/v1/info-items/{info_item_id}/source-revisions` (the `bind_source_revision` endpoint) and its request/response models `InfoItemSourceRevisionCreate` / `InfoItemSourceRevisionOut`.
-- **Migration** `4413805453dd` drops `information.info_item_source_revisions`. The `downgrade` recreates the (empty) table; no data any reader consumed is lost.
+- **Migration** `4413805453dd` drops `information.info_item_source_revisions`. **Irreversible data drop** — the table had a public write path, so a production DB may hold operator-created pin rows; `downgrade` recreates the table but NOT its rows. The migration logs the pre-drop row count; confirm it is acceptable before `alembic upgrade head` on production. No data any *reader* consumed is lost.
 - Core: removed the `bind_revision` tool and the `InfoItemSourceRevision` ORM model.
 - The `source_revision_captured` and `info_item_primary_changed` bus events are unchanged — neither referenced pins.
 

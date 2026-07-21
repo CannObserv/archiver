@@ -6,10 +6,15 @@ Create Date: 2026-07-21 15:34:38.009373
 
 """
 
+import logging
 from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+
+# Logs to the alembic namespace so the pre-drop row count appears inline with
+# the "Running upgrade …" output during `alembic upgrade head`.
+logger = logging.getLogger("alembic.runtime.migration")
 
 # revision identifiers, used by Alembic.
 revision: str = "4413805453dd"
@@ -26,7 +31,21 @@ def upgrade() -> None:
     source_revisions, not pins) and explicit revision pinning (zero automatic
     writers, zero consumers). The item's content timeline is a query over its
     InfoSource bindings. No downstream reader depends on this table.
+
+    Operator note: this is an irreversible data drop. The table had a public
+    write path (POST /info-items/{id}/source-revisions + a dashboard form), so
+    a production DB may hold operator-created pin rows — `downgrade` recreates
+    the table but NOT its rows. The pre-drop row count is logged below; confirm
+    it is acceptable before running this against production.
     """
+    bind = op.get_bind()
+    row_count = bind.execute(
+        sa.text("SELECT count(*) FROM information.info_item_source_revisions")
+    ).scalar()
+    logger.info(
+        "archiver#101: dropping information.info_item_source_revisions (%s row(s) discarded)",
+        row_count,
+    )
     # Dropping the table cascades its index (ix_iisr_item_bound_desc); no
     # separate drop_index needed.
     op.drop_table("info_item_source_revisions", schema="information")
