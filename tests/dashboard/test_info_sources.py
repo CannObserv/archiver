@@ -174,6 +174,11 @@ async def test_detail_source_specs_card_starts_in_view_mode(client, session):
     # Canonical specs ride in a data island (never an HTML attribute) so Cancel
     # can reset the textarea safely.
     assert '<script type="application/json">' in r.text
+    # No visible edit-mode label (caused layout jank); the textarea stays named
+    # for assistive tech via aria-label, and Cancel carries border styling.
+    assert "Update Source Specification" not in r.text
+    assert 'aria-label="Source Specification (JSON Array)"' in r.text
+    assert 'btn--sm btn--secondary" @click="cancel()"' in r.text
 
 
 @pytest.mark.asyncio

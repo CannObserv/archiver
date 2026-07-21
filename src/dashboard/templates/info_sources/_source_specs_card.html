@@ -40,7 +40,7 @@
          label here only appears on Edit and causes layout jank. aria-label
          keeps the textarea named for assistive tech. #}
       <textarea id="source-specs-edit" name="source_specs" x-ref="specsBox"
-                aria-label="Source specification JSON"
+                aria-label="Source Specification (JSON Array)"
                 class="form-textarea code-block{% if specs_error %} form-textarea--error{% endif %}"
                 rows="8">{{ specs_input | default(specs_json, true) }}</textarea>
       {% if specs_error %}
