@@ -41,8 +41,16 @@ document.addEventListener("alpine:init", function () {
         return {
             editing: false,
 
+            /**
+             * Leave edit mode without a server call, discarding any unsaved
+             * text by resetting the label input to its server-rendered value
+             * (the input's defaultValue is the canonical {{ key.label }}).
+             */
             cancelEdit: function () {
                 this.editing = false;
+                if (this.$refs.labelInput) {
+                    this.$refs.labelInput.value = this.$refs.labelInput.defaultValue;
+                }
             }
         };
     });
@@ -172,6 +180,46 @@ document.addEventListener("alpine:init", function () {
                 } catch (err) {
                     this.hasError = true;
                     this.errorMsg = "Invalid JSON: " + err.message;
+                }
+            }
+        };
+    });
+
+    /**
+     * InfoSource detail "Source Specification" card — edit/view toggle.
+     *
+     * View mode shows the stored specs; Edit reveals the textarea; Cancel
+     * discards edits and returns to view mode; Save posts via HTMX. Opens in
+     * edit mode when the server passes startEditing=true (a validation error
+     * re-render) so the error + submitted text stay visible.
+     *
+     * The canonical stored specs come from a data-island
+     * <script type="application/json"> child (never an HTML attribute — see
+     * sortableChips) so Cancel can reset the textarea without escaping hazards.
+     *
+     * @param {boolean} startEditing Whether to render in edit mode initially.
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("sourceSpecsCard", function (startEditing) {
+        return {
+            editing: startEditing === true,
+            canonical: "",
+
+            init: function () {
+                var island = this.$root.querySelector('script[type="application/json"]');
+                if (island) {
+                    try {
+                        this.canonical = JSON.parse(island.textContent);
+                    } catch (err) {
+                        this.canonical = "";
+                    }
+                }
+            },
+
+            cancel: function () {
+                this.editing = false;
+                if (this.$refs.specsBox) {
+                    this.$refs.specsBox.value = this.canonical;
                 }
             }
         };

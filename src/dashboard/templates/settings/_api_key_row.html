@@ -5,6 +5,7 @@
   <td class="data-table__cell">
     <span x-show="!editing">{{ key.label }}</span>
     <input type="text" name="label" id="label-{{ key.id }}" value="{{ key.label }}"
+           x-ref="labelInput"
            class="form-input form-input--inline" aria-label="Key label" required
            x-show="editing" style="display:none;">
   </td>

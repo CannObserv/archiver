@@ -5,12 +5,17 @@
    and the editor render, and Save posts normally). See docs/UI.md Detail Screen
    Conventions.
 
-   Alpine `editing` toggle: view mode shows the stored specs + an "Edit" button;
-   edit mode reveals the textarea with "Cancel" + "Save". Opens in edit mode when
-   a validation error is present so the operator's submitted text and the inline
-   error stay visible (mirrors settings/_api_key_row.html). #}
+   Edit/view toggle via the `sourceSpecsCard` Alpine component (main.js): view
+   mode shows the stored specs + an "Edit" button; edit mode reveals the textarea
+   with "Cancel" + "Save". Same edit-toggle idea as settings/_api_key_row.html.
+   Opens in edit mode when a validation error is present so the operator's
+   submitted text and the inline error stay visible. The canonical stored specs
+   ride in a <script type="application/json"> data island (never an HTML
+   attribute — see sortableChips) so Cancel can reset the textarea safely. #}
 <div class="entity-card" id="source-specs-card" style="margin-top:var(--space-3);"
-     x-data="{ editing: {{ 'true' if specs_error else 'false' }} }">
+     x-data="sourceSpecsCard({{ 'true' if specs_error else 'false' }})">
+  {# Canonical stored specs for Cancel's textarea reset — read by init(). #}
+  <script type="application/json">{{ specs_json | tojson }}</script>
   <h2 id="source-specs-heading" tabindex="-1" style="margin-top:0;">Source Specification</h2>
 
   {# View mode: live stored specs + Edit action. #}
@@ -40,8 +45,7 @@
       {% endif %}
     </div>
     <div style="text-align:right;margin-top:var(--space-2);">
-      <button type="button" class="btn btn--sm btn--ghost"
-              @click="editing = false; $refs.specsBox.value = {{ specs_json | tojson }}">Cancel</button>
+      <button type="button" class="btn btn--sm btn--ghost" @click="cancel()">Cancel</button>
       <button type="submit" class="btn btn--sm btn--primary">Save</button>
     </div>
   </form>

@@ -161,12 +161,19 @@ async def test_detail_source_specs_card_starts_in_view_mode(client, session):
     r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
     assert r.status_code == 200
     # Alpine toggle starts closed; Edit reveals the textarea, Save/Cancel commit.
-    assert 'x-data="{ editing: false }"' in r.text
+    assert 'x-data="sourceSpecsCard(false)"' in r.text
     assert ">Edit</button>" in r.text
     assert ">Cancel</button>" in r.text
     assert ">Save</button>" in r.text
     assert 'x-show="!editing"' in r.text
     assert 'x-show="editing"' in r.text
+    # Cancel handler is well-formed — a method call, not JSON embedded in the
+    # attribute (which would break out of the double quotes, issue #100 CR 1).
+    assert '@click="cancel()"' in r.text
+    assert '$refs.specsBox.value = "[' not in r.text
+    # Canonical specs ride in a data island (never an HTML attribute) so Cancel
+    # can reset the textarea safely.
+    assert '<script type="application/json">' in r.text
 
 
 @pytest.mark.asyncio
@@ -183,7 +190,7 @@ async def test_update_specs_htmx_error_reopens_editor(client, session):
         follow_redirects=False,
     )
     assert r.status_code == 200
-    assert 'x-data="{ editing: true }"' in r.text
+    assert 'x-data="sourceSpecsCard(true)"' in r.text
 
 
 @pytest.mark.asyncio

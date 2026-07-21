@@ -218,6 +218,10 @@ async def test_row_uses_api_key_row_component(client, session):
 
     response = await client.get(_URL, headers=_HEADERS)
     assert 'x-data="apiKeyRow"' in response.text
+    # Cancel resets the label input to its server-rendered value via this x-ref
+    # (cancelEdit reads $refs.labelInput.defaultValue, issue #100 CR 1).
+    assert 'x-ref="labelInput"' in response.text
+    assert '@click="cancelEdit()"' in response.text
 
 
 @pytest.mark.asyncio
