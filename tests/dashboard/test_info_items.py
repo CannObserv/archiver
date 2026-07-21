@@ -857,10 +857,13 @@ async def test_hub_detail_watcher_header_plain_when_not_watched(client, session,
 
 @pytest.mark.asyncio
 async def test_hub_detail_shows_revision_history(client, session):
+    """Revision History is sourced from source_revisions across the item's
+    InfoSource bindings — no explicit info_item_source_revisions pin needed (#101)."""
     item = _make_item("Hub History Item")
     src = _make_source("https://hub.example.com/hist")
     session.add_all([item, src])
     await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
     rev = SourceRevision(
         info_source_id=src.info_source_id,
         content_fingerprint="sha256:" + "d" * 64,
@@ -868,17 +871,62 @@ async def test_hub_detail_shows_revision_history(client, session):
     )
     session.add(rev)
     await session.flush()
-    hist = InfoItemSourceRevision(
-        info_item_id=item.info_item_id,
-        source_revision_id=rev.source_revision_id,
-        bound_at=datetime.now(UTC),
-    )
-    session.add(hist)
-    await session.flush()
 
     r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
     assert r.status_code == 200
     assert "Revision History" in r.text
+    # Rendered from the binding, with NO pin row present:
+    assert rev.content_fingerprint[:20] in r.text
+    assert "https://hub.example.com/hist" in r.text
+
+
+@pytest.mark.asyncio
+async def test_hub_detail_revision_history_includes_previous_primary(client, session):
+    """Revisions captured on a now-deactivated (previous primary) binding still
+    appear in the item's Revision History — succession-aware, newest first (#101)."""
+    item = _make_item("Succession Item")
+    old_src = _make_source("https://old.example.com/page")
+    new_src = _make_source("https://new.example.com/page")
+    session.add_all([item, old_src, new_src])
+    await session.flush()
+    # Previous primary (deactivated) + current primary (active) bindings.
+    session.add_all(
+        [
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=old_src.info_source_id,
+                deactivated_at=datetime(2026, 1, 15, tzinfo=UTC),
+            ),
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=new_src.info_source_id,
+            ),
+        ]
+    )
+    old_rev = SourceRevision(
+        info_source_id=old_src.info_source_id,
+        content_fingerprint="sha256:" + "a" * 64,
+        captured_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    new_rev = SourceRevision(
+        info_source_id=new_src.info_source_id,
+        content_fingerprint="sha256:" + "b" * 64,
+        captured_at=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+    session.add_all([old_rev, new_rev])
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    # Both the previous-primary and current-primary revisions are listed.
+    assert "https://old.example.com/page" in r.text
+    assert "https://new.example.com/page" in r.text
+    assert old_rev.content_fingerprint[:20] in r.text
+    assert new_rev.content_fingerprint[:20] in r.text
+    # Newest first: current-primary revision precedes the previous-primary one.
+    assert r.text.index(new_rev.content_fingerprint[:20]) < r.text.index(
+        old_rev.content_fingerprint[:20]
+    )
 
 
 @pytest.mark.asyncio

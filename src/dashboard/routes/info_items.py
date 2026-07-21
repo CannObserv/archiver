@@ -34,7 +34,6 @@ from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
-    InfoItemSourceRevision,
     InfoSource,
     RepSpec,
     SourceRevision,
@@ -400,28 +399,50 @@ async def detail_info_item(
     # Active rep_spec assignments + RepSpec rows
     irs_rows, rep_specs_by_id = await _load_active_rep_spec_assignments(item.info_item_id, session)
 
-    # Revision history (last 50)
-    iisr_rows = list(
-        (
-            await session.execute(
-                select(InfoItemSourceRevision)
-                .where(InfoItemSourceRevision.info_item_id == item.info_item_id)
-                .order_by(InfoItemSourceRevision.bound_at.desc())
-                .limit(50)
-            )
-        )
-        .scalars()
-        .all()
+    # Revision history (last 50). Sourced from source_revisions captured across
+    # ALL of the item's InfoSource bindings — active primary plus previous
+    # primaries (deactivated info_item_sources rows, preserved as succession
+    # history) — newest first. The item's content timeline is a query over its
+    # bindings, not the info_item_source_revisions pin table (which nothing
+    # auto-populates; see archiver#101).
+    all_binding_source_ids = list(
+        {
+            sid
+            for sid in (
+                await session.execute(
+                    select(InfoItemSource.info_source_id).where(
+                        InfoItemSource.info_item_id == item.info_item_id
+                    )
+                )
+            ).scalars()
+        }
     )
-    rev_ids = [r.source_revision_id for r in iisr_rows]
-    revisions_by_id: dict[ULID, SourceRevision] = {}
-    if rev_ids:
-        for rev in (
+    revisions: list[SourceRevision] = []
+    rev_sources_by_id: dict[ULID, InfoSource] = {}
+    if all_binding_source_ids:
+        revisions = list(
+            (
+                await session.execute(
+                    select(SourceRevision)
+                    .where(SourceRevision.info_source_id.in_(all_binding_source_ids))
+                    .order_by(
+                        SourceRevision.captured_at.desc(),
+                        SourceRevision.source_revision_id.desc(),
+                    )
+                    .limit(50)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # InfoSources for the Source/URL column — covers deactivated previous
+        # primaries, which are absent from sources_by_id (active-only).
+        for src in (
             await session.execute(
-                select(SourceRevision).where(SourceRevision.source_revision_id.in_(rev_ids))
+                select(InfoSource).where(InfoSource.info_source_id.in_(all_binding_source_ids))
             )
         ).scalars():
-            revisions_by_id[rev.source_revision_id] = rev
+            rev_sources_by_id[src.info_source_id] = src
 
     # Browser deeplink to the Watcher item, used to link the "Watcher" section
     # header. Prefers WATCHER_PUBLIC_BASE_URL (browser-facing) over the internal
@@ -448,8 +469,9 @@ async def detail_info_item(
             "spec_summary_by_source_id": spec_summary_by_source_id,
             "irs_rows": irs_rows,
             "rep_specs_by_id": rep_specs_by_id,
-            "iisr_rows": iisr_rows,
-            "revisions_by_id": revisions_by_id,
+            "revisions": revisions,
+            "rev_sources_by_id": rev_sources_by_id,
+            "now": datetime.now(UTC),
             "watcher_deeplink": watcher_deeplink,
         },
     )

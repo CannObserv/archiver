@@ -136,47 +136,44 @@
   </section>
 
   {# ── Section 4: Revision History ──────────────────────────────────── #}
+  {# Sourced from source_revisions across the item's InfoSource bindings —
+     active primary plus previous primaries — newest first (archiver#101). #}
   <section aria-label="Revision History" style="margin-bottom:var(--space-5);">
     <h2 class="section-heading">
-      Revision History
+      Revision History{% if revisions %} ({{ revisions | length }}){% endif %}
     </h2>
-    <details style="margin-bottom:var(--space-3);">
-      <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Bind Revision</summary>
-      <form method="post" action="/dashboard/info-items/{{ item.info_item_id }}/bind-revision"
-            style="display:flex;gap:var(--space-2);margin-top:var(--space-2);max-width:30rem;">
-        <input type="text" name="source_revision_id" class="form-input" placeholder="SourceRevision ULID"
-               style="flex:1;" required>
-        <button type="submit" class="btn btn--primary">Bind</button>
-      </form>
-    </details>
 
-    {% if iisr_rows %}
+    {% if revisions %}
     <table class="data-table" aria-label="Revision history">
       <thead>
         <tr>
           <th class="data-table__th">Fingerprint</th>
+          <th class="data-table__th">Source</th>
           <th class="data-table__th">Captured</th>
           <th class="data-table__th">Cache</th>
         </tr>
       </thead>
       <tbody>
-        {% for binding in iisr_rows %}
-        {% set rev = revisions_by_id.get(binding.source_revision_id) %}
+        {% for rev in revisions %}
+        {% set src = rev_sources_by_id.get(rev.info_source_id) %}
         <tr>
           <td class="data-table__cell">
-            {% if rev %}
-            <a href="/dashboard/source-revisions/{{ binding.source_revision_id }}" class="text-sm">
+            <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}" class="text-sm">
               <code>{{ rev.content_fingerprint[:20] }}…</code>
             </a>
+          </td>
+          <td class="data-table__cell text-sm">
+            {% if src %}
+            <a href="/dashboard/info-sources/{{ rev.info_source_id }}">{{ src.url }}</a>
             {% else %}
-            <span class="text-muted text-sm">{{ binding.source_revision_id }}</span>
+            <span class="text-muted">{{ rev.info_source_id }}</span>
             {% endif %}
           </td>
           <td class="data-table__cell data-table__cell--muted text-sm">
-            {% if rev %}{{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}—{% endif %}
+            {{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}
           </td>
           <td class="data-table__cell">
-            {% if rev and rev.content_cache_uri %}
+            {% if rev.content_cache_uri %}
               {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
               <span class="status-pill status-pill--expired">expired</span>
               {% else %}
@@ -191,7 +188,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="text-muted">No revisions bound yet.</p>
+    <p class="text-muted">No revisions captured yet.</p>
     {% endif %}
   </section>
 
