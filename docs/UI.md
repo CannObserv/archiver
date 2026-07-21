@@ -283,7 +283,7 @@ clear-cache, which swaps the one contiguous `#revision-card` partial. The 303
 also preserves correct back-button semantics for a state transition.
 
 **Related-collection tables.** `.data-table` under an `<h2 class="section-heading">`
-carrying the row count (e.g. "Bound Information Items (3)"). When the table is **paginated**,
+carrying the row count (e.g. "Revision History (12)"). When the table is **paginated**,
 the count must come from a route-level `COUNT` over the full result set, never
 a template `|length` — that would report only the current page. Domain detail
 (`source_total`) is the reference; InfoSource detail's "Other Sources at This
@@ -298,8 +298,7 @@ count needs **two** empty
 states: "nothing here at all" and "nothing on *this page*" (overshot offset);
 collapsing them makes the heading contradict the body. Cache state uses the
 `.status-pill--cached/expired/missing` pills, not `.badge` variants. A
-succession/currency status (e.g. a revision being an item's "current pin" vs
-"superseded") is a `.badge--primary`/`.badge--muted` column.
+succession/currency status column uses `.badge--primary`/`.badge--muted`.
 
 **Pagination params are clamped, not validated.** Every paginated dashboard
 route takes `page: Pagination = Depends(pagination)`
@@ -431,8 +430,6 @@ Logs a warning on degraded/failure. Auth-gated; unauthenticated requests redirec
 
 **PATCH `/dashboard/info-items/{id}/rep-fields`** — inline save for rep_fields JSONB (form field: `rep_fields` JSON string). Returns flash fragment into `#rep-fields-flash`.
 
-**POST `/dashboard/info-items/{id}/bind-revision`** — binds a SourceRevision (form field: `source_revision_id`). Redirects 303 to detail. *(No longer surfaced in the detail UI as of archiver#101 — the Revision History section is now derived from source bindings, not pins; the route + `info_item_source_revisions` pin table are slated for removal in the #101 follow-up.)*
-
 Partial templates:
 - `info_items/_rep_spec_row.html` — reusable `<tr>` fragment for rep-spec assignment rows.
 - `info_items/_watcher_status.html` — Watcher health strip; replaces `#watcher-status-strip` via `hx-swap="outerHTML"`. Root element carries the `id` so it survives each swap. Five states: `not_configured`, `not_watching`, `degraded`, `watching` (ok/error/unknown). In the watching state it shows a **Paused** `badge--muted` and hides "Check now" when `watched_item.is_active` is false (an **Archived** badge replaces "Paused" when `watched_item.archived_at` is set), and offers a Pause/Resume toggle (hidden when archived) *(#60)*. Context keys: `state`, `item_id`, `watched_item`, `last_checked_ago`, `last_changed_ago`, `cadence`, `error_message`.
@@ -460,7 +457,7 @@ Partial templates:
 
 **GET `/dashboard/source-revisions/`** — paginated list ordered by `captured_at desc`. Optional `info_source_id` filter (ULID). Columns: truncated fingerprint (link to detail), source URL (link to InfoSource detail), captured date, cache status pill (`.status-pill--cached` / `.status-pill--expired` / `.status-pill--missing`).
 
-**GET `/dashboard/source-revisions/{id}`** — detail page. The header lives in the `source_revisions/_detail_card.html` partial (extracted so clear-cache can swap it in place — root `#revision-card`): an `.eyebrow` kicker ("Information Source Revision") above the `<h1>`, whose title is the copyable `source_revision_id` (shared Alpine copy idiom — `.btn--secondary .btn--sm`, "Copy"→"Copied ✓" for 1.5 s; value bound via `|tojson`, never spliced into the handler's JS). `.detail-grid` (normalized to the InfoItem convention — `.detail-grid__item/__label/__value`, not bare `<dl><dt><dd>`) with copyable full fingerprint and Information Source both on full-width rows (`.detail-grid__item--full`) so long values extend horizontally; the Information Source value carries the internal source-detail link plus an **"Open ↗" button** (shared `open_button` macro from `_macros.html`) to the target URL. Then captured_at (UTC-suffixed), size (if set), media type (if set), and cache status. Cache value shows a status pill plus the `content_cache_uri` — displayed text with an **"Open ↗" button** when `http(s)`, otherwise copyable — and an expiry line. "View all revisions for this source →" deeplinks the list `?info_source_id=`. Danger-zone clear-cache form (shown only when `content_cache_uri` is set). Bound Information Items table (count in heading; `bound_at` UTC-suffixed) has a **Status** column: `.badge--primary` "current pin" when this revision is the item's most-recent `info_item_source_revisions` binding, else `.badge--muted` "superseded".
+**GET `/dashboard/source-revisions/{id}`** — detail page. The header lives in the `source_revisions/_detail_card.html` partial (extracted so clear-cache can swap it in place — root `#revision-card`): an `.eyebrow` kicker ("Information Source Revision") above the `<h1>`, whose title is the copyable `source_revision_id` (shared Alpine copy idiom — `.btn--secondary .btn--sm`, "Copy"→"Copied ✓" for 1.5 s; value bound via `|tojson`, never spliced into the handler's JS). `.detail-grid` (normalized to the InfoItem convention — `.detail-grid__item/__label/__value`, not bare `<dl><dt><dd>`) with copyable full fingerprint and Information Source both on full-width rows (`.detail-grid__item--full`) so long values extend horizontally; the Information Source value carries the internal source-detail link plus an **"Open ↗" button** (shared `open_button` macro from `_macros.html`) to the target URL. Then captured_at (UTC-suffixed), size (if set), media type (if set), and cache status. Cache value shows a status pill plus the `content_cache_uri` — displayed text with an **"Open ↗" button** when `http(s)`, otherwise copyable — and an expiry line. "View all revisions for this source →" deeplinks the list `?info_source_id=`. Danger-zone clear-cache form (shown only when `content_cache_uri` is set). (The former "Bound Information Items" table was removed with the `info_item_source_revisions` pin table in archiver#101.)
 
 **POST `/dashboard/source-revisions/{id}/clear-cache`** — sets `content_cache_uri = NULL` and `content_cache_expires_at = NULL`. HTMX requests (`hx-post`, `hx-target="#revision-card"`, `hx-confirm`) get the re-rendered `_detail_card.html` partial swapped in place plus an `HX-Trigger: showFlash` success toast; non-HTMX requests fall back to a 303 redirect to detail (progressive enhancement). No request body required.
 

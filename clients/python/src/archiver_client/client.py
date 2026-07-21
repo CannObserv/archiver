@@ -46,9 +46,6 @@ from archiver_client.generated.api.info_items import (
     add_rep_spec_assignment_api_v1_info_items_info_item_id_rep_spec_assignments_post as _add_rep_spec,
 )
 from archiver_client.generated.api.info_items import (
-    bind_source_revision_api_v1_info_items_info_item_id_source_revisions_post as _bind_revision,
-)
-from archiver_client.generated.api.info_items import (
     create_info_item_api_v1_info_items_post as _create_info_item,
 )
 from archiver_client.generated.api.info_items import (
@@ -112,12 +109,6 @@ from archiver_client.generated.models.info_item_rep_spec_public_url_patch import
 )
 from archiver_client.generated.models.info_item_source_create import InfoItemSourceCreate
 from archiver_client.generated.models.info_item_source_out import InfoItemSourceOut
-from archiver_client.generated.models.info_item_source_revision_create import (
-    InfoItemSourceRevisionCreate,
-)
-from archiver_client.generated.models.info_item_source_revision_out import (
-    InfoItemSourceRevisionOut,
-)
 from archiver_client.generated.models.info_source_create import InfoSourceCreate
 from archiver_client.generated.models.info_source_create_source_specs_item import (
     InfoSourceCreateSourceSpecsItem,
@@ -485,25 +476,6 @@ class ArchiverClient:
             domain_name=domain_name if domain_name is not None else UNSET,
             limit=UNSET if limit is None else limit,
             offset=UNSET if offset is None else offset,
-        )
-        return _unwrap(response)
-
-    # --- SourceRevision binding ---
-
-    async def bind_revision(
-        self,
-        info_item_id: str,
-        source_revision_id: str,
-        *,
-        bound_at: datetime.datetime | None = None,
-    ) -> InfoItemSourceRevisionOut:
-        """Bind a SourceRevision to an InfoItem (declares it as the latest known content)."""
-        body = InfoItemSourceRevisionCreate(
-            source_revision_id=source_revision_id,
-            bound_at=bound_at if bound_at is not None else UNSET,
-        )
-        response = await _bind_revision.asyncio_detailed(
-            client=self._gen_client, info_item_id=info_item_id, body=body
         )
         return _unwrap(response)
 

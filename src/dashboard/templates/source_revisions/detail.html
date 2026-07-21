@@ -7,47 +7,5 @@
   {# Header card (extracted so the clear-cache HTMX action can swap it in place) #}
   {% include "source_revisions/_detail_card.html" %}
 
-  {# Bound Information Items #}
-  <div style="margin-top:var(--space-3);">
-    <h2>Bound Information Items{% if iisr_rows %} ({{ iisr_rows | length }}){% endif %}</h2>
-    {% if iisr_rows %}
-    <table class="data-table" aria-label="Bound Information Items">
-      <thead>
-        <tr>
-          <th class="data-table__th">Item</th>
-          <th class="data-table__th">Bound</th>
-          <th class="data-table__th">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for iisr in iisr_rows %}
-        {% set item = items_by_id.get(iisr.info_item_id) %}
-        <tr>
-          <td class="data-table__cell">
-            {% if item %}
-            <a href="/dashboard/info-items/{{ iisr.info_item_id }}">{{ item.name }}</a>
-            {% else %}
-            <span class="text-muted">{{ iisr.info_item_id }}</span>
-            {% endif %}
-          </td>
-          <td class="data-table__cell data-table__cell--muted">
-            {{ iisr.bound_at.strftime('%Y-%m-%d %H:%M UTC') }}
-          </td>
-          <td class="data-table__cell">
-            {% if current_rev_by_item.get(iisr.info_item_id) == rev.source_revision_id %}
-            <span class="badge badge--primary" title="This revision is the item's most recent binding">current pin</span>
-            {% else %}
-            <span class="badge badge--muted" title="The item has since bound to a newer revision">superseded</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="text-muted">No Information Items bound to this revision.</p>
-    {% endif %}
-  </div>
-
 </div>
 {% endblock %}

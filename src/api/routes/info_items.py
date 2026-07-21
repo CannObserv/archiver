@@ -19,14 +19,11 @@ from src.api.schemas.info_item import (
     InfoItemRepSpecPublicUrlPatch,
     InfoItemSourceCreate,
     InfoItemSourceOut,
-    InfoItemSourceRevisionCreate,
-    InfoItemSourceRevisionOut,
 )
 from src.api.schemas.pagination import Page
 from src.api.schemas.types import ULIDStr
 from src.api.serializers import (
     info_item_rep_spec_to_out,
-    info_item_source_revision_to_out,
     info_item_source_to_out,
     info_item_to_out,
 )
@@ -58,13 +55,6 @@ from src.core.tools.bind_info_source import (
 )
 from src.core.tools.bind_info_source import (
     InfoSourceNotFoundError as BindIIS_InfoSourceNotFoundError,
-)
-from src.core.tools.bind_revision import (
-    InfoItemNotFoundError as BindInfoItemNotFoundError,
-)
-from src.core.tools.bind_revision import (
-    SourceRevisionNotFoundError,
-    bind_revision,
 )
 from src.core.tools.create_info_source import (
     CreateInfoSourceError,
@@ -562,71 +552,6 @@ async def add_rep_spec_assignment(
 
     await session.commit()
     return info_item_rep_spec_to_out(assignment)
-
-
-@router.post(
-    "/{info_item_id}/source-revisions",
-    response_model=InfoItemSourceRevisionOut,
-    status_code=201,
-)
-async def bind_source_revision(
-    info_item_id: ULIDStr,
-    body: InfoItemSourceRevisionCreate,
-    session: AsyncSession = Depends(get_db_session),
-) -> InfoItemSourceRevisionOut:
-    """Bind a SourceRevision to an InfoItem (idempotent).
-
-    If a binding for (info_item_id, source_revision_id) already exists, it is
-    returned unchanged. Returns 404 if the InfoItem or SourceRevision doesn't exist.
-    """
-    try:
-        item_ulid = ULID.from_str(info_item_id)
-    except ValueError as e:
-        raise_envelope(
-            422,
-            "domain",
-            "info_item_id is not a valid ULID",
-            errors=[
-                FieldError(
-                    path="/info_item_id",
-                    message="not a valid ULID",
-                    code="invalid_ulid",
-                )
-            ],
-            source_exc=e,
-        )
-
-    try:
-        rev_ulid = ULID.from_str(body.source_revision_id)
-    except ValueError as e:
-        raise_envelope(
-            422,
-            "domain",
-            "source_revision_id is not a valid ULID",
-            errors=[
-                FieldError(
-                    path="/source_revision_id",
-                    message="not a valid ULID",
-                    code="invalid_ulid",
-                )
-            ],
-            source_exc=e,
-        )
-
-    try:
-        binding = await bind_revision(
-            session,
-            info_item_id=item_ulid,
-            source_revision_id=rev_ulid,
-            bound_at=body.bound_at,
-        )
-    except BindInfoItemNotFoundError as e:
-        raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
-    except SourceRevisionNotFoundError as e:
-        raise_envelope(404, "lookup", "SourceRevision not found", source_exc=e)
-
-    await session.commit()
-    return info_item_source_revision_to_out(binding)
 
 
 @router.delete(

@@ -11,7 +11,6 @@ from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
-    InfoItemSourceRevision,
     InfoSource,
     RepSpec,
     SourceRevision,
@@ -409,14 +408,6 @@ async def test_detail_revision_history_uses_status_pill(client, session):
     )
     session.add(rev)
     await session.flush()
-    session.add(
-        InfoItemSourceRevision(
-            info_item_id=item.info_item_id,
-            source_revision_id=rev.source_revision_id,
-            bound_at=datetime(2026, 2, 3, 8, 15, tzinfo=UTC),
-        )
-    )
-    await session.flush()
 
     r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
     assert r.status_code == 200
@@ -724,44 +715,6 @@ async def test_set_public_url_returns_fragment(client, session):
 
     await session.refresh(assignment)
     assert assignment.public_url == "https://storage.example.com/item.json"
-
-
-# ---------------------------------------------------------------------------
-# POST /{item_id}/bind-revision
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_bind_revision_creates_binding(client, session):
-    item = _make_item("Rev Bind Item")
-    session.add(item)
-    await session.flush()
-    source = _make_source("https://example.com/rev-bind")
-    session.add(source)
-    await session.flush()
-    rev = SourceRevision(
-        info_source_id=source.info_source_id,
-        content_fingerprint="sha256:aabbcc",
-        captured_at=datetime.now(UTC),
-    )
-    session.add(rev)
-    await session.flush()
-
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/bind-revision",
-        data={"source_revision_id": str(rev.source_revision_id)},
-        headers=_HEADERS,
-        follow_redirects=False,
-    )
-    assert r.status_code in (302, 303)
-
-    result = await session.execute(
-        select(InfoItemSourceRevision).where(
-            InfoItemSourceRevision.info_item_id == item.info_item_id,
-            InfoItemSourceRevision.source_revision_id == rev.source_revision_id,
-        )
-    )
-    assert result.scalar_one_or_none() is not None
 
 
 # ---------------------------------------------------------------------------

@@ -22,7 +22,6 @@ from archiver_client.generated.models.field_error import FieldError
 from archiver_client.generated.models.info_item_out import InfoItemOut
 from archiver_client.generated.models.info_item_rep_spec_out import InfoItemRepSpecOut
 from archiver_client.generated.models.info_item_source_out import InfoItemSourceOut
-from archiver_client.generated.models.info_item_source_revision_out import InfoItemSourceRevisionOut
 from archiver_client.generated.models.info_source_out import InfoSourceOut
 from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
 from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
@@ -31,7 +30,7 @@ from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
 from archiver_client.tools import ValidationResult
 
-__version__ = "4.3.0"
+__version__ = "5.0.0"
 
 __all__ = [
     "ArchiverClient",
@@ -43,7 +42,6 @@ __all__ = [
     "InfoItemOut",
     "InfoItemRepSpecOut",
     "InfoItemSourceOut",
-    "InfoItemSourceRevisionOut",
     "InfoSourceOut",
     "InformationError",
     "NotFound",

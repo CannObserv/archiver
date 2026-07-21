@@ -3,7 +3,6 @@
 Covers:
 - POST /info-items/{id}/info-sources
 - POST /info-items/{id}/rep-spec-assignments
-- POST /info-items/{id}/source-revisions
 - DELETE /info-items/{id}/rep-spec-assignments/{assignment_id}
 - PATCH /info-items/{id}/rep-spec-assignments/{assignment_id}
 """
@@ -17,7 +16,6 @@ from src.core.models import (
     InfoItemRepSpec,
     InfoSource,
     RepSpec,
-    SourceRevision,
 )
 
 HEADERS = {"X-API-Key": "test-secret-key"}
@@ -77,19 +75,6 @@ async def rep_spec(session) -> RepSpec:
     session.add(rs)
     await session.flush()
     return rs
-
-
-@pytest.fixture
-async def source_revision(session, info_source) -> SourceRevision:
-    """A SourceRevision for bind_revision tests."""
-    rev = SourceRevision(
-        info_source_id=info_source.info_source_id,
-        content_fingerprint="sha256:abc123",
-        captured_at=datetime.now(UTC),
-    )
-    session.add(rev)
-    await session.flush()
-    return rev
 
 
 # ---------------------------------------------------------------------------
@@ -261,95 +246,6 @@ async def test_add_rep_spec_assignment_requires_api_key(client, info_item, rep_s
     response = await client.post(
         f"/api/v1/info-items/{item_id}/rep-spec-assignments",
         json={"rep_spec_id": spec_id},
-    )
-    assert response.status_code == 403
-
-
-# ---------------------------------------------------------------------------
-# POST /info-items/{id}/source-revisions
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_bind_source_revision_happy_path(client, info_item, source_revision):
-    item_id = str(info_item.info_item_id)
-    rev_id = str(source_revision.source_revision_id)
-
-    response = await client.post(
-        f"/api/v1/info-items/{item_id}/source-revisions",
-        headers=HEADERS,
-        json={"source_revision_id": rev_id},
-    )
-    assert response.status_code == 201
-    body = response.json()
-    assert body["info_item_id"] == item_id
-    assert body["source_revision_id"] == rev_id
-    assert "bound_at" in body
-
-
-@pytest.mark.asyncio
-async def test_bind_source_revision_idempotent(client, info_item, source_revision):
-    """Calling twice returns the existing binding (still 201 on second call)."""
-    item_id = str(info_item.info_item_id)
-    rev_id = str(source_revision.source_revision_id)
-    payload = {"source_revision_id": rev_id}
-
-    r1 = await client.post(
-        f"/api/v1/info-items/{item_id}/source-revisions",
-        headers=HEADERS,
-        json=payload,
-    )
-    r2 = await client.post(
-        f"/api/v1/info-items/{item_id}/source-revisions",
-        headers=HEADERS,
-        json=payload,
-    )
-    assert r1.status_code == 201
-    assert r2.status_code == 201
-    # bound_at should be the same (row returned unchanged)
-    assert r1.json()["bound_at"] == r2.json()["bound_at"]
-
-
-@pytest.mark.asyncio
-async def test_bind_source_revision_missing_item_returns_404(client, source_revision):
-    fake_id = "01HZZZZZZZZZZZZZZZZZZZZZZZ"
-    rev_id = str(source_revision.source_revision_id)
-
-    response = await client.post(
-        f"/api/v1/info-items/{fake_id}/source-revisions",
-        headers=HEADERS,
-        json={"source_revision_id": rev_id},
-    )
-    assert response.status_code == 404
-    detail = response.json()["detail"]
-    assert detail["kind"] == "lookup"
-    assert detail["message"] == "InfoItem not found"
-
-
-@pytest.mark.asyncio
-async def test_bind_source_revision_missing_revision_returns_404(client, info_item):
-    item_id = str(info_item.info_item_id)
-    fake_rev = "01HZZZZZZZZZZZZZZZZZZZZZZZ"
-
-    response = await client.post(
-        f"/api/v1/info-items/{item_id}/source-revisions",
-        headers=HEADERS,
-        json={"source_revision_id": fake_rev},
-    )
-    assert response.status_code == 404
-    detail = response.json()["detail"]
-    assert detail["kind"] == "lookup"
-    assert detail["message"] == "SourceRevision not found"
-
-
-@pytest.mark.asyncio
-async def test_bind_source_revision_requires_api_key(client, info_item, source_revision):
-    item_id = str(info_item.info_item_id)
-    rev_id = str(source_revision.source_revision_id)
-
-    response = await client.post(
-        f"/api/v1/info-items/{item_id}/source-revisions",
-        json={"source_revision_id": rev_id},
     )
     assert response.status_code == 403
 

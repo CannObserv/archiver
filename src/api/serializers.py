@@ -8,7 +8,6 @@ from src.api.schemas.info_item import (
     InfoItemOut,
     InfoItemRepSpecOut,
     InfoItemSourceOut,
-    InfoItemSourceRevisionOut,  # noqa: F401  (re-exported for route modules)
 )
 from src.api.schemas.info_source import InfoSourceOut
 from src.api.schemas.rep_spec import RepSpecOut
@@ -17,7 +16,6 @@ from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
-    InfoItemSourceRevision,
     InfoSource,
     RepSpec,
     SourceRevision,
@@ -42,17 +40,6 @@ def info_item_rep_spec_to_out(airs: InfoItemRepSpec) -> InfoItemRepSpecOut:
         activated_at=airs.activated_at,
         deactivated_at=airs.deactivated_at,
         public_url=airs.public_url,
-    )
-
-
-def info_item_source_revision_to_out(
-    binding: InfoItemSourceRevision,
-) -> InfoItemSourceRevisionOut:
-    """Serialise an InfoItemSourceRevision ORM row."""
-    return InfoItemSourceRevisionOut(
-        info_item_id=str(binding.info_item_id),
-        source_revision_id=str(binding.source_revision_id),
-        bound_at=binding.bound_at,
     )
 
 

@@ -678,60 +678,6 @@
         "title": "InfoItemSourceOut",
         "type": "object"
       },
-      "InfoItemSourceRevisionCreate": {
-        "description": "Request body for POST /info-items/{id}/source-revisions.",
-        "properties": {
-          "bound_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Bind timestamp; defaults to now() when omitted.",
-            "title": "Bound At"
-          },
-          "source_revision_id": {
-            "description": "ULID of an existing SourceRevision.",
-            "minLength": 1,
-            "title": "Source Revision Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "source_revision_id"
-        ],
-        "title": "InfoItemSourceRevisionCreate",
-        "type": "object"
-      },
-      "InfoItemSourceRevisionOut": {
-        "description": "Projection of an info_item_source_revisions row.",
-        "properties": {
-          "bound_at": {
-            "format": "date-time",
-            "title": "Bound At",
-            "type": "string"
-          },
-          "info_item_id": {
-            "title": "Info Item Id",
-            "type": "string"
-          },
-          "source_revision_id": {
-            "title": "Source Revision Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "info_item_id",
-          "source_revision_id",
-          "bound_at"
-        ],
-        "title": "InfoItemSourceRevisionOut",
-        "type": "object"
-      },
       "InfoSourceCreate": {
         "additionalProperties": false,
         "description": "Request body for POST /info-sources.",
@@ -1610,7 +1556,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.3.0"
+    "version": "4.4.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3243,124 +3189,6 @@
           }
         ],
         "summary": "Patch Rep Spec Assignment Public Url",
-        "tags": [
-          "info-items"
-        ]
-      }
-    },
-    "/api/v1/info-items/{info_item_id}/source-revisions": {
-      "post": {
-        "description": "Bind a SourceRevision to an InfoItem (idempotent).\n\nIf a binding for (info_item_id, source_revision_id) already exists, it is\nreturned unchanged. Returns 404 if the InfoItem or SourceRevision doesn't exist.",
-        "operationId": "bind_source_revision_api_v1_info_items__info_item_id__source_revisions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "info_item_id",
-            "required": true,
-            "schema": {
-              "title": "Info Item Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InfoItemSourceRevisionCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InfoItemSourceRevisionOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeResponse"
-                }
-              }
-            },
-            "description": "Bad request (envelope)."
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeResponse"
-                }
-              }
-            },
-            "description": "Auth required (envelope)."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeResponse"
-                }
-              }
-            },
-            "description": "Forbidden (envelope)."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeResponse"
-                }
-              }
-            },
-            "description": "Not found (envelope)."
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeResponse"
-                }
-              }
-            },
-            "description": "Conflict (envelope)."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeResponse"
-                }
-              }
-            },
-            "description": "Validation failed (envelope)."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvelopeResponse"
-                }
-              }
-            },
-            "description": "Internal error (envelope)."
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Bind Source Revision",
         "tags": [
           "info-items"
         ]

@@ -58,14 +58,6 @@ def _source_revision_payload(
     }
 
 
-def _source_revision_binding_payload() -> dict:
-    return {
-        "info_item_id": "01HZZ00000000000000000000A",
-        "source_revision_id": "01HZZ00000000000000000000E",
-        "bound_at": _TS,
-    }
-
-
 def _info_item_source_out_payload(
     info_source_id: str = "01HZZ00000000000000000000F",
     *,
@@ -435,20 +427,6 @@ async def test_patch_source_revision_cache(client):
 
 
 # --- Bind revision ---
-
-
-@pytest.mark.asyncio
-async def test_bind_revision(client):
-    with respx.mock:
-        respx.post(
-            f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/source-revisions"
-        ).mock(return_value=httpx.Response(201, json=_source_revision_binding_payload()))
-        out = await client.bind_revision(
-            "01HZZ00000000000000000000A",
-            "01HZZ00000000000000000000E",
-        )
-    assert out.source_revision_id == "01HZZ00000000000000000000E"
-    assert out.info_item_id == "01HZZ00000000000000000000A"
 
 
 # --- Top-level InfoSource endpoints ---

@@ -18,6 +18,21 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.4.0 / SDK v5.0.0 (2026-07-21)
+
+[both] **Retire the `info_item_source_revisions` pin table — `POST /info-items/{id}/source-revisions` removed, SDK v5.0.0** (archiver#101, 2026-07-21). **Breaking.**
+
+The per-item revision *pin* table served two purposes that both dissolved across earlier refactors: an automatic content timeline (never wired — post-#185 the standalone Watcher writes `source_revisions`, not pins) and explicit revision pinning (zero automatic writers, zero downstream consumers). An InfoItem's content timeline is a query over its InfoSource bindings (active primary + previous primaries), not this table. No bus event, Replicator, or other reader depended on it.
+
+Service changes:
+- **Removed** `POST /api/v1/info-items/{info_item_id}/source-revisions` (the `bind_source_revision` endpoint) and its request/response models `InfoItemSourceRevisionCreate` / `InfoItemSourceRevisionOut`.
+- **Migration** `4413805453dd` drops `information.info_item_source_revisions`. The `downgrade` recreates the (empty) table; no data any reader consumed is lost.
+- Core: removed the `bind_revision` tool and the `InfoItemSourceRevision` ORM model.
+- The `source_revision_captured` and `info_item_primary_changed` bus events are unchanged — neither referenced pins.
+
+SDK changes (v4.3.0 → **v5.0.0**):
+- **Removed** `ArchiverClient.bind_revision(...)` and the `InfoItemSourceRevisionOut` export. Callers pinning revisions have no replacement — the operation no longer exists. The top-level `post_source_revision` / `patch_source_revision_cache` methods (the `/source-revisions` record + cache endpoints) are unaffected.
+
 ## v4.3.0 (2026-07-20)
 
 [both] **RepSpec documents are editable while draft — `PATCH /rep-specs/{id}`, SDK v4.3.0** (archiver#83, 2026-07-20).

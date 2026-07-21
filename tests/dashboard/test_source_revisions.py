@@ -6,8 +6,6 @@ import pytest
 from ulid import ULID
 
 from src.core.models import (
-    InfoItem,
-    InfoItemSourceRevision,
     InfoSource,
     SourceRevision,
 )
@@ -140,97 +138,6 @@ async def test_detail_shows_source_link(client, session):
 
 
 @pytest.mark.asyncio
-async def test_detail_shows_bound_items(client, session):
-    src = _make_source("https://example.com/rev-bound-items")
-    session.add(src)
-    await session.flush()
-    rev = _make_revision(src)
-    session.add(rev)
-    await session.flush()
-
-    item = InfoItem(name="Rev-Bound Item")
-    session.add(item)
-    await session.flush()
-
-    iisr = InfoItemSourceRevision(
-        info_item_id=item.info_item_id,
-        source_revision_id=rev.source_revision_id,
-        bound_at=datetime(2026, 3, 10, 9, 0, tzinfo=UTC),
-    )
-    session.add(iisr)
-    await session.flush()
-
-    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
-    assert r.status_code == 200
-    assert "Rev-Bound Item" in r.text
-
-
-@pytest.mark.asyncio
-async def test_detail_bound_item_current_pin_badge(client, session):
-    """This revision is the item's latest binding → 'current pin' (#78 #9)."""
-    src = _make_source("https://example.com/rev-pin-a")
-    session.add(src)
-    await session.flush()
-    rev = _make_revision(src, "7" * 64)
-    session.add(rev)
-    await session.flush()
-
-    item = InfoItem(name="Current-Pin Item")
-    session.add(item)
-    await session.flush()
-    session.add(
-        InfoItemSourceRevision(
-            info_item_id=item.info_item_id,
-            source_revision_id=rev.source_revision_id,
-            bound_at=datetime(2026, 3, 10, 9, 0, tzinfo=UTC),
-        )
-    )
-    await session.flush()
-
-    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
-    assert r.status_code == 200
-    assert ">current pin<" in r.text
-    assert ">superseded<" not in r.text
-
-
-@pytest.mark.asyncio
-async def test_detail_bound_item_superseded_badge(client, session):
-    """Item later bound to a newer revision → this one is 'superseded' (#78 #9)."""
-    src = _make_source("https://example.com/rev-older")
-    session.add(src)
-    await session.flush()
-    rev = _make_revision(src, "8" * 64)
-    rev_newer = _make_revision(src, "9" * 64)
-    session.add(rev)
-    session.add(rev_newer)
-    await session.flush()
-
-    item = InfoItem(name="Older-Binding Item")
-    session.add(item)
-    await session.flush()
-    session.add(
-        InfoItemSourceRevision(
-            info_item_id=item.info_item_id,
-            source_revision_id=rev.source_revision_id,
-            bound_at=datetime(2026, 3, 10, 9, 0, tzinfo=UTC),
-        )
-    )
-    session.add(
-        InfoItemSourceRevision(
-            info_item_id=item.info_item_id,
-            source_revision_id=rev_newer.source_revision_id,
-            bound_at=datetime(2026, 3, 11, 9, 0, tzinfo=UTC),
-        )
-    )
-    await session.flush()
-
-    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
-    assert r.status_code == 200
-    assert ">superseded<" in r.text
-    assert ">current pin<" not in r.text
-
-
-@pytest.mark.asyncio
 async def test_detail_header_eyebrow_replaces_breadcrumb(client, session):
     """Header shows a singular 'Information Source Revision' eyebrow, not a
     breadcrumb, and drops the truncated fingerprint (full one lives in the grid)."""
@@ -301,34 +208,6 @@ async def test_detail_uses_detail_grid_item_markup(client, session):
     assert r.status_code == 200
     assert "detail-grid__item" in r.text
     assert "<dt>" not in r.text
-
-
-@pytest.mark.asyncio
-async def test_detail_bound_timestamp_labeled_utc(client, session):
-    """Bound Items timestamp carries a UTC suffix like the rest of the screen (#78)."""
-    src = _make_source("https://example.com/rev-utc")
-    session.add(src)
-    await session.flush()
-    rev = _make_revision(src, "2" * 64)
-    session.add(rev)
-    await session.flush()
-
-    item = InfoItem(name="UTC-Label Item")
-    session.add(item)
-    await session.flush()
-
-    session.add(
-        InfoItemSourceRevision(
-            info_item_id=item.info_item_id,
-            source_revision_id=rev.source_revision_id,
-            bound_at=datetime(2026, 3, 10, 11, 30, tzinfo=UTC),
-        )
-    )
-    await session.flush()
-
-    r = await client.get(f"/dashboard/source-revisions/{rev.source_revision_id}", headers=_HEADERS)
-    assert r.status_code == 200
-    assert "11:30 UTC" in r.text
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrif
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus two Item↔X join tables (`info_item_sources`, `info_item_source_revisions`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces a Redis Stream (`info.changes`) via an internal outbox publisher.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`; the `info_item_source_revisions` pin table was dropped in archiver#101). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces a Redis Stream (`info.changes`) via an internal outbox publisher.
 
 Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
 
@@ -54,8 +54,8 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                docs/UI.md for why the dashboard clamps where the API 422s)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
-                               info_item_source, info_item_source_revision,
-                               rep_spec, info_item_rep_spec, changes_outbox)
+                               info_item_source, rep_spec, info_item_rep_spec,
+                               changes_outbox)
   source_spec_schema/          SourceSpec JSON Schema v1 + validator
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
@@ -63,7 +63,7 @@ src/core/                      Domain logic
   changes/                     Outbox publisher (background asyncio task) +
                                typed Pydantic event payloads
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
-                               update_rep_spec, bind_revision, resolve_rep_fields,
+                               update_rep_spec, resolve_rep_fields,
                                preview_extraction, etc.)
   fetchers/, extractors/,
   simhash.py, extraction_defaults.py, logging.py
@@ -228,7 +228,7 @@ set +a
 
 ## Authoring tools + assignment endpoints (v2)
 
-The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v4.x; see [CHANGELOG.md](CHANGELOG.md) for version history).
+The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-resource routes under `/api/v1/info-items/{id}/*`. All routes use `X-API-Key` auth (only `/health` and `/openapi.json` are open). Each route has an ergonomic SDK wrapper on `ArchiverClient` (v5.x; see [CHANGELOG.md](CHANGELOG.md) for version history).
 
 **Domain endpoints (v4.1+):**
 
@@ -275,7 +275,6 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Assign a RepSpec | `POST /info-items/{id}/rep-spec-assignments` | `assign_rep_spec(info_item_id, rep_spec_id, activated_at=None)` |
 | Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
 | Public-URL writeback | `PATCH /info-items/{id}/rep-spec-assignments/{aid}` | `set_public_url(info_item_id, assignment_id, public_url)` |
-| Bind a SourceRevision | `POST /info-items/{id}/source-revisions` | `bind_revision(info_item_id, source_revision_id, bound_at=None)` |
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
@@ -493,7 +492,6 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
     as succession history. Watcher may continue watching previous primaries for unanticipated
     changes.
 
-- **`InfoItemSourceRevision`** (`info_item_source_revisions`) — append-only history of which revisions an item has been pinned to.
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
   **Tiered mutability** (#83): `name` always editable; `document` editable only while the RepSpec is a
   *draft* — zero `info_item_rep_specs` rows, active **or** deactivated; `provider` frozen always.

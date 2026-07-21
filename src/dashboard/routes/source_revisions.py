@@ -13,8 +13,6 @@ from ulid import ULID
 
 from src.api.deps import get_db_session
 from src.core.models import (
-    InfoItem,
-    InfoItemSourceRevision,
     InfoSource,
     SourceRevision,
 )
@@ -116,56 +114,10 @@ async def detail_source_revision(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Detail: fingerprint, source link, cache info, bound items."""
+    """Detail: fingerprint, source link, cache info."""
     rev = await _resolve_revision(rev_id, session)
 
     source = await session.get(InfoSource, rev.info_source_id)
-
-    # Bound InfoItems via info_item_source_revisions
-    iisr_rows = list(
-        (
-            await session.execute(
-                select(InfoItemSourceRevision).where(
-                    InfoItemSourceRevision.source_revision_id == rev.source_revision_id
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    item_ids = [r.info_item_id for r in iisr_rows]
-    items_by_id: dict[ULID, InfoItem] = {}
-    current_rev_by_item: dict[ULID, ULID] = {}
-    if item_ids:
-        item_rows = list(
-            (await session.execute(select(InfoItem).where(InfoItem.info_item_id.in_(item_ids))))
-            .scalars()
-            .all()
-        )
-        items_by_id = {i.info_item_id: i for i in item_rows}
-
-        # Each bound item's *current* pin is its most-recent InfoItemSourceRevision
-        # (append-only history). This revision is "current pin" for an item when it
-        # equals that latest binding, else "superseded". Tie-break on the revision
-        # ULID (lexically monotonic) so equal bound_at is still deterministic.
-        all_bindings = list(
-            (
-                await session.execute(
-                    select(InfoItemSourceRevision).where(
-                        InfoItemSourceRevision.info_item_id.in_(item_ids)
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        latest: dict[ULID, tuple[tuple[datetime, str], ULID]] = {}
-        for b in all_bindings:
-            key = (b.bound_at, str(b.source_revision_id))
-            cur = latest.get(b.info_item_id)
-            if cur is None or key > cur[0]:
-                latest[b.info_item_id] = (key, b.source_revision_id)
-        current_rev_by_item = {iid: v[1] for iid, v in latest.items()}
 
     now = datetime.now(UTC)
     return _templates.TemplateResponse(
@@ -175,9 +127,6 @@ async def detail_source_revision(
             "user": user,
             "rev": rev,
             "source": source,
-            "iisr_rows": iisr_rows,
-            "items_by_id": items_by_id,
-            "current_rev_by_item": current_rev_by_item,
             "now": now,
         },
     )

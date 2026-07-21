@@ -56,13 +56,6 @@ from src.core.tools.bind_info_source import (
 from src.core.tools.bind_info_source import (
     InfoSourceNotFoundError as BindSourceNotFoundError,
 )
-from src.core.tools.bind_revision import (
-    InfoItemNotFoundError as BindRevItemNotFoundError,
-)
-from src.core.tools.bind_revision import (
-    SourceRevisionNotFoundError,
-    bind_revision,
-)
 from src.core.tools.create_info_source import (
     CreateInfoSourceError,
     InvalidSourceSpecError,
@@ -773,43 +766,6 @@ async def set_assignment_public_url(
             "rep_spec": rs,
             "item_id": item_id,
         },
-    )
-
-
-# ---------------------------------------------------------------------------
-# POST /{item_id}/bind-revision
-# ---------------------------------------------------------------------------
-
-
-@router.post("/{item_id}/bind-revision")
-async def bind_revision_route(
-    item_id: str,
-    source_revision_id: str = Form(...),
-    user=Depends(get_dashboard_user),
-    session: AsyncSession = Depends(get_db_session),
-) -> Response:
-    """Bind a SourceRevision to this InfoItem."""
-    try:
-        item_ulid = ULID.from_str(item_id)
-    except Exception as e:
-        raise DashboardNotFound("Information Item not found") from e
-
-    try:
-        rev_ulid = ULID.from_str(source_revision_id.strip())
-    except Exception as e:
-        raise_envelope(422, "domain", "source_revision_id is not a valid ULID", source_exc=e)
-
-    try:
-        await bind_revision(session, info_item_id=item_ulid, source_revision_id=rev_ulid)
-    except BindRevItemNotFoundError as e:
-        raise DashboardNotFound("Information Item not found") from e
-    except SourceRevisionNotFoundError as e:
-        raise DashboardNotFound("Source Revision not found") from e
-
-    await session.commit()
-    return RedirectResponse(
-        url=f"/dashboard/info-items/{item_id}?tab=revisions",
-        status_code=303,
     )
 
 
