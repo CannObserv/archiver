@@ -36,8 +36,11 @@
         action="/dashboard/info-sources/{{ src.info_source_id }}/source-specs"
         style="margin-top:var(--space-3);">
     <div>
-      <label for="source-specs-edit" class="form-label">Update Source Specification</label>
+      {# No visible label — the card heading already names this control; a
+         label here only appears on Edit and causes layout jank. aria-label
+         keeps the textarea named for assistive tech. #}
       <textarea id="source-specs-edit" name="source_specs" x-ref="specsBox"
+                aria-label="Source specification JSON"
                 class="form-textarea code-block{% if specs_error %} form-textarea--error{% endif %}"
                 rows="8">{{ specs_input | default(specs_json, true) }}</textarea>
       {% if specs_error %}
@@ -45,7 +48,7 @@
       {% endif %}
     </div>
     <div style="text-align:right;margin-top:var(--space-2);">
-      <button type="button" class="btn btn--sm btn--ghost" @click="cancel()">Cancel</button>
+      <button type="button" class="btn btn--sm btn--secondary" @click="cancel()">Cancel</button>
       <button type="submit" class="btn btn--sm btn--primary">Save</button>
     </div>
   </form>
