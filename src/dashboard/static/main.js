@@ -43,8 +43,8 @@ document.addEventListener("alpine:init", function () {
 
             /**
              * Leave edit mode without a server call, discarding any unsaved
-             * text by resetting the label input to its server-rendered value
-             * (the input's defaultValue is the canonical {{ key.label }}).
+             * text by resetting the label input to its defaultValue (the
+             * server-rendered label).
              */
             cancelEdit: function () {
                 this.editing = false;
@@ -196,6 +196,8 @@ document.addEventListener("alpine:init", function () {
      * The canonical stored specs come from a data-island
      * <script type="application/json"> child (never an HTML attribute — see
      * sortableChips) so Cancel can reset the textarea without escaping hazards.
+     * Can't use the textarea's defaultValue (as apiKeyRow does) — on an error
+     * re-render that value is the rejected specs_input, not the stored specs.
      *
      * @param {boolean} startEditing Whether to render in edit mode initially.
      * @returns {object} Alpine component data.
@@ -210,7 +212,7 @@ document.addEventListener("alpine:init", function () {
                 if (island) {
                     try {
                         this.canonical = JSON.parse(island.textContent);
-                    } catch (err) {
+                    } catch (_err) {
                         this.canonical = "";
                     }
                 }
@@ -218,7 +220,10 @@ document.addEventListener("alpine:init", function () {
 
             cancel: function () {
                 this.editing = false;
-                if (this.$refs.specsBox) {
+                // Guard on canonical: if the island failed to parse (unreachable
+                // — tojson always emits valid JSON), leave the operator's text
+                // intact rather than blanking the textarea.
+                if (this.$refs.specsBox && this.canonical) {
                     this.$refs.specsBox.value = this.canonical;
                 }
             }
