@@ -25,6 +25,15 @@ EnvironmentFile=-/home/exedev/archiver/.env
 # Keep this AFTER the EnvironmentFile lines so it cannot be overridden by them.
 Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 
+# co-core / co-core-aio resolve from the local wheelhouse (archiver#72/#75).
+# Refresh it from the private GCS index before ExecStart, so `uv run` (which
+# auto-syncs from uv.lock) can resolve them. Auth is the co-pypi-reader SA key
+# at GOOGLE_APPLICATION_CREDENTIALS (loaded from /etc/archiver/.env above).
+# Non-fatal (`-`): a transient GCS/network failure is logged and an already-
+# populated wheelhouse still starts; only a genuinely missing wheel surfaces
+# as a hard `uv` resolution error at ExecStart.
+ExecStartPre=-/usr/local/bin/uv run --no-project --with google-cloud-storage python /home/exedev/archiver/scripts/sync_wheelhouse.py
+
 ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8020
 Restart=on-failure
 RestartSec=5

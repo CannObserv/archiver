@@ -21,6 +21,26 @@ TDD required. Red → Green → Refactor. No production code without a failing t
 
 Python ≥3.12, uv, pytest, ruff. Postgres on the local VM (shared instance with watcher and notifier; archiver owns its own database).
 
+**cannobserv substrate (archiver#72/#75).** `co-core` + `co-core-aio` (the shared
+Cannabis Observer core library — pure models/utils + async drivers) are declared
+as plain floors (`>=0.3,<0.4`) and resolved from a local **wheelhouse**
+(`./.wheelhouse`, gitignored) via `[tool.uv] find-links`, mirrored from the private
+GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`. This is Phase 0 of the
+cluster-integration strategy — the precedent Watcher/Replicator follow. Populate the
+wheelhouse before `uv sync`/`uv run`:
+
+```bash
+set -a; . /etc/archiver/.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS=co-pypi-reader key
+uv run --no-project --with google-cloud-storage python scripts/sync_wheelhouse.py
+```
+
+Reproducibility is `uv.lock` (pinned version + wheelhouse artifact), not the
+wheelhouse contents. Upgrade: re-sync, then `uv lock --upgrade-package co-core`
+(bump the floor if the minor moved). CI resolves the wheelhouse keyless via Workload
+Identity Federation; the deploy unit syncs it in `ExecStartPre`. No git sources and
+no `cannobserv`/`co-core-sync` (heavy google/trello deps — archiver imports only
+`co-core` + `co-core-aio`).
+
 ## Code Exploration Policy
 
 SocratiCode is indexed on this repo (`.socraticodecontextartifacts.json` present). Its MCP tools are **deferred** — schemas load only after a `ToolSearch` prefetch. The SessionStart hook prints the prefetch query; run it before exploring.
@@ -343,7 +363,10 @@ Full skill reference: `docs/SKILLS.md`. Cross-project search to the sister `watc
 ## Common Commands
 
 ```bash
-uv sync                                      # install deps
+# Populate the cannobserv wheelhouse before installing (see Environment & Tooling):
+set -a; . /etc/archiver/.env; set +a
+uv run --no-project --with google-cloud-storage python scripts/sync_wheelhouse.py
+uv sync                                      # install deps (resolves co-core from ./.wheelhouse)
 uv run pytest                                # tests
 uv run ruff check .                          # lint (also ruff format .)
 uv run alembic upgrade head                  # apply migrations

@@ -4,9 +4,36 @@ Systemd units for the Archiver VM.
 
 | Unit | Type | Purpose |
 |---|---|---|
-| `archiver.service` | service | The live API on port 8020 (see CLAUDE.md → Server Lifecycle). |
+| `archiver.service` | service | The live API on port 8020 (see CLAUDE.md → Server Lifecycle). Its `ExecStartPre` mirrors the cannobserv wheelhouse (see below). |
 | `watcher-live-drift.service` | oneshot | Layer C (#70): detect `watcher_client` snapshot drift vs **live** Watcher and open a regen PR. |
 | `watcher-live-drift.timer` | timer | Fires the oneshot daily. |
+
+## cannobserv wheelhouse (archiver#72/#75)
+
+`co-core` / `co-core-aio` resolve from `./.wheelhouse` (gitignored), mirrored
+from the private GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`.
+The service's `ExecStartPre` runs that sync before `uv run`, so a restart always
+resolves against a current wheelhouse.
+
+Requirements on the VM:
+
+- A read-only credential at `GOOGLE_APPLICATION_CREDENTIALS` (the
+  `co-pypi-reader@co-gcs` service-account key, referenced from
+  `/etc/archiver/.env`). Needs only `roles/storage.objectViewer` on the bucket.
+- `uv` (already required) — the sync runs via `uv run --no-project --with
+  google-cloud-storage`, so no system Cloud SDK is needed.
+
+**Deploy step for the co-core adoption (one-time).** The unit gained an
+`ExecStartPre`; reinstall it before the next restart or the parity test
+(`tests/deploy/test_installed_unit_matches_repo.py`) flags drift:
+
+```bash
+sudo cp deploy/archiver.service /etc/systemd/system/ && sudo systemctl daemon-reload
+# then, when safe: sudo systemctl restart archiver
+```
+
+(CI is keyless instead — the `lint`/`test` jobs authenticate via Workload
+Identity Federation; see `.github/workflows/ci.yml`.)
 
 ## watcher-live-drift (Layer C, archiver#70)
 

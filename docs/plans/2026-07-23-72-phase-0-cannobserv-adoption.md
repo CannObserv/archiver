@@ -1,7 +1,7 @@
 ---
 title: "Phase 0 — adopt cannobserv (co-core + co-core-aio) via the private GCS index"
 date: 2026-07-23
-status: draft
+status: executed (pending deploy-unit reinstall + first live CI run)
 ---
 
 # Phase 0 — adopt cannobserv via find-links (co-core + co-core-aio)
@@ -95,6 +95,28 @@ the operator unblocks GCS.
    with the wheelhouse-sync step and the co-core dependency, so Watcher/Replicator inherit the
    precedent. Note in #75/#77 that archiver adopted v0.3.4 via find-links and record the
    exe.dev-not-GCP wrinkle for W/R.
+
+## Execution notes (2026-07-24)
+
+- **Credential reality resolved the CI mechanism to WIF, not an SA-key secret.** The VM
+  is not GCP-hosted, so it carries the `co-pypi-reader@co-gcs` SA **key** at
+  `GOOGLE_APPLICATION_CREDENTIALS` (in `/etc/archiver/.env`). CI instead authenticates
+  **keyless** via Workload Identity Federation.
+- **The publish provider was not widened.** Its condition
+  (`repository == 'CannObserv/cannobserv' && ref startsWith refs/tags/v`) also guards the
+  write-capable publish SA; loosening it would let cannobserv non-tag runs impersonate that
+  SA. Instead a **second, read-scoped provider** `github-ci`
+  (`repository_owner == 'CannObserv'`) was added to the same `github` pool, the org-scoped
+  `GCP_WIF_PROVIDER` var (Archiver+Watcher) points at it, and `co-pypi-reader` grants
+  `workloadIdentityUser` to `attribute.repository/CannObserv/archiver`. Watcher inherits this
+  verbatim; add its principalSet binding when it adopts.
+- **Only `lint` + `test` got the auth+sync steps.** `client-drift` runs only `--no-project`
+  scripts and never resolves co-core, so it needs no GCS access.
+- **Deploy: reinstall is a manual step, not done during execution.** The live 8020 service
+  runs from this same checkout; the unit gained a non-fatal `ExecStartPre` wheelhouse sync.
+  The unit was **not** reinstalled and the service **not** restarted here — that is the
+  post-merge deploy action (`deploy/README.md`).
+- **Version:** adopted **v0.3.4** (latest), superseding #77's v0.3.1.
 
 ## Open questions / risks
 
