@@ -32,7 +32,7 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # Non-fatal (`-`): a transient GCS/network failure is logged and an already-
 # populated wheelhouse still starts; only a genuinely missing wheel surfaces
 # as a hard `uv` resolution error at ExecStart.
-ExecStartPre=-/usr/local/bin/uv run --no-project --with google-cloud-storage python /home/exedev/archiver/scripts/sync_wheelhouse.py
+ExecStartPre=-/usr/local/bin/uv run --no-project --with google-cloud-storage>=2,<4 python /home/exedev/archiver/scripts/sync_wheelhouse.py
 
 ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8020
 Restart=on-failure

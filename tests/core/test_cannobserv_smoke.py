@@ -23,7 +23,7 @@ def test_co_core_sha256_matches_stdlib_hexdigest() -> None:
 def test_co_core_sha256_matches_archiver_fingerprint_body() -> None:
     """The digest co-core computes is the body archiver prefixes with ``sha256:``.
 
-    Mirrors ``src/core/tools/preview_extraction._fingerprint`` and
+    Mirrors ``src/core/tools/preview_extraction._compute_fingerprint`` and
     ``src/core/extractors/base`` (both ``hashlib.sha256(text.encode()).hexdigest()``),
     so a future swap to the co-core impl is a no-op on the wire.
     """
