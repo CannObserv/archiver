@@ -88,8 +88,9 @@ packages = ["src"]
 # cannobserv workspace packages (co-core, co-core-aio) resolve from the local
 # wheelhouse, mirrored from the private GCS index gs://co-gcs-pypi by
 # scripts/sync_wheelhouse.py before `uv sync`/`uv run` (archiver#72/#75). No
-# git sources for cannobserv — reproducibility comes from uv.lock's pinned
-# version + wheel hash, generated against the real GCS wheels.
+# git sources for cannobserv — reproducibility is uv.lock's pinned version + the
+# named wheelhouse artifact (find-links locks by filename, not hash; content
+# integrity rests on the GCS bucket's immutability + access control).
 find-links = ["./.wheelhouse"]
 
 [tool.uv.sources]

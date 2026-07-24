@@ -9,11 +9,6 @@ on:
 
 permissions:
   contents: read
-  # WIF: let the lint/test jobs mint an OIDC token for
-  # google-github-actions/auth to impersonate the read-only co-pypi-reader SA
-  # and pull the cannobserv wheelhouse (archiver#72/#75). The changelog job
-  # overrides this with its own block, so it never gains id-token.
-  id-token: write
 
 # Cancel superseded runs on the same PR; never cancel runs on main (keep
 # CI signal for every commit that lands on the protected branch).
@@ -25,6 +20,12 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    # WIF: mint an OIDC token for google-github-actions/auth to impersonate the
+    # read-only co-pypi-reader SA and pull the cannobserv wheelhouse
+    # (archiver#72/#75). Scoped to this job so client-drift never gains it.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v5
 
@@ -47,7 +48,7 @@ jobs:
           service_account: co-pypi-reader@co-gcs.iam.gserviceaccount.com
 
       - name: Sync cannobserv wheelhouse
-        run: uv run --no-project --with google-cloud-storage python scripts/sync_wheelhouse.py
+        run: uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 
       - name: uv sync
         run: uv sync --group dev
@@ -82,6 +83,10 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    # WIF: mint an OIDC token for google-github-actions/auth (see the lint job).
+    permissions:
+      contents: read
+      id-token: write
     services:
       postgres:
         image: postgres:16
@@ -122,7 +127,7 @@ jobs:
           service_account: co-pypi-reader@co-gcs.iam.gserviceaccount.com
 
       - name: Sync cannobserv wheelhouse
-        run: uv run --no-project --with google-cloud-storage python scripts/sync_wheelhouse.py
+        run: uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 
       - name: uv sync
         run: uv sync --group dev

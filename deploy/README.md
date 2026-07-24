@@ -21,7 +21,7 @@ Requirements on the VM:
   `co-pypi-reader@co-gcs` service-account key, referenced from
   `/etc/archiver/.env`). Needs only `roles/storage.objectViewer` on the bucket.
 - `uv` (already required) — the sync runs via `uv run --no-project --with
-  google-cloud-storage`, so no system Cloud SDK is needed.
+  'google-cloud-storage>=2,<4'`, so no system Cloud SDK is needed.
 
 **Deploy step for the co-core adoption (one-time).** The unit gained an
 `ExecStartPre`; reinstall it before the next restart or the parity test

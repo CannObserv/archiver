@@ -31,7 +31,7 @@ wheelhouse before `uv sync`/`uv run`:
 
 ```bash
 set -a; . /etc/archiver/.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS=co-pypi-reader key
-uv run --no-project --with google-cloud-storage python scripts/sync_wheelhouse.py
+uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 ```
 
 Reproducibility is `uv.lock` (pinned version + wheelhouse artifact), not the
@@ -365,7 +365,7 @@ Full skill reference: `docs/SKILLS.md`. Cross-project search to the sister `watc
 ```bash
 # Populate the cannobserv wheelhouse before installing (see Environment & Tooling):
 set -a; . /etc/archiver/.env; set +a
-uv run --no-project --with google-cloud-storage python scripts/sync_wheelhouse.py
+uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 uv sync                                      # install deps (resolves co-core from ./.wheelhouse)
 uv run pytest                                # tests
 uv run ruff check .                          # lint (also ruff format .)
