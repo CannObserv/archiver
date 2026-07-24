@@ -15,5 +15,9 @@ node_modules/
 # ignored so an interrupted run can't be committed accidentally).
 .drift-*/
 
-# cannobserv package index mirror (archiver#72/#75) — populated by scripts/sync_wheelhouse.py
+# cannobserv package index mirror (archiver#72/#75) — populated by scripts/sync_wheelhouse.py.
+# Track an empty .gitkeep so the `[tool.uv] find-links` dir always exists at
+# checkout: uv reads that config on *every* invocation and errors if the dir is
+# missing (before the sync that would create it can run). Wheels stay ignored.
 .wheelhouse/
+!.wheelhouse/.gitkeep
