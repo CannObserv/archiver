@@ -7,6 +7,10 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 ## Run locally
 
 ```bash
+# co-core / co-core-aio resolve from a wheelhouse mirrored from the private GCS
+# index (see AGENTS.md → Environment & Tooling); populate it before uv sync:
+set -a; . /etc/archiver/.env; set +a
+uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 uv sync
 bash scripts/dev_server.sh
 ```
