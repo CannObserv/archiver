@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from google.cloud import storage
@@ -54,7 +55,17 @@ def sync() -> int:
                 skipped += 1
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            blob.download_to_filename(target)
+            # Download to a sibling temp file then atomically rename, so an
+            # interrupted run never leaves a partial wheel in place (which a
+            # concurrent reader, or a same-size coincidence, could mistake for
+            # a complete one). os.replace is atomic within the same directory.
+            fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".part")
+            os.close(fd)
+            try:
+                blob.download_to_filename(tmp)
+                os.replace(tmp, target)
+            finally:
+                Path(tmp).unlink(missing_ok=True)
             downloaded += 1
     except Exception as exc:  # broad by design: auth/network/bucket failures degrade identically
         print(f"error: could not sync gs://{BUCKET}/{PREFIX}: {exc}", file=sys.stderr)
