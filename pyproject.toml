@@ -23,6 +23,8 @@ dependencies = [
     "jinja2>=3.1.0,<4",
     "aiofiles>=24.1.0,<25",
     "python-multipart>=0.0.9,<1",
+    "co-core>=0.3,<0.4",
+    "co-core-aio>=0.3,<0.4",
     "archiver-client",
     "watcher-client",
 ]
@@ -81,6 +83,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[tool.uv]
+# cannobserv workspace packages (co-core, co-core-aio) resolve from the local
+# wheelhouse, mirrored from the private GCS index gs://co-gcs-pypi by
+# scripts/sync_wheelhouse.py before `uv sync`/`uv run` (archiver#72/#75). No
+# git sources for cannobserv — reproducibility comes from uv.lock's pinned
+# version + wheel hash, generated against the real GCS wheels.
+find-links = ["./.wheelhouse"]
 
 [tool.uv.sources]
 archiver-client = { path = "clients/python", editable = true }
