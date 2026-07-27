@@ -4,8 +4,8 @@ import hashlib
 
 import httpx
 import pytest
+from co_core.effects.fetch import FetchResult
 
-from src.core.fetchers.base import FetchResult
 from src.core.tools.preview_extraction import (
     PreviewExtractionResult,
     SourceSpecValidationError,
@@ -38,10 +38,10 @@ DEFAULT_URL = "https://example.com"
 
 
 def _stub_fetcher(content: bytes = HTML_FIXTURE, *, raise_exc: Exception | None = None):
-    """Return a minimal HttpFetcherProtocol stub."""
+    """Return a minimal fetch-driver stub."""
 
     class _Stub:
-        async def fetch(self, url: str, config: dict | None = None) -> FetchResult:
+        async def execute(self, effect) -> FetchResult:
             if raise_exc is not None:
                 raise raise_exc
             return FetchResult(
@@ -164,8 +164,8 @@ class TestPreviewExtractionUrlFromSpec:
         received_urls = []
 
         class _CaptureFetcher:
-            async def fetch(self, url: str, config: dict | None = None) -> FetchResult:
-                received_urls.append(url)
+            async def execute(self, effect) -> FetchResult:
+                received_urls.append(effect.url)
                 return FetchResult(
                     content=HTML_FIXTURE,
                     status_code=200,

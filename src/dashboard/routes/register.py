@@ -231,10 +231,10 @@ async def preview(
     user=Depends(get_dashboard_user),
 ) -> HTMLResponse:
     """HTMX partial: attempt preview extraction and return result."""
-    fetcher = getattr(request.app.state, "http_fetcher", None)
-    if fetcher is None:
+    fetch_driver = getattr(request.app.state, "fetch_driver", None)
+    if fetch_driver is None:
         return HTMLResponse(
-            '<p class="text-muted">Preview unavailable — HTTP fetcher not initialised.</p>'
+            '<p class="text-muted">Preview unavailable — fetch driver not initialised.</p>'
         )
 
     try:
@@ -251,7 +251,7 @@ async def preview(
         return HTMLResponse('<p class="text-muted text-sm">Invalid source_specs JSON.</p>')
 
     try:
-        result = await preview_extraction(fetcher, canonical, spec)
+        result = await preview_extraction(fetch_driver, canonical, spec)
         text_preview = "\n".join(c.text[:200] for c in result.chunks[:3] if c.text)[:500]
         suggested_name = result.page_title[:200]
 

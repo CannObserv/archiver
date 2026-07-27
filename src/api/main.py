@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version as _package_version
 
+from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import APIRouter, Depends, FastAPI
 from redis.asyncio import Redis as RedisAsync
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -27,7 +28,6 @@ from src.core.db_safety import (
     ProductionDatabaseRefused,
     assert_production_db_allowed,
 )
-from src.core.fetchers.http import HttpFetcher
 from src.core.logging import configure_logging, get_logger
 from src.dashboard.main import register_dashboard
 
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       ``ARCHIVER_ALLOW_PRODUCTION_DB=1`` (only ``deploy/archiver.service``
       does).  Launch-path-independent backstop for the 2026-07-18 incident —
       see ``src.core.db_safety``.
-    - Builds a single shared ``HttpFetcher`` (shared ``httpx.AsyncClient``
+    - Builds a single shared ``AsyncFetchDriver`` (shared ``httpx.AsyncClient``
       connection pool) for tool routes.
     - Optionally starts the outbox publisher background task when
       ``ARCHIVER_REDIS_URL`` is set in the environment.  When the variable is
@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.critical("Refusing to start: %s", e)
         raise
 
-    app.state.http_fetcher = HttpFetcher()
+    app.state.fetch_driver = AsyncFetchDriver()
 
     # --- Optional WatcherClient ---
     watcher_base_url = os.environ.get("WATCHER_BASE_URL", "").strip()
@@ -120,8 +120,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 pass
         if redis_client is not None:
             await redis_client.aclose()
-        # Then close HTTP fetcher and WatcherClient
-        await app.state.http_fetcher.aclose()
+        # Then close the fetch driver and WatcherClient
+        await app.state.fetch_driver.aclose()
         if watcher_client is not None:
             await watcher_client.aclose()
 

@@ -2,20 +2,19 @@
 
 import httpx
 import pytest
+from co_core.effects.fetch import FetchResult
 
-from src.api.deps import get_http_fetcher
+from src.api.deps import get_fetch_driver
 from src.api.main import app
-from src.core.fetchers.base import FetchResult
-from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
 def _override_with_response(response: httpx.Response) -> None:
-    """Inject a stub HttpFetcher that returns ``response`` for any URL."""
+    """Inject a stub fetch driver that returns ``response`` for any URL."""
 
     class _StubFetcher:
-        async def fetch(self, url: str, config: dict | None = None):
+        async def execute(self, effect):
             return FetchResult(
                 content=response.content,
                 status_code=response.status_code,
@@ -24,7 +23,7 @@ def _override_with_response(response: httpx.Response) -> None:
                 fetcher_used="http",
             )
 
-    app.dependency_overrides[get_http_fetcher] = lambda: _StubFetcher()
+    app.dependency_overrides[get_fetch_driver] = lambda: _StubFetcher()
 
 
 @pytest.mark.asyncio
@@ -92,13 +91,13 @@ async def test_fetch_and_render_passes_url_to_fetcher(client):
     captured = {}
 
     class _SpyFetcher:
-        async def fetch(self, url: str, config: dict | None = None):
-            captured["url"] = url
+        async def execute(self, effect):
+            captured["url"] = effect.url
             return FetchResult(
                 content=b"ok", status_code=200, headers={}, duration_ms=1, fetcher_used="http"
             )
 
-    app.dependency_overrides[get_http_fetcher] = lambda: _SpyFetcher()
+    app.dependency_overrides[get_fetch_driver] = lambda: _SpyFetcher()
     await client.post(
         "/api/v1/tools/fetch-and-render",
         headers=HEADERS,
@@ -106,8 +105,3 @@ async def test_fetch_and_render_passes_url_to_fetcher(client):
     )
     # The route forwards the (normalised) URL to the fetcher unchanged.
     assert captured["url"] == "https://target.example.com/path"
-
-
-def test_protocol_marker_exported():
-    """Smoke check that the protocol type is importable for type-only callers."""
-    assert HttpFetcherProtocol is not None

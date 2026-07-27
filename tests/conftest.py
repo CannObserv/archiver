@@ -161,7 +161,7 @@ async def client(test_engine, session) -> AsyncGenerator[AsyncClient]:
         yield session
 
     app.dependency_overrides[get_db_session] = _override_session
-    # Run the FastAPI lifespan so app.state.http_fetcher is populated for tool
+    # Run the FastAPI lifespan so app.state.fetch_driver is populated for tool
     # routes whose dependency injects it (even when the route itself short-
     # circuits before fetching — FastAPI resolves the dep before the handler).
     async with app.router.lifespan_context(app):
