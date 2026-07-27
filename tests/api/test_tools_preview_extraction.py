@@ -2,10 +2,10 @@
 
 import httpx
 import pytest
+from co_core.effects.fetch import FetchResult
 
-from src.api.deps import get_http_fetcher
+from src.api.deps import get_fetch_driver
 from src.api.main import app
-from src.core.fetchers.base import FetchResult
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -30,7 +30,7 @@ DEFAULT_URL = "https://example.com"
 
 def _stub_fetcher(content: bytes = HTML_FIXTURE, *, raise_exc: Exception | None = None):
     class _Stub:
-        async def fetch(self, url: str, config: dict | None = None):
+        async def execute(self, effect):
             if raise_exc is not None:
                 raise raise_exc
             return FetchResult(
@@ -46,7 +46,7 @@ def _stub_fetcher(content: bytes = HTML_FIXTURE, *, raise_exc: Exception | None 
 
 @pytest.mark.asyncio
 async def test_preview_extraction_full_page_returns_chunks_and_simhash(client):
-    app.dependency_overrides[get_http_fetcher] = lambda: _stub_fetcher()
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher()
     response = await client.post(
         "/api/v1/tools/preview-extraction",
         headers=HEADERS,
@@ -65,7 +65,7 @@ async def test_preview_extraction_full_page_returns_chunks_and_simhash(client):
 
 @pytest.mark.asyncio
 async def test_preview_extraction_css_filters_to_selector(client):
-    app.dependency_overrides[get_http_fetcher] = lambda: _stub_fetcher()
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher()
     response = await client.post(
         "/api/v1/tools/preview-extraction",
         headers=HEADERS,
@@ -98,7 +98,7 @@ async def test_preview_extraction_invalid_spec_returns_422_with_errors(client):
 
 @pytest.mark.asyncio
 async def test_preview_extraction_unreachable_target_returns_422_target_unreachable(client):
-    app.dependency_overrides[get_http_fetcher] = lambda: _stub_fetcher(
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher(
         raise_exc=httpx.ConnectError("nope")
     )
     response = await client.post(

@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import Depends, Request
 from fastapi.security import APIKeyHeader
 from sqlalchemy import select
@@ -13,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.errors import raise_envelope
 from src.core.database import get_session_factory
 from src.core.models import ApiKey
-from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as RedisAsync
@@ -39,20 +39,20 @@ async def get_watcher_client(request: Request) -> "WatcherClient | None":
     return getattr(request.app.state, "watcher_client", None)
 
 
-async def get_http_fetcher(request: Request) -> HttpFetcherProtocol:
-    """Provide the lifespan-scoped HttpFetcher for tool routes.
+async def get_fetch_driver(request: Request) -> AsyncFetchDriver:
+    """Provide the lifespan-scoped ``AsyncFetchDriver`` for tool routes.
 
-    The fetcher is constructed once at app startup (see ``main.lifespan``) so
+    The driver is constructed once at app startup (see ``main.lifespan``) so
     its ``httpx.AsyncClient`` connection pool is shared across requests and
     closed cleanly on shutdown.
 
     Tests override this dependency with a no-arg callable, e.g.
-    ``app.dependency_overrides[get_http_fetcher] = lambda: stub``. FastAPI
+    ``app.dependency_overrides[get_fetch_driver] = lambda: stub``. FastAPI
     invokes the override directly without re-resolving sub-deps, so the
     ``request: Request`` parameter is intentionally absent from the override
     signature — that's expected, not a mistake.
     """
-    return request.app.state.http_fetcher
+    return request.app.state.fetch_driver
 
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)

@@ -18,9 +18,8 @@ import re
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, Tag
-
-from src.core.fetchers.base import FetchResult
-from src.core.tools.fetch_and_render import HttpFetcherProtocol
+from co_core.effects.fetch import FetchContent, FetchResult
+from co_core_aio.fetch import AsyncFetchDriver
 
 _VOLATILE_TOKEN = re.compile(
     # Any class beginning with hash- / hash_ — these are typically deploy-scoped.
@@ -100,7 +99,7 @@ def _stability_score(tag: Tag, sample_text: str, description: str) -> float:
 
 
 async def propose_selectors(
-    fetcher: HttpFetcherProtocol,
+    driver: AsyncFetchDriver,
     url: str,
     description: str,
     *,
@@ -113,7 +112,7 @@ async def propose_selectors(
     """
     if not description:
         return []
-    fetch_result: FetchResult = await fetcher.fetch(url)
+    fetch_result: FetchResult = await driver.execute(FetchContent(url))
     soup = BeautifulSoup(fetch_result.content, "lxml")
     needle = description.lower()
 

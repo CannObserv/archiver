@@ -1,17 +1,17 @@
 """Tests for POST /api/v1/tools/propose-selectors."""
 
 import pytest
+from co_core.effects.fetch import FetchResult
 
-from src.api.deps import get_http_fetcher
+from src.api.deps import get_fetch_driver
 from src.api.main import app
-from src.core.fetchers.base import FetchResult
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
 def _stub_fetcher(content: bytes):
     class _Stub:
-        async def fetch(self, url: str, config: dict | None = None):
+        async def execute(self, effect):
             return FetchResult(
                 content=content,
                 status_code=200,
@@ -32,7 +32,7 @@ async def test_propose_selectors_returns_ranked_candidates(client):
         <p>Other content</p>
     </body></html>
     """
-    app.dependency_overrides[get_http_fetcher] = lambda: _stub_fetcher(html)
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher(html)
     response = await client.post(
         "/api/v1/tools/propose-selectors",
         headers=HEADERS,
@@ -59,7 +59,7 @@ async def test_propose_selectors_penalises_volatile_classes(client):
         <div class="hash-abcd1234">Active Cannabis Licenses</div>
     </body></html>
     """
-    app.dependency_overrides[get_http_fetcher] = lambda: _stub_fetcher(html)
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher(html)
     response = await client.post(
         "/api/v1/tools/propose-selectors",
         headers=HEADERS,
@@ -81,7 +81,7 @@ async def test_propose_selectors_penalises_volatile_classes(client):
 @pytest.mark.asyncio
 async def test_propose_selectors_empty_match_returns_empty_list(client):
     html = b"<html><body><p>nothing relevant</p></body></html>"
-    app.dependency_overrides[get_http_fetcher] = lambda: _stub_fetcher(html)
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher(html)
     response = await client.post(
         "/api/v1/tools/propose-selectors",
         headers=HEADERS,
@@ -99,7 +99,7 @@ async def test_propose_selectors_respects_top_k(client):
         + b"".join(f"<p class='match-{i}'>target</p>".encode() for i in range(5))
         + b"</body></html>"
     )
-    app.dependency_overrides[get_http_fetcher] = lambda: _stub_fetcher(html)
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher(html)
     response = await client.post(
         "/api/v1/tools/propose-selectors",
         headers=HEADERS,

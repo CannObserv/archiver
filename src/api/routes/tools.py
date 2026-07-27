@@ -7,10 +7,11 @@ composing Information Items + SourceSpecs. Mutating CRUD lives on the existing
 
 import os
 
+from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db_session, get_http_fetcher
+from src.api.deps import get_db_session, get_fetch_driver
 from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_item import InfoItemOut
 from src.api.schemas.tools import (
@@ -37,10 +38,7 @@ from src.core.rep_fields_schema.validator import (
 )
 from src.core.rep_spec_schema.validator import validate_rep_spec
 from src.core.source_spec_schema.validator import validate_source_spec
-from src.core.tools.fetch_and_render import (
-    HttpFetcherProtocol,
-    fetch_and_render,
-)
+from src.core.tools.fetch_and_render import fetch_and_render
 from src.core.tools.find_info_item import find_info_item
 from src.core.tools.preview_extraction import (
     SourceSpecValidationError,
@@ -154,7 +152,7 @@ async def find_info_items_route(
 @router.post("/fetch-and-render", response_model=FetchAndRenderResult)
 async def fetch_and_render_route(
     body: FetchAndRenderRequest,
-    fetcher: HttpFetcherProtocol = Depends(get_http_fetcher),
+    driver: AsyncFetchDriver = Depends(get_fetch_driver),
 ) -> FetchAndRenderResult:
     """Fetch a target URL and return its body + headers for downstream tools.
 
@@ -165,7 +163,7 @@ async def fetch_and_render_route(
     """
     if body.render:
         raise_envelope(501, "unimplemented", "Playwright fetcher not yet integrated (#3)")
-    result = await fetch_and_render(fetcher, str(body.url), render=False)
+    result = await fetch_and_render(driver, str(body.url), render=False)
     return FetchAndRenderResult(
         url=result.url,
         status_code=result.status_code,
@@ -180,7 +178,7 @@ async def fetch_and_render_route(
 @router.post("/preview-extraction", response_model=PreviewExtractionResult)
 async def preview_extraction_route(
     body: PreviewExtractionRequest,
-    fetcher: HttpFetcherProtocol = Depends(get_http_fetcher),
+    driver: AsyncFetchDriver = Depends(get_fetch_driver),
 ) -> PreviewExtractionResult:
     """Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
@@ -192,7 +190,7 @@ async def preview_extraction_route(
     disambiguates (``target_unreachable``, etc.).
     """
     try:
-        result = await preview_extraction(fetcher, body.url, body.source_spec)
+        result = await preview_extraction(driver, body.url, body.source_spec)
     except SourceSpecValidationError as e:
         raise_422(
             "source_spec validation failed",
@@ -230,7 +228,7 @@ async def preview_extraction_route(
 @router.post("/propose-selectors", response_model=list[SelectorCandidateOut])
 async def propose_selectors_route(
     body: ProposeSelectorsRequest,
-    fetcher: HttpFetcherProtocol = Depends(get_http_fetcher),
+    driver: AsyncFetchDriver = Depends(get_fetch_driver),
 ) -> list[SelectorCandidateOut]:
     """Suggest CSS selector candidates for content matching ``description``.
 
@@ -243,7 +241,7 @@ async def propose_selectors_route(
     set returns ``[]``. Operators always verify the chosen selector via
     ``preview_extraction`` before persisting a SourceSpec.
     """
-    candidates = await propose_selectors(fetcher, str(body.url), body.description, top_k=body.top_k)
+    candidates = await propose_selectors(driver, str(body.url), body.description, top_k=body.top_k)
     return [
         SelectorCandidateOut(
             selector=c.selector,

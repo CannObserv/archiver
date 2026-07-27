@@ -12,11 +12,12 @@ from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
+from co_core.effects.fetch import FetchContent
+from co_core.pure.extract import extraction_config_from_spec
+from co_core.pure.extract.html import HtmlExtractor
+from co_core_aio.fetch import AsyncFetchDriver
 
-from src.core.extraction_defaults import extraction_config_from_spec
-from src.core.extractors import HtmlExtractor
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
-from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ def _compute_fingerprint(text: str) -> str:
 
 
 async def preview_extraction(
-    fetcher: HttpFetcherProtocol,
+    driver: AsyncFetchDriver,
     url: str,
     source_spec: dict[str, Any],
 ) -> PreviewExtractionResult:
@@ -75,7 +76,7 @@ async def preview_extraction(
         raise SourceSpecValidationError(errors)
 
     try:
-        fetch_result = await fetcher.fetch(url)
+        fetch_result = await driver.execute(FetchContent(url))
     except httpx.HTTPError as e:
         raise TargetUnreachableError(str(e)) from e
 
@@ -86,7 +87,7 @@ async def preview_extraction(
 
     config = extraction_config_from_spec(source_spec)
     extractor = HtmlExtractor()
-    extraction = await extractor.extract(fetch_result.content, config=config)
+    extraction = extractor.extract(fetch_result.content, config=config)
 
     joined_text = "\n".join(c.text for c in extraction.chunks)
     computed_fingerprint = _compute_fingerprint(joined_text)

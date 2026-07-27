@@ -38,8 +38,10 @@ Reproducibility is `uv.lock` (pinned version + wheelhouse artifact), not the
 wheelhouse contents. Upgrade: re-sync, then `uv lock --upgrade-package co-core`
 (bump the floor if the minor moved). CI resolves the wheelhouse keyless via Workload
 Identity Federation; the deploy unit syncs it in `ExecStartPre`. No git sources and
-no `cannobserv`/`co-core-sync` (heavy google/trello deps — archiver imports only
-`co-core` + `co-core-aio`).
+no `cannobserv`/`co-core-sync` (heavy google/trello deps). Archiver depends on
+**`co-core[extract]`** + `co-core-aio` — the authoring tools use `co_core_aio.fetch`
+(fetch) and `co_core.pure.extract` (extract + fingerprint); see "Content-acquisition
+via co-core".
 
 ## Code Exploration Policy
 
@@ -85,9 +87,10 @@ src/core/                      Domain logic
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
                                update_rep_spec, resolve_rep_fields,
                                preview_extraction, etc.)
-  fetchers/, extractors/,
-  simhash.py, extraction_defaults.py, logging.py
-                               Mirrored from watcher (see "Mirrored content-acquisition code")
+  logging.py                   Structured logging config (configure_logging at
+                               entry points; still mirrored to watcher). Fetch +
+                               extract + fingerprint now come from co-core — see
+                               "Content-acquisition via co-core"
   url_canonicalization.py      Write-time URL normalization for info_sources
   db_safety.py                 Production-DB startup guard — refuses to serve a
                                database whose name lacks a _test/_dev suffix
@@ -157,15 +160,22 @@ skills-vendor/                 Git submodules for external skill repos
                                hook types via default_install_hook_types.
 ```
 
-## Mirrored content-acquisition code
+## Content-acquisition via co-core (archiver#72 Phase 1)
 
-These modules are **mirrors** of watcher's `src/core/` — when changing them here, mirror to watcher AND when watcher changes them, mirror here. (Notifier-style discipline. Drift acceptable for now; revisit if Replicator joins and fingerprint parity becomes load-bearing.)
+Fetch, extract, and the content fingerprint are consumed from **co-core** (`v0.5.0`+),
+the canonical implementation upstreamed in cannobserv#255. The former
+`src/core/{fetchers,extractors,simhash,extraction_defaults}` mirror was deleted when
+Phase 1b landed — **no more mirror discipline for the acquisition pipeline.**
 
-- `src/core/fetchers/{base,http}.py`
-- `src/core/extractors/{base,html,csv_excel,pdf}.py`
-- `src/core/simhash.py`
-- `src/core/extraction_defaults.py`
-- `src/core/logging.py`
+- **Fetch** — `co_core_aio.fetch.AsyncFetchDriver` executes the `co_core.effects.fetch.FetchContent`
+  effect (raw bytes, captures non-2xx as `FetchResult`). Wired into `app.state.fetch_driver`
+  at the FastAPI composition root (`main.lifespan`), injected via `deps.get_fetch_driver`.
+- **Extract + fingerprint** — `co_core.pure.extract.*` (`html`/`csv_excel`/`pdf` extractors,
+  now **synchronous**; `sha256` + `simhash` per `Chunk`). Requires the **`co-core[extract]`**
+  extra; import parsers from their submodules (`co_core.pure.extract.html`, …) — they are not
+  re-exported from `__init__`.
+
+Only `src/core/logging.py` remains a watcher mirror (deliberately not upstreamed).
 
 ## Infrastructure
 

@@ -7,14 +7,13 @@ import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from co_core.effects.fetch import FetchResult
 from sqlalchemy import select
 
 from src.api.deps import get_watcher_client
 from src.api.main import app
-from src.core.fetchers.base import FetchResult
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
-from src.core.tools.fetch_and_render import HttpFetcherProtocol
 
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
 
@@ -617,11 +616,11 @@ _PREVIEW_HTML_NO_TITLE = b"<html><body><div>extracted content</div></body></html
 _PREVIEW_SPEC = '[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
 
 
-class _StubFetcher(HttpFetcherProtocol):
+class _StubFetcher:
     def __init__(self, content: bytes) -> None:
         self._content = content
 
-    async def fetch(self, url: str, config: dict | None = None) -> FetchResult:
+    async def execute(self, effect) -> FetchResult:
         return FetchResult(
             content=self._content,
             status_code=200,
@@ -634,8 +633,8 @@ class _StubFetcher(HttpFetcherProtocol):
 @pytest.mark.asyncio
 async def test_preview_returns_retrieval_success(client):
     """Happy path: retrieval + extraction render status messages."""
-    original = app.state.http_fetcher
-    app.state.http_fetcher = _StubFetcher(_PREVIEW_HTML)
+    original = app.state.fetch_driver
+    app.state.fetch_driver = _StubFetcher(_PREVIEW_HTML)
     try:
         r = await client.post(
             "/dashboard/register/preview",
@@ -643,7 +642,7 @@ async def test_preview_returns_retrieval_success(client):
             data={"url": "https://example.com/page", "source_specs": _PREVIEW_SPEC},
         )
     finally:
-        app.state.http_fetcher = original
+        app.state.fetch_driver = original
     assert r.status_code == 200
     assert "Retrieval successful" in r.text
     assert "Extraction successful" in r.text
@@ -652,8 +651,8 @@ async def test_preview_returns_retrieval_success(client):
 @pytest.mark.asyncio
 async def test_preview_shows_suggested_name_from_page_title(client):
     """When the page has a <title>, the partial shows a Suggested name line."""
-    original = app.state.http_fetcher
-    app.state.http_fetcher = _StubFetcher(_PREVIEW_HTML)
+    original = app.state.fetch_driver
+    app.state.fetch_driver = _StubFetcher(_PREVIEW_HTML)
     try:
         r = await client.post(
             "/dashboard/register/preview",
@@ -661,7 +660,7 @@ async def test_preview_shows_suggested_name_from_page_title(client):
             data={"url": "https://example.com/page", "source_specs": _PREVIEW_SPEC},
         )
     finally:
-        app.state.http_fetcher = original
+        app.state.fetch_driver = original
     assert r.status_code == 200
     assert "My Preview Page" in r.text
 
@@ -669,8 +668,8 @@ async def test_preview_shows_suggested_name_from_page_title(client):
 @pytest.mark.asyncio
 async def test_preview_no_suggested_name_when_no_title(client):
     """When the page has no <title>, the Suggested name line is absent."""
-    original = app.state.http_fetcher
-    app.state.http_fetcher = _StubFetcher(_PREVIEW_HTML_NO_TITLE)
+    original = app.state.fetch_driver
+    app.state.fetch_driver = _StubFetcher(_PREVIEW_HTML_NO_TITLE)
     try:
         r = await client.post(
             "/dashboard/register/preview",
@@ -678,7 +677,7 @@ async def test_preview_no_suggested_name_when_no_title(client):
             data={"url": "https://example.com/page", "source_specs": _PREVIEW_SPEC},
         )
     finally:
-        app.state.http_fetcher = original
+        app.state.fetch_driver = original
     assert r.status_code == 200
     assert "Suggested name" not in r.text
 

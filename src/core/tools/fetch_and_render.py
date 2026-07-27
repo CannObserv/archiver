@@ -1,24 +1,19 @@
 """Fetch a URL and return rendered body + headers for SourceSpec authoring.
 
-v1 supports HTTP-only fetches via ``HttpFetcher``. Playwright-based rendering
-is wired in once #3 lands; until then ``render=True`` raises NotImplementedError.
+v1 supports HTTP-only fetches via co-core's ``AsyncFetchDriver`` (the
+``FetchContent`` effect). Playwright-based rendering is wired in once #3 lands;
+until then ``render=True`` raises NotImplementedError.
 """
 
 from dataclasses import dataclass
-from typing import Protocol
 
-from src.core.fetchers.base import FetchResult
+from co_core.effects.fetch import FetchContent
+from co_core_aio.fetch import AsyncFetchDriver
 
 # Body payloads larger than this cap get truncated in the response. The
 # extractor still sees the full bytes server-side; the truncation only bounds
 # the JSON returned to the caller.
 MAX_BODY_BYTES = 5 * 1024 * 1024  # 5 MiB
-
-
-class HttpFetcherProtocol(Protocol):
-    """Minimal interface required by ``fetch_and_render`` — for type checking + test stubs."""
-
-    async def fetch(self, url: str, config: dict | None = None) -> FetchResult: ...
 
 
 @dataclass(frozen=True)
@@ -35,7 +30,7 @@ class FetchAndRenderResult:
 
 
 async def fetch_and_render(
-    fetcher: HttpFetcherProtocol,
+    driver: AsyncFetchDriver,
     url: str,
     *,
     render: bool = False,
@@ -49,7 +44,7 @@ async def fetch_and_render(
     if render:
         raise NotImplementedError("Playwright fetcher not yet integrated (#3)")
 
-    result = await fetcher.fetch(url)
+    result = await driver.execute(FetchContent(url))
     total_bytes = len(result.content)
     truncated = total_bytes > MAX_BODY_BYTES
     payload = result.content[:MAX_BODY_BYTES] if truncated else result.content

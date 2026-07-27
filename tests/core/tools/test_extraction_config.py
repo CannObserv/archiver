@@ -1,6 +1,6 @@
 """Tests for extraction_config_from_spec — InfoSpec → HtmlExtractor config translation."""
 
-from src.core.extraction_defaults import extraction_config_from_spec
+from co_core.pure.extract import extraction_config_from_spec
 
 
 class TestExtractionConfigFromSpec:
