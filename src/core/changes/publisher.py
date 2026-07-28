@@ -1,18 +1,31 @@
 """Outbox-to-Redis-Stream publisher background task.
 
-Drains pending rows from ``information.changes_outbox`` and XADDs each to its
-declared topic on Redis. Best-effort retry: failed publishes increment
-``publish_attempts`` and record ``last_error``; the row stays unpublished and
-is re-attempted on the next loop iteration.
+Drains pending rows from ``information.changes_outbox`` and publishes each to its
+declared topic on Redis via the shared co-core bus driver
+(``co_core_aio.bus.AsyncBusPublisher`` executing a ``BusPublish`` effect). The
+wire envelope is built by the pure ``co_core.pure.adapters.bus.envelope.to_wire``
+serializer — archiver no longer hand-rolls the XADD field map (archiver#106).
+The transactional outbox stays here (the producer-side delivery guarantee);
+co-core provides only the publish effect/driver the drain loop calls.
+
+Best-effort retry: failed publishes increment ``publish_attempts`` and record
+``last_error``; the row stays unpublished and is re-attempted on the next loop
+iteration.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import UTC, datetime
-from typing import Protocol
 
+from co_core.effects.bus import BusPublish
+from co_core.pure.adapters.bus.envelope import to_wire
+from co_core.pure.models.changes import (
+    ChangeEventPayload,
+    InfoItemPrimaryChangedEvent,
+    SourceRevisionCapturedEvent,
+)
+from co_core_aio.bus import AsyncBusPublisher
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -25,17 +38,35 @@ DEFAULT_BATCH_SIZE = 100
 ACTIVE_INTERVAL_SECONDS = 0.25
 IDLE_INTERVAL_SECONDS = 1.0
 
+# event_type -> canonical (consumer-facing, extra="ignore") co-core payload model.
+# The outbox stores each event as a JSON dict (``model_dump(mode="json")``); the
+# drain loop reconstructs the typed payload so ``to_wire`` can derive the wire
+# envelope (incl. the per-type idempotency key) from the single source of truth.
+# Archiver produces exactly these two event types on ``info.changes``.
+_PAYLOAD_BY_EVENT_TYPE: dict[str, type[ChangeEventPayload]] = {
+    "source_revision_captured": SourceRevisionCapturedEvent,
+    "info_item_primary_changed": InfoItemPrimaryChangedEvent,
+}
 
-class RedisLike(Protocol):
-    """Subset of redis.asyncio API the publisher uses."""
 
-    async def xadd(self, name: str, fields: dict, *args, **kwargs) -> bytes | str: ...
+def _payload_from_row(payload: dict) -> ChangeEventPayload:
+    """Reconstruct the typed co-core payload from a stored outbox row dict.
+
+    Raises ``ValueError`` on an unrecognized ``event_type`` so the drain loop
+    treats it as a per-row failure (row stays unpublished, error recorded)
+    rather than crashing the whole batch.
+    """
+    event_type = payload.get("event_type") if isinstance(payload, dict) else None
+    model = _PAYLOAD_BY_EVENT_TYPE.get(event_type)
+    if model is None:
+        raise ValueError(f"unknown outbox event_type: {event_type!r}")
+    return model.model_validate(payload)
 
 
 async def drain_once(
     *,
     session_factory: async_sessionmaker[AsyncSession],
-    redis: RedisLike,
+    publisher: AsyncBusPublisher,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> int:
     """Drain at most ``batch_size`` unpublished rows.
@@ -54,17 +85,11 @@ async def drain_once(
             return 0
         for row in rows:
             try:
-                fields = {
-                    "key": row.payload.get("source_revision_id", "")
-                    if isinstance(row.payload, dict)
-                    else "",
-                    "payload": json.dumps(row.payload),
-                }
-                msg_id = await redis.xadd(row.topic, fields)
-                if isinstance(msg_id, bytes):
-                    msg_id = msg_id.decode()
+                payload = _payload_from_row(row.payload)
+                fields = to_wire(payload)
+                bus_result = await publisher.execute(BusPublish(topic=row.topic, fields=fields))
                 row.published_at = datetime.now(UTC)
-                row.bus_message_id = msg_id
+                row.bus_message_id = bus_result.bus_message_id
                 row.last_error = None
             except Exception as exc:
                 row.publish_attempts = (row.publish_attempts or 0) + 1
@@ -84,7 +109,7 @@ async def drain_once(
 async def run(
     *,
     session_factory: async_sessionmaker[AsyncSession],
-    redis: RedisLike,
+    publisher: AsyncBusPublisher,
     batch_size: int = DEFAULT_BATCH_SIZE,
     active_interval: float = ACTIVE_INTERVAL_SECONDS,
     idle_interval: float = IDLE_INTERVAL_SECONDS,
@@ -101,7 +126,7 @@ async def run(
         try:
             count = await drain_once(
                 session_factory=session_factory,
-                redis=redis,
+                publisher=publisher,
                 batch_size=batch_size,
             )
         except asyncio.CancelledError:

@@ -18,6 +18,19 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.5.0 (2026-07-28)
+
+[service] **Change-bus producer swapped onto the shared co-core bus layer; `info.changes` wire envelope reshaped** (archiver#106, Phase 2b of #72). Depends on **co-core / co-core-aio v0.5.1** (cannobserv#261).
+
+The outbox drain loop no longer hand-rolls the XADD. It now reconstructs each stored event into its typed co-core model and publishes via `co_core_aio.bus.AsyncBusPublisher.execute(BusPublish(...))`, building the wire fields with `co_core.pure.adapters.bus.envelope.to_wire`. The typed payloads (`SourceRevisionCapturedEvent` / `InfoItemPrimaryChangedEvent` / `InfoItemBinding`) moved to **co-core** (`co_core.pure.models.changes`, lifted in cannobserv#261); archiver's local `src/core/changes/payloads.py` and the ad-hoc `RedisLike` Protocol are deleted. Emit sites now build the strict `*Emit` subclasses (`extra="forbid"`).
+
+- **Wire change (`info.changes` consumers).** The XADD field set changed from the ad-hoc `{key, payload}` to the canonical envelope — `key` / `payload` / `event_type` / `schema_version` / `occurred_at` / `content_type`. `payload` is unchanged (the full event JSON, self-describing). **Safe now — nothing consumes `info.changes` yet** (Replicator, the first consumer, arrives in Phase 3).
+- **Idempotency-key fix.** The old publisher keyed *every* event on `source_revision_id`, so `info_item_primary_changed` shipped with an empty `key`. co-core's `idempotency_key` now derives the correct per-type key (the `{info_item_id}:{new_info_source_id}` composite for primary-changed).
+- **Outbox unchanged** — still archiver-owned, still the producer-side delivery guarantee. Event payloads (schemas, `schema_version` values) are byte-for-byte identical; only the transport wrapper and the source-of-truth for the models changed.
+- **Dependency:** `co-core-aio` pin gains the `[bus]` extra; the resolver moved redis-py 7.4.0 → 6.4.0 (the extra pins `redis<7` — a *client*-library bound; the Redis **server** ≥7.0 floor only matters for the consumer `claim_stale` path, which archiver's producer does not use).
+
+Also resolves archiver#105 (transitive co/v1 wire bump, wp#568) for the archiver — the service has no direct co/v1 call sites, so being on co-core v0.5.1 is the whole remedy.
+
 ## v4.4.0 / SDK v5.0.0 (2026-07-21)
 
 [both] **Retire the `info_item_source_revisions` pin table — `POST /info-items/{id}/source-revisions` removed, SDK v5.0.0** (archiver#101, 2026-07-21). **Breaking.**

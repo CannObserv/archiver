@@ -175,7 +175,11 @@ Phase 1b landed — **no more mirror discipline for the acquisition pipeline.**
   extra; import parsers from their submodules (`co_core.pure.extract.html`, …) — they are not
   re-exported from `__init__`.
 
-Only `src/core/logging.py` remains a watcher mirror (deliberately not upstreamed).
+**No cross-repo mirror discipline (CannObserv/watcher#159, #236).** Content
+acquisition is co-core's (above) and the change-bus contracts + driver are too
+(see "Change-bus producer"). `src/core/logging.py` is service-local — Watcher
+keeps its own copy; there is no parity requirement and no sibling sync. Don't
+reintroduce a mirror obligation for anything under `src/`.
 
 ## Infrastructure
 
@@ -314,12 +318,29 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 
 **SDK version history:** see [CHANGELOG.md](CHANGELOG.md).
 
-**Change-bus producer:** Writes rows to `information.changes_outbox` in the same transaction; the publisher background task drains the outbox to the Redis Stream `info.changes`. Publisher only starts when `ARCHIVER_REDIS_URL` is set. Two event types:
+**Change-bus producer (co-core bus, archiver#106):** Writes rows to
+`information.changes_outbox` in the same transaction (the **outbox stays
+archiver-owned** — it is the producer-side delivery guarantee); the publisher
+background task (`src/core/changes/publisher.py`) drains the outbox and publishes
+each row to the Redis Stream `info.changes` **through the shared co-core bus
+driver** — `co_core_aio.bus.AsyncBusPublisher.execute(BusPublish(...))`, with the
+wire envelope built by `co_core.pure.adapters.bus.envelope.to_wire`. Publisher
+only starts when `ARCHIVER_REDIS_URL` is set. Two event types:
 
-| Event type | Trigger | Payload type |
+| Event type | Trigger | Payload type (co-core) |
 |---|---|---|
-| `source_revision_captured` | New `SourceRevision` insert (`POST /source-revisions` on non-idempotent path) | `src.core.changes.payloads.SourceRevisionCapturedEvent` |
-| `info_item_primary_changed` | New active `InfoItemSource` binding created (`POST /info-items/{id}/info-sources`) | `src.core.changes.payloads.InfoItemPrimaryChangedEvent` |
+| `source_revision_captured` | New `SourceRevision` insert (`POST /source-revisions` on non-idempotent path) | `co_core.pure.models.changes.SourceRevisionCapturedEvent` |
+| `info_item_primary_changed` | New active `InfoItemSource` binding created (`POST /info-items/{id}/info-sources`) | `co_core.pure.models.changes.InfoItemPrimaryChangedEvent` |
+
+The payload models live in **co-core** (`co_core.pure.models.changes`) — lifted
+from archiver in cannobserv#261 so the whole cluster shares one contract. Emit
+sites construct the **strict `*Emit` subclasses** (`SourceRevisionCapturedEmit` /
+`InfoItemPrimaryChangedEmit`, `extra="forbid"`) for emit-time typo-catch; the
+canonical classes are `extra="ignore"` (consumer-safe forward-compat). The
+**wire envelope** is the XADD field map `key` / `payload` (full event JSON) /
+`event_type` / `schema_version` / `occurred_at` / `content_type`; the idempotency
+`key` is derived per type by co-core (`source_revision_id`; the
+`{info_item_id}:{new_info_source_id}` composite).
 
 `source_revision_captured` schema_version is now **2** — `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 

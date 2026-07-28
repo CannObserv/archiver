@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version as _package_version
 
+from co_core_aio.bus import AsyncBusPublisher
 from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import APIRouter, Depends, FastAPI
 from redis.asyncio import Redis as RedisAsync
@@ -87,10 +88,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             redis_client = RedisAsync.from_url(redis_url)
             session_factory = async_sessionmaker(bind=get_engine(), expire_on_commit=False)
             stop_event = asyncio.Event()
+            # The drain loop publishes via the shared co-core bus driver; it
+            # borrows the long-lived redis client (injection-only, never closes
+            # it — the lifespan owns aclose below).
             pub_task = asyncio.create_task(
                 outbox_publisher.run(
                     session_factory=session_factory,
-                    redis=redis_client,
+                    publisher=AsyncBusPublisher(redis_client),
                     stop_event=stop_event,
                 )
             )

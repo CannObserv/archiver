@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from co_core_aio.bus import AsyncBusPublisher
 from fakeredis import aioredis as fakeredis_aio
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -129,7 +130,7 @@ async def test_source_revision_post_to_redis_stream(
     # ------------------------------------------------------------------
     drained = await drain_once(
         session_factory=publisher_session_factory,
-        redis=fake_redis,
+        publisher=AsyncBusPublisher(fake_redis),
     )
     assert drained == 1
 

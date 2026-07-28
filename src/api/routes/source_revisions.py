@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from co_core.pure.models.changes import InfoItemBinding, SourceRevisionCapturedEmit
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -16,7 +17,6 @@ from src.api.schemas.source_revision import (
     SourceRevisionOut,
 )
 from src.api.serializers import source_revision_to_out
-from src.core.changes.payloads import InfoItemBinding, SourceRevisionCapturedEvent
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
 
 router = APIRouter(prefix="/source-revisions", tags=["source-revisions"])
@@ -146,7 +146,7 @@ async def create_source_revision(
             .order_by(InfoItemSource.info_item_id)
         )
         bindings = [InfoItemBinding(info_item_id=str(iid)) for (iid,) in bindings_result.all()]
-        event = SourceRevisionCapturedEvent(
+        event = SourceRevisionCapturedEmit(
             occurred_at=datetime.now(UTC),
             info_source_id=str(row.info_source_id),
             source_revision_id=str(row.source_revision_id),

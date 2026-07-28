@@ -4,6 +4,7 @@ import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from co_core.pure.models.changes import InfoItemPrimaryChangedEmit
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +28,6 @@ from src.api.serializers import (
     info_item_source_to_out,
     info_item_to_out,
 )
-from src.core.changes.payloads import InfoItemPrimaryChangedEvent
 from src.core.models import (
     ChangesOutboxRow,
     InfoItem,
@@ -400,7 +400,7 @@ async def add_info_source(
             .limit(1)
         )
     ).scalar_one_or_none()
-    event = InfoItemPrimaryChangedEvent(
+    event = InfoItemPrimaryChangedEmit(
         occurred_at=datetime.now(UTC),
         info_item_id=str(item_ulid),
         old_info_source_id=str(prev_binding.info_source_id) if prev_binding else None,

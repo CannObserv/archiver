@@ -1,6 +1,6 @@
 [project]
 name = "archiver"
-version = "4.4.0"
+version = "4.5.0"
 description = "Cannabis Observer Archiver service — central registry for Information Items, Information Sources, Source Revisions, and Replication Specifications."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,7 +21,7 @@ dependencies = [
     "aiofiles>=24.1.0,<25",
     "python-multipart>=0.0.9,<1",
     "co-core[extract]>=0.5,<0.6",
-    "co-core-aio>=0.5,<0.6",
+    "co-core-aio[bus]>=0.5,<0.6",
     "archiver-client",
     "watcher-client",
 ]
