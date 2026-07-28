@@ -43,6 +43,12 @@ IDLE_INTERVAL_SECONDS = 1.0
 # drain loop reconstructs the typed payload so ``to_wire`` can derive the wire
 # envelope (incl. the per-type idempotency key) from the single source of truth.
 # Archiver produces exactly these two event types on ``info.changes``.
+#
+# NOTE: this duplicates co-core's private ``envelope._PAYLOAD_BY_EVENT_TYPE`` (a
+# 2-of-4 subset) because co-core exposes no public dict->payload constructor —
+# ``from_wire`` wants wire fields, not a stored payload dict. Drift risk tracked
+# in archiver#108; the upstream public-helper request is cannobserv#264. Delete
+# this table and reconstruct via the shared helper once that lands.
 _PAYLOAD_BY_EVENT_TYPE: dict[str, type[ChangeEventPayload]] = {
     "source_revision_captured": SourceRevisionCapturedEvent,
     "info_item_primary_changed": InfoItemPrimaryChangedEvent,
@@ -91,6 +97,11 @@ async def drain_once(
                 row.published_at = datetime.now(UTC)
                 row.bus_message_id = bus_result.bus_message_id
                 row.last_error = None
+            # NOTE: a deterministically-failing row (unknown event_type, corrupt
+            # payload) has no terminal state — it is re-attempted every loop, not
+            # just the transient (Redis-down) case this retry targets. Not
+            # reachable via the two current routes; bounded-retry / dead-letter
+            # tracked in archiver#107.
             except Exception as exc:
                 row.publish_attempts = (row.publish_attempts or 0) + 1
                 row.last_error = repr(exc)[:1000]

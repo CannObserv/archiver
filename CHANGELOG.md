@@ -20,7 +20,7 @@ service-only patch does not require an SDK bump.
 
 ## v4.5.0 (2026-07-28)
 
-[service] **Change-bus producer swapped onto the shared co-core bus layer; `info.changes` wire envelope reshaped** (archiver#106, Phase 2b of #72). Depends on **co-core / co-core-aio v0.5.1** (cannobserv#261).
+[service] **Change-bus producer swapped onto the shared co-core bus layer; `info.changes` wire envelope reshaped** (archiver#106, Phase 2b of #72). Depends on **co-core / co-core-aio v0.5.2** (cannobserv#261 bus layer + cannobserv#263 redis-pin fix).
 
 The outbox drain loop no longer hand-rolls the XADD. It now reconstructs each stored event into its typed co-core model and publishes via `co_core_aio.bus.AsyncBusPublisher.execute(BusPublish(...))`, building the wire fields with `co_core.pure.adapters.bus.envelope.to_wire`. The typed payloads (`SourceRevisionCapturedEvent` / `InfoItemPrimaryChangedEvent` / `InfoItemBinding`) moved to **co-core** (`co_core.pure.models.changes`, lifted in cannobserv#261); archiver's local `src/core/changes/payloads.py` and the ad-hoc `RedisLike` Protocol are deleted. Emit sites now build the strict `*Emit` subclasses (`extra="forbid"`).
 
