@@ -47,9 +47,15 @@ config-only change. The connection string is the one and only switch.
 - **`ARCHIVER_REDIS_URL` is the only switch.** Local-prod
   `redis://localhost:6379/0`; managed later `rediss://user:pass@host:port/0` —
   no code change.
-- **Driver supports `rediss://` + URL-embedded auth.** Verify co-core-aio's
-  `AsyncBusPublisher` passes TLS + auth through, even though activation is on
-  plaintext localhost. This is what makes the managed migration config-only.
+- **Driver supports `rediss://` + URL-embedded auth — already satisfied
+  (resolved open item 2).** The co-core-aio driver is *injection-only*
+  (`AsyncBusPublisher(client)`; it never constructs or closes a connection), and
+  Archiver builds the client via `RedisAsync.from_url(ARCHIVER_REDIS_URL)` at
+  `src/api/main.py:88`. `redis.asyncio.Redis.from_url` natively handles the
+  `rediss://` TLS scheme, `user:pass@` userinfo auth, and `?ssl_ca_certs=` for a
+  private CA. So the managed migration is a connection-string swap with **no code
+  change**; the only migration-time task is trusting the provider's CA. No work
+  in this issue.
 - **Degradation stays soft.** Publisher is disabled when `ARCHIVER_REDIS_URL` is
   unset; the outbox tolerates broker downtime within its retry window. No
   hard-fail coupling to the broker.
@@ -67,13 +73,23 @@ provider connection string on migration."
   `After=redis-server.service` — **soft, not `Requires=`/`BindsTo=`.** Hard-binding
   would defeat the outbox's downtime tolerance and cascade restarts. Replicator
   adds the same when it lands.
-- **Retention:** the producer XADDs with an approximate cap (`MAXLEN ~ N`) so the
-  stream cannot grow unbounded before a consumer exists. Mechanism is an open
-  item (below).
-- **Version floor ≥7.0** (live: 7.0.15, passes) for the consumer path's
-  `XAUTOCLAIM`/`claim_stale`. Runbook documents it plus a lightweight
-  startup/monitoring assertion so a distro downgrade fails loud, not
-  silent-broken.
+- **Retention: Archiver-side periodic `XTRIM` (resolved open item 1).** co-core
+  exposes **no trim arg** — `BusPublish` is `topic` + `fields` only and
+  `AsyncBusPublisher.execute` does a bare `xadd(topic, fields)`. Rather than block
+  on a co-core release, Archiver (the operator) caps the stream itself: the
+  outbox publisher loop issues a periodic `XTRIM info.changes MAXLEN ~ N`
+  (approximate) every K drains, using the long-lived client the lifespan already
+  owns (threaded into `outbox_publisher.run`). Upstreaming a `maxlen` field on
+  `BusPublish` — folding the trim into each XADD — is a later optional
+  optimization, not on this issue's critical path.
+- **Version floor ≥7.0 via `ExecStartPre` on `archiver.service` (resolved open
+  item 3).** (Live: 7.0.15, passes.) The floor is a *consumer*-path requirement
+  (`XAUTOCLAIM`/`claim_stale`'s three-element reply), but Archiver as operator
+  asserts it loud: an `ExecStartPre` on its own unit checks `redis_version` of the
+  server behind `ARCHIVER_REDIS_URL` and refuses to start the producer if `< 7.0`.
+  This fails loud on a distro downgrade without gating the broker itself (the
+  broker stays up; only the producer refuses). Skipped when `ARCHIVER_REDIS_URL`
+  is unset. Runbook documents the floor.
 
 ### Activation (this issue turns the producer on)
 
@@ -102,14 +118,19 @@ provider connection string on migration."
 - **AGENTS.md (archiver + watcher):** state that Archiver operates `redis-server`;
   strike watcher's vestigial `REDIS_URL` framing.
 
-## Open items (resolve during implementation)
+## Resolved open items (verified against installed co-core / co-core-aio)
 
-1. **`MAXLEN` enforcement mechanism** — whether co-core's `BusPublish` /
-   `AsyncBusPublisher` exposes a trim arg. If not: Archiver runs a periodic
-   `XTRIM` sweep, or we upstream a co-core change. Needs a co-core API check.
-2. **TLS/auth passthrough verification** in the co-core-aio bus driver (for the
-   future managed migration).
-3. **Version-floor assertion mechanism** — `ExecStartPre` check vs. monitoring-only.
+1. **`MAXLEN` enforcement mechanism → Archiver-side periodic `XTRIM`.** co-core
+   `BusPublish` (`co_core/effects/bus.py`) carries only `topic` + `fields`;
+   `AsyncBusPublisher.execute` (`co_core_aio/bus.py`) does a bare
+   `xadd(topic, fields)` — no trim support. Archiver caps the stream from its own
+   publisher loop; upstreaming a `maxlen` arg is deferred. (See Layer 2 →
+   Retention.)
+2. **TLS/auth passthrough → already satisfied, no change.** Driver is
+   injection-only; Archiver's `RedisAsync.from_url` handles `rediss://` + auth +
+   `?ssl_ca_certs=`. (See Layer 1.)
+3. **Version-floor assertion → `ExecStartPre` on `archiver.service`.** (See
+   Layer 2 → Version floor.)
 
 ## Out of scope
 
