@@ -58,12 +58,15 @@ DEFAULT_STREAM_MAXLEN = 100_000
 
 # Whole-batch failure backoff (CR #13). When drain_once itself raises (DB down,
 # session-factory failure — distinct from a per-row publish failure it swallows),
-# the loop escalates its sleep exponentially up to a cap, and logs only every
-# ERROR_LOG_EVERY-th consecutive failure so a sustained outage cannot flood the
-# journal at 1/idle-tick. The counter resets on the first successful drain.
+# the loop escalates its sleep exponentially from ERROR_BACKOFF_BASE_SECONDS up to
+# a cap, and logs only every ERROR_LOG_EVERY-th consecutive failure so a sustained
+# outage cannot flood the journal at 1/idle-tick. The counter resets on the first
+# successful drain, which also emits a recovery log. The backoff base is its own
+# knob, decoupled from idle_interval (poll cadence vs error cadence — CR #15).
+ERROR_BACKOFF_BASE_SECONDS = 1.0
 ERROR_BACKOFF_MAX_SECONDS = 30.0
 ERROR_BACKOFF_MAX_SHIFT = 5  # cap the exponent so 2**shift can't overflow the max
-ERROR_LOG_EVERY = 60
+ERROR_LOG_EVERY = 15
 
 
 def _error_backoff_seconds(consecutive_failures: int, base: float) -> float:
@@ -76,6 +79,25 @@ def _error_backoff_seconds(consecutive_failures: int, base: float) -> float:
         return min(base, ERROR_BACKOFF_MAX_SECONDS)
     shift = min(consecutive_failures - 1, ERROR_BACKOFF_MAX_SHIFT)
     return min(base * (2**shift), ERROR_BACKOFF_MAX_SECONDS)
+
+
+def _next_delay(
+    *,
+    consecutive_failures: int,
+    published: int,
+    active_interval: float,
+    idle_interval: float,
+    backoff_base: float,
+) -> float:
+    """Pick the loop's sleep before the next drain.
+
+    A whole-batch failure streak wins (escalating backoff); otherwise pace on
+    forward progress — ``active_interval`` when rows were published this cycle,
+    ``idle_interval`` when the batch was empty or every row failed (CR #10/#16).
+    """
+    if consecutive_failures:
+        return _error_backoff_seconds(consecutive_failures, backoff_base)
+    return active_interval if published else idle_interval
 
 
 def resolve_stream_maxlen(raw: str | None) -> int | None:
@@ -236,6 +258,7 @@ async def run(
     stream_maxlen: int | None = None,
     trim_topic: str = CHANGE_STREAM_TOPIC,
     trim_interval_iterations: int = TRIM_INTERVAL_ITERATIONS,
+    error_backoff_base: float = ERROR_BACKOFF_BASE_SECONDS,
 ) -> None:
     """Loop forever (until ``stop_event`` is set), draining the outbox.
 
@@ -265,6 +288,13 @@ async def run(
                 batch_size=batch_size,
                 seen_topics=seen_topics,
             )
+            if consecutive_failures:
+                # Positive signal that the loop is healthy again (CR #14) — the
+                # absence of error logs alone is ambiguous with "still backed off".
+                logger.info(
+                    "Outbox publisher recovered",
+                    extra={"after_failures": consecutive_failures},
+                )
             consecutive_failures = 0
         except asyncio.CancelledError:
             raise
@@ -291,10 +321,13 @@ async def run(
             for topic in seen_topics or {trim_topic}:
                 await trim_stream(redis_client, topic, stream_maxlen)
 
-        if consecutive_failures:
-            delay = _error_backoff_seconds(consecutive_failures, idle_interval)
-        else:
-            delay = active_interval if published else idle_interval
+        delay = _next_delay(
+            consecutive_failures=consecutive_failures,
+            published=published,
+            active_interval=active_interval,
+            idle_interval=idle_interval,
+            backoff_base=error_backoff_base,
+        )
         await asyncio.wait(
             [asyncio.create_task(stop_event.wait())],
             timeout=delay,
