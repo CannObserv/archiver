@@ -24,6 +24,7 @@ from src.core.changes import publisher as publisher_mod
 from src.core.changes.publisher import (
     DEFAULT_STREAM_MAXLEN,
     ERROR_BACKOFF_MAX_SECONDS,
+    MAX_PUBLISH_ATTEMPTS,
     _error_backoff_seconds,
     _next_delay,
     drain_once,
@@ -594,3 +595,116 @@ async def test_unknown_event_type_row_stays_unpublished(session_factory, publish
     assert bad_row.publish_attempts == 1
     assert "who_knows" in bad_row.last_error
     assert good_row.published_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Dead-lettering poison rows — archiver#107
+# ---------------------------------------------------------------------------
+
+
+def _legacy_captured_event(source_revision_id: str = "rev-legacy") -> dict:
+    """A pre-``bindings`` source_revision_captured payload (early Phase 4, 2026-05).
+
+    Reproduces the real prod poison rows surfaced on the archiver#109 activation:
+    the ``event_type`` is known, but the payload predates ``bindings`` (carries
+    ``info_item_ids`` + ``info_source_id``) and has no ``schema_version`` → today's
+    co-core ``SourceRevisionCapturedEvent`` fails to validate (requires ``bindings``).
+    """
+    return {
+        "event_type": "source_revision_captured",
+        "occurred_at": "2026-05-10T12:00:00+00:00",
+        "info_source_id": "01HZZ000000000000000000001",
+        "source_revision_id": source_revision_id,
+        "content_fingerprint": "sha256:" + "a" * 64,
+        "info_item_ids": ["01HZZ000000000000000000003"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_unknown_event_type_dead_lettered_and_not_reselected(
+    session_factory, publisher, fake_redis
+):
+    """An unknown event_type is a permanent failure → dead-lettered on the first
+    drain, then never selected again (no infinite retry / log-spam) — archiver#107."""
+    bad = await _insert_row(session_factory, payload={"event_type": "who_knows"})
+
+    n1 = await drain_once(session_factory=session_factory, publisher=publisher)
+    assert n1 == 0
+
+    async with session_factory() as s:
+        row = await s.get(ChangesOutboxRow, bad.id)
+    assert row.dead_lettered_at is not None
+    assert row.published_at is None
+    assert row.publish_attempts == 1
+    assert "who_knows" in row.last_error
+
+    # Second drain must NOT re-attempt it — the row is no longer selected.
+    n2 = await drain_once(session_factory=session_factory, publisher=publisher)
+    assert n2 == 0
+    async with session_factory() as s:
+        row2 = await s.get(ChangesOutboxRow, bad.id)
+    assert row2.publish_attempts == 1  # unchanged — not re-selected
+
+
+@pytest.mark.asyncio
+async def test_corrupt_legacy_payload_dead_lettered(session_factory, publisher, fake_redis):
+    """A known event_type with an unvalidatable (pre-bindings) payload is
+    dead-lettered immediately — reproduces the archiver#109 prod poison rows."""
+    poison = await _insert_row(session_factory, payload=_legacy_captured_event("rev-legacy-1"))
+
+    n = await drain_once(session_factory=session_factory, publisher=publisher)
+    assert n == 0
+
+    # Nothing reached the stream.
+    assert await fake_redis.xrange("info.changes") == []
+
+    async with session_factory() as s:
+        row = await s.get(ChangesOutboxRow, poison.id)
+    assert row.dead_lettered_at is not None
+    assert row.published_at is None
+    assert row.publish_attempts == 1
+    assert row.last_error is not None
+
+
+@pytest.mark.asyncio
+async def test_transient_failure_not_dead_lettered(session_factory):
+    """A transient publish failure (Redis down) must NOT dead-letter — the row
+    stays live and is retried next drain (only deterministic poison is retired)."""
+    row = await _insert_row(session_factory, payload=_captured_event("rev-x"))
+
+    broken = AsyncMock()
+    broken.xadd = AsyncMock(side_effect=ConnectionError("Redis unavailable"))
+    broken_publisher = AsyncBusPublisher(broken)
+
+    n = await drain_once(session_factory=session_factory, publisher=broken_publisher)
+    assert n == 0
+
+    async with session_factory() as s:
+        refreshed = await s.get(ChangesOutboxRow, row.id)
+    assert refreshed.dead_lettered_at is None  # transient → still live
+    assert refreshed.published_at is None
+    assert refreshed.publish_attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_attempt_ceiling_dead_letters_persistent_failure(session_factory):
+    """Backstop: a row that keeps failing transiently past MAX_PUBLISH_ATTEMPTS is
+    dead-lettered, so an unclassified *persistent* failure can't spin forever."""
+    row = await _insert_row(session_factory, payload=_captured_event("rev-stuck"))
+    # Pre-age it to one attempt below the ceiling so a single failing drain crosses it.
+    async with session_factory() as s:
+        r = await s.get(ChangesOutboxRow, row.id)
+        r.publish_attempts = MAX_PUBLISH_ATTEMPTS - 1
+        await s.commit()
+
+    broken = AsyncMock()
+    broken.xadd = AsyncMock(side_effect=ConnectionError("still down"))
+    broken_publisher = AsyncBusPublisher(broken)
+
+    n = await drain_once(session_factory=session_factory, publisher=broken_publisher)
+    assert n == 0
+
+    async with session_factory() as s:
+        refreshed = await s.get(ChangesOutboxRow, row.id)
+    assert refreshed.publish_attempts == MAX_PUBLISH_ATTEMPTS
+    assert refreshed.dead_lettered_at is not None

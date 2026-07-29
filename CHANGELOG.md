@@ -18,6 +18,12 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.5.1 (2026-07-29)
+
+[service] **Outbox publisher dead-letters poison rows instead of retrying them forever** (archiver#107). New nullable `information.changes_outbox.dead_lettered_at` column; the unpublished partial index (`ix_changes_outbox_unpublished_created`) is narrowed to `published_at IS NULL AND dead_lettered_at IS NULL`.
+
+The drain loop now distinguishes *permanent* from *transient* per-row failures. A **deterministic** failure — unknown `event_type` (`ValueError`) or an unvalidatable payload (`ValidationError`, e.g. the pre-`bindings` legacy `source_revision_captured` rows that flooded the journal on the archiver#109 activation) — stamps `dead_lettered_at` on the first failure, so the row stops being selected. A **transient** failure (Redis down) still retries unchanged; a high attempt ceiling (`MAX_PUBLISH_ATTEMPTS = 1000`) is a pure backstop for an unclassified failure that never clears. Dead-lettering logs at ERROR with `row_id` / `event_type` / `reason`; `payload` + `last_error` are kept in-row for post-mortem. No API/schema/SDK surface change; the `.dlq` stream + replay story is deferred to Phase 3 (Replicator).
+
 ## v4.5.0 (2026-07-28)
 
 [service] **Change-bus producer swapped onto the shared co-core bus layer; `info.changes` wire envelope reshaped** (archiver#106, Phase 2b of #72). Depends on **co-core / co-core-aio v0.5.2** (cannobserv#261 bus layer + cannobserv#263 redis-pin fix).

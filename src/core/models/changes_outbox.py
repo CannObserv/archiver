@@ -39,12 +39,23 @@ class ChangesOutboxRow(Base):
         Integer, nullable=False, server_default="0", default=0
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Terminal state for a deterministically-unpublishable (poison) row — an
+    # unknown event_type / unvalidatable payload, or a persistent failure past the
+    # attempt ceiling. Set → the drain loop stops selecting it, ending the
+    # infinite-retry + log-spam loop (archiver#107). last_error/payload are kept
+    # in-row for post-mortem. NULL = live (never dead-lettered).
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
+        # Partial index over the drain loop's exact predicate: a row is a
+        # publish candidate only while both published_at and dead_lettered_at
+        # are NULL.
         Index(
             "ix_changes_outbox_unpublished_created",
             "created_at",
-            postgresql_where=text("published_at IS NULL"),
+            postgresql_where=text("published_at IS NULL AND dead_lettered_at IS NULL"),
         ),
         {"schema": "information"},
     )

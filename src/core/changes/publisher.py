@@ -8,9 +8,13 @@ serializer — archiver no longer hand-rolls the XADD field map (archiver#106).
 The transactional outbox stays here (the producer-side delivery guarantee);
 co-core provides only the publish effect/driver the drain loop calls.
 
-Best-effort retry: failed publishes increment ``publish_attempts`` and record
-``last_error``; the row stays unpublished and is re-attempted on the next loop
-iteration.
+Best-effort retry: a *transient* publish failure (Redis down) increments
+``publish_attempts`` and records ``last_error``; the row stays unpublished and is
+re-attempted on the next loop iteration. A *deterministic* failure — an unknown
+``event_type`` or an unvalidatable payload — is dead-lettered immediately
+(``dead_lettered_at`` stamped), so a poison row cannot spin forever flooding the
+log; a high attempt ceiling is a backstop for unclassified persistent failures
+(archiver#107).
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from co_core.pure.models.changes import (
     SourceRevisionCapturedEvent,
 )
 from co_core_aio.bus import AsyncBusPublisher
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -41,6 +46,15 @@ logger = get_logger(__name__)
 DEFAULT_BATCH_SIZE = 100
 ACTIVE_INTERVAL_SECONDS = 0.25
 IDLE_INTERVAL_SECONDS = 1.0
+
+# Attempt ceiling for the *transient* (retry) path — a pure defense-in-depth
+# backstop (archiver#107). Deterministic poison (unknown event_type /
+# unvalidatable payload) is dead-lettered on the FIRST failure by exception type,
+# so this ceiling is not the primary mechanism. It is set deliberately high: a
+# transient Redis outage retries valid rows at ~1/idle-tick, and this must not
+# retire a good row before a realistic outage clears. Only an *unclassified*
+# failure that persists past this bound is retired here.
+MAX_PUBLISH_ATTEMPTS = 1000
 
 # The single Redis Stream Archiver produces to (both event types share it). Used
 # as the operator-side XTRIM target; the emit sites hardcode the same literal.
@@ -143,15 +157,42 @@ _PAYLOAD_BY_EVENT_TYPE: dict[str, type[ChangeEventPayload]] = {
 def _payload_from_row(payload: dict) -> ChangeEventPayload:
     """Reconstruct the typed co-core payload from a stored outbox row dict.
 
-    Raises ``ValueError`` on an unrecognized ``event_type`` so the drain loop
-    treats it as a per-row failure (row stays unpublished, error recorded)
-    rather than crashing the whole batch.
+    Raises ``ValueError`` on an unrecognized ``event_type`` (and ``ValidationError``
+    from ``model_validate`` on a corrupt payload); the drain loop treats both as
+    *permanent* per-row failures and dead-letters the row immediately rather than
+    crashing the whole batch or re-attempting forever (archiver#107).
     """
     event_type = payload.get("event_type") if isinstance(payload, dict) else None
     model = _PAYLOAD_BY_EVENT_TYPE.get(event_type)
     if model is None:
         raise ValueError(f"unknown outbox event_type: {event_type!r}")
     return model.model_validate(payload)
+
+
+def _dead_letter(row: ChangesOutboxRow, exc: Exception, *, reason: str) -> None:
+    """Move ``row`` to its terminal (dead-lettered) state — archiver#107.
+
+    Stamps ``dead_lettered_at`` (so the drain loop stops selecting it) and records
+    ``last_error``; ``payload`` is left intact for post-mortem. Logs at ERROR
+    because a poison row means a producer wrote something unpublishable — an
+    operator signal, unlike a transient retry. Does NOT touch ``publish_attempts``;
+    the caller owns that counter (it is incremented on the failing branch before
+    this is called).
+    """
+    row.last_error = repr(exc)[:1000]
+    row.dead_lettered_at = datetime.now(UTC)
+    event_type = row.payload.get("event_type") if isinstance(row.payload, dict) else None
+    logger.error(
+        "Dead-lettering outbox row",
+        extra={
+            "row_id": str(row.id),
+            "topic": row.topic,
+            "event_type": event_type,
+            "reason": reason,
+            "publish_attempts": row.publish_attempts,
+            "error": repr(exc),
+        },
+    )
 
 
 async def drain_once(
@@ -183,7 +224,10 @@ async def drain_once(
     async with session_factory() as session:
         result = await session.execute(
             select(ChangesOutboxRow)
-            .where(ChangesOutboxRow.published_at.is_(None))
+            .where(
+                ChangesOutboxRow.published_at.is_(None),
+                ChangesOutboxRow.dead_lettered_at.is_(None),
+            )
             .order_by(ChangesOutboxRow.created_at)
             .limit(batch_size)
         )
@@ -191,9 +235,22 @@ async def drain_once(
         if not rows:
             return 0
         for row in rows:
+            # Build phase — reconstruct the typed payload + wire envelope. A
+            # failure here (unknown event_type → ValueError; corrupt/legacy
+            # payload → ValidationError) is *deterministic*: identical every loop.
+            # Dead-letter immediately instead of re-attempting forever (archiver#107).
             try:
                 payload = _payload_from_row(row.payload)
                 fields = to_wire(payload)
+            except (ValueError, ValidationError) as exc:
+                row.publish_attempts = (row.publish_attempts or 0) + 1
+                _dead_letter(row, exc, reason="unpublishable_payload")
+                continue
+
+            # Publish phase — a failure here (Redis/network) is *transient*: retry
+            # on the next drain. A high attempt ceiling is a pure backstop for an
+            # unclassified failure that never clears (archiver#107).
+            try:
                 # at-least-once boundary: if the process dies between this XADD
                 # and the commit below, the row re-publishes next drain — safe
                 # only because consumers dedupe on the envelope idempotency key.
@@ -204,22 +261,21 @@ async def drain_once(
                 published += 1
                 if seen_topics is not None:
                     seen_topics.add(row.topic)
-            # NOTE: a deterministically-failing row (unknown event_type, corrupt
-            # payload) has no terminal state — it is re-attempted every loop, not
-            # just the transient (Redis-down) case this retry targets. Not
-            # reachable via the two current routes; bounded-retry / dead-letter
-            # tracked in archiver#107.
             except Exception as exc:
                 row.publish_attempts = (row.publish_attempts or 0) + 1
-                row.last_error = repr(exc)[:1000]
-                logger.warning(
-                    "Failed to publish outbox row",
-                    extra={
-                        "row_id": str(row.id),
-                        "topic": row.topic,
-                        "error": repr(exc),
-                    },
-                )
+                if row.publish_attempts >= MAX_PUBLISH_ATTEMPTS:
+                    _dead_letter(row, exc, reason="attempts_exhausted")
+                else:
+                    row.last_error = repr(exc)[:1000]
+                    logger.warning(
+                        "Failed to publish outbox row",
+                        extra={
+                            "row_id": str(row.id),
+                            "topic": row.topic,
+                            "publish_attempts": row.publish_attempts,
+                            "error": repr(exc),
+                        },
+                    )
         await session.commit()
         return published
 
