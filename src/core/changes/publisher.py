@@ -8,13 +8,14 @@ serializer — archiver no longer hand-rolls the XADD field map (archiver#106).
 The transactional outbox stays here (the producer-side delivery guarantee);
 co-core provides only the publish effect/driver the drain loop calls.
 
-Best-effort retry: a *transient* publish failure (Redis down) increments
-``publish_attempts`` and records ``last_error``; the row stays unpublished and is
-re-attempted on the next loop iteration. A *deterministic* failure — an unknown
-``event_type`` or an unvalidatable payload — is dead-lettered immediately
+Best-effort retry: a *transient* publish failure (Redis down/slow/loading)
+increments ``publish_attempts`` and records ``last_error``; the row stays
+unpublished and is re-attempted on the next loop iteration — indefinitely, so a
+long outage never drops a valid event. A *deterministic* build failure — an
+unknown ``event_type`` or an unvalidatable payload — is dead-lettered immediately
 (``dead_lettered_at`` stamped), so a poison row cannot spin forever flooding the
-log; a high attempt ceiling is a backstop for unclassified persistent failures
-(archiver#107).
+log. A high attempt ceiling is a backstop that dead-letters only a *non-transient*
+publish failure that persists past it (archiver#107).
 """
 
 from __future__ import annotations
@@ -31,7 +32,9 @@ from co_core.pure.models.changes import (
     SourceRevisionCapturedEvent,
 )
 from co_core_aio.bus import AsyncBusPublisher
-from pydantic import ValidationError
+from redis.exceptions import BusyLoadingError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -47,14 +50,30 @@ DEFAULT_BATCH_SIZE = 100
 ACTIVE_INTERVAL_SECONDS = 0.25
 IDLE_INTERVAL_SECONDS = 1.0
 
-# Attempt ceiling for the *transient* (retry) path — a pure defense-in-depth
-# backstop (archiver#107). Deterministic poison (unknown event_type /
-# unvalidatable payload) is dead-lettered on the FIRST failure by exception type,
-# so this ceiling is not the primary mechanism. It is set deliberately high: a
-# transient Redis outage retries valid rows at ~1/idle-tick, and this must not
-# retire a good row before a realistic outage clears. Only an *unclassified*
-# failure that persists past this bound is retired here.
-MAX_PUBLISH_ATTEMPTS = 1000
+# Publish-phase failures that are *transient* (broker down / slow / loading) and
+# must retry indefinitely. These are EXEMPT from the dead-letter ceiling below, so
+# a long-but-genuine Redis outage can never silently drop valid events — the
+# primary protection against a data-loss cliff (CR #2). redis-py's own error types
+# are disjoint from the builtins, so both are listed. Everything else reaching the
+# publish except (e.g. a server-side ResponseError / WRONGTYPE) is treated as
+# possibly-permanent and subject to the ceiling.
+_TRANSIENT_PUBLISH_ERRORS: tuple[type[BaseException], ...] = (
+    ConnectionError,  # builtin
+    TimeoutError,  # builtin
+    RedisConnectionError,
+    RedisTimeoutError,
+    BusyLoadingError,
+)
+
+# Attempt ceiling for NON-transient publish failures — a pure defense-in-depth
+# backstop (archiver#107, CR #2). Deterministic poison (unknown event_type /
+# unvalidatable payload) is dead-lettered on the FIRST failure in the build phase,
+# so this ceiling is not the primary mechanism. Transient errors (above) are
+# exempt, so this bites only a NON-transient failure that persists — and it is set
+# very high so that even a *misclassified* transient error (one not in the tuple)
+# gets generous headroom before being dropped. At ~1 attempt/idle-tick this is on
+# the order of a day of continuous failure, not the ~17 min of the prior 1000.
+MAX_PUBLISH_ATTEMPTS = 100_000
 
 # The single Redis Stream Archiver produces to (both event types share it). Used
 # as the operator-side XTRIM target; the emit sites hardcode the same literal.
@@ -235,21 +254,26 @@ async def drain_once(
         if not rows:
             return 0
         for row in rows:
-            # Build phase — reconstruct the typed payload + wire envelope. A
-            # failure here (unknown event_type → ValueError; corrupt/legacy
-            # payload → ValidationError) is *deterministic*: identical every loop.
-            # Dead-letter immediately instead of re-attempting forever (archiver#107).
+            # Build phase — reconstruct the typed payload + wire envelope. This is
+            # pure (no I/O), so ANY failure here is *deterministic*: identical every
+            # loop. Catch broadly and dead-letter immediately — a narrower catch
+            # would let an unanticipated exception type escape per-row handling and
+            # wedge the whole batch in a crash-backoff loop (CR #1). Known shapes
+            # are unknown event_type (ValueError) and unvalidatable payload
+            # (ValidationError), but the guarantee is "no build error spins forever".
             try:
                 payload = _payload_from_row(row.payload)
                 fields = to_wire(payload)
-            except (ValueError, ValidationError) as exc:
+            except Exception as exc:
                 row.publish_attempts = (row.publish_attempts or 0) + 1
                 _dead_letter(row, exc, reason="unpublishable_payload")
                 continue
 
-            # Publish phase — a failure here (Redis/network) is *transient*: retry
-            # on the next drain. A high attempt ceiling is a pure backstop for an
-            # unclassified failure that never clears (archiver#107).
+            # Publish phase — a failure here (Redis/network) is usually *transient*:
+            # retry on the next drain. Transient errors are exempt from the ceiling
+            # (retry forever, no data-loss cliff); only a NON-transient failure that
+            # persists past the ceiling is dead-lettered as a backstop (archiver#107,
+            # CR #2).
             try:
                 # at-least-once boundary: if the process dies between this XADD
                 # and the commit below, the row re-publishes next drain — safe
@@ -263,7 +287,8 @@ async def drain_once(
                     seen_topics.add(row.topic)
             except Exception as exc:
                 row.publish_attempts = (row.publish_attempts or 0) + 1
-                if row.publish_attempts >= MAX_PUBLISH_ATTEMPTS:
+                transient = isinstance(exc, _TRANSIENT_PUBLISH_ERRORS)
+                if not transient and row.publish_attempts >= MAX_PUBLISH_ATTEMPTS:
                     _dead_letter(row, exc, reason="attempts_exhausted")
                 else:
                     row.last_error = repr(exc)[:1000]
@@ -273,6 +298,7 @@ async def drain_once(
                             "row_id": str(row.id),
                             "topic": row.topic,
                             "publish_attempts": row.publish_attempts,
+                            "transient": transient,
                             "error": repr(exc),
                         },
                     )

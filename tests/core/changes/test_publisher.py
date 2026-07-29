@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 import pytest
 from co_core_aio.bus import AsyncBusPublisher
 from fakeredis import aioredis as fakeredis_aio
+from redis.exceptions import ResponseError
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -687,14 +688,40 @@ async def test_transient_failure_not_dead_lettered(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_attempt_ceiling_dead_letters_persistent_failure(session_factory):
-    """Backstop: a row that keeps failing transiently past MAX_PUBLISH_ATTEMPTS is
-    dead-lettered, so an unclassified *persistent* failure can't spin forever."""
+async def test_attempt_ceiling_dead_letters_non_transient_failure(session_factory):
+    """Backstop: a NON-transient publish failure (e.g. a server-side ResponseError)
+    that persists past MAX_PUBLISH_ATTEMPTS is dead-lettered so it can't spin
+    forever. Only non-transient errors count toward the ceiling (CR #2)."""
     row = await _insert_row(session_factory, payload=_captured_event("rev-stuck"))
     # Pre-age it to one attempt below the ceiling so a single failing drain crosses it.
     async with session_factory() as s:
         r = await s.get(ChangesOutboxRow, row.id)
         r.publish_attempts = MAX_PUBLISH_ATTEMPTS - 1
+        await s.commit()
+
+    broken = AsyncMock()
+    broken.xadd = AsyncMock(side_effect=ResponseError("WRONGTYPE"))
+    broken_publisher = AsyncBusPublisher(broken)
+
+    n = await drain_once(session_factory=session_factory, publisher=broken_publisher)
+    assert n == 0
+
+    async with session_factory() as s:
+        refreshed = await s.get(ChangesOutboxRow, row.id)
+    assert refreshed.publish_attempts == MAX_PUBLISH_ATTEMPTS
+    assert refreshed.dead_lettered_at is not None
+
+
+@pytest.mark.asyncio
+async def test_transient_failure_exempt_from_ceiling(session_factory):
+    """A *transient* failure (Redis down) is NEVER dead-lettered by the ceiling —
+    even past MAX_PUBLISH_ATTEMPTS it keeps retrying, so a long-but-genuine outage
+    cannot silently drop a valid event (CR #2, the data-loss-cliff guard)."""
+    row = await _insert_row(session_factory, payload=_captured_event("rev-outage"))
+    # Pre-age it ABOVE the ceiling — a non-transient error here would dead-letter.
+    async with session_factory() as s:
+        r = await s.get(ChangesOutboxRow, row.id)
+        r.publish_attempts = MAX_PUBLISH_ATTEMPTS
         await s.commit()
 
     broken = AsyncMock()
@@ -706,5 +733,33 @@ async def test_attempt_ceiling_dead_letters_persistent_failure(session_factory):
 
     async with session_factory() as s:
         refreshed = await s.get(ChangesOutboxRow, row.id)
-    assert refreshed.publish_attempts == MAX_PUBLISH_ATTEMPTS
-    assert refreshed.dead_lettered_at is not None
+    assert refreshed.dead_lettered_at is None  # transient → exempt, still live
+    assert refreshed.publish_attempts == MAX_PUBLISH_ATTEMPTS + 1  # keeps climbing
+
+
+@pytest.mark.asyncio
+async def test_dead_letter_logs_error_with_reason(session_factory, publisher, monkeypatch):
+    """Dead-lettering emits an ERROR log carrying the reason — the only operator
+    signal a poison row was retired until the Phase 3 dashboard surfaces it (CR #4)."""
+    error_reasons: list[str | None] = []
+    monkeypatch.setattr(
+        publisher_mod.logger,
+        "error",
+        lambda *a, **k: error_reasons.append(k.get("extra", {}).get("reason")),
+    )
+
+    # Build-phase poison → reason "unpublishable_payload".
+    await _insert_row(session_factory, payload={"event_type": "who_knows"})
+    await drain_once(session_factory=session_factory, publisher=publisher)
+    assert error_reasons == ["unpublishable_payload"]
+
+    # Non-transient publish failure past the ceiling → reason "attempts_exhausted".
+    row = await _insert_row(session_factory, payload=_captured_event("rev-ceil"))
+    async with session_factory() as s:
+        r = await s.get(ChangesOutboxRow, row.id)
+        r.publish_attempts = MAX_PUBLISH_ATTEMPTS - 1
+        await s.commit()
+    broken = AsyncMock()
+    broken.xadd = AsyncMock(side_effect=ResponseError("WRONGTYPE"))
+    await drain_once(session_factory=session_factory, publisher=AsyncBusPublisher(broken))
+    assert error_reasons == ["unpublishable_payload", "attempts_exhausted"]
