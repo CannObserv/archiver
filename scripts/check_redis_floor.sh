@@ -27,9 +27,32 @@ if ! command -v redis-cli >/dev/null 2>&1; then
   exit 0
 fi
 
+# A rediss:// URL needs a TLS-capable redis-cli; a build without `--tls` cannot
+# connect, so INFO returns nothing and the check silently no-ops (soft-skips
+# below). Warn so that gap is visible — relevant at a managed-provider migration,
+# where the URL becomes rediss:// but the floor still matters.
+case "${URL}" in
+  rediss://*)
+    if ! redis-cli --help 2>&1 | grep -q -- '--tls'; then
+      echo "check_redis_floor: redis-cli lacks TLS support (no --tls) for a rediss:// URL —" >&2
+      echo "check_redis_floor: the floor check will no-op; install a TLS-capable redis-cli" >&2
+    fi
+    ;;
+esac
+
 # `-u` accepts redis:// and rediss:// URLs (TLS + auth). INFO server carries the
-# `redis_version:MAJOR.MINOR.PATCH` line.
-version="$(redis-cli -u "${URL}" INFO server 2>/dev/null | tr -d '\r' | sed -n 's/^redis_version:\(.*\)$/\1/p')"
+# `redis_version:MAJOR.MINOR.PATCH` line. Wrap in `timeout` so this ExecStartPre
+# can never hang archiver startup: redis-cli has no connect-timeout flag, and a
+# rediss:// URL against a plaintext/unreachable endpoint blocks on the TLS
+# handshake indefinitely. A timeout kill yields an empty version → soft-skip.
+# ARCHIVER_REDIS_FLOOR_TIMEOUT (seconds, default 5) bounds the call; tests lower it.
+TIMEOUT_SECS="${ARCHIVER_REDIS_FLOOR_TIMEOUT:-5}"
+TIMEOUT_BIN="$(command -v timeout || true)"
+if [ -n "${TIMEOUT_BIN}" ]; then
+  version="$("${TIMEOUT_BIN}" "${TIMEOUT_SECS}" redis-cli -u "${URL}" INFO server 2>/dev/null | tr -d '\r' | sed -n 's/^redis_version:\(.*\)$/\1/p')"
+else
+  version="$(redis-cli -u "${URL}" INFO server 2>/dev/null | tr -d '\r' | sed -n 's/^redis_version:\(.*\)$/\1/p')"
+fi
 
 if [ -z "${version}" ]; then
   echo "check_redis_floor: could not read redis_version (broker unreachable?) — not blocking start" >&2

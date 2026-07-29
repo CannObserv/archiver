@@ -21,7 +21,12 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.changes import publisher as publisher_mod
-from src.core.changes.publisher import drain_once, trim_stream
+from src.core.changes.publisher import (
+    DEFAULT_STREAM_MAXLEN,
+    drain_once,
+    resolve_stream_maxlen,
+    trim_stream,
+)
 from src.core.models import ChangesOutboxRow
 
 # ---------------------------------------------------------------------------
@@ -225,6 +230,66 @@ async def test_drain_batch_limit(session_factory, publisher, fake_redis):
 # ---------------------------------------------------------------------------
 # Operator-side stream retention (XTRIM) — archiver#109
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, DEFAULT_STREAM_MAXLEN),  # unset → default (trim on)
+        ("250000", 250000),  # explicit positive
+        ("0", None),  # <= 0 disables
+        ("-5", None),
+        ("oops", DEFAULT_STREAM_MAXLEN),  # malformed → default, never raises
+        ("", DEFAULT_STREAM_MAXLEN),  # empty → default, never raises
+    ],
+)
+def test_resolve_stream_maxlen(raw, expected):
+    """A malformed knob must degrade to the default, never raise — a bad value
+    must not reach main.lifespan's broad guard and disable the whole publisher."""
+    assert resolve_stream_maxlen(raw) == expected
+
+
+@pytest.mark.asyncio
+async def test_drain_once_accumulates_seen_topics(session_factory, publisher):
+    """Each successfully-published row's topic is recorded in seen_topics."""
+    await _insert_row(session_factory, topic="info.changes", payload=_captured_event("rev-x"))
+    await _insert_row(session_factory, topic="other.stream", payload=_captured_event("rev-y"))
+
+    seen: set[str] = set()
+    n = await drain_once(session_factory=session_factory, publisher=publisher, seen_topics=seen)
+    assert n == 2
+    assert seen == {"info.changes", "other.stream"}
+
+
+@pytest.mark.asyncio
+async def test_run_trims_every_seen_topic(session_factory, publisher, fake_redis, monkeypatch):
+    """When multiple topics were produced to, the loop trims each of them."""
+    trim_calls: set[tuple[str, int]] = set()
+
+    async def _fake_trim(client, topic, maxlen):
+        trim_calls.add((topic, maxlen))
+
+    stop = asyncio.Event()
+
+    async def _fake_drain(*, seen_topics=None, **_kwargs):
+        if seen_topics is not None:
+            seen_topics.update({"info.changes", "other.stream"})
+        stop.set()
+        return 2
+
+    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
+    monkeypatch.setattr(publisher_mod, "drain_once", _fake_drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        redis_client=fake_redis,
+        stream_maxlen=100,
+        trim_interval_iterations=1,
+        stop_event=stop,
+    )
+
+    assert trim_calls == {("info.changes", 100), ("other.stream", 100)}
 
 
 @pytest.mark.asyncio
