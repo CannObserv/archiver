@@ -1,6 +1,11 @@
 [Unit]
 Description=Archiver service — Cannabis Observer information registry
-After=network.target postgresql.service
+After=network.target postgresql.service redis-server.service
+# Soft dependency (Wants, not Requires/BindsTo): Archiver is the change-bus
+# producer, but the outbox tolerates broker downtime within its retry window, so
+# a down or absent Redis must not stop Archiver from starting — it just degrades
+# the publisher. After= orders us behind redis-server when it is present (#109).
+Wants=redis-server.service
 
 [Service]
 Type=simple
@@ -33,6 +38,13 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # populated wheelhouse still starts; only a genuinely missing wheel surfaces
 # as a hard `uv` resolution error at ExecStart.
 ExecStartPre=-/usr/local/bin/uv run --no-project --with 'google-cloud-storage>=2,<4' python /home/exedev/archiver/scripts/sync_wheelhouse.py
+
+# Assert the Redis change-bus server floor (>=7.0) when the bus is active.
+# NOT prefixed with `-`: a genuinely-too-old *reachable* broker must block the
+# producer (the consumer path's XAUTOCLAIM needs 7.0). The script is itself soft
+# on the dormant/unreachable cases — it exits 0 when ARCHIVER_REDIS_URL is unset
+# or the broker cannot be reached, so it only fails start on a real downgrade.
+ExecStartPre=/home/exedev/archiver/scripts/check_redis_floor.sh
 
 ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8020
 Restart=on-failure

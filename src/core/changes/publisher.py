@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from co_core.effects.bus import BusPublish
 from co_core.pure.adapters.bus.envelope import to_wire
@@ -32,11 +33,24 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
 logger = get_logger(__name__)
 
 DEFAULT_BATCH_SIZE = 100
 ACTIVE_INTERVAL_SECONDS = 0.25
 IDLE_INTERVAL_SECONDS = 1.0
+
+# The single Redis Stream Archiver produces to (both event types share it). Used
+# as the operator-side XTRIM target; the emit sites hardcode the same literal.
+CHANGE_STREAM_TOPIC = "info.changes"
+
+# Trim the stream every N drain-loop iterations when a cap is configured. With
+# the loop's sub-second/idle cadence this bounds growth without an XTRIM every
+# tick. Archiver operates the broker (archiver#109), so capping is its job —
+# co-core exposes no XADD-time trim arg (BusPublish is topic + fields only).
+TRIM_INTERVAL_ITERATIONS = 20
 
 # event_type -> canonical (consumer-facing, extra="ignore") co-core payload model.
 # The outbox stores each event as a JSON dict (``model_dump(mode="json")``); the
@@ -117,6 +131,21 @@ async def drain_once(
         return len(rows)
 
 
+async def trim_stream(client: Redis, topic: str, maxlen: int) -> None:
+    """Cap ``topic`` to roughly ``maxlen`` entries via an approximate ``XTRIM``.
+
+    Operator-side retention (archiver#109): with no consumer yet, entries
+    accumulate on ``info.changes``, so Archiver (the broker operator) bounds the
+    stream itself. ``approximate=True`` (Redis ``MAXLEN ~``) trims whole
+    macro-nodes — cheap, may leave slightly more than ``maxlen``. Best-effort:
+    a failing trim is logged and swallowed so it never breaks the drain loop.
+    """
+    try:
+        await client.xtrim(topic, maxlen=maxlen, approximate=True)
+    except Exception:
+        logger.warning("Stream trim failed", extra={"topic": topic, "maxlen": maxlen})
+
+
 async def run(
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -125,14 +154,24 @@ async def run(
     active_interval: float = ACTIVE_INTERVAL_SECONDS,
     idle_interval: float = IDLE_INTERVAL_SECONDS,
     stop_event: asyncio.Event | None = None,
+    redis_client: Redis | None = None,
+    stream_maxlen: int | None = None,
+    trim_topic: str = CHANGE_STREAM_TOPIC,
+    trim_interval_iterations: int = TRIM_INTERVAL_ITERATIONS,
 ) -> None:
     """Loop forever (until ``stop_event`` is set), draining the outbox.
 
     Sleeps ``active_interval`` seconds when work was found, ``idle_interval``
     when not.  Handles ``asyncio.CancelledError`` by re-raising; all other
     exceptions are logged and the loop continues.
+
+    When ``redis_client`` and a positive ``stream_maxlen`` are supplied, the loop
+    also caps ``trim_topic`` via ``trim_stream`` every ``trim_interval_iterations``
+    iterations — operator-side retention (archiver#109). Left unset (the dormant
+    or unconfigured case), no trimming occurs.
     """
     stop_event = stop_event or asyncio.Event()
+    iteration = 0
     while not stop_event.is_set():
         try:
             count = await drain_once(
@@ -145,6 +184,16 @@ async def run(
         except Exception:
             logger.exception("Outbox publisher loop hit unexpected error; retrying")
             count = 0
+
+        iteration += 1
+        if (
+            redis_client is not None
+            and stream_maxlen
+            and stream_maxlen > 0
+            and iteration % trim_interval_iterations == 0
+        ):
+            await trim_stream(redis_client, trim_topic, stream_maxlen)
+
         await asyncio.wait(
             [asyncio.create_task(stop_event.wait())],
             timeout=active_interval if count else idle_interval,

@@ -9,6 +9,7 @@ These tests assert on the canonical envelope field set (``key`` / ``payload`` /
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
@@ -19,7 +20,8 @@ from fakeredis import aioredis as fakeredis_aio
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from src.core.changes.publisher import drain_once
+from src.core.changes import publisher as publisher_mod
+from src.core.changes.publisher import drain_once, trim_stream
 from src.core.models import ChangesOutboxRow
 
 # ---------------------------------------------------------------------------
@@ -218,6 +220,92 @@ async def test_drain_batch_limit(session_factory, publisher, fake_redis):
         )
         pending = list(result.scalars())
     assert len(pending) == 3
+
+
+# ---------------------------------------------------------------------------
+# Operator-side stream retention (XTRIM) — archiver#109
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_trim_stream_issues_approximate_xtrim():
+    """trim_stream caps the topic via an approximate XTRIM MAXLEN ~ N."""
+    client = AsyncMock()
+    await trim_stream(client, "info.changes", 100)
+    client.xtrim.assert_awaited_once_with("info.changes", maxlen=100, approximate=True)
+
+
+@pytest.mark.asyncio
+async def test_trim_stream_bounds_a_real_stream(fake_redis):
+    """Against a live (fake) stream, trim bounds XLEN at or below the cap."""
+    for i in range(250):
+        await fake_redis.xadd("info.changes", {"n": str(i)})
+    await trim_stream(fake_redis, "info.changes", 100)
+    assert await fake_redis.xlen("info.changes") <= 100
+
+
+@pytest.mark.asyncio
+async def test_trim_stream_swallows_errors():
+    """A failing XTRIM must not propagate (the drain loop keeps running)."""
+    client = AsyncMock()
+    client.xtrim.side_effect = RuntimeError("redis down")
+    # Should not raise.
+    await trim_stream(client, "info.changes", 100)
+
+
+@pytest.mark.asyncio
+async def test_run_trims_periodically(session_factory, publisher, fake_redis, monkeypatch):
+    """The drain loop periodically caps the stream when a client + maxlen are set."""
+    trim_calls: list[tuple[str, int]] = []
+
+    async def _fake_trim(client, topic, maxlen):
+        trim_calls.append((topic, maxlen))
+
+    stop = asyncio.Event()
+
+    async def _fake_drain(**_kwargs):
+        stop.set()  # stop after a single iteration
+        return 0  # idle cycle
+
+    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
+    monkeypatch.setattr(publisher_mod, "drain_once", _fake_drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        redis_client=fake_redis,
+        stream_maxlen=100,
+        trim_interval_iterations=1,
+        stop_event=stop,
+    )
+
+    assert trim_calls == [(publisher_mod.CHANGE_STREAM_TOPIC, 100)]
+
+
+@pytest.mark.asyncio
+async def test_run_without_client_does_not_trim(session_factory, publisher, monkeypatch):
+    """No redis_client / maxlen → no trim attempts (dormant or unconfigured)."""
+    trim_calls: list[tuple[str, int]] = []
+
+    async def _fake_trim(client, topic, maxlen):
+        trim_calls.append((topic, maxlen))
+
+    stop = asyncio.Event()
+
+    async def _fake_drain(**_kwargs):
+        stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
+    monkeypatch.setattr(publisher_mod, "drain_once", _fake_drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        stop_event=stop,
+    )
+
+    assert trim_calls == []
 
 
 @pytest.mark.asyncio

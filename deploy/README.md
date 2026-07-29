@@ -2,11 +2,12 @@
 
 Systemd units for the Archiver VM.
 
-| Unit | Type | Purpose |
+| Unit / file | Type | Purpose |
 |---|---|---|
-| `archiver.service` | service | The live API on port 8020 (see CLAUDE.md → Server Lifecycle). Its `ExecStartPre` mirrors the cannobserv wheelhouse (see below). |
+| `archiver.service` | service | The live API on port 8020 (see CLAUDE.md → Server Lifecycle). Its `ExecStartPre` mirrors the cannobserv wheelhouse (see below) and asserts the Redis ≥7.0 floor when the bus is active. |
 | `watcher-live-drift.service` | oneshot | Layer C (#70): detect `watcher_client` snapshot drift vs **live** Watcher and open a regen PR. |
 | `watcher-live-drift.timer` | timer | Fires the oneshot daily. |
+| `redis-server.dropin.conf` | service drop-in | Archiver-owned tuning for the shared Redis change-bus broker (#109). Layers on the stock `redis-server.service`; see below. |
 
 ## cannobserv wheelhouse (archiver#72/#75)
 
@@ -34,6 +35,49 @@ sudo cp deploy/archiver.service /etc/systemd/system/ && sudo systemctl daemon-re
 
 (CI is keyless instead — the `lint`/`test` jobs authenticate via Workload
 Identity Federation; see `.github/workflows/ci.yml`.)
+
+## Redis change bus (archiver#109)
+
+Archiver **operates** the local `redis-server` as the `info.changes` change-bus
+producer + cluster control-plane. Ownership was previously un-assigned (stock
+distro unit, nobody's app); #109 closes that gap before Phase 3 (Replicator)
+makes the bus load-bearing. Design of record:
+`docs/plans/2026-07-29-redis-bus-ownership-design.md`.
+
+The connection string (`ARCHIVER_REDIS_URL`) is the only switch — local now,
+`rediss://` managed later with no code change. Only the artifacts below are
+local-broker-specific; a managed migration deletes them and swaps the env var.
+
+**`redis-server.dropin.conf`** — tracked drop-in that tunes the stock broker
+(AOF `everysec`, `maxmemory-policy noeviction`) without replacing the package
+unit or editing `/etc/redis/redis.conf`. Install (one-time, needs sudo):
+
+```bash
+sudo mkdir -p /etc/systemd/system/redis-server.service.d
+sudo cp deploy/redis-server.dropin.conf \
+    /etc/systemd/system/redis-server.service.d/archiver.conf
+sudo systemctl daemon-reload && sudo systemctl restart redis-server
+# verify:
+redis-cli CONFIG GET appendonly        # -> yes
+redis-cli CONFIG GET maxmemory-policy  # -> noeviction
+```
+
+**`archiver.service` ordering + floor.** The unit declares
+`Wants=redis-server.service` + `After=redis-server.service` (soft ordering — the
+outbox tolerates broker downtime, so no `Requires=`/`BindsTo=`) and an
+`ExecStartPre` that runs `scripts/check_redis_floor.sh` to assert the server is
+≥7.0 (the consumer path's `XAUTOCLAIM` requirement) when `ARCHIVER_REDIS_URL` is
+set. Reinstall the unit after any edit (see the parity note under the wheelhouse
+section) — `tests/deploy/test_installed_unit_matches_repo.py` flags drift.
+
+**Retention.** With no consumer yet, entries accumulate on `info.changes`. The
+Archiver outbox publisher caps the stream operator-side via a periodic
+`XTRIM ... MAXLEN ~ N` (co-core exposes no XADD trim arg); `N` is
+`ARCHIVER_REDIS_STREAM_MAXLEN` (default 100000).
+
+**Activation.** Set `ARCHIVER_REDIS_URL=redis://localhost:6379/0` in
+`/etc/archiver/.env` and restart `archiver`; the outbox publisher starts and
+drains to `info.changes`. Roll back by unsetting it and restarting.
 
 ## watcher-live-drift (Layer C, archiver#70)
 
