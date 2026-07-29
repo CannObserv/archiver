@@ -264,9 +264,11 @@ async def run(
 
     Sleeps ``active_interval`` when a drain made progress (published > 0),
     ``idle_interval`` when it drained nothing or every row failed (CR #10), and an
-    escalating capped backoff while ``drain_once`` itself keeps raising (CR #13).
-    Handles ``asyncio.CancelledError`` by re-raising; all other exceptions are
-    logged (capped) and the loop continues.
+    escalating capped backoff (from ``error_backoff_base``) while ``drain_once``
+    itself keeps raising (CR #13). Repeated whole-batch failures are logged capped
+    (every ``ERROR_LOG_EVERY``-th), and the first success after a streak emits a
+    ``WARNING`` recovery log. Handles ``asyncio.CancelledError`` by re-raising; all
+    other exceptions are logged and the loop continues.
 
     When ``redis_client`` and a positive ``stream_maxlen`` are supplied, the loop
     caps every stream it has produced to via ``trim_stream`` every
@@ -291,7 +293,9 @@ async def run(
             if consecutive_failures:
                 # Positive signal that the loop is healthy again (CR #14) — the
                 # absence of error logs alone is ambiguous with "still backed off".
-                logger.info(
+                # WARNING (not INFO) so both edges of an incident are visible at
+                # the same filter level as the failure logs (CR #17).
+                logger.warning(
                     "Outbox publisher recovered",
                     extra={"after_failures": consecutive_failures},
                 )
