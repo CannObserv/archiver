@@ -88,14 +88,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             redis_client = RedisAsync.from_url(redis_url)
             session_factory = async_sessionmaker(bind=get_engine(), expire_on_commit=False)
             stop_event = asyncio.Event()
+            # Operator-side stream cap (archiver#109): with no consumer yet,
+            # info.changes accumulates, so the drain loop periodically XTRIMs it.
+            # <= 0 disables trimming; co-core has no XADD-time trim arg.
+            stream_maxlen = int(os.environ.get("ARCHIVER_REDIS_STREAM_MAXLEN", "100000"))
             # The drain loop publishes via the shared co-core bus driver; it
             # borrows the long-lived redis client (injection-only, never closes
-            # it — the lifespan owns aclose below).
+            # it — the lifespan owns aclose below), and reuses it for the XTRIM.
             pub_task = asyncio.create_task(
                 outbox_publisher.run(
                     session_factory=session_factory,
                     publisher=AsyncBusPublisher(redis_client),
                     stop_event=stop_event,
+                    redis_client=redis_client,
+                    stream_maxlen=stream_maxlen if stream_maxlen > 0 else None,
                 )
             )
             app.state.redis_client = redis_client

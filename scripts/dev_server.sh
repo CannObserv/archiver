@@ -117,6 +117,31 @@ esac
 export ARCHIVER_DATABASE_URL="$DEV_URL"
 unset DATABASE_URL
 
+# --- Redis change-bus isolation (archiver#109) ---
+# Same leak class as the DB (2026-07-18): /etc/archiver/.env sets the production
+# ARCHIVER_REDIS_URL, so a dev server that inherited it would publish onto prod's
+# info.changes stream. The dev server never inherits it — it either uses an
+# explicit ARCHIVER_DEV_REDIS_URL (point it at a distinct broker or DB index,
+# e.g. .../1) or runs bus-dormant. And a dev override that equals the production
+# URL is refused outright (the equality backstop on top of the /1 convention).
+PROD_REDIS_URL="${ARCHIVER_REDIS_URL:-}"
+DEV_REDIS_URL="${ARCHIVER_DEV_REDIS_URL:-}"
+if [[ -n "$DEV_REDIS_URL" ]]; then
+  if [[ "$DEV_REDIS_URL" == "$PROD_REDIS_URL" ]]; then
+    echo "dev_server: refusing — ARCHIVER_DEV_REDIS_URL equals the production" >&2
+    echo "  ARCHIVER_REDIS_URL ('$PROD_REDIS_URL'). Point the dev server at a" >&2
+    echo "  distinct broker or logical DB index (e.g. .../1) so it cannot publish" >&2
+    echo "  onto prod's info.changes stream." >&2
+    exit 1
+  fi
+  export ARCHIVER_REDIS_URL="$DEV_REDIS_URL"
+  REDIS_REPORT="$ARCHIVER_REDIS_URL"
+else
+  # No explicit dev broker → run bus-dormant rather than inherit prod's URL.
+  unset ARCHIVER_REDIS_URL
+  REDIS_REPORT="(dormant)"
+fi
+
 # pytest teardown drops the `information` schema from TEST_DATABASE_URL, so the
 # dev database is frequently schema-less at launch. Migrating here keeps the
 # safe path usable; an operator who finds it broken tends to reach for the old
@@ -137,6 +162,7 @@ if [[ "${ARCHIVER_DEV_SERVER_DRY_RUN:-}" == "1" ]]; then
   echo "DATABASE_URL=(cleared)"
   echo "PORT=$PORT"
   echo "MIGRATE=$MIGRATE_REPORT"
+  echo "REDIS=$REDIS_REPORT"
   exit 0
 fi
 
