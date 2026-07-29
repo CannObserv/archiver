@@ -56,6 +56,27 @@ TRIM_INTERVAL_ITERATIONS = 20
 # unset. See resolve_stream_maxlen for the parse contract.
 DEFAULT_STREAM_MAXLEN = 100_000
 
+# Whole-batch failure backoff (CR #13). When drain_once itself raises (DB down,
+# session-factory failure — distinct from a per-row publish failure it swallows),
+# the loop escalates its sleep exponentially up to a cap, and logs only every
+# ERROR_LOG_EVERY-th consecutive failure so a sustained outage cannot flood the
+# journal at 1/idle-tick. The counter resets on the first successful drain.
+ERROR_BACKOFF_MAX_SECONDS = 30.0
+ERROR_BACKOFF_MAX_SHIFT = 5  # cap the exponent so 2**shift can't overflow the max
+ERROR_LOG_EVERY = 60
+
+
+def _error_backoff_seconds(consecutive_failures: int, base: float) -> float:
+    """Exponential backoff (``base * 2**(n-1)``) capped at ``ERROR_BACKOFF_MAX_SECONDS``.
+
+    ``consecutive_failures <= 1`` yields ``base``; the exponent is clamped so the
+    intermediate never overflows before the cap is applied.
+    """
+    if consecutive_failures <= 1:
+        return min(base, ERROR_BACKOFF_MAX_SECONDS)
+    shift = min(consecutive_failures - 1, ERROR_BACKOFF_MAX_SHIFT)
+    return min(base * (2**shift), ERROR_BACKOFF_MAX_SECONDS)
+
 
 def resolve_stream_maxlen(raw: str | None) -> int | None:
     """Parse the ``ARCHIVER_REDIS_STREAM_MAXLEN`` knob into a trim cap.
@@ -120,13 +141,23 @@ async def drain_once(
 ) -> int:
     """Drain at most ``batch_size`` unpublished rows.
 
-    Returns number of rows attempted (not necessarily successfully published).
+    Returns the number of rows **successfully published** this call (not the
+    number attempted). The caller (``run``) paces on this so an all-failing batch
+    reports zero progress and the loop backs off to its idle interval instead of
+    busy-waiting at the active interval (CR #10).
 
     When ``seen_topics`` is provided, each successfully-published ``row.topic`` is
     added to it, so the caller (``run``) can trim every stream it has actually
     produced to — not just the canonical one — should the topic set ever grow
     beyond ``info.changes``.
+
+    Delivery is **at-least-once**: the ``XADD`` and the ``commit`` below are not
+    atomic, so a crash after a successful publish but before commit leaves the row
+    ``published_at IS NULL`` and it is re-published next drain — a duplicate stream
+    entry. Consumers MUST dedupe on the co-core idempotency ``key`` in the wire
+    envelope; that is also why a re-publish is safe to retry freely (CR #12).
     """
+    published = 0
     async with session_factory() as session:
         result = await session.execute(
             select(ChangesOutboxRow)
@@ -141,10 +172,14 @@ async def drain_once(
             try:
                 payload = _payload_from_row(row.payload)
                 fields = to_wire(payload)
+                # at-least-once boundary: if the process dies between this XADD
+                # and the commit below, the row re-publishes next drain — safe
+                # only because consumers dedupe on the envelope idempotency key.
                 bus_result = await publisher.execute(BusPublish(topic=row.topic, fields=fields))
                 row.published_at = datetime.now(UTC)
                 row.bus_message_id = bus_result.bus_message_id
                 row.last_error = None
+                published += 1
                 if seen_topics is not None:
                     seen_topics.add(row.topic)
             # NOTE: a deterministically-failing row (unknown event_type, corrupt
@@ -164,7 +199,7 @@ async def drain_once(
                     },
                 )
         await session.commit()
-        return len(rows)
+        return published
 
 
 async def trim_stream(client: Redis, topic: str, maxlen: int) -> None:
@@ -204,9 +239,11 @@ async def run(
 ) -> None:
     """Loop forever (until ``stop_event`` is set), draining the outbox.
 
-    Sleeps ``active_interval`` seconds when work was found, ``idle_interval``
-    when not.  Handles ``asyncio.CancelledError`` by re-raising; all other
-    exceptions are logged and the loop continues.
+    Sleeps ``active_interval`` when a drain made progress (published > 0),
+    ``idle_interval`` when it drained nothing or every row failed (CR #10), and an
+    escalating capped backoff while ``drain_once`` itself keeps raising (CR #13).
+    Handles ``asyncio.CancelledError`` by re-raising; all other exceptions are
+    logged (capped) and the loop continues.
 
     When ``redis_client`` and a positive ``stream_maxlen`` are supplied, the loop
     caps every stream it has produced to via ``trim_stream`` every
@@ -219,19 +256,28 @@ async def run(
     stop_event = stop_event or asyncio.Event()
     seen_topics: set[str] = set()
     iteration = 0
+    consecutive_failures = 0
     while not stop_event.is_set():
         try:
-            count = await drain_once(
+            published = await drain_once(
                 session_factory=session_factory,
                 publisher=publisher,
                 batch_size=batch_size,
                 seen_topics=seen_topics,
             )
+            consecutive_failures = 0
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("Outbox publisher loop hit unexpected error; retrying")
-            count = 0
+            consecutive_failures += 1
+            # Cap the log flood: on a sustained outage log only the first failure
+            # and then every ERROR_LOG_EVERY-th, carrying the running count.
+            if consecutive_failures == 1 or consecutive_failures % ERROR_LOG_EVERY == 0:
+                logger.exception(
+                    "Outbox publisher loop error; backing off",
+                    extra={"consecutive_failures": consecutive_failures},
+                )
+            published = 0
 
         iteration += 1
         if (
@@ -245,8 +291,12 @@ async def run(
             for topic in seen_topics or {trim_topic}:
                 await trim_stream(redis_client, topic, stream_maxlen)
 
+        if consecutive_failures:
+            delay = _error_backoff_seconds(consecutive_failures, idle_interval)
+        else:
+            delay = active_interval if published else idle_interval
         await asyncio.wait(
             [asyncio.create_task(stop_event.wait())],
-            timeout=active_interval if count else idle_interval,
+            timeout=delay,
             return_when=asyncio.FIRST_COMPLETED,
         )

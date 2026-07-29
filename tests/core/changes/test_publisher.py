@@ -23,6 +23,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.core.changes import publisher as publisher_mod
 from src.core.changes.publisher import (
     DEFAULT_STREAM_MAXLEN,
+    ERROR_BACKOFF_MAX_SECONDS,
+    _error_backoff_seconds,
     drain_once,
     resolve_stream_maxlen,
     trim_stream,
@@ -232,6 +234,99 @@ async def test_drain_batch_limit(session_factory, publisher, fake_redis):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
+async def test_drain_once_returns_published_not_attempted(session_factory, publisher, fake_redis):
+    """drain_once returns rows *published*, not attempted — so the loop can pace
+    on forward progress and not busy-wait on an all-failing batch (CR #10).
+
+    One valid row + one poison row (unknown event_type). Only the valid one
+    publishes, so the return is 1 (not 2), and the poison row is marked attempted.
+    """
+    await _insert_row(session_factory, payload=_captured_event("rev-ok"))
+    poison = await _insert_row(
+        session_factory, payload={"event_type": "totally_unknown", "schema_version": 1}
+    )
+
+    published = await drain_once(session_factory=session_factory, publisher=publisher)
+    assert published == 1  # only the valid row; NOT 2 (attempted)
+
+    messages = await fake_redis.xrange("info.changes")
+    assert len(messages) == 1
+
+    async with session_factory() as s:
+        refreshed = await s.get(ChangesOutboxRow, poison.id)
+    assert refreshed.published_at is None
+    assert refreshed.publish_attempts == 1
+    assert refreshed.last_error is not None
+
+
+@pytest.mark.asyncio
+async def test_drain_once_all_poison_returns_zero(session_factory, publisher):
+    """An all-failing batch returns 0 → the loop will pick idle, not active."""
+    await _insert_row(session_factory, payload={"event_type": "unknown_a"})
+    await _insert_row(session_factory, payload={"event_type": "unknown_b"})
+    published = await drain_once(session_factory=session_factory, publisher=publisher)
+    assert published == 0
+
+
+@pytest.mark.parametrize(
+    ("consecutive", "base", "expected"),
+    [
+        (0, 1.0, 1.0),  # no failures → base
+        (1, 1.0, 1.0),  # 1st failure → base
+        (2, 1.0, 2.0),  # exponential
+        (3, 1.0, 4.0),
+        (4, 1.0, 8.0),
+        (6, 1.0, min(32.0, ERROR_BACKOFF_MAX_SECONDS)),  # exponent clamped at shift=5
+        (100, 1.0, ERROR_BACKOFF_MAX_SECONDS),  # 1.0 * 2**5 = 32 → capped at 30
+        (100, 0.25, 8.0),  # 0.25 * 2**5 = 8 → below cap, so NOT capped
+    ],
+)
+def test_error_backoff_seconds(consecutive, base, expected):
+    """Consecutive whole-batch failures back off exponentially, capped (CR #13)."""
+    assert _error_backoff_seconds(consecutive, base) == expected
+
+
+@pytest.mark.asyncio
+async def test_run_survives_and_resets_on_persistent_then_recovered_failure(
+    session_factory, publisher, monkeypatch
+):
+    """The loop survives repeated drain_once exceptions, logs them capped, and
+    resets its failure counter once a drain succeeds (CR #13)."""
+    log_calls: list[int] = []
+    monkeypatch.setattr(
+        publisher_mod.logger,
+        "exception",
+        lambda *a, **k: log_calls.append(k.get("extra", {}).get("consecutive_failures")),
+    )
+
+    stop = asyncio.Event()
+    calls = {"n": 0}
+
+    async def _drain(**_kwargs):
+        calls["n"] += 1
+        if calls["n"] <= 3:
+            raise RuntimeError("db down")
+        stop.set()  # 4th call succeeds, then stop
+        return 1
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    # Tiny intervals so the backoff sleeps are negligible in the test.
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+    )
+
+    assert calls["n"] == 4
+    # Capped logging: only the FIRST of the 3 consecutive failures is logged
+    # (ERROR_LOG_EVERY is large), not one per failure.
+    assert log_calls == [1]
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -408,7 +503,7 @@ async def test_redis_exception_row_stays_unpublished(session_factory):
     broken_publisher = AsyncBusPublisher(broken_redis)
 
     n = await drain_once(session_factory=session_factory, publisher=broken_publisher)
-    assert n == 1
+    assert n == 0  # published count: the row failed, so nothing was published
 
     async with session_factory() as s:
         refreshed = await s.get(ChangesOutboxRow, row.id)
@@ -426,7 +521,7 @@ async def test_unknown_event_type_row_stays_unpublished(session_factory, publish
     good = await _insert_row(session_factory, payload=_captured_event("rev-ok"))
 
     n = await drain_once(session_factory=session_factory, publisher=publisher)
-    assert n == 2
+    assert n == 1  # published count: only the good row (the bad one failed)
 
     # Only the good row reached the stream.
     messages = await fake_redis.xrange("info.changes")
