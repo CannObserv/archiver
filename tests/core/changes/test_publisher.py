@@ -25,6 +25,7 @@ from src.core.changes.publisher import (
     DEFAULT_STREAM_MAXLEN,
     ERROR_BACKOFF_MAX_SECONDS,
     _error_backoff_seconds,
+    _next_delay,
     drain_once,
     resolve_stream_maxlen,
     trim_stream,
@@ -287,17 +288,40 @@ def test_error_backoff_seconds(consecutive, base, expected):
     assert _error_backoff_seconds(consecutive, base) == expected
 
 
+def test_next_delay_paces_on_progress():
+    """No failures: active when progress was made, idle when not (CR #10/#16)."""
+    common = dict(active_interval=0.25, idle_interval=1.0, backoff_base=1.0)
+    # Progress this cycle → active interval.
+    assert _next_delay(consecutive_failures=0, published=5, **common) == 0.25
+    # Empty batch or all rows failed (published == 0) → idle interval.
+    assert _next_delay(consecutive_failures=0, published=0, **common) == 1.0
+
+
+def test_next_delay_backoff_overrides_progress():
+    """A whole-batch failure streak overrides the active/idle choice (CR #13/#16)."""
+    common = dict(active_interval=0.25, idle_interval=1.0, backoff_base=1.0)
+    # Even with published>0 from a prior cycle, an active failure streak backs off.
+    assert _next_delay(consecutive_failures=1, published=5, **common) == 1.0
+    assert _next_delay(consecutive_failures=3, published=0, **common) == 4.0  # 1*2**2
+
+
 @pytest.mark.asyncio
 async def test_run_survives_and_resets_on_persistent_then_recovered_failure(
     session_factory, publisher, monkeypatch
 ):
-    """The loop survives repeated drain_once exceptions, logs them capped, and
-    resets its failure counter once a drain succeeds (CR #13)."""
-    log_calls: list[int] = []
+    """The loop survives repeated drain_once exceptions, logs them capped, resets
+    its failure counter once a drain succeeds, and emits a recovery log (CR #13/#14)."""
+    error_calls: list[int] = []
+    recovery_calls: list[int] = []
     monkeypatch.setattr(
         publisher_mod.logger,
         "exception",
-        lambda *a, **k: log_calls.append(k.get("extra", {}).get("consecutive_failures")),
+        lambda *a, **k: error_calls.append(k.get("extra", {}).get("consecutive_failures")),
+    )
+    monkeypatch.setattr(
+        publisher_mod.logger,
+        "info",
+        lambda *a, **k: recovery_calls.append(k.get("extra", {}).get("after_failures")),
     )
 
     stop = asyncio.Event()
@@ -312,19 +336,23 @@ async def test_run_survives_and_resets_on_persistent_then_recovered_failure(
 
     monkeypatch.setattr(publisher_mod, "drain_once", _drain)
 
-    # Tiny intervals so the backoff sleeps are negligible in the test.
+    # Tiny backoff base so the escalating error sleeps are negligible in the test.
     await publisher_mod.run(
         session_factory=session_factory,
         publisher=publisher,
         idle_interval=0.001,
         active_interval=0.001,
+        error_backoff_base=0.001,
         stop_event=stop,
     )
 
     assert calls["n"] == 4
     # Capped logging: only the FIRST of the 3 consecutive failures is logged
-    # (ERROR_LOG_EVERY is large), not one per failure.
-    assert log_calls == [1]
+    # (ERROR_LOG_EVERY caps the cadence), not one per failure.
+    assert error_calls == [1]
+    # Recovery: the 4th (successful) drain emits one recovery log carrying the
+    # streak length it recovered from.
+    assert recovery_calls == [3]
 
 
 @pytest.mark.parametrize(
