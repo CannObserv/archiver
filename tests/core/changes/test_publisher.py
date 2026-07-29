@@ -318,9 +318,10 @@ async def test_run_survives_and_resets_on_persistent_then_recovered_failure(
         "exception",
         lambda *a, **k: error_calls.append(k.get("extra", {}).get("consecutive_failures")),
     )
+    # Recovery logs at WARNING (CR #17); capture only entries carrying after_failures.
     monkeypatch.setattr(
         publisher_mod.logger,
-        "info",
+        "warning",
         lambda *a, **k: recovery_calls.append(k.get("extra", {}).get("after_failures")),
     )
 
@@ -353,6 +354,35 @@ async def test_run_survives_and_resets_on_persistent_then_recovered_failure(
     # Recovery: the 4th (successful) drain emits one recovery log carrying the
     # streak length it recovered from.
     assert recovery_calls == [3]
+
+
+@pytest.mark.asyncio
+async def test_run_no_recovery_log_without_failures(session_factory, publisher, monkeypatch):
+    """A clean run (no failure streak) must NOT emit a recovery log (CR #18)."""
+    recovery_calls: list[int] = []
+    monkeypatch.setattr(
+        publisher_mod.logger,
+        "warning",
+        lambda *a, **k: recovery_calls.append(k.get("extra", {}).get("after_failures")),
+    )
+
+    stop = asyncio.Event()
+
+    async def _drain(**_kwargs):
+        stop.set()
+        return 0  # a clean drain, no exception, no prior failures
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+    )
+
+    assert recovery_calls == []
 
 
 @pytest.mark.parametrize(
