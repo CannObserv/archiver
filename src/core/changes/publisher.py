@@ -57,6 +57,13 @@ IDLE_INTERVAL_SECONDS = 1.0
 # are disjoint from the builtins, so both are listed. Everything else reaching the
 # publish except (e.g. a server-side ResponseError / WRONGTYPE) is treated as
 # possibly-permanent and subject to the ceiling.
+#
+# NOTE (co-core coupling, CR #10): this gate assumes
+# ``AsyncBusPublisher.execute`` propagates the underlying redis exception types
+# *unwrapped* (the current co-core-aio behavior — a raw redis ConnectionError from
+# XADD surfaces here as-is). If co-core ever wraps publish failures in its own
+# ``BusError``-style type, a real outage would fall through to the ceiling and the
+# cliff #2 fixed would reopen — this tuple must then track that wrapper type.
 _TRANSIENT_PUBLISH_ERRORS: tuple[type[BaseException], ...] = (
     ConnectionError,  # builtin
     TimeoutError,  # builtin
@@ -73,6 +80,13 @@ _TRANSIENT_PUBLISH_ERRORS: tuple[type[BaseException], ...] = (
 # very high so that even a *misclassified* transient error (one not in the tuple)
 # gets generous headroom before being dropped. At ~1 attempt/idle-tick this is on
 # the order of a day of continuous failure, not the ~17 min of the prior 1000.
+#
+# Accepted cost (CR #8): a genuinely *permanent* non-transient publish error (e.g.
+# a WRONGTYPE from a misconfigured stream key) logs a WARNING every drain until it
+# reaches this ceiling — up to ~a day of WARNING-spam before it dead-letters. That
+# is the deliberate trade for never dropping a valid event on a long transient
+# outage; such permanent non-transient errors are rare, and the loop still
+# terminates (unlike the unbounded pre-#107 spin).
 MAX_PUBLISH_ATTEMPTS = 100_000
 
 # The single Redis Stream Archiver produces to (both event types share it). Used
