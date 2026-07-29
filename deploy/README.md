@@ -67,8 +67,12 @@ redis-cli CONFIG GET maxmemory-policy  # -> noeviction
 outbox tolerates broker downtime, so no `Requires=`/`BindsTo=`) and an
 `ExecStartPre` that runs `scripts/check_redis_floor.sh` to assert the server is
 ≥7.0 (the consumer path's `XAUTOCLAIM` requirement) when `ARCHIVER_REDIS_URL` is
-set. Reinstall the unit after any edit (see the parity note under the wheelhouse
-section) — `tests/deploy/test_installed_unit_matches_repo.py` flags drift.
+set. The probe is `timeout`-bounded (`ARCHIVER_REDIS_FLOOR_TIMEOUT`, default 5s)
+so it can never hang startup, and warns when `redis-cli` lacks TLS support for a
+`rediss://` URL; it soft-skips (never blocks) on a dormant or unreachable broker
+and blocks only a genuinely-<7.0 reachable one. Reinstall the unit after any edit
+(see the parity note under the wheelhouse section) —
+`tests/deploy/test_installed_unit_matches_repo.py` flags drift.
 
 **Retention.** With no consumer yet, entries accumulate on `info.changes`. The
 Archiver outbox publisher caps the stream operator-side via a periodic
