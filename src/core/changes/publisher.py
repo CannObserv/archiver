@@ -52,6 +52,34 @@ CHANGE_STREAM_TOPIC = "info.changes"
 # co-core exposes no XADD-time trim arg (BusPublish is topic + fields only).
 TRIM_INTERVAL_ITERATIONS = 20
 
+# Default approximate cap on info.changes when ARCHIVER_REDIS_STREAM_MAXLEN is
+# unset. See resolve_stream_maxlen for the parse contract.
+DEFAULT_STREAM_MAXLEN = 100_000
+
+
+def resolve_stream_maxlen(raw: str | None) -> int | None:
+    """Parse the ``ARCHIVER_REDIS_STREAM_MAXLEN`` knob into a trim cap.
+
+    Returns the positive cap, or ``None`` to disable trimming (a ``<= 0`` value).
+    Unset falls back to ``DEFAULT_STREAM_MAXLEN`` (trimming on by default). A
+    **malformed** value also falls back to the default and logs a warning — it
+    must never raise, because ``main.lifespan`` resolves this inside the broad
+    guard that would otherwise disable the entire publisher over a retention
+    typo (CR #109).
+    """
+    if raw is None:
+        return DEFAULT_STREAM_MAXLEN
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid ARCHIVER_REDIS_STREAM_MAXLEN; falling back to default",
+            extra={"value": raw, "default": DEFAULT_STREAM_MAXLEN},
+        )
+        return DEFAULT_STREAM_MAXLEN
+    return value if value > 0 else None
+
+
 # event_type -> canonical (consumer-facing, extra="ignore") co-core payload model.
 # The outbox stores each event as a JSON dict (``model_dump(mode="json")``); the
 # drain loop reconstructs the typed payload so ``to_wire`` can derive the wire
@@ -88,10 +116,16 @@ async def drain_once(
     session_factory: async_sessionmaker[AsyncSession],
     publisher: AsyncBusPublisher,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    seen_topics: set[str] | None = None,
 ) -> int:
     """Drain at most ``batch_size`` unpublished rows.
 
     Returns number of rows attempted (not necessarily successfully published).
+
+    When ``seen_topics`` is provided, each successfully-published ``row.topic`` is
+    added to it, so the caller (``run``) can trim every stream it has actually
+    produced to — not just the canonical one — should the topic set ever grow
+    beyond ``info.changes``.
     """
     async with session_factory() as session:
         result = await session.execute(
@@ -111,6 +145,8 @@ async def drain_once(
                 row.published_at = datetime.now(UTC)
                 row.bus_message_id = bus_result.bus_message_id
                 row.last_error = None
+                if seen_topics is not None:
+                    seen_topics.add(row.topic)
             # NOTE: a deterministically-failing row (unknown event_type, corrupt
             # payload) has no terminal state — it is re-attempted every loop, not
             # just the transient (Redis-down) case this retry targets. Not
@@ -143,7 +179,14 @@ async def trim_stream(client: Redis, topic: str, maxlen: int) -> None:
     try:
         await client.xtrim(topic, maxlen=maxlen, approximate=True)
     except Exception:
-        logger.warning("Stream trim failed", extra={"topic": topic, "maxlen": maxlen})
+        # exc_info so a *persistent* trim failure (bad type, NOPERM, misconfig)
+        # is distinguishable from a transient redis-down blip — the swallow
+        # otherwise leaves no trace to diagnose an unbounded stream.
+        logger.warning(
+            "Stream trim failed",
+            extra={"topic": topic, "maxlen": maxlen},
+            exc_info=True,
+        )
 
 
 async def run(
@@ -166,11 +209,15 @@ async def run(
     exceptions are logged and the loop continues.
 
     When ``redis_client`` and a positive ``stream_maxlen`` are supplied, the loop
-    also caps ``trim_topic`` via ``trim_stream`` every ``trim_interval_iterations``
-    iterations — operator-side retention (archiver#109). Left unset (the dormant
-    or unconfigured case), no trimming occurs.
+    caps every stream it has produced to via ``trim_stream`` every
+    ``trim_interval_iterations`` iterations — operator-side retention
+    (archiver#109). It trims ``trim_topic`` (the canonical ``info.changes``) until
+    a different ``row.topic`` is observed, then trims each observed topic too, so
+    an added stream cannot grow unbounded silently. Left unset (the dormant or
+    unconfigured case), no trimming occurs.
     """
     stop_event = stop_event or asyncio.Event()
+    seen_topics: set[str] = set()
     iteration = 0
     while not stop_event.is_set():
         try:
@@ -178,6 +225,7 @@ async def run(
                 session_factory=session_factory,
                 publisher=publisher,
                 batch_size=batch_size,
+                seen_topics=seen_topics,
             )
         except asyncio.CancelledError:
             raise
@@ -192,7 +240,10 @@ async def run(
             and stream_maxlen > 0
             and iteration % trim_interval_iterations == 0
         ):
-            await trim_stream(redis_client, trim_topic, stream_maxlen)
+            # Trim every stream produced to; fall back to the canonical topic so
+            # a pre-existing stream is bounded even before the first publish.
+            for topic in seen_topics or {trim_topic}:
+                await trim_stream(redis_client, topic, stream_maxlen)
 
         await asyncio.wait(
             [asyncio.create_task(stop_event.wait())],

@@ -83,7 +83,32 @@ def test_dev_override_equal_to_prod_is_refused() -> None:
         }
     )
     assert result.returncode == 1
-    assert "equals the production" in result.stderr
+    assert "same broker" in result.stderr
+
+
+def test_cosmetically_different_but_same_broker_is_refused() -> None:
+    """127.0.0.1 vs localhost and an omitted default port/db address the same
+    broker — normalized identity catches what raw string equality would miss."""
+    result = _run(
+        {
+            "ARCHIVER_REDIS_URL": "redis://localhost:6379/0",
+            "ARCHIVER_DEV_REDIS_URL": "redis://127.0.0.1/0",  # default port omitted
+        }
+    )
+    assert result.returncode == 1
+    assert "same broker" in result.stderr
+
+
+def test_distinct_db_index_on_same_host_is_allowed() -> None:
+    """The /0-vs-/1 convention: same host, different logical DB → allowed."""
+    result = _run(
+        {
+            "ARCHIVER_REDIS_URL": "redis://localhost:6379/0",
+            "ARCHIVER_DEV_REDIS_URL": "redis://127.0.0.1:6379/1",
+        }
+    )
+    assert result.returncode == 0, result.stderr
+    assert _redis_line(result.stdout) == "redis://127.0.0.1:6379/1"
 
 
 def test_dev_override_without_prod_set_is_used() -> None:
