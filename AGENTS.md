@@ -23,7 +23,7 @@ Python ≥3.12, uv, pytest, ruff. Postgres on the local VM (shared instance with
 
 **cannobserv substrate (archiver#72/#75).** `co-core` + `co-core-aio` (the shared
 Cannabis Observer core library — pure models/utils + async drivers) are declared
-as plain floors (`>=0.3,<0.4`) and resolved from a local **wheelhouse**
+as plain floors and resolved from a local **wheelhouse**
 (`./.wheelhouse`, gitignored) via `[tool.uv] find-links`, mirrored from the private
 GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`. This is Phase 0 of the
 cluster-integration strategy — the precedent Watcher/Replicator follow. Populate the
@@ -162,7 +162,7 @@ skills-vendor/                 Git submodules for external skill repos
 
 ## Content-acquisition via co-core (archiver#72 Phase 1)
 
-Fetch, extract, and the content fingerprint are consumed from **co-core** (`v0.5.0`+),
+Fetch, extract, and the content fingerprint are consumed from **co-core**,
 the canonical implementation upstreamed in cannobserv#255. The former
 `src/core/{fetchers,extractors,simhash,extraction_defaults}` mirror was deleted when
 Phase 1b landed — **no more mirror discipline for the acquisition pipeline.**
