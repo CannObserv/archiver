@@ -15,6 +15,10 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from co_core.pure.adapters.bus.exceptions import (
+    BusMessageMalformedPayloadError,
+    BusMessageUnknownEventTypeError,
+)
 from co_core_aio.bus import AsyncBusPublisher
 from fakeredis import aioredis as fakeredis_aio
 from redis.exceptions import ResponseError
@@ -665,6 +669,26 @@ async def test_corrupt_legacy_payload_dead_lettered(session_factory, publisher, 
     assert row.published_at is None
     assert row.publish_attempts == 1
     assert row.last_error is not None
+
+
+@pytest.mark.asyncio
+async def test_build_phase_last_error_names_co_core_anomaly(session_factory, publisher, fake_redis):
+    """archiver#108: build-phase reconstruction now goes through co-core's shared
+    ``payload_from_dict``, so a poison row's ``last_error`` records a
+    ``BusMessageAnomaly`` subclass — not the old bare ``ValueError``. Locks in the
+    error-type contract (CR round 1, finding 8) so downstream ``last_error``
+    grepping expects the co-core type."""
+    unknown = await _insert_row(session_factory, payload={"event_type": "who_knows"})
+    malformed = await _insert_row(session_factory, payload=_legacy_captured_event("rev-legacy-2"))
+
+    n = await drain_once(session_factory=session_factory, publisher=publisher)
+    assert n == 0
+
+    async with session_factory() as s:
+        unknown_row = await s.get(ChangesOutboxRow, unknown.id)
+        malformed_row = await s.get(ChangesOutboxRow, malformed.id)
+    assert BusMessageUnknownEventTypeError.__name__ in unknown_row.last_error
+    assert BusMessageMalformedPayloadError.__name__ in malformed_row.last_error
 
 
 @pytest.mark.asyncio

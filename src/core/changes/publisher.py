@@ -25,12 +25,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from co_core.effects.bus import BusPublish
-from co_core.pure.adapters.bus.envelope import to_wire
-from co_core.pure.models.changes import (
-    ChangeEventPayload,
-    InfoItemPrimaryChangedEvent,
-    SourceRevisionCapturedEvent,
-)
+from co_core.pure.adapters.bus.envelope import payload_from_dict, to_wire
 from co_core_aio.bus import AsyncBusPublisher
 from redis.exceptions import BusyLoadingError
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -170,38 +165,6 @@ def resolve_stream_maxlen(raw: str | None) -> int | None:
     return value if value > 0 else None
 
 
-# event_type -> canonical (consumer-facing, extra="ignore") co-core payload model.
-# The outbox stores each event as a JSON dict (``model_dump(mode="json")``); the
-# drain loop reconstructs the typed payload so ``to_wire`` can derive the wire
-# envelope (incl. the per-type idempotency key) from the single source of truth.
-# Archiver produces exactly these two event types on ``info.changes``.
-#
-# NOTE: this duplicates co-core's private ``envelope._PAYLOAD_BY_EVENT_TYPE`` (a
-# 2-of-4 subset) because co-core exposes no public dict->payload constructor —
-# ``from_wire`` wants wire fields, not a stored payload dict. Drift risk tracked
-# in archiver#108; the upstream public-helper request is cannobserv#264. Delete
-# this table and reconstruct via the shared helper once that lands.
-_PAYLOAD_BY_EVENT_TYPE: dict[str, type[ChangeEventPayload]] = {
-    "source_revision_captured": SourceRevisionCapturedEvent,
-    "info_item_primary_changed": InfoItemPrimaryChangedEvent,
-}
-
-
-def _payload_from_row(payload: dict) -> ChangeEventPayload:
-    """Reconstruct the typed co-core payload from a stored outbox row dict.
-
-    Raises ``ValueError`` on an unrecognized ``event_type`` (and ``ValidationError``
-    from ``model_validate`` on a corrupt payload); the drain loop treats both as
-    *permanent* per-row failures and dead-letters the row immediately rather than
-    crashing the whole batch or re-attempting forever (archiver#107).
-    """
-    event_type = payload.get("event_type") if isinstance(payload, dict) else None
-    model = _PAYLOAD_BY_EVENT_TYPE.get(event_type)
-    if model is None:
-        raise ValueError(f"unknown outbox event_type: {event_type!r}")
-    return model.model_validate(payload)
-
-
 def _dead_letter(row: ChangesOutboxRow, exc: Exception, *, reason: str) -> None:
     """Move ``row`` to its terminal (dead-lettered) state — archiver#107.
 
@@ -268,16 +231,20 @@ async def drain_once(
         if not rows:
             return 0
         for row in rows:
-            # Build phase — reconstruct the typed payload + wire envelope. This is
-            # pure (no I/O), so ANY failure here is *deterministic*: identical every
-            # loop. Catch broadly and dead-letter immediately — a narrower catch
-            # would let an unanticipated exception type escape per-row handling and
-            # wedge the whole batch in a crash-backoff loop (CR #1). Known shapes
-            # are unknown event_type (ValueError) and unvalidatable payload
-            # (ValidationError), but the guarantee is "no build error spins forever".
+            # Build phase — reconstruct the typed payload + wire envelope via
+            # co-core's shared ``payload_from_dict`` (archiver#108: the local
+            # ``_PAYLOAD_BY_EVENT_TYPE`` copy is gone — it dispatches through the
+            # same private table + raises the ``BusMessageAnomaly`` family, so
+            # there is no parallel table to drift). This is pure (no I/O), so ANY
+            # failure here is *deterministic*: identical every loop. Catch broadly
+            # and dead-letter immediately — a narrower catch would let an
+            # unanticipated exception type escape per-row handling and wedge the
+            # whole batch in a crash-backoff loop (CR #1). Known shapes are a
+            # missing/unknown ``event_type`` or an unvalidatable payload (all
+            # ``BusMessageAnomaly`` subclasses), but the guarantee is "no build
+            # error spins forever".
             try:
-                payload = _payload_from_row(row.payload)
-                fields = to_wire(payload)
+                fields = to_wire(payload_from_dict(row.payload))
             except Exception as exc:
                 row.publish_attempts = (row.publish_attempts or 0) + 1
                 _dead_letter(row, exc, reason="unpublishable_payload")
