@@ -19,5 +19,8 @@ node_modules/
 # Track an empty .gitkeep so the `[tool.uv] find-links` dir always exists at
 # checkout: uv reads that config on *every* invocation and errors if the dir is
 # missing (before the sync that would create it can run). Wheels stay ignored.
-.wheelhouse/
+# NB: `.wheelhouse/*`, not `.wheelhouse/` — git cannot re-include a file whose
+# parent directory is excluded, so a directory-level ignore makes the negation
+# below a no-op and leaves .gitkeep untracked (archiver#116).
+.wheelhouse/*
 !.wheelhouse/.gitkeep
