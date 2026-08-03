@@ -208,4 +208,5 @@ if [[ "$DO_MIGRATE" == "1" ]]; then
 fi
 
 echo "dev_server: port $PORT → $ARCHIVER_DATABASE_URL"
-exec uv run uvicorn src.api.main:app --host 0.0.0.0 --port "$PORT" --reload
+exec uv run uvicorn src.api.main:app --host 0.0.0.0 --port "$PORT" --reload \
+  --log-config src/core/log_config.json

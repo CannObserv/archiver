@@ -46,7 +46,10 @@ ExecStartPre=-/usr/local/bin/uv run --no-project --with 'google-cloud-storage>=2
 # or the broker cannot be reached, so it only fails start on a real downgrade.
 ExecStartPre=/home/exedev/archiver/scripts/check_redis_floor.sh
 
-ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8020
+# --log-config routes uvicorn's own loggers (uvicorn/.access/.error) through the
+# same JSON formatter as app logs (archiver#122) — without it journald gets
+# mixed plain-text + JSON lines. Path is relative to WorkingDirectory.
+ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8020 --log-config src/core/log_config.json
 Restart=on-failure
 RestartSec=5
 

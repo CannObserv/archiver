@@ -1,4 +1,12 @@
-"""Structured JSON logging utilities."""
+"""Structured JSON logging utilities.
+
+`build_json_formatter()` is the single source of truth for the JSON field
+contract (`timestamp`, `level`, `logger`, `message`). It is referenced both by
+`configure_logging()` (app root logger) and by the uvicorn `--log-config`
+dictConfig file (`src/core/log_config.json`, via its ``"()"`` factory key), so
+app records and uvicorn access/error lines share one format — see archiver#115
+(field contract) and archiver#122 (uvicorn unification).
+"""
 
 import logging
 import sys
@@ -6,23 +14,27 @@ import sys
 from pythonjsonlogger.json import JsonFormatter
 
 
-def configure_logging(level: int = logging.INFO) -> None:
-    """Configure root logger with JSON formatting. Call once at entry points.
+def build_json_formatter() -> JsonFormatter:
+    """Build the canonical JSON formatter.
 
-    The fmt string is required: without it python-json-logger derives keys from
-    the ``%(field)s`` placeholders, which default to ``"%(message)s"`` alone —
-    so records serialize as just ``{"message": ...}`` with no level, logger
-    name, or timestamp (archiver#115). ``timestamp=True`` emits ISO-8601 UTC.
-    The key set (timestamp, level, logger, message) matches structlog defaults.
+    Emits ``timestamp`` (ISO-8601 UTC), ``level``, ``logger``, and ``message``.
+    Without an explicit fmt string, python-json-logger derives keys from the
+    ``%(field)s`` placeholders, which default to ``"%(message)s"`` alone —
+    dropping level, logger name, and timestamp (archiver#115). This factory is
+    the one place that string lives, so the app logger and the uvicorn
+    log-config cannot drift (archiver#122).
     """
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        JsonFormatter(
-            "%(levelname)s %(name)s %(message)s",
-            timestamp=True,
-            rename_fields={"levelname": "level", "name": "logger"},
-        )
+    return JsonFormatter(
+        "%(levelname)s %(name)s %(message)s",
+        timestamp=True,
+        rename_fields={"levelname": "level", "name": "logger"},
     )
+
+
+def configure_logging(level: int = logging.INFO) -> None:
+    """Configure root logger with JSON formatting. Call once at entry points."""
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(build_json_formatter())
     root = logging.getLogger()
     root.setLevel(level)
     root.handlers = [handler]
