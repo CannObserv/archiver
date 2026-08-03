@@ -1,0 +1,7 @@
+# Exclude vendored skill trees from the semantic index (archiver#119).
+# Layered on SocratiCode's built-in defaults + .gitignore. This repo authors
+# first-party skills under skills/ (brainstorming, shipping-work-python-fastapi,
+# using-git-worktrees), so skills/ itself is left indexed — only the vendored
+# submodules and the .claude/skills/ discovery mirror are excluded.
+skills-vendor/
+.claude/skills/
