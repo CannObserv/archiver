@@ -88,9 +88,15 @@ src/core/                      Domain logic
                                update_rep_spec, resolve_rep_fields,
                                preview_extraction, etc.)
   logging.py                   Structured logging config (configure_logging at
-                               entry points; still mirrored to watcher). Fetch +
+                               entry points; still mirrored to watcher).
+                               build_json_formatter() is the single source of
+                               truth for the JSON field contract. Fetch +
                                extract + fingerprint now come from co-core — see
                                "Content-acquisition via co-core"
+  log_config.json              uvicorn --log-config dictConfig — routes
+                               uvicorn/.access/.error through build_json_formatter
+                               so uvicorn lines match app logs (archiver#122);
+                               wired into archiver.service + dev_server.sh
   url_canonicalization.py      Write-time URL normalization for info_sources
   db_safety.py                 Production-DB startup guard — refuses to serve a
                                database whose name lacks a _test/_dev suffix

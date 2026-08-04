@@ -42,11 +42,14 @@ def test_log_config_file_single_sources_the_formatter():
     """The uvicorn --log-config file loads under dictConfig and reuses the factory (#122)."""
     config = json.loads(LOG_CONFIG_PATH.read_text())
     assert config["formatters"]["json"]["()"] == "src.core.logging.build_json_formatter"
-    saved = logging.getLogger().manager.loggerDict.copy()
+    # dictConfig mutates the root logger; restore it so the config load does not
+    # leak a stdout handler into the rest of the suite.
+    root = logging.getLogger()
+    saved_handlers, saved_level = root.handlers[:], root.level
     try:
         logging.config.dictConfig(config)
     finally:
-        logging.getLogger().manager.loggerDict = saved
+        root.handlers, root.level = saved_handlers, saved_level
 
 
 def test_log_config_routes_uvicorn_access_to_json(capsys):
