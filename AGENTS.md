@@ -474,6 +474,15 @@ logger = get_logger(__name__)
 ```
 Entry points only: call `configure_logging()` once.
 
+The app's own records — including uvicorn's access/error lines via `--log-config`
+— are JSON. `ExecStartPre` steps in `deploy/archiver.service` (wheelhouse sync,
+redis floor check, build-id) write **plain text** to journald by design: they run
+before the app process exists and cannot import the project, so they cannot share
+`build_json_formatter()`. A journald consumer that blindly `json.loads` every
+`MESSAGE` must tolerate these lines (the failure-path `error: could not sync gs://…`
+in particular); native field-based readers are unaffected. See archiver#124,
+gregoryfoster/skills#83.
+
 **Date & Time:** All UTC. ISO 8601: `YYYY-MM-DDTHH:MM:SS.ffffffZ` (timestamps), `YYYY-MM-DD` (dates).
 
 **General:**
