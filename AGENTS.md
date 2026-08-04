@@ -96,6 +96,10 @@ src/core/                      Domain logic
   log_config.json              uvicorn --log-config dictConfig — routes
                                uvicorn/.access/.error through build_json_formatter
                                so uvicorn lines match app logs (archiver#122);
+                               each uvicorn logger also runs the
+                               ColorMessageFilter to strip uvicorn's ANSI
+                               color_message extra at the record source
+                               (archiver#123 — filter on the loggers, not a sink);
                                wired into archiver.service + dev_server.sh
   url_canonicalization.py      Write-time URL normalization for info_sources
   db_safety.py                 Production-DB startup guard — refuses to serve a

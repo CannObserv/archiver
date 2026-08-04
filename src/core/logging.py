@@ -31,6 +31,22 @@ def build_json_formatter() -> JsonFormatter:
     )
 
 
+class ColorMessageFilter(logging.Filter):
+    """Drop uvicorn's `color_message` extra before anything serializes it.
+
+    uvicorn attaches an ANSI-coloured duplicate of each lifecycle message as
+    ``extra={"color_message": ...}`` for its own colour-aware formatter. Under
+    our JSON formatter that extra leaks into the payload with raw escapes, so
+    strip it at the record source — once, before any handler reads the record —
+    rather than in a single sink (archiver#123).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Strip the extra if present. Never drops a record."""
+        record.__dict__.pop("color_message", None)
+        return True
+
+
 def configure_logging(level: int = logging.INFO) -> None:
     """Configure root logger with JSON formatting. Call once at entry points."""
     handler = logging.StreamHandler(sys.stdout)

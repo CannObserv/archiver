@@ -6,6 +6,11 @@
       "()": "src.core.logging.build_json_formatter"
     }
   },
+  "filters": {
+    "strip_color_message": {
+      "()": "src.core.logging.ColorMessageFilter"
+    }
+  },
   "handlers": {
     "json_stdout": {
       "class": "logging.StreamHandler",
@@ -21,16 +26,19 @@
     "uvicorn": {
       "level": "INFO",
       "handlers": ["json_stdout"],
+      "filters": ["strip_color_message"],
       "propagate": false
     },
     "uvicorn.error": {
       "level": "INFO",
       "handlers": ["json_stdout"],
+      "filters": ["strip_color_message"],
       "propagate": false
     },
     "uvicorn.access": {
       "level": "INFO",
       "handlers": ["json_stdout"],
+      "filters": ["strip_color_message"],
       "propagate": false
     }
   }
