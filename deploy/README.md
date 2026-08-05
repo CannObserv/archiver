@@ -60,7 +60,70 @@ sudo systemctl daemon-reload && sudo systemctl restart redis-server
 # verify:
 redis-cli CONFIG GET appendonly        # -> yes
 redis-cli CONFIG GET maxmemory-policy  # -> noeviction
+redis-cli CONFIG GET maxmemory         # -> 536870912  (NOT 0 — see below)
 ```
+
+**`maxmemory` is load-bearing, not decoration (archiver#128).** `noeviction`
+with the default `maxmemory 0` is *inert*: there is no ceiling to refuse writes
+at, so an untrimmed stream never produces the retryable write errors the
+"a stream broker must never evict" reasoning assumes — it grows until the kernel
+OOM-killer takes `redis-server`, costing the whole broker plus an AOF-replay
+restart. The explicit cap converts that into bounded, instance-wide `OOM command
+not allowed` errors. Those are classified **transient** by the outbox publisher
+(`_TRANSIENT_PUBLISH_ERRORS` in `src/core/changes/publisher.py`), so a memory
+incident caused by *any* stream on this shared broker stalls `info.changes`
+publishing without dead-lettering valid events. **The cap and that classification
+are one decision — do not change either alone.** Sizing rationale is in the
+drop-in's header comment.
+
+AOF needs no separate cap: `auto-aof-rewrite-percentage 100` /
+`auto-aof-rewrite-min-size 64mb` self-bound the file at roughly 2× the dataset,
+so bounded retention bounds the AOF. The independent exposure is fork/COW at
+rewrite time, which `maxmemory` also caps.
+
+### Streams on this broker
+
+Archiver **operates** the broker but does not produce or consume most of what
+lands on it. Inventory, so a future lag dashboard is built against what is
+actually here:
+
+| Stream | Producer → consumer | Kind | Consumer group | Health primitive | DLQ |
+|---|---|---|---|---|---|
+| `info.changes` | Archiver → Replicator (Phase 3) | event | none *yet* — Replicator adds one | outbox depth (producer side) now; group lag once consumed | `info.changes.dlq` (Phase 3) |
+| `content.fetch` | Watcher → Replicator | command | `replicator.fetch` (exactly one — competing consumers) | `XPENDING` / group lag | `content.fetch.dlq` |
+| `content.blobs` | Replicator → Watcher | fact | one per consuming service | group lag per group | `content.blobs.dlq` |
+| `content.fetch-policy` | Watcher → Replicator workers | config/state, broadcast, last-write-wins per host key | **none, permanently — by design** | **last-entry age via `XINFO STREAM`** | **none applies** |
+
+**`content.fetch-policy` is monitoring-blind to consumer-group lag, and always
+will be (archiver#128 / cannobserv#285).** Every worker needs every message, so
+the consumer reads groupless (`co_core_aio.bus.AsyncBusTailReader`, in-memory
+cursor, replayed from `0-0` at boot) — a group here would accumulate a PEL
+nothing drains. Consequence: **`XPENDING` reports nothing for this stream whether
+or not a single consumer is alive.** Any dashboard or alert that reads "no
+pending entries" as healthy will read this stream as healthy while it is dead.
+Use last-entry age instead — it at least catches a producer that stopped
+republishing.
+
+Note the *permanently* in that row. `info.changes` and `content.blobs` are
+groupless today too, but only because their consumers aren't built; they gain
+groups and become lag-monitorable. `content.fetch-policy` does not.
+
+For the same reason it has **no DLQ**. `dead_letter()` is a method on
+`AsyncBusConsumer` — it copies the frame to `dlq_name(topic)` and acks the
+original. A groupless tail reader has no ack and no delivery accounting, so
+nothing can write `content.fetch-policy.dlq` and nothing would trigger one.
+
+**Retention is the producer's, not ours, for this stream.** A stream whose
+producer republishes its full set on a timer grows without bound unless trimmed;
+`BusPublish.maxlen` (co-core ≥0.7.7) rides the trim on each publish, and the knob
+sits with Watcher (CannObserv/watcher#245) because the consumer's
+replay-from-`0-0` boot depends on the retention policy — it is a contract
+property, not broker tuning. Our exposure is the shared-instance blast radius,
+which `maxmemory` above bounds. A broker-side `XLEN` guard is deferred until
+Watcher's republish interval and the real host count exist; it belongs in a
+periodic timer (following `watcher-live-drift`), not in `check_redis_floor.sh` —
+an `ExecStartPre` fires once at process start, and unbounded growth is by
+definition an after-start condition.
 
 **`archiver.service` ordering + floor.** The unit declares
 `Wants=redis-server.service` + `After=redis-server.service` (soft ordering — the

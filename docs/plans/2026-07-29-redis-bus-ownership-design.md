@@ -69,6 +69,16 @@ provider connection string on migration."
   `/etc/systemd/system/redis-server.service.d/`. Tunes the *stock* distro unit,
   does not replace it. Sets `appendonly yes` / `appendfsync everysec`, asserts
   `maxmemory-policy noeviction` (already live — a stream broker must never evict).
+  - **Amended 2026-08-05 (archiver#128).** `noeviction` alone was insufficient:
+    the live broker ran `maxmemory 0`, so there was no ceiling to refuse writes
+    at and the "better to error and let the outbox retry" degradation this
+    section assumes never engaged — an untrimmed stream would have grown until
+    the kernel OOM-killed `redis-server` (whole-broker loss + AOF replay, worse
+    than the bounded write-error mode). The drop-in now also sets an explicit
+    `maxmemory`, and the outbox publisher classifies the resulting
+    `OutOfMemoryError` as **transient** so a memory incident stalls publishing
+    instead of dead-lettering valid events. Cap and classification are one
+    decision. See `deploy/README.md` → Redis change bus.
 - **Ordering on `archiver.service`:** `Wants=redis-server.service` +
   `After=redis-server.service` — **soft, not `Requires=`/`BindsTo=`.** Hard-binding
   would defeat the outbox's downtime tolerance and cascade restarts. Replicator
@@ -111,6 +121,13 @@ provider connection string on migration."
 - **Producer-side (outbox depth) — Archiver, now.**
 - **Consumer-group lag / DLQ / replay — Replicator, Phase 3.** Documented now;
   not built against a non-existent consumer.
+- **Amended 2026-08-05 (archiver#128): consumer-group lag is not a universal
+  primitive.** `content.fetch-policy` (cannobserv#285) is a broadcast
+  config/state stream read groupless by every worker, so it has **no consumer
+  group, permanently by design** — `XPENDING` reports nothing for it whether or
+  not a consumer is alive, and no DLQ can apply. Any lag dashboard must special-
+  case it on last-entry age (`XINFO STREAM`). The per-stream inventory in
+  `deploy/README.md` is the artifact of record.
 
 ### Docs
 
