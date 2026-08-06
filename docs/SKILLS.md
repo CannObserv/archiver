@@ -149,7 +149,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 | `managing-skills` | add skill repo, manage external skills |
 | `orchestrating-issue-backlog` | backlog grooming, issue triage |
 | `using-superpowers` | meta — when to invoke superpowers skills |
-| `socraticode` (codebase MCP) | see **Code Exploration Policy** above |
+| `socraticode` (codebase MCP) | see **Code Exploration Policy** in `AGENTS.md` |
 
 
 ## SessionStart Hooks
@@ -176,7 +176,13 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 > bash .skills/doctor.sh
 > ```
 >
-> Delete this note when the hold lifts and the hook is re-wired.
+> The proper fix is a per-submodule pin —
+> [gregoryfoster/skills#100](https://github.com/gregoryfoster/skills/issues/100),
+> which `CannObserv/cli` hit first. Note `submodule.<name>.update = none` alone
+> will not hold the pin against this hook: the hook passes `--merge`, which git
+> documents as overriding that setting (verified empirically; a pathspec alone
+> does not override it). Delete this note when the hold lifts or #100 lands and
+> the hook is re-wired.
 
 `.claude/settings.json` wires two `SessionStart` hooks (see `.claude/hooks/`):
 

@@ -156,6 +156,10 @@ skills-vendor/                 Git submodules for external skill repos
                                hook types via default_install_hook_types.
 ```
 
+Quoted section names in the tree above ("Server Lifecycle", "Dashboard living
+docs", "SessionStart Hooks", "Content-acquisition via co-core", "No cross-repo
+mirror discipline") refer to sections of [AGENTS.md](../AGENTS.md).
+
 ## Content acquisition via co-core
 
 Fetch, extract, and the content fingerprint are consumed from **co-core**,

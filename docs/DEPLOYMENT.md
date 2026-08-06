@@ -3,6 +3,16 @@
 Wheelhouse reproducibility, dev-server internals, and the full environment
 variable reference. `AGENTS.md` keeps the safety rules; the reference lives here.
 
+## cannobserv substrate
+
+**cannobserv substrate (archiver#72/#75).** `co-core` + `co-core-aio` (the shared
+Cannabis Observer core library — pure models/utils + async drivers) are declared
+as plain floors and resolved from a local **wheelhouse**
+(`./.wheelhouse`, gitignored) via `[tool.uv] find-links`, mirrored from the private
+GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`. This is Phase 0 of the
+cluster-integration strategy — the precedent Watcher/Replicator follow. Populate the
+wheelhouse before `uv sync`/`uv run`:
+
 ## Wheelhouse reproducibility
 
 Reproducibility is `uv.lock` (pinned version + wheelhouse artifact), not the
@@ -64,16 +74,6 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 - `WATCHER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of the Watcher service for **browser deeplinks** (e.g. `https://watcher.exe.xyz:8000`). When set, the dashboard's Watcher-section header deeplink ("Watcher ↗" on the InfoItem detail page) uses this URL instead of `WATCHER_BASE_URL`. Unset → falls back to `WATCHER_BASE_URL`. Set in `/etc/archiver/.env`. Analogous to `ARCHIVER_PUBLIC_BASE_URL`.
 - `WATCHER_API_KEY` — *optional*. API key sent as `X-API-Key` to the Watcher service. Store in `/etc/archiver/.env`. Required when `WATCHER_BASE_URL` is set.
 - `WATCHER_CACHE_DIR`, `WATCHER_CACHE_TTL_SECONDS`, `WATCHER_CACHE_SWEEP_INTERVAL_SECONDS` — Watcher-side, not Archiver-side; documented here because the `content_cache_uri` lifecycle protocol they govern is a registry contract (see design doc Section 2).
-
-## cannobserv substrate
-
-**cannobserv substrate (archiver#72/#75).** `co-core` + `co-core-aio` (the shared
-Cannabis Observer core library — pure models/utils + async drivers) are declared
-as plain floors and resolved from a local **wheelhouse**
-(`./.wheelhouse`, gitignored) via `[tool.uv] find-links`, mirrored from the private
-GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`. This is Phase 0 of the
-cluster-integration strategy — the precedent Watcher/Replicator follow. Populate the
-wheelhouse before `uv sync`/`uv run`:
 
 ## Sourcing env files — why not `export $(cat … | xargs)`
 

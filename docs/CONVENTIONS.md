@@ -26,7 +26,20 @@ cannot use `build_json_formatter()`. A journald consumer that blindly `json.load
 in particular); native field-based readers are unaffected. See archiver#124,
 gregoryfoster/skills#83.
 
-## Error envelope — worked examples and the `kind` vocabulary
+## Error envelope
+
+**Error envelope:** Every non-2xx response uses one shape, defined by
+`ErrorEnvelope` in `src/api/errors.py`:
+
+```json
+{"detail": {"kind": "lookup", "message": "...", "errors": [...], "data": {...}}}
+```
+
+Routes raise via `raise_envelope(status, kind, message, ...)` or `raise_422(...)`
+(in `src/api/errors.py`), never via `HTTPException` directly. The global
+exception handlers in `register_error_handlers(app)` wrap any FastAPI-raised
+HTTPException (unmatched route 404, 405) or uncaught Exception (500) into the
+envelope. See archiver#15.
 
 Examples:
 
@@ -82,18 +95,3 @@ A template change that composes only existing CSS classes needs UI.md alone.
   TYPE_CHECKING:` guards are module-level and pass. The vendored SDKs under
   `clients/` resolve their own `[tool.ruff]` config and are exempt — their
   generated code imports lazily to dodge circular imports.
-
-## Error envelope — shape and global handlers
-
-**Error envelope:** Every non-2xx response uses one shape, defined by
-`ErrorEnvelope` in `src/api/errors.py`:
-
-```json
-{"detail": {"kind": "lookup", "message": "...", "errors": [...], "data": {...}}}
-```
-
-Routes raise via `raise_envelope(status, kind, message, ...)` or `raise_422(...)`
-(in `src/api/errors.py`), never via `HTTPException` directly. The global
-exception handlers in `register_error_handlers(app)` wrap any FastAPI-raised
-HTTPException (unmatched route 404, 405) or uncaught Exception (500) into the
-envelope. See archiver#15.

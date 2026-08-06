@@ -77,7 +77,7 @@ Wiring detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **No cross-repo mirror discipline (CannObserv/watcher#159, #236).** Content
 acquisition is co-core's (above) and the change-bus contracts + driver are too
-(see "Change-bus producer"). `src/core/logging.py` is service-local — Watcher
+(see [docs/API.md](docs/API.md)). `src/core/logging.py` is service-local — Watcher
 keeps its own copy; there is no parity requirement and no sibling sync. Don't
 reintroduce a mirror obligation for anything under `src/`.
 
