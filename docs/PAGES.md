@@ -4,9 +4,8 @@
 
 Shared mechanics live in [UI.md](UI.md) — the URL map, the proxy-header auth
 gate, HTMX swap patterns (flash messages, `hx-target-422`), and the
-detail-screen conventions this file refers to by name (**Related-collection
-tables**, **HTMX mutations**, **Editor cards**). Alpine components are catalogued
-in [COMPONENTS.md](COMPONENTS.md).
+detail-screen conventions this file refers to by name. Alpine components are
+catalogued in [COMPONENTS.md](COMPONENTS.md).
 
 Every route below is auth-gated; see UI.md § Authentication. The entries do not
 repeat it.

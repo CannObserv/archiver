@@ -152,8 +152,15 @@ with `HX-Trigger: showFlash` and moves focus to the heading. **A rejection
 returns status 200, not 422**, so htmx still performs the swap: the card comes
 back with its inline `*_error` (`role="alert"`) visible, focus on the heading,
 and the operator's submitted text echoed into the textarea so the edit is not
-discarded. Non-HTMX requests fall back to a 303 on success and a full-page 422
-re-render — text still preserved — on failure, so the editor works without JS.
+discarded. The route branches on the `HX-Request` header, not on the target:
+non-HTMX requests fall back to a 303 on success and a full-page 422 re-render —
+text still preserved — on failure, so the editor works without JS.
+
+Gate the focus-move script on `swapped` (see **HTMX mutations**) and pass
+`swapped=False` on that non-HTMX path. The card partial and the section's other
+partial both gate on the same flag, so a full-page 422 rendered with
+`swapped=True` emits both scripts and the second one steals focus away from the
+error the operator needs to read.
 
 *Allowed variant — full-page POST→303.* HTMX partial-swap applies to mutations
 whose visible effect is **contained within a single card or section**. When a

@@ -83,11 +83,10 @@ applicable doc is a CR blocker.
   `src/dashboard/templates/`, or a new/changed dashboard route. It is the
   per-page inventory: what the screen renders, what the route returns.
 - `docs/COMPONENTS.md` — required for any change to a JS module under
-  `src/dashboard/static/`. Alpine components are catalogued there; the two
-  modules that are not Alpine components (`flash.js`, `dark-mode.js`) are
-  documented where their behaviour lives instead — `flash.js` in `docs/UI.md`
-  ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md` —
-  so a change to either updates that doc.
+  `src/dashboard/static/`. Alpine components are catalogued there; a module
+  that is not an Alpine component is documented where its behaviour lives
+  instead, and a change to it updates that doc — `flash.js` in `docs/UI.md`
+  ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
 - `docs/UI.md` — required when the change alters a *shared* mechanic rather
   than one screen: the URL map, the auth gate, an HTMX swap pattern, or a
   detail-screen convention. A change that merely follows an existing
