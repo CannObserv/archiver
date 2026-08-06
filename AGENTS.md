@@ -187,10 +187,9 @@ with the same regex:
 What the regex covers and what it deliberately does not:
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 
-**Dashboard living docs:** each doc is scoped to what it actually documents —
-update the one(s) the change touches, in the same commit. Failure to update an
-applicable doc is a CR blocker. `docs/UI.md` covers templates, dashboard JS, and
-routes; `docs/STYLE.md` covers styling. Which one a given change requires:
+**Dashboard living docs:** update the doc a change touches in the same commit —
+PAGES.md (templates, routes), COMPONENTS.md (dashboard JS), UI.md (shared
+patterns), STYLE.md (styling). Failing to is a CR blocker; per-trigger detail in
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 
 **Logging:**
@@ -239,7 +238,7 @@ Phase 1–3a `InfoSpec` model is retired — no new `info_spec*` references.
 
 Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code). Local overrides in `skills/` shadow vendor submodules in `skills-vendor/`.
 
-Full skill reference: `docs/SKILLS.md`. Cross-project search to the sister `watcher` and `notifier` indexes requires a per-instance `.claude/settings.local.json` (gitignored) — see "Linked Projects" in `docs/SKILLS.md`.
+Cross-project search to the sister `watcher` and `notifier` indexes requires a per-instance `.claude/settings.local.json` (gitignored) — see "Linked Projects" in [docs/SKILLS.md](docs/SKILLS.md).
 
 ## SessionStart Hooks
 
@@ -261,5 +260,4 @@ Full skill reference: `docs/SKILLS.md`. Cross-project search to the sister `watc
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — wheelhouse reproducibility, dev-server internals, full env-var reference
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — changelog trigger, journald logging contract, error-envelope examples
 - [docs/SKILLS.md](docs/SKILLS.md) — skill inventory, trigger table, SessionStart hook mechanics
-- [docs/UI.md](docs/UI.md) — dashboard URL map, HTMX/Alpine patterns, per-page route inventory (large — open one section)
-- [docs/STYLE.md](docs/STYLE.md) — dashboard theming, design tokens, component classes, accessibility
+- The four dashboard docs — [docs/UI.md](docs/UI.md) URL map, auth, HTMX, detail-screen conventions; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory (large — open one section); [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility

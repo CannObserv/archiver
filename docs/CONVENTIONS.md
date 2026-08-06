@@ -79,14 +79,23 @@ validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachab
 update the one(s) the change touches, in the same commit. Failure to update an
 applicable doc is a CR blocker.
 
-- `docs/UI.md` — required for any change to a Jinja2 template in
-  `src/dashboard/templates/`, a JS module under `src/dashboard/static/`, or a
-  new/changed dashboard route.
+- `docs/PAGES.md` — required for any change to a Jinja2 template in
+  `src/dashboard/templates/`, or a new/changed dashboard route. It is the
+  per-page inventory: what the screen renders, what the route returns.
+- `docs/COMPONENTS.md` — required for any change to a JS module under
+  `src/dashboard/static/`. Alpine components are catalogued there; a module
+  that is not an Alpine component is documented where its behaviour lives
+  instead, and a change to it updates that doc — `flash.js` in `docs/UI.md`
+  ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
+- `docs/UI.md` — required when the change alters a *shared* mechanic rather
+  than one screen: the URL map, the auth gate, an HTMX swap pattern, or a
+  detail-screen convention. A change that merely follows an existing
+  convention updates PAGES.md alone.
 - `docs/STYLE.md` — required when the change introduces or alters *styling*:
   `src/dashboard/static/dashboard.css`, or a template that adds a new visual
   pattern rather than reusing existing classes.
 
-A template change that composes only existing CSS classes needs UI.md alone.
+A template change that composes only existing CSS classes needs PAGES.md alone.
 
 ## Import placement — scope and exemptions
 

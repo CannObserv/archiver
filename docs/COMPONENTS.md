@@ -1,0 +1,254 @@
+# Archiver Dashboard — Alpine.js Component Catalogue
+
+**Every `Alpine.data` component the dashboard registers, its state, its methods,
+and how templates wire it up.**
+
+Where each component is used is in [PAGES.md](PAGES.md); the HTMX patterns they
+sit alongside are in [UI.md](UI.md). `docs/STYLE.md` carries the one-line
+summary table and the CSS classes these components toggle.
+
+> **AGENTS.md enforcement:** update this file in the same commit as any change
+> to a JS module under `src/dashboard/static/`.
+
+---
+
+All components registered as `Alpine.data('name', factory)` in `main.js` before `Alpine.start()`. No inline `x-data="{ ... }"` blobs in templates.
+
+## `apiKeyCreate`
+
+Create-form toggle for the API Keys settings page.
+
+**State:**
+- `showForm: boolean` — whether the create-key panel is expanded.
+
+**Usage:** `x-data="apiKeyCreate"` on the outer `<div class="entity-section">`. A `<button @click="showForm = !showForm">` in the header toggles the form. The form panel uses `x-show="showForm" x-cloak` to hide before Alpine initialises. After a full-page POST response, `showForm` resets to its initial `false` state automatically (form collapses; the new-key reveal panel appears instead).
+
+## `apiKeyRow`
+
+Inline edit/view toggle for a single API key table row.
+
+**State:**
+- `editing: boolean` — whether the row is in edit mode.
+
+**Methods:**
+- `cancelEdit()` — set `editing = false` without a server call, and reset the label input to its server-rendered value via `$refs.labelInput.defaultValue` so an abandoned edit is discarded rather than lingering in the hidden input.
+
+**Usage:** `x-data="apiKeyRow"` on each `<tr id="key-row-{id}">`. View mode shows the label as text with Edit + Delete buttons. Edit mode reveals a label input (`x-ref="labelInput"`) and Save + Cancel buttons. Save uses HTMX `hx-patch` with `hx-include="#label-{id}"` to send the updated label; the server returns a fresh `_api_key_row.html` fragment that initialises with `editing: false`. Cancel calls `cancelEdit()`. Edit-mode elements carry `style="display:none;"` as an initial-state hint to prevent FOUC before Alpine runs.
+
+## `apiKeyReveal`
+
+Reveal-once panel for a newly created API key.
+
+**State:**
+- `rawKey: string` — the one-time raw key value (set via `x-init`).
+- `copied: boolean` — clipboard copy feedback.
+
+**Methods:**
+- `copy()` — write `rawKey` to clipboard, set `copied = true` for 2 s.
+
+**Usage:** `x-data="apiKeyReveal" x-init="rawKey = '{{ new_raw_key }}'"` on the reveal section returned by `POST /dashboard/settings/api-keys`. `rawKey` is assigned directly in `x-init` (direct property assignment through the Alpine reactive proxy — do not use a method call from `x-init` as `this` is unbound). The raw key is embedded server-side in the one-time render; it is not stored client-side beyond the DOM lifetime.
+
+## `infoItemWizard`
+
+3-step create form for Information Items, on `info_items/new.html`. Interactive
+registration goes through `/dashboard/register` instead; this template is reached
+only as the 422 re-render of the legacy `POST /dashboard/info-items/new`.
+
+**State:**
+- `step: number` — current step (1 = Basics, 2 = Source, 3 = Review).
+- `name: string`, `description: string`, `owner: string` — form field values.
+- `repFieldsRaw: string` — raw JSON string for `rep_fields`, written by a nested `jsonFieldEditor`.
+- `initialUrl: string` — URL for the optional initial InfoSource.
+- `initialSourceSpecsRaw: string` — raw JSON array string for `initial_source_specs`, bound via `x-model="initialSourceSpecsRaw"` on the step-2 textarea rather than a `jsonFieldEditor` (arrays are not objects). That textarea also carries `name="initial_source_specs"`, so the form POST captures it without a hidden input.
+
+**Methods:**
+- `nextStep()` — advance a step; step 1 guards that `name` is non-empty.
+- `prepareSubmit()` — form-submit hook; a no-op, since editors write into root props on blur and `initialSourceSpecsRaw` stays in sync via `x-model`.
+
+**Usage:** `x-data="infoItemWizard"` on the outer `<div>`. Step 2 shows the
+`initial_url` text input and the `initial_source_specs` JSON array textarea.
+
+## `sourceSpecEditor`
+
+Registered in `main.js` but bound by no template: the InfoSource new/edit forms
+use a plain `<textarea name="source_specs">` with inline error display, and the
+detail-page editor is `sourceSpecsCard`. Slated for removal — archiver#135.
+
+## `jsonFieldEditor`
+
+Textarea-based JSON object editor with format-on-blur and inline validation.
+
+**Parameters (factory args):**
+- `rootProp: string` — name of a property on `$root` to write the formatted JSON string into on each valid blur.
+- `_errorKey: string` — reserved for API symmetry; error state is component-local.
+
+**State:**
+- `raw: string` — raw textarea value.
+- `hasError: boolean` — true when the current value is not a valid JSON object.
+- `errorMsg: string` — human-readable parse error.
+
+**Methods:**
+- `formatAndValidate()` — called on `@blur`. Parses `raw`, pretty-prints valid objects, writes into `$root[rootProp]`, sets `hasError`/`errorMsg`.
+
+**Usage:** `x-data="jsonFieldEditor('repFieldsRaw', 'rep_fields_error')"` on a wrapper element containing the `<textarea x-model="raw" @blur="formatAndValidate()">`.
+
+---
+## `repSpecEditor`
+
+Single-field document editor with client-side JSON parse validation on blur.
+
+**Parameters (factory args):**
+- `initialValue: string` — initial document JSON string (pass `{{ document_raw | tojson }}`).
+- `initialProvider: string` — initially selected provider (pass `{{ (selected_provider or "") | tojson }}`).
+
+**State:** `provider: string`, `raw: string`, `hasError: boolean`, `errorMsg: string`.
+
+**Methods:** `validate()` — called on `@blur`; attempts `JSON.parse(raw)`, sets `hasError`/`errorMsg`.
+
+**Usage:** `x-data='repSpecEditor({{ document_raw | tojson }}, {{ (selected_provider or "") | tojson }})'` on the create form wrapper, passing server-rendered initial values so Alpine's `x-model` initialises correctly on re-render. Provider `<select x-model="provider">` drives `provider` state for optional template reactions.
+
+## `sortableChips`
+
+Chip strip for selector/rep-field suggestions with client-side re-sort.
+
+Uses the **JSON data island** pattern: chip data is placed in a `<script type="application/json">` child element so JSON never appears inside an HTML attribute (which would require escaping `"` and is fragile). `init()` reads and parses the script element on startup.
+
+**Parameters (factory args):**
+- `defaultSort: string` — initial sort mode: `'frequency'` (default), `'asc'`, or `'desc'`.
+
+**State:** `sort: string`, `chips: Array<{label, frequency, value?}>` (reactive, re-sorted on sort change).
+
+**Chip shape:** `{label: string, frequency: number, value?: string}`. The optional `value` field is the dispatch payload when it differs from the display `label` (e.g. a full spec JSON array string vs a human-readable `"algorithm: selector"` label).
+
+**Methods:**
+- `setSort(mode)` — sets `sort` and re-sorts `chips` in place.
+- `insertChip(label, value?)` — dispatches a `chip-insert` `CustomEvent` on `window` with `{ detail: { label: value ?? label } }`. Parent scopes listen via `@chip-insert.window`.
+- `init()` — parses chip data from `<script type="application/json">` inside `$el`; falls back to reading `[data-label]`/`[data-frequency]` DOM attributes.
+
+**Sort controls:** Three pill buttons — `[Frequency ▾]`, `[A → Z]`, `[Z → A]`. Active button gets `.btn--active .btn--sm`; others get `.btn--secondary .btn--sm`. Sort is purely client-side; no server round-trip.
+
+**Usage:**
+```html
+<!-- Parent listens for chip-insert events -->
+<div @chip-insert.window="myProp = $event.detail.label">
+  <div x-data="sortableChips('frequency')">
+    <script type="application/json">{{ suggestions | tojson }}</script>
+    <div style="display:flex;gap:var(--space-1);margin-bottom:var(--space-2);">
+      <button type="button" :class="sort==='frequency'?'btn btn--active btn--sm':'btn btn--secondary btn--sm'" @click="setSort('frequency')">Frequency ▾</button>
+      <button type="button" :class="sort==='asc'?'btn btn--active btn--sm':'btn btn--secondary btn--sm'" @click="setSort('asc')">A → Z</button>
+      <button type="button" :class="sort==='desc'?'btn btn--active btn--sm':'btn btn--secondary btn--sm'" @click="setSort('desc')">Z → A</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:var(--space-1);">
+      <template x-for="chip in chips" :key="chip.label">
+        <button type="button" class="btn btn--secondary btn--sm" @click="insertChip(chip.label, chip.value)">
+          <span x-text="chip.label"></span>&nbsp;<span class="text-muted" x-text="'×' + chip.frequency"></span>
+        </button>
+      </template>
+    </div>
+  </div>
+</div>
+```
+
+JS tests in `tests/js/sortable-chips.test.js` (Vitest).
+
+## `registerWizard`
+
+Multi-step Information Item registration wizard. Manages step navigation and form state across the 4-step URL → Selector → Metadata → Review flow. Used on `GET /dashboard/register` (see PAGES.md § **Registration flow**).
+
+**Factory args:**
+- `initialStep: number` — starting step (1–4; defaults to `1`). The server passes a non-1 value on validation re-renders to re-open at the failing step.
+
+**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`), `watchActive: boolean` (default `true`; "Watch active immediately" — false provisions paused), `checkHostname: string` / `checkDomainKnown: boolean|null` (last url-check result, fed by `urlCheckDispatch`; `null` = no check landed yet; the payload's `case` field is intentionally not stored — only the domain fact feeds the summary bar) *(#53)*.
+
+**Getters:**
+- `cadenceLabel` — returns the human-readable label for the selected cadence by reading the text of the matching `<option>` in `$refs.cadenceInput` (no hardcoded map; the server-rendered options are the single source). Shown in the Step 4 review row.
+- `watchActiveLabel` — returns "Active immediately" / "Paused" for the Step 4 review row.
+- `urlHostname` *(#53)* — hostname parsed client-side from `url` via `new URL()`; `""` when the URL doesn't parse.
+- `domainSummary` *(#53)* — `"known domain"` / `"new domain"` when the last url-check result matches the *current* `urlHostname` (guards against stale checks after the user edits the URL), else `""`.
+- `selectorSummary` *(#53)* — compact human summary of the `sourceSpecs` JSON: `css: .rule-title` (single spec), `full_page` (no selector), `2 specs (css + regex)` (multiple). Falls back to the raw text truncated to 80 chars + `…` while the JSON doesn't parse (operator mid-edit). Used by the summary bar and the Step 4 review Selector row (where `:title="sourceSpecs"` keeps the full JSON inspectable as a tooltip).
+
+**Methods:**
+- `init()` — copies **all** server-rendered field values into Alpine state via `$refs`: `urlInput` → `url`, `sourceSpecsInput` → `sourceSpecs`, `nameInput` → `itemName`, `descriptionInput` → `description`, `cadenceInput` → `cadence`, `watchActiveInput.checked` → `watchActive`. **Every `x-model`-bound field must be synced here** — `x-model` is data-authoritative at bind time, so any unsynced server-rendered value is wiped to `""` on validation-error re-renders (#53 regression; pinned by `tests/js/register-wizard-alpine.test.js` against the real Alpine build).
+- `onUrlCheck(detail)` *(#53)* — stores a bubbled url-check result (`{hostname, case, domain_known}`) into `checkHostname` / `checkDomainKnown`.
+- `loadSuggestions()` — fires an HTMX GET to `/dashboard/register/suggest-specs?url=<encoded>`, targeting `#spec-suggestions-panel`. Called by the step-1 "Next" button.
+- `prepareSubmit()` — no-op; `x-model` keeps the textarea in sync without a manual step.
+
+**Events:**
+- `@chip-insert.window` — receives chip inserts from `sortableChips` and writes the chip value into `sourceSpecs`. Wired on the root element.
+- `@preview-name` — receives bubbled `preview-name` events from `previewNameDispatch` children. Pre-fills `itemName` if still blank: `if (!itemName.trim()) itemName = $event.detail.name`. Wired on the root element.
+- `@url-check.window` *(#53)* — receives bubbled `url-check` events from `urlCheckDispatch` islands: `onUrlCheck($event.detail)`. Wired on the root element.
+
+**Usage:**
+```html
+<div class="entity-section"
+     x-data="registerWizard({{ initial_step|default(1) }})"
+     @chip-insert.window="sourceSpecs = $event.detail.label"
+     @preview-name="if (!itemName.trim()) itemName = $event.detail.name"
+     @url-check.window="onUrlCheck($event.detail)">
+  ...
+  <input x-ref="urlInput" x-model="url" ...>
+  <textarea x-ref="sourceSpecsInput" x-model="sourceSpecs" ...></textarea>
+  <input x-ref="nameInput" x-model="itemName" ...>
+  <textarea x-ref="descriptionInput" x-model="description" ...></textarea>
+</div>
+```
+
+JS tests: `tests/js/register-wizard.test.js` (unit, stub Alpine) and `tests/js/register-wizard-alpine.test.js` (init-sync regression against the real vendored Alpine).
+
+## `urlCheckDispatch`
+
+One-shot event dispatcher, identical in shape to `previewNameDispatch`: reads the url-check result from a JSON data island child element and fires a bubbling `url-check` custom event. Emitted by the `_url_check.html` HTMX partial (all non-error branches) so the wizard's rolling summary bar can show `known domain` / `new domain` beside the URL after step 1.
+
+**Events dispatched:** `url-check` (bubbles) with payload `{ hostname: string, case: "A"|"B"|"new", domain_known: boolean }`.
+
+**Usage:**
+```html
+{# Top of _url_check.html, before the case cards #}
+{% if not error and hostname %}
+<div x-data="urlCheckDispatch"><script type="application/json">{{ {"hostname": hostname, "case": case, "domain_known": domain is not none} | tojson }}</script></div>
+{% endif %}
+```
+
+## `previewNameDispatch`
+
+One-shot event dispatcher that reads a suggested page title from a JSON data island child element and fires a bubbling `preview-name` custom event. Used inside the `_preview_result.html` HTMX partial so that a successful preview auto-fills the Name field on step 3.
+
+Uses the **JSON data island** pattern (`sortableChips` above; the reason it exists is `docs/STYLE.md` § **JSON data island pattern**) — the title is placed in a `<script type="application/json">` child rather than an HTML attribute, avoiding double-quote escaping hazards from `tojson`.
+
+**Events dispatched:** `preview-name` (bubbles) with payload `{ name: string }`.
+
+**Usage:**
+```html
+{# Inside _preview_result.html, swapped into step 2 via HTMX #}
+{% if suggested_name %}
+<div x-data="previewNameDispatch">
+  <script type="application/json">{{ suggested_name | tojson }}</script>
+</div>
+{% endif %}
+```
+
+The parent `registerWizard` root element catches the event:
+```html
+@preview-name="if (!itemName.trim()) itemName = $event.detail.name"
+```
+
+**Note:** `init()` fires synchronously during Alpine component initialisation (triggered by the MutationObserver on HTMX swap). The event bubbles up the live DOM tree to the `registerWizard` listener. No listener is needed on `previewNameDispatch` itself.
+
+## `repFieldsEditor`
+
+Wrapper for the `rep_fields` textarea + sortableChips suggestion strip on the InfoItem detail hub page. Handles `chip-insert` window events by merging the clicked key into the existing JSON object (preserving other keys) rather than replacing the whole textarea value.
+
+**Methods:**
+- `insertKey(key)` — finds `[name=rep_fields]` within `$el`, parses its current value as JSON, adds `key: ""` if absent, and writes back pretty-printed JSON. Falls back gracefully on parse errors.
+
+**Usage:**
+```html
+<div x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)">
+  <!-- sortableChips suggestion strip (HTMX-loaded) -->
+  <div id="rep-fields-suggestions" hx-get="..." hx-trigger="load" hx-swap="innerHTML"></div>
+  <!-- rep_fields form -->
+  <form hx-patch="...">
+    <textarea name="rep_fields" ...></textarea>
+  </form>
+</div>
+```

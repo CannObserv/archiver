@@ -12,7 +12,7 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 - [docs/API.md](docs/API.md) — every HTTP route, its SDK wrapper, and the `info.changes` event contract
 - [docs/SCHEMA.md](docs/SCHEMA.md) — per-table contracts and invariants
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — wheelhouse, dev server, environment variables
-- [docs/UI.md](docs/UI.md) / [docs/STYLE.md](docs/STYLE.md) — dashboard pages, patterns, and styling
+- [docs/UI.md](docs/UI.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) — dashboard patterns, page inventory, Alpine components, and styling
 
 ## Run locally
 
@@ -65,7 +65,7 @@ bash clients/python/scripts/regen.sh
 
 ## Admin dashboard
 
-HTML/HTMX admin UI at `/dashboard/`. Auth via `X-ExeDev-UserID` / `X-ExeDev-Email` proxy headers (redirects to `/__exe.dev/login` when absent). Covers all registry entities: Information Items, Information Sources, Source Revisions, Replication Specifications, and API key management. See [docs/UI.md](docs/UI.md) for the full page inventory and component catalogue.
+HTML/HTMX admin UI at `/dashboard/`. Auth via `X-ExeDev-UserID` / `X-ExeDev-Email` proxy headers (redirects to `/__exe.dev/login` when absent). Covers all registry entities: Information Items, Information Sources, Source Revisions, Replication Specifications, and API key management. See [docs/PAGES.md](docs/PAGES.md) for the full page inventory, [docs/COMPONENTS.md](docs/COMPONENTS.md) for the component catalogue, and [docs/UI.md](docs/UI.md) for the shared patterns.
 
 ## Optional: change-bus publisher
 
