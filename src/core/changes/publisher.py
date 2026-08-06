@@ -29,6 +29,7 @@ from co_core.pure.adapters.bus.envelope import payload_from_dict, to_wire
 from co_core_aio.bus import AsyncBusPublisher
 from redis.exceptions import BusyLoadingError
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import OutOfMemoryError as RedisOutOfMemoryError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -53,6 +54,17 @@ IDLE_INTERVAL_SECONDS = 1.0
 # publish except (e.g. a server-side ResponseError / WRONGTYPE) is treated as
 # possibly-permanent and subject to the ceiling.
 #
+# ``OutOfMemoryError`` is the odd one out — it is a ``ResponseError`` subclass, so
+# the "everything else is possibly-permanent" rule above would otherwise catch it.
+# It is listed transient deliberately (archiver#128): Archiver operates a *shared*
+# broker under ``maxmemory-policy noeviction`` with an explicit ``maxmemory`` cap
+# (``deploy/redis-server.dropin.conf``), so an unrelated stream filling the
+# instance surfaces here as ``OOM command not allowed`` on a perfectly valid
+# event. That is an operator-resolvable outage, not poison — treating it as
+# permanent would dead-letter good ``info.changes`` events during someone else's
+# memory incident, which is exactly the loss the ceiling exemption exists to
+# prevent.
+#
 # NOTE (co-core coupling, CR #10): this gate assumes
 # ``AsyncBusPublisher.execute`` propagates the underlying redis exception types
 # *unwrapped* (the current co-core-aio behavior — a raw redis ConnectionError from
@@ -65,6 +77,7 @@ _TRANSIENT_PUBLISH_ERRORS: tuple[type[BaseException], ...] = (
     RedisConnectionError,
     RedisTimeoutError,
     BusyLoadingError,
+    RedisOutOfMemoryError,
 )
 
 # Attempt ceiling for NON-transient publish failures — a pure defense-in-depth

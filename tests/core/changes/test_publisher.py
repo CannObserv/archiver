@@ -21,7 +21,7 @@ from co_core.pure.adapters.bus.exceptions import (
 )
 from co_core_aio.bus import AsyncBusPublisher
 from fakeredis import aioredis as fakeredis_aio
-from redis.exceptions import ResponseError
+from redis.exceptions import OutOfMemoryError, ResponseError
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -758,6 +758,41 @@ async def test_transient_failure_exempt_from_ceiling(session_factory):
     async with session_factory() as s:
         refreshed = await s.get(ChangesOutboxRow, row.id)
     assert refreshed.dead_lettered_at is None  # transient → exempt, still live
+    assert refreshed.publish_attempts == MAX_PUBLISH_ATTEMPTS + 1  # keeps climbing
+
+
+@pytest.mark.asyncio
+async def test_broker_oom_is_transient_and_exempt_from_ceiling(session_factory):
+    """A broker OOM (``maxmemory`` reached under ``noeviction``) is TRANSIENT.
+
+    archiver#128: the drop-in now sets an explicit ``maxmemory``, so memory
+    pressure surfaces as ``OOM command not allowed`` — a ``ResponseError``
+    subclass — instead of the kernel OOM-killing the broker. That is an outage
+    the operator resolves, not poison in the row: the event is valid and must
+    survive until the broker has room. Classifying it with ``WRONGTYPE`` would
+    dead-letter valid ``info.changes`` events during a memory incident caused by
+    an unrelated stream on the shared broker.
+    """
+    row = await _insert_row(session_factory, payload=_captured_event("rev-oom"))
+    # Pre-age it ABOVE the ceiling: a non-transient error here would dead-letter.
+    async with session_factory() as s:
+        r = await s.get(ChangesOutboxRow, row.id)
+        r.publish_attempts = MAX_PUBLISH_ATTEMPTS
+        await s.commit()
+
+    broken = AsyncMock()
+    broken.xadd = AsyncMock(
+        side_effect=OutOfMemoryError("OOM command not allowed when used memory > 'maxmemory'.")
+    )
+    broken_publisher = AsyncBusPublisher(broken)
+
+    n = await drain_once(session_factory=session_factory, publisher=broken_publisher)
+    assert n == 0
+
+    async with session_factory() as s:
+        refreshed = await s.get(ChangesOutboxRow, row.id)
+    assert refreshed.dead_lettered_at is None  # transient → exempt, still live
+    assert refreshed.published_at is None
     assert refreshed.publish_attempts == MAX_PUBLISH_ATTEMPTS + 1  # keeps climbing
 
 

@@ -1,10 +1,18 @@
-"""Behaviour of scripts/check_redis_floor.sh — the Redis >=7.0 floor guard.
+"""Behaviour of scripts/check_redis_floor.sh — the Redis broker precondition guard.
 
-Run as an `ExecStartPre` on archiver.service (archiver#109). The guard is soft
-by design: it blocks the producer only on a genuinely-too-old *reachable* broker,
-and exits 0 (letting archiver start) when the bus is dormant or the broker is
-unreachable. These tests drive it with a stub `redis-cli` on PATH so no live
-Redis is required and each branch is exercised deterministically.
+Run as an `ExecStartPre` on archiver.service (archiver#109). Two assertions, with
+deliberately different severities:
+
+- **Version >= 7.0 — blocks.** A too-old *reachable* broker breaks the consumer
+  path (`XAUTOCLAIM`), so the producer refuses to start.
+- **`maxmemory` non-zero — warns only (archiver#128).** An uncapped broker makes
+  `maxmemory-policy noeviction` inert, but the producer itself works fine against
+  it; refusing to start the API over a broker tuning value would be a
+  self-inflicted outage.
+
+Otherwise soft by design: exit 0 (letting archiver start) when the bus is dormant
+or the broker is unreachable. These tests drive it with a stub `redis-cli` on PATH
+so no live Redis is required and each branch is exercised deterministically.
 """
 
 import shutil
@@ -18,20 +26,31 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_redis_floor.sh
 
 
 def _stub_redis_cli(
-    tmp_path: Path, *, version: str | None, tls: bool = True, sleep: float = 0
+    tmp_path: Path,
+    *,
+    version: str | None,
+    tls: bool = True,
+    sleep: float = 0,
+    maxmemory: str | None = "536870912",
 ) -> Path:
     """Write a fake `redis-cli` to a bin dir; return the dir for PATH.
 
     `--help` output includes `--tls` iff `tls`. Any other invocation optionally
-    sleeps `sleep` seconds (to simulate a hanging connection) then prints a
-    `redis_version:` line iff `version` is given (else nothing, simulating an
-    unreachable/failed connection).
+    sleeps `sleep` seconds (to simulate a hanging connection), then answers by
+    subcommand: `INFO server` prints a `redis_version:` line iff `version` is
+    given, and `CONFIG GET maxmemory` prints the two-line name/value reply iff
+    `maxmemory` is given. `None` means "print nothing" — an unreachable or failed
+    connection. `maxmemory` defaults to a capped broker so the tests that predate
+    the cap check (archiver#128) exercise their own branch without tripping it.
     """
     binder = tmp_path / "bin"
     binder.mkdir()
     help_tls = "  --tls    Use TLS.\n" if tls else ""
     sleep_line = f"sleep {sleep}\n" if sleep else ""
-    version_line = f'echo "redis_version:{version}"' if version is not None else "true"
+    version_line = f'  echo "redis_version:{version}"' if version is not None else "  true"
+    maxmemory_lines = (
+        f'  echo "maxmemory"\n  echo "{maxmemory}"' if maxmemory is not None else "  true"
+    )
     (binder / "redis-cli").write_text(
         "#!/usr/bin/env bash\n"
         'if [[ "$1" == "--help" ]]; then\n'
@@ -39,7 +58,14 @@ def _stub_redis_cli(
         "  exit 0\n"
         "fi\n"
         f"{sleep_line}"
+        'case "$*" in\n'
+        "  *'CONFIG GET maxmemory'*)\n"
+        f"{maxmemory_lines}\n"
+        "    ;;\n"
+        "  *'INFO server'*)\n"
         f"{version_line}\n"
+        "    ;;\n"
+        "esac\n"
     )
     (binder / "redis-cli").chmod(0o755)
     return binder
@@ -145,6 +171,55 @@ def test_redis_cli_absent_is_soft() -> None:
         )
     assert result.returncode == 0
     assert "redis-cli not found" in result.stderr
+
+
+def test_uncapped_broker_warns_but_does_not_block(tmp_path: Path) -> None:
+    """`maxmemory 0` makes noeviction inert — warn loudly, never block.
+
+    archiver#128, CR finding 1. The file-level parity test
+    (tests/deploy/test_installed_redis_dropin_matches_repo.py) compares the
+    drop-in on disk against the repo; it cannot see a broker whose *running*
+    config was changed by `CONFIG SET`, which is exactly how the cap was applied.
+    This is the check that observes the live value.
+
+    Warn-only, unlike the version floor: an uncapped broker does not break the
+    producer, so refusing to start the API over it would turn a tuning drift into
+    an outage.
+    """
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15", maxmemory="0")
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://localhost:6379/0"})
+    assert result.returncode == 0, result.stderr
+    assert "maxmemory is 0" in result.stderr
+    assert "noeviction" in result.stderr
+
+
+def test_capped_broker_reports_the_cap(tmp_path: Path) -> None:
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15", maxmemory="536870912")
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://localhost:6379/0"})
+    assert result.returncode == 0, result.stderr
+    assert "maxmemory is 0" not in result.stderr
+    assert "536870912" in result.stdout
+
+
+def test_unreadable_maxmemory_is_soft(tmp_path: Path) -> None:
+    """CONFIG GET returning nothing must not be mistaken for an uncapped broker.
+
+    A restricted ACL or a killed probe yields an empty reply; warning "uncapped"
+    there would train the operator to ignore the warning that matters.
+    """
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15", maxmemory=None)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://localhost:6379/0"})
+    assert result.returncode == 0, result.stderr
+    assert "maxmemory is 0" not in result.stderr
+    assert "could not read maxmemory" in result.stderr
+
+
+def test_dormant_bus_does_not_probe_maxmemory(tmp_path: Path) -> None:
+    """URL unset → no broker contact at all, cap check included."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15", maxmemory="0")
+    result = _run(bindir, {})
+    assert result.returncode == 0
+    assert "maxmemory" not in result.stderr
 
 
 @pytest.mark.parametrize("tool", ["bash", "sed", "tr"])

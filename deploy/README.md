@@ -60,14 +60,122 @@ sudo systemctl daemon-reload && sudo systemctl restart redis-server
 # verify:
 redis-cli CONFIG GET appendonly        # -> yes
 redis-cli CONFIG GET maxmemory-policy  # -> noeviction
+redis-cli CONFIG GET maxmemory         # -> must NOT be 0 (see below)
 ```
+
+To change the cap later, prefer applying it live — no restart, no dropped client
+connections — and let the unit supply it from the next restart onward:
+
+```bash
+# edit ExecStart in deploy/redis-server.dropin.conf, then:
+sudo cp deploy/redis-server.dropin.conf \
+    /etc/systemd/system/redis-server.service.d/archiver.conf
+sudo systemctl daemon-reload
+redis-cli CONFIG SET maxmemory <value from ExecStart>   # applies now, no restart
+```
+
+Pass the value **exactly as `ExecStart` spells it** — `CONFIG SET` accepts the
+same unit suffixes, so there is no byte conversion to get wrong and no second
+copy of the number to drift.
+
+`CONFIG SET` is not persisted (no `CONFIG REWRITE`), which is what keeps the unit
+authoritative. The flip side is that it can drift the *running* broker from the
+tracked file in either direction, and the file-parity test cannot see that — so
+`scripts/check_redis_floor.sh` reads the live value at every `archiver.service`
+start and warns when it is `0`.
+
+**`maxmemory` is load-bearing, not decoration (archiver#128).** `noeviction`
+with the default `maxmemory 0` is *inert*: there is no ceiling to refuse writes
+at, so an untrimmed stream never produces the retryable write errors the
+"a stream broker must never evict" reasoning assumes — it grows until the kernel
+OOM-killer takes `redis-server`, costing the whole broker plus an AOF-replay
+restart. The explicit cap converts that into bounded, instance-wide `OOM command
+not allowed` errors. Those are classified **transient** by the outbox publisher
+(`_TRANSIENT_PUBLISH_ERRORS` in `src/core/changes/publisher.py`), so a memory
+incident caused by *any* stream on this shared broker stalls `info.changes`
+publishing without dead-lettering valid events. **The cap and that classification
+are one decision — do not change either alone.** Sizing rationale is in the
+drop-in's header comment.
+
+**The cap changes the failure mode for every producer on this broker, not just
+ours.** Once the cap is reached, `XADD` is refused instance-wide — Watcher's
+`content.fetch` and Replicator's `content.blobs` included. Archiver rides that
+out because the outbox retries indefinitely on a transient error; **whether the
+other producers have an equivalent durable retry is their own property, and
+Archiver does not assert it.** A producer that publishes straight from a request
+handler with no outbox will *drop* on OOM. Raised on CannObserv/watcher#245 and
+CannObserv/replicator#19 so each producer's durability under OOM is a stated
+assumption rather than an assumed one. The `Producer durability under OOM` column
+below records the current answer.
+
+AOF needs no separate cap: `auto-aof-rewrite-percentage 100` /
+`auto-aof-rewrite-min-size 64mb` self-bound the file at roughly 2× the dataset,
+so bounded retention bounds the AOF. The independent exposure is fork/COW at
+rewrite time, which `maxmemory` also caps.
+
+### Streams on this broker
+
+Archiver **operates** the broker but does not produce or consume most of what
+lands on it. Inventory, so a future lag dashboard is built against what is
+actually here. Cells marked *(target)* describe the post-cutover arrangement, not
+what is running today:
+
+| Stream | Producer → consumer | Kind | Consumer group | Health primitive | DLQ | Producer durability under OOM |
+|---|---|---|---|---|---|---|
+| `info.changes` | Archiver → Replicator *(target)* | event | none *yet* — Replicator adds one | ⚠️ **none implemented.** Outbox depth is the intended signal but has no surface — manual SQL against `information.changes_outbox` only. Group lag once consumed. See #130 | `info.changes.dlq` *(target)* | **retries indefinitely** — transactional outbox, OOM classified transient |
+| `content.fetch` | Watcher → Replicator *(target; today a seed/test harness issues it)* | command | `replicator.fetch` (exactly one — competing consumers) | `XPENDING` / group lag | `content.fetch.dlq` | **unasserted** — CannObserv/watcher#245 |
+| `content.blobs` | Replicator → Watcher *(target)* | fact | one per consuming service | group lag per group | `content.blobs.dlq` | **unasserted** — CannObserv/replicator#19 |
+| `content.fetch-policy` | Watcher → Replicator workers *(target; no producer or consumer exists yet)* | config/state, broadcast, last-write-wins per host key | **none, permanently — by design** | **last-entry age via `XINFO STREAM`** | **none applies** | **self-correcting** — full set is republished on a timer |
+
+⚠️ The `info.changes` health row is the one to fix first. It names a primitive
+that does not exist: nothing exposes outbox depth — no route, no dashboard panel,
+no metric — so an operator reading this table would conclude the stream is
+covered when the only way to observe it is a hand-written query. Recorded here
+rather than quietly omitted, for the same reason the `content.fetch-policy` row
+exists at all.
+
+**`content.fetch-policy` is monitoring-blind to consumer-group lag, and always
+will be (archiver#128 / cannobserv#285).** Every worker needs every message, so
+the consumer reads groupless (`co_core_aio.bus.AsyncBusTailReader`, in-memory
+cursor, replayed from `0-0` at boot) — a group here would accumulate a PEL
+nothing drains. Consequence: **`XPENDING` reports nothing for this stream whether
+or not a single consumer is alive.** Any dashboard or alert that reads "no
+pending entries" as healthy will read this stream as healthy while it is dead.
+Use last-entry age instead — it at least catches a producer that stopped
+republishing.
+
+Note the *permanently* in that row. `info.changes` and `content.blobs` are
+groupless today too, but only because their consumers aren't built; they gain
+groups and become lag-monitorable. `content.fetch-policy` does not.
+
+For the same reason it has **no DLQ**. `dead_letter()` is a method on
+`AsyncBusConsumer` — it copies the frame to `dlq_name(topic)` and acks the
+original. A groupless tail reader has no ack and no delivery accounting, so
+nothing can write `content.fetch-policy.dlq` and nothing would trigger one.
+
+**Retention is the producer's, not ours, for this stream.** A stream whose
+producer republishes its full set on a timer grows without bound unless trimmed;
+`BusPublish.maxlen` (co-core ≥0.7.7) rides the trim on each publish, and the knob
+sits with Watcher (CannObserv/watcher#245) because the consumer's
+replay-from-`0-0` boot depends on the retention policy — it is a contract
+property, not broker tuning. Our exposure is the shared-instance blast radius,
+which `maxmemory` above bounds. A broker-side `XLEN` guard is deferred until
+Watcher's republish interval and the real host count exist; it belongs in a
+periodic timer (following `watcher-live-drift`), not in `check_redis_floor.sh` —
+an `ExecStartPre` fires once at process start, and unbounded growth is by
+definition an after-start condition.
 
 **`archiver.service` ordering + floor.** The unit declares
 `Wants=redis-server.service` + `After=redis-server.service` (soft ordering — the
 outbox tolerates broker downtime, so no `Requires=`/`BindsTo=`) and an
 `ExecStartPre` that runs `scripts/check_redis_floor.sh` to assert the server is
 ≥7.0 (the consumer path's `XAUTOCLAIM` requirement) when `ARCHIVER_REDIS_URL` is
-set. The probe is `timeout`-bounded (`ARCHIVER_REDIS_FLOOR_TIMEOUT`, default 5s)
+set. That script also reads the **live** `maxmemory` and warns when it is `0` —
+the only check that sees the running value rather than the tracked file. It warns
+rather than blocks: an uncapped broker doesn't break the producer, and refusing
+to start the API over a broker tuning value would turn tuning drift into an
+outage. Blocking is reserved for the version floor, where the consumer path is
+genuinely broken. The probes are `timeout`-bounded (`ARCHIVER_REDIS_FLOOR_TIMEOUT`, default 5s)
 so it can never hang startup, and warns when `redis-cli` lacks TLS support for a
 `rediss://` URL; it soft-skips (never blocks) on a dormant or unreachable broker
 and blocks only a genuinely-<7.0 reachable one. Reinstall the unit after any edit
