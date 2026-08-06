@@ -123,3 +123,61 @@ Follow the `writing-skills` TDD cycle:
 3. **REFACTOR** — find new rationalizations, close loopholes, re-test
 
 New project-specific skills go in `skills/<name>/` with a `.claude/skills/<name>` symlink to `../../skills/<name>`. Cross-project skills belong in `gregoryfoster/skills`.
+
+## Skill Trigger Inventory
+
+Which skill fires on which phrase. Invoke by name via the Skill tool.
+
+| Skill | Triggers / when to invoke |
+|---|---|
+| `reviewing-code-python-fastapi` | CR, code review |
+| `reviewing-architecture` | AR, architecture review |
+| `enforcing-architecture` | add a fitness function, enforce this contract, lock this rule (delegated to by `reviewing-architecture` on a `fitness` directive) |
+| `shipping-work-python-fastapi` | ship it, push GH, close GH, wrap up |
+| `brainstorming` | brainstorm, design this, let's design |
+| `writing-plans` | write plan, implementation plan |
+| `writing-skills` | write skill, new skill, author skill |
+| `systematic-debugging` | any bug, test failure, unexpected behavior |
+| `verification-before-completion` | before any completion claim or commit |
+| `test-driven-development` | before writing implementation code |
+| `executing-plans` | execute approved plan from docs/plans/ |
+| `subagent-driven-development` | dispatch agents for plan execution |
+| `dispatching-parallel-agents` | 2+ independent tasks in parallel |
+| `using-git-worktrees` | feature work needing isolation (dev port 8021) |
+| `finishing-a-development-branch` | merge/ship a feature branch |
+| `requesting-code-review` / `receiving-code-review` | CR handoff between agents |
+| `managing-skills` | add skill repo, manage external skills |
+| `orchestrating-issue-backlog` | backlog grooming, issue triage |
+| `using-superpowers` | meta — when to invoke superpowers skills |
+| `socraticode` (codebase MCP) | see **Code Exploration Policy** above |
+
+
+## SessionStart Hooks
+
+`.claude/settings.json` wires two `SessionStart` hooks (see `.claude/hooks/`):
+
+- `socraticode-reminder.sh` — prints the deferred-tool prefetch query for SocratiCode MCP tools.
+- `skills-submodule-update.sh` — **symlink** into
+  `skills-vendor/gregoryfoster-skills/skills/managing-skills/scripts/` (archiver#126),
+  so upstream fixes arrive with the normal submodule refresh. Never re-copy it —
+  a copy freezes at the version it was taken from, which is how this repo ran a
+  hook predating the doctor for months. Once-per-day refresh scoped to
+  `skills-vendor/`. Lock file: `.git/skills-update.lock` (holds the UTC
+  `YYYYMMDD` stamp). Log: `.git/skills-update.log` (auto-rotates at 64 KiB →
+  last 200 lines). **Auto-commits only on `main`**, staging exactly
+  `skills-vendor/` and `.skills/doctor.sh` — never `.skills/` wholesale, which
+  would absorb operator config. The commit message names what changed
+  (`chore: update skills submodules`, `chore: refresh .skills/doctor.sh`, or
+  both). Feature branches fetch but don't commit. Network failures are logged
+  and don't block session start. Descended from watcher's hook
+  (CannObserv/watcher#153 → CannObserv/archiver#8).
+
+**`.skills/doctor.sh` is committed** (archiver#126). It is a real file copy, not
+a symlink — deliberately, since a symlink would dangle in exactly the
+uninitialized-submodule state the doctor exists to repair. Committing it is what
+makes it present in a fresh `git worktree add`, a shallow CI clone, and a new
+contributor's first checkout, where the Phase 1 preflight
+`{ [ ! -x .skills/doctor.sh ] || bash .skills/doctor.sh; }` would otherwise
+silently short-circuit. The doctor re-syncs itself from the vendored source on
+every run; the hook commits the refreshed copy. Check it with
+`bash .skills/doctor.sh --version`.
