@@ -127,8 +127,9 @@ deploy/                        README.md (install instructions) + systemd units:
                                owns — see the archiver#128 lockstep invariant)
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                SCHEMA.md, DEPLOYMENT.md, CONVENTIONS.md,
-                               SKILLS.md, plus UI.md + STYLE.md (the dashboard
-                               living docs — see "Dashboard living docs").
+                               SKILLS.md, plus the dashboard living docs
+                               UI.md + PAGES.md + COMPONENTS.md + STYLE.md
+                               (see "Dashboard living docs").
                                Indexed by the Detail Docs section of AGENTS.md.
                                Archival subtrees: plans/ + research/
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
