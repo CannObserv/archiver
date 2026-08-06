@@ -122,8 +122,7 @@ set -a
 set +a
 ```
 
-Source exactly that way — `export $(cat … | xargs)` silently corrupts values
-([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
+Source exactly that way — `export $(cat … | xargs)` silently corrupts values.
 
 **Three variables carry safety rules; the rest are reference
 ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).**
@@ -225,19 +224,16 @@ a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.m
 
 Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
 
-| Term | Table | Role |
-|---|---|---|
-| `InfoItem` | `info_items` | semantic anchor + `rep_fields` bag |
-| `InfoSource` | `info_sources` | physical layer; URL + `source_specs` |
-| `SourceRevision` | `source_revisions` | content-addressed snapshot |
-| `InfoItemSource` | `info_item_sources` | item↔source binding; one active primary |
-| `RepSpec` | `rep_specs` | replication spec; `document` frozen once assigned |
-| `InfoItemRepSpec` | `info_item_rep_specs` | effective-dated assignment + `public_url` |
-| `ChangesOutboxRow` | `changes_outbox` | pending bus event awaiting publication |
+- `InfoItem` (`info_items`) — semantic anchor + `rep_fields` bag
+- `InfoSource` (`info_sources`) — physical layer; URL + `source_specs`
+- `SourceRevision` (`source_revisions`) — content-addressed snapshot
+- `InfoItemSource` (`info_item_sources`) — item↔source binding; one active primary
+- `RepSpec` (`rep_specs`) — replication spec; `document` frozen once assigned
+- `InfoItemRepSpec` (`info_item_rep_specs`) — effective-dated assignment + `public_url`
+- `ChangesOutboxRow` (`changes_outbox`) — pending bus event awaiting publication
 
 Per-entity contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The
-Phase 1–3a `InfoSpec` model is retired — no new `info_spec*` references outside
-historical alembic migrations.
+Phase 1–3a `InfoSpec` model is retired — no new `info_spec*` references.
 
 ## Agent Skills
 
@@ -247,9 +243,10 @@ Full skill reference: `docs/SKILLS.md`. Cross-project search to the sister `watc
 
 ## SessionStart Hooks
 
-`.claude/settings.json` wires two: a SocratiCode prefetch reminder and a
-once-per-day `skills-vendor/` refresh. Mechanics: [docs/SKILLS.md](docs/SKILLS.md).
-Two footguns:
+`.claude/settings.json` wires the SocratiCode prefetch reminder. The once-per-day
+`skills-vendor/` refresh is **suspended** — it auto-commits submodule bumps on
+`main`, breaking the archiver#131 wave-A hold. Restore recipe + mechanics:
+[docs/SKILLS.md](docs/SKILLS.md). Two footguns:
 
 - `skills-submodule-update.sh` is a **symlink** into the vendored `managing-skills`
   scripts. **Never re-copy it** — a copy freezes at the version it was taken from.

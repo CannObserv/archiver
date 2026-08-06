@@ -154,6 +154,30 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 
 ## SessionStart Hooks
 
+> **`skills-submodule-update.sh` is currently suspended.** Its
+> `.claude/settings.json` entry was removed on 2026-08-06 (archiver#131). The
+> hook auto-commits `skills-vendor/` bumps on `main`, and this repo is the
+> **control arm** of the `curating-context` cohort experiment: it must hold the
+> vendored pointer at v1.2 (`3fc7b71`) until the wave-B comparison resolves. An
+> automatic bump past v1.2 would put two skill versions inside one arm and make
+> `score-cohort.sh` return INCONCLUSIVE.
+>
+> The hook script and its symlink are untouched — only the wiring is gone.
+> Restore by re-adding this object to the `SessionStart` hooks array:
+>
+> ```json
+> { "type": "command", "command": "bash .claude/hooks/skills-submodule-update.sh" }
+> ```
+>
+> Until then, refresh vendored skills manually:
+>
+> ```bash
+> git submodule update --remote skills-vendor/   # then review before committing
+> bash .skills/doctor.sh
+> ```
+>
+> Delete this note when the hold lifts and the hook is re-wired.
+
 `.claude/settings.json` wires two `SessionStart` hooks (see `.claude/hooks/`):
 
 - `socraticode-reminder.sh` — prints the deferred-tool prefetch query for SocratiCode MCP tools.

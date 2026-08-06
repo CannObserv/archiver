@@ -7,10 +7,6 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/socraticode-reminder.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/skills-submodule-update.sh"
           }
         ]
       }
