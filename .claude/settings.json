@@ -7,10 +7,18 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/socraticode-reminder.sh"
-          },
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/skills-submodule-update.sh"
+            "command": "[ -f .claude/hooks/context-budget-guard.sh ] && bash .claude/hooks/context-budget-guard.sh || true",
+            "timeout": 10
           }
         ]
       }
