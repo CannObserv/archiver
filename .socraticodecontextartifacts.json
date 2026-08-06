@@ -3,37 +3,37 @@
     {
       "name": "agents-guide",
       "path": "./AGENTS.md",
-      "description": "Authoritative project guide for agents and contributors. Project overview (canonical InfoItem + InfoSpec registry), full src/ layout, env vars (ARCHIVER_DATABASE_URL, ARCHIVER_API_KEY, TEST_DATABASE_URL), server lifecycle (port 8020=systemd, 8021=dev), commit conventions, mirrored content-acquisition code obligations vs. watcher, Phase 3a authoring tools (validate_info_spec, find_info_item, fetch_and_render, preview_extraction, propose_selectors, atomic create_info_item)."
+      "description": "Authoritative project guide for agents and contributors. Project overview (canonical InfoItem + InfoSource + SourceRevision + RepSpec registry, Phase 4 / Archiver v2), full src/ and repo layout, code exploration policy, the cannobserv co-core substrate and wheelhouse workflow, content-acquisition via co-core (no cross-repo mirror discipline), env vars (ARCHIVER_DATABASE_URL, TEST_DATABASE_URL, ARCHIVER_ALLOW_PRODUCTION_DB, ARCHIVER_REDIS_URL and the redis knobs, WATCHER_BASE_URL/WATCHER_API_KEY, ARCHIVER_PUBLIC_BASE_URL), server lifecycle (port 8020=systemd, 8021=scripts/dev_server.sh), the authoring-tool and assignment endpoint tables with their archiver-client SDK wrappers, the info.changes change-bus producer contract and event versioning convention, error-envelope conventions, commit/changelog conventions, and the data-model vocabulary."
     },
     {
       "name": "readme",
       "path": "./README.md",
-      "description": "Top-level README. Brief description of the Archiver service — sibling to watcher and notifier, consumed via archiver-client SDK. Run-locally / tests / SDK regeneration commands. Extraction history (from watcher#149) and pointer to the InfoSource trajectory research doc."
+      "description": "Top-level README. Brief description of the Archiver service — sibling to watcher and notifier, consumed via the archiver-client SDK. Run-locally (wheelhouse sync + uv sync + scripts/dev_server.sh), tests, SDK regeneration, admin dashboard, and the optional change-bus publisher. Extraction history (from watcher#149), the 2026-07-18 production-write incident and the dev-server guard that closed it, and pointers to the Phase 4 / Archiver v2 design and implementation plans."
     },
     {
       "name": "skills-doc",
       "path": "./docs/SKILLS.md",
-      "description": "Agent skills index. Catalogues the skills under skills/ (agentskills.io) and .claude/skills/ (Claude Code). Local overrides table, vendor submodule reference, SocratiCode workflow, linked-projects config (watcher+notifier)."
+      "description": "Agent skills index. Catalogues the skills under skills/ (agentskills.io) and .claude/skills/ (Claude Code). Local overrides table, vendor submodule reference (gregoryfoster/skills, obra/superpowers), the committed .skills/doctor.sh symlink doctor, SocratiCode workflow, linked-projects config (watcher+notifier)."
     },
     {
       "name": "design-and-plans",
       "path": "./docs/plans/",
-      "description": "Archive of design and implementation plan documents. Captures the 'why' behind each phase: Phase 1 plan (information service foundation), Information Source Specifications design, Phase 3a plan (authoring tools — validate, fetch_and_render, preview_extraction, propose_selectors, atomic create_info_item)."
+      "description": "Archive of design and implementation plan documents — the 'why' behind each phase, including retired ones. Covers the current model (2026-05-08 Archiver v2 architecture design + Phase 4 implementation), InfoSource simplification, the current-vs-previous-primary binding model, the RepSpec document-editing ADR, error-envelope normalization, the dashboard design and UX redesign, generated-client drift detection, the observer cluster integration strategy and Replicator MVP, the archiver#72 Phase 0 cannobserv adoption, and Redis bus ownership. Also holds the retired Phase 1 / Phase 3a plans and the original Information Source Specifications design as historical context."
     },
     {
       "name": "research-trajectory",
       "path": "./docs/research/",
-      "description": "Trajectory research. 2026-05-06-archiver-information-model.md describes the eventual evolution from the current InfoItem ↔ InfoSpec model (Phase 1–3a) to a content-addressed InfoSource + SourceSpec + SourceRevision model. The 'v2' anchor — implement deliberately, not in passing."
+      "description": "Trajectory research. 2026-05-06-archiver-information-model.md argued the evolution from the retired InfoItem ↔ InfoSpec model (Phase 1–3a) to the content-addressed InfoSource + SourceSpec + SourceRevision model. That evolution has since shipped as Phase 4 / Archiver v2 — this doc is retained as the reasoning trail, not as a description of the current schema."
     },
     {
       "name": "alembic-migrations",
       "path": "./alembic/versions/",
-      "description": "Database schema history as Alembic migrations (canonical source of truth — no separate schema.sql). Current migrations: create_info_specs (info_specs table — InfoSpec primary records linked to InfoItems by info_item_id) and create_info_items (info_items table — the canonical Information Item registry)."
+      "description": "Database schema history as Alembic migrations against the `information` schema (canonical source of truth — no separate schema.sql). Current registry tables: info_items (semantic anchor, rep_fields JSONB, watcher_item_id), info_sources (url + source_specs JSONB, domain_name), source_revisions (content-addressed snapshots), rep_specs, info_item_rep_specs (effective-dated assignments), info_item_sources (the roleless item↔source binding), domains, changes_outbox (change-bus outbox with dead_lettered_at), plus app_users and api_keys for the dashboard. Also records the retirements: info_specs dropped, info_item_source_revisions dropped, the binding `role` column dropped."
     },
     {
       "name": "systemd-unit",
       "path": "./deploy/archiver.service",
-      "description": "Production systemd service unit for the Archiver API. Defines how the live service on port 8020 is launched, restarted, and which env files it loads (/etc/archiver/.env)."
+      "description": "Production systemd service unit for the Archiver API. Defines how the live service on port 8020 is launched, restarted, and which env files it loads (/etc/archiver/.env). Sets ARCHIVER_ALLOW_PRODUCTION_DB=1 — the only place that does. ExecStartPre steps sync the co-core wheelhouse and run scripts/check_redis_floor.sh; ordering is soft (Wants=/After=) on redis-server, the change-bus broker Archiver operates."
     }
   ]
 }
