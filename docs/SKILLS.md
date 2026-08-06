@@ -22,9 +22,25 @@ Local overrides in `skills/` automatically shadow vendor skills in both systems.
 
 Init after cloning: `git submodule update --init --recursive`
 
-Submodule freshness auto-enforced by `SessionStart` hook in `.claude/settings.json`. Force-refresh: `git submodule update --remote --merge skills-vendor/gregoryfoster-skills skills-vendor/obra-superpowers`
+Submodule freshness auto-enforced by `SessionStart` hook in `.claude/settings.json`. Force-refresh: `git submodule update --remote --merge -- skills-vendor/`
 
 To add a new external skill repo: follow the `managing-skills` skill.
+
+### Doctor
+
+`.skills/doctor.sh` diagnoses and self-heals dangling `skills/` symlinks (the
+uninitialized-submodule state). It is **committed** so it exists before any
+session runs — fresh worktrees, shallow CI clones, first checkouts (archiver#126).
+It is a real file copy, not a symlink: a symlinked doctor would itself be
+unreachable in exactly the failure mode it repairs. It re-syncs itself from
+`skills-vendor/gregoryfoster-skills/skills/managing-skills/scripts/doctor.sh` on
+every run, and the `SessionStart` hook commits the refreshed copy on `main`.
+
+```bash
+bash .skills/doctor.sh --version    # diagnostic version stamp
+bash .skills/doctor.sh --verbose    # resolution details even when healthy
+bash .skills/doctor.sh --check-only # report only; makes no changes
+```
 
 ## Skill Sources
 

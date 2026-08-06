@@ -408,7 +408,30 @@ Full skill reference: `docs/SKILLS.md`. Cross-project search to the sister `watc
 `.claude/settings.json` wires two `SessionStart` hooks (see `.claude/hooks/`):
 
 - `socraticode-reminder.sh` — prints the deferred-tool prefetch query for SocratiCode MCP tools.
-- `skills-submodule-update.sh` — once-per-day refresh of `skills-vendor/gregoryfoster-skills` and `skills-vendor/obra-superpowers`. Lock file: `.git/skills-update-YYYYMMDD`. Log: `.git/skills-update.log` (auto-rotates at 64 KiB → last 200 lines). **Auto-commits only on `main`** with `chore: update skills submodules` — feature branches fetch but don't commit. Network failures are logged and don't block session start. Mirror of watcher's hook (CannObserv/watcher#153 → CannObserv/archiver#8).
+- `skills-submodule-update.sh` — **symlink** into
+  `skills-vendor/gregoryfoster-skills/skills/managing-skills/scripts/` (archiver#126),
+  so upstream fixes arrive with the normal submodule refresh. Never re-copy it —
+  a copy freezes at the version it was taken from, which is how this repo ran a
+  hook predating the doctor for months. Once-per-day refresh scoped to
+  `skills-vendor/`. Lock file: `.git/skills-update.lock` (holds the UTC
+  `YYYYMMDD` stamp). Log: `.git/skills-update.log` (auto-rotates at 64 KiB →
+  last 200 lines). **Auto-commits only on `main`**, staging exactly
+  `skills-vendor/` and `.skills/doctor.sh` — never `.skills/` wholesale, which
+  would absorb operator config. The commit message names what changed
+  (`chore: update skills submodules`, `chore: refresh .skills/doctor.sh`, or
+  both). Feature branches fetch but don't commit. Network failures are logged
+  and don't block session start. Descended from watcher's hook
+  (CannObserv/watcher#153 → CannObserv/archiver#8).
+
+**`.skills/doctor.sh` is committed** (archiver#126). It is a real file copy, not
+a symlink — deliberately, since a symlink would dangle in exactly the
+uninitialized-submodule state the doctor exists to repair. Committing it is what
+makes it present in a fresh `git worktree add`, a shallow CI clone, and a new
+contributor's first checkout, where the Phase 1 preflight
+`{ [ ! -x .skills/doctor.sh ] || bash .skills/doctor.sh; }` would otherwise
+silently short-circuit. The doctor re-syncs itself from the vendored source on
+every run; the hook commits the refreshed copy. Check it with
+`bash .skills/doctor.sh --version`.
 
 ## Common Commands
 
