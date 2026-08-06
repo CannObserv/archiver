@@ -3,10 +3,10 @@
 **The dashboard's shared mechanics: URL map, proxy-header auth, HTMX swap
 patterns, and the conventions every detail screen follows.**
 
-The other two halves of this reference, under the same living-doc rule:
+The other two parts of this reference, under the same living-doc rule:
 
 - [PAGES.md](PAGES.md) — the per-page route inventory: what each screen renders
-  and what every dashboard route does.
+  and the routes behind it.
 - [COMPONENTS.md](COMPONENTS.md) — the Alpine.js component catalogue.
 
 > **AGENTS.md enforcement:** a Jinja2 template change, a new or changed

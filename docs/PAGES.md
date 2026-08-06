@@ -1,6 +1,6 @@
 # Archiver Dashboard — Page Inventory
 
-**What each dashboard screen renders, and what every dashboard route does.**
+**What each dashboard screen renders, and the routes behind it.**
 
 Shared mechanics live in [UI.md](UI.md) — the URL map, the proxy-header auth
 gate, HTMX swap patterns (flash messages, `hx-target-422`), and the
@@ -22,13 +22,13 @@ repeat it.
 
 **GET `/dashboard/health`** — HTMX partial. Returns `<span class="badge badge--success">ok</span>`.
 
-**GET `/dashboard/health/watcher`** — HTMX partial calling `WatcherClient.health_check()` (`GET /health` on Watcher). **GET `/dashboard/health/redis`** — HTMX partial calling `redis.ping()`. Both log a warning on anything but ok:
+**GET `/dashboard/health/watcher`** — HTMX partial calling `WatcherClient.health_check()` (`GET /health` on Watcher). **GET `/dashboard/health/redis`** — HTMX partial calling `redis.ping()`. Both log a warning on `degraded` and `error`; `not configured` returns before any logging:
 
 | Badge | `…/health/watcher` | `…/health/redis` |
 |---|---|---|
 | `badge--success` "ok" | HTTP 200 | ping succeeded |
 | `badge--warning` "degraded" | reachable, non-200 status; `title` contains "Watcher returned {status}" | — |
-| `badge--danger` "error" | network/connect failure; `title` contains the exception message | `title` contains `"{ExcClass}: {message}"` |
+| `badge--danger` "error" | network/connect failure; `title` contains the exception message | `title` contains the exception message |
 | `badge--muted` "not configured" | `WATCHER_BASE_URL` unset | `ARCHIVER_REDIS_URL` unset |
 
 ## Domain pages (`/dashboard/domains/`)

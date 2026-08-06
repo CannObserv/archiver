@@ -71,7 +71,8 @@ only as the 422 re-render of the legacy `POST /dashboard/info-items/new`.
 ## `sourceSpecEditor`
 
 Registered in `main.js` but bound by no template: the InfoSource new/edit forms
-use a plain `<textarea name="source_specs">` with inline error display.
+use a plain `<textarea name="source_specs">` with inline error display, and the
+detail-page editor is `sourceSpecsCard`. Slated for removal — archiver#135.
 
 ## `jsonFieldEditor`
 
@@ -212,7 +213,7 @@ One-shot event dispatcher, identical in shape to `previewNameDispatch`: reads th
 
 One-shot event dispatcher that reads a suggested page title from a JSON data island child element and fires a bubbling `preview-name` custom event. Used inside the `_preview_result.html` HTMX partial so that a successful preview auto-fills the Name field on step 3.
 
-Uses the **JSON data island** pattern (see `sortableChips` above) — the title is placed in a `<script type="application/json">` child rather than an HTML attribute, avoiding double-quote escaping hazards from `tojson`.
+Uses the **JSON data island** pattern (`sortableChips` above; the reason it exists is `docs/STYLE.md` § **JSON data island pattern**) — the title is placed in a `<script type="application/json">` child rather than an HTML attribute, avoiding double-quote escaping hazards from `tojson`.
 
 **Events dispatched:** `preview-name` (bubbles) with payload `{ name: string }`.
 
