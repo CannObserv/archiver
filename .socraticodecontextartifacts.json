@@ -31,11 +31,6 @@
       "description": "Database schema history as Alembic migrations (canonical source of truth — no separate schema.sql). Current migrations: create_info_specs (info_specs table — InfoSpec primary records linked to InfoItems by info_item_id) and create_info_items (info_items table — the canonical Information Item registry)."
     },
     {
-      "name": "info-spec-schema",
-      "path": "./src/core/info_spec_schema/v1.json",
-      "description": "InfoSpec JSON Schema v1 — the public data contract. Defines the structure validated by /tools/validate-info-spec and accepted by /info-items (initial_info_spec) and /info-items/{id}/info-specs. Authoritative for InfoSpec field names, types, and constraints; consumed by the archiver-client SDK and any author tooling."
-    },
-    {
       "name": "systemd-unit",
       "path": "./deploy/archiver.service",
       "description": "Production systemd service unit for the Archiver API. Defines how the live service on port 8020 is launched, restarted, and which env files it loads (/etc/archiver/.env)."
