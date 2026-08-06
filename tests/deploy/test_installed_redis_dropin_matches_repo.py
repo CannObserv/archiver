@@ -14,11 +14,19 @@ grows until the kernel OOM-kills ``redis-server``. A drop-in that says
 ``noeviction`` while the broker runs uncapped reads as protection and provides
 none.
 
-Two assertions, deliberately split:
+Assertions, deliberately split:
 
+- The parser itself is table-driven — it must read the ``ExecStart`` line and
+  nothing else, and must judge the *value* rather than its spelling.
 - The repo file declares a non-zero cap — pure, runs in CI, locks the invariant.
 - The installed file matches the repo — skips when absent, so CI and dev clones
   pass; it asserts only on a host that actually runs the broker.
+
+**Scope limit (CR finding 1).** All of this compares *files*. It cannot see a
+broker whose running config was changed by ``CONFIG SET`` — which is how the cap
+is applied without a restart. The live value is checked by
+``scripts/check_redis_floor.sh`` at ``ExecStartPre`` (warn-only) and, eventually,
+by the periodic health check in #130.
 """
 
 import re
@@ -29,8 +37,49 @@ import pytest
 REPO_DROPIN = Path(__file__).resolve().parents[2] / "deploy" / "redis-server.dropin.conf"
 INSTALLED_DROPIN = Path("/etc/systemd/system/redis-server.service.d/archiver.conf")
 
-# `--maxmemory 0` disables the cap, which is the exact failure this guards.
-_MAXMEMORY_ARG = re.compile(r"--maxmemory\s+(?!0\b)(\S+)")
+# Match only on an ExecStart= line that actually launches redis-server. The file
+# is mostly prose, and an earlier version of this guard searched the whole text —
+# which a *comment* mentioning `--maxmemory 512mb` would have satisfied while
+# ExecStart carried no cap at all (CR finding 2).
+_EXECSTART_LINE = re.compile(r"^ExecStart=\S*redis-server\b.*$", re.MULTILINE)
+_MAXMEMORY_ARG = re.compile(r"--maxmemory\s+(\S+)")
+
+# Redis size suffixes. `k`/`m`/`g` are decimal, `kb`/`mb`/`gb` binary; a bare
+# number is bytes. Only the magnitude matters here — the guard asks "is it zero?",
+# not "is it exactly N" — but parsing to a number is what catches `0mb`, which
+# disables the cap just as surely as `0` and which a literal `!= "0"` test admits
+# (CR finding 3).
+_SIZE_UNITS = {
+    "": 1,
+    "b": 1,
+    "k": 1_000,
+    "kb": 1_024,
+    "m": 1_000**2,
+    "mb": 1_024**2,
+    "g": 1_000**3,
+    "gb": 1_024**3,
+}
+_SIZE = re.compile(r"^(\d+)([a-z]*)$")
+
+
+def _execstart_maxmemory_bytes(text: str) -> int | None:
+    """Return the ``--maxmemory`` value from the ExecStart line, in bytes.
+
+    ``None`` when no redis-server ExecStart line carries the flag at all, or when
+    its value is unparseable. Comments are never consulted.
+    """
+    for line in _EXECSTART_LINE.findall(text):
+        match = _MAXMEMORY_ARG.search(line)
+        if match is None:
+            continue
+        size = _SIZE.match(match.group(1).lower())
+        if size is None:
+            return None
+        digits, unit = size.groups()
+        if unit not in _SIZE_UNITS:
+            return None
+        return int(digits) * _SIZE_UNITS[unit]
+    return None
 
 
 def _read_if_installed(path: Path) -> str | None:
@@ -46,6 +95,40 @@ def _read_if_installed(path: Path) -> str | None:
         return None
 
 
+@pytest.mark.parametrize(
+    ("execstart", "expected"),
+    [
+        # The shapes that must pass.
+        ("ExecStart=/usr/bin/redis-server /etc/redis/redis.conf --maxmemory 512mb", 512 * 1024**2),
+        ("ExecStart=/usr/bin/redis-server /etc/redis/redis.conf --maxmemory 536870912", 536870912),
+        ("ExecStart=/usr/bin/redis-server --maxmemory-policy noeviction --maxmemory 1gb", 1024**3),
+        # The shapes that must not.
+        ("ExecStart=/usr/bin/redis-server --maxmemory 0", 0),
+        ("ExecStart=/usr/bin/redis-server --maxmemory 0mb", 0),  # CR finding 3
+        ("ExecStart=/usr/bin/redis-server --maxmemory 0kb", 0),
+        ("ExecStart=/usr/bin/redis-server --maxmemory-policy noeviction", None),
+        # A comment must never satisfy the guard (CR finding 2).
+        (
+            "# example: --maxmemory 512mb\n"
+            "ExecStart=/usr/bin/redis-server --maxmemory-policy noeviction",
+            None,
+        ),
+        # Nor may the policy flag be mistaken for the cap.
+        ("ExecStart=/usr/bin/redis-server --maxmemory-policy noeviction\n", None),
+    ],
+)
+def test_execstart_maxmemory_bytes_parses_only_the_execstart_line(
+    execstart: str, expected: int | None
+) -> None:
+    """The guard's parser: ExecStart only, and value-aware rather than literal.
+
+    Table-driven because both holes this closes were spelling problems, not logic
+    problems — `0mb` reads as a cap and disables one; a `--maxmemory` in prose
+    reads as a cap and is not one.
+    """
+    assert _execstart_maxmemory_bytes(execstart) == expected
+
+
 def test_repo_dropin_sets_an_explicit_nonzero_maxmemory() -> None:
     """`noeviction` is only meaningful with a ceiling to refuse writes at.
 
@@ -57,10 +140,12 @@ def test_repo_dropin_sets_an_explicit_nonzero_maxmemory() -> None:
     """
     text = REPO_DROPIN.read_text()
     assert "--maxmemory-policy noeviction" in text
-    assert _MAXMEMORY_ARG.search(text), (
+    cap = _execstart_maxmemory_bytes(text)
+    assert cap is not None and cap > 0, (
         "deploy/redis-server.dropin.conf must set an explicit non-zero "
-        "--maxmemory; noeviction without a cap never refuses a write, so the "
-        "broker is OOM-killed instead of erroring (archiver#128)."
+        "--maxmemory on its redis-server ExecStart line; noeviction without a "
+        "cap never refuses a write, so the broker is OOM-killed instead of "
+        f"erroring (archiver#128). Parsed: {cap!r}"
     )
 
 
@@ -72,6 +157,12 @@ def test_installed_dropin_matches_repo() -> None:
         f"{INSTALLED_DROPIN} has drifted from {REPO_DROPIN}.\n"
         "Reinstall with:\n"
         f"  sudo cp {REPO_DROPIN} {INSTALLED_DROPIN}\n"
-        "  sudo systemctl daemon-reload && sudo systemctl restart redis-server\n"
+        "  sudo systemctl daemon-reload\n"
+        "\n"
+        "Most drift here is comment-only — this file is mostly prose — and needs\n"
+        "no restart. Restart redis-server ONLY if the ExecStart line itself\n"
+        "changed, and prefer applying a changed value live instead:\n"
+        "  redis-cli CONFIG SET maxmemory <bytes>   # no dropped connections\n"
+        "The unit supplies it from the next restart onward either way.\n"
         "Verify: redis-cli CONFIG GET maxmemory  # must not be 0"
     )
