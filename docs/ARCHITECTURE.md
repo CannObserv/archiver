@@ -4,9 +4,8 @@ Repository layout and the content-acquisition data flow. `AGENTS.md` keeps only
 the non-obvious boundaries and the rules that constrain them; the enumeration
 lives here.
 
-> The `docs/` entry in the tree below lists the dashboard living docs and the
-> archival subtrees. For the authoritative list of live reference documents, see
-> the **Detail Docs** index in [AGENTS.md](../AGENTS.md).
+> The authoritative list of live reference documents is the **Detail Docs** index
+> in [AGENTS.md](../AGENTS.md); the `docs/` entry in the tree below mirrors it.
 
 ## Project Layout
 
@@ -126,8 +125,12 @@ deploy/                        README.md (install instructions) + systemd units:
                                daily live-drift check) +
                                redis-server.dropin.conf (the broker cap Archiver
                                owns — see the archiver#128 lockstep invariant)
-docs/                          SKILLS.md + UI.md + STYLE.md (the dashboard living
-                               docs — see "Dashboard living docs") + plans/ + research/
+docs/                          Live reference docs — ARCHITECTURE.md, API.md,
+                               SCHEMA.md, DEPLOYMENT.md, CONVENTIONS.md,
+                               SKILLS.md, plus UI.md + STYLE.md (the dashboard
+                               living docs — see "Dashboard living docs").
+                               Indexed by the Detail Docs section of AGENTS.md.
+                               Archival subtrees: plans/ + research/
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
 skills-vendor/                 Git submodules for external skill repos
 .skills/doctor.sh              Committed skill-symlink doctor (real file, not a
