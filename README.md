@@ -1,6 +1,6 @@
 # archiver
 
-Cannabis Observer **Archiver service** — central registry + authoring service for the information layer. Owns **Information Items**, **Information Sources** (URL + multi-spec extraction array), **Source Revisions** (content-addressed snapshots), **Replication Specifications**, and effective-dated item↔rep-spec assignments. FastAPI + PostgreSQL. Sibling to [watcher](../watcher) and [notifier](../notifier); consumed by Watcher (and the forthcoming Replicator) via the `archiver-client` v4.x Python SDK; produces the `info.changes` Redis Stream via an internal outbox publisher.
+Cannabis Observer **Archiver service** — central registry + authoring service for the information layer. Owns **Information Items**, **Information Sources** (URL + multi-spec extraction array), **Source Revisions** (content-addressed snapshots), **Replication Specifications**, and effective-dated item↔rep-spec assignments. FastAPI + PostgreSQL. Sibling to [watcher](../watcher) and [notifier](../notifier); consumed by Watcher (and the forthcoming Replicator) via the `archiver-client` v5.x Python SDK; produces the `info.changes` Redis Stream via an internal outbox publisher.
 
 Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149). The current data model (Phase 4 / Archiver v2) is documented in [docs/plans/2026-05-08-archiver-v2-architecture-design.md](docs/plans/2026-05-08-archiver-v2-architecture-design.md); the implementation plan is at [docs/plans/2026-05-08-phase-4-archiver-v2-implementation.md](docs/plans/2026-05-08-phase-4-archiver-v2-implementation.md).
 
@@ -45,7 +45,7 @@ uv run pytest
 
 ## SDK
 
-Generated + hand-written Python client at [clients/python/](clients/python/), pinned 1:1 with the service version (see [CHANGELOG.md](CHANGELOG.md) for current). Path-installed by Watcher and Replicator. To regenerate from the running service:
+Generated + hand-written Python client at [clients/python/](clients/python/). Its version lives in `clients/python/pyproject.toml` and moves **independently** of the service version in the root `pyproject.toml` — the SDK bumps only when its surface changes, so a service-only patch does not bump it (see [CHANGELOG.md](CHANGELOG.md), which carries both). Path-installed by Watcher and Replicator. To regenerate from the running service:
 
 ```bash
 bash clients/python/scripts/regen.sh
