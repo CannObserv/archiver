@@ -99,6 +99,11 @@ fi
 echo "check_redis_floor: Redis ${version} meets the >=7.0 floor"
 
 # --- 2. Live memory cap (warn only, archiver#128) --------------------------
+# Sequencing is intentional: this runs only once the version check has passed, so
+# a sub-7.0 broker exits above without the cap ever being read. That is harmless
+# while the floor blocks — such a broker cannot serve the producer at all, and a
+# cap warning about it would be noise. If the floor is ever relaxed to a warning,
+# move this probe above it or the cap check becomes unreachable in that case.
 # `CONFIG GET maxmemory` replies with two lines: the name, then the value in
 # bytes. Take the second line rather than grepping, so a value that happens to
 # equal the name cannot confuse the parse.
@@ -117,7 +122,8 @@ if [ "${maxmemory}" = "0" ]; then
   echo "check_redis_floor: refused, so an untrimmed stream grows until the kernel OOM-kills" >&2
   echo "check_redis_floor: redis-server instead of erroring. The cap belongs to the ExecStart in" >&2
   echo "check_redis_floor: deploy/redis-server.dropin.conf (the authoritative value); apply it live" >&2
-  echo "check_redis_floor: without a restart via: redis-cli CONFIG SET maxmemory <bytes>" >&2
+  echo "check_redis_floor: without a restart via: redis-cli CONFIG SET maxmemory <value from" >&2
+  echo "check_redis_floor: ExecStart> — CONFIG SET takes the same unit suffixes, so copy it verbatim" >&2
   exit 0
 fi
 

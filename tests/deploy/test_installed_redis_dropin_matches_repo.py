@@ -162,7 +162,7 @@ def test_installed_dropin_matches_repo() -> None:
         "Most drift here is comment-only — this file is mostly prose — and needs\n"
         "no restart. Restart redis-server ONLY if the ExecStart line itself\n"
         "changed, and prefer applying a changed value live instead:\n"
-        "  redis-cli CONFIG SET maxmemory <bytes>   # no dropped connections\n"
+        "  redis-cli CONFIG SET maxmemory <value from ExecStart>  # suffix ok\n"
         "The unit supplies it from the next restart onward either way.\n"
         "Verify: redis-cli CONFIG GET maxmemory  # must not be 0"
     )

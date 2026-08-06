@@ -71,8 +71,12 @@ connections — and let the unit supply it from the next restart onward:
 sudo cp deploy/redis-server.dropin.conf \
     /etc/systemd/system/redis-server.service.d/archiver.conf
 sudo systemctl daemon-reload
-redis-cli CONFIG SET maxmemory <bytes>   # applies now, without a restart
+redis-cli CONFIG SET maxmemory <value from ExecStart>   # applies now, no restart
 ```
+
+Pass the value **exactly as `ExecStart` spells it** — `CONFIG SET` accepts the
+same unit suffixes, so there is no byte conversion to get wrong and no second
+copy of the number to drift.
 
 `CONFIG SET` is not persisted (no `CONFIG REWRITE`), which is what keeps the unit
 authoritative. The flip side is that it can drift the *running* broker from the
