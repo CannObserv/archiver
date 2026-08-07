@@ -12,14 +12,12 @@ from ...types import Response
 
 def _get_kwargs(
     domain_name: str,
-    template_id: str,
 ) -> dict[str, Any]:
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/domains/{domain_name}/nc-defaults/remove/{template_id}".format(
+        "method": "get",
+        "url": "/domains/{domain_name}/domain-templates".format(
             domain_name=quote(str(domain_name), safe=""),
-            template_id=quote(str(template_id), safe=""),
         ),
     }
 
@@ -57,17 +55,15 @@ def _build_response(
 
 def sync_detailed(
     domain_name: str,
-    template_id: str,
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[Any | HTTPValidationError]:
-    """Domain Nc Default Remove
+    """Domain Templates Partial
 
-     Delete a domain-scoped notification template (#200: removal = delete the row).
+     HTMX partial: notification defaults assigned to a domain.
 
     Args:
         domain_name (str):
-        template_id (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -79,7 +75,6 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         domain_name=domain_name,
-        template_id=template_id,
     )
 
     response = client.get_httpx_client().request(
@@ -91,17 +86,15 @@ def sync_detailed(
 
 def sync(
     domain_name: str,
-    template_id: str,
     *,
     client: AuthenticatedClient | Client,
 ) -> Any | HTTPValidationError | None:
-    """Domain Nc Default Remove
+    """Domain Templates Partial
 
-     Delete a domain-scoped notification template (#200: removal = delete the row).
+     HTMX partial: notification defaults assigned to a domain.
 
     Args:
         domain_name (str):
-        template_id (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -113,24 +106,21 @@ def sync(
 
     return sync_detailed(
         domain_name=domain_name,
-        template_id=template_id,
         client=client,
     ).parsed
 
 
 async def asyncio_detailed(
     domain_name: str,
-    template_id: str,
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[Any | HTTPValidationError]:
-    """Domain Nc Default Remove
+    """Domain Templates Partial
 
-     Delete a domain-scoped notification template (#200: removal = delete the row).
+     HTMX partial: notification defaults assigned to a domain.
 
     Args:
         domain_name (str):
-        template_id (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -142,7 +132,6 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         domain_name=domain_name,
-        template_id=template_id,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -152,17 +141,15 @@ async def asyncio_detailed(
 
 async def asyncio(
     domain_name: str,
-    template_id: str,
     *,
     client: AuthenticatedClient | Client,
 ) -> Any | HTTPValidationError | None:
-    """Domain Nc Default Remove
+    """Domain Templates Partial
 
-     Delete a domain-scoped notification template (#200: removal = delete the row).
+     HTMX partial: notification defaults assigned to a domain.
 
     Args:
         domain_name (str):
-        template_id (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -175,7 +162,6 @@ async def asyncio(
     return (
         await asyncio_detailed(
             domain_name=domain_name,
-            template_id=template_id,
             client=client,
         )
     ).parsed

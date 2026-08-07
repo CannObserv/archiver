@@ -62,7 +62,7 @@ def sync_detailed(
 ) -> Response[DomainResponse | HTTPValidationError]:
     """Archive Domain
 
-     Archive a domain — excludes it from rate-limiter sync.
+     Archive a domain — suspends checks for every WatchedItem on it.
 
     Args:
         name (str):
@@ -93,7 +93,7 @@ def sync(
 ) -> DomainResponse | HTTPValidationError | None:
     """Archive Domain
 
-     Archive a domain — excludes it from rate-limiter sync.
+     Archive a domain — suspends checks for every WatchedItem on it.
 
     Args:
         name (str):
@@ -119,7 +119,7 @@ async def asyncio_detailed(
 ) -> Response[DomainResponse | HTTPValidationError]:
     """Archive Domain
 
-     Archive a domain — excludes it from rate-limiter sync.
+     Archive a domain — suspends checks for every WatchedItem on it.
 
     Args:
         name (str):
@@ -148,7 +148,7 @@ async def asyncio(
 ) -> DomainResponse | HTTPValidationError | None:
     """Archive Domain
 
-     Archive a domain — excludes it from rate-limiter sync.
+     Archive a domain — suspends checks for every WatchedItem on it.
 
     Args:
         name (str):
