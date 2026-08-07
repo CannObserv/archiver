@@ -839,7 +839,12 @@ async def test_dead_letter_logs_error_with_reason(session_factory, publisher, mo
 
 
 # Payload fields typed as tz-aware datetimes across the union — compared as
-# instants rather than strings in the round-trip assertion below.
+# instants rather than strings in the round-trip assertion below, because co-core
+# spells them two ways in one message (cannobserv#305): the hoisted envelope field
+# and the idempotency key use ``isoformat()`` (``+00:00``) while the embedded
+# payload JSON uses pydantic's default (``Z``). Harmless for Archiver — nothing
+# here string-matches a payload timestamp — so this stays a test-side accommodation
+# rather than a workaround in ``publisher.py``. Drop it if #305 lands.
 _DATETIME_PAYLOAD_FIELDS = frozenset({"occurred_at", "fetched_at"})
 
 
@@ -962,10 +967,8 @@ async def test_drain_round_trips_every_union_member(
     assert fields[b"occurred_at"] == b"2026-07-28T12:00:00+00:00"
 
     # The JSON payload round-trips every field the outbox row stored. Datetime
-    # fields are compared as *instants*, not strings: co-core's ``model_dump_json``
-    # renders them with a ``Z`` suffix while the hoisted top-level ``occurred_at``
-    # uses ``isoformat()``'s ``+00:00`` — two spellings of one instant, and only
-    # the instant is contractual.
+    # fields are compared as *instants*, not strings — see the cannobserv#305 note
+    # on _DATETIME_PAYLOAD_FIELDS above. Only the instant is contractual.
     parsed = json.loads(fields[b"payload"])
     for field, value in payload.items():
         if field in _DATETIME_PAYLOAD_FIELDS:
