@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from co_core.pure.adapters.bus.envelope import _PAYLOAD_BY_EVENT_TYPE
 from co_core.pure.adapters.bus.exceptions import (
     BusMessageMalformedPayloadError,
     BusMessageUnknownEventTypeError,
@@ -83,6 +84,13 @@ async def cleanup_outbox(test_engine):
 # Helpers
 # ---------------------------------------------------------------------------
 
+# The single ``occurred_at`` every payload fixture in this module stamps. One
+# constant because two consumers derive from it and would otherwise drift from the
+# payloads they describe (CR round 1, finding 5; round 2, finding 8): the
+# idempotency keys that embed a timestamp (``fetch_failed``, ``fetch_policy``) and
+# the hoisted-envelope assertions.
+_OCCURRED_AT = "2026-07-28T12:00:00+00:00"
+
 
 def _captured_event(source_revision_id: str = "rev-1") -> dict:
     """A full ``source_revision_captured`` payload as stored in the outbox.
@@ -92,7 +100,7 @@ def _captured_event(source_revision_id: str = "rev-1") -> dict:
     return {
         "schema_version": 2,
         "event_type": "source_revision_captured",
-        "occurred_at": "2026-07-28T12:00:00+00:00",
+        "occurred_at": _OCCURRED_AT,
         "info_source_id": "01HZZ000000000000000000001",
         "source_revision_id": source_revision_id,
         "content_fingerprint": "sha256:" + "a" * 64,
@@ -105,7 +113,7 @@ def _primary_changed_event(info_item_id: str, new_info_source_id: str) -> dict:
     return {
         "schema_version": 1,
         "event_type": "info_item_primary_changed",
-        "occurred_at": "2026-07-28T12:00:00+00:00",
+        "occurred_at": _OCCURRED_AT,
         "info_item_id": info_item_id,
         "old_info_source_id": None,
         "new_info_source_id": new_info_source_id,
@@ -162,7 +170,7 @@ async def test_drain_single_row_writes_canonical_envelope(session_factory, publi
     # Hoisted top-level envelope fields.
     assert fields[b"event_type"] == b"source_revision_captured"
     assert fields[b"schema_version"] == b"2"
-    assert fields[b"occurred_at"] == b"2026-07-28T12:00:00+00:00"
+    assert fields[b"occurred_at"] == _OCCURRED_AT.encode()
     assert fields[b"content_type"] == b"application/json"
     # Self-describing JSON payload.
     parsed = json.loads(fields[b"payload"])
@@ -822,3 +830,208 @@ async def test_dead_letter_logs_error_with_reason(session_factory, publisher, mo
     broken.xadd = AsyncMock(side_effect=ResponseError("WRONGTYPE"))
     await drain_once(session_factory=session_factory, publisher=AsyncBusPublisher(broken))
     assert error_reasons == ["unpublishable_payload", "attempts_exhausted"]
+
+
+# ---------------------------------------------------------------------------
+# The widened ChangeEventPayload union — archiver#138
+# ---------------------------------------------------------------------------
+#
+# The co-core 0.7 line grew the union from four members to six: ContentFetchCommand
+# gained ``command_id`` (cannobserv#266), BlobAvailableEvent gained the correlation
+# + enrichment fields (#266/#271), and FetchFailedEvent (#270) / FetchPolicyState
+# (#285) are new. Archiver produces only the two ``info.changes`` types, but the
+# publisher dispatches through co-core's single ``_PAYLOAD_BY_EVENT_TYPE`` table —
+# so the drain loop is now a viable transport for any of the six, and the
+# unknown-``event_type`` dead-letter branch (archiver#107) must still fire only for
+# an event type outside the *widened* union. These lock both halves in.
+
+
+# Payload fields typed as tz-aware datetimes across the union — compared as
+# instants rather than strings in the round-trip assertion below, because co-core
+# spells them two ways in one message (cannobserv#305): the hoisted envelope field
+# and the idempotency key use ``isoformat()`` (``+00:00``) while the embedded
+# payload JSON uses pydantic's default (``Z``). Harmless for Archiver — nothing
+# here string-matches a payload timestamp — so this stays a test-side accommodation
+# rather than a workaround in ``publisher.py``. Drop it if #305 lands.
+_DATETIME_PAYLOAD_FIELDS = frozenset({"occurred_at", "fetched_at"})
+
+
+def _parse_instant(raw: str) -> datetime:
+    """Parse an ISO-8601 instant, accepting either the ``Z`` or ``+00:00`` spelling.
+
+    The suffix is stripped anchored, not replaced globally — a bare ``replace("Z",
+    …)`` reads as "strip the suffix" but would rewrite a ``Z`` anywhere in the
+    string (CR round 1, finding 4).
+    """
+    return datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
+
+
+def _content_fetch_command(command_id: str = "cmd-1") -> dict:
+    """A full ``content_fetch`` command payload (cannobserv#266 shape)."""
+    return {
+        "schema_version": 1,
+        "event_type": "content_fetch",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "url": "https://example.test/a",
+        "headers": {"User-Agent": "co-observer"},
+        "timeout_seconds": 30.0,
+    }
+
+
+def _blob_available_event(content_fingerprint: str = "sha256:" + "b" * 64) -> dict:
+    """A full ``blob_available`` payload with the #266 correlation + #271 enrichment."""
+    return {
+        "schema_version": 1,
+        "event_type": "blob_available",
+        "occurred_at": _OCCURRED_AT,
+        "content_fingerprint": content_fingerprint,
+        "blob_uri": "file:///var/lib/replicator/blobs/b",
+        "size_bytes": 1234,
+        "media_type": "text/html",
+        "url": "https://example.test/a",
+        "command_id": "cmd-1",
+        "final_url": "https://example.test/a/",
+        "status_code": 200,
+        "fetched_at": "2026-07-28T11:59:00+00:00",
+        "content_type_raw": "text/html; charset=utf-8",
+        "etag": 'W/"abc"',
+        "last_modified": "Mon, 27 Jul 2026 00:00:00 GMT",
+    }
+
+
+def _fetch_failed_event(command_id: str = "cmd-2") -> dict:
+    """A full ``fetch_failed`` payload (cannobserv#270)."""
+    return {
+        "schema_version": 1,
+        "event_type": "fetch_failed",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "url": "https://example.test/b",
+        "reason": "http_error",
+        "terminal": True,
+        "status_code": 503,
+        "attempts": 3,
+        "detail": "upstream unavailable",
+    }
+
+
+def _fetch_policy_state(host: str = "example.test") -> dict:
+    """A full ``fetch_policy`` config/state payload (cannobserv#285)."""
+    return {
+        "schema_version": 1,
+        "event_type": "fetch_policy",
+        "occurred_at": _OCCURRED_AT,
+        "host": host,
+        "min_interval_seconds": 2.5,
+        "revoked": False,
+    }
+
+
+# One case per union member: (stored outbox payload, event_type, expected wire key).
+# The single source for both the parametrize below and the completeness guard that
+# pins it to co-core's dispatch table (CR round 1, finding 3).
+_UNION_CASES = [
+    (_captured_event("rev-u"), "source_revision_captured", "rev-u"),
+    (
+        _primary_changed_event(info_item_id="item-u", new_info_source_id="src-u"),
+        "info_item_primary_changed",
+        "item-u:src-u",
+    ),
+    (_content_fetch_command("cmd-u"), "content_fetch", "cmd-u"),
+    (_blob_available_event("sha256:" + "c" * 64), "blob_available", "sha256:" + "c" * 64),
+    (_fetch_failed_event("cmd-f"), "fetch_failed", f"cmd-f:{_OCCURRED_AT}"),
+    (_fetch_policy_state("policy.test"), "fetch_policy", f"policy.test:{_OCCURRED_AT}"),
+]
+
+
+def test_union_cases_cover_every_co_core_payload_type():
+    """The parametrize below must cover co-core's dispatch table exactly.
+
+    Without this, "all six members round-trip" decays silently: co-core adds a
+    seventh (cannobserv#301 and #303 are open and both propose new payloads), the
+    suite still passes, and the coverage claim quietly becomes six-of-seven with no
+    signal. Reaching for the private ``_PAYLOAD_BY_EVENT_TYPE`` is the deliberate
+    trade — it is the table ``payload_from_dict`` actually dispatches on, so
+    anything else here would be a second list free to drift from it.
+    """
+    assert {event_type for _, event_type, _ in _UNION_CASES} == set(_PAYLOAD_BY_EVENT_TYPE)
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_event_type", "expected_key"),
+    _UNION_CASES,
+    ids=[event_type for _, event_type, _ in _UNION_CASES],
+)
+@pytest.mark.asyncio
+async def test_drain_round_trips_every_union_member(
+    session_factory, publisher, fake_redis, payload, expected_event_type, expected_key
+):
+    """Every member of the widened union survives outbox dict → typed model → wire.
+
+    Guards the pin: on co-core 0.6 four of these six event types either did not
+    exist or carried a different field set, so the payload would have been
+    dead-lettered as unpublishable rather than published.
+    """
+    topic = f"test.{expected_event_type}"
+    await _insert_row(session_factory, topic=topic, payload=payload)
+
+    n = await drain_once(session_factory=session_factory, publisher=publisher)
+    assert n == 1
+
+    messages = await fake_redis.xrange(topic)
+    assert len(messages) == 1
+    _msg_id, fields = messages[0]
+    assert fields[b"event_type"] == expected_event_type.encode()
+    assert fields[b"key"] == expected_key.encode()
+    assert fields[b"content_type"] == b"application/json"
+    assert fields[b"occurred_at"] == _OCCURRED_AT.encode()
+
+    # The JSON payload round-trips every field the outbox row stored. Datetime
+    # fields are compared as *instants*, not strings — see the cannobserv#305 note
+    # on _DATETIME_PAYLOAD_FIELDS above. Only the instant is contractual.
+    parsed = json.loads(fields[b"payload"])
+    for field, value in payload.items():
+        if field in _DATETIME_PAYLOAD_FIELDS:
+            assert _parse_instant(parsed[field]) == _parse_instant(value)
+        else:
+            assert parsed[field] == value
+
+
+@pytest.mark.asyncio
+async def test_unknown_event_type_still_dead_lettered_after_union_widened(
+    session_factory, publisher
+):
+    """The archiver#107 dead-letter branch still fires for a type outside the
+    *widened* union — the six new/changed members did not turn poison into a
+    publishable row."""
+    bad = await _insert_row(session_factory, payload={"event_type": "content_fetched"})
+
+    assert await drain_once(session_factory=session_factory, publisher=publisher) == 0
+
+    async with session_factory() as s:
+        row = await s.get(ChangesOutboxRow, bad.id)
+    assert row.dead_lettered_at is not None
+    assert BusMessageUnknownEventTypeError.__name__ in row.last_error
+
+
+@pytest.mark.asyncio
+async def test_naive_occurred_at_dead_lettered(session_factory, publisher, fake_redis):
+    """``OccurredAt`` (cannobserv#273) rejects a naive datetime fail-loud, so a row
+    carrying one is build-phase poison — dead-lettered, never published with an
+    ambiguous timestamp."""
+    # The same stamp with the offset stripped — derived, so it stays the naive
+    # spelling of _OCCURRED_AT rather than a second literal free to drift from it.
+    naive = {
+        **_content_fetch_command("cmd-naive"),
+        "occurred_at": _OCCURRED_AT.removesuffix("+00:00"),
+    }
+    row = await _insert_row(session_factory, payload=naive)
+
+    assert await drain_once(session_factory=session_factory, publisher=publisher) == 0
+    assert await fake_redis.xrange("info.changes") == []
+
+    async with session_factory() as s:
+        refreshed = await s.get(ChangesOutboxRow, row.id)
+    assert refreshed.dead_lettered_at is not None
+    assert BusMessageMalformedPayloadError.__name__ in refreshed.last_error
