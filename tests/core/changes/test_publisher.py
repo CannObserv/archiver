@@ -84,6 +84,13 @@ async def cleanup_outbox(test_engine):
 # Helpers
 # ---------------------------------------------------------------------------
 
+# The single ``occurred_at`` every payload fixture in this module stamps. One
+# constant because two consumers derive from it and would otherwise drift from the
+# payloads they describe (CR round 1, finding 5; round 2, finding 8): the
+# idempotency keys that embed a timestamp (``fetch_failed``, ``fetch_policy``) and
+# the hoisted-envelope assertions.
+_OCCURRED_AT = "2026-07-28T12:00:00+00:00"
+
 
 def _captured_event(source_revision_id: str = "rev-1") -> dict:
     """A full ``source_revision_captured`` payload as stored in the outbox.
@@ -93,7 +100,7 @@ def _captured_event(source_revision_id: str = "rev-1") -> dict:
     return {
         "schema_version": 2,
         "event_type": "source_revision_captured",
-        "occurred_at": "2026-07-28T12:00:00+00:00",
+        "occurred_at": _OCCURRED_AT,
         "info_source_id": "01HZZ000000000000000000001",
         "source_revision_id": source_revision_id,
         "content_fingerprint": "sha256:" + "a" * 64,
@@ -106,7 +113,7 @@ def _primary_changed_event(info_item_id: str, new_info_source_id: str) -> dict:
     return {
         "schema_version": 1,
         "event_type": "info_item_primary_changed",
-        "occurred_at": "2026-07-28T12:00:00+00:00",
+        "occurred_at": _OCCURRED_AT,
         "info_item_id": info_item_id,
         "old_info_source_id": None,
         "new_info_source_id": new_info_source_id,
@@ -163,7 +170,7 @@ async def test_drain_single_row_writes_canonical_envelope(session_factory, publi
     # Hoisted top-level envelope fields.
     assert fields[b"event_type"] == b"source_revision_captured"
     assert fields[b"schema_version"] == b"2"
-    assert fields[b"occurred_at"] == b"2026-07-28T12:00:00+00:00"
+    assert fields[b"occurred_at"] == _OCCURRED_AT.encode()
     assert fields[b"content_type"] == b"application/json"
     # Self-describing JSON payload.
     parsed = json.loads(fields[b"payload"])
@@ -859,12 +866,6 @@ def _parse_instant(raw: str) -> datetime:
     return datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
 
 
-# The single occurred_at every union fixture below stamps. Hoisted so the
-# parametrized idempotency keys that embed it (fetch_failed, fetch_policy) cannot
-# drift from the payloads they describe (CR round 1, finding 5).
-_OCCURRED_AT = "2026-07-28T12:00:00+00:00"
-
-
 def _content_fetch_command(command_id: str = "cmd-1") -> dict:
     """A full ``content_fetch`` command payload (cannobserv#266 shape)."""
     return {
@@ -1019,7 +1020,12 @@ async def test_naive_occurred_at_dead_lettered(session_factory, publisher, fake_
     """``OccurredAt`` (cannobserv#273) rejects a naive datetime fail-loud, so a row
     carrying one is build-phase poison — dead-lettered, never published with an
     ambiguous timestamp."""
-    naive = {**_content_fetch_command("cmd-naive"), "occurred_at": "2026-07-28T12:00:00"}
+    # The same stamp with the offset stripped — derived, so it stays the naive
+    # spelling of _OCCURRED_AT rather than a second literal free to drift from it.
+    naive = {
+        **_content_fetch_command("cmd-naive"),
+        "occurred_at": _OCCURRED_AT.removesuffix("+00:00"),
+    }
     row = await _insert_row(session_factory, payload=naive)
 
     assert await drain_once(session_factory=session_factory, publisher=publisher) == 0
