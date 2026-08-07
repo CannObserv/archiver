@@ -103,8 +103,19 @@ CHANGE_STREAM_TOPIC = "info.changes"
 
 # Trim the stream every N drain-loop iterations when a cap is configured. With
 # the loop's sub-second/idle cadence this bounds growth without an XTRIM every
-# tick. Archiver operates the broker (archiver#109), so capping is its job —
-# co-core exposes no XADD-time trim arg (BusPublish is topic + fields only).
+# tick. Archiver operates the broker (archiver#109), so capping is its job.
+#
+# Periodic XTRIM is a CHOICE, not an absence (archiver#138 — the co-core 0.7 bump
+# falsified the note that used to sit here). ``BusPublish`` does carry ``maxlen`` /
+# ``approximate`` since cannobserv#285, and ``AsyncBusPublisher.execute`` passes
+# both to XADD. That arg exists for the *config/state* stream kind, whose consumers
+# rebuild current state by replaying from ``0-0`` — there retention is a consumer
+# contract, so it has to ride on the publish. ``info.changes`` is a *fact* stream:
+# nothing replays it to reconstruct state (the archiver#137 epic says so in as many
+# words — "a log is not state"), so its cap is pure operator-side housekeeping and
+# belongs on the operator's cadence, not welded to every publish. Switching to
+# XADD MAXLEN would also silently re-scope the cap to topics Archiver publishes to,
+# losing the pre-existing-stream case `run` covers via ``trim_topic``.
 TRIM_INTERVAL_ITERATIONS = 20
 
 # Default approximate cap on info.changes when ARCHIVER_REDIS_STREAM_MAXLEN is
