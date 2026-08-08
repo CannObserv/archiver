@@ -1153,7 +1153,7 @@
           "domains"
         ],
         "summary": "Archive Domain",
-        "description": "Archive a domain \u2014 excludes it from rate-limiter sync.",
+        "description": "Archive a domain \u2014 suspends checks for every WatchedItem on it.",
         "operationId": "archive_domain_api_v1_domains__name__archive_post",
         "security": [
           {
@@ -1379,7 +1379,7 @@
           "watched-items"
         ],
         "summary": "Create Watched Item",
-        "description": "Create a standalone WatchedItem.\n\nTwo paths depending on which anchor is provided:\n\n**InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the\nArchiver SDK; name defaults to the InfoItem's name.\nErrors: NotFound \u2192 422, AuthError \u2192 500, ServerError/network \u2192 503.\n\n**URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for\n``effective_url`` + ``domain_name``; name defaults to the probed domain.\n``archiver_info_item_id`` is null on the resulting record.\nError: unreachable URL \u2192 422.\n\nAt least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).",
+        "description": "Create a WatchedItem for an Archiver InfoItem.\n\nOne path since #251: ``archiver_info_item_id``, ``url`` and\n``archiver_info_source_id`` are all required (schema-enforced). The InfoItem\nis validated via the Archiver SDK and the name defaults to the InfoItem's\nname. Errors: NotFound \u2192 422, AuthError \u2192 500, ServerError/network \u2192 503,\nduplicate InfoItem \u2192 409.\n\n**Both ids must be canonical ULIDs \u2014 uppercase Crockford base32.** That is\nwhat ``ULID.from_str`` accepts, so it is what path parameters have always\nrequired and what ``ULIDRefStr`` now enforces here; the OpenAPI document\nadvertises the same pattern. Archiver's provisioning call satisfies this by\nconstruction (``str()`` of a ``ULID``); a caller that lowercases its ids\ngets a 422 naming the field.",
         "operationId": "create_watched_item_api_v1_watched_items_post",
         "security": [
           {
@@ -1472,7 +1472,7 @@
           "watched-items"
         ],
         "summary": "Patch Watched Item",
-        "description": "Update mutable WatchedItem fields. All fields optional.\n\n``is_active`` (pause/resume) cannot be changed on an archived item \u2014 the\narchive/restore lifecycle owns activation while archived. Such a PATCH\nreturns 409; use ``POST /{id}/restore`` to reactivate.\n\nAn ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /\n``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the\ngeneric ``WATCHED_ITEM_UPDATED`` event, which carries only the other\nchanged fields. A no-op (same value) emits nothing.",
+        "description": "Update mutable WatchedItem fields. All fields optional.\n\n``is_active`` (pause/resume) is governed by the shared\n:func:`set_watched_item_active` service (#228): it cannot change on an\narchived item (409 \u2014 restore owns activation) and an item cannot resume\nwhile its domain is suspended (409 \u2014 kill-switch parity with the\ndashboard toggle).\n\nAn ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /\n``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the\ngeneric ``WATCHED_ITEM_UPDATED`` event, which carries only the other\nchanged fields. A no-op (same value) emits nothing.",
         "operationId": "patch_watched_item_api_v1_watched_items__watched_item_id__patch",
         "security": [
           {
@@ -1713,7 +1713,7 @@
           "watched-items"
         ],
         "summary": "Check Now",
-        "description": "Enqueue an immediate ``check_watched_item`` task for a WatchedItem.\n\nPre-flight guards:\n- 409 if the WatchedItem is archived.\n- 409 if the WatchedItem is paused (``is_active=False``) \u2014 the task would\n  short-circuit, so reject up front rather than enqueue a silent no-op.\n- 422 if ``effective_url`` is empty (nothing to fetch).",
+        "description": "Enqueue an immediate ``check_watched_item`` task for a WatchedItem.\n\nPre-flight guards mirror **every** short-circuit in the task, so a request\nthat cannot do anything is rejected up front instead of returning 202 over\na silent no-op (and writing a check_requested audit row that never happened):\n\n- 409 if the WatchedItem is archived.\n- 409 if the WatchedItem is paused (``is_active=False``).\n- 409 if its domain is suspended.\n- 409 if a fetch command is already open \u2014 the issue path's one-command gate\n  (#241). Post-cutover this is the likeliest of the four to be hit, since a\n  command stays open until its fact returns or the reaper expires it; the\n  message quotes the command's age and the timeout so the operator knows\n  whether they are looking at a two-second wait or a stall.\n- 422 if ``effective_url`` is empty (nothing to fetch).",
         "operationId": "check_now_api_v1_watched_items__watched_item_id__check_now_post",
         "security": [
           {
@@ -1857,7 +1857,7 @@
           "dashboard"
         ],
         "summary": "Dashboard Home",
-        "description": "Dashboard home page with stats and system health.\n\nPhase 5 (#156): Recent Changes section removed \u2014 Change table dropped.",
+        "description": "Dashboard home page with stats and system health.",
         "operationId": "dashboard_home__get",
         "responses": {
           "200": {
@@ -1871,14 +1871,14 @@
         }
       }
     },
-    "/watched-items/new": {
+    "/partials/stats-cards": {
       "get": {
         "tags": [
           "dashboard"
         ],
-        "summary": "Watched Item Create Form",
-        "description": "Standalone WatchedItem create form.",
-        "operationId": "watched_item_create_form_watched_items_new_get",
+        "summary": "Partial Stats Cards",
+        "description": "HTMX partial: stats cards only.",
+        "operationId": "partial_stats_cards_partials_stats_cards_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1889,39 +1889,22 @@
             }
           }
         }
-      },
-      "post": {
+      }
+    },
+    "/partials/system-health": {
+      "get": {
         "tags": [
           "dashboard"
         ],
-        "summary": "Watched Item Create Submit",
-        "description": "Create a standalone WatchedItem from the dashboard form.\n\nAccepts a URL directly; probes it for effective_url + domain_name. The\ncontent media type is auto-detected from the first fetch (#168), not\ncollected here. Unchecking ``is_active`` provisions the item paused (#188).\nAudit row uses ``source=\"dashboard\"``.",
-        "operationId": "watched_item_create_submit_watched_items_new_post",
-        "requestBody": {
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_watched_item_create_submit_watched_items_new_post"
-              }
-            }
-          }
-        },
+        "summary": "Partial System Health",
+        "description": "HTMX partial: queue health and per-domain fetch policy.",
+        "operationId": "partial_system_health_partials_system_health_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
               }
             }
           }
@@ -2100,6 +2083,38 @@
             "schema": {
               "type": "string",
               "title": "Watched Item Id"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "title": "Event Type"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
             }
           }
         ],
@@ -2345,7 +2360,7 @@
           "dashboard"
         ],
         "summary": "Watched Item Check Now",
-        "description": "Enqueue an immediate check for a WatchedItem (delegates to the API route).\n\nThe API enforces the pre-flight guards (409 archived/paused, 422 empty\neffective_url). For HTMX, success and guard failures surface as an OOB\nflash; non-HTMX clients get a redirect back to the detail page.",
+        "description": "Enqueue an immediate check for a WatchedItem (delegates to the API route).\n\nThe API enforces the pre-flight guards (409 archived / paused / domain\nsuspended / command already in flight, 422 empty effective_url). For HTMX,\nsuccess and guard failures surface as an OOB flash; non-HTMX clients get a\nredirect back to the detail page.",
         "operationId": "watched_item_check_now_watched_items__watched_item_id__check_now_post",
         "parameters": [
           {
@@ -3870,14 +3885,14 @@
         }
       }
     },
-    "/domains/{domain_name}/nc-defaults": {
+    "/domains/{domain_name}/domain-templates": {
       "get": {
         "tags": [
           "dashboard"
         ],
-        "summary": "Domain Nc Defaults Partial",
+        "summary": "Domain Templates Partial",
         "description": "HTMX partial: notification defaults assigned to a domain.",
-        "operationId": "domain_nc_defaults_partial_domains__domain_name__nc_defaults_get",
+        "operationId": "domain_templates_partial_domains__domain_name__domain_templates_get",
         "parameters": [
           {
             "name": "domain_name",
@@ -3911,14 +3926,14 @@
         }
       }
     },
-    "/domains/{domain_name}/nc-defaults/remove/{template_id}": {
+    "/domains/{domain_name}/domain-templates/remove/{template_id}": {
       "post": {
         "tags": [
           "dashboard"
         ],
-        "summary": "Domain Nc Default Remove",
+        "summary": "Domain Template Remove",
         "description": "Delete a domain-scoped notification template (#200: removal = delete the row).",
-        "operationId": "domain_nc_default_remove_domains__domain_name__nc_defaults_remove__template_id__post",
+        "operationId": "domain_template_remove_domains__domain_name__domain_templates_remove__template_id__post",
         "parameters": [
           {
             "name": "domain_name",
@@ -3955,46 +3970,6 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/partials/stats-cards": {
-      "get": {
-        "tags": [
-          "dashboard"
-        ],
-        "summary": "Partial Stats Cards",
-        "description": "HTMX partial: stats cards only.",
-        "operationId": "partial_stats_cards_partials_stats_cards_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/partials/system-health": {
-      "get": {
-        "tags": [
-          "dashboard"
-        ],
-        "summary": "Partial System Health",
-        "description": "HTMX partial: queue health and rate limiter.",
-        "operationId": "partial_system_health_partials_system_health_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           }
@@ -4100,7 +4075,7 @@
           "dashboard"
         ],
         "summary": "Audit Log Page",
-        "description": "Audit log page with filtering.",
+        "description": "Audit log page with chip filtering + pagination.\n\n``event_type`` is repeatable (``?event_type=a&event_type=b``) and OR-matched.",
         "operationId": "audit_log_page_audit_get",
         "parameters": [
           {
@@ -4108,31 +4083,31 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
               "title": "Event Type"
             }
           },
           {
-            "name": "watched_item_id",
+            "name": "page",
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Watched Item Id"
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
             }
           }
         ],
@@ -4164,7 +4139,7 @@
           "dashboard"
         ],
         "summary": "Partial Audit Table",
-        "description": "HTMX partial: filtered audit log table.",
+        "description": "HTMX partial: filtered, paginated audit table (shared by /audit + detail).",
         "operationId": "partial_audit_table_partials_audit_table_get",
         "parameters": [
           {
@@ -4172,14 +4147,10 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
               "title": "Event Type"
             }
           },
@@ -4197,6 +4168,26 @@
                 }
               ],
               "title": "Watched Item Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Page Size"
             }
           }
         ],
@@ -5023,42 +5014,6 @@
         "type": "object",
         "title": "Body_domain_toggle_active_domains__name__toggle_active_post"
       },
-      "Body_watched_item_create_submit_watched_items_new_post": {
-        "properties": {
-          "url": {
-            "type": "string",
-            "title": "Url",
-            "default": ""
-          },
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "default": ""
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "default": ""
-          },
-          "default_schedule_interval": {
-            "type": "string",
-            "title": "Default Schedule Interval",
-            "default": ""
-          },
-          "default_tags": {
-            "type": "string",
-            "title": "Default Tags",
-            "default": ""
-          },
-          "is_active": {
-            "type": "string",
-            "title": "Is Active",
-            "default": ""
-          }
-        },
-        "type": "object",
-        "title": "Body_watched_item_create_submit_watched_items_new_post"
-      },
       "Body_watched_item_field_update_watched_items__watched_item_id__field__field_name__post": {
         "properties": {
           "value": {
@@ -5239,23 +5194,6 @@
       },
       "ContentOptions": {
         "properties": {
-          "include_diff_snippet": {
-            "type": "boolean",
-            "title": "Include Diff Snippet",
-            "default": false
-          },
-          "diff_snippet_lines": {
-            "type": "integer",
-            "maximum": 200.0,
-            "minimum": 1.0,
-            "title": "Diff Snippet Lines",
-            "default": 25
-          },
-          "include_diff_full": {
-            "type": "boolean",
-            "title": "Include Diff Full",
-            "default": false
-          },
           "include_temporal_context": {
             "type": "boolean",
             "title": "Include Temporal Context",
@@ -5269,16 +5207,6 @@
           "include_last_changed_at": {
             "type": "boolean",
             "title": "Include Last Changed At",
-            "default": false
-          },
-          "include_significance": {
-            "type": "boolean",
-            "title": "Include Significance",
-            "default": false
-          },
-          "include_change_dashboard_url": {
-            "type": "boolean",
-            "title": "Include Change Dashboard Url",
             "default": false
           },
           "include_tags": {
@@ -5316,7 +5244,7 @@
         },
         "type": "object",
         "title": "ContentOptions",
-        "description": "Field toggles controlling what extra information appears in a notification body."
+        "description": "Field toggles controlling what extra information appears in a notification body.\n\nThe diff/significance toggles (`include_diff_snippet`, `diff_snippet_lines`,\n`include_diff_full`, `include_significance`) and the `include_change_dashboard_url`\ntoggle were removed in #221: the diff pipeline was dropped in Phase 5 (#156),\nso those had no observable effect, and the dashboard-URL toggle duplicated the\nalways-present ITEM link. Diff restoration is tracked in #222."
       },
       "DomainPatch": {
         "properties": {
@@ -6128,7 +6056,8 @@
         "enum": [
           "unknown",
           "ok",
-          "error"
+          "error",
+          "probing"
         ],
         "title": "WatchHealthStatus",
         "description": "Health state of a WatchedItem, updated after each check cycle."
@@ -6136,15 +6065,20 @@
       "WatchedItemCreate": {
         "properties": {
           "archiver_info_item_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "format": "ulid",
             "title": "Archiver Info Item Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "archiver_info_source_id": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "format": "ulid",
+            "title": "Archiver Info Source Id"
           },
           "name": {
             "anyOf": [
@@ -6213,17 +6147,6 @@
             ],
             "title": "Default Tags"
           },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url"
-          },
           "source_specs": {
             "anyOf": [
               {
@@ -6238,24 +6161,16 @@
               }
             ],
             "title": "Source Specs"
-          },
-          "archiver_info_source_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 26,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archiver Info Source Id"
           }
         },
         "type": "object",
+        "required": [
+          "archiver_info_item_id",
+          "url",
+          "archiver_info_source_id"
+        ],
         "title": "WatchedItemCreate",
-        "description": "Create a WatchedItem via ``POST /api/v1/watched-items``.\n\nTwo creation paths:\n- **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence\n  is validated via the Archiver SDK (NotFound \u2192 422); name defaults to the\n  InfoItem's name when omitted.\n- **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed\n  for ``effective_url`` + ``domain_name``; name defaults to the probed\n  domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).\n\nAt least one of ``archiver_info_item_id`` or ``url`` is required.\n\n``source_specs`` seeds the local pipeline extraction config. Optional at\ncreate time; updatable later via PATCH.\n\n``content_media_type`` is normally auto-detected from the first successful\nfetch (#168); supplying it here pre-seeds an operator override."
+        "description": "Create a WatchedItem via ``POST /api/v1/watched-items``.\n\nOne creation path (#251): every WatchedItem is an Archiver InfoItem being\nwatched. ``archiver_info_item_id`` is validated via the Archiver SDK\n(NotFound \u2192 422) and the name defaults to the InfoItem's name when omitted;\n``url`` is the InfoSource URL Archiver is authoritative for (stored as\n``effective_url``, never re-probed); ``archiver_info_source_id`` identifies\nthe InfoSource that observed revisions are posted back to. All three are\nrequired \u2014 the URL-only path was rolled back with bare-URL WatchedItems.\n\n``source_specs`` seeds the local pipeline extraction config. Optional at\ncreate time; updatable later via PATCH.\n\n``content_media_type`` is normally auto-detected from the first successful\nfetch (#168); supplying it here pre-seeds an operator override."
       },
       "WatchedItemPatch": {
         "properties": {
@@ -6362,8 +6277,8 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 26,
-                "minLength": 1
+                "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                "format": "ulid"
               },
               {
                 "type": "null"
@@ -6383,14 +6298,7 @@
             "title": "Id"
           },
           "archiver_info_item_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Archiver Info Item Id"
           },
           "name": {
@@ -6513,14 +6421,7 @@
             "title": "Source Specs"
           },
           "archiver_info_source_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Archiver Info Source Id"
           },
           "domain_name": {
@@ -6566,6 +6467,7 @@
         "type": "object",
         "required": [
           "id",
+          "archiver_info_item_id",
           "name",
           "description",
           "is_active",
@@ -6579,12 +6481,13 @@
           "default_tags",
           "effective_url",
           "source_specs",
+          "archiver_info_source_id",
           "created_at",
           "updated_at",
           "media_type_essence"
         ],
         "title": "WatchedItemResponse",
-        "description": "Single WatchedItem record.\n\n``archiver_info_item_id`` is null for WatchedItems created via the dashboard\n(URL-first, no InfoItem required). API-created WatchedItems always have it."
+        "description": "Single WatchedItem record.\n\n``archiver_info_item_id`` and ``archiver_info_source_id`` are always\npresent \u2014 every WatchedItem is linked to an Archiver InfoItem (#251)."
       }
     },
     "securitySchemes": {

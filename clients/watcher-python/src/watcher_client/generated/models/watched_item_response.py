@@ -24,11 +24,12 @@ T = TypeVar("T", bound="WatchedItemResponse")
 class WatchedItemResponse:
     """Single WatchedItem record.
 
-    ``archiver_info_item_id`` is null for WatchedItems created via the dashboard
-    (URL-first, no InfoItem required). API-created WatchedItems always have it.
+    ``archiver_info_item_id`` and ``archiver_info_source_id`` are always
+    present — every WatchedItem is linked to an Archiver InfoItem (#251).
 
         Attributes:
             id (str):
+            archiver_info_item_id (str):
             name (str):
             description (None | str):
             is_active (bool):
@@ -42,6 +43,7 @@ class WatchedItemResponse:
             default_tags (list[str] | None):
             effective_url (str):
             source_specs (list[WatchedItemResponseSourceSpecsItem]):
+            archiver_info_source_id (str):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             media_type_essence (None | str): The resolved extractor-dispatch essence — the same value the pipeline
@@ -49,13 +51,12 @@ class WatchedItemResponse:
                 ``content_media_type`` essence, with a URL-extension tiebreaker for
                 mislabeled (octet-stream/text-plain/absent) headers. Computed, not stored
                 (#168), so it always reflects the actual dispatch decision.
-            archiver_info_item_id (None | str | Unset):
-            archiver_info_source_id (None | str | Unset):
             domain_name (None | str | Unset):
             domain_suspended (bool | Unset):  Default: False.
     """
 
     id: str
+    archiver_info_item_id: str
     name: str
     description: None | str
     is_active: bool
@@ -69,11 +70,10 @@ class WatchedItemResponse:
     default_tags: list[str] | None
     effective_url: str
     source_specs: list[WatchedItemResponseSourceSpecsItem]
+    archiver_info_source_id: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
     media_type_essence: None | str
-    archiver_info_item_id: None | str | Unset = UNSET
-    archiver_info_source_id: None | str | Unset = UNSET
     domain_name: None | str | Unset = UNSET
     domain_suspended: bool | Unset = False
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -84,6 +84,8 @@ class WatchedItemResponse:
         )
 
         id = self.id
+
+        archiver_info_item_id = self.archiver_info_item_id
 
         name = self.name
 
@@ -141,24 +143,14 @@ class WatchedItemResponse:
             source_specs_item = source_specs_item_data.to_dict()
             source_specs.append(source_specs_item)
 
+        archiver_info_source_id = self.archiver_info_source_id
+
         created_at = self.created_at.isoformat()
 
         updated_at = self.updated_at.isoformat()
 
         media_type_essence: None | str
         media_type_essence = self.media_type_essence
-
-        archiver_info_item_id: None | str | Unset
-        if isinstance(self.archiver_info_item_id, Unset):
-            archiver_info_item_id = UNSET
-        else:
-            archiver_info_item_id = self.archiver_info_item_id
-
-        archiver_info_source_id: None | str | Unset
-        if isinstance(self.archiver_info_source_id, Unset):
-            archiver_info_source_id = UNSET
-        else:
-            archiver_info_source_id = self.archiver_info_source_id
 
         domain_name: None | str | Unset
         if isinstance(self.domain_name, Unset):
@@ -173,6 +165,7 @@ class WatchedItemResponse:
         field_dict.update(
             {
                 "id": id,
+                "archiver_info_item_id": archiver_info_item_id,
                 "name": name,
                 "description": description,
                 "is_active": is_active,
@@ -186,15 +179,12 @@ class WatchedItemResponse:
                 "default_tags": default_tags,
                 "effective_url": effective_url,
                 "source_specs": source_specs,
+                "archiver_info_source_id": archiver_info_source_id,
                 "created_at": created_at,
                 "updated_at": updated_at,
                 "media_type_essence": media_type_essence,
             }
         )
-        if archiver_info_item_id is not UNSET:
-            field_dict["archiver_info_item_id"] = archiver_info_item_id
-        if archiver_info_source_id is not UNSET:
-            field_dict["archiver_info_source_id"] = archiver_info_source_id
         if domain_name is not UNSET:
             field_dict["domain_name"] = domain_name
         if domain_suspended is not UNSET:
@@ -213,6 +203,8 @@ class WatchedItemResponse:
 
         d = dict(src_dict)
         id = d.pop("id")
+
+        archiver_info_item_id = d.pop("archiver_info_item_id")
 
         name = d.pop("name")
 
@@ -337,6 +329,8 @@ class WatchedItemResponse:
 
             source_specs.append(source_specs_item)
 
+        archiver_info_source_id = d.pop("archiver_info_source_id")
+
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
 
         updated_at = datetime.datetime.fromisoformat(d.pop("updated_at"))
@@ -347,26 +341,6 @@ class WatchedItemResponse:
             return cast(None | str, data)
 
         media_type_essence = _parse_media_type_essence(d.pop("media_type_essence"))
-
-        def _parse_archiver_info_item_id(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        archiver_info_item_id = _parse_archiver_info_item_id(d.pop("archiver_info_item_id", UNSET))
-
-        def _parse_archiver_info_source_id(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        archiver_info_source_id = _parse_archiver_info_source_id(
-            d.pop("archiver_info_source_id", UNSET)
-        )
 
         def _parse_domain_name(data: object) -> None | str | Unset:
             if data is None:
@@ -381,6 +355,7 @@ class WatchedItemResponse:
 
         watched_item_response = cls(
             id=id,
+            archiver_info_item_id=archiver_info_item_id,
             name=name,
             description=description,
             is_active=is_active,
@@ -394,11 +369,10 @@ class WatchedItemResponse:
             default_tags=default_tags,
             effective_url=effective_url,
             source_specs=source_specs,
+            archiver_info_source_id=archiver_info_source_id,
             created_at=created_at,
             updated_at=updated_at,
             media_type_essence=media_type_essence,
-            archiver_info_item_id=archiver_info_item_id,
-            archiver_info_source_id=archiver_info_source_id,
             domain_name=domain_name,
             domain_suspended=domain_suspended,
         )
