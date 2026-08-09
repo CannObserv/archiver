@@ -2,7 +2,7 @@
 
 import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from importlib.metadata import version as _package_version
 
@@ -37,22 +37,34 @@ configure_logging()
 logger = get_logger(__name__)
 
 
-def _log_bus_task_exit(task: asyncio.Task) -> None:
-    """Log a background bus task that ends before shutdown asks it to.
+def _bus_task_exit_logger(label: str, stop_event: asyncio.Event) -> Callable[[asyncio.Task], None]:
+    """Build a done-callback that reports a bus task ending on its own.
 
-    Without this, a task that dies on its first tick is silent: nothing awaits it
+    Without one, a task that dies on its first tick is silent: nothing awaits it
     until the lifespan's shutdown handler, which swallows the exception, so the
-    service runs to completion looking healthy while nothing is consuming
-    (CR round 1, finding 1). ``CancelledError`` is the normal shutdown path and
-    says nothing.
+    service runs to completion looking healthy while nothing is publishing or
+    consuming (CR round 1, finding 1).
+
+    ``stop_event`` is what separates "we asked it to stop" from "it stopped".
+    Cancellation covers the usual shutdown, but a loop that observes the stop
+    event and returns cleanly is *also* an expected exit — and deciding that from
+    the task alone would depend on there being no ``await`` between
+    ``stop_event.set()`` and ``task.cancel()`` below, which is far too subtle a
+    thing for a future edit to preserve by accident (CR round 2, finding 18).
     """
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc is not None:
-        logger.error("Bus background task exited with an error", exc_info=exc)
-    else:
-        logger.warning("Bus background task exited unexpectedly")
+
+    def _log(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Bus task exited with an error", extra={"task": label}, exc_info=exc)
+        elif stop_event.is_set():
+            logger.info("Bus task stopped", extra={"task": label})
+        else:
+            logger.warning("Bus task exited unexpectedly", extra={"task": label})
+
+    return _log
 
 
 @asynccontextmanager
@@ -132,6 +144,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     stream_maxlen=stream_maxlen,
                 )
             )
+            pub_task.add_done_callback(_bus_task_exit_logger("outbox_publisher", stop_event))
             app.state.redis_client = redis_client
             app.state.publisher_task = pub_task
             app.state.publisher_stop_event = stop_event
@@ -140,6 +153,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.exception("Failed to initialise outbox publisher; skipping")
             redis_client = None
             app.state.redis_client = None
+            app.state.publisher_task = None
+            app.state.publisher_stop_event = None
 
         # --- Optional content.revisions consumer (archiver#139) ---
         # Gated separately from the publisher and started in its own try, so a
@@ -158,7 +173,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         stop_event=stop_event,
                     )
                 )
-                consumer_task.add_done_callback(_log_bus_task_exit)
+                consumer_task.add_done_callback(
+                    _bus_task_exit_logger("revisions_consumer", stop_event)
+                )
                 app.state.revisions_consumer_task = consumer_task
                 logger.info(
                     "content.revisions consumer task scheduled",
@@ -174,7 +191,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 extra={"reason": "gate" if redis_client is not None else "no_redis_client"},
             )
     else:
+        # Every dormant path nulls *both* handles. Leaving app.state.publisher_task
+        # set from a previous lifespan made it describe a publisher that is not
+        # running, and made two lifespan assertions satisfiable by a stale value
+        # (CR round 2, finding 15).
         app.state.redis_client = None
+        app.state.publisher_task = None
+        app.state.publisher_stop_event = None
         app.state.revisions_consumer_task = None
         logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumer disabled")
 

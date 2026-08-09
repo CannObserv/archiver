@@ -293,10 +293,16 @@ async def quarantine_undecodable(consumer: RevisionsConsumer) -> int:
     would leave it there for as many passes as it takes the window to advance
     (CR round 1, finding 12).
 
-    ``min_idle_time=0`` claims regardless of age, which would be too aggressive
-    with several live consumers in the group (it can take another worker's
-    in-flight entry). One process per host makes that moot today; revisit
-    alongside ``--workers``.
+    ``min_idle_time=0`` claims regardless of age, and following the cursor means
+    the scan is **bounded only by the pass ceiling** — up to
+    ``MAX_QUARANTINE_PASSES * CLAIM_COUNT`` entries, not the single window it
+    took before. With one process per host (what ``deploy/archiver.service``
+    runs, no ``--workers``) that is free. With two, one poison frame would pull
+    the *whole* group's in-flight PEL to a single worker rather than a slice of
+    it. **A multi-consumer deployment must raise ``min_idle_time`` above the
+    expected per-message processing time** before adding workers — that is the
+    change this constant is waiting on, recorded here because this is where it
+    would be made (CR round 2, finding 17).
     """
     quarantined = 0
     cursor = "0-0"

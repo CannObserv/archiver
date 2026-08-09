@@ -29,9 +29,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.core.changes import publisher as publisher_mod
 from src.core.changes.publisher import (
     DEFAULT_STREAM_MAXLEN,
-    ERROR_BACKOFF_MAX_SECONDS,
     MAX_PUBLISH_ATTEMPTS,
-    _error_backoff_seconds,
     _next_delay,
     drain_once,
     resolve_stream_maxlen,
@@ -290,22 +288,8 @@ async def test_drain_once_all_poison_returns_zero(session_factory, publisher):
     assert published == 0
 
 
-@pytest.mark.parametrize(
-    ("consecutive", "base", "expected"),
-    [
-        (0, 1.0, 1.0),  # no failures → base
-        (1, 1.0, 1.0),  # 1st failure → base
-        (2, 1.0, 2.0),  # exponential
-        (3, 1.0, 4.0),
-        (4, 1.0, 8.0),
-        (6, 1.0, min(32.0, ERROR_BACKOFF_MAX_SECONDS)),  # exponent clamped at shift=5
-        (100, 1.0, ERROR_BACKOFF_MAX_SECONDS),  # 1.0 * 2**5 = 32 → capped at 30
-        (100, 0.25, 8.0),  # 0.25 * 2**5 = 8 → below cap, so NOT capped
-    ],
-)
-def test_error_backoff_seconds(consecutive, base, expected):
-    """Consecutive whole-batch failures back off exponentially, capped (CR #13)."""
-    assert _error_backoff_seconds(consecutive, base) == expected
+# The backoff schedule itself moved to src/core/changes/backoff.py and is tested
+# in test_backoff.py; _next_delay's own pacing choice is still the publisher's.
 
 
 def test_next_delay_paces_on_progress():

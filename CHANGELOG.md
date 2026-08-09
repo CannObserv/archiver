@@ -42,6 +42,8 @@ Operationally:
 - **Unknown `info_source_id` is ack-and-drop** with a WARNING — the registry is the authority on what exists. Unusable or undecodable frames go to `content.revisions.dlq`; transient failures stay pending for redelivery or `XAUTOCLAIM`.
 - **`blob_uri` lands in `content_cache_uri`, not durable storage.** It is a VM-local `file://` on Replicator's host with a TTL clocked from last fetch reference. An absent `blob_expires_at` records absence rather than a guessed horizon.
 
+**Minor validation tightening on `content_fingerprint`.** The rule moved to `src/core/fingerprints.py` so both write paths share it, and testing it directly surfaced a hole: the pattern was `^sha256:[0-9a-f]{64}$` matched with `re.match`, and Python's `$` also matches immediately *before* a trailing newline — so `"sha256:<hex>\n"` was accepted. Under the `(info_source_id, content_fingerprint)` uniqueness key that is a second spelling of one digest, and therefore a second row rather than an idempotent no-op. Now matched with `fullmatch`. A request body whose fingerprint carries a trailing newline changes from **201** to **422**; no stored row can have been affected without already being a duplicate.
+
 `POST` and `PATCH /source-revisions` are unchanged and stay — they are the authoring/backfill path, and retiring them is a separate call from retiring Watcher's use of them (CannObserv/watcher#253, which must land *after* this).
 
 ## v4.5.1 (2026-07-29)

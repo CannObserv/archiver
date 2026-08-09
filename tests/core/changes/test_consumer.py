@@ -25,7 +25,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import UTC, datetime
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from co_core.pure.adapters.bus.envelope import to_wire
@@ -432,11 +432,15 @@ async def test_run_survives_a_broker_that_is_down_at_startup(
             raise RedisConnectionError("Error 111 connecting to localhost:6379")
         return await real_ensure(*args, **kwargs)
 
-    consumer.bus.ensure_group = flaky_ensure_group
     await fake_redis.xadd(CONTENT_REVISIONS, _observed(info_source.info_source_id))
 
-    async with _running(session_factory, consumer):
-        ingested = await _wait_for(lambda: _row_count(session_factory, SourceRevision))
+    # patch.object rather than assignment: it restores on exit, and it raises if
+    # the attribute stops existing — an upstream rename would otherwise leave
+    # this test patching a new attribute and quietly exercising nothing
+    # (CR round 2, finding 20).
+    with patch.object(consumer.bus, "ensure_group", flaky_ensure_group):
+        async with _running(session_factory, consumer):
+            ingested = await _wait_for(lambda: _row_count(session_factory, SourceRevision))
 
     assert calls["n"] >= 2, "the group must be re-asserted after the broker returns"
     assert ingested

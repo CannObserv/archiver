@@ -5,8 +5,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 # The fingerprint spelling is a domain rule, not an HTTP one — the bus ingest
-# path enforces the same pattern with no Pydantic layer to lean on.
-from src.core.fingerprints import FINGERPRINT_PATTERN
+# path applies the same check with no Pydantic layer to lean on.
+from src.core.fingerprints import is_valid_fingerprint
 
 
 class SourceRevisionCreate(BaseModel):
@@ -34,7 +34,7 @@ class SourceRevisionCreate(BaseModel):
     @classmethod
     def _fingerprint_format(cls, v: str) -> str:
         """Require sha256:<64 lowercase hex>."""
-        if not FINGERPRINT_PATTERN.match(v):
+        if not is_valid_fingerprint(v):
             raise ValueError("must match 'sha256:<64 lowercase hex>'")
         return v
 
