@@ -14,7 +14,6 @@ added to the caller's session so it commits with the revision.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -24,16 +23,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.core.fingerprints import is_valid_fingerprint
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
 
 CHANGE_STREAM_TOPIC = "info.changes"
-
-# The one spelling a content fingerprint may take. Enforced here rather than only
-# at the Pydantic layer because the bus path has no Pydantic layer: co-core types
-# ``extracted_fingerprint`` as a bare ``str``, and Archiver's uniqueness key is
-# ``(info_source_id, content_fingerprint)`` — a differently-spelled fingerprint
-# for identical content is a silent duplicate row, not a loud failure.
-FINGERPRINT_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class SourceRevisionWriteError(Exception):
@@ -133,10 +126,15 @@ class RevisionFacts:
 def validate_fingerprint(value: str) -> str:
     """Return ``value`` if it is a well-formed content fingerprint.
 
+    The bus path leans on this where the HTTP path leans on Pydantic: Archiver's
+    uniqueness key is ``(info_source_id, content_fingerprint)``, so a
+    differently-spelled fingerprint for identical content is a silent duplicate
+    row rather than a loud failure.
+
     Raises:
         InvalidFingerprintError: it is not.
     """
-    if not FINGERPRINT_PATTERN.match(value):
+    if not is_valid_fingerprint(value):
         raise InvalidFingerprintError(value)
     return value
 

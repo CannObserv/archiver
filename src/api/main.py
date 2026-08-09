@@ -37,6 +37,24 @@ configure_logging()
 logger = get_logger(__name__)
 
 
+def _log_bus_task_exit(task: asyncio.Task) -> None:
+    """Log a background bus task that ends before shutdown asks it to.
+
+    Without this, a task that dies on its first tick is silent: nothing awaits it
+    until the lifespan's shutdown handler, which swallows the exception, so the
+    service runs to completion looking healthy while nothing is consuming
+    (CR round 1, finding 1). ``CancelledError`` is the normal shutdown path and
+    says nothing.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("Bus background task exited with an error", exc_info=exc)
+    else:
+        logger.warning("Bus background task exited unexpectedly")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Set up shared resources for the process lifetime.
@@ -140,9 +158,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         stop_event=stop_event,
                     )
                 )
+                consumer_task.add_done_callback(_log_bus_task_exit)
                 app.state.revisions_consumer_task = consumer_task
                 logger.info(
-                    "content.revisions consumer started",
+                    "content.revisions consumer task scheduled",
                     extra={"group": revisions_consumer.CONSUMER_GROUP},
                 )
             except Exception:

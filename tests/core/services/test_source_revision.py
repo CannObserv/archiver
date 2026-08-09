@@ -211,17 +211,26 @@ async def test_supplied_revision_id_matching_own_pair_is_idempotent(session, inf
 
 
 @pytest.mark.asyncio
-async def test_service_does_not_commit(session, info_source):
+async def test_service_leaves_the_outbox_row_pending_in_the_caller_transaction(
+    session, info_source
+):
     """The caller owns the transaction boundary.
 
     The consumer's ack-after-commit ordering and the route's single commit both
     depend on the row and its outbox event landing in *one* caller-controlled
     transaction — a commit inside the service would split them.
+
+    Asserted via ``session.new``, which is the property the docstring actually
+    describes. An earlier version checked ``session.new or session.dirty or
+    session.identity_map``; ``identity_map`` is non-empty after any ``get``, so
+    the disjunction held whether or not the service committed (CR round 1,
+    finding 11).
     """
     await record_revision(session, _facts(info_source.info_source_id))
 
+    pending = [obj for obj in session.new if isinstance(obj, ChangesOutboxRow)]
+    assert len(pending) == 1, "the outbox row must still be unflushed and uncommitted"
     assert session.in_transaction()
-    assert session.new or session.dirty or session.identity_map
 
 
 @pytest.mark.asyncio

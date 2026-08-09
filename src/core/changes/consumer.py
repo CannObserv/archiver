@@ -38,6 +38,11 @@ from co_core.pure.models.changes import SourceRevisionObservedEvent
 from co_core_aio.bus import AsyncBusConsumer, BusMessage, from_wire
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.core.changes.backoff import (
+    ERROR_BACKOFF_BASE_SECONDS,
+    ERROR_LOG_EVERY,
+    error_backoff_seconds,
+)
 from src.core.logging import get_logger
 from src.core.services.source_revision import (
     RevisionFacts,
@@ -70,11 +75,10 @@ READ_BLOCK_MS = 5_000
 CLAIM_MIN_IDLE_MS = 60_000
 CLAIM_INTERVAL_ITERATIONS = 12
 CLAIM_COUNT = 10
-
-ERROR_BACKOFF_BASE_SECONDS = 1.0
-ERROR_BACKOFF_MAX_SECONDS = 30.0
-ERROR_BACKOFF_MAX_SHIFT = 5
-ERROR_LOG_EVERY = 15
+# Bound the quarantine scan so a pathological PEL cannot hold the loop forever;
+# at CLAIM_COUNT per pass this covers 1000 pending entries, and the residue is
+# logged rather than silently skipped.
+MAX_QUARANTINE_PASSES = 100
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
@@ -219,13 +223,20 @@ async def handle_message(
                 },
             )
             return True
+        # Read the id BEFORE the commit closes over it. With an
+        # expire_on_commit=True factory the row is expired and detached by the
+        # time the log below runs, and the refresh it triggers raises *after*
+        # the commit and *before* the ack — the write lands, the message is
+        # never acked, and every redelivery fails identically (CR round 1,
+        # finding 3).
+        revision_id = str(row.source_revision_id)
         await session.commit()
 
     logger.info(
         "Recorded observed revision" if inserted else "Observed revision already recorded",
         extra={
             "info_source_id": str(facts.info_source_id),
-            "source_revision_id": str(row.source_revision_id),
+            "source_revision_id": revision_id,
             "content_fingerprint": facts.content_fingerprint,
             "inserted": inserted,
             "message_id": message.message_id,
@@ -239,9 +250,10 @@ async def _process(
     consumer: RevisionsConsumer,
     message: BusMessage,
 ) -> bool:
-    """Handle one decoded message and ack it if the outcome is terminal.
+    """Handle one decoded message and settle it if the outcome is terminal.
 
-    Returns whether the message was acked. The ack strictly follows the commit
+    Returns whether the message was settled — acked after a successful write, or
+    dead-lettered when the observation can never be used. The ack strictly follows the commit
     inside ``handle_message``; a failure in between leaves the entry pending and
     the next delivery repeats an idempotent write.
     """
@@ -275,36 +287,53 @@ async def quarantine_undecodable(consumer: RevisionsConsumer) -> int:
     to ``content.revisions.dlq``. Entries that decode are left pending — they are
     picked up by the next read or by ``reclaim_stale``.
 
+    The scan follows ``XAUTOCLAIM``'s cursor to the end of the PEL rather than
+    stopping at the first ``CLAIM_COUNT`` window: after a backlog (a DB outage,
+    say) the poison frame can sit well past entry ten, and a single-window scan
+    would leave it there for as many passes as it takes the window to advance
+    (CR round 1, finding 12).
+
     ``min_idle_time=0`` claims regardless of age, which would be too aggressive
     with several live consumers in the group (it can take another worker's
     in-flight entry). One process per host makes that moot today; revisit
     alongside ``--workers``.
     """
-    _cursor, entries, _deleted = await consumer.client.xautoclaim(
-        CONTENT_REVISIONS,
-        CONSUMER_GROUP,
-        consumer.name,
-        min_idle_time=0,
-        start_id="0-0",
-        count=CLAIM_COUNT,
-    )
     quarantined = 0
-    for entry_id, raw_fields in entries:
-        message_id = _as_str(entry_id)
-        fields = {_as_str(k): _as_str(v) for k, v in raw_fields.items()}
-        try:
-            from_wire(fields, topic=CONTENT_REVISIONS, message_id=message_id)
-        except BusMessageAnomaly as exc:
-            logger.error(
-                "Dead-lettering undecodable frame",
-                extra={
-                    "message_id": message_id,
-                    "topic": CONTENT_REVISIONS,
-                    "error": repr(exc),
-                },
-            )
-            await consumer.bus.dead_letter(message_id, fields)
-            quarantined += 1
+    cursor = "0-0"
+    for _ in range(MAX_QUARANTINE_PASSES):
+        next_cursor, entries, _deleted = await consumer.client.xautoclaim(
+            CONTENT_REVISIONS,
+            CONSUMER_GROUP,
+            consumer.name,
+            min_idle_time=0,
+            start_id=cursor,
+            count=CLAIM_COUNT,
+        )
+        for entry_id, raw_fields in entries:
+            message_id = _as_str(entry_id)
+            fields = {_as_str(k): _as_str(v) for k, v in raw_fields.items()}
+            try:
+                from_wire(fields, topic=CONTENT_REVISIONS, message_id=message_id)
+            except BusMessageAnomaly as exc:
+                logger.error(
+                    "Dead-lettering undecodable frame",
+                    extra={
+                        "message_id": message_id,
+                        "topic": CONTENT_REVISIONS,
+                        "error": repr(exc),
+                    },
+                )
+                await consumer.bus.dead_letter(message_id, fields)
+                quarantined += 1
+        cursor = _as_str(next_cursor)
+        # "0-0" is XAUTOCLAIM's end-of-PEL sentinel; an empty page ends it too.
+        if cursor == "0-0" or not entries:
+            break
+    else:
+        logger.warning(
+            "Quarantine scan hit its pass ceiling; pending entries remain unscanned",
+            extra={"passes": MAX_QUARANTINE_PASSES, "quarantined": quarantined},
+        )
     return quarantined
 
 
@@ -320,7 +349,12 @@ async def consume_once(
     count: int = READ_COUNT,
     block_ms: int | None = None,
 ) -> int:
-    """Read and process up to ``count`` messages. Returns how many were acked.
+    """Read and process up to ``count`` messages. Returns how many were settled.
+
+    *Settled* covers every terminal disposition — recorded, deduped, dropped as
+    unknown, or quarantined — rather than only the ones that wrote a row; the
+    count exists to pace the loop, and all four mean "do not redeliver this"
+    (CR round 1, finding 13).
 
     A decode failure is not raised at the caller: the offending frame is
     quarantined and this call returns 0, so the loop keeps its cadence and the
@@ -332,18 +366,18 @@ async def consume_once(
         await quarantine_undecodable(consumer)
         return 0
 
-    acked = 0
+    settled = 0
     for message in messages:
         try:
             if await _process(session_factory, consumer, message):
-                acked += 1
+                settled += 1
         except Exception:
             # Un-acked on purpose: the entry stays in the PEL and is redelivered.
             logger.exception(
                 "Failed to process observation; leaving it pending",
                 extra={"message_id": message.message_id},
             )
-    return acked
+    return settled
 
 
 async def reclaim_stale(
@@ -352,7 +386,7 @@ async def reclaim_stale(
     consumer: RevisionsConsumer,
     min_idle_ms: int = CLAIM_MIN_IDLE_MS,
 ) -> int:
-    """Process entries a dead consumer left pending. Returns how many were acked.
+    """Process entries a dead consumer left pending. Returns how many were settled.
 
     Without this, a crash between read and ack parks the message in that
     consumer's PEL permanently — the process that owned it never comes back
@@ -364,30 +398,17 @@ async def reclaim_stale(
         await quarantine_undecodable(consumer)
         return 0
 
-    acked = 0
+    settled = 0
     for message in messages:
         try:
             if await _process(session_factory, consumer, message):
-                acked += 1
+                settled += 1
         except Exception:
             logger.exception(
                 "Failed to process reclaimed observation; leaving it pending",
                 extra={"message_id": message.message_id},
             )
-    return acked
-
-
-def _error_backoff_seconds(consecutive_failures: int, base: float) -> float:
-    """Exponential backoff (``base * 2**(n-1)``) capped at ``ERROR_BACKOFF_MAX_SECONDS``.
-
-    Same shape as the publisher's: a whole-iteration failure (broker unreachable)
-    must not spin, and the exponent is clamped so the intermediate cannot
-    overflow before the cap applies.
-    """
-    if consecutive_failures <= 1:
-        return min(base, ERROR_BACKOFF_MAX_SECONDS)
-    shift = min(consecutive_failures - 1, ERROR_BACKOFF_MAX_SHIFT)
-    return min(base * (2**shift), ERROR_BACKOFF_MAX_SECONDS)
+    return settled
 
 
 async def run(
@@ -407,18 +428,39 @@ async def run(
     ``ERROR_LOG_EVERY``-th so a sustained broker outage cannot flood the
     journal). ``asyncio.CancelledError`` propagates for shutdown; everything else
     is logged and the loop continues.
+
+    **Group creation is inside the loop, and any failure re-arms it** (CR round 1,
+    finding 1). Hoisting the ``ensure_group`` call above the loop looks tidier and
+    breaks two ways that are hard to see afterwards:
+
+    - A broker that is down at *startup* kills the task outright. That is not
+      hypothetical — ``archiver.service`` orders after ``redis-server`` only
+      softly (``Wants=``), on the reasoning that the outbox tolerates a late
+      broker; the consumer would not have.
+    - Flushing the stream destroys its groups, after which every read raises
+      ``NOGROUP`` forever. archiver#139's own deploy plan prescribes flushing
+      streams, and ``deploy/README.md`` treats it as routine, so this is a state
+      operators are *instructed* to produce.
+
+    Both end the same way — no ingestion, silently, while the stream keeps
+    growing. ``ensure_group`` is idempotent (``BUSYGROUP`` is swallowed), so
+    re-asserting costs one round trip on the pass after a failure and nothing at
+    all on the happy path.
     """
     stop_event = stop_event or asyncio.Event()
-    await ensure_group(consumer)
     logger.info(
-        "content.revisions consumer started",
+        "content.revisions consumer starting",
         extra={"group": CONSUMER_GROUP, "topic": CONTENT_REVISIONS},
     )
 
     iteration = 0
     consecutive_failures = 0
+    group_ready = False
     while not stop_event.is_set():
         try:
+            if not group_ready:
+                await ensure_group(consumer)
+                group_ready = True
             await consume_once(
                 session_factory=session_factory, consumer=consumer, block_ms=block_ms
             )
@@ -442,13 +484,19 @@ async def run(
             raise
         except Exception:
             consecutive_failures += 1
+            # Re-arm group creation. The cheapest correct response to *any*
+            # failure, because the two states that need it — broker unreachable,
+            # group destroyed by a flush — are not distinguishable from the
+            # exception type in a way worth branching on, and re-asserting an
+            # existing group is a no-op.
+            group_ready = False
             if consecutive_failures == 1 or consecutive_failures % ERROR_LOG_EVERY == 0:
                 logger.exception(
                     "content.revisions consumer loop error; backing off",
                     extra={"consecutive_failures": consecutive_failures},
                 )
 
-        delay = _error_backoff_seconds(consecutive_failures, error_backoff_base)
+        delay = error_backoff_seconds(consecutive_failures, error_backoff_base)
         await asyncio.wait(
             [asyncio.create_task(stop_event.wait())],
             timeout=delay,

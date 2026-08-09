@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 # The fingerprint spelling is a domain rule, not an HTTP one — the bus ingest
 # path enforces the same pattern with no Pydantic layer to lean on.
-from src.core.services.source_revision import FINGERPRINT_PATTERN
+from src.core.fingerprints import FINGERPRINT_PATTERN
 
 
 class SourceRevisionCreate(BaseModel):

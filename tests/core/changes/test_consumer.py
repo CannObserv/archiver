@@ -22,6 +22,8 @@ And, around the loop:
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from datetime import UTC, datetime
 from unittest.mock import Mock
 
@@ -31,14 +33,14 @@ from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS
 from co_core.pure.models.changes import SourceRevisionObservedEvent
 from co_core_aio.bus import AsyncBusConsumer
 from fakeredis import aioredis as fakeredis_aio
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ResponseError
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.changes import consumer as revisions_consumer
 from src.core.models import ChangesOutboxRow, InfoSource, SourceRevision
-
-pytestmark = pytest.mark.integration
 
 FP_OBSERVED = "sha256:" + "a" * 64
 CAPTURED_AT = datetime(2026, 8, 9, 11, 0, tzinfo=UTC)
@@ -112,6 +114,19 @@ async def _row_count(session_factory, model) -> int:
     async with session_factory() as s:
         result = await s.execute(select(func.count()).select_from(model))
         return result.scalar_one()
+
+
+async def _group_exists(fake_redis) -> bool:
+    """Whether the consumer group is currently registered on the stream."""
+    try:
+        groups = await fake_redis.xinfo_groups(CONTENT_REVISIONS)
+    except ResponseError:
+        return False
+    return any(_as_text(g["name"]) == revisions_consumer.CONSUMER_GROUP for g in groups)
+
+
+def _as_text(value) -> str:
+    return value.decode() if isinstance(value, bytes) else value
 
 
 async def _pending_count(fake_redis) -> int:
@@ -333,3 +348,142 @@ def test_consumer_gate(value, expected):
     database it happens to hold. Only deploy/archiver.service sets the gate.
     """
     assert revisions_consumer.consumer_enabled(value) is expected
+
+
+# ---------------------------------------------------------------------------
+# The loop itself — CR round 1, findings 1 and 8
+# ---------------------------------------------------------------------------
+#
+# run() had no coverage, which is how the ensure_group placement below went
+# unnoticed: the call sat outside the loop, so a broker that was down at startup
+# killed the task silently, and a stream flush (a routine operator action this
+# very issue prescribes) left it spinning on NOGROUP forever.
+
+
+@contextlib.asynccontextmanager
+async def _running(session_factory, consumer):
+    """Run the consumer loop for the duration of the block, then stop it."""
+    stop_event = asyncio.Event()
+    task = asyncio.create_task(
+        revisions_consumer.run(
+            session_factory=session_factory,
+            consumer=consumer,
+            stop_event=stop_event,
+            block_ms=None,
+            claim_interval_iterations=0,
+            error_backoff_base=0.01,
+        )
+    )
+    try:
+        yield task
+    finally:
+        stop_event.set()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+async def _wait_for(predicate, *, timeout: float = 3.0) -> bool:
+    """Poll ``predicate`` until it holds, or ``timeout`` elapses.
+
+    Polling rather than counting event-loop yields: the loop awaits several
+    times per pass, so N yields is not N iterations — a count-based helper
+    silently under-runs and turns every assertion below into a false negative.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        if await predicate():
+            return True
+        await asyncio.sleep(0.01)
+    return False
+
+
+@pytest.mark.asyncio
+async def test_run_creates_the_group_and_ingests(session_factory, fake_redis, info_source):
+    await fake_redis.xadd(CONTENT_REVISIONS, _observed(info_source.info_source_id))
+    consumer = revisions_consumer.build_consumer(fake_redis, consumer_name="loop:1")
+
+    # No ensure_group here — run() owns it.
+    async with _running(session_factory, consumer):
+        ingested = await _wait_for(lambda: _row_count(session_factory, SourceRevision))
+
+    assert ingested
+
+
+@pytest.mark.asyncio
+async def test_run_survives_a_broker_that_is_down_at_startup(
+    session_factory, fake_redis, info_source
+):
+    """A late broker must not kill the task for the process lifetime.
+
+    archiver.service orders after redis-server only softly, precisely because
+    the outbox tolerates a late broker. Before this fix the consumer did not:
+    ensure_group raised outside the loop, the task died, and the exception was
+    swallowed by the lifespan's shutdown handler — no consumer, no log line.
+    """
+    consumer = revisions_consumer.build_consumer(fake_redis, consumer_name="loop:2")
+    calls = {"n": 0}
+    real_ensure = consumer.bus.ensure_group
+
+    async def flaky_ensure_group(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RedisConnectionError("Error 111 connecting to localhost:6379")
+        return await real_ensure(*args, **kwargs)
+
+    consumer.bus.ensure_group = flaky_ensure_group
+    await fake_redis.xadd(CONTENT_REVISIONS, _observed(info_source.info_source_id))
+
+    async with _running(session_factory, consumer):
+        ingested = await _wait_for(lambda: _row_count(session_factory, SourceRevision))
+
+    assert calls["n"] >= 2, "the group must be re-asserted after the broker returns"
+    assert ingested
+
+
+@pytest.mark.asyncio
+async def test_run_recreates_the_group_after_a_stream_flush(
+    session_factory, fake_redis, info_source
+):
+    """Flushing a stream destroys its groups; the loop must re-create them.
+
+    #139's deploy plan prescribes flushing content.fetch/content.blobs, and
+    deploy/README.md treats flushes as routine — so this is a state the operator
+    is instructed to produce. Left unhandled, every subsequent read raises
+    (NOGROUP) and the consumer is dead until a restart.
+    """
+    consumer = revisions_consumer.build_consumer(fake_redis, consumer_name="loop:3")
+
+    async with _running(session_factory, consumer):
+        # Let the loop reach a steady state with the group established, so the
+        # flush lands mid-run. Flushing *before* startup proves nothing — the
+        # pre-fix code created the group once at startup and would have passed.
+        assert await _wait_for(lambda: _group_exists(fake_redis))
+        await fake_redis.delete(CONTENT_REVISIONS)  # operator flush, consumer live
+        await fake_redis.xadd(CONTENT_REVISIONS, _observed(info_source.info_source_id))
+        ingested = await _wait_for(lambda: _row_count(session_factory, SourceRevision))
+
+    assert ingested
+
+
+@pytest.mark.asyncio
+async def test_handle_message_tolerates_an_expiring_session_factory(
+    test_engine, fake_redis, info_source
+):
+    """The success log must not touch the ORM row after the session closes.
+
+    With expire_on_commit=True (the SQLAlchemy default), reading an attribute off
+    the detached row raises *after* the commit and *before* the ack — the write
+    lands, the message is never acked, and every redelivery fails identically.
+    """
+    expiring_factory = async_sessionmaker(bind=test_engine, expire_on_commit=True)
+    await fake_redis.xadd(CONTENT_REVISIONS, _observed(info_source.info_source_id))
+    consumer = await _bus_consumer(fake_redis, "expiring:1")
+
+    settled = await revisions_consumer.consume_once(
+        session_factory=expiring_factory, consumer=consumer
+    )
+
+    assert settled == 1
+    assert await _pending_count(fake_redis) == 0
