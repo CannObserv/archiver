@@ -143,7 +143,8 @@ Field mapping, and the two traps in it:
 **The `spec_fingerprint` comparison.** At ingest the value is looked up in an index of the
 InfoSource's own specs, built with co-core's shared derivation
 (`co_core.pure.extract.spec_fingerprint_index`, cannobserv#309, co-core ≥0.8.1). The outcome lands
-in `spec_match` / `spec_position` (see [docs/SCHEMA.md](SCHEMA.md)) and is **never** a rejection —
+in `spec_match` / `spec_position` (see [docs/SCHEMA.md](SCHEMA.md) — they track the *most recent*
+observation, refreshed on re-observation) and is **never** a rejection —
 archiver#140 makes spec delivery eventually consistent, so a producer one announcement behind is
 expected, and its observation is real. Two rules come from the contract rather than from registry
 policy: an **absent** fingerprint is not a mismatch (the field is optional, and a producer that has

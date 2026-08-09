@@ -26,7 +26,12 @@ from ulid import ULID
 from src.core.fingerprints import is_valid_fingerprint
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
-from src.core.spec_match import SUPERSEDED, compare_spec_fingerprint
+from src.core.spec_match import (
+    NOT_COMPARED,
+    SUPERSEDED,
+    SpecComparison,
+    compare_spec_fingerprint,
+)
 
 logger = get_logger(__name__)
 
@@ -190,34 +195,16 @@ async def record_revision(
             raise SourceRevisionIdConflictError(clashing)
 
     # Compare the observed spec_fingerprint against the specs the registry
-    # actually holds (cannobserv#309). Inert on the HTTP path, which never
-    # carries one — but it lives here rather than in the consumer so there is one
-    # answer per revision regardless of which path wrote it.
-    comparison = compare_spec_fingerprint(facts.spec_fingerprint, source.source_specs)
-    if comparison.match == SUPERSEDED:
-        # The flag. Not a rejection: archiver#140 makes spec delivery eventually
-        # consistent, so this is an expected transient state whose revision is
-        # real — but a *persistent* one means the producer's cached spec never
-        # caught up, and nothing else would report that.
-        logger.warning(
-            "Revision extracted under a spec this InfoSource no longer holds",
-            extra={
-                "info_source_id": str(facts.info_source_id),
-                "spec_fingerprint": facts.spec_fingerprint,
-                "content_fingerprint": facts.content_fingerprint,
-            },
-        )
-    elif comparison.is_fallback:
-        # Selector rot in progress: the primary spec stopped matching and the
-        # producer fell through to a cross-check alternative.
-        logger.warning(
-            "Revision extracted under a fallback spec, not the primary",
-            extra={
-                "info_source_id": str(facts.info_source_id),
-                "spec_position": comparison.position,
-                "content_fingerprint": facts.content_fingerprint,
-            },
-        )
+    # actually holds (cannobserv#309). Skipped outright when nothing was
+    # reported, so the HTTP write path — which never carries a fingerprint —
+    # does not pay to build an index it will discard (CR round 3, finding 22).
+    # It lives here rather than in the consumer so there is one answer per
+    # revision regardless of which path wrote it.
+    comparison = (
+        compare_spec_fingerprint(facts.spec_fingerprint, source.source_specs)
+        if facts.spec_fingerprint is not None
+        else NOT_COMPARED
+    )
 
     insert_values: dict = {
         "info_source_id": facts.info_source_id,
@@ -256,14 +243,93 @@ async def record_revision(
         row = existing.scalar_one()
 
     if inserted:
+        _log_spec_comparison(facts, comparison)
         session.add(
             ChangesOutboxRow(
                 topic=CHANGE_STREAM_TOPIC,
                 payload=(await _captured_emit(session, row)).model_dump(mode="json"),
             )
         )
+    else:
+        _refresh_spec_comparison(row, facts, comparison)
 
     return row, inserted
+
+
+def _refresh_spec_comparison(
+    row: SourceRevision, facts: RevisionFacts, comparison: SpecComparison
+) -> None:
+    """Carry a re-observation's spec verdict onto an existing row.
+
+    The idempotent no-op returns the row the *first* observation wrote, and its
+    spec columns describe the comparison made then. Left alone that is a
+    diagnostic column asserting something false: move the registry to a new spec,
+    re-observe content already recorded, and the row keeps claiming ``current``
+    for a spec we no longer hold — while the observation that would have flagged
+    it leaves no trace. Worse, that is the *stuck producer* case, which is the one
+    this column exists to detect (CR round 3, finding 21).
+
+    So the verdict is refreshed to the most recent observation's. The three
+    columns move as a unit — a ``spec_match`` describing a different
+    ``spec_fingerprint`` than the one stored is internally inconsistent, which is
+    worse than either being stale. No outbox event: the revision's identity is
+    ``(info_source_id, content_fingerprint)`` and neither changed, so subscribers
+    have nothing new to learn.
+
+    Mutates ``row`` in the caller's session; the caller's commit persists it.
+    """
+    if facts.spec_fingerprint is None:
+        # Nothing was reported, so there is no newer verdict — and blanking the
+        # stored one would let a re-POST through the HTTP path (which never
+        # carries a fingerprint) erase what the bus path recorded.
+        return
+    if (row.spec_fingerprint, row.spec_match, row.spec_position) == (
+        facts.spec_fingerprint,
+        comparison.match,
+        comparison.position,
+    ):
+        # The common case: an at-least-once redelivery of the same observation.
+        # Returning here is what keeps a redelivery from re-logging the flag.
+        return
+
+    row.spec_fingerprint = facts.spec_fingerprint
+    row.spec_match = comparison.match
+    row.spec_position = comparison.position
+    _log_spec_comparison(facts, comparison)
+
+
+def _log_spec_comparison(facts: RevisionFacts, comparison: SpecComparison) -> None:
+    """Log the two conditions worth an operator's attention.
+
+    Called on insert and on a *change* of verdict, never on an unchanged
+    redelivery — the flag should fire once per state transition, not once per
+    delivery. The publisher throttles its repeated conditions for the same reason
+    (``ERROR_LOG_EVERY``); here the state itself is the natural throttle.
+    """
+    if comparison.match == SUPERSEDED:
+        # Not a rejection: archiver#140 makes spec delivery eventually
+        # consistent, so this is an expected transient state whose revision is
+        # real — but a *persistent* one means the producer's cached spec never
+        # caught up, and nothing else would report that.
+        logger.warning(
+            "Revision extracted under a spec this InfoSource no longer holds",
+            extra={
+                "info_source_id": str(facts.info_source_id),
+                "spec_fingerprint": facts.spec_fingerprint,
+                "content_fingerprint": facts.content_fingerprint,
+            },
+        )
+    elif comparison.is_fallback:
+        # Selector rot in progress: the primary spec stopped matching and the
+        # producer fell through to a cross-check alternative.
+        logger.warning(
+            "Revision extracted under a fallback spec, not the primary",
+            extra={
+                "info_source_id": str(facts.info_source_id),
+                "spec_position": comparison.position,
+                "content_fingerprint": facts.content_fingerprint,
+            },
+        )
 
 
 async def _captured_emit(session: AsyncSession, row: SourceRevision) -> SourceRevisionCapturedEmit:

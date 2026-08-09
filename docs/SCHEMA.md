@@ -63,8 +63,8 @@ see the never-rename rule in `AGENTS.md`.
     archiver#140 makes spec delivery eventually consistent, so extraction under a superseded spec
     is an expected transient state. Without the column, *the origin changed*, *our spec changed*,
     and *the producer was behind on announcements* are one indistinguishable new fingerprint.
-  - `spec_match` / `spec_position` — the comparison, computed at ingest against the InfoSource's
-    authoritative specs using co-core's shared derivation (`co_core.pure.extract`, cannobserv#309
+  - `spec_match` / `spec_position` — the comparison against the InfoSource's authoritative specs,
+    using co-core's shared derivation (`co_core.pure.extract`, cannobserv#309
     — both sides run one function rather than two readings of an algorithm). `spec_match` is
     `current` (matched; `spec_position` says *which* spec), `superseded` (**the flag** — well
     formed, matches none we hold), or `incomparable`; `NULL` means no fingerprint was reported.
@@ -74,6 +74,13 @@ see the never-rename rule in `AGENTS.md`.
     compare" and "compared, and it differs" must never collapse. `spec_position > 0` is its own
     signal: the primary spec stopped matching and the producer fell through to a cross-check
     alternative — selector rot in progress. Both are logged at WARNING as well as stored.
+    **All three `spec_*` columns describe the most recent observation of the pair, not the one
+    that created the row.** A re-observation is an idempotent no-op for the revision itself, but
+    it refreshes these three together (and emits no event — the identity is unchanged). Without
+    that, a registry that moved to a new spec would leave already-recorded content asserting
+    `current` for a spec it no longer holds, and the producer stuck on the old spec — the case
+    the flag exists for — would never raise one. The WARNING fires on a change of verdict, not on
+    every at-least-once redelivery.
   - `command_id` — correlation back to the `content.fetch` command behind the bytes.
   `content_cache_uri` / `content_cache_expires_at` are a **cache, not durable storage** — on the bus
   path a VM-local `file://` blob on Replicator's host, on a TTL clock the registry does not own. A

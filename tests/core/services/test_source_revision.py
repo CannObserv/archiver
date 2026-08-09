@@ -21,6 +21,7 @@ Covers:
 """
 
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 from co_core.pure.extract import spec_fingerprint
@@ -326,3 +327,113 @@ async def test_absent_spec_fingerprint_leaves_the_comparison_null(session, info_
     assert row.spec_fingerprint is None
     assert row.spec_match is None
     assert row.spec_position is None
+
+
+# ---------------------------------------------------------------------------
+# The comparison on the idempotent no-op path — CR round 3, findings 21 and 25
+# ---------------------------------------------------------------------------
+#
+# The interaction between "record the comparison" and "the second write is a
+# no-op" was untested in either direction, which is how the stale verdict got
+# in: the row kept the *first* observation's answer, so moving the registry to a
+# new spec and re-observing already-recorded content left the row asserting
+# `current` for a spec we no longer held — and that is the stuck-producer case
+# the column exists to catch.
+
+SPEC_B = {
+    "schema_version": 1,
+    "extraction": {"algorithm": "css", "selector": "#replacement"},
+    "fingerprint": {},
+}
+
+
+@pytest.mark.asyncio
+async def test_reobservation_under_a_superseded_spec_refreshes_the_verdict(session, info_source):
+    """The row carries the most recent observation's verdict, not the first."""
+    original = info_source.source_specs[0]
+    await record_revision(
+        session, _facts(info_source.info_source_id, spec_fingerprint=spec_fingerprint(original))
+    )
+
+    # The registry moves on; the producer is still extracting under the old spec.
+    info_source.source_specs = [SPEC_B]
+    await session.flush()
+
+    row, inserted = await record_revision(
+        session, _facts(info_source.info_source_id, spec_fingerprint=spec_fingerprint(original))
+    )
+
+    assert inserted is False
+    assert row.spec_match == "superseded"
+    assert row.spec_position is None
+
+
+@pytest.mark.asyncio
+async def test_reobservation_moves_all_three_columns_together(session, info_source):
+    """A spec_match describing a different spec_fingerprint than the stored one
+    is internally inconsistent — worse than either being stale."""
+    await record_revision(
+        session,
+        _facts(
+            info_source.info_source_id,
+            spec_fingerprint=spec_fingerprint(info_source.source_specs[0]),
+        ),
+    )
+
+    info_source.source_specs = [SPEC_B]
+    await session.flush()
+    row, _ = await record_revision(
+        session, _facts(info_source.info_source_id, spec_fingerprint=spec_fingerprint(SPEC_B))
+    )
+
+    assert row.spec_fingerprint == spec_fingerprint(SPEC_B)
+    assert row.spec_match == "current"
+    assert row.spec_position == 0
+
+
+@pytest.mark.asyncio
+async def test_reobservation_writes_no_second_outbox_event(session, info_source):
+    """Refreshing the verdict is not a change to the revision's identity."""
+    observed = spec_fingerprint(info_source.source_specs[0])
+    await record_revision(session, _facts(info_source.info_source_id, spec_fingerprint=observed))
+    info_source.source_specs = [SPEC_B]
+    await session.flush()
+
+    await record_revision(session, _facts(info_source.info_source_id, spec_fingerprint=observed))
+
+    assert await _outbox_count(session) == 1
+
+
+@pytest.mark.asyncio
+async def test_http_repost_does_not_erase_a_bus_written_verdict(session, info_source):
+    """The HTTP path reports no fingerprint; absence must not blank what the bus knew."""
+    observed = spec_fingerprint(info_source.source_specs[0])
+    await record_revision(session, _facts(info_source.info_source_id, spec_fingerprint=observed))
+
+    # A re-POST of the same revision, carrying no spec information at all.
+    row, inserted = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert inserted is False
+    assert row.spec_fingerprint == observed
+    assert row.spec_match == "current"
+    assert row.spec_position == 0
+
+
+@pytest.mark.asyncio
+async def test_unchanged_redelivery_does_not_relog_the_flag(session, info_source):
+    """The flag fires once per state transition, not once per delivery.
+
+    At-least-once means the same superseded observation arrives repeatedly; the
+    publisher throttles its repeated conditions for the same reason.
+    """
+    retired = {"schema_version": 1, "extraction": {"algorithm": "css", "selector": ".gone"}}
+    observed = spec_fingerprint(retired)
+    facts = _facts(info_source.info_source_id, spec_fingerprint=observed)
+
+    with patch("src.core.services.source_revision.logger") as first_log:
+        await record_revision(session, facts)
+    with patch("src.core.services.source_revision.logger") as second_log:
+        await record_revision(session, facts)
+
+    assert first_log.warning.call_count == 1
+    assert second_log.warning.call_count == 0

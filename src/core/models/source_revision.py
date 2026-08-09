@@ -58,8 +58,12 @@ class SourceRevision(Base):
     # "the producer was behind on announcements" are one indistinguishable new
     # fingerprint.
     spec_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # The comparison of spec_fingerprint against this InfoSource's source_specs
-    # at ingest, via co-core's shared derivation (cannobserv#309). See
+    # The comparison of spec_fingerprint against this InfoSource's source_specs,
+    # via co-core's shared derivation (cannobserv#309). Reflects the MOST RECENT
+    # observation of this (info_source_id, content_fingerprint) pair, not the one
+    # that created the row: a re-observation refreshes all three spec_* columns
+    # together, because a row asserting "current" for a spec the registry has
+    # since dropped is the stuck-producer case this column exists to catch. See
     # src/core/spec_match.py for the vocabulary and why every uncertain branch
     # lands on "incomparable" rather than "superseded".
     #   NULL           no spec_fingerprint was reported — nothing to compare

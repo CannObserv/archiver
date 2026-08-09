@@ -68,6 +68,13 @@ class SpecComparison:
         return self.match == CURRENT and self.position is not None and self.position > 0
 
 
+#: The verdict when there was nothing to compare — no ``spec_fingerprint`` was
+#: reported. Distinct from ``INCOMPARABLE``, which means a value arrived and could
+#: not be evaluated. Callers that skip the comparison entirely (the HTTP write
+#: path never carries a fingerprint) use this rather than inventing their own.
+NOT_COMPARED = SpecComparison(match=None, position=None)
+
+
 def compare_spec_fingerprint(observed: str | None, specs: list[dict]) -> SpecComparison:
     """Locate ``observed`` among ``specs``, or say why it could not be located.
 
@@ -78,7 +85,7 @@ def compare_spec_fingerprint(observed: str | None, specs: list[dict]) -> SpecCom
         # Not a mismatch. The field is optional and absence means the producer
         # had no spec identity to report — including a producer that has not
         # adopted it yet, which is every producer during a rollout.
-        return SpecComparison(match=None, position=None)
+        return NOT_COMPARED
 
     derivation = derivation_of(observed)
     if derivation is None:
