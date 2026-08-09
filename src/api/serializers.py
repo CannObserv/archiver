@@ -65,6 +65,9 @@ def source_revision_to_out(rev: SourceRevision) -> SourceRevisionOut:
         content_media_type=rev.content_media_type,
         content_cache_uri=rev.content_cache_uri,
         content_cache_expires_at=rev.content_cache_expires_at,
+        source_media_type=rev.source_media_type,
+        spec_fingerprint=rev.spec_fingerprint,
+        command_id=rev.command_id,
     )
 
 

@@ -18,6 +18,18 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.6.0 (2026-08-09)
+
+[both] **SourceRevision records observation provenance — `source_media_type`, `spec_fingerprint`, `command_id`, SDK v5.1.0** (archiver#139, step 3 of the #137 epic). Three new nullable `information.source_revisions` columns, all three additive on `SourceRevisionOut`.
+
+They exist because the forthcoming `content.revisions` consumer receives them on `SourceRevisionObservedEvent` (cannobserv#301) and had nowhere to put them. Read-only for now: no request body accepts them, so rows written through `POST /source-revisions` carry `null` in all three, and existing rows are unaffected — no backfill.
+
+- **`source_media_type`** is what the *origin* served. It does not duplicate `content_media_type`, which describes the text extracted under `source_specs` — an HTML page is served `text/html` and the text extracted from it is not, so the two differ for one revision and neither substitutes for the other. It inherits `BlobAvailableEvent.media_type`'s normalization (charset dropped, `application/octet-stream` for an absent header), so it cannot express "the origin sent no `Content-Type` at all".
+- **`spec_fingerprint`** identifies which `source_specs` the producer extracted under. **Recorded, never enforced** — a value that disagrees with the InfoSource's current specs does not invalidate the revision and does not fail the write. archiver#140 moves spec delivery onto an eventually-consistent announcement channel, making "extracted under a superseded spec" an expected transient state; and Archiver cannot derive the expected value to compare against, because the derivation is the producer's and lives in no shared library (cannobserv#309 asks for one). Without the column, *the origin changed*, *our extraction spec changed*, and *the producer was behind on announcements* are one indistinguishable new fingerprint.
+- **`command_id`** correlates the revision back to the `content.fetch` command that produced the bytes.
+
+SDK: `SourceRevisionOut` gains the three optional fields; no wrapper signature changes. Consumers on v5.0.0 keep working — additive response fields only.
+
 ## v4.5.1 (2026-07-29)
 
 [service] **Outbox publisher dead-letters poison rows instead of retrying them forever** (archiver#107). New nullable `information.changes_outbox.dead_lettered_at` column; the unpublished partial index (`ix_changes_outbox_unpublished_created`) is narrowed to `published_at IS NULL AND dead_lettered_at IS NULL`.

@@ -87,6 +87,12 @@ class RevisionFacts:
     content_media_type: str | None = None
     content_cache_uri: str | None = None
     content_cache_expires_at: datetime | None = None
+    # Observation provenance — the bus path holds these, the HTTP path never
+    # does. See the column comments in src/core/models/source_revision.py for
+    # why each is recorded and why spec_fingerprint is not enforced.
+    source_media_type: str | None = None
+    spec_fingerprint: str | None = None
+    command_id: str | None = None
     source_revision_id: ULID | None = None
 
 
@@ -132,6 +138,9 @@ async def record_revision(
         "content_media_type": facts.content_media_type,
         "content_cache_uri": facts.content_cache_uri,
         "content_cache_expires_at": facts.content_cache_expires_at,
+        "source_media_type": facts.source_media_type,
+        "spec_fingerprint": facts.spec_fingerprint,
+        "command_id": facts.command_id,
     }
     if facts.source_revision_id is not None:
         insert_values["source_revision_id"] = facts.source_revision_id

@@ -222,3 +222,40 @@ async def test_service_does_not_commit(session, info_source):
 
     assert session.in_transaction()
     assert session.new or session.dirty or session.identity_map
+
+
+@pytest.mark.asyncio
+async def test_provenance_facts_persist(session, info_source):
+    """The three observation-provenance fields reach their columns (archiver#139)."""
+    row, inserted = await record_revision(
+        session,
+        _facts(
+            info_source.info_source_id,
+            source_media_type="text/html",
+            spec_fingerprint="sha256:" + "e" * 64,
+            command_id="cmd-7",
+        ),
+    )
+
+    assert inserted is True
+    assert row.source_media_type == "text/html"
+    assert row.spec_fingerprint == "sha256:" + "e" * 64
+    assert row.command_id == "cmd-7"
+
+
+@pytest.mark.asyncio
+async def test_spec_fingerprint_mismatch_does_not_block_the_write(session, info_source):
+    """A spec_fingerprint unrelated to the InfoSource's current specs still records.
+
+    Record-and-flag, never reject (archiver#139): archiver#140 makes source_specs
+    delivery eventually consistent, so a producer extracting under a superseded
+    spec is an expected transient state rather than an error — and Archiver
+    cannot derive the expected value to compare against in any case
+    (cannobserv#309).
+    """
+    row, inserted = await record_revision(
+        session, _facts(info_source.info_source_id, spec_fingerprint="sha256:" + "0" * 64)
+    )
+
+    assert inserted is True
+    assert row.spec_fingerprint == "sha256:" + "0" * 64

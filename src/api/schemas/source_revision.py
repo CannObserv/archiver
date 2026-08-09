@@ -69,6 +69,30 @@ class SourceRevisionOut(BaseModel):
     content_cache_expires_at: datetime | None = Field(
         description="UTC timestamp after which the cached content at content_cache_uri expires."
     )
+    source_media_type: str | None = Field(
+        default=None,
+        description=(
+            "MIME type the origin served, as against content_media_type, which "
+            "describes the extracted content. Null on rows written through this "
+            "API — only the content.revisions consumer observes it."
+        ),
+    )
+    spec_fingerprint: str | None = Field(
+        default=None,
+        description=(
+            "Identifies the source_specs the producer extracted under. Recorded "
+            "for attribution, never enforced: a value differing from the "
+            "InfoSource's current specs does not invalidate the revision. Null on "
+            "rows written through this API."
+        ),
+    )
+    command_id: str | None = Field(
+        default=None,
+        description=(
+            "Correlation id of the content.fetch command behind these bytes. Null "
+            "on rows written through this API."
+        ),
+    )
 
 
 class SourceRevisionCachePatch(BaseModel):

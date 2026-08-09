@@ -8,6 +8,8 @@ from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 from dateutil.parser import isoparse
 
+from ..types import UNSET, Unset
+
 T = TypeVar("T", bound="SourceRevisionOut")
 
 
@@ -27,6 +29,14 @@ class SourceRevisionOut:
         content_size_bytes (int | None): Size of the fetched content in bytes, if recorded.
         info_source_id (str): ULID of the InfoSource this revision was captured from.
         source_revision_id (str): ULID identifying this SourceRevision.
+        command_id (None | str | Unset): Correlation id of the content.fetch command behind these bytes. Null on rows
+            written through this API.
+        source_media_type (None | str | Unset): MIME type the origin served, as against content_media_type, which
+            describes the extracted content. Null on rows written through this API — only the content.revisions consumer
+            observes it.
+        spec_fingerprint (None | str | Unset): Identifies the source_specs the producer extracted under. Recorded for
+            attribution, never enforced: a value differing from the InfoSource's current specs does not invalidate the
+            revision. Null on rows written through this API.
     """
 
     captured_at: datetime.datetime
@@ -37,6 +47,9 @@ class SourceRevisionOut:
     content_size_bytes: int | None
     info_source_id: str
     source_revision_id: str
+    command_id: None | str | Unset = UNSET
+    source_media_type: None | str | Unset = UNSET
+    spec_fingerprint: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -63,6 +76,24 @@ class SourceRevisionOut:
 
         source_revision_id = self.source_revision_id
 
+        command_id: None | str | Unset
+        if isinstance(self.command_id, Unset):
+            command_id = UNSET
+        else:
+            command_id = self.command_id
+
+        source_media_type: None | str | Unset
+        if isinstance(self.source_media_type, Unset):
+            source_media_type = UNSET
+        else:
+            source_media_type = self.source_media_type
+
+        spec_fingerprint: None | str | Unset
+        if isinstance(self.spec_fingerprint, Unset):
+            spec_fingerprint = UNSET
+        else:
+            spec_fingerprint = self.spec_fingerprint
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -77,6 +108,12 @@ class SourceRevisionOut:
                 "source_revision_id": source_revision_id,
             }
         )
+        if command_id is not UNSET:
+            field_dict["command_id"] = command_id
+        if source_media_type is not UNSET:
+            field_dict["source_media_type"] = source_media_type
+        if spec_fingerprint is not UNSET:
+            field_dict["spec_fingerprint"] = spec_fingerprint
 
         return field_dict
 
@@ -129,6 +166,33 @@ class SourceRevisionOut:
 
         source_revision_id = d.pop("source_revision_id")
 
+        def _parse_command_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        command_id = _parse_command_id(d.pop("command_id", UNSET))
+
+        def _parse_source_media_type(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        source_media_type = _parse_source_media_type(d.pop("source_media_type", UNSET))
+
+        def _parse_spec_fingerprint(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        spec_fingerprint = _parse_spec_fingerprint(d.pop("spec_fingerprint", UNSET))
+
         source_revision_out = cls(
             captured_at=captured_at,
             content_cache_expires_at=content_cache_expires_at,
@@ -138,6 +202,9 @@ class SourceRevisionOut:
             content_size_bytes=content_size_bytes,
             info_source_id=info_source_id,
             source_revision_id=source_revision_id,
+            command_id=command_id,
+            source_media_type=source_media_type,
+            spec_fingerprint=spec_fingerprint,
         )
 
         source_revision_out.additional_properties = d
