@@ -1,0 +1,224 @@
+"""Tests for the SourceRevision write path (``src.core.services.source_revision``).
+
+The path was inline in ``POST /source-revisions`` until archiver#139 needed a
+second caller — the ``content.revisions`` consumer. Extracted rather than
+reimplemented, because the issue's "payloads byte-identical to the HTTP path's"
+is only checkable if there is one path to be identical *to*.
+
+Covers:
+1. New revision → row inserted, ``inserted=True``
+2. Same (source, fingerprint) → existing row returned, ``inserted=False``
+3. Different fingerprint, same source → a second row
+4. New revision → exactly one outbox row, correct payload shape
+5. Duplicate → no second outbox row
+6. bindings reflect active bindings, ordered by info_item_id
+7. Deactivated bindings excluded
+8. Unknown info_source_id → UnknownInfoSourceError, nothing written
+9. Caller-supplied source_revision_id honoured on insert
+10. Caller-supplied id already used by a different pair → SourceRevisionIdConflictError
+11. Caller-supplied id matching its own existing pair → idempotent no-op
+12. The service does not commit — the caller owns the transaction boundary
+"""
+
+from datetime import UTC, datetime
+
+import pytest
+from sqlalchemy import func, select
+from ulid import ULID
+
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource, SourceRevision
+from src.core.services.source_revision import (
+    RevisionFacts,
+    SourceRevisionIdConflictError,
+    UnknownInfoSourceError,
+    record_revision,
+)
+
+FP_A = "sha256:" + "a" * 64
+FP_B = "sha256:" + "b" * 64
+CAPTURED_AT = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+async def info_source(session) -> InfoSource:
+    """InfoSource the revisions under test hang off."""
+    src = InfoSource(
+        url="https://example.com/service-test",
+        source_specs=[
+            {"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}
+        ],
+    )
+    session.add(src)
+    await session.flush()
+    return src
+
+
+def _facts(info_source_id: ULID, fingerprint: str = FP_A, **overrides) -> RevisionFacts:
+    """A minimal RevisionFacts; ``overrides`` set the optional columns."""
+    return RevisionFacts(
+        info_source_id=info_source_id,
+        content_fingerprint=fingerprint,
+        captured_at=CAPTURED_AT,
+        **overrides,
+    )
+
+
+async def _outbox_count(session) -> int:
+    result = await session.execute(select(func.count()).select_from(ChangesOutboxRow))
+    return result.scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_new_revision_inserts_row(session, info_source):
+    row, inserted = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert inserted is True
+    assert row.info_source_id == info_source.info_source_id
+    assert row.content_fingerprint == FP_A
+    assert row.captured_at == CAPTURED_AT
+
+
+@pytest.mark.asyncio
+async def test_duplicate_pair_returns_existing_row(session, info_source):
+    first, _ = await record_revision(session, _facts(info_source.info_source_id))
+    second, inserted = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert inserted is False
+    assert second.source_revision_id == first.source_revision_id
+
+
+@pytest.mark.asyncio
+async def test_different_fingerprint_inserts_second_row(session, info_source):
+    first, _ = await record_revision(session, _facts(info_source.info_source_id, FP_A))
+    second, inserted = await record_revision(session, _facts(info_source.info_source_id, FP_B))
+
+    assert inserted is True
+    assert second.source_revision_id != first.source_revision_id
+
+
+@pytest.mark.asyncio
+async def test_new_revision_emits_one_outbox_row(session, info_source):
+    row, _ = await record_revision(session, _facts(info_source.info_source_id))
+
+    result = await session.execute(select(ChangesOutboxRow))
+    outbox = result.scalars().all()
+    assert len(outbox) == 1
+    assert outbox[0].topic == "info.changes"
+    payload = outbox[0].payload
+    assert payload["event_type"] == "source_revision_captured"
+    assert payload["info_source_id"] == str(info_source.info_source_id)
+    assert payload["source_revision_id"] == str(row.source_revision_id)
+    assert payload["content_fingerprint"] == FP_A
+    assert payload["bindings"] == []
+
+
+@pytest.mark.asyncio
+async def test_duplicate_emits_no_second_outbox_row(session, info_source):
+    await record_revision(session, _facts(info_source.info_source_id))
+    await record_revision(session, _facts(info_source.info_source_id))
+
+    assert await _outbox_count(session) == 1
+
+
+@pytest.mark.asyncio
+async def test_bindings_list_active_items_ordered(session, info_source):
+    items = [InfoItem(name=f"Item {n}") for n in range(3)]
+    session.add_all(items)
+    await session.flush()
+    for item in items:
+        session.add(
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=info_source.info_source_id,
+            )
+        )
+    await session.flush()
+
+    await record_revision(session, _facts(info_source.info_source_id))
+
+    result = await session.execute(select(ChangesOutboxRow))
+    bindings = result.scalar_one().payload["bindings"]
+    ids = [b["info_item_id"] for b in bindings]
+    assert ids == sorted(str(i.info_item_id) for i in items)
+
+
+@pytest.mark.asyncio
+async def test_deactivated_bindings_excluded(session, info_source):
+    item = InfoItem(name="Deactivated")
+    session.add(item)
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=info_source.info_source_id,
+            deactivated_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    await record_revision(session, _facts(info_source.info_source_id))
+
+    result = await session.execute(select(ChangesOutboxRow))
+    assert result.scalar_one().payload["bindings"] == []
+
+
+@pytest.mark.asyncio
+async def test_unknown_info_source_raises_and_writes_nothing(session):
+    with pytest.raises(UnknownInfoSourceError):
+        await record_revision(session, _facts(ULID()))
+
+    assert await _outbox_count(session) == 0
+    result = await session.execute(select(func.count()).select_from(SourceRevision))
+    assert result.scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_supplied_revision_id_honoured_on_insert(session, info_source):
+    wanted = ULID()
+
+    row, inserted = await record_revision(
+        session, _facts(info_source.info_source_id, source_revision_id=wanted)
+    )
+
+    assert inserted is True
+    assert row.source_revision_id == wanted
+
+
+@pytest.mark.asyncio
+async def test_supplied_revision_id_colliding_with_other_pair_raises(session, info_source):
+    existing, _ = await record_revision(session, _facts(info_source.info_source_id, FP_A))
+
+    with pytest.raises(SourceRevisionIdConflictError):
+        await record_revision(
+            session,
+            _facts(
+                info_source.info_source_id, FP_B, source_revision_id=existing.source_revision_id
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_supplied_revision_id_matching_own_pair_is_idempotent(session, info_source):
+    first, _ = await record_revision(session, _facts(info_source.info_source_id, FP_A))
+
+    second, inserted = await record_revision(
+        session,
+        _facts(info_source.info_source_id, FP_A, source_revision_id=first.source_revision_id),
+    )
+
+    assert inserted is False
+    assert second.source_revision_id == first.source_revision_id
+
+
+@pytest.mark.asyncio
+async def test_service_does_not_commit(session, info_source):
+    """The caller owns the transaction boundary.
+
+    The consumer's ack-after-commit ordering and the route's single commit both
+    depend on the row and its outbox event landing in *one* caller-controlled
+    transaction — a commit inside the service would split them.
+    """
+    await record_revision(session, _facts(info_source.info_source_id))
+
+    assert session.in_transaction()
+    assert session.new or session.dirty or session.identity_map

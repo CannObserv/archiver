@@ -1,11 +1,6 @@
 """POST /source-revisions and PATCH /source-revisions/{id} route handlers."""
 
-from datetime import UTC, datetime
-
-from co_core.pure.models.changes import InfoItemBinding, SourceRevisionCapturedEmit
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -17,7 +12,13 @@ from src.api.schemas.source_revision import (
     SourceRevisionOut,
 )
 from src.api.serializers import source_revision_to_out
-from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
+from src.core.models import SourceRevision
+from src.core.services.source_revision import (
+    RevisionFacts,
+    SourceRevisionIdConflictError,
+    UnknownInfoSourceError,
+    record_revision,
+)
 
 router = APIRouter(prefix="/source-revisions", tags=["source-revisions"])
 
@@ -71,90 +72,39 @@ async def create_source_revision(
                 source_exc=e,
             )
 
-    source = await session.get(InfoSource, source_ulid)
-    if source is None:
-        raise_envelope(404, "lookup", "info_source not found")
-
-    # --- Reject ULID collisions against a different (source, fingerprint) ---
-    # Idempotent-match cases (same ULID, same pair) fall through to the
-    # ON CONFLICT path below.
-    if rev_ulid is not None:
-        existing = await session.get(SourceRevision, rev_ulid)
-        if existing is not None and (
-            existing.info_source_id != source_ulid
-            or existing.content_fingerprint != body.content_fingerprint
-        ):
-            raise_envelope(
-                409,
-                "conflict",
-                "source_revision_id already in use for a different "
-                "(info_source_id, content_fingerprint) pair",
-                data={
-                    "existing_info_source_id": str(existing.info_source_id),
-                    "existing_content_fingerprint": existing.content_fingerprint,
-                },
-            )
-
-    # --- Upsert via INSERT … ON CONFLICT DO NOTHING … RETURNING ---
-    insert_values: dict = {
-        "info_source_id": source_ulid,
-        "content_fingerprint": body.content_fingerprint,
-        "captured_at": body.captured_at,
-        "content_size_bytes": body.content_size_bytes,
-        "content_media_type": body.content_media_type,
-        "content_cache_uri": body.content_cache_uri,
-        "content_cache_expires_at": body.content_cache_expires_at,
-    }
-    if rev_ulid is not None:
-        insert_values["source_revision_id"] = rev_ulid
-
-    stmt = (
-        pg_insert(SourceRevision)
-        .values(**insert_values)
-        .on_conflict_do_nothing(index_elements=["info_source_id", "content_fingerprint"])
-        .returning(SourceRevision)
-    )
-    result = await session.execute(stmt)
-    row = result.scalar_one_or_none()
-
-    if row is None:
-        # Idempotent no-op — fetch the existing row
-        existing = await session.execute(
-            select(SourceRevision).where(
-                SourceRevision.info_source_id == source_ulid,
-                SourceRevision.content_fingerprint == body.content_fingerprint,
-            )
+    # --- The write itself lives in the service layer (archiver#139) ---
+    # Shared verbatim with the content.revisions consumer, so the
+    # source_revision_captured payload this path emits and the one the bus path
+    # emits are the same code rather than two implementations kept in step.
+    try:
+        row, inserted = await record_revision(
+            session,
+            RevisionFacts(
+                info_source_id=source_ulid,
+                content_fingerprint=body.content_fingerprint,
+                captured_at=body.captured_at,
+                content_size_bytes=body.content_size_bytes,
+                content_media_type=body.content_media_type,
+                content_cache_uri=body.content_cache_uri,
+                content_cache_expires_at=body.content_cache_expires_at,
+                source_revision_id=rev_ulid,
+            ),
         )
-        row = existing.scalar_one()
-        response.status_code = status.HTTP_200_OK
-        inserted = False
-    else:
-        response.status_code = status.HTTP_201_CREATED
-        inserted = True
-
-    if inserted:
-        # Query active info_item_id values bound to this source.
-        # Order by info_item_id so the emitted bindings list is deterministic
-        # — downstream consumers diffing payloads (e.g. snapshot tests) rely
-        # on stable ordering.
-        bindings_result = await session.execute(
-            select(InfoItemSource.info_item_id)
-            .where(
-                InfoItemSource.info_source_id == row.info_source_id,
-                InfoItemSource.deactivated_at.is_(None),
-            )
-            .order_by(InfoItemSource.info_item_id)
+    except UnknownInfoSourceError as e:
+        raise_envelope(404, "lookup", "info_source not found", source_exc=e)
+    except SourceRevisionIdConflictError as e:
+        raise_envelope(
+            409,
+            "conflict",
+            str(e),
+            data={
+                "existing_info_source_id": str(e.existing.info_source_id),
+                "existing_content_fingerprint": e.existing.content_fingerprint,
+            },
+            source_exc=e,
         )
-        bindings = [InfoItemBinding(info_item_id=str(iid)) for (iid,) in bindings_result.all()]
-        event = SourceRevisionCapturedEmit(
-            occurred_at=datetime.now(UTC),
-            info_source_id=str(row.info_source_id),
-            source_revision_id=str(row.source_revision_id),
-            content_fingerprint=row.content_fingerprint,
-            bindings=bindings,
-        )
-        session.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
 
+    response.status_code = status.HTTP_201_CREATED if inserted else status.HTTP_200_OK
     await session.commit()
     return source_revision_to_out(row)
 
