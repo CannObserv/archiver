@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrif
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`; the `info_item_source_revisions` pin table was dropped in archiver#101). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces a Redis Stream (`info.changes`) via an internal outbox publisher.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces `info.changes` via an internal outbox publisher and consumes `content.revisions` (archiver#139).
 
 Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
 
@@ -124,7 +124,7 @@ set +a
 
 Source exactly that way — `export $(cat … | xargs)` silently corrupts values.
 
-**Three variables carry safety rules; the rest are reference
+**Four variables carry safety rules; the rest are reference
 ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).**
 
 - `TEST_DATABASE_URL` — **must not equal** `ARCHIVER_DATABASE_URL` or
@@ -133,6 +133,8 @@ Source exactly that way — `export $(cat … | xargs)` silently corrupts values
 - `ARCHIVER_ALLOW_PRODUCTION_DB` — only `deploy/archiver.service` sets it. **Never
   put it in an env file** — that re-opens the hole for every process that sources
   them.
+- `ARCHIVER_BUS_CONSUMER` — same rule, same reason; gates joining the
+  `archiver.revisions` consumer group.
 - `ARCHIVER_DEV_REDIS_URL` — unset means the dev server is bus-dormant; prod's
   `ARCHIVER_REDIS_URL` is never inherited.
 

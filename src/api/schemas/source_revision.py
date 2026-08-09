@@ -1,11 +1,12 @@
 """Pydantic schemas for SourceRevision create / read / patch."""
 
-import re
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-_FP_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+# The fingerprint spelling is a domain rule, not an HTTP one — the bus ingest
+# path enforces the same pattern with no Pydantic layer to lean on.
+from src.core.services.source_revision import FINGERPRINT_PATTERN
 
 
 class SourceRevisionCreate(BaseModel):
@@ -33,7 +34,7 @@ class SourceRevisionCreate(BaseModel):
     @classmethod
     def _fingerprint_format(cls, v: str) -> str:
         """Require sha256:<64 lowercase hex>."""
-        if not _FP_PATTERN.match(v):
+        if not FINGERPRINT_PATTERN.match(v):
             raise ValueError("must match 'sha256:<64 lowercase hex>'")
         return v
 

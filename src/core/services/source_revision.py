@@ -14,6 +14,7 @@ added to the caller's session so it commits with the revision.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -26,6 +27,13 @@ from ulid import ULID
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
 
 CHANGE_STREAM_TOPIC = "info.changes"
+
+# The one spelling a content fingerprint may take. Enforced here rather than only
+# at the Pydantic layer because the bus path has no Pydantic layer: co-core types
+# ``extracted_fingerprint`` as a bare ``str``, and Archiver's uniqueness key is
+# ``(info_source_id, content_fingerprint)`` — a differently-spelled fingerprint
+# for identical content is a silent duplicate row, not a loud failure.
+FINGERPRINT_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class SourceRevisionWriteError(Exception):
@@ -48,6 +56,32 @@ class UnknownInfoSourceError(SourceRevisionWriteError):
     def __init__(self, info_source_id: ULID) -> None:
         super().__init__(f"info_source not found: {info_source_id}")
         self.info_source_id = info_source_id
+
+
+class InvalidFingerprintError(SourceRevisionWriteError):
+    """The fingerprint is not spelled ``sha256:<64 lowercase hex>``.
+
+    A 422 over HTTP (caught earlier, at the Pydantic layer). On the bus it is
+    poison: redelivery produces the identical value, so it is quarantined rather
+    than retried.
+    """
+
+    def __init__(self, value: str) -> None:
+        super().__init__(f"fingerprint must match 'sha256:<64 lowercase hex>': {value!r}")
+        self.value = value
+
+
+class InvalidInfoSourceIdError(SourceRevisionWriteError):
+    """``info_source_id`` is not a ULID.
+
+    Distinct from ``UnknownInfoSourceError``: that one is a well-formed id for
+    something the registry does not hold (drop it), this one cannot identify
+    anything at all (quarantine it).
+    """
+
+    def __init__(self, value: str) -> None:
+        super().__init__(f"info_source_id is not a valid ULID: {value!r}")
+        self.value = value
 
 
 class SourceRevisionIdConflictError(SourceRevisionWriteError):
@@ -94,6 +128,29 @@ class RevisionFacts:
     spec_fingerprint: str | None = None
     command_id: str | None = None
     source_revision_id: ULID | None = None
+
+
+def validate_fingerprint(value: str) -> str:
+    """Return ``value`` if it is a well-formed content fingerprint.
+
+    Raises:
+        InvalidFingerprintError: it is not.
+    """
+    if not FINGERPRINT_PATTERN.match(value):
+        raise InvalidFingerprintError(value)
+    return value
+
+
+def parse_info_source_id(value: str) -> ULID:
+    """Parse a wire ``info_source_id`` into a ULID.
+
+    Raises:
+        InvalidInfoSourceIdError: it is not a ULID.
+    """
+    try:
+        return ULID.from_str(value)
+    except ValueError as e:
+        raise InvalidInfoSourceIdError(value) from e
 
 
 async def record_revision(

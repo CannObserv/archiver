@@ -30,6 +30,20 @@ They exist because the forthcoming `content.revisions` consumer receives them on
 
 SDK: `SourceRevisionOut` gains the three optional fields; no wrapper signature changes. Consumers on v5.0.0 keep working — additive response fields only.
 
+[service] **Archiver ingests SourceRevisions from the bus — new `content.revisions` consumer** (archiver#139, answers #118). Its **first consumer role**; it has only ever produced. Watcher publishes `source_revision_observed` (cannobserv#301, co-core ≥0.8) and the registry decides what to persist, replacing Watcher's `POST /source-revisions`.
+
+The write goes through the same `record_revision` call the HTTP route makes, so `source_revision_captured` on `info.changes` is unchanged for existing subscribers — the outbox row still commits in the revision's transaction, and the event is still keyed on `source_revision_id`. Idempotency is the existing `(info_source_id, content_fingerprint)` constraint, which makes at-least-once redelivery a no-op emitting no duplicate event. Archiver allocates the `source_revision_id`: it is deliberately absent from the wire, because a service that does not own the registry does not mint registry ids.
+
+Operationally:
+
+- **Group `archiver.revisions`** on `content.revisions`, created at `0` rather than `$` so nothing published before the group existed is dropped. Consumer-group lag is now Archiver's own health concern for the first time — threshold work is #130.
+- **Gated on `ARCHIVER_BUS_CONSUMER=1`**, set only in `deploy/archiver.service`. Presence of `ARCHIVER_REDIS_URL` is not sufficient: consuming *removes* messages from the group, so a stray process sourcing `/etc/archiver/.env` would silently swallow revisions. Same never-in-an-env-file rule as `ARCHIVER_ALLOW_PRODUCTION_DB`.
+- **Ack strictly after commit.** A crash between the two redelivers into an idempotent write; the other order loses a revision.
+- **Unknown `info_source_id` is ack-and-drop** with a WARNING — the registry is the authority on what exists. Unusable or undecodable frames go to `content.revisions.dlq`; transient failures stay pending for redelivery or `XAUTOCLAIM`.
+- **`blob_uri` lands in `content_cache_uri`, not durable storage.** It is a VM-local `file://` on Replicator's host with a TTL clocked from last fetch reference. An absent `blob_expires_at` records absence rather than a guessed horizon.
+
+`POST` and `PATCH /source-revisions` are unchanged and stay — they are the authoring/backfill path, and retiring them is a separate call from retiring Watcher's use of them (CannObserv/watcher#253, which must land *after* this).
+
 ## v4.5.1 (2026-07-29)
 
 [service] **Outbox publisher dead-letters poison rows instead of retrying them forever** (archiver#107). New nullable `information.changes_outbox.dead_lettered_at` column; the unpublished partial index (`ix_changes_outbox_unpublished_created`) is narrowed to `published_at IS NULL AND dead_lettered_at IS NULL`.

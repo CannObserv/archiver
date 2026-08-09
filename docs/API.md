@@ -73,7 +73,7 @@ only starts when `ARCHIVER_REDIS_URL` is set. Two event types:
 
 | Event type | Trigger | Payload type (co-core) |
 |---|---|---|
-| `source_revision_captured` | New `SourceRevision` insert (`POST /source-revisions` on non-idempotent path) | `co_core.pure.models.changes.SourceRevisionCapturedEvent` |
+| `source_revision_captured` | New `SourceRevision` insert — from `POST /source-revisions` **or** from a `content.revisions` observation, on the non-idempotent path either way | `co_core.pure.models.changes.SourceRevisionCapturedEvent` |
 | `info_item_primary_changed` | New active `InfoItemSource` binding created (`POST /info-items/{id}/info-sources`) | `co_core.pure.models.changes.InfoItemPrimaryChangedEvent` |
 
 The payload models live in **co-core** (`co_core.pure.models.changes`) — lifted
@@ -99,3 +99,56 @@ use `ConfigDict(extra="ignore")` (or `model_construct`) on the
 consumer-side mirror so additive producer fields do not raise
 `ValidationError`. Branch on `schema_version` before destructuring when
 the version is one the consumer recognises differently.
+
+## Change-bus consumer — `content.revisions` (archiver#139)
+
+Archiver's **only** consumer role. It reads `source_revision_observed` facts
+(`co_core.pure.models.changes.SourceRevisionObservedEvent`, cannobserv#301) from
+`content.revisions` under the group **`archiver.revisions`**, one group per
+consuming service as the fact-stream posture requires.
+`src/core/changes/consumer.py` holds the loop; it runs under the FastAPI
+lifespan and is dormant unless **both** `ARCHIVER_REDIS_URL` and
+`ARCHIVER_BUS_CONSUMER=1` are set.
+
+Watcher observes; the registry decides. Per message:
+
+1. `info_source_id` is resolved against the registry. Unknown → **ack and drop**
+   with a WARNING. The registry is the authority on what exists, and redelivery
+   cannot make a missing InfoSource appear.
+2. The row is written through
+   `src.core.services.source_revision.record_revision` — the same call
+   `POST /source-revisions` makes. The existing `INSERT … ON CONFLICT …` on
+   `(info_source_id, content_fingerprint)` makes at-least-once redelivery a
+   no-op.
+3. On a genuinely new row, the `changes_outbox` row is written **in the same
+   transaction**, so `source_revision_captured` reaches `info.changes` with
+   semantics unchanged for existing subscribers. The event is Archiver's own
+   fact, keyed as it always was on `source_revision_id`.
+4. The message is acked **after** the commit. A crash in between redelivers and
+   the retry is idempotent; the other order would lose a revision.
+
+Field mapping, and the two traps in it:
+
+| Wire field | Column | Note |
+|---|---|---|
+| `extracted_fingerprint` | `content_fingerprint` | **Never** cross-match with `BlobAvailableEvent.content_fingerprint` — that is Replicator's sha256 of the *raw bytes*, this is sha256 of the text extracted under `source_specs`. Different inputs, different services; a cross-match fails silently as "no revision for this blob" |
+| `content_size_bytes` / `content_media_type` | same | measure the **extracted** content |
+| `source_media_type` | `source_media_type` | what the **origin** served; inherits `BlobAvailableEvent.media_type`'s normalization |
+| `blob_uri` | `content_cache_uri` | **a cache, not durable storage** — a VM-local `file://` on Replicator's host. Durable bytes are RepSpec replication's job |
+| `blob_expires_at` | `content_cache_expires_at` | `None` records *absence*; never substitute a TTL guessed from Replicator's policy |
+| `spec_fingerprint` | `spec_fingerprint` | recorded, never enforced — see [CHANGELOG](../CHANGELOG.md) v4.6.0 and cannobserv#309 |
+| `command_id` | `command_id` | correlation back to the fetch |
+| *(absent)* | `source_revision_id` | **Archiver allocates.** A service that does not own the registry does not mint registry ids |
+
+Failure routing: a well-formed observation the registry cannot use — a
+fingerprint outside `sha256:<64 hex>`, an `info_source_id` that is not a ULID —
+is quarantined to `content.revisions.dlq`, because redelivery reproduces it
+exactly. A frame that does not decode at all is quarantined too, via a raw pass
+over the group's pending list (`from_wire` raises before any message id reaches
+the caller, so there is nothing to `dead_letter` with — see
+`quarantine_undecodable`). Anything transient — the database down — leaves the
+message **pending**, and it is redelivered or reclaimed by `XAUTOCLAIM`.
+
+The HTTP write path (`POST` / `PATCH /source-revisions`) stays for authoring and
+backfill; retiring it is a separate call from retiring Watcher's *use* of it
+(CannObserv/watcher#253).

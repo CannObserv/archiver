@@ -22,6 +22,7 @@ from src.api.routes.info_sources import router as info_sources_router
 from src.api.routes.rep_specs import router as rep_specs_router
 from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
+from src.core.changes import consumer as revisions_consumer
 from src.core.changes import publisher as outbox_publisher
 from src.core.database import get_engine
 from src.core.db_safety import (
@@ -50,6 +51,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       ``ARCHIVER_REDIS_URL`` is set in the environment.  When the variable is
       absent the publisher is skipped silently so the service starts without a
       Redis dependency in dev/test environments.
+    - Optionally starts the ``content.revisions`` consumer, which additionally
+      requires ``ARCHIVER_BUS_CONSUMER=1``.  Producing from a stray process is
+      noisy; consuming *removes* messages from a production consumer group, so
+      that one gets an explicit opt-in only ``deploy/archiver.service`` sets
+      (archiver#139).
     """
     # Before any resource is built or any request is served.
     try:
@@ -82,6 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis_client: RedisAsync | None = None
     stop_event: asyncio.Event | None = None
     pub_task: asyncio.Task | None = None
+    consumer_task: asyncio.Task | None = None
 
     if redis_url:
         try:
@@ -115,20 +122,55 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.exception("Failed to initialise outbox publisher; skipping")
             redis_client = None
             app.state.redis_client = None
+
+        # --- Optional content.revisions consumer (archiver#139) ---
+        # Gated separately from the publisher and started in its own try, so a
+        # consumer that cannot start leaves the publisher running. It shares the
+        # publisher's Redis client and stop event: one broker connection pool,
+        # one shutdown signal.
+        gate = os.environ.get("ARCHIVER_BUS_CONSUMER")
+        if redis_client is not None and revisions_consumer.consumer_enabled(gate):
+            try:
+                consumer_task = asyncio.create_task(
+                    revisions_consumer.run(
+                        session_factory=async_sessionmaker(
+                            bind=get_engine(), expire_on_commit=False
+                        ),
+                        consumer=revisions_consumer.build_consumer(redis_client),
+                        stop_event=stop_event,
+                    )
+                )
+                app.state.revisions_consumer_task = consumer_task
+                logger.info(
+                    "content.revisions consumer started",
+                    extra={"group": revisions_consumer.CONSUMER_GROUP},
+                )
+            except Exception:
+                logger.exception("Failed to initialise content.revisions consumer; skipping")
+                app.state.revisions_consumer_task = None
+        else:
+            app.state.revisions_consumer_task = None
+            logger.info(
+                "content.revisions consumer disabled",
+                extra={"reason": "gate" if redis_client is not None else "no_redis_client"},
+            )
     else:
         app.state.redis_client = None
-        logger.info("ARCHIVER_REDIS_URL not set — outbox publisher disabled")
+        app.state.revisions_consumer_task = None
+        logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumer disabled")
 
     try:
         yield
     finally:
-        # Stop publisher first
+        # Stop the bus tasks first — both watch the same stop event.
         if stop_event is not None:
             stop_event.set()
-        if pub_task is not None:
-            pub_task.cancel()
+        for task in (pub_task, consumer_task):
+            if task is None:
+                continue
+            task.cancel()
             try:
-                await pub_task
+                await task
             except (asyncio.CancelledError, Exception):
                 pass
         if redis_client is not None:

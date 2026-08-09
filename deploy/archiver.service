@@ -30,6 +30,15 @@ EnvironmentFile=-/home/exedev/archiver/.env
 # Keep this AFTER the EnvironmentFile lines so it cannot be overridden by them.
 Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 
+# This unit is likewise the ONLY sanctioned member of the archiver.revisions
+# consumer group on content.revisions (archiver#139). Publishing from a stray
+# process is merely noisy; consuming REMOVES messages from the group, so any
+# process that sources /etc/archiver/.env — an agent shell, a one-off script —
+# would silently swallow revisions into whatever database it holds. Same
+# placement rule as above: after the EnvironmentFile lines, and never in an env
+# file, or the hole reopens for every process that sources them.
+Environment=ARCHIVER_BUS_CONSUMER=1
+
 # co-core / co-core-aio resolve from the local wheelhouse (archiver#72/#75).
 # Refresh it from the private GCS index before ExecStart, so `uv run` (which
 # auto-syncs from uv.lock) can resolve them. Auth is the co-pypi-reader SA key
