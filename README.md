@@ -1,6 +1,6 @@
 # archiver
 
-Cannabis Observer **Archiver service** — central registry + authoring service for the information layer. Owns **Information Items**, **Information Sources** (URL + multi-spec extraction array), **Source Revisions** (content-addressed snapshots), **Replication Specifications**, and effective-dated item↔rep-spec assignments. FastAPI + PostgreSQL. Sibling to [watcher](../watcher) and [notifier](../notifier); consumed by Watcher (and the forthcoming Replicator) via the `archiver-client` v5.x Python SDK; produces the `info.changes` Redis Stream via an internal outbox publisher.
+Cannabis Observer **Archiver service** — central registry + authoring service for the information layer. Owns **Information Items**, **Information Sources** (URL + multi-spec extraction array), **Source Revisions** (content-addressed snapshots), **Replication Specifications**, and effective-dated item↔rep-spec assignments. FastAPI + PostgreSQL. Sibling to [watcher](../watcher) and [notifier](../notifier); consumed by Watcher (and the forthcoming Replicator) via the `archiver-client` v5.x Python SDK; produces the `info.changes` Redis Stream via an internal outbox publisher, and consumes `content.revisions` to ingest observed Source Revisions.
 
 Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149). The current data model (Phase 4 / Archiver v2) is documented in [docs/plans/2026-05-08-archiver-v2-architecture-design.md](docs/plans/2026-05-08-archiver-v2-architecture-design.md); the implementation plan is at [docs/plans/2026-05-08-phase-4-archiver-v2-implementation.md](docs/plans/2026-05-08-phase-4-archiver-v2-implementation.md). Those are dated snapshots — for current behaviour see the live docs below.
 
@@ -67,6 +67,8 @@ bash clients/python/scripts/regen.sh
 
 HTML/HTMX admin UI at `/dashboard/`. Auth via `X-ExeDev-UserID` / `X-ExeDev-Email` proxy headers (redirects to `/__exe.dev/login` when absent). Covers all registry entities: Information Items, Information Sources, Source Revisions, Replication Specifications, and API key management. See [docs/PAGES.md](docs/PAGES.md) for the full page inventory, [docs/COMPONENTS.md](docs/COMPONENTS.md) for the component catalogue, and [docs/UI.md](docs/UI.md) for the shared patterns.
 
-## Optional: change-bus publisher
+## Optional: change bus
 
-Set `ARCHIVER_REDIS_URL=redis://localhost:6379/0` in the environment to enable the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded local-dev mode).
+Set `ARCHIVER_REDIS_URL=redis://localhost:6379/0` to enable the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded local-dev mode).
+
+The `content.revisions` consumer needs `ARCHIVER_BUS_CONSUMER=1` **as well**, and only `deploy/archiver.service` sets it. Publishing from a stray process is merely noisy; consuming *removes* messages from the `archiver.revisions` group, so a Redis URL alone is not authority to join it. Never put that variable in an env file — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
