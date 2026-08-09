@@ -20,8 +20,8 @@ dependencies = [
     "jinja2>=3.1.0,<4",
     "aiofiles>=24.1.0,<25",
     "python-multipart>=0.0.9,<1",
-    "co-core[extract]>=0.7.7,<0.8",
-    "co-core-aio[bus]>=0.7.7,<0.8",
+    "co-core[extract]>=0.8,<0.9",
+    "co-core-aio[bus]>=0.8,<0.9",
     "archiver-client",
     "watcher-client",
 ]

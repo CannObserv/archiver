@@ -91,6 +91,12 @@ async def cleanup_outbox(test_engine):
 # the hoisted-envelope assertions.
 _OCCURRED_AT = "2026-07-28T12:00:00+00:00"
 
+# The ``info_source_id`` every content-contract fixture carries. Required across
+# all three of them since cannobserv#300, and it is half of the
+# ``source_revision_observed`` idempotency key — so, like _OCCURRED_AT, one
+# constant rather than a literal per fixture free to drift from the key it feeds.
+_INFO_SOURCE_ID = "01JQ0000000000000000000001"
+
 
 def _captured_event(source_revision_id: str = "rev-1") -> dict:
     """A full ``source_revision_captured`` payload as stored in the outbox.
@@ -833,15 +839,24 @@ async def test_dead_letter_logs_error_with_reason(session_factory, publisher, mo
 
 
 # ---------------------------------------------------------------------------
-# The widened ChangeEventPayload union — archiver#138
+# The widened ChangeEventPayload union — archiver#138, widened again by #139
 # ---------------------------------------------------------------------------
 #
 # The co-core 0.7 line grew the union from four members to six: ContentFetchCommand
 # gained ``command_id`` (cannobserv#266), BlobAvailableEvent gained the correlation
 # + enrichment fields (#266/#271), and FetchFailedEvent (#270) / FetchPolicyState
-# (#285) are new. Archiver produces only the two ``info.changes`` types, but the
-# publisher dispatches through co-core's single ``_PAYLOAD_BY_EVENT_TYPE`` table —
-# so the drain loop is now a viable transport for any of the six, and the
+# (#285) are new. co-core 0.8 makes it seven, adding SourceRevisionObservedEvent
+# (cannobserv#301) — the fact Archiver *consumes* under #139, listed here because
+# membership of the union is what the publisher dispatches on, not direction.
+#
+# 0.8 also made ``info_source_id`` required across all three content contracts
+# (cannobserv#300), and re-keyed ``blob_available`` from the bare fingerprint to
+# ``content_fingerprint:command_id`` so one fact per *occurrence* survives two
+# InfoSources sharing a URL. The fixtures below carry both.
+#
+# Archiver produces only the two ``info.changes`` types, but the publisher
+# dispatches through co-core's single ``_PAYLOAD_BY_EVENT_TYPE`` table — so the
+# drain loop is a viable transport for any of the seven, and the
 # unknown-``event_type`` dead-letter branch (archiver#107) must still fire only for
 # an event type outside the *widened* union. These lock both halves in.
 
@@ -853,7 +868,9 @@ async def test_dead_letter_logs_error_with_reason(session_factory, publisher, mo
 # payload JSON uses pydantic's default (``Z``). Harmless for Archiver — nothing
 # here string-matches a payload timestamp — so this stays a test-side accommodation
 # rather than a workaround in ``publisher.py``. Drop it if #305 lands.
-_DATETIME_PAYLOAD_FIELDS = frozenset({"occurred_at", "fetched_at"})
+_DATETIME_PAYLOAD_FIELDS = frozenset(
+    {"occurred_at", "fetched_at", "captured_at", "blob_expires_at"}
+)
 
 
 def _parse_instant(raw: str) -> datetime:
@@ -867,20 +884,21 @@ def _parse_instant(raw: str) -> datetime:
 
 
 def _content_fetch_command(command_id: str = "cmd-1") -> dict:
-    """A full ``content_fetch`` command payload (cannobserv#266 shape)."""
+    """A full ``content_fetch`` command payload (cannobserv#266 + #300 shape)."""
     return {
         "schema_version": 1,
         "event_type": "content_fetch",
         "occurred_at": _OCCURRED_AT,
         "command_id": command_id,
         "url": "https://example.test/a",
+        "info_source_id": _INFO_SOURCE_ID,
         "headers": {"User-Agent": "co-observer"},
         "timeout_seconds": 30.0,
     }
 
 
 def _blob_available_event(content_fingerprint: str = "sha256:" + "b" * 64) -> dict:
-    """A full ``blob_available`` payload with the #266 correlation + #271 enrichment."""
+    """A full ``blob_available`` payload — #266 correlation, #271 enrichment, #300 key."""
     return {
         "schema_version": 1,
         "event_type": "blob_available",
@@ -891,28 +909,57 @@ def _blob_available_event(content_fingerprint: str = "sha256:" + "b" * 64) -> di
         "media_type": "text/html",
         "url": "https://example.test/a",
         "command_id": "cmd-1",
+        "info_source_id": _INFO_SOURCE_ID,
         "final_url": "https://example.test/a/",
         "status_code": 200,
         "fetched_at": "2026-07-28T11:59:00+00:00",
         "content_type_raw": "text/html; charset=utf-8",
         "etag": 'W/"abc"',
         "last_modified": "Mon, 27 Jul 2026 00:00:00 GMT",
+        "blob_expires_at": "2026-08-04T11:59:00+00:00",
     }
 
 
 def _fetch_failed_event(command_id: str = "cmd-2") -> dict:
-    """A full ``fetch_failed`` payload (cannobserv#270)."""
+    """A full ``fetch_failed`` payload (cannobserv#270 + #300)."""
     return {
         "schema_version": 1,
         "event_type": "fetch_failed",
         "occurred_at": _OCCURRED_AT,
         "command_id": command_id,
         "url": "https://example.test/b",
+        "info_source_id": _INFO_SOURCE_ID,
         "reason": "http_error",
         "terminal": True,
         "status_code": 503,
         "attempts": 3,
         "detail": "upstream unavailable",
+    }
+
+
+def _source_revision_observed_event(
+    extracted_fingerprint: str = "sha256:" + "d" * 64,
+) -> dict:
+    """A full ``source_revision_observed`` payload (cannobserv#301).
+
+    The fact Archiver consumes under #139. ``extracted_fingerprint`` is sha256 of
+    the text extracted under ``source_specs`` — never the blob's raw-byte
+    ``content_fingerprint``, which is why the field names differ.
+    """
+    return {
+        "schema_version": 1,
+        "event_type": "source_revision_observed",
+        "occurred_at": _OCCURRED_AT,
+        "info_source_id": _INFO_SOURCE_ID,
+        "extracted_fingerprint": extracted_fingerprint,
+        "captured_at": "2026-07-28T11:59:00+00:00",
+        "content_size_bytes": 4096,
+        "content_media_type": "text/plain",
+        "source_media_type": "text/html",
+        "blob_uri": "file:///var/lib/replicator/blobs/d",
+        "blob_expires_at": "2026-08-04T11:59:00+00:00",
+        "command_id": "cmd-3",
+        "spec_fingerprint": "sha256:" + "e" * 64,
     }
 
 
@@ -939,9 +986,21 @@ _UNION_CASES = [
         "item-u:src-u",
     ),
     (_content_fetch_command("cmd-u"), "content_fetch", "cmd-u"),
-    (_blob_available_event("sha256:" + "c" * 64), "blob_available", "sha256:" + "c" * 64),
+    # #300 re-keyed this from the bare fingerprint to fingerprint:command_id.
+    (
+        _blob_available_event("sha256:" + "c" * 64),
+        "blob_available",
+        "sha256:" + "c" * 64 + ":cmd-1",
+    ),
     (_fetch_failed_event("cmd-f"), "fetch_failed", f"cmd-f:{_OCCURRED_AT}"),
     (_fetch_policy_state("policy.test"), "fetch_policy", f"policy.test:{_OCCURRED_AT}"),
+    # Slot-shaped key, mirroring uq_source_revisions_source_fingerprint — the one
+    # documented exception to the union's occurrence-per-key invariant (#301).
+    (
+        _source_revision_observed_event("sha256:" + "d" * 64),
+        "source_revision_observed",
+        f"{_INFO_SOURCE_ID}:{'sha256:' + 'd' * 64}",
+    ),
 ]
 
 
