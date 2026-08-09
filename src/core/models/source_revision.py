@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Text,
     UniqueConstraint,
 )
@@ -50,14 +51,26 @@ class SourceRevision(Base):
     # application/octet-stream for an absent header), so it cannot express "the
     # origin sent no Content-Type at all".
     source_media_type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Identifies the source_specs the producer actually extracted under. Recorded,
-    # never enforced: archiver#140 makes spec delivery eventually consistent, so
-    # extracting under a superseded spec is an expected transient state, and
-    # Archiver cannot derive the expected value anyway — the derivation is
-    # Watcher's and lives nowhere shared (cannobserv#309). Without this column
-    # "the origin changed", "our spec changed", and "the producer was behind on
-    # announcements" are one indistinguishable new fingerprint.
+    # Identifies the source_specs the producer actually extracted under. Recorded
+    # and compared, never enforced: archiver#140 makes spec delivery eventually
+    # consistent, so extracting under a superseded spec is an expected transient
+    # state. Without this column "the origin changed", "our spec changed", and
+    # "the producer was behind on announcements" are one indistinguishable new
+    # fingerprint.
     spec_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The comparison of spec_fingerprint against this InfoSource's source_specs
+    # at ingest, via co-core's shared derivation (cannobserv#309). See
+    # src/core/spec_match.py for the vocabulary and why every uncertain branch
+    # lands on "incomparable" rather than "superseded".
+    #   NULL           no spec_fingerprint was reported — nothing to compare
+    #   "current"      matched a spec the registry still holds; see spec_position
+    #   "superseded"   THE FLAG: a well-formed value matching none of our specs
+    #   "incomparable" unknown derivation or malformed value — never a flag
+    spec_match: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Which source_specs index the producer extracted under; set only when
+    # spec_match is "current". >0 means the primary spec stopped matching and the
+    # producer's fallback loop moved on — selector rot in progress.
+    spec_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Correlation back to the content.fetch command that produced the bytes — the
     # only provenance link from a registry row to the fetch behind it.
     command_id: Mapped[str | None] = mapped_column(Text, nullable=True)

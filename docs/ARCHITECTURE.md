@@ -41,6 +41,11 @@ src/core/                      Domain logic
                                "row and event in one transaction" is the outbox
                                guarantee. source_revision.py is why the bus and
                                HTTP paths cannot emit divergent payloads.
+  spec_match.py                Compares an observed spec_fingerprint against the
+                               InfoSource's own source_specs via co-core's shared
+                               derivation (cannobserv#309). Every uncertain branch
+                               resolves to "incomparable", never "superseded" — a
+                               false mismatch reads exactly like a real one.
   fingerprints.py              The sha256:<64 hex> content-fingerprint spelling.
                                Its own module so the API schema and the bus
                                consumer can share the rule without either

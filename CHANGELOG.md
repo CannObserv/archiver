@@ -42,6 +42,19 @@ Operationally:
 - **Unknown `info_source_id` is ack-and-drop** with a WARNING — the registry is the authority on what exists. Unusable or undecodable frames go to `content.revisions.dlq`; transient failures stay pending for redelivery or `XAUTOCLAIM`.
 - **`blob_uri` lands in `content_cache_uri`, not durable storage.** It is a VM-local `file://` on Replicator's host with a TTL clocked from last fetch reference. An absent `blob_expires_at` records absence rather than a guessed horizon.
 
+**`spec_fingerprint` is now compared, not only recorded — new `spec_match` / `spec_position`** (cannobserv#309, co-core ≥0.8.1). This entry originally shipped the recording half alone, because the contract said only that the value be *stable for a given spec*: Archiver held the authoritative `source_specs` with no way to derive the same string the producer had, and reimplementing the producer's derivation would have flagged mismatches on specs that never changed. co-core now owns the derivation (`co_core.pure.extract`), so both sides run one function.
+
+Two new nullable columns, additive on `SourceRevisionOut`, computed at ingest on **both** write paths (inert on the HTTP path, which reports no fingerprint):
+
+- **`spec_match`** — `current` (matched a spec the registry still holds), `superseded` (**the flag**: well-formed and matching none of them), or `incomparable`. `NULL` means nothing was reported to compare.
+- **`spec_position`** — which `source_specs` index the producer extracted under, set only for `current`. `0` is the primary spec; **anything higher is selector rot in progress** — the primary stopped matching and the producer fell through to a cross-check alternative. Arguably the more actionable of the two signals, and it exists only because the derivation is per-spec rather than over the whole list.
+
+**Every uncertain branch resolves to `incomparable`, never `superseded`** — an unrecognised derivation tag, a malformed value, or `source_specs` of our own with no canonical form. That asymmetry is the design: a false mismatch is indistinguishable from the real condition the field exists to detect. Two of those rules come from the contract rather than from registry policy — an absent fingerprint is not a mismatch (a producer that has not adopted the field yet would otherwise flag on every revision), and a derivation this co-core cannot compute must skip.
+
+Still **flag, never reject**: nothing here fails a write, and `superseded` / fallback positions are logged at WARNING alongside being stored. Because appending a cross-check alternative changes the list but not the fingerprint of the spec in use, a spec edit does not flag every subsequent revision — the flag fires when the fallback actually moves.
+
+Dependency floor moves to `co-core>=0.8.1,<0.9` (from `>=0.8,<0.9`); the derivation does not exist below it.
+
 **Minor validation tightening on `content_fingerprint`.** The rule moved to `src/core/fingerprints.py` so both write paths share it, and testing it directly surfaced a hole: the pattern was `^sha256:[0-9a-f]{64}$` matched with `re.match`, and Python's `$` also matches immediately *before* a trailing newline — so `"sha256:<hex>\n"` was accepted. Under the `(info_source_id, content_fingerprint)` uniqueness key that is a second spelling of one digest, and therefore a second row rather than an idempotent no-op. Now matched with `fullmatch`. A request body whose fingerprint carries a trailing newline changes from **201** to **422**; no stored row can have been affected without already being a duplicate.
 
 `POST` and `PATCH /source-revisions` are unchanged and stay — they are the authoring/backfill path, and retiring them is a separate call from retiring Watcher's use of them (CannObserv/watcher#253, which must land *after* this).

@@ -57,14 +57,23 @@ see the never-rename rule in `AGENTS.md`.
     describes the text extracted under `source_specs`; an HTML page is served `text/html` and the
     text extracted from it is not. Inherits `BlobAvailableEvent.media_type`'s normalization, so it
     cannot express "the origin sent no `Content-Type` at all".
-  - `spec_fingerprint` — which `source_specs` the producer extracted under. **Recorded, never
-    enforced**: a value disagreeing with the InfoSource's current specs does *not* invalidate the
-    revision and does not fail the write. archiver#140 makes spec delivery eventually consistent,
-    so extraction under a superseded spec is an expected transient state; and Archiver cannot
-    derive the expected value to compare against, because the derivation is the producer's
-    (cannobserv#309 asks for a shared one). Without the column, *the origin changed*, *our spec
-    changed*, and *the producer was behind on announcements* are one indistinguishable new
-    fingerprint.
+  - `spec_fingerprint` — which `source_specs` the producer extracted under, e.g.
+    `spec1:sha256:<hex>`. **Recorded and compared, never enforced**: a value disagreeing with the
+    InfoSource's current specs does *not* invalidate the revision and does not fail the write.
+    archiver#140 makes spec delivery eventually consistent, so extraction under a superseded spec
+    is an expected transient state. Without the column, *the origin changed*, *our spec changed*,
+    and *the producer was behind on announcements* are one indistinguishable new fingerprint.
+  - `spec_match` / `spec_position` — the comparison, computed at ingest against the InfoSource's
+    authoritative specs using co-core's shared derivation (`co_core.pure.extract`, cannobserv#309
+    — both sides run one function rather than two readings of an algorithm). `spec_match` is
+    `current` (matched; `spec_position` says *which* spec), `superseded` (**the flag** — well
+    formed, matches none we hold), or `incomparable`; `NULL` means no fingerprint was reported.
+    **Every uncertain branch resolves to `incomparable`, never `superseded`** — an unrecognised
+    derivation tag, a malformed value, or specs of our own that have no canonical form. A false
+    mismatch is indistinguishable from the real condition the field exists to detect, so "cannot
+    compare" and "compared, and it differs" must never collapse. `spec_position > 0` is its own
+    signal: the primary spec stopped matching and the producer fell through to a cross-check
+    alternative — selector rot in progress. Both are logged at WARNING as well as stored.
   - `command_id` — correlation back to the `content.fetch` command behind the bytes.
   `content_cache_uri` / `content_cache_expires_at` are a **cache, not durable storage** — on the bus
   path a VM-local `file://` blob on Replicator's host, on a TTL clock the registry does not own. A

@@ -24,7 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.fingerprints import is_valid_fingerprint
+from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
+from src.core.spec_match import SUPERSEDED, compare_spec_fingerprint
+
+logger = get_logger(__name__)
 
 CHANGE_STREAM_TOPIC = "info.changes"
 
@@ -185,6 +189,36 @@ async def record_revision(
         ):
             raise SourceRevisionIdConflictError(clashing)
 
+    # Compare the observed spec_fingerprint against the specs the registry
+    # actually holds (cannobserv#309). Inert on the HTTP path, which never
+    # carries one — but it lives here rather than in the consumer so there is one
+    # answer per revision regardless of which path wrote it.
+    comparison = compare_spec_fingerprint(facts.spec_fingerprint, source.source_specs)
+    if comparison.match == SUPERSEDED:
+        # The flag. Not a rejection: archiver#140 makes spec delivery eventually
+        # consistent, so this is an expected transient state whose revision is
+        # real — but a *persistent* one means the producer's cached spec never
+        # caught up, and nothing else would report that.
+        logger.warning(
+            "Revision extracted under a spec this InfoSource no longer holds",
+            extra={
+                "info_source_id": str(facts.info_source_id),
+                "spec_fingerprint": facts.spec_fingerprint,
+                "content_fingerprint": facts.content_fingerprint,
+            },
+        )
+    elif comparison.is_fallback:
+        # Selector rot in progress: the primary spec stopped matching and the
+        # producer fell through to a cross-check alternative.
+        logger.warning(
+            "Revision extracted under a fallback spec, not the primary",
+            extra={
+                "info_source_id": str(facts.info_source_id),
+                "spec_position": comparison.position,
+                "content_fingerprint": facts.content_fingerprint,
+            },
+        )
+
     insert_values: dict = {
         "info_source_id": facts.info_source_id,
         "content_fingerprint": facts.content_fingerprint,
@@ -195,6 +229,8 @@ async def record_revision(
         "content_cache_expires_at": facts.content_cache_expires_at,
         "source_media_type": facts.source_media_type,
         "spec_fingerprint": facts.spec_fingerprint,
+        "spec_match": comparison.match,
+        "spec_position": comparison.position,
         "command_id": facts.command_id,
     }
     if facts.source_revision_id is not None:

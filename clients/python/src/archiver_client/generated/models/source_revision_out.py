@@ -34,9 +34,16 @@ class SourceRevisionOut:
         source_media_type (None | str | Unset): MIME type the origin served, as against content_media_type, which
             describes the extracted content. Null on rows written through this API — only the content.revisions consumer
             observes it.
-        spec_fingerprint (None | str | Unset): Identifies the source_specs the producer extracted under. Recorded for
-            attribution, never enforced: a value differing from the InfoSource's current specs does not invalidate the
+        spec_fingerprint (None | str | Unset): Identifies the source_specs the producer extracted under. Recorded and
+            compared, never enforced: a value differing from the InfoSource's current specs does not invalidate the
             revision. Null on rows written through this API.
+        spec_match (None | str | Unset): Result of comparing spec_fingerprint against the InfoSource's specs at ingest:
+            'current' (matched — see spec_position), 'superseded' (well-formed but matching none of them), or 'incomparable'
+            (an unrecognised derivation or a malformed value, which is never treated as a mismatch). Null when no
+            spec_fingerprint was reported.
+        spec_position (int | None | Unset): Which source_specs index the producer extracted under; set only when
+            spec_match is 'current'. 0 is the primary spec; anything higher means the primary stopped matching and a cross-
+            check alternative was used.
     """
 
     captured_at: datetime.datetime
@@ -50,6 +57,8 @@ class SourceRevisionOut:
     command_id: None | str | Unset = UNSET
     source_media_type: None | str | Unset = UNSET
     spec_fingerprint: None | str | Unset = UNSET
+    spec_match: None | str | Unset = UNSET
+    spec_position: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -94,6 +103,18 @@ class SourceRevisionOut:
         else:
             spec_fingerprint = self.spec_fingerprint
 
+        spec_match: None | str | Unset
+        if isinstance(self.spec_match, Unset):
+            spec_match = UNSET
+        else:
+            spec_match = self.spec_match
+
+        spec_position: int | None | Unset
+        if isinstance(self.spec_position, Unset):
+            spec_position = UNSET
+        else:
+            spec_position = self.spec_position
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -114,6 +135,10 @@ class SourceRevisionOut:
             field_dict["source_media_type"] = source_media_type
         if spec_fingerprint is not UNSET:
             field_dict["spec_fingerprint"] = spec_fingerprint
+        if spec_match is not UNSET:
+            field_dict["spec_match"] = spec_match
+        if spec_position is not UNSET:
+            field_dict["spec_position"] = spec_position
 
         return field_dict
 
@@ -193,6 +218,24 @@ class SourceRevisionOut:
 
         spec_fingerprint = _parse_spec_fingerprint(d.pop("spec_fingerprint", UNSET))
 
+        def _parse_spec_match(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        spec_match = _parse_spec_match(d.pop("spec_match", UNSET))
+
+        def _parse_spec_position(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        spec_position = _parse_spec_position(d.pop("spec_position", UNSET))
+
         source_revision_out = cls(
             captured_at=captured_at,
             content_cache_expires_at=content_cache_expires_at,
@@ -205,6 +248,8 @@ class SourceRevisionOut:
             command_id=command_id,
             source_media_type=source_media_type,
             spec_fingerprint=spec_fingerprint,
+            spec_match=spec_match,
+            spec_position=spec_position,
         )
 
         source_revision_out.additional_properties = d

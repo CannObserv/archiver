@@ -1432,8 +1432,32 @@
                 "type": "null"
               }
             ],
-            "description": "Identifies the source_specs the producer extracted under. Recorded for attribution, never enforced: a value differing from the InfoSource's current specs does not invalidate the revision. Null on rows written through this API.",
+            "description": "Identifies the source_specs the producer extracted under. Recorded and compared, never enforced: a value differing from the InfoSource's current specs does not invalidate the revision. Null on rows written through this API.",
             "title": "Spec Fingerprint"
+          },
+          "spec_match": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Result of comparing spec_fingerprint against the InfoSource's specs at ingest: 'current' (matched \u2014 see spec_position), 'superseded' (well-formed but matching none of them), or 'incomparable' (an unrecognised derivation or a malformed value, which is never treated as a mismatch). Null when no spec_fingerprint was reported.",
+            "title": "Spec Match"
+          },
+          "spec_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which source_specs index the producer extracted under; set only when spec_match is 'current'. 0 is the primary spec; anything higher means the primary stopped matching and a cross-check alternative was used.",
+            "title": "Spec Position"
           }
         },
         "required": [

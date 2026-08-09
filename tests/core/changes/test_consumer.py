@@ -30,6 +30,7 @@ from unittest.mock import Mock, patch
 import pytest
 from co_core.pure.adapters.bus.envelope import to_wire
 from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS
+from co_core.pure.extract import spec_fingerprint
 from co_core.pure.models.changes import SourceRevisionObservedEvent
 from co_core_aio.bus import AsyncBusConsumer
 from fakeredis import aioredis as fakeredis_aio
@@ -98,8 +99,13 @@ def _observed(info_source_id, fingerprint: str = FP_OBSERVED, **overrides) -> di
         source_media_type="text/html",
         blob_uri="file:///var/lib/replicator/blobs/ab/cd/deadbeef.bin",
         command_id="cmd-observed",
-        spec_fingerprint="sha256:" + "e" * 64,
-        **{"blob_expires_at": BLOB_EXPIRES_AT, **overrides},
+        # Defaults an override may replace — spelled here rather than as keywords
+        # so a test can pass its own without colliding.
+        **{
+            "blob_expires_at": BLOB_EXPIRES_AT,
+            "spec_fingerprint": "spec1:sha256:" + "e" * 64,
+            **overrides,
+        },
     )
     return to_wire(event)
 
@@ -238,7 +244,9 @@ async def test_every_wire_field_lands_on_its_column(session_factory, fake_redis,
     assert row.content_media_type == "text/plain"
     assert row.source_media_type == "text/html"
     assert row.command_id == "cmd-observed"
-    assert row.spec_fingerprint == "sha256:" + "e" * 64
+    # Tagged, per cannobserv#309 — an untagged value is not a spec fingerprint
+    # and would land as "incomparable" rather than being compared.
+    assert row.spec_fingerprint == "spec1:sha256:" + "e" * 64
     # The blob is a cache, not durable storage — hence the content_cache_* names.
     assert row.content_cache_uri == "file:///var/lib/replicator/blobs/ab/cd/deadbeef.bin"
     assert row.content_cache_expires_at == BLOB_EXPIRES_AT
@@ -491,3 +499,53 @@ async def test_handle_message_tolerates_an_expiring_session_factory(
 
     assert settled == 1
     assert await _pending_count(fake_redis) == 0
+
+
+# ---------------------------------------------------------------------------
+# spec_fingerprint comparison over the wire (cannobserv#309)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_observed_spec_fingerprint_is_compared_at_ingest(
+    session_factory, fake_redis, info_source
+):
+    """A fingerprint naming a spec we hold lands as 'current' with its position."""
+    observed = spec_fingerprint(info_source.source_specs[0])
+    await fake_redis.xadd(
+        CONTENT_REVISIONS, _observed(info_source.info_source_id, spec_fingerprint=observed)
+    )
+    consumer = await _bus_consumer(fake_redis, "spec:1")
+
+    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    async with session_factory() as s:
+        row = (await s.execute(select(SourceRevision))).scalar_one()
+    assert row.spec_fingerprint == observed
+    assert row.spec_match == "current"
+    assert row.spec_position == 0
+
+
+@pytest.mark.asyncio
+async def test_superseded_spec_still_records_the_revision(session_factory, fake_redis, info_source):
+    """Flag, never reject — the row is written and the message is acked."""
+    retired = spec_fingerprint(
+        {"schema_version": 1, "extraction": {"algorithm": "css", "selector": ".gone"}}
+    )
+    await fake_redis.xadd(
+        CONTENT_REVISIONS, _observed(info_source.info_source_id, spec_fingerprint=retired)
+    )
+    consumer = await _bus_consumer(fake_redis, "spec:2")
+
+    settled = await revisions_consumer.consume_once(
+        session_factory=session_factory, consumer=consumer
+    )
+
+    assert settled == 1
+    async with session_factory() as s:
+        row = (await s.execute(select(SourceRevision))).scalar_one()
+    assert row.spec_match == "superseded"
+    assert await _row_count(session_factory, ChangesOutboxRow) == 1
+    assert await _pending_count(fake_redis) == 0
+    # Not poison: a superseded spec says nothing about the frame's validity.
+    assert await fake_redis.xlen(f"{CONTENT_REVISIONS}.dlq") == 0

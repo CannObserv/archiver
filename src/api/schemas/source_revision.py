@@ -82,9 +82,27 @@ class SourceRevisionOut(BaseModel):
         default=None,
         description=(
             "Identifies the source_specs the producer extracted under. Recorded "
-            "for attribution, never enforced: a value differing from the "
+            "and compared, never enforced: a value differing from the "
             "InfoSource's current specs does not invalidate the revision. Null on "
             "rows written through this API."
+        ),
+    )
+    spec_match: str | None = Field(
+        default=None,
+        description=(
+            "Result of comparing spec_fingerprint against the InfoSource's specs "
+            "at ingest: 'current' (matched — see spec_position), 'superseded' "
+            "(well-formed but matching none of them), or 'incomparable' (an "
+            "unrecognised derivation or a malformed value, which is never treated "
+            "as a mismatch). Null when no spec_fingerprint was reported."
+        ),
+    )
+    spec_position: int | None = Field(
+        default=None,
+        description=(
+            "Which source_specs index the producer extracted under; set only when "
+            "spec_match is 'current'. 0 is the primary spec; anything higher means "
+            "the primary stopped matching and a cross-check alternative was used."
         ),
     )
     command_id: str | None = Field(

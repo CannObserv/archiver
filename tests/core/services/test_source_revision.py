@@ -23,6 +23,7 @@ Covers:
 from datetime import UTC, datetime
 
 import pytest
+from co_core.pure.extract import spec_fingerprint
 from sqlalchemy import func, select
 from ulid import ULID
 
@@ -268,3 +269,60 @@ async def test_spec_fingerprint_mismatch_does_not_block_the_write(session, info_
 
     assert inserted is True
     assert row.spec_fingerprint == "sha256:" + "0" * 64
+
+
+# ---------------------------------------------------------------------------
+# spec_fingerprint comparison — the flag half (cannobserv#309)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_matching_spec_fingerprint_records_current_and_position(session, info_source):
+    observed = spec_fingerprint(info_source.source_specs[0])
+
+    row, _ = await record_revision(
+        session, _facts(info_source.info_source_id, spec_fingerprint=observed)
+    )
+
+    assert row.spec_match == "current"
+    assert row.spec_position == 0
+
+
+@pytest.mark.asyncio
+async def test_superseded_spec_fingerprint_is_flagged_not_rejected(session, info_source):
+    """The flag is a recorded outcome; the revision is still written.
+
+    archiver#140 makes spec delivery eventually consistent, so a producer one
+    announcement behind is an expected transient state — and the content it
+    observed is real either way.
+    """
+    retired = {"schema_version": 1, "extraction": {"algorithm": "css", "selector": ".gone"}}
+
+    row, inserted = await record_revision(
+        session,
+        _facts(info_source.info_source_id, spec_fingerprint=spec_fingerprint(retired)),
+    )
+
+    assert inserted is True
+    assert row.spec_match == "superseded"
+    assert row.spec_position is None
+
+
+@pytest.mark.asyncio
+async def test_unrecognised_derivation_is_incomparable_not_superseded(session, info_source):
+    row, _ = await record_revision(
+        session,
+        _facts(info_source.info_source_id, spec_fingerprint="spec99:sha256:" + "a" * 64),
+    )
+
+    assert row.spec_match == "incomparable"
+
+
+@pytest.mark.asyncio
+async def test_absent_spec_fingerprint_leaves_the_comparison_null(session, info_source):
+    """The HTTP path supplies none, so it must not read as a mismatch."""
+    row, _ = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert row.spec_fingerprint is None
+    assert row.spec_match is None
+    assert row.spec_position is None

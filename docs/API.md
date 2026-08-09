@@ -136,9 +136,20 @@ Field mapping, and the two traps in it:
 | `source_media_type` | `source_media_type` | what the **origin** served; inherits `BlobAvailableEvent.media_type`'s normalization |
 | `blob_uri` | `content_cache_uri` | **a cache, not durable storage** — a VM-local `file://` on Replicator's host. Durable bytes are RepSpec replication's job |
 | `blob_expires_at` | `content_cache_expires_at` | `None` records *absence*; never substitute a TTL guessed from Replicator's policy |
-| `spec_fingerprint` | `spec_fingerprint` | recorded, never enforced — see [CHANGELOG](../CHANGELOG.md) v4.6.0 and cannobserv#309 |
+| `spec_fingerprint` | `spec_fingerprint` | recorded **and compared** — see below |
 | `command_id` | `command_id` | correlation back to the fetch |
 | *(absent)* | `source_revision_id` | **Archiver allocates.** A service that does not own the registry does not mint registry ids |
+
+**The `spec_fingerprint` comparison.** At ingest the value is looked up in an index of the
+InfoSource's own specs, built with co-core's shared derivation
+(`co_core.pure.extract.spec_fingerprint_index`, cannobserv#309, co-core ≥0.8.1). The outcome lands
+in `spec_match` / `spec_position` (see [docs/SCHEMA.md](SCHEMA.md)) and is **never** a rejection —
+archiver#140 makes spec delivery eventually consistent, so a producer one announcement behind is
+expected, and its observation is real. Two rules come from the contract rather than from registry
+policy: an **absent** fingerprint is not a mismatch (the field is optional, and a producer that has
+not adopted it yet would otherwise flag on every revision), and an **unrecognised derivation tag**
+is incomparable — flagging against a derivation you cannot reproduce is the false positive the tag
+exists to prevent.
 
 Failure routing: a well-formed observation the registry cannot use — a
 fingerprint outside `sha256:<64 hex>`, an `info_source_id` that is not a ULID —
