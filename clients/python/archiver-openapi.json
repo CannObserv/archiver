@@ -1335,6 +1335,18 @@
             "title": "Captured At",
             "type": "string"
           },
+          "command_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Correlation id of the content.fetch command behind these bytes. Null on rows written through this API.",
+            "title": "Command Id"
+          },
           "content_cache_expires_at": {
             "anyOf": [
               {
@@ -1394,10 +1406,58 @@
             "title": "Info Source Id",
             "type": "string"
           },
+          "source_media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MIME type the origin served, as against content_media_type, which describes the extracted content. Null on rows written through this API \u2014 only the content.revisions consumer observes it.",
+            "title": "Source Media Type"
+          },
           "source_revision_id": {
             "description": "ULID identifying this SourceRevision.",
             "title": "Source Revision Id",
             "type": "string"
+          },
+          "spec_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifies the source_specs the producer extracted under, as of the most recent observation. Recorded and compared, never enforced: a value differing from the InfoSource's current specs does not invalidate the revision. Null on rows written through this API.",
+            "title": "Spec Fingerprint"
+          },
+          "spec_match": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Result of comparing spec_fingerprint against the InfoSource's specs: 'current' (matched \u2014 see spec_position), 'superseded' (well-formed but matching none of them), or 'incomparable' (an unrecognised derivation or a malformed value, which is never treated as a mismatch). Reflects the most recent observation of this revision, not the one that created it. Null when no spec_fingerprint was reported.",
+            "title": "Spec Match"
+          },
+          "spec_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which source_specs index the producer extracted under; set only when spec_match is 'current'. 0 is the primary spec; anything higher means the primary stopped matching and a cross-check alternative was used. Refreshed with spec_match on re-observation.",
+            "title": "Spec Position"
           }
         },
         "required": [
@@ -1556,7 +1616,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.5.1"
+    "version": "4.6.0"
   },
   "openapi": "3.1.0",
   "paths": {

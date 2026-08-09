@@ -18,6 +18,49 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.6.0 (2026-08-09)
+
+[both] **SourceRevision records observation provenance — `source_media_type`, `spec_fingerprint`, `command_id`, SDK v5.1.0** (archiver#139, step 3 of the #137 epic). Three new nullable `information.source_revisions` columns, all three additive on `SourceRevisionOut`.
+
+They exist because the forthcoming `content.revisions` consumer receives them on `SourceRevisionObservedEvent` (cannobserv#301) and had nowhere to put them. Read-only for now: no request body accepts them, so rows written through `POST /source-revisions` carry `null` in all three, and existing rows are unaffected — no backfill.
+
+- **`source_media_type`** is what the *origin* served. It does not duplicate `content_media_type`, which describes the text extracted under `source_specs` — an HTML page is served `text/html` and the text extracted from it is not, so the two differ for one revision and neither substitutes for the other. It inherits `BlobAvailableEvent.media_type`'s normalization (charset dropped, `application/octet-stream` for an absent header), so it cannot express "the origin sent no `Content-Type` at all".
+- **`spec_fingerprint`** identifies which `source_specs` the producer extracted under. **Recorded and compared, never enforced** — a value that disagrees with the InfoSource's current specs does not invalidate the revision and does not fail the write. archiver#140 moves spec delivery onto an eventually-consistent announcement channel, making "extracted under a superseded spec" an expected transient state. Without the column, *the origin changed*, *our extraction spec changed*, and *the producer was behind on announcements* are one indistinguishable new fingerprint. The comparison itself landed later in this same release — see the `spec_match` / `spec_position` entry below.
+- **`command_id`** correlates the revision back to the `content.fetch` command that produced the bytes.
+
+SDK: `SourceRevisionOut` gains the three optional fields; no wrapper signature changes. Consumers on v5.0.0 keep working — additive response fields only.
+
+[service] **Archiver ingests SourceRevisions from the bus — new `content.revisions` consumer** (archiver#139, answers #118). Its **first consumer role**; it has only ever produced. Watcher publishes `source_revision_observed` (cannobserv#301, co-core ≥0.8) and the registry decides what to persist, replacing Watcher's `POST /source-revisions`.
+
+The write goes through the same `record_revision` call the HTTP route makes, so `source_revision_captured` on `info.changes` is unchanged for existing subscribers — the outbox row still commits in the revision's transaction, and the event is still keyed on `source_revision_id`. Idempotency is the existing `(info_source_id, content_fingerprint)` constraint, which makes at-least-once redelivery a no-op emitting no duplicate event. Archiver allocates the `source_revision_id`: it is deliberately absent from the wire, because a service that does not own the registry does not mint registry ids.
+
+Operationally:
+
+- **Group `archiver.revisions`** on `content.revisions`, created at `0` rather than `$` so nothing published before the group existed is dropped. Consumer-group lag is now Archiver's own health concern for the first time — threshold work is #130.
+- **Gated on `ARCHIVER_BUS_CONSUMER=1`**, set only in `deploy/archiver.service`. Presence of `ARCHIVER_REDIS_URL` is not sufficient: consuming *removes* messages from the group, so a stray process sourcing `/etc/archiver/.env` would silently swallow revisions. Same never-in-an-env-file rule as `ARCHIVER_ALLOW_PRODUCTION_DB`.
+- **Ack strictly after commit.** A crash between the two redelivers into an idempotent write; the other order loses a revision.
+- **Unknown `info_source_id` is ack-and-drop** with a WARNING — the registry is the authority on what exists. Unusable or undecodable frames go to `content.revisions.dlq`; transient failures stay pending for redelivery or `XAUTOCLAIM`.
+- **`blob_uri` lands in `content_cache_uri`, not durable storage.** It is a VM-local `file://` on Replicator's host with a TTL clocked from last fetch reference. An absent `blob_expires_at` records absence rather than a guessed horizon.
+
+**`spec_fingerprint` is now compared, not only recorded — new `spec_match` / `spec_position`** (cannobserv#309, co-core ≥0.8.1). This entry originally shipped the recording half alone, because the contract said only that the value be *stable for a given spec*: Archiver held the authoritative `source_specs` with no way to derive the same string the producer had, and reimplementing the producer's derivation would have flagged mismatches on specs that never changed. co-core now owns the derivation (`co_core.pure.extract`), so both sides run one function.
+
+Two new nullable columns, additive on `SourceRevisionOut`, computed at ingest on **both** write paths (inert on the HTTP path, which reports no fingerprint):
+
+- **`spec_match`** — `current` (matched a spec the registry still holds), `superseded` (**the flag**: well-formed and matching none of them), or `incomparable`. `NULL` means nothing was reported to compare.
+- **`spec_position`** — which `source_specs` index the producer extracted under, set only for `current`. `0` is the primary spec; **anything higher is selector rot in progress** — the primary stopped matching and the producer fell through to a cross-check alternative. Arguably the more actionable of the two signals, and it exists only because the derivation is per-spec rather than over the whole list.
+
+**Every uncertain branch resolves to `incomparable`, never `superseded`** — an unrecognised derivation tag, a malformed value, or `source_specs` of our own with no canonical form. That asymmetry is the design: a false mismatch is indistinguishable from the real condition the field exists to detect. Two of those rules come from the contract rather than from registry policy — an absent fingerprint is not a mismatch (a producer that has not adopted the field yet would otherwise flag on every revision), and a derivation this co-core cannot compute must skip.
+
+All three `spec_*` columns track the **most recent** observation of a revision, not the one that created it: a re-observation is an idempotent no-op for the row's identity but refreshes the verdict (and emits no event). Otherwise a registry that moved to a new spec would leave already-recorded content asserting `current` for a spec it no longer holds — and a producer stuck on the old spec, the case the flag exists for, would never raise one. The WARNING fires on a change of verdict rather than on every at-least-once redelivery.
+
+Still **flag, never reject**: nothing here fails a write, and `superseded` / fallback positions are logged at WARNING alongside being stored. Because appending a cross-check alternative changes the list but not the fingerprint of the spec in use, a spec edit does not flag every subsequent revision — the flag fires when the fallback actually moves.
+
+Dependency floor moves to `co-core>=0.8.1,<0.9` (from `>=0.8,<0.9`); the derivation does not exist below it.
+
+**Minor validation tightening on `content_fingerprint`.** The rule moved to `src/core/fingerprints.py` so both write paths share it, and testing it directly surfaced a hole: the pattern was `^sha256:[0-9a-f]{64}$` matched with `re.match`, and Python's `$` also matches immediately *before* a trailing newline — so `"sha256:<hex>\n"` was accepted. Under the `(info_source_id, content_fingerprint)` uniqueness key that is a second spelling of one digest, and therefore a second row rather than an idempotent no-op. Now matched with `fullmatch`. A request body whose fingerprint carries a trailing newline changes from **201** to **422**; no stored row can have been affected without already being a duplicate.
+
+`POST` and `PATCH /source-revisions` are unchanged and stay — they are the authoring/backfill path, and retiring them is a separate call from retiring Watcher's use of them (CannObserv/watcher#253, which must land *after* this).
+
 ## v4.5.1 (2026-07-29)
 
 [service] **Outbox publisher dead-letters poison rows instead of retrying them forever** (archiver#107). New nullable `information.changes_outbox.dead_lettered_at` column; the unpublished partial index (`ix_changes_outbox_unpublished_created`) is narrowed to `published_at IS NULL AND dead_lettered_at IS NULL`.

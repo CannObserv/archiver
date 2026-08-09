@@ -72,3 +72,46 @@ async def test_cache_fields_optional(session, root_source):
     await session.commit()
     await session.refresh(rev)
     assert rev.content_cache_uri.startswith("file://")
+
+
+@pytest.mark.asyncio
+async def test_observation_provenance_columns_round_trip(session, root_source):
+    """``source_media_type`` / ``spec_fingerprint`` / ``command_id`` (archiver#139).
+
+    All three arrive on ``SourceRevisionObservedEvent`` and had nowhere to land
+    before this migration. Nullable because the HTTP authoring/backfill path
+    supplies none of them, and because ``spec_fingerprint`` / ``command_id`` are
+    optional on the wire.
+    """
+    rev = SourceRevision(
+        info_source_id=root_source.info_source_id,
+        content_fingerprint="sha256:" + "f" * 64,
+        captured_at=datetime.now(UTC),
+        source_media_type="text/html",
+        spec_fingerprint="sha256:" + "e" * 64,
+        command_id="cmd-provenance",
+    )
+    session.add(rev)
+    await session.flush()
+    await session.refresh(rev)
+
+    assert rev.source_media_type == "text/html"
+    assert rev.spec_fingerprint == "sha256:" + "e" * 64
+    assert rev.command_id == "cmd-provenance"
+
+
+@pytest.mark.asyncio
+async def test_observation_provenance_columns_default_to_null(session, root_source):
+    """The HTTP path supplies none of the three; the row is still valid."""
+    rev = SourceRevision(
+        info_source_id=root_source.info_source_id,
+        content_fingerprint="sha256:" + "9" * 64,
+        captured_at=datetime.now(UTC),
+    )
+    session.add(rev)
+    await session.flush()
+    await session.refresh(rev)
+
+    assert rev.source_media_type is None
+    assert rev.spec_fingerprint is None
+    assert rev.command_id is None

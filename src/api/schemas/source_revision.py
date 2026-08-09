@@ -1,11 +1,12 @@
 """Pydantic schemas for SourceRevision create / read / patch."""
 
-import re
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-_FP_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+# The fingerprint spelling is a domain rule, not an HTTP one — the bus ingest
+# path applies the same check with no Pydantic layer to lean on.
+from src.core.fingerprints import is_valid_fingerprint
 
 
 class SourceRevisionCreate(BaseModel):
@@ -33,7 +34,7 @@ class SourceRevisionCreate(BaseModel):
     @classmethod
     def _fingerprint_format(cls, v: str) -> str:
         """Require sha256:<64 lowercase hex>."""
-        if not _FP_PATTERN.match(v):
+        if not is_valid_fingerprint(v):
             raise ValueError("must match 'sha256:<64 lowercase hex>'")
         return v
 
@@ -68,6 +69,51 @@ class SourceRevisionOut(BaseModel):
     )
     content_cache_expires_at: datetime | None = Field(
         description="UTC timestamp after which the cached content at content_cache_uri expires."
+    )
+    source_media_type: str | None = Field(
+        default=None,
+        description=(
+            "MIME type the origin served, as against content_media_type, which "
+            "describes the extracted content. Null on rows written through this "
+            "API — only the content.revisions consumer observes it."
+        ),
+    )
+    spec_fingerprint: str | None = Field(
+        default=None,
+        description=(
+            "Identifies the source_specs the producer extracted under, as of the "
+            "most recent observation. Recorded and compared, never enforced: a "
+            "value differing from the InfoSource's current specs does not "
+            "invalidate the revision. Null on rows written through this API."
+        ),
+    )
+    spec_match: str | None = Field(
+        default=None,
+        description=(
+            "Result of comparing spec_fingerprint against the InfoSource's specs: "
+            "'current' (matched — see spec_position), 'superseded' (well-formed "
+            "but matching none of them), or 'incomparable' (an unrecognised "
+            "derivation or a malformed value, which is never treated as a "
+            "mismatch). Reflects the most recent observation of this revision, "
+            "not the one that created it. Null when no spec_fingerprint was "
+            "reported."
+        ),
+    )
+    spec_position: int | None = Field(
+        default=None,
+        description=(
+            "Which source_specs index the producer extracted under; set only when "
+            "spec_match is 'current'. 0 is the primary spec; anything higher means "
+            "the primary stopped matching and a cross-check alternative was used. "
+            "Refreshed with spec_match on re-observation."
+        ),
+    )
+    command_id: str | None = Field(
+        default=None,
+        description=(
+            "Correlation id of the content.fetch command behind these bytes. Null "
+            "on rows written through this API."
+        ),
     )
 
 

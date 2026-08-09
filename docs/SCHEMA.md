@@ -44,7 +44,48 @@ see the never-rename rule in `AGENTS.md`.
   (mutable array): first element is the primary extraction spec; subsequent elements are
   cross-check alternatives for selector-rot detection. Each spec: `{schema_version, extraction,
   fingerprint}` — no `target` section; URL is on the InfoSource directly.
-- **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`.
+- **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is
+  `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`, enforced on both
+  write paths (`src/core/fingerprints.py`) because a differently-spelled fingerprint for identical
+  content is a silent duplicate row rather than a failed write.
+  **Two writers** since archiver#139: `POST /source-revisions` (authoring/backfill) and the
+  `content.revisions` bus consumer. Both go through `src/core/services/source_revision.py`, so both
+  emit the identical `source_revision_captured` event.
+  Three columns are **observation provenance** — populated only by the bus path, `NULL` on
+  everything the API wrote:
+  - `source_media_type` — what the *origin* served. Not a duplicate of `content_media_type`, which
+    describes the text extracted under `source_specs`; an HTML page is served `text/html` and the
+    text extracted from it is not. Inherits `BlobAvailableEvent.media_type`'s normalization, so it
+    cannot express "the origin sent no `Content-Type` at all".
+  - `spec_fingerprint` — which `source_specs` the producer extracted under, e.g.
+    `spec1:sha256:<hex>`. **Recorded and compared, never enforced**: a value disagreeing with the
+    InfoSource's current specs does *not* invalidate the revision and does not fail the write.
+    archiver#140 makes spec delivery eventually consistent, so extraction under a superseded spec
+    is an expected transient state. Without the column, *the origin changed*, *our spec changed*,
+    and *the producer was behind on announcements* are one indistinguishable new fingerprint.
+  - `spec_match` / `spec_position` — the comparison against the InfoSource's authoritative specs,
+    using co-core's shared derivation (`co_core.pure.extract`, cannobserv#309
+    — both sides run one function rather than two readings of an algorithm). `spec_match` is
+    `current` (matched; `spec_position` says *which* spec), `superseded` (**the flag** — well
+    formed, matches none we hold), or `incomparable`; `NULL` means no fingerprint was reported.
+    **Every uncertain branch resolves to `incomparable`, never `superseded`** — an unrecognised
+    derivation tag, a malformed value, or specs of our own that have no canonical form. A false
+    mismatch is indistinguishable from the real condition the field exists to detect, so "cannot
+    compare" and "compared, and it differs" must never collapse. `spec_position > 0` is its own
+    signal: the primary spec stopped matching and the producer fell through to a cross-check
+    alternative — selector rot in progress. Both are logged at WARNING as well as stored.
+    **All three `spec_*` columns describe the most recent observation of the pair, not the one
+    that created the row.** A re-observation is an idempotent no-op for the revision itself, but
+    it refreshes these three together (and emits no event — the identity is unchanged). Without
+    that, a registry that moved to a new spec would leave already-recorded content asserting
+    `current` for a spec it no longer holds, and the producer stuck on the old spec — the case
+    the flag exists for — would never raise one. The WARNING fires on a change of verdict, not on
+    every at-least-once redelivery.
+  - `command_id` — correlation back to the `content.fetch` command behind the bytes.
+  `content_cache_uri` / `content_cache_expires_at` are a **cache, not durable storage** — on the bus
+  path a VM-local `file://` blob on Replicator's host, on a TTL clock the registry does not own. A
+  `NULL` expiry records that the horizon is unknown; it is never a guessed TTL. Durable bytes are
+  what RepSpec replication is for.
 - **`InfoItemSource`** (`info_item_sources`) — operator-declared item↔source binding. No `role`
   column — every binding is a primary binding. Two distinct states:
   - **Current primary** — the one active row (`deactivated_at IS NULL`). Enforced one-per-InfoItem

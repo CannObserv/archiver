@@ -34,6 +34,11 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.core.changes.backoff import (
+    ERROR_BACKOFF_BASE_SECONDS,
+    ERROR_LOG_EVERY,
+    error_backoff_seconds,
+)
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow
 
@@ -129,22 +134,9 @@ DEFAULT_STREAM_MAXLEN = 100_000
 # outage cannot flood the journal at 1/idle-tick. The counter resets on the first
 # successful drain, which also emits a recovery log. The backoff base is its own
 # knob, decoupled from idle_interval (poll cadence vs error cadence — CR #15).
-ERROR_BACKOFF_BASE_SECONDS = 1.0
-ERROR_BACKOFF_MAX_SECONDS = 30.0
-ERROR_BACKOFF_MAX_SHIFT = 5  # cap the exponent so 2**shift can't overflow the max
-ERROR_LOG_EVERY = 15
-
-
-def _error_backoff_seconds(consecutive_failures: int, base: float) -> float:
-    """Exponential backoff (``base * 2**(n-1)``) capped at ``ERROR_BACKOFF_MAX_SECONDS``.
-
-    ``consecutive_failures <= 1`` yields ``base``; the exponent is clamped so the
-    intermediate never overflows before the cap is applied.
-    """
-    if consecutive_failures <= 1:
-        return min(base, ERROR_BACKOFF_MAX_SECONDS)
-    shift = min(consecutive_failures - 1, ERROR_BACKOFF_MAX_SHIFT)
-    return min(base * (2**shift), ERROR_BACKOFF_MAX_SECONDS)
+#
+# The schedule itself lives in src/core/changes/backoff.py — the bus consumer runs
+# the same one, and a copy stops tracking the original silently (#139 CR).
 
 
 def _next_delay(
@@ -162,7 +154,7 @@ def _next_delay(
     ``idle_interval`` when the batch was empty or every row failed (CR #10/#16).
     """
     if consecutive_failures:
-        return _error_backoff_seconds(consecutive_failures, backoff_base)
+        return error_backoff_seconds(consecutive_failures, backoff_base)
     return active_interval if published else idle_interval
 
 

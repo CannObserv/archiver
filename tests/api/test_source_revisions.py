@@ -33,7 +33,13 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import func, select
 
-from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
+from src.core.models import (
+    ChangesOutboxRow,
+    InfoItem,
+    InfoItemSource,
+    InfoSource,
+    SourceRevision,
+)
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -810,3 +816,61 @@ async def test_client_supplied_ulid_invalid_format_returns_422(client, info_sour
     assert detail["message"] == "source_revision_id is not a valid ULID"
     assert detail["errors"][0]["path"] == "/source_revision_id"
     assert detail["errors"][0]["code"] == "invalid_ulid"
+
+
+# ---------------------------------------------------------------------------
+# Observation provenance on the read surface — archiver#139
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_provenance_fields_null_on_the_http_write_path(client, info_source):
+    """POST supplies none of the three, so they read back null.
+
+    The HTTP path is authoring/backfill; only the content.revisions consumer
+    holds a source media type, a spec fingerprint, or a fetch command id. They
+    are exposed on the response so a row's provenance is legible over the API
+    regardless of which path wrote it.
+    """
+    resp = await client.post(
+        "/api/v1/source-revisions",
+        json={
+            "info_source_id": str(info_source.info_source_id),
+            "content_fingerprint": FP_VALID,
+            "captured_at": datetime.now(UTC).isoformat(),
+        },
+        headers=HEADERS,
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["source_media_type"] is None
+    assert body["spec_fingerprint"] is None
+    assert body["command_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_provenance_fields_serialised_when_present(client, session, info_source):
+    """A row carrying the three (as the bus path writes it) reads them back."""
+    rev = SourceRevision(
+        info_source_id=info_source.info_source_id,
+        content_fingerprint=FP_VALID_2,
+        captured_at=datetime.now(UTC),
+        source_media_type="text/html",
+        spec_fingerprint="sha256:" + "e" * 64,
+        command_id="cmd-42",
+    )
+    session.add(rev)
+    await session.flush()
+
+    resp = await client.patch(
+        f"/api/v1/source-revisions/{rev.source_revision_id}",
+        json={},
+        headers=HEADERS,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source_media_type"] == "text/html"
+    assert body["spec_fingerprint"] == "sha256:" + "e" * 64
+    assert body["command_id"] == "cmd-42"

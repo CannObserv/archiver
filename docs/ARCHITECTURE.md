@@ -22,8 +22,34 @@ src/core/                      Domain logic
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
   rep_fields_schema/           rep_fields meta-schema + validator
-  changes/                     Outbox publisher (background asyncio task) +
-                               typed Pydantic event payloads
+  changes/                     Two background asyncio tasks and their shared
+                               pacing: publisher.py drains changes_outbox to
+                               info.changes; consumer.py ingests
+                               source_revision_observed from content.revisions
+                               (archiver#139) and is gated on
+                               ARCHIVER_BUS_CONSUMER; backoff.py holds the
+                               retry/log-throttle constants both use — shared,
+                               not copied, because they encode incident history
+                               (#107, #128). The event payload models live in
+                               co-core since #106, not here.
+  services/                    Registry write paths shared by the HTTP surface
+                               and the bus consumers. A service owns one
+                               mutation end to end — domain validation, the
+                               write, and its changes_outbox row — raises domain
+                               errors rather than HTTPException, and never
+                               commits: the caller owns the transaction, because
+                               "row and event in one transaction" is the outbox
+                               guarantee. source_revision.py is why the bus and
+                               HTTP paths cannot emit divergent payloads.
+  spec_match.py                Compares an observed spec_fingerprint against the
+                               InfoSource's own source_specs via co-core's shared
+                               derivation (cannobserv#309). Every uncertain branch
+                               resolves to "incomparable", never "superseded" — a
+                               false mismatch reads exactly like a real one.
+  fingerprints.py              The sha256:<64 hex> content-fingerprint spelling.
+                               Its own module so the API schema and the bus
+                               consumer can share the rule without either
+                               dragging in the ORM.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
                                update_rep_spec, resolve_rep_fields,
                                preview_extraction, etc.)

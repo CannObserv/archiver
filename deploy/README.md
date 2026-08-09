@@ -115,17 +115,27 @@ rewrite time, which `maxmemory` also caps.
 
 ### Streams on this broker
 
-Archiver **operates** the broker but does not produce or consume most of what
-lands on it. Inventory, so a future lag dashboard is built against what is
+Archiver **operates** the broker and, since archiver#139, consumes one of the
+streams on it. Inventory, so a future lag dashboard is built against what is
 actually here. Cells marked *(target)* describe the post-cutover arrangement, not
 what is running today:
 
 | Stream | Producer → consumer | Kind | Consumer group | Health primitive | DLQ | Producer durability under OOM |
 |---|---|---|---|---|---|---|
 | `info.changes` | Archiver → Replicator *(target)* | event | none *yet* — Replicator adds one | ⚠️ **none implemented.** Outbox depth is the intended signal but has no surface — manual SQL against `information.changes_outbox` only. Group lag once consumed. See #130 | `info.changes.dlq` *(target)* | **retries indefinitely** — transactional outbox, OOM classified transient |
-| `content.fetch` | Watcher → Replicator *(target; today a seed/test harness issues it)* | command | `replicator.fetch` (exactly one — competing consumers) | `XPENDING` / group lag | `content.fetch.dlq` | **unasserted** — CannObserv/watcher#245 |
-| `content.blobs` | Replicator → Watcher *(target)* | fact | one per consuming service | group lag per group | `content.blobs.dlq` | **unasserted** — CannObserv/replicator#19 |
+| `content.fetch` | Watcher → Replicator | command | `replicator.fetch` (exactly one — competing consumers) | `XPENDING` / group lag | `content.fetch.dlq` | **unasserted** — CannObserv/watcher#245 |
+| `content.blobs` | Replicator → Watcher | fact | one per consuming service | group lag per group | `content.blobs.dlq` | **unasserted** — CannObserv/replicator#19 |
+| `content.revisions` | Watcher → **Archiver** *(producer target: CannObserv/watcher#253)* | fact | `archiver.revisions` (one per consuming service) | `XPENDING` / group lag — **the first group Archiver owns**; threshold still to be set, see #130 | `content.revisions.dlq` — written by the ingest consumer's quarantine path | **unasserted** — CannObserv/watcher#253 |
 | `content.fetch-policy` | Watcher → Replicator workers *(target; no producer or consumer exists yet)* | config/state, broadcast, last-write-wins per host key | **none, permanently — by design** | **last-entry age via `XINFO STREAM`** | **none applies** | **self-correcting** — full set is republished on a timer |
+
+**`content.revisions` is Archiver's first consumer role** — every other row is a
+stream it operates for someone else. Two operational consequences: the
+`archiver.revisions` group is the first thing on this broker whose *lag* is
+Archiver's own problem (a stalled consumer means revisions stop being recorded,
+silently, while the stream keeps growing), and `content.revisions.dlq` is the
+first DLQ this service writes rather than merely provisions. Group membership is
+gated on `ARCHIVER_BUS_CONSUMER=1`, set only in `deploy/archiver.service` — a
+second process in the group silently takes half the revisions.
 
 ⚠️ The `info.changes` health row is the one to fix first. It names a primitive
 that does not exist: nothing exposes outbox depth — no route, no dashboard panel,
@@ -144,9 +154,10 @@ pending entries" as healthy will read this stream as healthy while it is dead.
 Use last-entry age instead — it at least catches a producer that stopped
 republishing.
 
-Note the *permanently* in that row. `info.changes` and `content.blobs` are
-groupless today too, but only because their consumers aren't built; they gain
-groups and become lag-monitorable. `content.fetch-policy` does not.
+Note the *permanently* in that row. `info.changes` is groupless today too, but
+only because its consumer isn't built; it gains a group and becomes
+lag-monitorable, exactly as `content.revisions` just did.
+`content.fetch-policy` does not.
 
 For the same reason it has **no DLQ**. `dead_letter()` is a method on
 `AsyncBusConsumer` — it copies the frame to `dlq_name(topic)` and acks the

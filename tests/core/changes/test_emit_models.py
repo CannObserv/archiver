@@ -1,14 +1,16 @@
 """Lock the change-bus emit sites to the strict ``*Emit`` (``extra="forbid"``) models.
 
-The route handlers construct events with ``SourceRevisionCapturedEmit`` /
+The emit sites construct events with ``SourceRevisionCapturedEmit`` /
 ``InfoItemPrimaryChangedEmit`` so a typo'd field is caught at *emit* time. A
 regression to the canonical (``extra="ignore"``) classes would silently swallow
-such a typo — these tests fail if a route module rebinds those names to a
+such a typo — these tests fail if an emit site rebinds those names to a
 non-forbidding model (or drops them entirely).
 
-Referencing the models *through the route module namespace* (not importing them
-straight from co-core) is deliberate: it ties the guard to what the emit sites
-actually bind.
+Referencing the models *through the emitting module's namespace* (not importing
+them straight from co-core) is deliberate: it ties the guard to what the emit
+sites actually bind. The two live in different layers — archiver#139 moved the
+SourceRevision emit into ``src.core.services`` so the bus consumer emits through
+the same code as the route, while the InfoItem one is still in its route.
 """
 
 from __future__ import annotations
@@ -18,12 +20,13 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from src.api.routes import info_items, source_revisions
+from src.api.routes import info_items
+from src.core.services import source_revision
 
 
 def test_source_revision_emit_model_forbids_extra_fields():
-    """source_revisions emits via a forbid-configured model."""
-    model = source_revisions.SourceRevisionCapturedEmit
+    """The SourceRevision write path emits via a forbid-configured model."""
+    model = source_revision.SourceRevisionCapturedEmit
     assert model.model_config.get("extra") == "forbid"
     with pytest.raises(ValidationError):
         model(
