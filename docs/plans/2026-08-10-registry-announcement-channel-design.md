@@ -1,7 +1,7 @@
 ---
 title: Durable registry announcement channel — replace the best-effort Watcher HTTP push
 date: 2026-08-10
-status: draft
+status: approved
 ---
 
 # Registry announcement channel — design
@@ -49,7 +49,9 @@ Registry mutations are operator-driven and rare; fetch cycles are frequent and g
 
 ### `info.registry` — the announcement
 
-Config/state stream kind (cannobserv#285's third kind): broadcast, LWW per key, groupless, full set republished on a timer. Hyphen-free two-segment name in the `info.` namespace, the registry/domain layer.
+Config/state stream kind (cannobserv#285's third kind): broadcast, LWW per key, groupless, full set republished on a timer. Two-segment name in the `info.` namespace, the registry/domain layer.
+
+**No DLQ.** The same answer `content.fetch-policy` gives, for the same reason: a state message has nothing to close and no fact to publish back, so quarantine *is* its terminal state. Applies to both streams in this design.
 
 ```
 schema_version: int
@@ -91,7 +93,7 @@ A mutation on an InfoSource bound to N items bumps N generations and emits N ann
 
 **Deltas** — a `ChangesOutboxRow(topic="info.registry", …)` written in the mutation's transaction. Emit sites: InfoSource create, `update_info_source_specs`, primary-binding swap, binding deactivation, WatchSpec change, pause/resume (currently `patch_watched_item(is_active=…)` at `src/dashboard/routes/info_items.py:1431`), InfoItem deletion/deactivation. Verify against the code; that list is a starting point.
 
-**Snapshots** — a separate timer task reading current state and publishing directly. **Period: 1 hour**, configurable, plus an operator "republish now" control. The period is not the convergence guarantee for a healthy delta (that is outbox latency, sub-second); it bounds the failure cases only — consumer down past retention, dead-lettered row, trim.
+**Snapshots** — a separate timer task reading current state and publishing directly. **Period: 1 hour** (ratified), configurable, plus an operator "republish now" control. The period is not the convergence guarantee for a healthy delta (that is outbox latency, sub-second); it bounds the failure cases only — consumer down past retention, dead-lettered row, trim. It is also the staleness bound a spec edit inherits when its delta is lost.
 
 **Retention rides on the publish.** `publisher.py:306-323` applies one global `ARCHIVER_REDIS_STREAM_MAXLEN` to every topic in `seen_topics`, so `info.registry` would be silently subjected to the fact stream's cap the moment its first delta drains. co-core is explicit that a config/state stream's retention is a *consumer contract* carried by `BusPublish.maxlen`, because the consumer boots by replaying from `0-0`. Exclude `info.registry` from the periodic `XTRIM` loop and set `maxlen` on its publishes, sized from key count × periods retained — never from the `info.changes` number.
 
@@ -105,7 +107,24 @@ Groupless tail via `AsyncBusTailReader`, replay from `0-0` at boot, then tail. R
 
 Same mechanics, opposite direction: LWW per `info_item_id`, groupless, periodic republish. Hyphen rather than a third dot segment, for the reason `content.fetch-policy` gives verbatim — `info.watch.status` would read as a sub-stream of an `info.watch` that does not exist and get swept up by ops globs.
 
-Payload: `applied_generation`, `applied_active`, `next_due_at`, `consecutive_failures`, `revoked`. **Scheduler state only** — the activity signals are already on `content.blobs` and `content.revisions`. Publish `applied_generation` **after** the reconcile commits; a premature stamp makes the drift detector lie in the one direction that matters.
+Payload: `applied_generation`, `applied_active`, `consecutive_failures`, `revoked`. **Scheduler state only** — the activity signals are already on `content.blobs` and `content.revisions`.
+
+**`next_due_at` is deliberately absent.** It moves on every successful cycle, which would make this stream activity-rate-scaled — the exact cost model this design rejects. The dashboard derives the same value from last-checked plus `watch_spec.interval`, both of which it already holds. A derived value that is occasionally a cycle stale beats a stream whose write rate tracks the corpus.
+
+Publish `applied_generation` **after** the reconcile commits; a premature stamp makes the drift detector lie in the one direction that matters.
+
+**Where each activity signal actually comes from** (verified against Watcher, not assumed):
+
+| Signal | Source | Note |
+|---|---|---|
+| last **changed** | `content.revisions` | already consumed (archiver#139) |
+| last **checked** | `content.blobs` → `blob_available` / `fetch_failed` | **not** `content.revisions` — see below |
+| last failed + reason | `content.blobs` → `fetch_failed` | |
+| next due | derived: last-checked + `watch_spec.interval` | not on the wire |
+
+`content.revisions` carries last-*changed* only. An unchanged re-observation returns early at `src/workers/pipeline.py:300` in Watcher (`if last_rev.content_fingerprint == outcome.content_fingerprint: return WatchedItemResult(cache_hit=True)`) — no `ChangeRevision`, no `PendingArchiverSync`, so nothing is published. archiver#139's re-observation handling covers a *redelivered or re-POSTed* observation, not a fresh no-change poll; do not read it as evidence of the latter.
+
+Last-checked therefore depends on every cycle producing a `content.blobs` outcome, which holds today because Watcher issues no conditional requests (a body-less 304 currently dead-letters — replicator#17). When conditional fetch lands, whatever outcome a 304 produces must still reach `content.blobs`, or last-checked goes stale on precisely the cheap path that will become the common one. Flag it on replicator#17 rather than discovering it here.
 
 Archiver tails it into a persisted `watch_status` table so restart is a delta, not a full `0-0` replay, and renders the panel from local state with zero SDK calls. Announced generation (`info_items.announcement_generation`) against applied generation is the drift detector whose absence this issue opens by describing.
 
@@ -119,17 +138,27 @@ Consuming `content.blobs` read-only does not reopen the epic's "Archiver does no
 2. **cannobserv#302 — contract**, plus co-core release and Archiver's pin bump. The bump ships *with* the producer or ahead of it: the outbox's build phase dispatches through `payload_from_dict` and dead-letters an unknown `event_type` on the first attempt, so a producer merged ahead of the contract fails quietly rather than loudly. *Verifiable: `payload_from_dict` round-trips a `registry_announcement` in Archiver's venv.*
 3. **archiver#141 — producer.** Generation column with atomic bump, delta emit at every mutation site, snapshot timer, `XTRIM` exclusion, `deploy/README.md` streams table. *Verifiable: a test asserts rolling back the mutation rolls back the announcement; a trimmed stream still converges a fresh consumer.*
 4. **watcher#254 — consumer.** Reconcile loop, generation ordering, cold start from a snapshot alone. *Verifiable: cold start against a **trimmed** stream produces correct `watched_items`; an out-of-order announcement is ignored; Watcher-local columns survive.*
-5. **Return leg**, startable from step 2 and parallel to 3–4: **cannobserv#321** → **watcher#264** ∥ **archiver#151**. #264 is cheapest built alongside #254 — its payload is what the reconcile loop just computed. *Verifiable: panel renders with zero SDK calls; announced-vs-applied divergence is visible.*
+5. **Return leg**, startable from step 2 and parallel to 3–4: **cannobserv#321** → **watcher#264** ∥ **archiver#151**. #264 is cheapest built alongside #254 — its payload is what the reconcile loop just computed. **Step 7 gates on this.** *Verifiable: panel renders with zero SDK calls; announced-vs-applied divergence is visible.*
 6. **Dual-run.** Both paths live and idempotent. Disable the HTTP push by config, edit a real spec, confirm it propagates via the announcement and that `applied_generation` catches up. *Verifiable: that observation, in production, not in a test.*
-7. **archiver#142 — teardown.** SDK, `client-drift`'s watcher half, `watcher-live-drift.timer` and its scripts, `watcher_provisioning.py`, `WATCHER_BASE_URL` / `WATCHER_API_KEY`, and `info_items.watcher_item_id` (after the cut-over — step 1's import joins on it). Confirm `_clear_stale_watcher_link` and the 409-adoption recovery are genuinely subsumed by reconcile plus the status stream rather than assuming it.
+7. **archiver#142 — teardown. Gated on step 5** (see Resolved, below): the SDK is not deleted until the panel renders from `info.watch-status`. Removes the SDK, `client-drift`'s watcher half, `watcher-live-drift.timer` and its scripts, `watcher_provisioning.py`, `WATCHER_BASE_URL` / `WATCHER_API_KEY`, and `info_items.watcher_item_id` (after the cut-over — step 1's import joins on it). Confirm `_clear_stale_watcher_link` and the 409-adoption recovery are genuinely subsumed by reconcile plus the status stream rather than assuming it.
+
+## Resolved
+
+Settled 2026-08-10; recorded here so the child issues inherit the decision rather than re-deriving it.
+
+- **#142 gates on #151.** The teardown waits; the panel never regresses. A half-deleted SDK is the worst of both.
+- **Stream names ratified:** `info.registry` and `info.watch-status`.
+- **Snapshot period: 1 hour**, configurable.
+- **`next_due_at` dropped** from the status payload — the dashboard derives it from last-checked + `watch_spec.interval`, both already local. Removes the one field that would have made the return leg activity-rate-scaled.
+- **No DLQ on either stream**, matching `content.fetch-policy`.
+- **A dead-lettered announcement leaves its key stale until the next snapshot** — accepted. Bounded by the republish period and visible as generation drift on the panel.
+- **archiver#147 sequences with this work.** Both streams' health primitive is last-entry age; the bus panel that currently reports configuration rather than liveness is its natural home.
 
 ## Open questions / risks
 
-- **Does #142 gate on #151?** Deleting the SDK removes the panel's data source. Either the teardown waits, or it ships with a temporarily degraded panel. **Recommend gating** unless the teardown blocks something else — a half-deleted SDK is the worst of both. Needs a call before step 5 is scheduled.
-- **Stream names** `info.registry` and `info.watch-status` are proposed here and ratified by cannobserv#302 / #321. Renaming after either ships is a coordinated multi-repo change.
-- **Snapshot period of 1 hour** is a proposal sized against a corpus of O(10³), not the 4 items in production. It is the staleness bound a spec edit inherits when its delta is lost. Ratify or override.
-- **`next_due_at` may be write-amplifying.** If it moves on every successful cycle, the status stream becomes activity-rate-scaled — the exact cost model this design rejects. Coalesce it or drop it; it is the least valuable field on that payload.
-- **Does Watcher publish `source_revision_observed` on a no-change re-observation?** archiver#139 refreshes the spec verdict on re-observation, which implies yes — but last-checked derivation depends on it, and a *failed* fetch produces no observation regardless. Verify against watcher#253's implementation before #151 relies on it.
-- **DLQ for a config/state stream is probably "none applies"** — the same answer `content.fetch-policy` gives, since a policy message has nothing to close. Confirm rather than inherit.
-- **A dead-lettered announcement leaves its key stale until the next snapshot.** Bounded by the republish period, and visible as generation drift on the panel. Accepted.
-- **The dashboard bus panel reports configuration, not liveness** (archiver#147). Both new streams' health primitive is last-entry age, which that panel is the natural home for. Worth sequencing #147 near this work rather than separately.
+No open questions remain — the seven above were settled on review. What is left is carried risk.
+
+- **`content.revisions` does not carry last-checked**, only last-changed — verified in Watcher, not assumed (see the return-leg section). Last-checked comes from `content.blobs`, which holds only while every cycle produces a fetch outcome. Conditional requests (replicator#17) would break that on the cheap path; flag it there.
+- **Concurrent mutations to one InfoItem** silently lose an announcement unless the generation bump is an atomic `UPDATE … RETURNING`. The obvious read-modify-write implementation reintroduces exactly the failure the token prevents.
+- **`info.registry` inherits the fact stream's `XTRIM` cap by default** the moment its first delta drains, because the delta path puts the topic in `seen_topics`. Exclusion is a required change, not a tuning knob.
+- **Snapshots do not retry.** One lost to a broker outage is corrected only by the next period — a deliberate asymmetry with the delta path, and one the streams table must state rather than imply.
