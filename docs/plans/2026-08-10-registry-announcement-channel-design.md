@@ -16,7 +16,7 @@ Watcher caches `source_specs` on its WatchedItem rows (watcher#185, which remove
 
 Archiver broadcasts **desired registry state** on a new durable stream, `info.registry`, and Watcher reconciles its `watched_items` against it. One announcement per InfoItem, keyed `info_item_id`, carrying the active primary InfoSource inline plus a resolved scheduling policy. Last-write-wins per key, ordered by a monotonic `generation` counter. Deltas are written to `changes_outbox` **in the mutation's own transaction** — that single property is the entire fix — and drained by the existing publisher. A separate timer republishes the full key set directly (not via the outbox), so a consumer converges regardless of stream trimming. Consumers tail grouplessly from `0-0`, following the `content.fetch-policy` precedent (cannobserv#285) rather than inventing a second config/state shape.
 
-Because that channel is one-way and the teardown deletes Archiver's only reverse read of Watcher, the design carries a **return leg**: `info.watch-status`, on which Watcher broadcasts the generation it has *applied* plus scheduler state. Archiver tails it, renders the watched-item panel from local state, and alerts on announced-vs-applied divergence. That is a broadcast fact, not an ack — nothing blocks on it — and it is strictly stronger than the HTTP push ever was, which confirmed receipt and never application.
+Because that channel is one-way and the teardown deletes Archiver's only reverse read of Watcher, the design carries a **return leg**: `info.watch-status`, on which Watcher broadcasts the generation it has *applied* plus scheduler state and observation freshness. Archiver tails it, renders the watched-item panel from local state, records `last_observed_at` durably on `info_sources`, and alerts on announced-vs-applied divergence. That is a broadcast fact, not an ack — nothing blocks on it — and it is strictly stronger than the HTTP push ever was, which confirmed receipt and never application. Both directions are then level-triggered, which is the property that makes the whole channel self-healing; leaving the return leg edge-triggered would have reintroduced the lossiness the outbound leg exists to remove.
 
 Two things must move before any of it can be announced: **Archiver does not currently own cadence or active/paused state** (no such columns on `info_items`; Watcher owns them and the dashboard round-trips over the SDK), and there is no ordering token on the registry rows. Both are prerequisites, not payload questions.
 
@@ -43,7 +43,9 @@ Registry mutations are operator-driven and rare; fetch cycles are frequent and g
 - **Absence-from-snapshot as the delete signal** — rejected. A producer that dies mid-republish emits a partial set, so absence-as-revocation turns a producer restart into a cluster-wide deprovision. Making it safe needs a generation marker *plus* an end-of-set sentinel *plus* consumer-side buffering — three mechanisms to avoid one boolean. Explicit `revoked` tombstone, republished in every full set. (co-core's `FetchPolicyState` already argues exactly this.)
 - **Snapshots through the outbox** — rejected. There is no pruner on `changes_outbox`; a periodic full republish through it grows the table without bound and taxes the drain's `published_at IS NULL` scan. The snapshot carries no transactional obligation — it is an idempotent read of current state, and the next period corrects a lost one.
 - **An applied-ack from Watcher over HTTP** — rejected. That is the coupling being removed. A broadcast applied-generation is not an ack path and delivers more.
-- **A general Watcher telemetry stream** — rejected as over-scoped. `content.blobs` (`blob_available` / `fetch_failed`, keyed by `info_source_id` since cannobserv#300) and `content.revisions` already carry last-fetched, last-failed, and last-changed. Only scheduler state is genuinely Watcher-private, and it is low-rate. A status stream carrying per-cycle activity would invert the epic's whole cost argument.
+- **A general Watcher telemetry stream** — rejected as over-scoped. The return leg carries level signals only; per-event activity stays on the content streams.
+- **Deriving observation freshness from `content.blobs`** — rejected, having first been chosen. It moves the per-cycle cost rather than removing it, couples liveness to replicator#17, and above all reports that *bytes arrived* rather than that the *item was observed* — extraction failures land after `blob_available`, so a broken item reads as freshly and healthily checked. See "What Archiver does not consume".
+- **Making `source_revision_observed` fire on no-change** — rejected. It would make a fact stream activity-rate-scaled, and it cannot work anyway: the envelope key is `info_source_id:extracted_fingerprint`, so a no-change republish re-emits an identical key that the consumer's dedup cannot distinguish from redelivery.
 
 ## Design
 
@@ -107,30 +109,62 @@ Groupless tail via `AsyncBusTailReader`, replay from `0-0` at boot, then tail. R
 
 Same mechanics, opposite direction: LWW per `info_item_id`, groupless, periodic republish. Hyphen rather than a third dot segment, for the reason `content.fetch-policy` gives verbatim — `info.watch.status` would read as a sub-stream of an `info.watch` that does not exist and get swept up by ops globs.
 
-Payload: `applied_generation`, `applied_active`, `consecutive_failures`, `revoked`. **Scheduler state only** — the activity signals are already on `content.blobs` and `content.revisions`.
-
-**`next_due_at` is deliberately absent.** It moves on every successful cycle, which would make this stream activity-rate-scaled — the exact cost model this design rejects. The dashboard derives the same value from last-checked plus `watch_spec.interval`, both of which it already holds. A derived value that is occasionally a cycle stale beats a stream whose write rate tracks the corpus.
+```
+schema_version: int
+event_type: Literal["watch_status"]
+occurred_at: OccurredAt
+info_item_id: str            # the LWW slot
+applied_generation: int      # the announcement generation Watcher has applied
+applied_active: bool         # what the scheduler is actually doing
+last_attempt_at: OccurredAt | None   # every outcome advances this
+last_observed_at: OccurredAt | None  # only a successful extraction advances this
+health: Literal["ok", "error"]
+revoked: bool = False
+```
 
 Publish `applied_generation` **after** the reconcile commits; a premature stamp makes the drift detector lie in the one direction that matters.
 
-**Where each activity signal actually comes from** (verified against Watcher, not assumed):
+#### Level, not edge — and why that makes the publish rate a free variable
 
-| Signal | Source | Note |
-|---|---|---|
-| last **changed** | `content.revisions` | already consumed (archiver#139) |
-| last **checked** | `content.blobs` → `blob_available` / `fetch_failed` | **not** `content.revisions` — see below |
-| last failed + reason | `content.blobs` → `fetch_failed` | |
-| next due | derived: last-checked + `watch_spec.interval` | not on the wire |
+Every field here is a **level** signal: it answers "as of when / what is true now", not "how many times". Level signals can be coalesced without loss of meaning, which is what keeps this stream off the activity-rate cost curve *without* pushing the fields onto a stream that costs the same.
 
-`content.revisions` carries last-*changed* only. An unchanged re-observation returns early at `src/workers/pipeline.py:300` in Watcher (`if last_rev.content_fingerprint == outcome.content_fingerprint: return WatchedItemResult(cache_hit=True)`) — no `ChangeRevision`, no `PendingArchiverSync`, so nothing is published. archiver#139's re-observation handling covers a *redelivered or re-POSTed* observation, not a fresh no-change poll; do not read it as evidence of the latter.
+Publish on: reconcile (generation change), health transition, `applied_active` change, and the periodic republish. **Not per cycle.** A steadily-healthy item publishes once per republish period no matter how often it is fetched, and its timestamps converge within that period. Under-reporting is the safe direction — the registry never claims content is fresher than it is.
 
-Last-checked therefore depends on every cycle producing a `content.blobs` outcome, which holds today because Watcher issues no conditional requests (a body-less 304 currently dead-letters — replicator#17). When conditional fetch lands, whatever outcome a 304 produces must still reach `content.blobs`, or last-checked goes stale on precisely the cheap path that will become the common one. Flag it on replicator#17 rather than discovering it here.
+#### `last_attempt_at` and `last_observed_at` are different facts
 
-Archiver tails it into a persisted `watch_status` table so restart is a delta, not a full `0-0` replay, and renders the panel from local state with zero SDK calls. Announced generation (`info_items.announcement_generation`) against applied generation is the drift detector whose absence this issue opens by describing.
+Watcher's existing `last_checked_at` ([watched_item.py:68](../watcher/src/core/models/watched_item.py#L68)) advances on **every** outcome including failures — it is a scheduling anti-thrash device ([fetch_commands.py:76](../watcher/src/workers/fetch_commands.py#L76), [:120](../watcher/src/workers/fetch_commands.py#L120)). That is `last_attempt_at` here, and it is what next-due derives from.
+
+`last_observed_at` advances **only** when extraction succeeded — changed or unchanged, both count. **Watcher does not have this column today and gains one.** That is the single new column this design puts in Watcher, and it exists because a provenance claim must not rest on a cross-service inference: Archiver could derive it (health `ok` at the moment `last_attempt_at` was stamped implies that attempt observed), but the derivation silently breaks the day Watcher lets health lag the stamp, and it would be underwriting a durable registry column with an assumption about another service's internals.
+
+**Not on the payload, deliberately:** `consecutive_failures` and `last_error` — neither exists in Watcher (`health_status` is a binary enum; error text goes to the audit log). Inventing two columns to carry them is scope this design has not justified. `health: error` plus Watcher's audit log is enough for an operator; add them when someone needs more than "it is failing."
+
+`next_due_at` stays absent — derived from `last_attempt_at + watch_spec.interval`. Note it must derive from *attempt*, not *observation*: a failing item attempts on schedule while `last_observed_at` stands still, and deriving from the latter would render every failing item as wildly overdue.
+
+#### `info_sources.last_observed_at` — a durable registry column
+
+Archiver writes `last_observed_at` through to `info_sources`, not just to the status cache. This is a **provenance fact, not a dashboard convenience**: "this source was verified current as of T" is the most common true statement about any tracked regulatory document, and it is materially stronger than "we have no record of a change" — which conflates *verified same* with *never looked*.
+
+That claim is only available because Watcher distinguishes the two cases and always has: [fetch_commands.py:110-117](../watcher/src/workers/fetch_commands.py#L110-L117) audits `CHECK_NO_CHANGE` against `CHECK_SNAPSHOT_CREATED` on every cycle. The information existed and never left the service. Requires `docs/SCHEMA.md` and a `CHANGELOG.md` entry (migration path).
+
+#### What Archiver does *not* consume
+
+**No `content.blobs` consumer.** An earlier draft derived last-checked from `blob_available` / `fetch_failed`; that was wrong on three counts, and the third is disqualifying:
+
+1. It moved the per-cycle cost rather than removing it — one message per fetch either way, now with an extra service in the path.
+2. It coupled liveness to replicator#17 (conditional GET must still publish an outcome).
+3. **`content.blobs` reports that bytes arrived, not that the item was observed.** Extraction failures happen *after* `blob_available` ([pipeline.py:246](../watcher/src/workers/pipeline.py#L246) raises `ExtractionError`), so a broken item appears freshly and healthily checked on that stream — the exact silent-failure class this epic exists to remove.
+
+Archiver consumes exactly two streams: `content.revisions` (facts it records) and `info.watch-status` (liveness it renders and stores). The epic's "Archiver does not consume `content.blobs`" stays unqualified, with no read-only exception carved into it — role boundaries erode through exactly those.
+
+`content.revisions` carries last-**changed** only. An unchanged re-observation returns early at [pipeline.py:300](../watcher/src/workers/pipeline.py#L300) (`if last_rev.content_fingerprint == outcome.content_fingerprint: return WatchedItemResult(cache_hit=True)`) — no `ChangeRevision`, no `PendingArchiverSync`, nothing published. archiver#139's re-observation handling covers a *redelivered* observation or an A→B→A content flip, not a fresh no-change poll; do not read it as evidence of the latter.
+
+That early return is **correct and stays.** `content.revisions` is a stream of revisions and a no-change cycle produced none. It also structurally could not carry them: the envelope key is `info_source_id:extracted_fingerprint`, so a no-change republish re-emits a byte-identical key, indistinguishable from redelivery and swallowed by the consumer's dedup. What was missing was never a revision event — it was a liveness level, which is what this stream now carries.
+
+#### Consumer side
+
+Archiver tails into a persisted `watch_status` table so restart is a delta, not a full `0-0` replay, and renders the panel from local state with zero SDK calls. Announced generation (`info_items.announcement_generation`) against applied generation is the drift detector whose absence this issue opens by describing.
 
 **"No status yet" must render distinctly from paused and from healthy.** It is a fourth state alongside the panel's existing `not_watching` / `watching` / `degraded`.
-
-Consuming `content.blobs` read-only does not reopen the epic's "Archiver does not consume `content.blobs`" role decision, which is about correlation and extraction. Worth saying out loud in `docs/ARCHITECTURE.md`, because it otherwise reads as a contradiction.
 
 ## Steps
 
@@ -138,7 +172,7 @@ Consuming `content.blobs` read-only does not reopen the epic's "Archiver does no
 2. **cannobserv#302 — contract**, plus co-core release and Archiver's pin bump. The bump ships *with* the producer or ahead of it: the outbox's build phase dispatches through `payload_from_dict` and dead-letters an unknown `event_type` on the first attempt, so a producer merged ahead of the contract fails quietly rather than loudly. *Verifiable: `payload_from_dict` round-trips a `registry_announcement` in Archiver's venv.*
 3. **archiver#141 — producer.** Generation column with atomic bump, delta emit at every mutation site, snapshot timer, `XTRIM` exclusion, `deploy/README.md` streams table. *Verifiable: a test asserts rolling back the mutation rolls back the announcement; a trimmed stream still converges a fresh consumer.*
 4. **watcher#254 — consumer.** Reconcile loop, generation ordering, cold start from a snapshot alone. *Verifiable: cold start against a **trimmed** stream produces correct `watched_items`; an out-of-order announcement is ignored; Watcher-local columns survive.*
-5. **Return leg**, startable from step 2 and parallel to 3–4: **cannobserv#321** → **watcher#264** ∥ **archiver#151**. #264 is cheapest built alongside #254 — its payload is what the reconcile loop just computed. **Step 7 gates on this.** *Verifiable: panel renders with zero SDK calls; announced-vs-applied divergence is visible.*
+5. **Return leg**, startable from step 2 and parallel to 3–4: **cannobserv#321** → **watcher#264** ∥ **archiver#151**. #264 is cheapest built alongside #254 — its payload is what the reconcile loop just computed — and it adds Watcher's one new column, `last_observed_at`. #151 adds the durable `info_sources.last_observed_at` (migration, `docs/SCHEMA.md`, `CHANGELOG.md`) alongside the `watch_status` cache. **Step 7 gates on this.** *Verifiable: panel renders with zero SDK calls; announced-vs-applied divergence is visible; a no-change cycle advances `info_sources.last_observed_at` while leaving the latest `source_revisions` row untouched.*
 6. **Dual-run.** Both paths live and idempotent. Disable the HTTP push by config, edit a real spec, confirm it propagates via the announcement and that `applied_generation` catches up. *Verifiable: that observation, in production, not in a test.*
 7. **archiver#142 — teardown. Gated on step 5** (see Resolved, below): the SDK is not deleted until the panel renders from `info.watch-status`. Removes the SDK, `client-drift`'s watcher half, `watcher-live-drift.timer` and its scripts, `watcher_provisioning.py`, `WATCHER_BASE_URL` / `WATCHER_API_KEY`, and `info_items.watcher_item_id` (after the cut-over — step 1's import joins on it). Confirm `_clear_stale_watcher_link` and the 409-adoption recovery are genuinely subsumed by reconcile plus the status stream rather than assuming it.
 
@@ -149,7 +183,8 @@ Settled 2026-08-10; recorded here so the child issues inherit the decision rathe
 - **#142 gates on #151.** The teardown waits; the panel never regresses. A half-deleted SDK is the worst of both.
 - **Stream names ratified:** `info.registry` and `info.watch-status`.
 - **Snapshot period: 1 hour**, configurable.
-- **`next_due_at` dropped** from the status payload — the dashboard derives it from last-checked + `watch_spec.interval`, both already local. Removes the one field that would have made the return leg activity-rate-scaled.
+- **`next_due_at` dropped** from the status payload — derived from `last_attempt_at + watch_spec.interval`. It is redundant, which is what makes dropping it free; `last_observed_at` moves at the same rate but is irreplaceable, so it stays. Both are level signals, so publish rate is a coalescing knob rather than an intrinsic cost — the reasoning that let the return leg keep the field it needs without tracking fetch activity.
+- **`info_sources.last_observed_at` is a durable registry column**, not only a dashboard cache. "Verified current as of T" is a provenance fact about a regulatory document, and it is the claim a change-only pipeline can never make.
 - **No DLQ on either stream**, matching `content.fetch-policy`.
 - **A dead-lettered announcement leaves its key stale until the next snapshot** — accepted. Bounded by the republish period and visible as generation drift on the panel.
 - **archiver#147 sequences with this work.** Both streams' health primitive is last-entry age; the bus panel that currently reports configuration rather than liveness is its natural home.
@@ -158,7 +193,8 @@ Settled 2026-08-10; recorded here so the child issues inherit the decision rathe
 
 No open questions remain — the seven above were settled on review. What is left is carried risk.
 
-- **`content.revisions` does not carry last-checked**, only last-changed — verified in Watcher, not assumed (see the return-leg section). Last-checked comes from `content.blobs`, which holds only while every cycle produces a fetch outcome. Conditional requests (replicator#17) would break that on the cheap path; flag it there.
+- **Observation freshness has exactly one source: Watcher's own claim on `info.watch-status`.** No cross-check exists — if Watcher stamps `last_observed_at` wrongly, the registry records it wrongly, and `docs/SCHEMA.md` should say the column is a reported value rather than a locally-verified one. That is the accepted cost of not deriving it from a second stream; the alternatives were worse (see the tradeoffs).
+- **Coalescing means `last_observed_at` under-reports by up to the republish period.** Safe direction — the registry never claims content is fresher than it is — but any downstream that treats the column as exact freshness rather than a lower bound will be subtly wrong. Document it as a lower bound.
 - **Concurrent mutations to one InfoItem** silently lose an announcement unless the generation bump is an atomic `UPDATE … RETURNING`. The obvious read-modify-write implementation reintroduces exactly the failure the token prevents.
 - **`info.registry` inherits the fact stream's `XTRIM` cap by default** the moment its first delta drains, because the delta path puts the topic in `seen_topics`. Exclusion is a required change, not a tuning knob.
 - **Snapshots do not retry.** One lost to a broker outage is corrected only by the next period — a deliberate asymmetry with the delta path, and one the streams table must state rather than imply.
