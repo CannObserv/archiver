@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://watcher.exe.xyz/schemas/watch-spec/v1.json",
+  "title": "Watch Specification v1",
+  "description": "Scheduling policy for one InfoItem: how often the cluster wants it checked, and whether it is scheduled at all. Archiver owns this document (declared intent); Watcher owns execution (when the fetch actually fires) and keeps a local fallback cadence for a spec it cannot parse. BOUNDARY: a WatchSpec is per-item cadence. content.fetch-policy is per-host spacing — different key, stream, owner, and consumer. Both answer 'how often do we hit things' and will attract merge proposals; they are not the same knob and must not be merged. The document is singular, not a list: source_specs is plural because Watcher walks it as a fallback loop, and a WatchSpec has no fallback semantics — one policy is in effect. It is carried resolved on the wire, never as a reference, so a future reusable-policy table stays an Archiver-internal change.",
+  "type": "object",
+  "required": ["schema_version", "active"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "active": {
+      "type": "boolean",
+      "description": "False means registered but deliberately paused: keep the item, stop scheduling. Distinct from revocation, which is an envelope concern on the announcement — collapsing paused into revoked loses the pause on the next reconcile."
+    },
+    "interval": {
+      "type": "string",
+      "pattern": "^[0-9]+[smhd]$",
+      "description": "Watcher interval string. Optional: when absent, the consumer applies its own default, which may be a per-domain default_schedule_config rather than a global constant. The pattern is the grammar Watcher's parse_interval accepts; the narrower set the dashboard offers (1h/6h/1d/7d) lives in src/dashboard/cadence.py."
+    }
+  }
+}

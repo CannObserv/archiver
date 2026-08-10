@@ -58,3 +58,45 @@ async def test_info_items_has_pg_trgm_indexes(session):
         definition = indexes[name].lower()
         assert "using gin" in definition, f"{name} is not a GIN index: {indexes[name]}"
         assert "gin_trgm_ops" in definition, f"{name} missing gin_trgm_ops: {indexes[name]}"
+
+
+@pytest.mark.asyncio
+async def test_info_item_watch_spec_defaults_to_active_without_a_cadence(session):
+    """The default policy is 'scheduled', with the interval left to the consumer.
+
+    A resolved interval here would fabricate a cadence for every item that has
+    none and override Watcher's per-domain default.
+    """
+    item = InfoItem(name="t")
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    assert item.watch_spec == {"schema_version": 1, "active": True}
+
+
+@pytest.mark.asyncio
+async def test_info_item_watch_spec_round_trips_an_explicit_policy(session):
+    item = InfoItem(name="t", watch_spec={"schema_version": 1, "active": False, "interval": "6h"})
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    assert item.watch_spec == {"schema_version": 1, "active": False, "interval": "6h"}
+
+
+@pytest.mark.asyncio
+async def test_info_item_watch_spec_server_default_applies_to_raw_inserts(session):
+    """Rows written outside the ORM — including the ones the migration backfills
+    — get the same policy, so nothing reads NULL."""
+    await session.execute(
+        text(
+            "INSERT INTO information.info_items (info_item_id, name) "
+            "VALUES ('01J0000000000000000000000X', 'raw')"
+        )
+    )
+    row = await session.execute(
+        text(
+            "SELECT watch_spec FROM information.info_items "
+            "WHERE info_item_id = '01J0000000000000000000000X'"
+        )
+    )
+    assert row.scalar_one() == {"schema_version": 1, "active": True}

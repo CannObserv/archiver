@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
 
 from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
+from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC
 
 
 class InfoItem(Base, TimestampMixin):
@@ -22,6 +23,12 @@ class InfoItem(Base, TimestampMixin):
         nullable=False,
         server_default="{}",
         default=dict,
+    )
+    watch_spec: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default='{"schema_version": 1, "active": true}',
+        default=lambda: dict(DEFAULT_WATCH_SPEC),
     )
     watcher_item_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
