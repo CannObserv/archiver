@@ -2,6 +2,7 @@
 title: Durable registry announcement channel — replace the best-effort Watcher HTTP push
 date: 2026-08-10
 status: approved
+amended: 2026-08-10 — boundary review (archiver#150 comment thread); see "Amendments"
 ---
 
 # Registry announcement channel — design
@@ -18,7 +19,7 @@ Archiver broadcasts **desired registry state** on a new durable stream, `info.re
 
 Because that channel is one-way and the teardown deletes Archiver's only reverse read of Watcher, the design carries a **return leg**: `info.watch-status`, on which Watcher broadcasts the generation it has *applied* plus scheduler state and observation freshness. Archiver tails it, renders the watched-item panel from local state, records `last_observed_at` durably on `info_sources`, and alerts on announced-vs-applied divergence. That is a broadcast fact, not an ack — nothing blocks on it — and it is strictly stronger than the HTTP push ever was, which confirmed receipt and never application. Both directions are then level-triggered, which is the property that makes the whole channel self-healing; leaving the return leg edge-triggered would have reintroduced the lossiness the outbound leg exists to remove.
 
-Two things must move before any of it can be announced: **Archiver does not currently own cadence or active/paused state** (no such columns on `info_items`; Watcher owns them and the dashboard round-trips over the SDK), and there is no ordering token on the registry rows. Both are prerequisites, not payload questions.
+Two things must move before the channel is complete: **Archiver does not currently own cadence or active/paused state** (no such columns on `info_items`; Watcher owns them and the dashboard round-trips over the SDK), and there is no ordering token on the registry rows. Both are data-ownership work, not payload questions. The generation counter genuinely gates the producer; the WatchSpec migration gates the *teardown* — with `watch_spec` optional on the wire, announcements replace `sync_on_spec_update` before archiver#150 lands, and only the pause/provision push waits on it.
 
 ## Tradeoffs / alternatives
 
@@ -65,7 +66,7 @@ info_source_id: str
 url: str
 source_specs: list
 spec_fingerprint: str | None
-watch_spec: dict           # resolved scheduling policy
+watch_spec: dict | None    # resolved scheduling policy; None = consumer default
 revoked: bool = False      # tombstone
 ```
 
@@ -73,11 +74,15 @@ revoked: bool = False      # tombstone
 - **`spec_fingerprint`** is co-core's `pure.extract.spec_fingerprint` over the announced spec. Carrying it makes the announcement directly comparable to the field `source_revision_observed` already lands on `content.revisions`, which is what lets the registry distinguish "Watcher is behind on announcements" from "the spec changed" — the exact ambiguity `SourceRevisionObservedEvent`'s docstring names when it points here.
 - **RepSpecs are out.** Step 5 makes Archiver the replication issuer; Watcher never needs them. `name` / `description` / `owner` / `rep_fields` are out too — no consumer.
 
-**Three states, all distinct.** `revoked: true` means gone from the registry (delete the WatchedItem). `watch_spec.active: false` means registered and deliberately paused (keep the row, stop scheduling). `watch_spec.active: true` means schedule. Collapsing paused into revoked loses the pause on the next reconcile.
+**Three announced states, all distinct.** `revoked: true` means gone from the registry (delete the WatchedItem). `watch_spec.active: false` means registered and deliberately paused (keep the row, stop scheduling). `watch_spec.active: true` means schedule. Collapsing paused into revoked loses the pause on the next reconcile.
+
+There is a **fourth state the registry does not announce**: an item paused locally in Watcher as break-glass. Level-triggered reconciliation reverts it on the next announcement — correct by construction, and a real operational change once archiver#142 leaves Archiver's dashboard as the only item-level pause control. Sticky-or-not is **open** — to be settled on archiver#150 and implemented in watcher#254; see "Open questions / risks".
 
 ### WatchSpec — the ownership move (archiver#150)
 
-`info_items.watch_spec`, a validated JSONB document, with a `src/core/watch_spec_schema/` module alongside the three that exist. **Singular document, not a plural list** — `source_specs` is plural because Watcher walks it as a fallback loop; a WatchSpec has no fallback semantics. Initial surface stays small: `{"interval": "1d", "active": true}`, using the vocabulary already in `src/dashboard/cadence.py`.
+`info_items.watch_spec`, a validated JSONB document, with a `src/core/watch_spec_schema/` module alongside the three that exist. **Singular document, not a plural list** — `source_specs` is plural because Watcher walks it as a fallback loop; a WatchSpec has no fallback semantics. Initial surface stays small: `{"schema_version": 1, "active": true, "interval": "1d"}`.
+
+**`active` is required; `interval` is optional and its absence means "consumer applies its default."** Watcher's per-domain `default_schedule_config` is a live layer that `src/dashboard/routes/register.py:411` reaches deliberately by sending `None`; an always-resolved interval would retire it without a decision, and a non-null server default would backfill a fabricated cadence onto every existing row. The schema validates the interval **grammar** (`^[0-9]+[smhd]$`, what Watcher's `parse_interval` accepts); `src/dashboard/cadence.py` keeps owning the narrower set the UI offers and its labels.
 
 The wire carries a **resolved document, never a reference.** The reusable-policy version — a `watch_specs` table plus an effective-dated join, mirroring RepSpec — is a plausible future want (bulk cadence policy is why RepSpec got that shape), and a resolved document makes that upgrade an Archiver-internal change with zero consumer impact. Do not build the join now; do not leak the column into the contract either.
 
@@ -103,7 +108,9 @@ Durability asymmetry to record in the streams table: deltas retry indefinitely t
 
 ### Consumer (watcher#254)
 
-Groupless tail via `AsyncBusTailReader`, replay from `0-0` at boot, then tail. Reconcile — do not apply: create, spec update, cadence change, and deactivation all fall out of one loop. Watcher-local columns the registry has no opinion on (health, `last_checked_at`, fetch history, notification config) survive reconciliation. Keep a local fallback cadence for an absent or unparseable `watch_spec` — a consumer that cannot parse the policy must not stop scheduling, and it reports that via `applied_active` rather than diverging silently.
+Groupless tail via `AsyncBusTailReader`, replay from `0-0` at boot, then tail. Reconcile — do not apply: create, spec update, cadence change, and deactivation all fall out of one loop. Watcher-local columns the registry has no opinion on (health, `last_checked_at`, fetch history, notification config) survive reconciliation. Keep a local fallback cadence for an absent or unparseable `watch_spec` — a consumer that cannot parse the policy must not stop scheduling.
+
+**That fallback must report itself, and `applied_active` is the wrong field for it.** An unparseable spec diverges on *cadence* while the item stays *active*, so `applied_active` does not move: the reconcile commits, `applied_generation` catches up, and the drift detector reads clean while the announced policy is ignored — with Archiver rendering the announced interval and deriving `next_due_at` from it, both wrong. The return leg carries `applied_interval` for exactly this (see below).
 
 ### `info.watch-status` — the return leg (cannobserv#321, watcher#264, archiver#151)
 
@@ -116,6 +123,7 @@ occurred_at: OccurredAt
 info_item_id: str            # the LWW slot
 applied_generation: int      # the announcement generation Watcher has applied
 applied_active: bool         # what the scheduler is actually doing
+applied_interval: str | None # the cadence actually in use; None = consumer default
 last_attempt_at: OccurredAt | None   # every outcome advances this
 last_observed_at: OccurredAt | None  # only a successful extraction advances this
 health: Literal["ok", "error"]
@@ -168,13 +176,14 @@ Archiver tails into a persisted `watch_status` table so restart is a delta, not 
 
 ## Steps
 
-1. **archiver#150 — WatchSpec.** Migration, schema module, API surface, dashboard rewiring (pause/resume becomes a local UPDATE; cadence reads `item.watch_spec`; registration applies an Archiver default). **Run the one-time import of Watcher's `default_schedule_config` + `is_active` first** — the SDK is the only way to read them and #142 deletes it. Four rows in production. *Verifiable: no dashboard path reads cadence or active state over the SDK; imported values match the live WatchedItems.*
+1. **archiver#150 — WatchSpec ownership.** Migration, schema module, API surface (`PUT /info-items/{id}/watch-spec` + regenerated `clients/python/`), and the one-time import of Watcher's `default_schedule_config` + `is_active` as an **idempotent, dry-runnable script** joining on Watcher's `archiver_info_item_id`. Four rows in production. **No dashboard behaviour changes here** — the cutover is step 6. Parallel with steps 2–5, not ahead of them. *Verifiable: imported values match the live WatchedItems; the dashboard is byte-identical in behaviour.*
 2. **cannobserv#302 — contract**, plus co-core release and Archiver's pin bump. The bump ships *with* the producer or ahead of it: the outbox's build phase dispatches through `payload_from_dict` and dead-letters an unknown `event_type` on the first attempt, so a producer merged ahead of the contract fails quietly rather than loudly. *Verifiable: `payload_from_dict` round-trips a `registry_announcement` in Archiver's venv.*
 3. **archiver#141 — producer.** Generation column with atomic bump, delta emit at every mutation site, snapshot timer, `XTRIM` exclusion, `deploy/README.md` streams table. *Verifiable: a test asserts rolling back the mutation rolls back the announcement; a trimmed stream still converges a fresh consumer.*
 4. **watcher#254 — consumer.** Reconcile loop, generation ordering, cold start from a snapshot alone. *Verifiable: cold start against a **trimmed** stream produces correct `watched_items`; an out-of-order announcement is ignored; Watcher-local columns survive.*
-5. **Return leg**, startable from step 2 and parallel to 3–4: **cannobserv#321** → **watcher#264** ∥ **archiver#151**. #264 is cheapest built alongside #254 — its payload is what the reconcile loop just computed — and it adds Watcher's one new column, `last_observed_at`. #151 adds the durable `info_sources.last_observed_at` (migration, `docs/SCHEMA.md`, `CHANGELOG.md`) alongside the `watch_status` cache. **Step 7 gates on this.** *Verifiable: panel renders with zero SDK calls; announced-vs-applied divergence is visible; a no-change cycle advances `info_sources.last_observed_at` while leaving the latest `source_revisions` row untouched.*
-6. **Dual-run.** Both paths live and idempotent. Disable the HTTP push by config, edit a real spec, confirm it propagates via the announcement and that `applied_generation` catches up. *Verifiable: that observation, in production, not in a test.*
-7. **archiver#142 — teardown. Gated on step 5** (see Resolved, below): the SDK is not deleted until the panel renders from `info.watch-status`. Removes the SDK, `client-drift`'s watcher half, `watcher-live-drift.timer` and its scripts, `watcher_provisioning.py`, `WATCHER_BASE_URL` / `WATCHER_API_KEY`, and `info_items.watcher_item_id` (after the cut-over — step 1's import joins on it). Confirm `_clear_stale_watcher_link` and the 409-adoption recovery are genuinely subsumed by reconcile plus the status stream rather than assuming it.
+5. **Return leg**, startable from step 2 and parallel to 3–4: **cannobserv#321** → **watcher#264** ∥ **archiver#151**. #264 is cheapest built alongside #254 — its payload is what the reconcile loop just computed — and it adds Watcher's one new column, `last_observed_at`. #151 adds the durable `info_sources.last_observed_at` (migration, `docs/SCHEMA.md`, `CHANGELOG.md`) alongside the `watch_status` cache. **Step 8 gates on this.** *Verifiable: panel renders with zero SDK calls; announced-vs-applied divergence is visible; a no-change cycle advances `info_sources.last_observed_at` while leaving the latest `source_revisions` row untouched.*
+6. **Re-run the import, then cut the control plane over.** The import first — Watcher stays authoritative through steps 1–5, so a snapshot taken at step 1 is stale by the time it is announced, and the first announcement would publish it as desired state. Then the dashboard flip: pause/resume becomes a local UPDATE (+ announcement) instead of `patch_watched_item`; cadence reads `item.watch_spec` at all three sites; registration applies Archiver's default; a cadence **edit** affordance appears, which does not exist today (post-registration cadence is display-only). One flip, against a live announcement path. *Verifiable: no dashboard path reads cadence or active state over the SDK; PAGES.md / UI.md updated in the same commits.*
+7. **Dual-run.** Both paths live and idempotent. Disable the HTTP push by config, edit a real spec, confirm it propagates via the announcement and that `applied_generation` catches up. *Verifiable: that observation, in production, not in a test.*
+8. **archiver#142 — teardown. Gated on step 5** (see Resolved, below): the SDK is not deleted until the panel renders from `info.watch-status`. Removes the SDK, `client-drift`'s watcher half, `watcher-live-drift.timer` and its scripts, `watcher_provisioning.py`, `WATCHER_BASE_URL` / `WATCHER_API_KEY`, and `info_items.watcher_item_id` (after the cut-over — step 6's import re-run joins on Watcher's `archiver_info_item_id`, so nothing needs it afterwards). Confirm `_clear_stale_watcher_link` and the 409-adoption recovery are genuinely subsumed by reconcile plus the status stream rather than assuming it.
 
 ## Resolved
 
@@ -191,10 +200,30 @@ Settled 2026-08-10; recorded here so the child issues inherit the decision rathe
 
 ## Open questions / risks
 
-No open questions remain — the seven above were settled on review. What is left is carried risk.
+The seven original questions were settled on review. One new question is open, deferred to the issues that implement it: **does a Watcher-local break-glass pause survive reconciliation?** Sticky (Watcher-local state, divergence reported via `applied_active`) or not sticky (item-level pause is Archiver-only, break-glass is host-level `domain_suspended`) — settled on archiver#150, implemented in watcher#254. Unstated, it gets decided by however the reconcile loop happens to be written. The rest below is carried risk.
 
 - **Observation freshness has exactly one source: Watcher's own claim on `info.watch-status`.** No cross-check exists — if Watcher stamps `last_observed_at` wrongly, the registry records it wrongly, and `docs/SCHEMA.md` should say the column is a reported value rather than a locally-verified one. That is the accepted cost of not deriving it from a second stream; the alternatives were worse (see the tradeoffs).
 - **Coalescing means `last_observed_at` under-reports by up to the republish period.** Safe direction — the registry never claims content is fresher than it is — but any downstream that treats the column as exact freshness rather than a lower bound will be subtly wrong. Document it as a lower bound.
 - **Concurrent mutations to one InfoItem** silently lose an announcement unless the generation bump is an atomic `UPDATE … RETURNING`. The obvious read-modify-write implementation reintroduces exactly the failure the token prevents.
 - **`info.registry` inherits the fact stream's `XTRIM` cap by default** the moment its first delta drains, because the delta path puts the topic in `seen_topics`. Exclusion is a required change, not a tuning knob.
 - **Snapshots do not retry.** One lost to a broker outage is corrected only by the next period — a deliberate asymmetry with the delta path, and one the streams table must state rather than imply.
+- **Break-glass pause is not a registry concept.** After the cutover, an operator's pause applied in Watcher is reverted by the next announcement. Whether that is acceptable depends on the open question above; either way, archiver#142 must land the answer as a runbook line, because after it Archiver's dashboard is the cluster's only item-level pause control.
+- **Archiver becomes a single point of operational dependency for stopping a fetch.** The corollary of the above, and the price of a single control plane. Host-level `domain_suspended` remains Watcher-side and unaffected.
+
+## Amendments — 2026-08-10 (boundary review)
+
+Recorded after the review on archiver#150. Nothing in the delivery model changed; the amendments are about ownership boundaries, sequencing, and two silent-divergence holes. Amended in place above; summarised here so a reader of the original knows what moved.
+
+**The role boundary is policy vs mechanism, and epic #137's table now says so.** The table read "Watcher owns scheduling," which the WatchSpec move contradicts on a literal reading. Archiver owns declared intent (what, whether, how often we *want*); Watcher owns execution (when the fetch fires, what happened). Stated as a rule on the epic, because Archiver hosts the only human control plane in the cluster and every remaining operator-settable Watcher knob can otherwise make the same argument in turn. Read alongside it: archiver#150 + archiver#151 are a control-plane / data-plane split, intent out on `info.registry`, observation back on `info.watch-status`.
+
+**archiver#150 gates the teardown, not the producer.** The consumer contract already mandates tolerating an absent `watch_spec`, so an announcement carrying identity + specs + `spec_fingerprint` + `revoked` fully replaces `sync_on_spec_update` — the drift bug this design exists to fix. `watch_spec` is therefore `dict | None` on the wire (cannobserv#302), and 4c may run in parallel with 4b.
+
+**The import moved from first to last-before-publish.** "Before archiver#142 deletes the SDK" is the real irreversible constraint; "run it first" additionally guarantees the snapshot is stale by the time it is announced, since Watcher stays authoritative throughout. Idempotent script, joined from Watcher's side on `archiver_info_item_id` (NOT NULL since watcher#251) rather than Archiver's drift-prone `watcher_item_id`.
+
+**The dashboard cutover moved out of archiver#150 into step 6.** Flipping the dashboard onto `watch_spec` while Watcher's copy still drives the scheduler gives two writers and one truth for the whole dual-run; the obvious mitigation — a best-effort SDK mirror write — reintroduces for a second field exactly the push being deleted.
+
+**`interval` is optional, `active` is required, and the schema validates a grammar.** Watcher's per-domain `default_schedule_config` is a live fallback layer that a mandatory resolved interval would retire silently, and a pinned four-value enum would fail the import on a legitimate live value.
+
+**`applied_interval` added to the return leg.** `applied_active` has no cadence analogue, so the designed fallback was a silent divergence. It also makes the derived `next_due_at` truthful: derive from `applied_interval` where present, falling back to the announced `watch_spec.interval` — deriving from the announcement alone reports a schedule Watcher is not running.
+
+**Storage stays JSONB** (archiver#150). Two columns would buy a DB constraint and a queryable "all paused items"; symmetry with the three existing schema modules and the additive growth path won. Free either way, since the resolved document on the wire makes storage shape invisible to consumers — which is the same property that keeps the future `watch_specs` table a zero-consumer-impact change.
