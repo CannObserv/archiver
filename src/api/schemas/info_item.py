@@ -47,6 +47,20 @@ class InfoItemRepSpecPublicUrlPatch(BaseModel):
     )
 
 
+class InfoItemWatchSpecPut(BaseModel):
+    """Request body for PUT /info-items/{id}/watch-spec.
+
+    Replaces the whole document — this is not a merge. Omitting ``interval`` is
+    how "the consumer applies its own default" is expressed, so a merge would
+    make that state unreachable once an interval had been set.
+    """
+
+    model_config = {"extra": "forbid"}
+    document: dict[str, Any] = Field(
+        description="A WatchSpec v1 document, validated server-side before it is stored."
+    )
+
+
 class InfoItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
@@ -116,6 +130,15 @@ class InfoItemOut(BaseModel):
     )
     rep_fields: dict[str, Any] = Field(
         description="Operator-defined JSONB bag of structured metadata fields for this item."
+    )
+    watch_spec: dict[str, Any] = Field(
+        description=(
+            "Scheduling policy for this item (WatchSpec v1): "
+            '\'{"schema_version": 1, "active": true, "interval": "1d"}\'. '
+            "``active: false`` is registered-but-paused, not removed. ``interval`` is "
+            "optional — when absent the consumer applies its own default. Written via "
+            "PUT /info-items/{id}/watch-spec."
+        )
     )
     created_at: datetime = Field(description="UTC timestamp when the InfoItem was created.")
     updated_at: datetime = Field(description="UTC timestamp of the last update to the InfoItem.")

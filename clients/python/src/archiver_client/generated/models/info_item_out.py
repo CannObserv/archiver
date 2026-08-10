@@ -12,6 +12,7 @@ from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.info_item_out_rep_fields import InfoItemOutRepFields
+    from ..models.info_item_out_watch_spec import InfoItemOutWatchSpec
     from ..models.info_item_rep_spec_out import InfoItemRepSpecOut
     from ..models.info_item_source_out import InfoItemSourceOut
 
@@ -30,6 +31,9 @@ class InfoItemOut:
         owner (None | str): Optional owner identifier (team or individual) for this InfoItem.
         rep_fields (InfoItemOutRepFields): Operator-defined JSONB bag of structured metadata fields for this item.
         updated_at (datetime.datetime): UTC timestamp of the last update to the InfoItem.
+        watch_spec (InfoItemOutWatchSpec): Scheduling policy for this item (WatchSpec v1): '{"schema_version": 1,
+            "active": true, "interval": "1d"}'. ``active: false`` is registered-but-paused, not removed. ``interval`` is
+            optional — when absent the consumer applies its own default. Written via PUT /info-items/{id}/watch-spec.
         dashboard_url (None | str | Unset): Absolute URL of this item's Archiver dashboard detail page. Null when
             ARCHIVER_PUBLIC_BASE_URL is not configured on the server.
         info_item_rep_specs (list[InfoItemRepSpecOut] | Unset): Effective-dated RepSpec assignments for this InfoItem.
@@ -46,6 +50,7 @@ class InfoItemOut:
     owner: None | str
     rep_fields: InfoItemOutRepFields
     updated_at: datetime.datetime
+    watch_spec: InfoItemOutWatchSpec
     dashboard_url: None | str | Unset = UNSET
     info_item_rep_specs: list[InfoItemRepSpecOut] | Unset = UNSET
     info_item_sources: list[InfoItemSourceOut] | Unset = UNSET
@@ -67,6 +72,8 @@ class InfoItemOut:
         rep_fields = self.rep_fields.to_dict()
 
         updated_at = self.updated_at.isoformat()
+
+        watch_spec = self.watch_spec.to_dict()
 
         dashboard_url: None | str | Unset
         if isinstance(self.dashboard_url, Unset):
@@ -99,6 +106,7 @@ class InfoItemOut:
                 "owner": owner,
                 "rep_fields": rep_fields,
                 "updated_at": updated_at,
+                "watch_spec": watch_spec,
             }
         )
         if dashboard_url is not UNSET:
@@ -113,6 +121,7 @@ class InfoItemOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.info_item_out_rep_fields import InfoItemOutRepFields
+        from ..models.info_item_out_watch_spec import InfoItemOutWatchSpec
         from ..models.info_item_rep_spec_out import InfoItemRepSpecOut
         from ..models.info_item_source_out import InfoItemSourceOut
 
@@ -140,6 +149,8 @@ class InfoItemOut:
         rep_fields = InfoItemOutRepFields.from_dict(d.pop("rep_fields"))
 
         updated_at = isoparse(d.pop("updated_at"))
+
+        watch_spec = InfoItemOutWatchSpec.from_dict(d.pop("watch_spec"))
 
         def _parse_dashboard_url(data: object) -> None | str | Unset:
             if data is None:
@@ -178,6 +189,7 @@ class InfoItemOut:
             owner=owner,
             rep_fields=rep_fields,
             updated_at=updated_at,
+            watch_spec=watch_spec,
             dashboard_url=dashboard_url,
             info_item_rep_specs=info_item_rep_specs,
             info_item_sources=info_item_sources,

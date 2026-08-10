@@ -53,6 +53,29 @@ class ValidateRepSpecResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# validate-watch-spec
+# ---------------------------------------------------------------------------
+
+
+class ValidateWatchSpecRequest(BaseModel):
+    """Request body for POST /api/v1/tools/validate-watch-spec."""
+
+    document: dict[str, Any] = Field(
+        description="The WatchSpec document to validate against the v1 JSON Schema."
+    )
+
+
+class ValidateWatchSpecResponse(BaseModel):
+    """Response body for POST /api/v1/tools/validate-watch-spec."""
+
+    valid: bool = Field(description="True iff the document passed schema validation.")
+    errors: list[FieldError] = Field(
+        default_factory=list,
+        description="Per-field validation issues; empty when ``valid`` is True.",
+    )
+
+
+# ---------------------------------------------------------------------------
 # validate-rep-fields
 # ---------------------------------------------------------------------------
 

@@ -20,6 +20,7 @@ from src.api.schemas.info_item import (
     InfoItemRepSpecPublicUrlPatch,
     InfoItemSourceCreate,
     InfoItemSourceOut,
+    InfoItemWatchSpecPut,
 )
 from src.api.schemas.pagination import Page
 from src.api.schemas.types import ULIDStr
@@ -67,6 +68,7 @@ from src.core.tools.deactivate_info_item_source_binding import (
     BindingNotFoundError,
     deactivate_info_item_source_binding,
 )
+from src.core.watch_spec_schema.validator import validate_watch_spec
 from src.core.watcher_provisioning import (
     provision_on_create,
     sync_on_source_swap,
@@ -637,3 +639,71 @@ async def patch_rep_spec_assignment_public_url(
     await session.commit()
     await session.refresh(assignment)
     return info_item_rep_spec_to_out(assignment)
+
+
+@router.put(
+    "/{info_item_id}/watch-spec",
+    response_model=InfoItemOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def put_watch_spec(
+    info_item_id: ULIDStr,
+    body: InfoItemWatchSpecPut,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemOut:
+    """Replace an InfoItem's scheduling policy.
+
+    A whole-document PUT rather than a general InfoItem PATCH: the document is
+    validated as a unit, and omitting ``interval`` is the only way to express
+    "the consumer applies its own default" — a merge would make that state
+    unreachable once an interval had been set.
+
+    The stored document is left untouched when validation fails.
+    """
+    result = await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
+    item = result.scalar_one_or_none()
+    if item is None:
+        raise_envelope(404, "lookup", "InfoItem not found")
+
+    ok, errors = validate_watch_spec(body.document)
+    if not ok:
+        raise_422(
+            "watch_spec failed schema validation",
+            errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
+        )
+
+    item.watch_spec = body.document
+    await session.flush()
+    await session.commit()
+    await session.refresh(item)
+
+    sources = list(
+        (
+            await session.execute(
+                select(InfoItemSource).where(
+                    InfoItemSource.info_item_id == item.info_item_id,
+                    InfoItemSource.deactivated_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    rep_specs = list(
+        (
+            await session.execute(
+                select(InfoItemRepSpec).where(
+                    InfoItemRepSpec.info_item_id == item.info_item_id,
+                    InfoItemRepSpec.deactivated_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return info_item_to_out(
+        item,
+        sources=sources,
+        rep_specs=rep_specs,
+        base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+    )

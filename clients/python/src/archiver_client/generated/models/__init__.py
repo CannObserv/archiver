@@ -19,11 +19,14 @@ from .info_item_create_initial_source_specs_type_0_item import (
 from .info_item_create_rep_fields import InfoItemCreateRepFields
 from .info_item_out import InfoItemOut
 from .info_item_out_rep_fields import InfoItemOutRepFields
+from .info_item_out_watch_spec import InfoItemOutWatchSpec
 from .info_item_rep_spec_create import InfoItemRepSpecCreate
 from .info_item_rep_spec_out import InfoItemRepSpecOut
 from .info_item_rep_spec_public_url_patch import InfoItemRepSpecPublicUrlPatch
 from .info_item_source_create import InfoItemSourceCreate
 from .info_item_source_out import InfoItemSourceOut
+from .info_item_watch_spec_put import InfoItemWatchSpecPut
+from .info_item_watch_spec_put_document import InfoItemWatchSpecPutDocument
 from .info_source_create import InfoSourceCreate
 from .info_source_create_source_specs_item import InfoSourceCreateSourceSpecsItem
 from .info_source_out import InfoSourceOut
@@ -62,6 +65,9 @@ from .validate_rep_spec_response import ValidateRepSpecResponse
 from .validate_source_spec_request import ValidateSourceSpecRequest
 from .validate_source_spec_request_document import ValidateSourceSpecRequestDocument
 from .validate_source_spec_response import ValidateSourceSpecResponse
+from .validate_watch_spec_request import ValidateWatchSpecRequest
+from .validate_watch_spec_request_document import ValidateWatchSpecRequestDocument
+from .validate_watch_spec_response import ValidateWatchSpecResponse
 
 __all__ = (
     "ChunkPreviewOut",
@@ -81,11 +87,14 @@ __all__ = (
     "InfoItemCreateRepFields",
     "InfoItemOut",
     "InfoItemOutRepFields",
+    "InfoItemOutWatchSpec",
     "InfoItemRepSpecCreate",
     "InfoItemRepSpecOut",
     "InfoItemRepSpecPublicUrlPatch",
     "InfoItemSourceCreate",
     "InfoItemSourceOut",
+    "InfoItemWatchSpecPut",
+    "InfoItemWatchSpecPutDocument",
     "InfoSourceCreate",
     "InfoSourceCreateSourceSpecsItem",
     "InfoSourceOut",
@@ -124,4 +133,7 @@ __all__ = (
     "ValidateSourceSpecRequest",
     "ValidateSourceSpecRequestDocument",
     "ValidateSourceSpecResponse",
+    "ValidateWatchSpecRequest",
+    "ValidateWatchSpecRequestDocument",
+    "ValidateWatchSpecResponse",
 )
