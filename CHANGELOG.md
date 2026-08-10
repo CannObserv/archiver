@@ -18,6 +18,18 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.7.0 (2026-08-10)
+
+[both] **WatchSpec — Archiver owns scheduling policy, SDK v5.2.0** (archiver#150, step 4b of the #137 epic). Cadence and active/paused state were Watcher's, round-tripped over the SDK; they become `information.info_items.watch_spec`, a validated JSONB document on the registry's own row.
+
+The document is `{"schema_version": 1, "active": true, "interval": "1d"}`, validated against the new `src/core/watch_spec_schema/v1.json`. `active` is required — `false` means *registered but deliberately paused*, which is distinct from revocation. **`interval` is optional, and absent means "the consumer applies its own default"**: Watcher's per-domain `default_schedule_config` is a real fallback layer, so a resolved interval on every row would silently retire it. The column's server default is `{"schema_version": 1, "active": true}` for the same reason — the migration must not fabricate a cadence for rows that never had one. The schema validates the interval *grammar* (`^[0-9]+[smhd]$`); the four options the dashboard offers stay in `src/dashboard/cadence.py`.
+
+New HTTP surface: `PUT /info-items/{id}/watch-spec` (whole-document replace, not a merge — a merge would make "no interval" unreachable once one had been set) and `POST /tools/validate-watch-spec`. `watch_spec` is additive on `InfoItemOut`. Both are generated-only on the SDK; no hand-written wrapper, because no SDK consumer needs one yet.
+
+**No dashboard behaviour changes.** Pause/resume still PATCHes Watcher and cadence still displays Watcher's `default_schedule_config`; the control-plane cutover lands with the announcement channel, so the flip happens once against a live path rather than leaving an authoritative-looking column that nothing enforces.
+
+`scripts/import_watch_specs.py` carries the live values across. It joins from Watcher's `archiver_info_item_id` rather than Archiver's drift-prone `watcher_item_id`, dry-runs by default, exits non-zero on anomalies, and is idempotent **by design** — it runs once here and again immediately before the announcement producer's first publish, because Watcher stays authoritative in between.
+
 ## v4.6.0 (2026-08-09)
 
 [both] **SourceRevision records observation provenance — `source_media_type`, `spec_fingerprint`, `command_id`, SDK v5.1.0** (archiver#139, step 3 of the #137 epic). Three new nullable `information.source_revisions` columns, all three additive on `SourceRevisionOut`.

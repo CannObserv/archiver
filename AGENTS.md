@@ -225,7 +225,7 @@ a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.m
 
 Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
 
-- `InfoItem` (`info_items`) — semantic anchor + `rep_fields` bag
+- `InfoItem` (`info_items`) — semantic anchor + `rep_fields` and `watch_spec` documents
 - `InfoSource` (`info_sources`) — physical layer; URL + `source_specs`
 - `SourceRevision` (`source_revisions`) — content-addressed snapshot
 - `InfoItemSource` (`info_item_sources`) — item↔source binding; one active primary

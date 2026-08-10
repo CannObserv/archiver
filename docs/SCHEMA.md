@@ -34,6 +34,24 @@ see the never-rename rule in `AGENTS.md`.
   `watcher_item_id VARCHAR(50)` — nullable; stores the Watcher-allocated WatchedItem ID once
   provisioned. `NULL` means not yet watched (use "Begin watching" in the dashboard or wait for
   the next `create_info_item` call with Watcher configured).
+  `watch_spec JSONB NOT NULL` (archiver#150) — **scheduling policy**, validated against
+  `src/core/watch_spec_schema/v1.json` and written via `PUT /info-items/{id}/watch-spec`.
+  A *document*, not an entity: there is no `watch_specs` table, and the announcement carries the
+  document resolved so a future reusable-policy table stays an Archiver-internal change.
+  - `active` (required) — `false` is *registered but deliberately paused*: keep the item, stop
+    scheduling. Distinct from revocation, which is an envelope concern on the announcement;
+    collapsing paused into revoked loses the pause on the next reconcile.
+  - `interval` (optional) — a Watcher interval string. **Absent means "the consumer applies its
+    own default"**, which may be a per-domain `default_schedule_config` rather than a global
+    constant, so an absent interval is a real state and never a value to fill in. The schema
+    validates the grammar `^[0-9]+[smhd]$`; the narrower set the dashboard offers lives in
+    `src/dashboard/cadence.py`.
+  - Server default is `{"schema_version": 1, "active": true}` — deliberately no interval, so the
+    migration cannot fabricate a cadence for rows that never had one. Real values arrive from
+    `scripts/import_watch_specs.py`, which reads Watcher over the SDK and is re-run immediately
+    before the announcement producer's first publish.
+  - **Boundary:** a WatchSpec is *per-item cadence*. `content.fetch-policy` (cannobserv#285) is
+    *per-host spacing* — different key, stream, owner, and consumer. They are not the same knob.
   **Fetch group invariant:** exactly one URL is fetched (the primary binding's InfoSource URL) and
   exactly one content-kind is produced (HTML/text or JSON). All specs in the bound InfoSource's
   `source_specs` list are evaluated against the same fetched bytes (no chaining off primary's
