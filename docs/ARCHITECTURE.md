@@ -32,7 +32,13 @@ src/core/                      Domain logic
                                ARCHIVER_BUS_CONSUMER; backoff.py holds the
                                retry/log-throttle constants both use — shared,
                                not copied, because they encode incident history
-                               (#107, #128). The event payload models live in
+                               (#107, #128). diagnostics.py renders an exception
+                               plus its __cause__/__context__ chain for both
+                               paths: co-core's wrappers name only the
+                               event_type, so repr() alone drops the remedy —
+                               and that string is the whole diagnostic a
+                               dead-lettered row or a quarantined message leaves
+                               (#141). The event payload models live in
                                co-core since #106, not here.
   services/                    Registry write paths shared by the HTTP surface
                                and the bus consumers. A service owns one
