@@ -22,6 +22,11 @@ Exit codes:
   1  completed, but anomalies were reported (read them before trusting the run)
   2  could not run (Watcher not configured, DB unreachable)
 
+**Concurrency.** The row set is read once and each write is a blind overwrite.
+Safe today — this is an operator-run script and the dashboard does not write
+either column yet — but the cutover makes the dashboard a concurrent writer of
+both, so revisit before then.
+
 **Cost model.** One row set held in memory and one Watcher call per InfoItem —
 bounded by the registry size at run time, which is four rows today and is
 expected to stay operator-scale through the cutover. If that stops being true,
@@ -195,7 +200,11 @@ async def import_watch_specs(
             await session.rollback()
             report.failed += 1
             report.anomalies.append(ImportAnomaly(item_id, f"write failed: {e!r}"))
-            report.mapping.append(MappingRow(item_id, str(wi.id), "failed", None, None))
+            # Keep the plan on the row: on a failed run it is the only thing
+            # telling the operator what the retry will do.
+            report.mapping.append(
+                MappingRow(item_id, str(wi.id), "failed", plan.watch_spec, plan.watch_active)
+            )
             logger.exception("watch policy import: write failed", extra={"item": item_id})
             continue
 

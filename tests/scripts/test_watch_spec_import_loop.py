@@ -255,6 +255,12 @@ async def test_a_failing_commit_skips_one_row_without_ending_the_pass(session, m
     assert report.imported == 1
     assert any("deadlock detected" in a.reason for a in report.anomalies)
 
+    # The failed row keeps its plan: on a failed run that is the only thing
+    # telling the operator what the retry will do.
+    failed_row = next(r for r in report.mapping if r.disposition == "failed")
+    assert failed_row.watch_spec is not None
+    assert failed_row.watch_active is True
+
 
 @pytest.mark.asyncio
 async def test_an_unlinked_item_is_an_anomaly_so_the_run_fails_loudly(session):

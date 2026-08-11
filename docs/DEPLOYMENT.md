@@ -77,9 +77,19 @@ Ordering, which is the part that matters:
    only at step 1 would be announced stale. The pass is idempotent, so the re-run is free.
 3. **Before** archiver#142 deletes the SDK. After that the source values are unreadable.
 
-Exit codes: `0` clean · `1` completed with anomalies (read them — a `watcher_item_id` mismatch or
-an unusable `default_schedule_config`) · `2` could not run (Watcher not configured). It commits
-per row, so a transient Watcher failure skips one item rather than discarding the pass.
+A dry run prints a per-item mapping table — InfoItem, WatchedItem, disposition, resolved policy.
+That table **is** the verification artefact the acceptance criterion asks for: read it against the
+live WatchedItems before running `--apply`.
+
+Exit codes: `0` clean · `1` completed with anomalies · `2` could not run (Watcher not configured).
+Three things raise an anomaly, and the first is the one that fired on the production run:
+
+- **an InfoItem with no WatchedItem** — Watcher has no counterpart, so nothing was imported for it
+- a `watcher_item_id` mismatch (Watcher's link wins; the row still imports)
+- an unusable `default_schedule_config`, or a failed lookup or write
+
+It commits per row, so a transient Watcher failure or a failed write skips one item rather than
+discarding the pass; re-running picks up where it left off.
 
 ## Environment variable reference
 
