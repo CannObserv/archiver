@@ -64,6 +64,17 @@ see the never-rename rule in `AGENTS.md`.
   - **Boundary:** a WatchSpec is *per-item cadence*. `content.fetch-policy` (cannobserv#285) is
     *per-host spacing* — different key, stream, owner, and consumer. They are not the same knob.
 
+  **Deletion — use `DELETE /info-items/{id}`, never psql** (archiver#141). An InfoItem's exit
+  from the registry is announced as a `revoked: true` tombstone, and that tombstone must be
+  written to `changes_outbox` in the deletion's own transaction. Raw SQL cannot do that, so a
+  psql `DELETE` silently skips the announcement and every consumer keeps the key **forever** —
+  the periodic full republish does not repair it, because `revoked` is an explicit tombstone
+  precisely so that absence-from-a-full-set is *not* the delete signal. The route cascades the
+  item's bindings and rep-spec assignments (both FKs are `ON DELETE CASCADE`); the InfoSource
+  and its SourceRevisions survive, since the physical layer is shared and `source_revisions`
+  keys on `info_source_id`. **Until watcher#254 consumes tombstones, nothing tells Watcher** —
+  remove the orphaned WatchedItem there by hand.
+
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are

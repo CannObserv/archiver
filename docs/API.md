@@ -43,6 +43,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_url=None, initial_source_specs=None, initial_rep_spec_assignments=None, rep_fields=None)` |
 | Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id)` |
 | Deactivate a source binding | `DELETE /info-items/{id}/info-sources/{source_id}` | `deactivate_info_source_binding(info_item_id, info_source_id)` |
+| Delete an InfoItem | `DELETE /info-items/{id}` | `delete_info_item(info_item_id)` |
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(url, source_specs)` |
 | Update InfoSource specs | `PATCH /info-sources/{id}/source-specs` | `update_info_source_specs(info_source_id, source_specs)` |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
@@ -60,6 +61,15 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
 `POST /info-sources` accepts `{url, source_specs}`. Multiple InfoSources at the same URL are valid. Returns 422 on invalid URL or spec validation failure.
+
+`DELETE /info-items/{id}` returns 204 and cascades the item's source bindings and rep-spec
+assignments; the InfoSource and its SourceRevisions survive (the physical layer is shared). 404 on
+an already-deleted item, not a silent 204. It exists to give the registry's exit a **transactional
+home** (archiver#141): "gone from the registry" is announced as a `revoked` tombstone that has to be
+written in the deletion's own transaction, which raw SQL cannot do — and the periodic full republish
+does not repair a missed one, since absence-from-a-full-set is deliberately not the delete signal.
+Until watcher#254 consumes tombstones, nothing tells Watcher; remove the orphaned WatchedItem there
+by hand.
 
 `PUT /info-items/{id}/watch-spec` accepts `{document}` and **replaces** the cadence document whole
 — it is not a merge, because omitting `interval` is the only way to say "the consumer applies its
