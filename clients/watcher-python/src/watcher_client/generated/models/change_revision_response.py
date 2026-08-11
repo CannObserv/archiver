@@ -14,14 +14,20 @@ T = TypeVar("T", bound="ChangeRevisionResponse")
 class ChangeRevisionResponse:
     """One ChangeRevision record for a WatchedItem.
 
-    Attributes:
-        id (str):
-        watched_item_id (str):
-        content_fingerprint (str):
-        captured_at (datetime.datetime):
-        content_size_bytes (int | None):
-        archiver_revision_id (None | str):
-        schema_version (int):
+    ``archiver_revision_id`` was removed in #253: Archiver allocates the registry
+    id on its side of ``content.revisions`` and never reports it back, so the
+    field could only ever have been null. A **breaking** response change, taken
+    deliberately over shipping a permanently-null field that reads as "not synced
+    yet". The column survives on the model, holding the 23 ids captured while the
+    HTTP write path existed.
+
+        Attributes:
+            id (str):
+            watched_item_id (str):
+            content_fingerprint (str):
+            captured_at (datetime.datetime):
+            content_size_bytes (int | None):
+            schema_version (int):
     """
 
     id: str
@@ -29,7 +35,6 @@ class ChangeRevisionResponse:
     content_fingerprint: str
     captured_at: datetime.datetime
     content_size_bytes: int | None
-    archiver_revision_id: None | str
     schema_version: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -45,9 +50,6 @@ class ChangeRevisionResponse:
         content_size_bytes: int | None
         content_size_bytes = self.content_size_bytes
 
-        archiver_revision_id: None | str
-        archiver_revision_id = self.archiver_revision_id
-
         schema_version = self.schema_version
 
         field_dict: dict[str, Any] = {}
@@ -59,7 +61,6 @@ class ChangeRevisionResponse:
                 "content_fingerprint": content_fingerprint,
                 "captured_at": captured_at,
                 "content_size_bytes": content_size_bytes,
-                "archiver_revision_id": archiver_revision_id,
                 "schema_version": schema_version,
             }
         )
@@ -84,13 +85,6 @@ class ChangeRevisionResponse:
 
         content_size_bytes = _parse_content_size_bytes(d.pop("content_size_bytes"))
 
-        def _parse_archiver_revision_id(data: object) -> None | str:
-            if data is None:
-                return data
-            return cast(None | str, data)
-
-        archiver_revision_id = _parse_archiver_revision_id(d.pop("archiver_revision_id"))
-
         schema_version = d.pop("schema_version")
 
         change_revision_response = cls(
@@ -99,7 +93,6 @@ class ChangeRevisionResponse:
             content_fingerprint=content_fingerprint,
             captured_at=captured_at,
             content_size_bytes=content_size_bytes,
-            archiver_revision_id=archiver_revision_id,
             schema_version=schema_version,
         )
 

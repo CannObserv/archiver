@@ -67,33 +67,31 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Create Watched Item
 
-     Create a standalone WatchedItem.
+     Create a WatchedItem for an Archiver InfoItem.
 
-    Two paths depending on which anchor is provided:
+    One path since #251: ``archiver_info_item_id``, ``url`` and
+    ``archiver_info_source_id`` are all required (schema-enforced). The InfoItem
+    is validated via the Archiver SDK and the name defaults to the InfoItem's
+    name. Errors: NotFound → 422, AuthError → 500, ServerError/network → 503,
+    duplicate InfoItem → 409.
 
-    **InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the
-    Archiver SDK; name defaults to the InfoItem's name.
-    Errors: NotFound → 422, AuthError → 500, ServerError/network → 503.
-
-    **URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for
-    ``effective_url`` + ``domain_name``; name defaults to the probed domain.
-    ``archiver_info_item_id`` is null on the resulting record.
-    Error: unreachable URL → 422.
-
-    At least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).
+    **Both ids must be canonical ULIDs — uppercase Crockford base32.** That is
+    what ``ULID.from_str`` accepts, so it is what path parameters have always
+    required and what ``ULIDRefStr`` now enforces here; the OpenAPI document
+    advertises the same pattern. Archiver's provisioning call satisfies this by
+    construction (``str()`` of a ``ULID``); a caller that lowercases its ids
+    gets a 422 naming the field.
 
     Args:
         body (WatchedItemCreate): Create a WatchedItem via ``POST /api/v1/watched-items``.
 
-            Two creation paths:
-            - **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence
-              is validated via the Archiver SDK (NotFound → 422); name defaults to the
-              InfoItem's name when omitted.
-            - **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed
-              for ``effective_url`` + ``domain_name``; name defaults to the probed
-              domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).
-
-            At least one of ``archiver_info_item_id`` or ``url`` is required.
+            One creation path (#251): every WatchedItem is an Archiver InfoItem being
+            watched. ``archiver_info_item_id`` is validated via the Archiver SDK
+            (NotFound → 422) and the name defaults to the InfoItem's name when omitted;
+            ``url`` is the InfoSource URL Archiver is authoritative for (stored as
+            ``effective_url``, never re-probed); ``archiver_info_source_id`` identifies
+            the InfoSource that observed revisions are posted back to. All three are
+            required — the URL-only path was rolled back with bare-URL WatchedItems.
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
@@ -127,33 +125,31 @@ def sync(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Create Watched Item
 
-     Create a standalone WatchedItem.
+     Create a WatchedItem for an Archiver InfoItem.
 
-    Two paths depending on which anchor is provided:
+    One path since #251: ``archiver_info_item_id``, ``url`` and
+    ``archiver_info_source_id`` are all required (schema-enforced). The InfoItem
+    is validated via the Archiver SDK and the name defaults to the InfoItem's
+    name. Errors: NotFound → 422, AuthError → 500, ServerError/network → 503,
+    duplicate InfoItem → 409.
 
-    **InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the
-    Archiver SDK; name defaults to the InfoItem's name.
-    Errors: NotFound → 422, AuthError → 500, ServerError/network → 503.
-
-    **URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for
-    ``effective_url`` + ``domain_name``; name defaults to the probed domain.
-    ``archiver_info_item_id`` is null on the resulting record.
-    Error: unreachable URL → 422.
-
-    At least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).
+    **Both ids must be canonical ULIDs — uppercase Crockford base32.** That is
+    what ``ULID.from_str`` accepts, so it is what path parameters have always
+    required and what ``ULIDRefStr`` now enforces here; the OpenAPI document
+    advertises the same pattern. Archiver's provisioning call satisfies this by
+    construction (``str()`` of a ``ULID``); a caller that lowercases its ids
+    gets a 422 naming the field.
 
     Args:
         body (WatchedItemCreate): Create a WatchedItem via ``POST /api/v1/watched-items``.
 
-            Two creation paths:
-            - **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence
-              is validated via the Archiver SDK (NotFound → 422); name defaults to the
-              InfoItem's name when omitted.
-            - **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed
-              for ``effective_url`` + ``domain_name``; name defaults to the probed
-              domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).
-
-            At least one of ``archiver_info_item_id`` or ``url`` is required.
+            One creation path (#251): every WatchedItem is an Archiver InfoItem being
+            watched. ``archiver_info_item_id`` is validated via the Archiver SDK
+            (NotFound → 422) and the name defaults to the InfoItem's name when omitted;
+            ``url`` is the InfoSource URL Archiver is authoritative for (stored as
+            ``effective_url``, never re-probed); ``archiver_info_source_id`` identifies
+            the InfoSource that observed revisions are posted back to. All three are
+            required — the URL-only path was rolled back with bare-URL WatchedItems.
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
@@ -182,33 +178,31 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Create Watched Item
 
-     Create a standalone WatchedItem.
+     Create a WatchedItem for an Archiver InfoItem.
 
-    Two paths depending on which anchor is provided:
+    One path since #251: ``archiver_info_item_id``, ``url`` and
+    ``archiver_info_source_id`` are all required (schema-enforced). The InfoItem
+    is validated via the Archiver SDK and the name defaults to the InfoItem's
+    name. Errors: NotFound → 422, AuthError → 500, ServerError/network → 503,
+    duplicate InfoItem → 409.
 
-    **InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the
-    Archiver SDK; name defaults to the InfoItem's name.
-    Errors: NotFound → 422, AuthError → 500, ServerError/network → 503.
-
-    **URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for
-    ``effective_url`` + ``domain_name``; name defaults to the probed domain.
-    ``archiver_info_item_id`` is null on the resulting record.
-    Error: unreachable URL → 422.
-
-    At least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).
+    **Both ids must be canonical ULIDs — uppercase Crockford base32.** That is
+    what ``ULID.from_str`` accepts, so it is what path parameters have always
+    required and what ``ULIDRefStr`` now enforces here; the OpenAPI document
+    advertises the same pattern. Archiver's provisioning call satisfies this by
+    construction (``str()`` of a ``ULID``); a caller that lowercases its ids
+    gets a 422 naming the field.
 
     Args:
         body (WatchedItemCreate): Create a WatchedItem via ``POST /api/v1/watched-items``.
 
-            Two creation paths:
-            - **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence
-              is validated via the Archiver SDK (NotFound → 422); name defaults to the
-              InfoItem's name when omitted.
-            - **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed
-              for ``effective_url`` + ``domain_name``; name defaults to the probed
-              domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).
-
-            At least one of ``archiver_info_item_id`` or ``url`` is required.
+            One creation path (#251): every WatchedItem is an Archiver InfoItem being
+            watched. ``archiver_info_item_id`` is validated via the Archiver SDK
+            (NotFound → 422) and the name defaults to the InfoItem's name when omitted;
+            ``url`` is the InfoSource URL Archiver is authoritative for (stored as
+            ``effective_url``, never re-probed); ``archiver_info_source_id`` identifies
+            the InfoSource that observed revisions are posted back to. All three are
+            required — the URL-only path was rolled back with bare-URL WatchedItems.
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
@@ -240,33 +234,31 @@ async def asyncio(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Create Watched Item
 
-     Create a standalone WatchedItem.
+     Create a WatchedItem for an Archiver InfoItem.
 
-    Two paths depending on which anchor is provided:
+    One path since #251: ``archiver_info_item_id``, ``url`` and
+    ``archiver_info_source_id`` are all required (schema-enforced). The InfoItem
+    is validated via the Archiver SDK and the name defaults to the InfoItem's
+    name. Errors: NotFound → 422, AuthError → 500, ServerError/network → 503,
+    duplicate InfoItem → 409.
 
-    **InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the
-    Archiver SDK; name defaults to the InfoItem's name.
-    Errors: NotFound → 422, AuthError → 500, ServerError/network → 503.
-
-    **URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for
-    ``effective_url`` + ``domain_name``; name defaults to the probed domain.
-    ``archiver_info_item_id`` is null on the resulting record.
-    Error: unreachable URL → 422.
-
-    At least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).
+    **Both ids must be canonical ULIDs — uppercase Crockford base32.** That is
+    what ``ULID.from_str`` accepts, so it is what path parameters have always
+    required and what ``ULIDRefStr`` now enforces here; the OpenAPI document
+    advertises the same pattern. Archiver's provisioning call satisfies this by
+    construction (``str()`` of a ``ULID``); a caller that lowercases its ids
+    gets a 422 naming the field.
 
     Args:
         body (WatchedItemCreate): Create a WatchedItem via ``POST /api/v1/watched-items``.
 
-            Two creation paths:
-            - **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence
-              is validated via the Archiver SDK (NotFound → 422); name defaults to the
-              InfoItem's name when omitted.
-            - **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed
-              for ``effective_url`` + ``domain_name``; name defaults to the probed
-              domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).
-
-            At least one of ``archiver_info_item_id`` or ``url`` is required.
+            One creation path (#251): every WatchedItem is an Archiver InfoItem being
+            watched. ``archiver_info_item_id`` is validated via the Archiver SDK
+            (NotFound → 422) and the name defaults to the InfoItem's name when omitted;
+            ``url`` is the InfoSource URL Archiver is authoritative for (stored as
+            ``effective_url``, never re-probed); ``archiver_info_source_id`` identifies
+            the InfoSource that observed revisions are posted back to. All three are
+            required — the URL-only path was rolled back with bare-URL WatchedItems.
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.

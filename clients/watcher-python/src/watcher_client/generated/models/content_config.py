@@ -23,6 +23,12 @@ class ContentConfig:
     Attributes:
         default (ContentOptions | Unset): Field toggles controlling what extra information appears in a notification
             body.
+
+            The diff/significance toggles (`include_diff_snippet`, `diff_snippet_lines`,
+            `include_diff_full`, `include_significance`) and the `include_change_dashboard_url`
+            toggle were removed in #221: the diff pipeline was dropped in Phase 5 (#156),
+            so those had no observable effect, and the dashboard-URL toggle duplicated the
+            always-present ITEM link. Diff restoration is tracked in #222.
         overrides (ContentConfigOverrides | Unset):
     """
 
