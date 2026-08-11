@@ -11,9 +11,9 @@ T = TypeVar("T", bound="InfoItemOutWatchSpec")
 
 @_attrs_define
 class InfoItemOutWatchSpec:
-    """Scheduling policy for this item (WatchSpec v1): '{"schema_version": 1, "active": true, "interval": "1d"}'. ``active:
-    false`` is registered-but-paused, not removed. ``interval`` is optional — when absent the consumer applies its own
-    default. Written via PUT /info-items/{id}/watch-spec.
+    """Cadence policy for this item (WatchSpec v1): '{"schema_version": 1, "interval": "1d"}'. `interval` is optional —
+    when absent the consumer applies its own default, which may be a per-domain one rather than a global constant.
+    Carries no pause state; see watch_active. Written via PUT /info-items/{id}/watch-spec.
 
     """
 

@@ -514,9 +514,21 @@
             "title": "Updated At",
             "type": "string"
           },
+          "watch_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-item pause state. True schedules, false is registered-but-paused, and null means the registry has no opinion yet (not imported from Watcher). A sibling of watch_spec rather than a key inside it: a policy document shared across items could not carry per-item pause state. Written via PUT /info-items/{id}/watch-active.",
+            "title": "Watch Active"
+          },
           "watch_spec": {
             "additionalProperties": true,
-            "description": "Scheduling policy for this item (WatchSpec v1): '{\"schema_version\": 1, \"active\": true, \"interval\": \"1d\"}'. ``active: false`` is registered-but-paused, not removed. ``interval`` is optional \u2014 when absent the consumer applies its own default. Written via PUT /info-items/{id}/watch-spec.",
+            "description": "Cadence policy for this item (WatchSpec v1): '{\"schema_version\": 1, \"interval\": \"1d\"}'. `interval` is optional \u2014 when absent the consumer applies its own default, which may be a per-domain one rather than a global constant. Carries no pause state; see watch_active. Written via PUT /info-items/{id}/watch-spec.",
             "title": "Watch Spec",
             "type": "object"
           }
@@ -685,9 +697,25 @@
         "title": "InfoItemSourceOut",
         "type": "object"
       },
+      "InfoItemWatchActivePut": {
+        "additionalProperties": false,
+        "description": "Request body for PUT /info-items/{id}/watch-active.\n\n``active`` is required: NULL on the column means \"the registry has no\nopinion yet\", which is reachable only by never having written, never by an\noperator asserting it.",
+        "properties": {
+          "active": {
+            "description": "True schedules the item; False is registered-but-paused (keep the item, stop scheduling). Distinct from removal, which is a deletion.",
+            "title": "Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "InfoItemWatchActivePut",
+        "type": "object"
+      },
       "InfoItemWatchSpecPut": {
         "additionalProperties": false,
-        "description": "Request body for PUT /info-items/{id}/watch-spec.\n\nReplaces the whole document \u2014 this is not a merge. Omitting ``interval`` is\nhow \"the consumer applies its own default\" is expressed, so a merge would\nmake that state unreachable once an interval had been set.",
+        "description": "Request body for PUT /info-items/{id}/watch-spec.\n\nReplaces the whole document \u2014 this is not a merge. Omitting ``interval`` is\nhow \"the consumer applies its own default\" is expressed, so a merge would\nmake that state unreachable once an interval had been set.\n\nCarries cadence only. Pause state has its own route (``PUT /watch-active``)\nprecisely so this body keeps one absence rule instead of two.",
         "properties": {
           "document": {
             "additionalProperties": true,
@@ -3317,9 +3345,127 @@
         ]
       }
     },
+    "/api/v1/info-items/{info_item_id}/watch-active": {
+      "put": {
+        "description": "Pause or resume an InfoItem.\n\nIts own route rather than a field on the WatchSpec body: ``active`` is not\npolicy (a document shared across items could not carry per-item pause\nstate), and a single boolean keeps pausing from requiring a round-trip\nthrough the cadence document.\n\nIdempotent. ``active`` is required \u2014 the column's NULL means \"the registry\nhas no opinion yet\", which only the absence of any write can express.",
+        "operationId": "put_watch_active_api_v1_info_items__info_item_id__watch_active_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemWatchActivePut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Watch Active",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
     "/api/v1/info-items/{info_item_id}/watch-spec": {
       "put": {
-        "description": "Replace an InfoItem's scheduling policy.\n\nA whole-document PUT rather than a general InfoItem PATCH: the document is\nvalidated as a unit, and omitting ``interval`` is the only way to express\n\"the consumer applies its own default\" \u2014 a merge would make that state\nunreachable once an interval had been set.\n\nThe stored document is left untouched when validation fails.",
+        "description": "Replace an InfoItem's cadence policy.\n\nA whole-document PUT rather than a general InfoItem PATCH: the document is\nvalidated as a unit, and omitting ``interval`` is the only way to express\n\"the consumer applies its own default\" \u2014 a merge would make that state\nunreachable once an interval had been set.\n\nCadence only. Pause state is ``PUT /watch-active``, which keeps this body to\none absence rule and keeps pausing from becoming a read-modify-write of a\ndocument the operator did not mean to touch.\n\nThe stored document is left untouched when validation fails \u2014 including for\na pre-rework client that still nests ``active``, which the schema rejects\nrather than silently dropping.",
         "operationId": "put_watch_spec_api_v1_info_items__info_item_id__watch_spec_put",
         "parameters": [
           {

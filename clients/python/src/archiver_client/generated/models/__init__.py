@@ -25,6 +25,7 @@ from .info_item_rep_spec_out import InfoItemRepSpecOut
 from .info_item_rep_spec_public_url_patch import InfoItemRepSpecPublicUrlPatch
 from .info_item_source_create import InfoItemSourceCreate
 from .info_item_source_out import InfoItemSourceOut
+from .info_item_watch_active_put import InfoItemWatchActivePut
 from .info_item_watch_spec_put import InfoItemWatchSpecPut
 from .info_item_watch_spec_put_document import InfoItemWatchSpecPutDocument
 from .info_source_create import InfoSourceCreate
@@ -93,6 +94,7 @@ __all__ = (
     "InfoItemRepSpecPublicUrlPatch",
     "InfoItemSourceCreate",
     "InfoItemSourceOut",
+    "InfoItemWatchActivePut",
     "InfoItemWatchSpecPut",
     "InfoItemWatchSpecPutDocument",
     "InfoSourceCreate",

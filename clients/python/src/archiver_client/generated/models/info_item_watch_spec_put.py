@@ -20,6 +20,9 @@ class InfoItemWatchSpecPut:
     how "the consumer applies its own default" is expressed, so a merge would
     make that state unreachable once an interval had been set.
 
+    Carries cadence only. Pause state has its own route (``PUT /watch-active``)
+    precisely so this body keeps one absence rule instead of two.
+
         Attributes:
             document (InfoItemWatchSpecPutDocument): A WatchSpec v1 document, validated server-side before it is stored.
     """

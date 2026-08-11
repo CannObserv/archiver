@@ -102,14 +102,20 @@ def sync_detailed(
 ) -> Response[EnvelopeResponse | InfoItemOut]:
     r"""Put Watch Spec
 
-     Replace an InfoItem's scheduling policy.
+     Replace an InfoItem's cadence policy.
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
     \"the consumer applies its own default\" — a merge would make that state
     unreachable once an interval had been set.
 
-    The stored document is left untouched when validation fails.
+    Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
+    one absence rule and keeps pausing from becoming a read-modify-write of a
+    document the operator did not mean to touch.
+
+    The stored document is left untouched when validation fails — including for
+    a pre-rework client that still nests ``active``, which the schema rejects
+    rather than silently dropping.
 
     Args:
         info_item_id (str):
@@ -118,6 +124,9 @@ def sync_detailed(
             Replaces the whole document — this is not a merge. Omitting ``interval`` is
             how "the consumer applies its own default" is expressed, so a merge would
             make that state unreachable once an interval had been set.
+
+            Carries cadence only. Pause state has its own route (``PUT /watch-active``)
+            precisely so this body keeps one absence rule instead of two.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -147,14 +156,20 @@ def sync(
 ) -> EnvelopeResponse | InfoItemOut | None:
     r"""Put Watch Spec
 
-     Replace an InfoItem's scheduling policy.
+     Replace an InfoItem's cadence policy.
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
     \"the consumer applies its own default\" — a merge would make that state
     unreachable once an interval had been set.
 
-    The stored document is left untouched when validation fails.
+    Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
+    one absence rule and keeps pausing from becoming a read-modify-write of a
+    document the operator did not mean to touch.
+
+    The stored document is left untouched when validation fails — including for
+    a pre-rework client that still nests ``active``, which the schema rejects
+    rather than silently dropping.
 
     Args:
         info_item_id (str):
@@ -163,6 +178,9 @@ def sync(
             Replaces the whole document — this is not a merge. Omitting ``interval`` is
             how "the consumer applies its own default" is expressed, so a merge would
             make that state unreachable once an interval had been set.
+
+            Carries cadence only. Pause state has its own route (``PUT /watch-active``)
+            precisely so this body keeps one absence rule instead of two.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -187,14 +205,20 @@ async def asyncio_detailed(
 ) -> Response[EnvelopeResponse | InfoItemOut]:
     r"""Put Watch Spec
 
-     Replace an InfoItem's scheduling policy.
+     Replace an InfoItem's cadence policy.
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
     \"the consumer applies its own default\" — a merge would make that state
     unreachable once an interval had been set.
 
-    The stored document is left untouched when validation fails.
+    Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
+    one absence rule and keeps pausing from becoming a read-modify-write of a
+    document the operator did not mean to touch.
+
+    The stored document is left untouched when validation fails — including for
+    a pre-rework client that still nests ``active``, which the schema rejects
+    rather than silently dropping.
 
     Args:
         info_item_id (str):
@@ -203,6 +227,9 @@ async def asyncio_detailed(
             Replaces the whole document — this is not a merge. Omitting ``interval`` is
             how "the consumer applies its own default" is expressed, so a merge would
             make that state unreachable once an interval had been set.
+
+            Carries cadence only. Pause state has its own route (``PUT /watch-active``)
+            precisely so this body keeps one absence rule instead of two.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -230,14 +257,20 @@ async def asyncio(
 ) -> EnvelopeResponse | InfoItemOut | None:
     r"""Put Watch Spec
 
-     Replace an InfoItem's scheduling policy.
+     Replace an InfoItem's cadence policy.
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
     \"the consumer applies its own default\" — a merge would make that state
     unreachable once an interval had been set.
 
-    The stored document is left untouched when validation fails.
+    Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
+    one absence rule and keeps pausing from becoming a read-modify-write of a
+    document the operator did not mean to touch.
+
+    The stored document is left untouched when validation fails — including for
+    a pre-rework client that still nests ``active``, which the schema rejects
+    rather than silently dropping.
 
     Args:
         info_item_id (str):
@@ -246,6 +279,9 @@ async def asyncio(
             Replaces the whole document — this is not a merge. Omitting ``interval`` is
             how "the consumer applies its own default" is expressed, so a merge would
             make that state unreachable once an interval had been set.
+
+            Carries cadence only. Pause state has its own route (``PUT /watch-active``)
+            precisely so this body keeps one absence rule instead of two.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

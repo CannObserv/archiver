@@ -31,9 +31,10 @@ class InfoItemOut:
         owner (None | str): Optional owner identifier (team or individual) for this InfoItem.
         rep_fields (InfoItemOutRepFields): Operator-defined JSONB bag of structured metadata fields for this item.
         updated_at (datetime.datetime): UTC timestamp of the last update to the InfoItem.
-        watch_spec (InfoItemOutWatchSpec): Scheduling policy for this item (WatchSpec v1): '{"schema_version": 1,
-            "active": true, "interval": "1d"}'. ``active: false`` is registered-but-paused, not removed. ``interval`` is
-            optional — when absent the consumer applies its own default. Written via PUT /info-items/{id}/watch-spec.
+        watch_spec (InfoItemOutWatchSpec): Cadence policy for this item (WatchSpec v1): '{"schema_version": 1,
+            "interval": "1d"}'. `interval` is optional — when absent the consumer applies its own default, which may be a
+            per-domain one rather than a global constant. Carries no pause state; see watch_active. Written via PUT /info-
+            items/{id}/watch-spec.
         dashboard_url (None | str | Unset): Absolute URL of this item's Archiver dashboard detail page. Null when
             ARCHIVER_PUBLIC_BASE_URL is not configured on the server.
         info_item_rep_specs (list[InfoItemRepSpecOut] | Unset): Effective-dated RepSpec assignments for this InfoItem.
@@ -41,6 +42,10 @@ class InfoItemOut:
             returned (is_active=true). Pass include_deactivated=true to also include previous primaries and other
             deactivated bindings. At most one active binding (is_active=true) exists — the current primary. Deactivated
             bindings (is_active=false) are previous primaries, preserved as succession history.
+        watch_active (bool | None | Unset): Per-item pause state. True schedules, false is registered-but-paused, and
+            null means the registry has no opinion yet (not imported from Watcher). A sibling of watch_spec rather than a
+            key inside it: a policy document shared across items could not carry per-item pause state. Written via PUT
+            /info-items/{id}/watch-active.
     """
 
     created_at: datetime.datetime
@@ -54,6 +59,7 @@ class InfoItemOut:
     dashboard_url: None | str | Unset = UNSET
     info_item_rep_specs: list[InfoItemRepSpecOut] | Unset = UNSET
     info_item_sources: list[InfoItemSourceOut] | Unset = UNSET
+    watch_active: bool | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -95,6 +101,12 @@ class InfoItemOut:
                 info_item_sources_item = info_item_sources_item_data.to_dict()
                 info_item_sources.append(info_item_sources_item)
 
+        watch_active: bool | None | Unset
+        if isinstance(self.watch_active, Unset):
+            watch_active = UNSET
+        else:
+            watch_active = self.watch_active
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -115,6 +127,8 @@ class InfoItemOut:
             field_dict["info_item_rep_specs"] = info_item_rep_specs
         if info_item_sources is not UNSET:
             field_dict["info_item_sources"] = info_item_sources
+        if watch_active is not UNSET:
+            field_dict["watch_active"] = watch_active
 
         return field_dict
 
@@ -181,6 +195,15 @@ class InfoItemOut:
 
                 info_item_sources.append(info_item_sources_item)
 
+        def _parse_watch_active(data: object) -> bool | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(bool | None | Unset, data)
+
+        watch_active = _parse_watch_active(d.pop("watch_active", UNSET))
+
         info_item_out = cls(
             created_at=created_at,
             description=description,
@@ -193,6 +216,7 @@ class InfoItemOut:
             dashboard_url=dashboard_url,
             info_item_rep_specs=info_item_rep_specs,
             info_item_sources=info_item_sources,
+            watch_active=watch_active,
         )
 
         info_item_out.additional_properties = d

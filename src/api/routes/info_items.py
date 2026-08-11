@@ -20,6 +20,7 @@ from src.api.schemas.info_item import (
     InfoItemRepSpecPublicUrlPatch,
     InfoItemSourceCreate,
     InfoItemSourceOut,
+    InfoItemWatchActivePut,
     InfoItemWatchSpecPut,
 )
 from src.api.schemas.pagination import Page
@@ -641,42 +642,12 @@ async def patch_rep_spec_assignment_public_url(
     return info_item_rep_spec_to_out(assignment)
 
 
-@router.put(
-    "/{info_item_id}/watch-spec",
-    response_model=InfoItemOut,
-    dependencies=[Depends(require_api_key)],
-)
-async def put_watch_spec(
-    info_item_id: ULIDStr,
-    body: InfoItemWatchSpecPut,
-    session: AsyncSession = Depends(get_db_session),
-) -> InfoItemOut:
-    """Replace an InfoItem's scheduling policy.
+async def _item_out_with_active_relations(session: AsyncSession, item: InfoItem) -> InfoItemOut:
+    """Serialise an InfoItem with its active bindings and assignments.
 
-    A whole-document PUT rather than a general InfoItem PATCH: the document is
-    validated as a unit, and omitting ``interval`` is the only way to express
-    "the consumer applies its own default" — a merge would make that state
-    unreachable once an interval had been set.
-
-    The stored document is left untouched when validation fails.
+    Shared by every route that answers with a whole InfoItem after mutating one
+    field, so the three response bodies cannot drift apart.
     """
-    result = await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
-    item = result.scalar_one_or_none()
-    if item is None:
-        raise_envelope(404, "lookup", "InfoItem not found")
-
-    ok, errors = validate_watch_spec(body.document)
-    if not ok:
-        raise_422(
-            "watch_spec failed schema validation",
-            errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
-        )
-
-    item.watch_spec = body.document
-    await session.flush()
-    await session.commit()
-    await session.refresh(item)
-
     sources = list(
         (
             await session.execute(
@@ -707,3 +678,81 @@ async def put_watch_spec(
         rep_specs=rep_specs,
         base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
     )
+
+
+async def _resolve_or_404(session: AsyncSession, info_item_id: str) -> InfoItem:
+    result = await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
+    item = result.scalar_one_or_none()
+    if item is None:
+        raise_envelope(404, "lookup", "InfoItem not found")
+    return item
+
+
+@router.put(
+    "/{info_item_id}/watch-spec",
+    response_model=InfoItemOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def put_watch_spec(
+    info_item_id: ULIDStr,
+    body: InfoItemWatchSpecPut,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemOut:
+    """Replace an InfoItem's cadence policy.
+
+    A whole-document PUT rather than a general InfoItem PATCH: the document is
+    validated as a unit, and omitting ``interval`` is the only way to express
+    "the consumer applies its own default" — a merge would make that state
+    unreachable once an interval had been set.
+
+    Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
+    one absence rule and keeps pausing from becoming a read-modify-write of a
+    document the operator did not mean to touch.
+
+    The stored document is left untouched when validation fails — including for
+    a pre-rework client that still nests ``active``, which the schema rejects
+    rather than silently dropping.
+    """
+    item = await _resolve_or_404(session, info_item_id)
+
+    ok, errors = validate_watch_spec(body.document)
+    if not ok:
+        raise_422(
+            "watch_spec failed schema validation",
+            errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
+        )
+
+    item.watch_spec = body.document
+    await session.flush()
+    await session.commit()
+    await session.refresh(item)
+    return await _item_out_with_active_relations(session, item)
+
+
+@router.put(
+    "/{info_item_id}/watch-active",
+    response_model=InfoItemOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def put_watch_active(
+    info_item_id: ULIDStr,
+    body: InfoItemWatchActivePut,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemOut:
+    """Pause or resume an InfoItem.
+
+    Its own route rather than a field on the WatchSpec body: ``active`` is not
+    policy (a document shared across items could not carry per-item pause
+    state), and a single boolean keeps pausing from requiring a round-trip
+    through the cadence document.
+
+    Idempotent. ``active`` is required — the column's NULL means "the registry
+    has no opinion yet", which only the absence of any write can express.
+    """
+    item = await _resolve_or_404(session, info_item_id)
+
+    item.watch_active = body.active
+    await session.flush()
+    await session.commit()
+    await session.refresh(item)
+    return await _item_out_with_active_relations(session, item)
