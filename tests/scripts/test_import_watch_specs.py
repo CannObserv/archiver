@@ -22,9 +22,9 @@ def test_apply_turns_writing_on():
 
 
 def test_format_report_names_every_bucket():
-    out = format_report(ImportReport(imported=3, unchanged=1, unlinked=2))
+    out = format_report(ImportReport(imported=3, unchanged=1, unlinked=2, failed=1))
     assert "imported" in out and "3" in out
-    assert "unchanged" in out and "unlinked" in out
+    assert "unchanged" in out and "unlinked" in out and "failed" in out
 
 
 def test_format_report_surfaces_anomalies_loudly():
@@ -46,7 +46,10 @@ async def test_run_reports_a_nonzero_exit_when_anomalies_are_present():
     report = ImportReport(imported=1, anomalies=[ImportAnomaly("01ABC", "mismatch")])
     with (
         patch("scripts.import_watch_specs.import_watch_specs", AsyncMock(return_value=report)),
-        patch("scripts.import_watch_specs._build_watcher", AsyncMock(return_value=MagicMock())),
+        patch(
+            "scripts.import_watch_specs._build_watcher",
+            AsyncMock(return_value=MagicMock(aclose=AsyncMock())),
+        ),
         patch("scripts.import_watch_specs._session_scope"),
     ):
         assert await run(dry_run=True) == 1

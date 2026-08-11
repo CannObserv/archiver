@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from watcher_client import WatchedItemResponse
 
+from scripts.import_watch_specs import import_watch_specs
 from src.core.models import InfoItem
-from src.core.watch_spec_import import import_watch_specs
 
 _TS = "2026-08-10T00:00:00+00:00"
 
@@ -79,7 +79,8 @@ async def test_imports_cadence_and_active_state(session):
     report = await import_watch_specs(session, watcher)
 
     await session.refresh(item)
-    assert item.watch_spec == {"schema_version": 1, "active": False, "interval": "6h"}
+    assert item.watch_spec == {"schema_version": 1, "interval": "6h"}
+    assert item.watch_active is False
     assert report.imported == 1
 
 
@@ -95,7 +96,8 @@ async def test_absent_schedule_config_imports_without_an_interval(session):
     await import_watch_specs(session, watcher)
 
     await session.refresh(item)
-    assert item.watch_spec == {"schema_version": 1, "active": True}
+    assert item.watch_spec == {"schema_version": 1}
+    assert item.watch_active is True
 
 
 @pytest.mark.asyncio
@@ -138,7 +140,8 @@ async def test_item_with_no_watched_item_is_skipped_not_defaulted(session):
     report = await import_watch_specs(session, watcher)
 
     await session.refresh(item)
-    assert item.watch_spec == {"schema_version": 1, "active": True}
+    assert item.watch_spec == {"schema_version": 1}
+    assert item.watch_active is None  # untouched: no opinion imported
     assert report.imported == 0
     assert report.unlinked == 1
 
@@ -151,8 +154,10 @@ async def test_unparseable_interval_is_an_anomaly_and_leaves_the_row_untouched(s
     report = await import_watch_specs(session, watcher)
 
     await session.refresh(item)
-    assert item.watch_spec == {"schema_version": 1, "active": True}
+    assert item.watch_spec == {"schema_version": 1}
+    assert item.watch_active is None  # a partial policy is worse than none
     assert report.imported == 0
+    assert report.failed == 1
     assert any("weekly" in a.reason for a in report.anomalies)
 
 
@@ -164,7 +169,8 @@ async def test_dry_run_writes_nothing_but_reports_what_it_would_do(session):
     report = await import_watch_specs(session, watcher, dry_run=True)
 
     await session.refresh(item)
-    assert item.watch_spec == {"schema_version": 1, "active": True}
+    assert item.watch_spec == {"schema_version": 1}
+    assert item.watch_active is None
     assert report.imported == 1
     assert report.dry_run is True
 
@@ -178,7 +184,39 @@ async def test_rerunning_is_idempotent_and_reports_no_further_changes(session):
     second = await import_watch_specs(session, watcher)
 
     await session.refresh(item)
-    assert item.watch_spec == {"schema_version": 1, "active": True, "interval": "1d"}
+    assert item.watch_spec == {"schema_version": 1, "interval": "1d"}
+    assert item.watch_active is True
     assert first.imported == 1
     assert second.imported == 0
     assert second.unchanged == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failing_lookup_skips_one_row_without_ending_the_pass(session):
+    """Per-item isolation: the pass commits as it goes.
+
+    Before this, the single commit at the end meant one transient Watcher error
+    discarded every row already imported.
+    """
+    good = await _item(session, name="good")
+    bad = await _item(session, name="bad")
+    ok_wi = _wi(schedule_config={"interval": "6h"})
+
+    watcher = MagicMock()
+
+    async def _lookup(item_id):
+        if item_id == str(bad.info_item_id):
+            raise RuntimeError("watcher 503")
+        return ok_wi
+
+    watcher.get_by_info_item_id = AsyncMock(side_effect=_lookup)
+
+    report = await import_watch_specs(session, watcher)
+
+    await session.refresh(good)
+    await session.refresh(bad)
+    assert good.watch_spec == {"schema_version": 1, "interval": "6h"}
+    assert bad.watch_spec == {"schema_version": 1}
+    assert report.imported == 1
+    assert report.failed == 1
+    assert any("watcher 503" in a.reason for a in report.anomalies)
