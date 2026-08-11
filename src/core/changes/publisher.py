@@ -39,6 +39,7 @@ from src.core.changes.backoff import (
     ERROR_LOG_EVERY,
     error_backoff_seconds,
 )
+from src.core.changes.diagnostics import error_text
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow
 
@@ -191,7 +192,8 @@ def _dead_letter(row: ChangesOutboxRow, exc: Exception, *, reason: str) -> None:
     the caller owns that counter (it is incremented on the failing branch before
     this is called).
     """
-    row.last_error = repr(exc)[:1000]
+    rendered = error_text(exc)
+    row.last_error = rendered[:1000]
     row.dead_lettered_at = datetime.now(UTC)
     event_type = row.payload.get("event_type") if isinstance(row.payload, dict) else None
     logger.error(
@@ -202,8 +204,14 @@ def _dead_letter(row: ChangesOutboxRow, exc: Exception, *, reason: str) -> None:
             "event_type": event_type,
             "reason": reason,
             "publish_attempts": row.publish_attempts,
-            "error": repr(exc),
+            # Kept alongside exc_info deliberately: this is the one-line, greppable
+            # form that matches what landed in last_error, where exc_info is the
+            # multi-line traceback. Same content, two different read paths.
+            "error": rendered,
         },
+        # The chain is truncated at 1000 chars on the row; the log keeps the
+        # full traceback so a poison row stays diagnosable from journald alone.
+        exc_info=exc,
     )
 
 
@@ -288,7 +296,7 @@ async def drain_once(
                 if not transient and row.publish_attempts >= MAX_PUBLISH_ATTEMPTS:
                     _dead_letter(row, exc, reason="attempts_exhausted")
                 else:
-                    row.last_error = repr(exc)[:1000]
+                    row.last_error = error_text(exc)[:1000]
                     logger.warning(
                         "Failed to publish outbox row",
                         extra={

@@ -1,28 +1,3 @@
-# archiver — Conventions Reference
-
-The reasoning and worked examples behind the rules stated in `AGENTS.md`.
-
-## Changelog trigger — what the path regex means
-
-M1
-cat "$S/D1_changelog.md"
-cat <<'M2'
-
-## Logging — plain-text `ExecStartPre` lines in journald
-
-M2
-cat "$S/D2_journald.md"
-cat <<'M3'
-
-## Error envelope — worked examples and the `kind` vocabulary
-
-M3
-cat "$S/D3_errors.md"
-} > docs/CONVENTIONS.md
-
-# --- docs/SCHEMA.md ---
-{
-cat <<'HDR'
 # archiver — Schema & Domain Entities
 
 Per-table contracts and invariants for the registry. Identifiers are verbatim —
@@ -63,6 +38,18 @@ see the never-rename rule in `AGENTS.md`.
     is re-run immediately before the announcement producer's first publish.
   - **Boundary:** a WatchSpec is *per-item cadence*. `content.fetch-policy` (cannobserv#285) is
     *per-host spacing* — different key, stream, owner, and consumer. They are not the same knob.
+
+  **Deletion — use `DELETE /info-items/{id}`, never psql** (archiver#141). An InfoItem's exit
+  from the registry is announced as a `revoked: true` tombstone, and that tombstone must be
+  written to `changes_outbox` in the deletion's own transaction. Raw SQL cannot do that, so a
+  psql `DELETE` silently skips the announcement and every consumer keeps the key **forever** —
+  the periodic full republish does not repair it, because `revoked` is an explicit tombstone
+  precisely so that absence-from-a-full-set is *not* the delete signal. The route cascades the
+  item's bindings and rep-spec assignments (both FKs are `ON DELETE CASCADE`); the InfoSource
+  and its SourceRevisions survive, since the physical layer is shared and `source_revisions`
+  keys on `info_source_id`. **Until watcher#254 consumes tombstones, nothing tells Watcher** —
+  remove the orphaned WatchedItem there by hand. The route logs a WARNING naming both IDs when the
+  deleted item had a `watcher_item_id`, so the pending cleanup shows up in journald.
 
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`

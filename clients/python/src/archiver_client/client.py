@@ -52,6 +52,9 @@ from archiver_client.generated.api.info_items import (
     deactivate_info_source_binding_api_v1_info_items_info_item_id_info_sources_info_source_id_delete as _deactivate_info_source_binding,
 )
 from archiver_client.generated.api.info_items import (
+    delete_info_item_api_v1_info_items_info_item_id_delete as _delete_info_item,
+)
+from archiver_client.generated.api.info_items import (
     deactivate_rep_spec_assignment_api_v1_info_items_info_item_id_rep_spec_assignments_assignment_id_delete as _deactivate_rep_spec,
 )
 from archiver_client.generated.api.info_items import (
@@ -249,6 +252,22 @@ class ArchiverClient:
             include_deactivated=include_deactivated,
         )
         return _unwrap(response)
+
+    async def delete_info_item(self, info_item_id: str) -> None:
+        """Delete an InfoItem, cascading its bindings and RepSpec assignments.
+
+        The registry's only exit for an InfoItem (archiver#141) — it exists so
+        that leaving the registry has a transactional home, since the announced
+        form of "gone" is a ``revoked`` tombstone that must be written in the
+        deletion's own transaction. The InfoSource and its SourceRevisions are
+        untouched: the physical layer is shared.
+
+        404 on an already-deleted item rather than a silent success.
+        """
+        response = await _delete_info_item.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id
+        )
+        _unwrap_no_content(response)
 
     # --- RepSpec assignment endpoints ---
 

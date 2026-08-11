@@ -43,6 +43,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_url=None, initial_source_specs=None, initial_rep_spec_assignments=None, rep_fields=None)` |
 | Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id)` |
 | Deactivate a source binding | `DELETE /info-items/{id}/info-sources/{source_id}` | `deactivate_info_source_binding(info_item_id, info_source_id)` |
+| Delete an InfoItem | `DELETE /info-items/{id}` | `delete_info_item(info_item_id)` |
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(url, source_specs)` |
 | Update InfoSource specs | `PATCH /info-sources/{id}/source-specs` | `update_info_source_specs(info_source_id, source_specs)` |
 | Get an InfoSource | `GET /info-sources/{id}` | `get_info_source(id)` |
@@ -60,6 +61,16 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
 `POST /info-sources` accepts `{url, source_specs}`. Multiple InfoSources at the same URL are valid. Returns 422 on invalid URL or spec validation failure.
+
+`DELETE /info-items/{id}` returns 204 and cascades the item's source bindings and rep-spec
+assignments; the InfoSource and its SourceRevisions survive (the physical layer is shared). 404 on
+an already-deleted item, not a silent 204. It exists to give the registry's exit a **transactional
+home** (archiver#141): "gone from the registry" is announced as a `revoked` tombstone that has to be
+written in the deletion's own transaction, which raw SQL cannot do — and the periodic full republish
+does not repair a missed one, since absence-from-a-full-set is deliberately not the delete signal.
+Until watcher#254 consumes tombstones, nothing tells Watcher; remove the orphaned WatchedItem there
+by hand. Deleting an item whose `watcher_item_id` is set logs a WARNING naming both IDs, so the
+cleanup is discoverable from journald rather than only from this paragraph.
 
 `PUT /info-items/{id}/watch-spec` accepts `{document}` and **replaces** the cadence document whole
 — it is not a merge, because omitting `interval` is the only way to say "the consumer applies its
@@ -158,7 +169,8 @@ Field mapping, and the two traps in it:
 
 **The `spec_fingerprint` comparison.** At ingest the value is looked up in an index of the
 InfoSource's own specs, built with co-core's shared derivation
-(`co_core.pure.extract.spec_fingerprint_index`, cannobserv#309, co-core ≥0.8.1). The outcome lands
+(`co_core.pure.extract.spec_fingerprint_index`, cannobserv#309, since co-core 0.8.1 — the
+current floor is `pyproject.toml`'s, not this line). The outcome lands
 in `spec_match` / `spec_position` (see [docs/SCHEMA.md](SCHEMA.md) — they track the *most recent*
 observation, refreshed on re-observation) and is **never** a rejection —
 archiver#140 makes spec delivery eventually consistent, so a producer one announcement behind is

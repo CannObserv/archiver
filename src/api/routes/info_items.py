@@ -30,6 +30,7 @@ from src.api.serializers import (
     info_item_source_to_out,
     info_item_to_out,
 )
+from src.core.logging import get_logger
 from src.core.models import (
     ChangesOutboxRow,
     InfoItem,
@@ -79,6 +80,8 @@ if TYPE_CHECKING:
     from watcher_client import WatcherClient
 
 router = APIRouter(prefix="/info-items", tags=["info-items"])
+
+logger = get_logger(__name__)
 
 
 @router.post("", response_model=InfoItemOut, status_code=201)
@@ -686,6 +689,56 @@ async def _resolve_or_404(session: AsyncSession, info_item_id: str) -> InfoItem:
     if item is None:
         raise_envelope(404, "lookup", "InfoItem not found")
     return item
+
+
+@router.delete("/{info_item_id}", status_code=204)
+async def delete_info_item(
+    info_item_id: ULIDStr,
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    """Delete an InfoItem. The registry's only exit for one (archiver#141).
+
+    Exists so that leaving the registry has a **transactional home**. Once the
+    announcement producer lands, ``revoked: true`` is the announced form of "gone
+    from the registry", and it must be written to ``changes_outbox`` in the same
+    transaction as the deletion. Raw SQL cannot do that: a psql ``DELETE`` skips
+    the tombstone, and every consumer keeps the key forever. The periodic full
+    republish does **not** repair it — ``revoked`` is an explicit tombstone
+    precisely because absence-from-a-full-set is not the delete signal here.
+
+    The alternative considered was declaring InfoItems undeletable and saying so
+    in ``docs/SCHEMA.md``. Rejected: it does not stop anyone reaching for psql,
+    and the failure it leaves behind is silent and permanent.
+
+    **Cascade scope.** The item's bindings and rep-spec assignments go with it —
+    both FKs are ``ondelete="CASCADE"``. The InfoSource and its SourceRevisions do
+    not: an InfoSource can be the active primary for several InfoItems, and
+    ``source_revisions`` keys on ``info_source_id``, so its ``RESTRICT`` never
+    sees an item delete.
+
+    404 on an already-deleted item rather than a silent 204 — an operator who
+    deletes the wrong ULID twice should learn the second call did nothing.
+
+    **Known gap until watcher#254 consumes tombstones.** Nothing tells Watcher.
+    The Watcher SDK has no delete, and adding one would be a new HTTP push in the
+    direction this epic is deleting; the announcement is the designed channel. So
+    until the consumer is live, a deleted InfoItem's WatchedItem must be removed
+    in Watcher by hand. See ``docs/SCHEMA.md``.
+    """
+    item = await _resolve_or_404(session, info_item_id)
+    watcher_item_id = item.watcher_item_id
+    await session.delete(item)
+    await session.commit()
+
+    if watcher_item_id is not None:
+        # The gap above, as a signal rather than only a paragraph: the operator who
+        # caused the orphan is the least likely person to be reading SCHEMA.md at
+        # that moment, and a 204 tells them nothing (CR round 1, finding 2).
+        # Delete this when watcher#254 consumes tombstones.
+        logger.warning(
+            "Deleted InfoItem still linked to a WatchedItem; remove it in Watcher by hand",
+            extra={"info_item_id": info_item_id, "watcher_item_id": watcher_item_id},
+        )
 
 
 @router.put(

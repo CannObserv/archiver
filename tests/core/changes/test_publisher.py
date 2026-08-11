@@ -690,6 +690,47 @@ async def test_build_phase_last_error_names_co_core_anomaly(session_factory, pub
 
 
 @pytest.mark.asyncio
+async def test_build_phase_last_error_carries_the_underlying_cause(
+    session_factory, publisher, fake_redis
+):
+    """``last_error`` must carry co-core's *remedy* text, not just the wrapper.
+
+    ``payload_from_dict`` raises a ``BusMessageAnomaly`` whose own message names
+    only the event_type — the sentence saying which field is wrong and how to fix
+    it lives on the chained ``__cause__`` (a pydantic ``ValidationError``). A bare
+    ``repr(exc)`` is 123 characters of "has a malformed payload" and discards it.
+
+    That matters because ``last_error`` on a dead-lettered row is the *entire*
+    diagnostic an operator gets: the build phase is pure, so there is no retry to
+    observe and no stream entry to inspect. cannobserv#324 wrote a remedy string
+    for exactly this read path ("to delegate to the consumer default, send
+    {"schema_version": 1} with no "interval""); dropping the cause makes the
+    loud-failure guarantee that tightening bought degrade to "something is wrong".
+    """
+    live_missing_watch_spec = {
+        "schema_version": 1,
+        "event_type": "registry_announcement",
+        "occurred_at": _OCCURRED_AT,
+        "info_item_id": "item-nospec",
+        "generation": 1,
+        "info_source_id": _INFO_SOURCE_ID,
+        "url": "https://example.test/doc",
+        "source_specs": [{"selector": "main"}],
+    }
+    poison = await _insert_row(session_factory, payload=live_missing_watch_spec)
+
+    assert await drain_once(session_factory=session_factory, publisher=publisher) == 0
+
+    async with session_factory() as s:
+        row = await s.get(ChangesOutboxRow, poison.id)
+    assert row.dead_lettered_at is not None
+    # The wrapper type is still named (test above pins that contract) ...
+    assert BusMessageMalformedPayloadError.__name__ in row.last_error
+    # ... and the cause's remedy text survives to the row an operator reads.
+    assert "watch_spec" in row.last_error
+
+
+@pytest.mark.asyncio
 async def test_transient_failure_not_dead_lettered(session_factory):
     """A transient publish failure (Redis down) must NOT dead-letter — the row
     stays live and is retried next drain (only deterministic poison is retired)."""
@@ -947,6 +988,52 @@ def _source_revision_observed_event(
     }
 
 
+def _registry_announcement_state(info_item_id: str = "item-r") -> dict:
+    """A full ``registry_announcement`` config/state payload (cannobserv#302, #324).
+
+    ``watch_spec`` is required on a *live* announcement as of co-core v0.9.3 —
+    it joined ``info_source_id`` / ``url`` / ``source_specs`` in the
+    required-unless-revoked set. ``{"schema_version": 1}`` with no ``interval``
+    is the delegation spelling ("consumer applies its own default"), which is
+    what archiver#150's ``DEFAULT_WATCH_SPEC`` stores.
+    """
+    return {
+        "schema_version": 1,
+        "event_type": "registry_announcement",
+        "occurred_at": _OCCURRED_AT,
+        "info_item_id": info_item_id,
+        "generation": 7,
+        "info_source_id": _INFO_SOURCE_ID,
+        "url": "https://example.test/doc",
+        "source_specs": [{"selector": "main"}],
+        "active": True,
+        "watch_spec": {"schema_version": 1},
+        "revoked": False,
+    }
+
+
+def _watch_status_state(info_item_id: str = "item-w") -> dict:
+    """A full ``watch_status`` config/state payload (cannobserv#321).
+
+    The return leg Archiver *consumes* under archiver#151; it is in the union
+    (and so in this guard) because ``payload_from_dict`` dispatches on one table
+    for both directions.
+    """
+    return {
+        "schema_version": 1,
+        "event_type": "watch_status",
+        "occurred_at": _OCCURRED_AT,
+        "info_item_id": info_item_id,
+        "applied_generation": 7,
+        "applied_active": True,
+        "applied_interval": "1d",
+        "last_attempt_at": "2026-07-28T11:59:00+00:00",
+        "last_observed_at": "2026-07-28T11:59:00+00:00",
+        "health": "ok",
+        "revoked": False,
+    }
+
+
 def _fetch_policy_state(host: str = "example.test") -> dict:
     """A full ``fetch_policy`` config/state payload (cannobserv#285)."""
     return {
@@ -985,6 +1072,14 @@ _UNION_CASES = [
         "source_revision_observed",
         f"{_INFO_SOURCE_ID}:{'sha256:' + 'd' * 64}",
     ),
+    # Both config/state streams key on info_item_id:occurred_at, following
+    # fetch_policy — an *occurrence*; the LWW slot is the info_item_id field.
+    (
+        _registry_announcement_state("item-r"),
+        "registry_announcement",
+        f"item-r:{_OCCURRED_AT}",
+    ),
+    (_watch_status_state("item-w"), "watch_status", f"item-w:{_OCCURRED_AT}"),
 ]
 
 

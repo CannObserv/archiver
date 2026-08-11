@@ -43,6 +43,7 @@ from src.core.changes.backoff import (
     ERROR_LOG_EVERY,
     error_backoff_seconds,
 )
+from src.core.changes.diagnostics import error_text
 from src.core.logging import get_logger
 from src.core.services.source_revision import (
     RevisionFacts,
@@ -262,7 +263,11 @@ async def _process(
     except SourceRevisionWriteError as exc:
         logger.error(
             "Quarantining unusable observation",
-            extra={"message_id": message.message_id, "error": repr(exc)},
+            # error_text, not repr: a consumer has no last_error column, so this
+            # line is the ONLY record a quarantined message leaves behind, and the
+            # remedy usually lives on the chained cause (CR round 1, finding 1).
+            extra={"message_id": message.message_id, "error": error_text(exc)},
+            exc_info=exc,
         )
         await consumer.bus.dead_letter(message.message_id, dict(message.fields))
         return True
@@ -326,8 +331,9 @@ async def quarantine_undecodable(consumer: RevisionsConsumer) -> int:
                     extra={
                         "message_id": message_id,
                         "topic": CONTENT_REVISIONS,
-                        "error": repr(exc),
+                        "error": error_text(exc),
                     },
+                    exc_info=exc,
                 )
                 await consumer.bus.dead_letter(message_id, fields)
                 quarantined += 1
