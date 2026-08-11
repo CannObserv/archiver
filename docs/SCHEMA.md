@@ -1,28 +1,3 @@
-# archiver — Conventions Reference
-
-The reasoning and worked examples behind the rules stated in `AGENTS.md`.
-
-## Changelog trigger — what the path regex means
-
-M1
-cat "$S/D1_changelog.md"
-cat <<'M2'
-
-## Logging — plain-text `ExecStartPre` lines in journald
-
-M2
-cat "$S/D2_journald.md"
-cat <<'M3'
-
-## Error envelope — worked examples and the `kind` vocabulary
-
-M3
-cat "$S/D3_errors.md"
-} > docs/CONVENTIONS.md
-
-# --- docs/SCHEMA.md ---
-{
-cat <<'HDR'
 # archiver — Schema & Domain Entities
 
 Per-table contracts and invariants for the registry. Identifiers are verbatim —
