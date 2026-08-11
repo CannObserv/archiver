@@ -18,6 +18,22 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.7.0 (2026-08-11)
+
+[both] **Archiver owns scheduling policy — `watch_spec` + `watch_active`, SDK v5.2.0** (archiver#150, step 4b of the #137 epic). Cadence and active/paused state were Watcher's, round-tripped over the SDK; they become two columns on `information.info_items`.
+
+**Two columns, not one document.** `watch_spec` is a validated JSONB document carrying *cadence only* — `{"schema_version": 1, "interval": "1d"}`, checked against the new `src/core/watch_spec_schema/v1.json`. `watch_active` is a nullable boolean carrying per-item pause state. They are separate because a policy document shared across items by a future reusable-policy table could not carry per-item pause, and because co-core v0.9.2's `RegistryAnnouncementState` types `active` on the announcement envelope beside `revoked` — giving the three-state distinction (revoked / paused / scheduled) a contract-level schema guarantee that an untyped dict key never had.
+
+**Both defaults mean "no opinion yet."** `watch_spec` defaults to `{"schema_version": 1}` with **no interval**: absent means "the consumer applies its own default", which may be a per-domain `default_schedule_config` rather than a global constant — three of the four production WatchedItems carry no per-item cadence at all, so a resolved default would have fabricated one for each. `watch_active` defaults to `NULL` for the same reason in the other direction: defaulting `true` would announce every paused item as unpaused the moment the producer lands. The schema validates the interval *grammar* (`^[0-9]+[smhd]$`); the four options the dashboard offers stay in `src/dashboard/cadence.py`.
+
+New HTTP surface: `PUT /info-items/{id}/watch-spec` (whole-document replace — a merge would make "no interval" unreachable once one had been set), `PUT /info-items/{id}/watch-active` (`{active: bool}`, required, idempotent), and `POST /tools/validate-watch-spec`. Two routes rather than one body because the fields need opposite absence rules, and so a pause is not a read-modify-write of the cadence document. A document that still nests `active` is rejected with 422 rather than silently dropped — on the wire `watch_spec` is an untyped dict, so that rejection is the only thing between a pre-rework client and a paused item being announced as scheduled.
+
+`watch_spec` and `watch_active` are additive on `InfoItemOut`; both are generated-only on the SDK, with no hand-written wrapper because no SDK consumer needs one yet. **`watch_spec` is a required response field, so deploy the service before bumping an SDK pin to v5.2.0** — a 5.2.0 client reading a 4.6.x response raises on the missing key.
+
+**No dashboard behaviour changes.** Pause/resume still PATCHes Watcher and cadence still displays Watcher's `default_schedule_config`; the control-plane cutover lands with the announcement channel, so the flip happens once against a live path rather than leaving authoritative-looking columns that nothing enforces.
+
+`scripts/import_watch_specs.py` carries the live values across. It joins from Watcher's `archiver_info_item_id` rather than Archiver's drift-prone `watcher_item_id`, dry-runs by default, commits per row so one unreachable item does not discard the rest, exits non-zero on anomalies, and is idempotent **by design** — it runs once here and again immediately before the announcement producer's first publish, because Watcher stays authoritative in between. Runbook: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ## v4.6.0 (2026-08-09)
 
 [both] **SourceRevision records observation provenance — `source_media_type`, `spec_fingerprint`, `command_id`, SDK v5.1.0** (archiver#139, step 3 of the #137 epic). Three new nullable `information.source_revisions` columns, all three additive on `SourceRevisionOut`.

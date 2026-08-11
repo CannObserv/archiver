@@ -35,23 +35,9 @@ SocratiCode is indexed on this repo (`.socraticodecontextartifacts.json` present
 
 **Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search.
 
-| Goal | Tool |
-|------|------|
-| Where is X defined / how does Y work / what files touch Z | `codebase_search` |
-| Exact string/regex match (errors, log lines, known symbols) | `grep` / `rg` |
-| Blast radius of changing/deleting a file or function | `codebase_impact` |
-| What does an entry point actually do? | `codebase_flow` |
-| Callers and callees of a function | `codebase_symbol` |
-| List symbols in a file or search by name across the project | `codebase_symbols` |
-| Imports/dependents of a file | `codebase_graph_query` |
-| Spot circular deps or structural issues | `codebase_graph_circular`, `codebase_graph_stats` |
-| Visualise module structure | `codebase_graph_visualize` |
-| Verify index is up to date | `codebase_status` |
-| DB schemas, deployment topology, runbook context | `codebase_context` / `codebase_context_search` |
-
-Prefetch query (run via `ToolSearch` once per session if the SessionStart reminder isn't loaded):
-
-`select:mcp__plugin_socraticode_socraticode__codebase_search,mcp__plugin_socraticode_socraticode__codebase_symbol,mcp__plugin_socraticode_socraticode__codebase_symbols,mcp__plugin_socraticode_socraticode__codebase_flow,mcp__plugin_socraticode_socraticode__codebase_impact,mcp__plugin_socraticode_socraticode__codebase_graph_query,mcp__plugin_socraticode_socraticode__codebase_graph_circular,mcp__plugin_socraticode_socraticode__codebase_graph_stats,mcp__plugin_socraticode_socraticode__codebase_graph_visualize,mcp__plugin_socraticode_socraticode__codebase_status,mcp__plugin_socraticode_socraticode__codebase_context,mcp__plugin_socraticode_socraticode__codebase_context_search`
+Tool-by-goal map and the `ToolSearch` prefetch query: [docs/SKILLS.md](docs/SKILLS.md).
+The SessionStart hook (`.claude/hooks/socraticode-reminder.sh`) prints the query every session,
+so it is not carried here.
 
 ## Architecture
 
@@ -225,7 +211,7 @@ a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.m
 
 Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
 
-- `InfoItem` (`info_items`) — semantic anchor + `rep_fields` bag
+- `InfoItem` (`info_items`) — semantic anchor + `rep_fields`, `watch_spec`, `watch_active`
 - `InfoSource` (`info_sources`) — physical layer; URL + `source_specs`
 - `SourceRevision` (`source_revisions`) — content-addressed snapshot
 - `InfoItemSource` (`info_item_sources`) — item↔source binding; one active primary

@@ -226,3 +226,44 @@ async def test_resolve_rep_fields_requires_api_key(client):
         json={"bag": {}},
     )
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/tools/validate-watch-spec
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_validate_watch_spec_valid_returns_200_valid_true(client):
+    response = await client.post(
+        "/api/v1/tools/validate-watch-spec",
+        headers=HEADERS,
+        json={"document": {"schema_version": 1, "interval": "1d"}},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"valid": True, "errors": []}
+
+
+@pytest.mark.asyncio
+async def test_validate_watch_spec_invalid_returns_200_valid_false(client):
+    response = await client.post(
+        "/api/v1/tools/validate-watch-spec",
+        headers=HEADERS,
+        json={"document": {"schema_version": 1, "interval": "daily"}},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["valid"] is False
+    assert any(e["path"] == "/interval" for e in body["errors"])
+
+
+@pytest.mark.asyncio
+async def test_validate_watch_spec_rejects_a_document_carrying_active(client):
+    """Pause state is the sibling column, not a key in the cadence document."""
+    response = await client.post(
+        "/api/v1/tools/validate-watch-spec",
+        headers=HEADERS,
+        json={"document": {"schema_version": 1, "active": True}},
+    )
+    assert response.status_code == 200
+    assert response.json()["valid"] is False

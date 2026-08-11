@@ -1,11 +1,14 @@
 """Information Item — the stable, externally-named target being tracked."""
 
-from sqlalchemy import Index, String
+import json
+
+from sqlalchemy import Boolean, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
 
 from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
+from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC
 
 
 class InfoItem(Base, TimestampMixin):
@@ -23,6 +26,22 @@ class InfoItem(Base, TimestampMixin):
         server_default="{}",
         default=dict,
     )
+    watch_spec: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=json.dumps(DEFAULT_WATCH_SPEC),
+        default=lambda: dict(DEFAULT_WATCH_SPEC),
+    )
+    watch_active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    """Per-item pause state — deliberately *not* a key in ``watch_spec``.
+
+    ``NULL`` means "the registry has no opinion yet, keep doing what you are
+    doing", which is what ``scripts/import_watch_specs.py`` fills in from
+    Watcher. It is a sibling column because a policy *document* shared across
+    items could not carry per-item pause state, and because co-core types
+    ``active`` on the announcement envelope beside ``revoked`` rather than
+    inside the untyped policy dict.
+    """
     watcher_item_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     __table_args__ = (

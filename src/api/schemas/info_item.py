@@ -47,6 +47,40 @@ class InfoItemRepSpecPublicUrlPatch(BaseModel):
     )
 
 
+class InfoItemWatchSpecPut(BaseModel):
+    """Request body for PUT /info-items/{id}/watch-spec.
+
+    Replaces the whole document — this is not a merge. Omitting ``interval`` is
+    how "the consumer applies its own default" is expressed, so a merge would
+    make that state unreachable once an interval had been set.
+
+    Carries cadence only. Pause state has its own route (``PUT /watch-active``)
+    precisely so this body keeps one absence rule instead of two.
+    """
+
+    model_config = {"extra": "forbid"}
+    document: dict[str, Any] = Field(
+        description="A WatchSpec v1 document, validated server-side before it is stored."
+    )
+
+
+class InfoItemWatchActivePut(BaseModel):
+    """Request body for PUT /info-items/{id}/watch-active.
+
+    ``active`` is required: NULL on the column means "the registry has no
+    opinion yet", which is reachable only by never having written, never by an
+    operator asserting it.
+    """
+
+    model_config = {"extra": "forbid"}
+    active: bool = Field(
+        description=(
+            "True schedules the item; False is registered-but-paused (keep the item, "
+            "stop scheduling). Distinct from removal, which is a deletion."
+        )
+    )
+
+
 class InfoItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
@@ -116,6 +150,25 @@ class InfoItemOut(BaseModel):
     )
     rep_fields: dict[str, Any] = Field(
         description="Operator-defined JSONB bag of structured metadata fields for this item."
+    )
+    watch_spec: dict[str, Any] = Field(
+        description=(
+            "Cadence policy for this item (WatchSpec v1): "
+            '\'{"schema_version": 1, "interval": "1d"}\'. `interval` is optional — '
+            "when absent the consumer applies its own default, which may be a per-domain "
+            "one rather than a global constant. Carries no pause state; see watch_active. "
+            "Written via PUT /info-items/{id}/watch-spec."
+        )
+    )
+    watch_active: bool | None = Field(
+        default=None,
+        description=(
+            "Per-item pause state. True schedules, false is registered-but-paused, "
+            "and null means the registry has no opinion yet (not imported from Watcher). "
+            "A sibling of watch_spec rather than a key inside it: a policy document "
+            "shared across items could not carry per-item pause state. "
+            "Written via PUT /info-items/{id}/watch-active."
+        ),
     )
     created_at: datetime = Field(description="UTC timestamp when the InfoItem was created.")
     updated_at: datetime = Field(description="UTC timestamp of the last update to the InfoItem.")

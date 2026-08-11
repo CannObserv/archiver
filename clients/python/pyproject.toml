@@ -1,6 +1,6 @@
 [project]
 name = "archiver-client"
-version = "5.1.0"
+version = "5.2.0"
 description = "Async Python SDK for the Archiver service. Generated from the service's OpenAPI schema."
 readme = "README.md"
 requires-python = ">=3.12"

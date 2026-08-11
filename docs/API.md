@@ -29,6 +29,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | `validate_source_spec` | `POST /tools/validate-source-spec` | `validate_source_spec(doc)` |
 | `validate_rep_spec` | `POST /tools/validate-rep-spec` | `validate_rep_spec(doc)` |
 | `validate_rep_fields` | `POST /tools/validate-rep-fields` | `validate_rep_fields(bag, required_fields=None)` |
+| `validate_watch_spec` | `POST /tools/validate-watch-spec` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |
 | `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` |
 | `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)` |
@@ -53,10 +54,25 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Assign a RepSpec | `POST /info-items/{id}/rep-spec-assignments` | `assign_rep_spec(info_item_id, rep_spec_id, activated_at=None)` |
 | Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
 | Public-URL writeback | `PATCH /info-items/{id}/rep-spec-assignments/{aid}` | `set_public_url(info_item_id, assignment_id, public_url)` |
+| Replace an item's cadence policy | `PUT /info-items/{id}/watch-spec` | generated only (no hand-written wrapper — no SDK consumer yet) |
+| Pause / resume an item | `PUT /info-items/{id}/watch-active` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
 `POST /info-sources` accepts `{url, source_specs}`. Multiple InfoSources at the same URL are valid. Returns 422 on invalid URL or spec validation failure.
+
+`PUT /info-items/{id}/watch-spec` accepts `{document}` and **replaces** the cadence document whole
+— it is not a merge, because omitting `interval` is the only way to say "the consumer applies its
+own default" and a merge would make that state unreachable once an interval had been set. Invalid
+documents return the 422 envelope with per-field errors and leave the stored policy untouched,
+including a pre-rework document that still nests `active` (rejected, not silently dropped).
+
+`PUT /info-items/{id}/watch-active` accepts `{active: bool}` — required, idempotent. **Two routes
+rather than one body** because the two fields need opposite absence rules: an omitted `interval`
+means "consumer default", while pause state has no omitted case at all (`NULL` is reachable only by
+never having written). Splitting them also keeps a dashboard pause from becoming a read-modify-write
+of a cadence document it does not otherwise touch. `watch_spec` and `watch_active` are both additive
+on `InfoItemOut`. Contract and rationale: [SCHEMA.md](SCHEMA.md).
 
 **Pagination:** `GET /info-items`, `GET /info-sources`, and `GET /rep-specs` return a `Page` envelope — `{items, has_more, limit, offset}`. All accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` / `list_rep_specs` return `PageInfoItemOut` / `PageInfoSourceOut` / `PageRepSpecOut`; pass `limit`/`offset` to forward to the server.
 

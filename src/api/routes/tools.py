@@ -30,6 +30,8 @@ from src.api.schemas.tools import (
     ValidateRepSpecResponse,
     ValidateSourceSpecRequest,
     ValidateSourceSpecResponse,
+    ValidateWatchSpecRequest,
+    ValidateWatchSpecResponse,
 )
 from src.api.serializers import info_item_to_out
 from src.core.rep_fields_schema.validator import (
@@ -47,6 +49,7 @@ from src.core.tools.preview_extraction import (
 )
 from src.core.tools.propose_selectors import propose_selectors
 from src.core.tools.resolve_rep_fields import resolve_rep_fields
+from src.core.watch_spec_schema.validator import validate_watch_spec
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -250,3 +253,23 @@ async def propose_selectors_route(
         )
         for c in candidates
     ]
+
+
+@router.post(
+    "/validate-watch-spec",
+    response_model=ValidateWatchSpecResponse,
+    response_model_exclude_none=True,
+)
+async def validate_watch_spec_route(
+    body: ValidateWatchSpecRequest,
+) -> ValidateWatchSpecResponse:
+    """Validate a WatchSpec document against the v1 JSON Schema.
+
+    Always returns 200 — the response body's ``valid`` flag carries the
+    validation outcome, and ``errors`` carries field-level issues.
+    """
+    ok, errors = validate_watch_spec(body.document)
+    return ValidateWatchSpecResponse(
+        valid=ok,
+        errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
+    )
