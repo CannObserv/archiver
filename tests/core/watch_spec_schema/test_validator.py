@@ -5,13 +5,13 @@ from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC, validate_wa
 
 def test_validate_watch_spec_ok_without_interval():
     """interval is optional — absence means 'consumer applies its default'."""
-    ok, errs = validate_watch_spec({"schema_version": 1, "active": True})
+    ok, errs = validate_watch_spec({"schema_version": 1})
     assert ok is True
     assert errs == []
 
 
 def test_validate_watch_spec_ok_with_interval():
-    ok, errs = validate_watch_spec({"schema_version": 1, "active": True, "interval": "1d"})
+    ok, errs = validate_watch_spec({"schema_version": 1, "interval": "1d"})
     assert ok is True
     assert errs == []
 
@@ -23,52 +23,50 @@ def test_validate_watch_spec_accepts_intervals_outside_the_dashboard_options():
     the one-time import must not reject one.
     """
     for interval in ("30m", "12h", "90s", "14d"):
-        ok, errs = validate_watch_spec({"schema_version": 1, "active": True, "interval": interval})
+        ok, errs = validate_watch_spec({"schema_version": 1, "interval": interval})
         assert ok is True, (interval, errs)
 
 
 def test_validate_watch_spec_rejects_unparseable_interval():
     for interval in ("daily", "1w", "1", "d1", "", "1 d"):
-        ok, _ = validate_watch_spec({"schema_version": 1, "active": True, "interval": interval})
+        ok, _ = validate_watch_spec({"schema_version": 1, "interval": interval})
         assert ok is False, interval
 
 
 def test_validate_watch_spec_rejects_null_interval():
     """Absence is the one representation of 'consumer default'; null is not a second."""
-    ok, _ = validate_watch_spec({"schema_version": 1, "active": True, "interval": None})
+    ok, _ = validate_watch_spec({"schema_version": 1, "interval": None})
     assert ok is False
 
 
-def test_validate_watch_spec_requires_active():
-    ok, errs = validate_watch_spec({"schema_version": 1, "interval": "1d"})
+def test_validate_watch_spec_rejects_active():
+    """Pause state is the sibling column, not a key in the policy document.
+
+    A document that still carries it is a pre-rework client, and 422 is the right
+    answer: silently dropping the key would drop the operator's pause.
+    """
+    ok, errs = validate_watch_spec({"schema_version": 1, "active": False, "interval": "6h"})
     assert ok is False
     assert any("active" in e["message"] for e in errs)
 
 
 def test_validate_watch_spec_requires_schema_version():
-    ok, _ = validate_watch_spec({"active": True})
+    ok, _ = validate_watch_spec({"interval": "1d"})
     assert ok is False
 
 
 def test_validate_watch_spec_rejects_wrong_schema_version():
-    ok, _ = validate_watch_spec({"schema_version": 2, "active": True})
-    assert ok is False
-
-
-def test_validate_watch_spec_rejects_non_boolean_active():
-    ok, _ = validate_watch_spec({"schema_version": 1, "active": "true"})
+    ok, _ = validate_watch_spec({"schema_version": 2})
     assert ok is False
 
 
 def test_validate_watch_spec_rejects_extra_property():
-    ok, _ = validate_watch_spec(
-        {"schema_version": 1, "active": True, "jitter": "10m"},
-    )
+    ok, _ = validate_watch_spec({"schema_version": 1, "jitter": "10m"})
     assert ok is False
 
 
 def test_validate_watch_spec_returns_structured_errors():
-    ok, errs = validate_watch_spec({"schema_version": 1, "active": True, "interval": "daily"})
+    ok, errs = validate_watch_spec({"schema_version": 1, "interval": "daily"})
     assert ok is False
     assert len(errs) >= 1
     assert all("path" in e and "message" in e for e in errs)
@@ -80,4 +78,3 @@ def test_default_watch_spec_is_valid_and_carries_no_interval():
     ok, errs = validate_watch_spec(DEFAULT_WATCH_SPEC)
     assert ok is True, errs
     assert "interval" not in DEFAULT_WATCH_SPEC
-    assert DEFAULT_WATCH_SPEC["active"] is True

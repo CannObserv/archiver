@@ -1,16 +1,30 @@
-"""add watch_spec to info_items
+"""add watch_spec + watch_active to info_items
 
 Archiver takes ownership of scheduling policy (archiver#150). Cadence and
 active/paused state lived on Watcher's ``watched_items`` and were round-tripped
-over the SDK; they become a validated document on the registry's own row.
+over the SDK; they become registry columns.
 
-Non-null with a server default of ``{"schema_version": 1, "active": true}``.
-The default deliberately carries **no** ``interval``: a resolved cadence here
-would fabricate one for every existing row and override the consumer's own
-default, which may be a per-domain ``default_schedule_config`` rather than a
-global constant. Absent means "consumer applies its default". The real values
-arrive from the one-time import (``scripts/import_watch_specs.py``), which runs
-against production before the announcement producer publishes.
+**Two columns, not one.** ``watch_spec`` is cadence policy — a validated
+document (``src/core/watch_spec_schema/``). ``watch_active`` is per-item pause
+state, deliberately *not* a key inside that document: a policy document shared
+across items by the future reusable-policy table could not carry per-item pause,
+and co-core's ``RegistryAnnouncementState`` types ``active`` on the announcement
+envelope beside ``revoked`` so the three-state distinction has a schema
+guarantee rather than resting on an untyped dict key.
+
+Both defaults say "nobody has expressed an opinion yet":
+
+- ``watch_spec`` defaults to ``{"schema_version": 1}`` — **no interval**. A
+  resolved cadence would fabricate one for every existing row and override the
+  consumer's own default, which may be a per-domain ``default_schedule_config``
+  rather than a global constant.
+- ``watch_active`` is ``NULL`` — *the registry has no opinion yet, keep doing
+  what you are doing*. Defaulting it ``true`` would announce every paused item
+  as unpaused the moment the producer lands, before the import has run.
+
+Real values arrive from ``scripts/import_watch_specs.py``, which reads Watcher
+over the SDK and is re-run immediately before the announcement producer
+publishes.
 
 Revision ID: b41d7c9e05a2
 Revises: 3f2a17c4be90
@@ -39,12 +53,18 @@ def upgrade() -> None:
             "watch_spec",
             postgresql.JSONB(astext_type=sa.Text()),
             nullable=False,
-            server_default=sa.text('\'{"schema_version": 1, "active": true}\'::jsonb'),
+            server_default=sa.text("'{\"schema_version\": 1}'::jsonb"),
         ),
+        schema="information",
+    )
+    op.add_column(
+        "info_items",
+        sa.Column("watch_active", sa.Boolean(), nullable=True),
         schema="information",
     )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_column("info_items", "watch_active", schema="information")
     op.drop_column("info_items", "watch_spec", schema="information")

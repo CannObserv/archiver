@@ -1,4 +1,4 @@
-"""WatchSpec v1 schema shape + the boundary its description has to state."""
+"""WatchSpec v1 schema shape + the boundaries its description has to state."""
 
 import json
 from pathlib import Path
@@ -8,8 +8,20 @@ SCHEMA = json.loads(
 )
 
 
-def test_only_schema_version_and_active_are_required():
-    assert set(SCHEMA["required"]) == {"schema_version", "active"}
+def test_only_schema_version_is_required():
+    assert SCHEMA["required"] == ["schema_version"]
+
+
+def test_the_document_is_cadence_only():
+    """active/paused is the sibling column watch_active, not a key in here.
+
+    A policy document shared across items could not carry per-item pause state,
+    and nested in an untyped dict the three-state distinction had no schema
+    guarantee — co-core's RegistryAnnouncementState accepts a nested ``active``
+    silently while its own envelope field stays None.
+    """
+    assert "active" not in SCHEMA["properties"]
+    assert set(SCHEMA["properties"]) == {"schema_version", "interval"}
 
 
 def test_additional_properties_are_closed():
@@ -26,6 +38,11 @@ def test_description_states_the_fetch_policy_boundary():
     assert "fetch-policy" in desc or "fetch policy" in desc
     assert "per-item" in desc
     assert "per-host" in desc
+
+
+def test_description_points_at_where_active_actually_lives():
+    desc = SCHEMA.get("description", "").lower()
+    assert "watch_active" in desc
 
 
 def test_description_states_that_absent_interval_means_consumer_default():

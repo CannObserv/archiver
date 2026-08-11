@@ -2,16 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://watcher.exe.xyz/schemas/watch-spec/v1.json",
   "title": "Watch Specification v1",
-  "description": "Scheduling policy for one InfoItem: how often the cluster wants it checked, and whether it is scheduled at all. Archiver owns this document (declared intent); Watcher owns execution (when the fetch actually fires) and keeps a local fallback cadence for a spec it cannot parse. BOUNDARY: a WatchSpec is per-item cadence. content.fetch-policy is per-host spacing — different key, stream, owner, and consumer. Both answer 'how often do we hit things' and will attract merge proposals; they are not the same knob and must not be merged. The document is singular, not a list: source_specs is plural because Watcher walks it as a fallback loop, and a WatchSpec has no fallback semantics — one policy is in effect. It is carried resolved on the wire, never as a reference, so a future reusable-policy table stays an Archiver-internal change.",
+  "description": "Cadence policy for one InfoItem: how often the cluster wants it checked. Archiver owns this document (declared intent); Watcher owns execution (when the fetch actually fires) and keeps a local fallback cadence for a spec it cannot parse. CADENCE ONLY: active/paused is NOT in here — it is the sibling column info_items.watch_active, projected to the announcement's envelope-level 'active' beside 'revoked'. That separation is load-bearing twice over: a policy document shared across items could not carry per-item pause state, and nested inside an untyped dict the three-state distinction (revoked / paused / scheduled) had no contract-level schema guarantee. BOUNDARY: a WatchSpec is per-item cadence. content.fetch-policy is per-host spacing — different key, stream, owner, and consumer. Both answer 'how often do we hit things' and will attract merge proposals; they are not the same knob and must not be merged. The document is singular, not a list: source_specs is plural because Watcher walks it as a fallback loop, and a WatchSpec has no fallback semantics — one policy is in effect. It is carried resolved on the wire, never as a reference, so a future reusable-policy table stays an Archiver-internal change.",
   "type": "object",
-  "required": ["schema_version", "active"],
+  "required": ["schema_version"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {"const": 1},
-    "active": {
-      "type": "boolean",
-      "description": "False means registered but deliberately paused: keep the item, stop scheduling. Distinct from revocation, which is an envelope concern on the announcement — collapsing paused into revoked loses the pause on the next reconcile."
-    },
     "interval": {
       "type": "string",
       "pattern": "^[0-9]+[smhd]$",
