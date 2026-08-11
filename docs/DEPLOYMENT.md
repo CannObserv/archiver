@@ -55,6 +55,32 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 > writing to production. Set `ARCHIVER_DEV_DATABASE_URL` to a dedicated
 > database (e.g. `archiver_dev`) if that becomes annoying.
 
+## One-time data imports
+
+### `scripts/import_watch_specs.py` — Watcher's cadence + active state (archiver#150)
+
+Moves `default_schedule_config` and `is_active` off Watcher's `watched_items` onto
+`info_items.watch_spec` / `info_items.watch_active`. The `watcher_client` SDK is the only reader
+of those two fields, and archiver#142 deletes it — this is step 4b's single irreversible action.
+
+```bash
+set -a; . /etc/archiver/.env; [ -f .env ] && . .env; set +a
+uv run python -m scripts.import_watch_specs            # dry run — default, writes nothing
+uv run python -m scripts.import_watch_specs --apply    # write
+```
+
+Ordering, which is the part that matters:
+
+1. **After** `uv run alembic upgrade head` — the columns must exist.
+2. **Again, immediately before** the announcement producer's first publish (archiver#141).
+   Watcher stays authoritative in between and its values can still change, so a snapshot taken
+   only at step 1 would be announced stale. The pass is idempotent, so the re-run is free.
+3. **Before** archiver#142 deletes the SDK. After that the source values are unreadable.
+
+Exit codes: `0` clean · `1` completed with anomalies (read them — a `watcher_item_id` mismatch or
+an unusable `default_schedule_config`) · `2` could not run (Watcher not configured). It commits
+per row, so a transient Watcher failure skips one item rather than discarding the pass.
+
 ## Environment variable reference
 
 **Key variables:**

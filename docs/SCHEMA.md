@@ -34,29 +34,36 @@ see the never-rename rule in `AGENTS.md`.
   `watcher_item_id VARCHAR(50)` — nullable; stores the Watcher-allocated WatchedItem ID once
   provisioned. `NULL` means not yet watched (use "Begin watching" in the dashboard or wait for
   the next `create_info_item` call with Watcher configured).
-  `watch_spec JSONB NOT NULL` (archiver#150) — **scheduling policy**, validated against
-  `src/core/watch_spec_schema/v1.json` and written via `PUT /info-items/{id}/watch-spec`.
-  A *document*, not an entity: there is no `watch_specs` table, and the announcement carries the
-  document resolved so a future reusable-policy table stays an Archiver-internal change.
-  - `active` (required) — `false` is *registered but deliberately paused*: keep the item, stop
-    scheduling. Distinct from revocation, which is an envelope concern on the announcement;
-    collapsing paused into revoked loses the pause on the next reconcile.
-  - `interval` (optional) — a Watcher interval string. **Absent means "the consumer applies its
-    own default"**, which may be a per-domain `default_schedule_config` rather than a global
-    constant, so an absent interval is a real state and never a value to fill in. The schema
-    validates the grammar `^[0-9]+[smhd]$`; the narrower set the dashboard offers lives in
-    `src/dashboard/cadence.py`.
-  - Server default is `{"schema_version": 1, "active": true}` — deliberately no interval, so the
-    migration cannot fabricate a cadence for rows that never had one. Real values arrive from
-    `scripts/import_watch_specs.py`, which reads Watcher over the SDK and is re-run immediately
-    before the announcement producer's first publish.
+  `watch_spec JSONB NOT NULL` + `watch_active BOOLEAN NULL` (archiver#150) — **scheduling
+  policy, split across two columns on purpose.**
+  - **`watch_spec`** is *cadence only*, validated against `src/core/watch_spec_schema/v1.json`
+    and written via `PUT /info-items/{id}/watch-spec` (whole-document replace). A *document*,
+    not an entity: there is no `watch_specs` table, and the announcement carries it resolved so
+    a future reusable-policy table stays an Archiver-internal change.
+    - `schema_version` (required, const 1); `interval` (optional) — a Watcher interval string.
+      **Absent means "the consumer applies its own default"**, which may be a per-domain
+      `default_schedule_config` rather than a global constant, so absence is a real state and
+      never a value to fill in. The schema validates the grammar `^[0-9]+[smhd]$`; the narrower
+      set the dashboard offers lives in `src/dashboard/cadence.py`.
+    - Server default `{"schema_version": 1}` — deliberately no interval, so the migration cannot
+      fabricate a cadence for rows that never had one. Three of the four production WatchedItems
+      carry no per-item cadence at all.
+  - **`watch_active`** is per-item pause state, written via `PUT /info-items/{id}/watch-active`.
+    `true` schedules, `false` is registered-but-paused (keep the item, stop scheduling), and
+    **`NULL` means the registry has no opinion yet** — not yet imported from Watcher. Defaulting
+    it `true` would announce every paused item as unpaused the moment the producer lands.
+  - **Why not one column?** A policy document shared across items by the future reusable-policy
+    table could not carry per-item pause state — pausing one item would pause all of them. And
+    co-core's `RegistryAnnouncementState` types `active` on the announcement envelope beside
+    `revoked`, giving the three-state distinction (revoked / paused / scheduled) a contract-level
+    schema guarantee; nested in an untyped dict it had none. A nested `active` still *validates*
+    on the wire while the envelope reports "no opinion" — `v1.json` rejecting the key is the only
+    thing that catches it, which is why it is closed with `additionalProperties: false`.
+  - Real values arrive from `scripts/import_watch_specs.py`, which reads Watcher over the SDK and
+    is re-run immediately before the announcement producer's first publish.
   - **Boundary:** a WatchSpec is *per-item cadence*. `content.fetch-policy` (cannobserv#285) is
     *per-host spacing* — different key, stream, owner, and consumer. They are not the same knob.
-  **Fetch group invariant:** exactly one URL is fetched (the primary binding's InfoSource URL) and
-  exactly one content-kind is produced (HTML/text or JSON). All specs in the bound InfoSource's
-  `source_specs` list are evaluated against the same fetched bytes (no chaining off primary's
-  extracted output). All specs in a list must share a content-kind family
-  (`{css,xpath,regex,full_page}` ≠ `{jsonpath}`); see `src/core/source_spec_schema/families.py`.
+
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are
