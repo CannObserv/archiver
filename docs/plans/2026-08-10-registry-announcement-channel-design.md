@@ -89,7 +89,21 @@ revoked: bool = False      # tombstone
 
 Conflating those is how a pre-#150 producer un-pauses a paused item: it has no local truth for `active` yet, so any value it states is a guess that clobbers Watcher's. `None` is the honest answer until the import lands, and it is what keeps 4c parallel to 4b.
 
-There is a **fourth state the registry does not announce**: an item paused locally in Watcher as break-glass. Level-triggered reconciliation reverts it on the next announcement — correct by construction, and a real operational change once archiver#142 leaves Archiver's dashboard as the only item-level pause control. Sticky-or-not is **open** — to be settled on archiver#150 and implemented in watcher#254; see "Open questions / risks".
+There is a **fourth state the registry does not announce**: an item paused locally in Watcher as break-glass. Level-triggered reconciliation reverts it on the next announcement — correct by construction, and a real operational change once archiver#142 leaves Archiver's dashboard as the only item-level pause control.
+
+**Settled 2026-08-11: the pause is not sticky.** Reconcile applies `active` whenever `generation > stored`; item-level pause exists in exactly one place, and a Watcher-local pause is reverted. Watcher's break-glass is host-level `domain_suspended`, which reconciliation does not touch because it is mechanism rather than policy.
+
+The decisive point is that this does **not** stop Watcher from stopping. Local backoff and circuit-breaking are legitimate, transient, and already reported through `applied_active` (watcher#264 names them). A runaway item is either failing — backoff covers it — or hammering a host, which `content.fetch-policy` and `domain_suspended` cover. A durable *policy* override would duplicate what the mechanism layer already does, in the service this epic is decoupling from, and would need a second control plane to clear.
+
+The failure modes are asymmetric, which is what decides it. Not-sticky fails only when Archiver is unreachable *and* item-granular stop is needed — rare × rare, with a coarser fallback available. Sticky fails whenever a break-glass pause is set and forgotten, which is every incident that uses it, and leaves a permanently dark item the registry believes is healthy. It also muddies `active: None`: "not scheduling for a reason the registry did not ask for" would have two spellings.
+
+Three conditions come with the choice:
+
+1. **Watcher's item-level pause affordance is removed or 409s** after the cutover. Without that, the cost is not lost capability but silent confusion — an operator pauses out of habit and watches it revert.
+2. **`domain_suspended` is documented as the Watcher-side break-glass** (archiver#142's runbook line), and reconciliation provably leaves it alone.
+3. **`applied_active` keeps reporting transient deviation.** Conflating "the scheduler backed off" with "an operator paused" is what would push a future reader back toward sticky.
+
+Reversible in the cheap direction: a `locally_paused` column plus one `AND` in the scheduler adds stickiness later. The reverse — retiring a second control plane operators have built habits around — is not.
 
 ### WatchSpec — the ownership move (archiver#150)
 
@@ -233,14 +247,14 @@ Settled 2026-08-10; recorded here so the child issues inherit the decision rathe
 
 ## Open questions / risks
 
-The seven original questions were settled on review. One new question is open, deferred to the issues that implement it: **does a Watcher-local break-glass pause survive reconciliation?** Sticky (Watcher-local state, divergence reported via `applied_active`) or not sticky (item-level pause is Archiver-only, break-glass is host-level `domain_suspended`) — settled on archiver#150, implemented in watcher#254. Unstated, it gets decided by however the reconcile loop happens to be written. The rest below is carried risk.
+No open questions remain. The break-glass question raised on the boundary review — does a Watcher-local pause survive reconciliation? — was settled **not sticky** on 2026-08-11; see the fourth-state note above for the reasoning and the three conditions. What follows is carried risk.
 
 - **Observation freshness has exactly one source: Watcher's own claim on `info.watch-status`.** No cross-check exists — if Watcher stamps `last_observed_at` wrongly, the registry records it wrongly, and `docs/SCHEMA.md` should say the column is a reported value rather than a locally-verified one. That is the accepted cost of not deriving it from a second stream; the alternatives were worse (see the tradeoffs).
 - **Coalescing means `last_observed_at` under-reports by up to the republish period.** Safe direction — the registry never claims content is fresher than it is — but any downstream that treats the column as exact freshness rather than a lower bound will be subtly wrong. Document it as a lower bound.
 - **Concurrent mutations to one InfoItem** silently lose an announcement unless the generation bump is an atomic `UPDATE … RETURNING`. The obvious read-modify-write implementation reintroduces exactly the failure the token prevents.
 - **`info.registry` inherits the fact stream's `XTRIM` cap by default** the moment its first delta drains, because the delta path puts the topic in `seen_topics`. Exclusion is a required change, not a tuning knob.
 - **Snapshots do not retry.** One lost to a broker outage is corrected only by the next period — a deliberate asymmetry with the delta path, and one the streams table must state rather than imply.
-- **Break-glass pause is not a registry concept.** After the cutover, an operator's pause applied in Watcher is reverted by the next announcement. Whether that is acceptable depends on the open question above; either way, archiver#142 must land the answer as a runbook line, because after it Archiver's dashboard is the cluster's only item-level pause control.
+- **Break-glass pause is not a registry concept.** After the cutover, an operator's pause applied in Watcher is reverted by the next announcement — accepted, not sticky (above). archiver#142 must land `domain_suspended` as the documented runbook alternative, and watcher#254 must remove or 409 the item-level affordance, or the accepted cost turns into silent confusion.
 - **Archiver becomes a single point of operational dependency for stopping a fetch.** The corollary of the above, and the price of a single control plane. Host-level `domain_suspended` remains Watcher-side and unaffected.
 
 ## Amendments — 2026-08-10 (boundary review)
@@ -258,6 +272,8 @@ Recorded after the review on archiver#150. Nothing in the delivery model changed
 **`interval` is optional and the schema validates a grammar.** Watcher's per-domain `default_schedule_config` is a live fallback layer that a mandatory resolved interval would retire silently, and a pinned four-value enum would fail the import on a legitimate live value. *(`active` was required inside the document at this point; the second amendment block hoists it out.)*
 
 **`applied_interval` added to the return leg.** `applied_active` has no cadence analogue, so the designed fallback was a silent divergence. It also makes the derived `next_due_at` truthful: derive from `applied_interval` where present, falling back to the announced `watch_spec.interval` — deriving from the announcement alone reports a schedule Watcher is not running.
+
+**Break-glass pause settled not sticky** (2026-08-11). Archiver's dashboard is the only item-level pause control after the cutover; `domain_suspended` is the Watcher-side break-glass; `applied_active` keeps carrying transient scheduler deviation. Reasoning and the three conditions are in the fourth-state note above.
 
 **Storage stays JSONB** (archiver#150). Two columns would buy a DB constraint and a queryable "all paused items"; symmetry with the three existing schema modules and the additive growth path won. Free either way, since the resolved document on the wire makes storage shape invisible to consumers — which is the same property that keeps the future `watch_specs` table a zero-consumer-impact change. *(Post-ratification: `active` is the exception — it moves to a sibling `info_items.watch_active` column, because it is not policy. The cadence document stays JSONB.)*
 
