@@ -947,6 +947,52 @@ def _source_revision_observed_event(
     }
 
 
+def _registry_announcement_state(info_item_id: str = "item-r") -> dict:
+    """A full ``registry_announcement`` config/state payload (cannobserv#302, #324).
+
+    ``watch_spec`` is required on a *live* announcement as of co-core v0.9.3 —
+    it joined ``info_source_id`` / ``url`` / ``source_specs`` in the
+    required-unless-revoked set. ``{"schema_version": 1}`` with no ``interval``
+    is the delegation spelling ("consumer applies its own default"), which is
+    what archiver#150's ``DEFAULT_WATCH_SPEC`` stores.
+    """
+    return {
+        "schema_version": 1,
+        "event_type": "registry_announcement",
+        "occurred_at": _OCCURRED_AT,
+        "info_item_id": info_item_id,
+        "generation": 7,
+        "info_source_id": _INFO_SOURCE_ID,
+        "url": "https://example.test/doc",
+        "source_specs": [{"selector": "main"}],
+        "active": True,
+        "watch_spec": {"schema_version": 1},
+        "revoked": False,
+    }
+
+
+def _watch_status_state(info_item_id: str = "item-w") -> dict:
+    """A full ``watch_status`` config/state payload (cannobserv#321).
+
+    The return leg Archiver *consumes* under archiver#151; it is in the union
+    (and so in this guard) because ``payload_from_dict`` dispatches on one table
+    for both directions.
+    """
+    return {
+        "schema_version": 1,
+        "event_type": "watch_status",
+        "occurred_at": _OCCURRED_AT,
+        "info_item_id": info_item_id,
+        "applied_generation": 7,
+        "applied_active": True,
+        "applied_interval": "1d",
+        "last_attempt_at": "2026-07-28T11:59:00+00:00",
+        "last_observed_at": "2026-07-28T11:59:00+00:00",
+        "health": "ok",
+        "revoked": False,
+    }
+
+
 def _fetch_policy_state(host: str = "example.test") -> dict:
     """A full ``fetch_policy`` config/state payload (cannobserv#285)."""
     return {
@@ -985,6 +1031,14 @@ _UNION_CASES = [
         "source_revision_observed",
         f"{_INFO_SOURCE_ID}:{'sha256:' + 'd' * 64}",
     ),
+    # Both config/state streams key on info_item_id:occurred_at, following
+    # fetch_policy — an *occurrence*; the LWW slot is the info_item_id field.
+    (
+        _registry_announcement_state("item-r"),
+        "registry_announcement",
+        f"item-r:{_OCCURRED_AT}",
+    ),
+    (_watch_status_state("item-w"), "watch_status", f"item-w:{_OCCURRED_AT}"),
 ]
 
 
