@@ -2,7 +2,7 @@
 title: Durable registry announcement channel — replace the best-effort Watcher HTTP push
 date: 2026-08-10
 status: approved
-amended: 2026-08-10 — boundary review, then co-core v0.9.1 contract ratification; see "Amendments"
+amended: 2026-08-11 — boundary review, co-core v0.9.1→v0.9.2 ratification, then the `watch_spec` tightening (cannobserv#324, co-core v0.9.3); see "Amendments"
 ---
 
 # Registry announcement channel — design
@@ -19,7 +19,7 @@ Archiver broadcasts **desired registry state** on a new durable stream, `info.re
 
 Because that channel is one-way and the teardown deletes Archiver's only reverse read of Watcher, the design carries a **return leg**: `info.watch-status`, on which Watcher broadcasts the generation it has *applied* plus scheduler state and observation freshness. Archiver tails it, renders the watched-item panel from local state, records `last_observed_at` durably on `info_sources`, and alerts on announced-vs-applied divergence. That is a broadcast fact, not an ack — nothing blocks on it — and it is strictly stronger than the HTTP push ever was, which confirmed receipt and never application. Both directions are then level-triggered, which is the property that makes the whole channel self-healing; leaving the return leg edge-triggered would have reintroduced the lossiness the outbound leg exists to remove.
 
-Two things must move before the channel is complete: **Archiver does not currently own cadence or active/paused state** (no such columns on `info_items`; Watcher owns them and the dashboard round-trips over the SDK), and there is no ordering token on the registry rows. Both are data-ownership work, not payload questions. The generation counter genuinely gates the producer; the WatchSpec migration gates the *teardown* — with `watch_spec` optional on the wire, announcements replace `sync_on_spec_update` before archiver#150 lands, and only the pause/provision push waits on it.
+Two things must move before the channel is complete: **Archiver does not currently own cadence or active/paused state** (no such columns on `info_items`; Watcher owns them and the dashboard round-trips over the SDK), and there is no ordering token on the registry rows. Both are data-ownership work, not payload questions. The generation counter genuinely gates the producer; the WatchSpec migration gates the *teardown* — with `watch_spec` optional on the wire, announcements replace `sync_on_spec_update` before archiver#150 lands, and only the pause/provision push waits on it. *(archiver#150 has since landed. That optionality was the mechanism which decoupled the two, and having served its purpose it was retired in co-core v0.9.3 — cannobserv#324, third amendment block.)*
 
 ## Tradeoffs / alternatives
 
@@ -66,13 +66,15 @@ info_source_id: str | None
 url: str | None
 source_specs: list | None
 active: bool | None        # None = the registry has no opinion yet
-watch_spec: dict | None    # cadence policy only; None = consumer default
+watch_spec: dict | None    # cadence policy only; required unless revoked (cannobserv#324)
 revoked: bool = False      # tombstone
 ```
 
 - **`url` is in scope** — immutable per InfoSource *row*, but mutable at *item* grain via a primary swap, and the grain here is the item.
 - **RepSpecs are out.** Step 5 makes Archiver the replication issuer; Watcher never needs them. `name` / `description` / `owner` / `rep_fields` are out too — no consumer.
 - **`spec_fingerprint` is NOT on the announcement** (amended after cannobserv#302 shipped; an earlier draft of this doc put it here). It is derivable — `source_specs` rides the same payload and `co_core.pure.extract.spec_fingerprint` is deterministic by construction — but the disqualifying problem is that **the field would have had no well-defined value.** A `spec_fingerprint` covers *one* spec, chosen by Watcher's fallback loop at extraction time; the producer cannot know which element will be used. The value would have been `source_specs[0]`'s fingerprint (a lie whenever the fallback advances) or a set-level digest wearing a scalar's name — the second being exactly the hazard `SourceRevisionObservedEvent`'s docstring warns about two lines above the field. The registry-side comparison was always a membership test, not a scalar equality: `spec_fingerprint_index(announced.source_specs)[observed.spec_fingerprint]`.
+
+- **`watch_spec` is required on a live announcement** (cannobserv#324, shipped in co-core `v0.9.3`). The type stays `dict | None` and the requirement lives in the live-entry validator, so a `revoked` tombstone still carries only `info_item_id` + `generation` + `revoked`. The reason is that `null` names a state the sole producer cannot reach — archiver#150 landed `info_items.watch_spec` NOT NULL with a server default, validated against a schema requiring `schema_version`, so the registry always holds a well-formed document. Delegation is expressed *inside* it as an absent `interval`. Two spellings of one intent is where a consumer implements one and not the other, and it makes a producer that drops the field indistinguishable from one that meant to delegate.
 
 **Three announced states, all distinct.** `revoked: true` means gone from the registry (delete the WatchedItem). `active: false` means registered and deliberately paused (keep the row, stop scheduling). `active: true` means schedule. Collapsing paused into revoked loses the pause on the next reconcile.
 
@@ -82,10 +84,12 @@ revoked: bool = False      # tombstone
 2. **`active` was never a policy field.** If the reusable-policy table below ever lands, a document shared across items cannot carry per-item pause state — pausing one item would pause all of them. It is inherently per-item, which is what envelope-level means here.
 3. It lets the two absences carry different rules, which they must:
 
-| Absent field | Means |
+| Absent | Means |
 |---|---|
-| `watch_spec` | apply your own default — Watcher's per-domain `default_schedule_config` stays a live layer |
-| `active` | **the registry has no opinion yet — keep doing what you are doing** |
+| `interval`, inside `watch_spec` | apply your own default — Watcher's per-domain `default_schedule_config` stays a live layer |
+| `active`, on the envelope | **the registry has no opinion yet — keep doing what you are doing** |
+
+*(Pre-#324 the first row read "`watch_spec`" rather than "`interval` inside it". Both spellings meant the same thing, which is why one of them is going away; the semantics are unchanged.)*
 
 Conflating those is how a pre-#150 producer un-pauses a paused item: it has no local truth for `active` yet, so any value it states is a guess that clobbers Watcher's. `None` is the honest answer until the import lands, and it is what keeps 4c parallel to 4b.
 
@@ -290,3 +294,28 @@ cannobserv#302 and #321 shipped as v0.9.1 against the pre-boundary-review text, 
 **`applied_interval` gets the same absence semantics.** `None` means "the consumer's own default is in force" — a reportable state, not a missing value. That is the whole point of the field: an unparseable `watch_spec` diverges on cadence while `applied_active` stays `true`, so without it the drift detector reads clean while the announced policy is ignored.
 
 **One correction back to cannobserv's deltas doc (D4).** Keeping `generation` out of the envelope key is the right call, but the stated reason — that a consumer which missed the delta would also skip its replacement — does not hold: dedup is against keys the consumer has actually seen, and one that missed the delta has no record of that key. The real reason is `FetchPolicyState`'s: an occurrence-shaped key keeps a consumer applying ordinary dedup semantics from being pinned to the first message it ever read.
+
+## Amendment — 2026-08-11 (`watch_spec` tightening — cannobserv#324, ratified)
+
+**Status: ratified and shipped** — cannobserv#324, PR cannobserv#326, tag `v0.9.3` (2026-08-11). Amended in place above: the payload block, the new bullet under it, and the absence table. archiver#141's step 0 pins `co-core>=0.9.3,<0.10`.
+
+**`watch_spec` becomes required on a live announcement.** The field type stays `dict | None = None`; the requirement moves into `_live_announcement_carries_its_state` beside `info_source_id` / `url` / `source_specs`. `interval` stays optional inside the document.
+
+**Why: `null` names a state the sole producer cannot reach.** archiver#150 landed with `info_items.watch_spec` NOT NULL, server default `{"schema_version": 1}`, validated against a schema that requires `schema_version` and forbids unknown keys, on a PUT route that leaves the stored document untouched when validation fails. The registry can only ever hold a well-formed v1 document. The delegation case the optionality served is already carried inside that document as an absent `interval` — which is exactly what `DEFAULT_WATCH_SPEC` is.
+
+So the contract offered two spellings of one intent. Two consequences, the second decisive:
+
+1. **A consumer must implement both branches identically**, which is where one gets implemented and the other does not.
+2. **A producer bug that drops the field is indistinguishable from a deliberate delegation** — and its effect is that every item silently reverts to Watcher's cadence, with nothing raising anywhere. Under the tightening it fails in the outbox's build phase, which dead-letters on the first attempt and stamps a visible `changes_outbox` row. That is the same silent-vs-loud axis the whole channel exists to move.
+
+**The validator, not the field type.** A hard `dict` would force the hourly republish loop to hydrate a cadence document for every dead key — the cost the minimal-tombstone ruling already rejected for `source_specs`.
+
+**The optionality was a sequencing accommodation whose premise has expired.** `v0.9.1` → `v0.9.2` relaxed the field because the required-and-non-empty validator re-imposed archiver#150 as a hard gate on archiver#141. #150 is merged; requiring the document now costs the producer nothing and re-serialises nothing.
+
+**Timing is the constraint, not difficulty.** Config/state streams have no DLQ, so an announcement published under the loose contract and read under the tight one fails validation at the consumer, is dropped with nowhere to land, and leaves the key stale until the next snapshot supersedes it. Nothing had been published to `info.registry` and watcher#254 was unwritten, so the change cost one release and a pin. It landed inside that window. **The floor now matters in the unusual direction:** `0.9.2` will happily build and publish a payload `0.9.3` rejects, so a dev environment or stale lock left behind emits exactly the loose message this exists to prevent.
+
+**The tightening stops at the document.** Requiring `interval` would silently retire Watcher's per-domain `default_schedule_config`, which the boundary review's "`interval` is optional and the schema validates a grammar" amendment exists to protect. "We required the document, why not the field inside it" is the reasoning that arrives later without this context, so the boundary belongs in the co-core field description.
+
+**Unchanged.** `WatchStatusState` is untouched, so 4d and archiver#151 are unaffected. The consumer's must-not-stop-scheduling rule stands — tightening narrows what can arrive, it does not remove the tolerance requirement for a corrupt document. `applied_interval: None` still means "the consumer's own default is in force" and is still not a drift signal on its own: it has to be read against what was announced.
+
+**A second boundary came out of the review and is now in the co-core code:** the validator never checks the document's *contents* — not even `schema_version`. `src/core/watch_spec_schema/v1.json` remains the sole owner of that grammar, and raising at decode on a no-DLQ stream loses the whole message, which is strictly worse than the fallback the contract already mandates. The falsy check is the right depth: it catches *structural* absence (the producer bug) and stops short of *content* validation (the consumer's tolerance obligation).
