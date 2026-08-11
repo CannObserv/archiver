@@ -36,14 +36,19 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from watcher_client import WatcherClient
 
 from src.core.database import get_session_factory
 from src.core.logging import configure_logging, get_logger
 from src.core.models import InfoItem
-from src.core.watch_spec_import import ImportAnomaly, ImportReport, plan_item_import
+from src.core.watch_spec_import import (
+    ImportAnomaly,
+    ImportReport,
+    MappingRow,
+    plan_item_import,
+)
 
 logger = get_logger(__name__)
 
@@ -71,7 +76,22 @@ def format_report(report: ImportReport) -> str:
         f"  unlinked:  {report.unlinked}  (no WatchedItem in Watcher; policy left alone)",
         f"  failed:    {report.failed}  (skipped; row left untouched)",
     ]
+    if report.dry_run and report.mapping:
+        lines.append("")
+        lines.append(f"  {'info_item_id':<28} {'watched_item':<28} {'disposition':<12} policy")
+        for row in report.mapping:
+            spec = "-"
+            if row.watch_spec is not None:
+                spec = str(row.watch_spec.get("interval", "(consumer default)"))
+            active = "-"
+            if row.watch_active is not None:
+                active = "active" if row.watch_active else "paused"
+            lines.append(
+                f"  {row.info_item_id:<28} {row.wi_id or '-':<28} "
+                f"{row.disposition:<12} {spec} / {active}"
+            )
     if report.anomalies:
+        lines.append("")
         lines.append(f"  ANOMALIES: {len(report.anomalies)}")
         lines.extend(f"    - {a.info_item_id}: {a.reason}" for a in report.anomalies)
     return "\n".join(lines)
@@ -89,31 +109,52 @@ async def import_watch_specs(
     ``get_by_info_item_id``), never from Archiver's ``watcher_item_id``: that
     column drifts, and a stale value would silently drop a row from the import.
 
-    **Commits per row.** One unreachable item, or one whose values are unusable,
-    is reported and skipped without discarding the rows already imported — the
-    pass is re-runnable, so partial progress is strictly better than none.
+    **Commits per row, and isolates both halves.** A failed lookup *and* a failed
+    write are each reported and skipped without discarding the rows already
+    imported — the pass is re-runnable, so partial progress is strictly better
+    than none. An unmatched item is an anomaly, not a quiet skip.
     """
     report = ImportReport(dry_run=dry_run)
-    items = list((await session.execute(select(InfoItem))).scalars().all())
+    # Plain rows, not ORM objects: a rollback mid-pass expires every instance in
+    # the identity map, and the next attribute read would then attempt implicit
+    # IO from sync context (MissingGreenlet). Snapshotting up front also keeps
+    # the write a single UPDATE per row.
+    rows = (
+        await session.execute(
+            select(
+                InfoItem.info_item_id,
+                InfoItem.watcher_item_id,
+                InfoItem.watch_spec,
+                InfoItem.watch_active,
+            )
+        )
+    ).all()
 
-    for item in items:
-        item_id = str(item.info_item_id)
+    for info_item_id, watcher_item_id, watch_spec, watch_active in rows:
+        item_id = str(info_item_id)
         try:
             wi = await watcher.get_by_info_item_id(item_id)
         except Exception as e:  # noqa: BLE001 — one bad row must not end the pass
             report.failed += 1
             report.anomalies.append(ImportAnomaly(item_id, f"Watcher lookup failed: {e!r}"))
+            report.mapping.append(MappingRow(item_id, None, "failed", None, None))
             logger.exception("watch policy import: Watcher lookup failed", extra={"item": item_id})
             continue
 
         if wi is None:
+            # An unmatched row is a finding, not a quiet skip: the acceptance
+            # criterion is that every registered item is linked.
             report.unlinked += 1
+            report.anomalies.append(
+                ImportAnomaly(item_id, "no WatchedItem in Watcher for this InfoItem")
+            )
+            report.mapping.append(MappingRow(item_id, None, "unlinked", None, None))
             continue
 
         plan = plan_item_import(
-            watcher_item_id=item.watcher_item_id,
-            watch_spec=item.watch_spec,
-            watch_active=item.watch_active,
+            watcher_item_id=watcher_item_id,
+            watch_spec=watch_spec,
+            watch_active=watch_active,
             wi_id=str(wi.id),
             wi_is_active=wi.is_active,
             wi_schedule_config=wi.default_schedule_config,
@@ -123,17 +164,43 @@ async def import_watch_specs(
         if plan.error:
             report.failed += 1
             report.anomalies.append(ImportAnomaly(item_id, plan.error))
+            report.mapping.append(MappingRow(item_id, str(wi.id), "failed", None, None))
             continue
+
+        row = MappingRow(
+            item_id,
+            str(wi.id),
+            "imported" if plan.changed else "unchanged",
+            plan.watch_spec,
+            plan.watch_active,
+        )
         if not plan.changed:
             report.unchanged += 1
+            report.mapping.append(row)
+            continue
+
+        if dry_run:
+            report.imported += 1
+            report.mapping.append(row)
+            continue
+
+        try:
+            await session.execute(
+                update(InfoItem)
+                .where(InfoItem.info_item_id == info_item_id)
+                .values(watch_spec=plan.watch_spec, watch_active=plan.watch_active)
+            )
+            await session.commit()
+        except Exception as e:  # noqa: BLE001 — a failed write is one row, not the pass
+            await session.rollback()
+            report.failed += 1
+            report.anomalies.append(ImportAnomaly(item_id, f"write failed: {e!r}"))
+            report.mapping.append(MappingRow(item_id, str(wi.id), "failed", None, None))
+            logger.exception("watch policy import: write failed", extra={"item": item_id})
             continue
 
         report.imported += 1
-        if dry_run:
-            continue
-        item.watch_spec = plan.watch_spec
-        item.watch_active = plan.watch_active
-        await session.commit()
+        report.mapping.append(row)
 
     logger.info(
         "watch policy import complete",

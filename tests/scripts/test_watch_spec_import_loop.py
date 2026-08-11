@@ -220,3 +220,64 @@ async def test_a_failing_lookup_skips_one_row_without_ending_the_pass(session):
     assert report.imported == 1
     assert report.failed == 1
     assert any("watcher 503" in a.reason for a in report.anomalies)
+
+
+@pytest.mark.asyncio
+async def test_a_failing_commit_skips_one_row_without_ending_the_pass(session, monkeypatch):
+    """The other half of per-row isolation: the write can fail too.
+
+    A deadlock or dropped connection on one row must not abandon the report and
+    the rows behind it.
+    """
+    first = await _item(session, name="first")
+    second = await _item(session, name="second")
+    watcher = _watcher(
+        **{
+            str(first.info_item_id): _wi(schedule_config={"interval": "1h"}),
+            str(second.info_item_id): _wi(schedule_config={"interval": "6h"}),
+        }
+    )
+
+    real_commit = session.commit
+    calls = {"n": 0}
+
+    async def flaky_commit():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("deadlock detected")
+        return await real_commit()
+
+    monkeypatch.setattr(session, "commit", flaky_commit)
+
+    report = await import_watch_specs(session, watcher)
+
+    assert report.failed == 1
+    assert report.imported == 1
+    assert any("deadlock detected" in a.reason for a in report.anomalies)
+
+
+@pytest.mark.asyncio
+async def test_an_unlinked_item_is_an_anomaly_so_the_run_fails_loudly(session):
+    """ "Assert 4/4 linked" — an item Watcher does not know about is a finding,
+    not a quietly-skipped row."""
+    await _item(session)
+    watcher = _watcher()
+
+    report = await import_watch_specs(session, watcher)
+
+    assert report.unlinked == 1
+    assert any("no WatchedItem" in a.reason for a in report.anomalies)
+
+
+@pytest.mark.asyncio
+async def test_the_report_carries_a_row_per_item_for_the_dry_run_table(session):
+    item = await _item(session)
+    watcher = _watcher(**{str(item.info_item_id): _wi(schedule_config={"interval": "7d"})})
+
+    report = await import_watch_specs(session, watcher, dry_run=True)
+
+    row = next(r for r in report.mapping if r.info_item_id == str(item.info_item_id))
+    assert row.disposition == "imported"
+    assert row.watch_spec == {"schema_version": 1, "interval": "7d"}
+    assert row.watch_active is True
+    assert row.wi_id == "01HZZWATCHER00000000000001"

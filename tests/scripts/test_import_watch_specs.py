@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from scripts.import_watch_specs import format_report, parse_args, run
-from src.core.watch_spec_import import ImportAnomaly, ImportReport
+from src.core.watch_spec_import import ImportAnomaly, ImportReport, MappingRow
 
 
 def test_dry_run_is_the_default_so_a_bare_invocation_cannot_write():
@@ -60,3 +60,42 @@ async def test_run_exits_2_when_watcher_is_not_configured():
     """No SDK credentials means there is nothing to import from — not a clean run."""
     with patch("scripts.import_watch_specs._build_watcher", AsyncMock(return_value=None)):
         assert await run(dry_run=True) == 2
+
+
+def test_format_report_prints_the_mapping_table_in_a_dry_run():
+    """ "Verified against the live WatchedItems" needs the per-item rows, not counts."""
+    out = format_report(
+        ImportReport(
+            dry_run=True,
+            imported=1,
+            mapping=[
+                MappingRow(
+                    info_item_id="01ABC",
+                    wi_id="01WI",
+                    disposition="imported",
+                    watch_spec={"schema_version": 1, "interval": "1d"},
+                    watch_active=False,
+                )
+            ],
+        )
+    )
+    assert "01ABC" in out
+    assert "01WI" in out
+    assert "1d" in out
+    assert "imported" in out
+
+
+@pytest.mark.asyncio
+async def test_run_exits_0_on_a_clean_report():
+    with (
+        patch(
+            "scripts.import_watch_specs.import_watch_specs",
+            AsyncMock(return_value=ImportReport(unchanged=4)),
+        ),
+        patch(
+            "scripts.import_watch_specs._build_watcher",
+            AsyncMock(return_value=MagicMock(aclose=AsyncMock())),
+        ),
+        patch("scripts.import_watch_specs._session_scope"),
+    ):
+        assert await run(dry_run=False) == 0

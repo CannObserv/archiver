@@ -26,6 +26,22 @@ class ImportAnomaly:
     reason: str
 
 
+@dataclass(frozen=True)
+class MappingRow:
+    """One item's before/after, for the table a dry run prints.
+
+    The acceptance criterion is "imported values verified against the live
+    WatchedItems", which counts alone cannot support.
+    """
+
+    info_item_id: str
+    wi_id: str | None
+    disposition: str
+    """imported | unchanged | unlinked | failed."""
+    watch_spec: dict | None
+    watch_active: bool | None
+
+
 @dataclass
 class ImportReport:
     """Outcome of one import pass."""
@@ -40,6 +56,8 @@ class ImportReport:
     failed: int = 0
     """Rows skipped — Watcher unreachable for them, or its values unusable."""
     anomalies: list[ImportAnomaly] = field(default_factory=list)
+    mapping: list[MappingRow] = field(default_factory=list)
+    """One row per InfoItem visited, in visit order."""
 
 
 @dataclass(frozen=True)
@@ -47,7 +65,7 @@ class ItemPlan:
     """What one row should become, and what to tell the operator about it."""
 
     watch_spec: dict
-    watch_active: bool
+    watch_active: bool | None
     changed: bool
     anomaly: str | None = None
     """Reported, but the plan still applies — e.g. a stale ``watcher_item_id``."""
@@ -105,7 +123,7 @@ def plan_item_import(
     if not ok:
         return ItemPlan(
             watch_spec=watch_spec,
-            watch_active=bool(watch_active),
+            watch_active=watch_active,
             changed=False,
             error=(
                 f"Watcher's schedule_config {wi_schedule_config!r} does not produce a "

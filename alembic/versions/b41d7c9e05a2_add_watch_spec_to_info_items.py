@@ -26,6 +26,14 @@ Real values arrive from ``scripts/import_watch_specs.py``, which reads Watcher
 over the SDK and is re-run immediately before the announcement producer
 publishes.
 
+**Amended in place** on 2026-08-11 (unmerged branch, no deployed state to
+preserve): ``active`` moved out of the document into ``watch_active``, and the
+``watch_spec`` default lost its ``"active": true`` key. A database that already
+applied the *earlier* form of this revision will not pick the change up —
+alembic will not re-run a revision it has stamped. Re-apply it explicitly::
+
+    uv run alembic downgrade 3f2a17c4be90 && uv run alembic upgrade head
+
 Revision ID: b41d7c9e05a2
 Revises: 3f2a17c4be90
 Create Date: 2026-08-10 21:30:00.000000

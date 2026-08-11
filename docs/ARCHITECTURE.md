@@ -22,6 +22,8 @@ src/core/                      Domain logic
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
   rep_fields_schema/           rep_fields meta-schema + validator
+  watch_spec_schema/           WatchSpec (cadence policy) v1 + validator. Cadence
+                               only — pause state is info_items.watch_active
   changes/                     Two background asyncio tasks and their shared
                                pacing: publisher.py drains changes_outbox to
                                info.changes; consumer.py ingests
@@ -64,6 +66,10 @@ src/core/                      Domain logic
   database.py                  Lazy async engine + async_sessionmaker singletons
                                (get_database_url / get_engine /
                                get_session_factory / reset_engine)
+  watch_spec_import.py         Pure mapping from a WatchedItem's cadence + active
+                               state onto the two registry columns. Owns no
+                               session and no transaction; the loop and the
+                               commits live in scripts/import_watch_specs.py
   watcher_provisioning.py      Best-effort Watcher provisioning helpers, called
                                post-commit from routes: provision_on_create,
                                sync_on_source_swap, sync_on_spec_update. Never
