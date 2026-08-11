@@ -690,6 +690,47 @@ async def test_build_phase_last_error_names_co_core_anomaly(session_factory, pub
 
 
 @pytest.mark.asyncio
+async def test_build_phase_last_error_carries_the_underlying_cause(
+    session_factory, publisher, fake_redis
+):
+    """``last_error`` must carry co-core's *remedy* text, not just the wrapper.
+
+    ``payload_from_dict`` raises a ``BusMessageAnomaly`` whose own message names
+    only the event_type — the sentence saying which field is wrong and how to fix
+    it lives on the chained ``__cause__`` (a pydantic ``ValidationError``). A bare
+    ``repr(exc)`` is 123 characters of "has a malformed payload" and discards it.
+
+    That matters because ``last_error`` on a dead-lettered row is the *entire*
+    diagnostic an operator gets: the build phase is pure, so there is no retry to
+    observe and no stream entry to inspect. cannobserv#324 wrote a remedy string
+    for exactly this read path ("to delegate to the consumer default, send
+    {"schema_version": 1} with no "interval""); dropping the cause makes the
+    loud-failure guarantee that tightening bought degrade to "something is wrong".
+    """
+    live_missing_watch_spec = {
+        "schema_version": 1,
+        "event_type": "registry_announcement",
+        "occurred_at": _OCCURRED_AT,
+        "info_item_id": "item-nospec",
+        "generation": 1,
+        "info_source_id": _INFO_SOURCE_ID,
+        "url": "https://example.test/doc",
+        "source_specs": [{"selector": "main"}],
+    }
+    poison = await _insert_row(session_factory, payload=live_missing_watch_spec)
+
+    assert await drain_once(session_factory=session_factory, publisher=publisher) == 0
+
+    async with session_factory() as s:
+        row = await s.get(ChangesOutboxRow, poison.id)
+    assert row.dead_lettered_at is not None
+    # The wrapper type is still named (test above pins that contract) ...
+    assert BusMessageMalformedPayloadError.__name__ in row.last_error
+    # ... and the cause's remedy text survives to the row an operator reads.
+    assert "watch_spec" in row.last_error
+
+
+@pytest.mark.asyncio
 async def test_transient_failure_not_dead_lettered(session_factory):
     """A transient publish failure (Redis down) must NOT dead-letter — the row
     stays live and is retried next drain (only deterministic poison is retired)."""
