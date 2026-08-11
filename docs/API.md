@@ -69,7 +69,8 @@ home** (archiver#141): "gone from the registry" is announced as a `revoked` tomb
 written in the deletion's own transaction, which raw SQL cannot do — and the periodic full republish
 does not repair a missed one, since absence-from-a-full-set is deliberately not the delete signal.
 Until watcher#254 consumes tombstones, nothing tells Watcher; remove the orphaned WatchedItem there
-by hand.
+by hand. Deleting an item whose `watcher_item_id` is set logs a WARNING naming both IDs, so the
+cleanup is discoverable from journald rather than only from this paragraph.
 
 `PUT /info-items/{id}/watch-spec` accepts `{document}` and **replaces** the cadence document whole
 — it is not a merge, because omitting `interval` is the only way to say "the consumer applies its
@@ -168,7 +169,8 @@ Field mapping, and the two traps in it:
 
 **The `spec_fingerprint` comparison.** At ingest the value is looked up in an index of the
 InfoSource's own specs, built with co-core's shared derivation
-(`co_core.pure.extract.spec_fingerprint_index`, cannobserv#309, co-core ≥0.8.1). The outcome lands
+(`co_core.pure.extract.spec_fingerprint_index`, cannobserv#309, since co-core 0.8.1 — the
+current floor is `pyproject.toml`'s, not this line). The outcome lands
 in `spec_match` / `spec_position` (see [docs/SCHEMA.md](SCHEMA.md) — they track the *most recent*
 observation, refreshed on re-observation) and is **never** a rejection —
 archiver#140 makes spec delivery eventually consistent, so a producer one announcement behind is

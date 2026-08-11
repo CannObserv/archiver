@@ -73,7 +73,8 @@ see the never-rename rule in `AGENTS.md`.
   item's bindings and rep-spec assignments (both FKs are `ON DELETE CASCADE`); the InfoSource
   and its SourceRevisions survive, since the physical layer is shared and `source_revisions`
   keys on `info_source_id`. **Until watcher#254 consumes tombstones, nothing tells Watcher** —
-  remove the orphaned WatchedItem there by hand.
+  remove the orphaned WatchedItem there by hand. The route logs a WARNING naming both IDs when the
+  deleted item had a `watcher_item_id`, so the pending cleanup shows up in journald.
 
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`

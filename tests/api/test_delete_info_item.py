@@ -21,17 +21,14 @@ keys on ``info_source_id``, and its ``RESTRICT`` never sees an item delete.
 """
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import text
 from ulid import ULID
 
-from src.core.models import (
-    InfoItem,
-    InfoItemRepSpec,
-    InfoItemSource,
-    RepSpec,
-    SourceRevision,
-)
+import src.api.routes.info_items as info_items_routes
+from src.core.models import InfoItem, InfoItemRepSpec, RepSpec, SourceRevision
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -70,6 +67,26 @@ async def _bind(client, item_id: str, source_id: str) -> None:
     assert resp.status_code == 201, resp.text
 
 
+async def _count_bindings(session, item_id: str) -> int:
+    """Row count straight from SQL — the cascade is a database rule, so the
+    assertion has to reach the database to mean anything."""
+    return (
+        await session.execute(
+            text("select count(*) from information.info_item_sources where info_item_id = :i"),
+            {"i": item_id},
+        )
+    ).scalar_one()
+
+
+async def _count_rep_spec_assignments(session, item_id: str) -> int:
+    return (
+        await session.execute(
+            text("select count(*) from information.info_item_rep_specs where info_item_id = :i"),
+            {"i": item_id},
+        )
+    ).scalar_one()
+
+
 @pytest.mark.asyncio
 async def test_delete_removes_the_item(client):
     item_id = await _make_item(client)
@@ -91,8 +108,10 @@ async def test_delete_cascades_the_item_s_bindings(client, session):
     deleted = await client.delete(f"/api/v1/info-items/{item_id}", headers=HEADERS)
     assert deleted.status_code == 204
 
-    binding = await session.get(InfoItemSource, (ULID.from_str(item_id), ULID.from_str(source_id)))
-    assert binding is None
+    # Count in SQL rather than session.get: the fixture shares one session with the
+    # app under expire_on_commit=False, so an ORM lookup can answer from the
+    # identity map and never reach the database-level cascade (CR round 1, #7).
+    assert await _count_bindings(session, item_id) == 0
 
 
 @pytest.mark.asyncio
@@ -121,15 +140,14 @@ async def test_delete_cascades_the_item_s_rep_spec_assignments(client, session):
     )
     session.add(assignment)
     await session.commit()
-    assignment_id = assignment.id
 
     deleted = await client.delete(f"/api/v1/info-items/{item_id}", headers=HEADERS)
     assert deleted.status_code == 204
 
-    # Drop the identity map: the assignment was created in *this* session, so a
-    # cached instance would mask the database-level ON DELETE CASCADE.
+    assert await _count_rep_spec_assignments(session, item_id) == 0
+    # The RepSpec itself survives — reusable across items, document frozen once
+    # assigned. Expunge first so this reads the database, not the identity map.
     session.expunge_all()
-    assert await session.get(InfoItemRepSpec, assignment_id) is None
     assert await session.get(RepSpec, rep_spec.rep_spec_id) is not None
 
 
@@ -182,10 +200,71 @@ async def test_delete_rejects_a_malformed_ulid(client):
 
 
 @pytest.mark.asyncio
-async def test_delete_requires_an_api_key(client, session):
+async def test_delete_without_a_key_is_403_not_401(client, session):
+    """Absent header is 403, unmatched key is 401 — the two are not interchangeable.
+
+    ``require_api_key`` is deterministic about which it raises, and SDK consumers
+    switch on the status, so a swapped pair is a contract change. Pinning both
+    branches is what makes that visible (CR round 1, finding 3).
+    """
     item_id = await _make_item(client)
 
     response = await client.delete(f"/api/v1/info-items/{item_id}")
-    assert response.status_code in (401, 403)
+    assert response.status_code == 403
 
     assert await session.get(InfoItem, ULID.from_str(item_id)) is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_with_an_unknown_api_key_is_401(client, session):
+    item_id = await _make_item(client)
+
+    response = await client.delete(
+        f"/api/v1/info-items/{item_id}", headers={"X-API-Key": "not-a-real-key"}
+    )
+    assert response.status_code == 401
+
+    assert await session.get(InfoItem, ULID.from_str(item_id)) is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_warns_when_the_item_still_has_a_watcher_link(client, session, monkeypatch):
+    """An orphaned WatchedItem gets a log line, not just a docs paragraph.
+
+    Nothing tells Watcher until watcher#254 consumes tombstones, so the deleted
+    item's WatchedItem keeps fetching until someone removes it by hand. Prose in
+    SCHEMA.md is the right *record* of an accepted gap; it is not a signal the
+    operator who caused it will see (CR round 1, finding 2).
+
+    Spies the module logger rather than using caplog — ``configure_logging()``
+    replaces ``root.handlers``, which defeats pytest's capture handler. Same
+    reason as ``tests/core/test_watcher_provisioning.py``.
+    """
+    item_id = await _make_item(client)
+    item = await session.get(InfoItem, ULID.from_str(item_id))
+    item.watcher_item_id = "watched-123"
+    await session.commit()
+
+    spy = MagicMock()
+    monkeypatch.setattr(info_items_routes.logger, "warning", spy)
+
+    deleted = await client.delete(f"/api/v1/info-items/{item_id}", headers=HEADERS)
+    assert deleted.status_code == 204
+
+    spy.assert_called_once()
+    assert spy.call_args.kwargs["extra"]["watcher_item_id"] == "watched-123"
+    assert spy.call_args.kwargs["extra"]["info_item_id"] == item_id
+
+
+@pytest.mark.asyncio
+async def test_delete_of_an_unwatched_item_is_quiet(client, monkeypatch):
+    """No warning when there is no orphan — otherwise the signal is noise."""
+    item_id = await _make_item(client)
+
+    spy = MagicMock()
+    monkeypatch.setattr(info_items_routes.logger, "warning", spy)
+
+    deleted = await client.delete(f"/api/v1/info-items/{item_id}", headers=HEADERS)
+    assert deleted.status_code == 204
+
+    spy.assert_not_called()

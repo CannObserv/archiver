@@ -26,7 +26,7 @@ That is a problem specifically because of the announcement channel this issue bu
 
 **Cascade scope.** The item's bindings and rep-spec assignments go with it — both FKs are `ON DELETE CASCADE`. The InfoSource and its SourceRevisions do not: an InfoSource can be the active primary for several InfoItems, and `source_revisions` keys on `info_source_id`, so its `RESTRICT` never sees an item delete. 404 on an already-deleted item rather than a silent 204 — an operator who deletes the wrong ULID twice should learn the second call did nothing.
 
-**Known gap.** Nothing tells Watcher. The Watcher SDK has no delete, and adding one would be a new HTTP push in the direction this epic is removing — the announcement is the designed channel. Until watcher#254 consumes tombstones, a deleted InfoItem's WatchedItem must be removed in Watcher by hand.
+**Known gap.** Nothing tells Watcher. The Watcher SDK has no delete, and adding one would be a new HTTP push in the direction this epic is removing — the announcement is the designed channel. Until watcher#254 consumes tombstones, a deleted InfoItem's WatchedItem must be removed in Watcher by hand. Deleting an item whose `watcher_item_id` is set logs a WARNING naming both IDs, so the pending cleanup is discoverable from journald rather than only from the docs.
 
 [service] **co-core pinned to `>=0.9.3,<0.10`** (archiver#141 step 0, cannobserv#324). Five minors in one jump from `0.8.1`; additive on every surface Archiver touches. The floor matters in the unusual direction: `0.9.2` will happily build and publish a `registry_announcement` that `0.9.3` rejects, and `info.registry` is a config/state stream with **no DLQ**, so a loose message read by a tight consumer is dropped with nowhere to land.
 

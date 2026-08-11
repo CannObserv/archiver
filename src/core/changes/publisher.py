@@ -39,6 +39,7 @@ from src.core.changes.backoff import (
     ERROR_LOG_EVERY,
     error_backoff_seconds,
 )
+from src.core.changes.diagnostics import error_text
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow
 
@@ -181,32 +182,6 @@ def resolve_stream_maxlen(raw: str | None) -> int | None:
     return value if value > 0 else None
 
 
-def _error_text(exc: BaseException) -> str:
-    """Render ``exc`` for ``last_error``, following the ``__cause__`` chain.
-
-    ``repr(exc)`` alone loses the diagnosis. co-core's ``BusMessageAnomaly``
-    wrappers name only the event_type — the sentence saying *which field* is wrong
-    and how to fix it lives on the chained pydantic ``ValidationError``. For a
-    build-phase failure ``last_error`` is the entire diagnostic an operator gets:
-    the phase is pure, so there is no retry to watch and no stream entry to
-    inspect, and the row is terminal by the time anyone looks.
-
-    cannobserv#324 is the worked example — a live ``registry_announcement``
-    missing ``watch_spec`` reprs as 123 characters of "has a malformed payload",
-    while the cause names the field *and* the remedy. Chained, not replaced: the
-    wrapper type is a contract downstream ``last_error`` greps rely on
-    (``test_build_phase_last_error_names_co_core_anomaly``).
-    """
-    parts = [repr(exc)]
-    seen = {id(exc)}
-    cause = exc.__cause__
-    while cause is not None and id(cause) not in seen:
-        seen.add(id(cause))
-        parts.append(f"caused by {type(cause).__name__}: {cause}")
-        cause = cause.__cause__
-    return " | ".join(parts)
-
-
 def _dead_letter(row: ChangesOutboxRow, exc: Exception, *, reason: str) -> None:
     """Move ``row`` to its terminal (dead-lettered) state — archiver#107.
 
@@ -217,7 +192,8 @@ def _dead_letter(row: ChangesOutboxRow, exc: Exception, *, reason: str) -> None:
     the caller owns that counter (it is incremented on the failing branch before
     this is called).
     """
-    row.last_error = _error_text(exc)[:1000]
+    rendered = error_text(exc)
+    row.last_error = rendered[:1000]
     row.dead_lettered_at = datetime.now(UTC)
     event_type = row.payload.get("event_type") if isinstance(row.payload, dict) else None
     logger.error(
@@ -228,7 +204,10 @@ def _dead_letter(row: ChangesOutboxRow, exc: Exception, *, reason: str) -> None:
             "event_type": event_type,
             "reason": reason,
             "publish_attempts": row.publish_attempts,
-            "error": _error_text(exc),
+            # Kept alongside exc_info deliberately: this is the one-line, greppable
+            # form that matches what landed in last_error, where exc_info is the
+            # multi-line traceback. Same content, two different read paths.
+            "error": rendered,
         },
         # The chain is truncated at 1000 chars on the row; the log keeps the
         # full traceback so a poison row stays diagnosable from journald alone.
@@ -317,7 +296,7 @@ async def drain_once(
                 if not transient and row.publish_attempts >= MAX_PUBLISH_ATTEMPTS:
                     _dead_letter(row, exc, reason="attempts_exhausted")
                 else:
-                    row.last_error = _error_text(exc)[:1000]
+                    row.last_error = error_text(exc)[:1000]
                     logger.warning(
                         "Failed to publish outbox row",
                         extra={
