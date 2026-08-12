@@ -7,18 +7,37 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     watched_item_id: str,
+    *,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> dict[str, Any]:
+
+    params: dict[str, Any] = {}
+
+    json_event_type: list[str] | Unset = UNSET
+    if not isinstance(event_type, Unset):
+        json_event_type = event_type
+
+    params["event_type"] = json_event_type
+
+    params["page"] = page
+
+    params["page_size"] = page_size
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/watched-items/{watched_item_id}".format(
             watched_item_id=quote(str(watched_item_id), safe=""),
         ),
+        "params": params,
     }
 
     return _kwargs
@@ -57,6 +76,9 @@ def sync_detailed(
     watched_item_id: str,
     *,
     client: AuthenticatedClient | Client,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> Response[Any | HTTPValidationError]:
     """Watched Item Detail Page
 
@@ -64,6 +86,9 @@ def sync_detailed(
 
     Args:
         watched_item_id (str):
+        event_type (list[str] | Unset):
+        page (int | Unset):  Default: 1.
+        page_size (int | Unset):  Default: 25.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -75,6 +100,9 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         watched_item_id=watched_item_id,
+        event_type=event_type,
+        page=page,
+        page_size=page_size,
     )
 
     response = client.get_httpx_client().request(
@@ -88,6 +116,9 @@ def sync(
     watched_item_id: str,
     *,
     client: AuthenticatedClient | Client,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> Any | HTTPValidationError | None:
     """Watched Item Detail Page
 
@@ -95,6 +126,9 @@ def sync(
 
     Args:
         watched_item_id (str):
+        event_type (list[str] | Unset):
+        page (int | Unset):  Default: 1.
+        page_size (int | Unset):  Default: 25.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -107,6 +141,9 @@ def sync(
     return sync_detailed(
         watched_item_id=watched_item_id,
         client=client,
+        event_type=event_type,
+        page=page,
+        page_size=page_size,
     ).parsed
 
 
@@ -114,6 +151,9 @@ async def asyncio_detailed(
     watched_item_id: str,
     *,
     client: AuthenticatedClient | Client,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> Response[Any | HTTPValidationError]:
     """Watched Item Detail Page
 
@@ -121,6 +161,9 @@ async def asyncio_detailed(
 
     Args:
         watched_item_id (str):
+        event_type (list[str] | Unset):
+        page (int | Unset):  Default: 1.
+        page_size (int | Unset):  Default: 25.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -132,6 +175,9 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         watched_item_id=watched_item_id,
+        event_type=event_type,
+        page=page,
+        page_size=page_size,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -143,6 +189,9 @@ async def asyncio(
     watched_item_id: str,
     *,
     client: AuthenticatedClient | Client,
+    event_type: list[str] | Unset = UNSET,
+    page: int | Unset = 1,
+    page_size: int | Unset = 25,
 ) -> Any | HTTPValidationError | None:
     """Watched Item Detail Page
 
@@ -150,6 +199,9 @@ async def asyncio(
 
     Args:
         watched_item_id (str):
+        event_type (list[str] | Unset):
+        page (int | Unset):  Default: 1.
+        page_size (int | Unset):  Default: 25.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -163,5 +215,8 @@ async def asyncio(
         await asyncio_detailed(
             watched_item_id=watched_item_id,
             client=client,
+            event_type=event_type,
+            page=page,
+            page_size=page_size,
         )
     ).parsed

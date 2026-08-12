@@ -14,9 +14,6 @@ from .body_domain_inline_update_domains_name_post import BodyDomainInlineUpdateD
 from .body_domain_toggle_active_domains_name_toggle_active_post import (
     BodyDomainToggleActiveDomainsNameToggleActivePost,
 )
-from .body_watched_item_create_submit_watched_items_new_post import (
-    BodyWatchedItemCreateSubmitWatchedItemsNewPost,
-)
 from .body_watched_item_field_update_watched_items_watched_item_id_field_field_name_post import (
     BodyWatchedItemFieldUpdateWatchedItemsWatchedItemIdFieldFieldNamePost,
 )
@@ -103,7 +100,6 @@ __all__ = (
     "BodyDomainDefaultScheduleConfigUpdateDomainsNameDefaultScheduleConfigPost",
     "BodyDomainInlineUpdateDomainsNamePost",
     "BodyDomainToggleActiveDomainsNameToggleActivePost",
-    "BodyWatchedItemCreateSubmitWatchedItemsNewPost",
     "BodyWatchedItemFieldUpdateWatchedItemsWatchedItemIdFieldFieldNamePost",
     "BodyWatchedItemTagAddWatchedItemsWatchedItemIdTagsPost",
     "BodyWatchedItemTemplateCreateWatchedItemsWatchedItemIdTemplatesPost",
