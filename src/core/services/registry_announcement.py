@@ -9,7 +9,9 @@ no orphaned announcement. Roughly sixteen mutation sites across the API and
 dashboard call in here; hand-building the payload at each would drift.
 
 **The live/revoked/skip rule.** An item with an active primary binding
-announces live. Without one it announces ``revoked`` *if it was ever announced*
+announces live — provided the source carries non-empty ``source_specs``, which
+co-core's live-entry validator requires. Otherwise it announces ``revoked`` *if
+it was ever announced*
 — skipping would leave a consumer fetching the old URL forever, which is the
 drift bug this channel exists to remove; a later re-binding announces live at a
 higher generation and the consumer resurrects the key (watcher#254 tests
@@ -98,7 +100,12 @@ async def announce_info_item(session: AsyncSession, info_item_id: ULID) -> None:
     ).scalar_one()
     source = await _active_source(session, info_item_id)
 
-    if source is None:
+    # Announceable-as-live needs non-empty source_specs too: co-core's validator
+    # refuses a live announcement with an empty list ("nothing to reconcile
+    # against"), so an item bound to a spec-less source follows the same rule as
+    # an unbound one. The spec edit that later fills the list fans out through
+    # announce_for_info_source and resurrects the key at a higher generation.
+    if source is None or not source.source_specs:
         if generation == 1:
             # Never announced: no consumer knows the key. The bump is kept —
             # harmless, and un-bumping would need a second UPDATE racing the

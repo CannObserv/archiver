@@ -40,6 +40,10 @@ from src.core.models import (
     RepSpec,
 )
 from src.core.rep_fields_schema.validator import validate_rep_fields_against_spec
+from src.core.services.registry_announcement import (
+    announce_info_item,
+    announce_info_item_revoked,
+)
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError as AssignInfoItemNotFoundError,
 )
@@ -187,6 +191,9 @@ async def create_info_item(
         new_rep_specs.append(airs)
 
     await session.flush()
+    # In the same transaction as the create: a bound item announces live; a
+    # bare one is skipped by the service (never announced, nothing to revoke).
+    await announce_info_item(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)
 
@@ -414,6 +421,7 @@ async def add_info_source(
     )
     session.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
 
+    await announce_info_item(session, item_ulid)
     await session.commit()
 
     # Best-effort: sync new URL + specs to Watcher
@@ -473,6 +481,9 @@ async def deactivate_info_source_binding(
     except BindingNotFoundError as e:
         raise_envelope(404, "lookup", "Active binding not found", source_exc=e)
 
+    # Announces revoked: the item now has no active primary, and silence would
+    # leave the consumer fetching the retired URL until the next mutation.
+    await announce_info_item(session, item_ulid)
     await session.commit()
     return info_item_source_to_out(binding)
 
@@ -727,6 +738,9 @@ async def delete_info_item(
     """
     item = await _resolve_or_404(session, info_item_id)
     watcher_item_id = item.watcher_item_id
+    # Tombstone BEFORE the delete: the generation bump needs the row, and the
+    # RevokedInfoItem record is what the snapshot republishes once it is gone.
+    await announce_info_item_revoked(session, item)
     await session.delete(item)
     await session.commit()
 
@@ -777,6 +791,7 @@ async def put_watch_spec(
 
     item.watch_spec = body.document
     await session.flush()
+    await announce_info_item(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)
     return await _item_out_with_active_relations(session, item)
@@ -806,6 +821,7 @@ async def put_watch_active(
 
     item.watch_active = body.active
     await session.flush()
+    await announce_info_item(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)
     return await _item_out_with_active_relations(session, item)

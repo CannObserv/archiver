@@ -103,8 +103,13 @@ async def test_source_revision_post_to_redis_stream(
     # ------------------------------------------------------------------
     # Step 3: Verify outbox row written with correct payload.
     # ------------------------------------------------------------------
+    # Scoped to the fact topic: the create-with-initial_url above also wrote an
+    # info.registry announcement (archiver#141), which is not under test here.
     outbox_result = await session.execute(
-        select(ChangesOutboxRow).where(ChangesOutboxRow.published_at.is_(None))
+        select(ChangesOutboxRow).where(
+            ChangesOutboxRow.published_at.is_(None),
+            ChangesOutboxRow.topic == "info.changes",
+        )
     )
     outbox_rows = list(outbox_result.scalars())
     assert len(outbox_rows) == 1, f"Expected 1 outbox row, got {len(outbox_rows)}"
@@ -137,7 +142,10 @@ async def test_source_revision_post_to_redis_stream(
         session_factory=publisher_session_factory,
         publisher=AsyncBusPublisher(fake_redis),
     )
-    assert drained == 1
+    # 2: the captured fact under test + the registry announcement the setup's
+    # bind wrote (archiver#141). The stream assertions below stay scoped to
+    # info.changes, so the announcement never contaminates them.
+    assert drained == 2
 
     # ------------------------------------------------------------------
     # Step 6: Verify stream has 1 entry with matching payload.
@@ -230,7 +238,8 @@ async def test_observed_event_to_redis_stream(client, session, fake_redis):
     drained = await drain_once(
         session_factory=ingest_session_factory, publisher=AsyncBusPublisher(fake_redis)
     )
-    assert drained == 1
+    # 2: the captured fact + the setup's registry announcement (archiver#141).
+    assert drained == 2
 
     entries = await fake_redis.xrange("info.changes")
     assert len(entries) == 1
@@ -304,7 +313,13 @@ async def test_bus_and_http_payloads_are_identical(client, session, fake_redis):
     )
 
     rows = (
-        (await session.execute(select(ChangesOutboxRow).order_by(ChangesOutboxRow.created_at)))
+        (
+            await session.execute(
+                select(ChangesOutboxRow)
+                .where(ChangesOutboxRow.topic == "info.changes")
+                .order_by(ChangesOutboxRow.created_at)
+            )
+        )
         .scalars()
         .all()
     )

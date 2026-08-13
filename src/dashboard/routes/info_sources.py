@@ -18,6 +18,7 @@ from src.core.models import (
     InfoSource,
     SourceRevision,
 )
+from src.core.services.registry_announcement import announce_for_info_source
 from src.core.tools.create_info_source import (
     CreateInfoSourceError,
     InvalidSourceSpecError,
@@ -323,6 +324,8 @@ async def update_info_source_specs_view(
     except UpdateMixedFamilyError as e:
         return await _rerender(str(e))
 
+    # Fan out to every item this source actively backs (grain is the item).
+    await announce_for_info_source(session, src.info_source_id)
     await session.commit()
 
     if is_htmx:

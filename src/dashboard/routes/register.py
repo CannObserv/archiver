@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_db_session, get_watcher_client
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
+from src.core.services.registry_announcement import announce_info_item
 from src.core.tools.create_info_source import (
     InvalidSourceSpecError,
     InvalidUrlError,
@@ -403,6 +404,7 @@ async def register_submit(
         info_source_id=src.info_source_id,
     )
     session.add(binding)
+    await announce_info_item(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)
 

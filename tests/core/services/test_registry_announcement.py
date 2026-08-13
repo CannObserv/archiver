@@ -160,6 +160,40 @@ async def test_previously_announced_item_losing_its_binding_emits_revoked(sessio
 
 
 @pytest.mark.asyncio
+async def test_bound_source_with_empty_specs_is_not_announceable_live(session):
+    """co-core refuses a live announcement with empty source_specs — "nothing to
+    reconcile against". An item bound to a spec-less source is therefore
+    unannounceable-as-live and follows the same rule as an unbound one: skip if
+    never announced, revoke if previously announced. The spec edit that later
+    fills the list fans out and announces live at a higher generation."""
+    item = InfoItem(name="specless")
+    source = InfoSource(url="https://example.test/specless", source_specs=[])
+    session.add_all([item, source])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    await session.flush()
+
+    await announce_info_item(session, item.info_item_id)
+    assert await _outbox_rows(session) == []  # never announced → skip
+
+    source.source_specs = _SPECS
+    await session.flush()
+    await announce_info_item(session, item.info_item_id)  # live, gen 2
+
+    source.source_specs = []
+    await session.flush()
+    await announce_info_item(session, item.info_item_id)  # revoked, gen 3
+
+    rows = sorted(await _outbox_rows(session), key=lambda r: r.payload["generation"])
+    assert [r.payload["revoked"] for r in rows] == [False, True]
+    assert [r.payload["generation"] for r in rows] == [2, 3]
+    for r in rows:
+        payload_from_dict(r.payload)
+
+
+@pytest.mark.asyncio
 async def test_missing_item_is_a_silent_no_op(session):
     await announce_info_item(session, ULID())
     assert await _outbox_rows(session) == []
