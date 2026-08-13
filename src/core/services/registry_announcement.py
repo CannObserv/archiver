@@ -155,6 +155,13 @@ async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) 
     can be the active primary for several items, and the announcement grain is
     the item. Each gets its own generation bump. Returns the announcement
     count (zero for a source nothing is bound to — a fresh create).
+
+    Known scale ceiling (CR round 3, #14): this is N sequential
+    announce_info_item calls — an UPDATE plus two SELECTs each — inside one
+    transaction, holding N row locks. Nothing at O(10) items; a spec edit on a
+    source backing O(10^3) becomes ~3k round-trips. The batch rewrite (one
+    UPDATE ... RETURNING over the id set, one joined SELECT) belongs here when
+    the corpus gets there.
     """
     item_ids = (
         (

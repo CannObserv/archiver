@@ -119,12 +119,22 @@ async def _collect_full_set(session: AsyncSession) -> tuple[list, list]:
         if not source.source_specs and item.announcement_generation > 0
     ]
 
-    bound_ids = {item.info_item_id for item, _ in bound}
+    # NOT EXISTS rather than a materialized notin_ list (CR round 3, #15):
+    # the IN-list would grow with the corpus, and the empty-set special case
+    # it required read as load-bearing.
+    active_binding = (
+        select(InfoItemSource.info_item_id)
+        .where(
+            InfoItemSource.info_item_id == InfoItem.info_item_id,
+            InfoItemSource.deactivated_at.is_(None),
+        )
+        .exists()
+    )
     unbound = (
         await session.execute(
             select(InfoItem.info_item_id, InfoItem.announcement_generation).where(
                 InfoItem.announcement_generation > 0,
-                InfoItem.info_item_id.notin_(bound_ids) if bound_ids else True,
+                ~active_binding,
             )
         )
     ).all()

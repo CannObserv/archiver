@@ -12,6 +12,8 @@ Covers:
 4. Gate set but Redis absent → still no consumer (the gate is not its own switch)
 5. Both tasks stop on shutdown
 6. A consumer that cannot start leaves the publisher running
+7. The registry-snapshot task starts and stops with the publisher, and its
+   task/trigger handles are nulled on the dormant path (archiver#141)
 """
 
 from __future__ import annotations
@@ -53,6 +55,10 @@ async def test_no_redis_url_starts_neither(bus_env, test_engine):
     async with lifespan(app):
         assert app.state.redis_client is None
         assert app.state.revisions_consumer_task is None
+        # Dormant nulls both snapshot handles too — the republish route's 409
+        # hangs off registry_snapshot_trigger being None (CR round 3, #12).
+        assert app.state.registry_snapshot_task is None
+        assert app.state.registry_snapshot_trigger is None
 
 
 @pytest.mark.asyncio
@@ -66,6 +72,10 @@ async def test_redis_without_the_gate_starts_publisher_only(
         assert app.state.redis_client is not None
         assert app.state.publisher_task is not None
         assert app.state.revisions_consumer_task is None
+        # The snapshot task rides the publisher's gate, not the consumer's.
+        assert app.state.registry_snapshot_task is not None
+        assert not app.state.registry_snapshot_task.done()
+        assert app.state.registry_snapshot_trigger is not None
 
 
 @pytest.mark.asyncio
@@ -97,9 +107,11 @@ async def test_both_tasks_stop_on_shutdown(bus_env, fake_redis_from_url, test_en
     async with lifespan(app):
         publisher_task = app.state.publisher_task
         consumer_task = app.state.revisions_consumer_task
+        snapshot_task = app.state.registry_snapshot_task
 
     assert publisher_task.done()
     assert consumer_task.done()
+    assert snapshot_task.done()
 
 
 @pytest.mark.asyncio
