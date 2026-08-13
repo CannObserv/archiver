@@ -127,6 +127,7 @@ what is running today:
 | `content.blobs` | Replicator → Watcher | fact | one per consuming service | group lag per group | `content.blobs.dlq` | **unasserted** — CannObserv/replicator#19 |
 | `content.revisions` | Watcher → **Archiver** *(producer target: CannObserv/watcher#253)* | fact | `archiver.revisions` (one per consuming service) | `XPENDING` / group lag — **the first group Archiver owns**; threshold still to be set, see #130 | `content.revisions.dlq` — written by the ingest consumer's quarantine path | **unasserted** — CannObserv/watcher#253 |
 | `content.fetch-policy` | Watcher → Replicator workers *(target; no producer or consumer exists yet)* | config/state, broadcast, last-write-wins per host key | **none, permanently — by design** | **last-entry age via `XINFO STREAM`** | **none applies** | **self-correcting** — full set is republished on a timer |
+| `info.registry` | **Archiver** → Watcher *(consumer live — watcher#254)* | config/state, broadcast, last-write-wins per `info_item_id`, `generation`-ordered | **none, permanently — by design** (every consumer needs every message; a group accumulates a PEL nothing drains) | **last-entry age via `XINFO STREAM`** — on a non-empty corpus the snapshot guarantees ≥1 entry/hour, so an age over ~2× the snapshot interval means the producer is down; an empty or never-announced registry publishes nothing, so the alarm needs a corpus-size guard. See #147 | **none applies** — a state message has nothing to close; quarantine is terminal and the next full set supersedes | **split by path**: deltas ride the transactional outbox and retry indefinitely (OOM transient); snapshots have **no retry** — one lost to an outage is corrected by the next period, not a re-attempt |
 
 **`content.revisions` is Archiver's first consumer role** — every other row is a
 stream it operates for someone else. Two operational consequences: the
@@ -192,6 +193,16 @@ so it can never hang startup, and warns when `redis-cli` lacks TLS support for a
 and blocks only a genuinely-<7.0 reachable one. Reinstall the unit after any edit
 (see the parity note under the wheelhouse section) —
 `tests/deploy/test_installed_unit_matches_repo.py` flags drift.
+
+**`info.registry` retention is different in kind** (archiver#141): consumers
+boot by replaying from `0-0`, so the floor is "at least one full snapshot plus
+the deltas since" — a consumer contract, not operator housekeeping. It is
+therefore **excluded from the periodic `XTRIM` loop** and capped on every
+publish via `BusPublish.maxlen` instead (`ARCHIVER_REGISTRY_STREAM_MAXLEN`,
+default 50k, sized from key count × sets retained — never from the
+`info.changes` number). Snapshot period: `ARCHIVER_REGISTRY_SNAPSHOT_INTERVAL`,
+default 3600s; operator republish-now: `POST
+/api/v1/tools/republish-registry-announcements`.
 
 **Retention.** With no consumer yet, entries accumulate on `info.changes`. The
 Archiver outbox publisher caps the stream operator-side via a periodic

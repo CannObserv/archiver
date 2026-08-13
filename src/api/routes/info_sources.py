@@ -16,6 +16,7 @@ from src.api.schemas.pagination import Page
 from src.api.schemas.types import ULIDStr
 from src.api.serializers import info_source_to_out
 from src.core.models import InfoSource
+from src.core.services.registry_announcement import announce_for_info_source
 from src.core.tools.create_info_source import (
     CreateInfoSourceError,
     InvalidSourceSpecError,
@@ -93,6 +94,9 @@ async def patch_info_source_specs(
     except UpdateMixedFamilyError as e:
         raise_422("mixed algorithm families in source_specs", kind="domain", source_exc=e)
 
+    # Fan out: one InfoSource can be the active primary for several InfoItems,
+    # and the announcement grain is the item — N bindings, N announcements.
+    await announce_for_info_source(session, ULID.from_str(info_source_id))
     await session.commit()
     await session.refresh(src)
 

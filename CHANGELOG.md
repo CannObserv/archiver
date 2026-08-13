@@ -18,6 +18,20 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.9.0 (2026-08-13)
+
+[both] **The registry announcement producer — `info.registry` is live, SDK v5.4.0** (archiver#141, step 4c of the #137 epic). Archiver now broadcasts desired registry state on a durable stream and Watcher reconciles against it (watcher#254's consumer is already deployed and tailing). This replaces the delivery model behind `sync_on_spec_update`'s best-effort PATCH — the silent-permanent-drift bug where a failed push left Watcher extracting against an old spec forever with nothing detecting it. The HTTP push stays until the #142 teardown; both paths are idempotent, so the dual-run is safe.
+
+**Deltas are transactional.** Every registry mutation route — create, bind, binding deactivation, both swaps, watch-spec, watch-active, delete, and the source-spec edits on both surfaces — writes its announcement to `changes_outbox` in the mutation's own transaction via one shared service (`src/core/services/registry_announcement.py`). A rolled-back mutation leaves no orphaned announcement; that transactionality is the entire point. Ordering rides `info_items.announcement_generation` (new column, migration `f5c522f65657`), bumped via an atomic `UPDATE … RETURNING` — never read-modify-write, which under concurrency writes N+1 twice and makes consumers discard the second announcement as a duplicate. Consumers apply iff greater.
+
+**The emit rule.** Active primary binding + non-empty `source_specs` → live; previously announced without either → `revoked` (silence would leave the consumer fetching a retired URL — the drift bug again); never-announced and unannounceable → nothing. A source mutation fans out to every item it actively backs. Swaps announce exactly once with the final state — revoked-then-live would make the consumer destroy and recreate its row, losing every Watcher-local column.
+
+**Deletion tombstones are durable.** `DELETE /info-items/{id}` now records a `RevokedInfoItem` row (new table, same migration) in the deletion's transaction and emits `revoked: true`. The table exists because the snapshot must keep republishing tombstones after the item row is gone — absence-from-a-full-set is deliberately not the delete signal.
+
+**Snapshots bound the failure cases.** A full-set republish direct to the stream (bypassing the outbox — no pruner exists) at startup and every `ARCHIVER_REGISTRY_SNAPSHOT_INTERVAL` (default 1h). Generations are read, never bumped, so a healthy consumer ignores the whole set. **No retry on this path** — the next period is the repair; stated in the `deploy/README.md` streams table rather than left assumed. Operator republish-now: `POST /api/v1/tools/republish-registry-announcements` (202; 409 when the bus is dormant).
+
+**Retention is a consumer contract, not housekeeping.** `info.registry` is excluded from the fact stream's periodic `XTRIM` and instead carries `BusPublish.maxlen` on every publish (`ARCHIVER_REGISTRY_STREAM_MAXLEN`, default 50k, sized from key count × sets retained): consumers boot by replaying from `0-0`, so the floor is one full set plus the deltas since — a `MAXLEN` sized for `info.changes` would silently violate it.
+
 ## v4.8.0 (2026-08-11)
 
 [both] **`DELETE /info-items/{id}` — the registry gains an exit, SDK v5.3.0** (archiver#141, step 4c of the #137 epic). Until now the registry had **no way to delete an InfoItem**: both existing `@router.delete` routes are sub-resources (a source binding, a rep-spec assignment), and there is no soft-delete column. The only exit was raw SQL.

@@ -21,6 +21,7 @@ from watcher_client.errors import WatcherConflict, WatcherNotFound, WatcherRespo
 from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
 from src.core.logging import get_logger
+from src.core.services.registry_announcement import announce_info_item
 from src.core.watcher_provisioning import (
     WatcherSyncOutcome,
     provision_on_create,
@@ -313,6 +314,8 @@ async def create_info_item(
         session.add(binding)
         await session.flush()
 
+    # Same transaction as the create: live if bound, skipped if bare.
+    await announce_info_item(session, item.info_item_id)
     await session.commit()
 
     return RedirectResponse(
@@ -596,6 +599,7 @@ async def bind_source(
             409, "conflict", "An active binding already exists for this item", source_exc=e
         )
 
+    await announce_info_item(session, item_ulid)
     await session.commit()
     return RedirectResponse(
         url=f"/dashboard/info-items/{item_id}?tab=sources",
@@ -629,6 +633,9 @@ async def deactivate_source_binding(
     except BindingNotFoundError as e:
         raise DashboardNotFound("Active binding not found") from e
 
+    # Revoked: no active primary remains, and silence would leave the consumer
+    # fetching the retired URL until the next mutation.
+    await announce_info_item(session, item_ulid)
     await session.commit()
     return Response(status_code=200)
 
@@ -840,6 +847,10 @@ async def swap_primary_source(
             info_source_id=new_src.info_source_id,
         )
     )
+    # ONE announcement for the whole swap, carrying the final state — announcing
+    # the deactivate and the bind separately would be revoked-then-live, and the
+    # consumer would destroy and recreate its row, losing every local column.
+    await announce_info_item(session, item.info_item_id)
     await session.commit()
 
     await sync_on_source_swap(session, watcher, item, new_src)
@@ -903,6 +914,10 @@ async def swap_primary_by_id(
             info_source_id=new_src.info_source_id,
         )
     )
+    # ONE announcement for the whole swap, carrying the final state — announcing
+    # the deactivate and the bind separately would be revoked-then-live, and the
+    # consumer would destroy and recreate its row, losing every local column.
+    await announce_info_item(session, item.info_item_id)
     await session.commit()
 
     await sync_on_source_swap(session, watcher, item, new_src)

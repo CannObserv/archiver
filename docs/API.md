@@ -30,6 +30,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | `validate_rep_spec` | `POST /tools/validate-rep-spec` | `validate_rep_spec(doc)` |
 | `validate_rep_fields` | `POST /tools/validate-rep-fields` | `validate_rep_fields(bag, required_fields=None)` |
 | `validate_watch_spec` | `POST /tools/validate-watch-spec` | generated only (no hand-written wrapper — no SDK consumer yet) |
+| Republish registry announcements | `POST /tools/republish-registry-announcements` | generated only (no hand-written wrapper — operator control, 202; 409 when the bus is dormant) |
 | `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |
 | `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` |
 | `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)` |
@@ -112,6 +113,32 @@ canonical classes are `extra="ignore"` (consumer-safe forward-compat). The
 `event_type` / `schema_version` / `occurred_at` / `content_type`; the idempotency
 `key` is derived per type by co-core (`source_revision_id`; the
 `{info_item_id}:{new_info_source_id}` composite).
+
+**`info.registry` — the registry announcement channel (archiver#141).** A second
+producer surface, *config/state* kind rather than fact: per-InfoItem LWW state,
+keyed by the `info_item_id` payload field and ordered by a monotonic
+`generation` (`info_items.announcement_generation`, bumped atomically in the
+mutation's transaction). Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
+(emit sites use `RegistryAnnouncementEmit`). Consumer: Watcher's reconcile loop
+(watcher#254), replaying grouplessly from `0-0`.
+
+- **Deltas** ride the same outbox: every registry mutation route calls
+  `src/core/services/registry_announcement.py` inside its transaction — a rolled
+  back mutation leaves no orphaned announcement. Emit rule: an item with an
+  active primary binding and non-empty `source_specs` announces **live**;
+  previously-announced without one announces **revoked**; never-announced
+  sourceless items emit nothing. One InfoSource mutation fans out to every item
+  it actively backs. Swaps announce exactly once, with the final state.
+- **Snapshots** bypass the outbox (`src/core/changes/registry_snapshot.py`): a
+  full-set republish direct to the stream at startup and every
+  `ARCHIVER_REGISTRY_SNAPSHOT_INTERVAL` (default 3600s), reading generations
+  without bumping them, tombstones included (`revoked_info_items`). **No
+  retry** — the next period is the repair. Operator republish-now:
+  `POST /tools/republish-registry-announcements`.
+- **Retention rides the publish** (`BusPublish.maxlen`,
+  `ARCHIVER_REGISTRY_STREAM_MAXLEN`, default 50k): consumers replay from `0-0`,
+  so the floor is one full set plus the deltas since. The topic is excluded
+  from the fact stream's periodic `XTRIM`.
 
 `source_revision_captured` schema_version is now **2** — `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 

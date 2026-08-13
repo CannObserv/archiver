@@ -10,10 +10,11 @@ between.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select
 from watcher_client import WatchedItemResponse
 
 from scripts.import_watch_specs import import_watch_specs
-from src.core.models import InfoItem
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 
 _TS = "2026-08-10T00:00:00+00:00"
 
@@ -287,3 +288,88 @@ async def test_the_report_carries_a_row_per_item_for_the_dry_run_table(session):
     assert row.watch_spec == {"schema_version": 1, "interval": "7d"}
     assert row.watch_active is True
     assert row.wi_id == "01HZZWATCHER00000000000001"
+
+
+@pytest.mark.asyncio
+async def test_import_announces_each_written_row(session):
+    """An import write must announce like any other registry mutation (CR #11).
+
+    The snapshot repairs LOST deltas, not unannounced mutations: a republish
+    carries the same generation, and the consumer's apply-iff-greater ignores
+    it — so an import re-run after the producer is live would diverge Watcher
+    silently and permanently. Routing the write through announce_info_item
+    makes the script safe in any order: before first publish the emit is
+    simply the first delta.
+    """
+    item = await _item(session, watcher_item_id="01HZZWATCHER00000000000001")
+    watcher = _watcher(
+        **{str(item.info_item_id): _wi(is_active=False, schedule_config={"interval": "6h"})}
+    )
+
+    await import_watch_specs(session, watcher)
+
+    rows = (
+        (
+            await session.execute(
+                select(ChangesOutboxRow).where(ChangesOutboxRow.topic == "info.registry")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # The item is sourceless and never announced, so the emit rule skips it —
+    # but the generation must still have been bumped through the service.
+    await session.refresh(item)
+    assert item.announcement_generation >= 1
+    assert rows == []  # sourceless + never announced → skip is correct
+
+
+@pytest.mark.asyncio
+async def test_import_announces_live_for_a_bound_item(session):
+    item = await _item(session, watcher_item_id="01HZZWATCHER00000000000002")
+    source = InfoSource(
+        url="https://example.com/import",
+        source_specs=[{"schema_version": 1, "extraction": {"algorithm": "full_page"}}],
+    )
+    session.add(source)
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    await session.commit()
+
+    watcher = _watcher(
+        **{str(item.info_item_id): _wi(is_active=True, schedule_config={"interval": "1d"})}
+    )
+    await import_watch_specs(session, watcher)
+
+    rows = (
+        (
+            await session.execute(
+                select(ChangesOutboxRow).where(ChangesOutboxRow.topic == "info.registry")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    assert rows[0].payload["watch_spec"] == {"schema_version": 1, "interval": "1d"}
+    assert rows[0].payload["active"] is True
+    assert rows[0].payload["revoked"] is False
+
+
+@pytest.mark.asyncio
+async def test_unchanged_rows_do_not_announce(session):
+    """Idempotent re-run: no write, no announcement, no generation churn."""
+    item = await _item(session, watcher_item_id="01HZZWATCHER00000000000003")
+    watcher = _watcher(
+        **{str(item.info_item_id): _wi(is_active=False, schedule_config={"interval": "6h"})}
+    )
+    await import_watch_specs(session, watcher)
+    await session.refresh(item)
+    gen_after_first = item.announcement_generation
+
+    await import_watch_specs(session, watcher)
+
+    await session.refresh(item)
+    assert item.announcement_generation == gen_after_first

@@ -48,6 +48,7 @@ from watcher_client import WatcherClient
 from src.core.database import get_session_factory
 from src.core.logging import configure_logging, get_logger
 from src.core.models import InfoItem
+from src.core.services.registry_announcement import announce_info_item
 from src.core.watch_spec_import import (
     ImportAnomaly,
     ImportReport,
@@ -195,6 +196,13 @@ async def import_watch_specs(
                 .where(InfoItem.info_item_id == info_item_id)
                 .values(watch_spec=plan.watch_spec, watch_active=plan.watch_active)
             )
+            # Announce like any other registry mutation (archiver#141 CR #11).
+            # The snapshot repairs LOST deltas, not unannounced ones: a
+            # republish carries the same generation and apply-iff-greater
+            # ignores it, so a re-run after the producer is live would
+            # otherwise diverge Watcher silently and permanently. Before first
+            # publish this is simply the first delta — safe in any order.
+            await announce_info_item(session, info_item_id)
             await session.commit()
         except Exception as e:  # noqa: BLE001 — a failed write is one row, not the pass
             await session.rollback()

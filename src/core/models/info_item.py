@@ -2,7 +2,7 @@
 
 import json
 
-from sqlalchemy import Boolean, Index, String
+from sqlalchemy import BigInteger, Boolean, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
@@ -43,6 +43,21 @@ class InfoItem(Base, TimestampMixin):
     inside the untyped policy dict.
     """
     watcher_item_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    announcement_generation: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0", default=0
+    )
+    """LWW ordering token for ``info.registry`` (archiver#141).
+
+    Monotonic per item; consumers apply an announcement iff its generation is
+    greater than what they hold. Bumped **only** via the atomic
+    ``UPDATE … SET announcement_generation = announcement_generation + 1
+    RETURNING`` in ``src/core/services/registry_announcement.py`` — never
+    read-modify-write in Python, which under concurrency writes N+1 twice and
+    makes every consumer discard the second announcement as a duplicate.
+    Snapshots read it and never bump it. Default ``0``, not a sentinel: co-core
+    rejects negatives because apply-iff-greater would never fire for a key that
+    sorted below every legitimate value (cannobserv#302).
+    """
 
     __table_args__ = (
         Index(

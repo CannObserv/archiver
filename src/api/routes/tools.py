@@ -8,7 +8,7 @@ composing Information Items + SourceSpecs. Mutating CRUD lives on the existing
 import os
 
 from co_core_aio.fetch import AsyncFetchDriver
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session, get_fetch_driver
@@ -21,6 +21,7 @@ from src.api.schemas.tools import (
     PreviewExtractionRequest,
     PreviewExtractionResult,
     ProposeSelectorsRequest,
+    RepublishRegistryResponse,
     ResolveRepFieldsRequest,
     ResolveRepFieldsResponse,
     SelectorCandidateOut,
@@ -273,3 +274,28 @@ async def validate_watch_spec_route(
         valid=ok,
         errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
     )
+
+
+@router.post(
+    "/republish-registry-announcements",
+    status_code=202,
+    response_model=RepublishRegistryResponse,
+)
+async def republish_registry_announcements_route(request: Request) -> RepublishRegistryResponse:
+    """Trigger an immediate full-set republish on ``info.registry`` (archiver#141).
+
+    The operator's "republish now": sets the event the snapshot loop waits on,
+    so the publish happens on the loop's task — 202, never blocking an HTTP
+    worker on a full-set publish. 409 when the bus is dormant (no
+    ``ARCHIVER_REDIS_URL``, e.g. the dev server): a silent 202 that never
+    publishes would read as success.
+    """
+    trigger = getattr(request.app.state, "registry_snapshot_trigger", None)
+    if trigger is None:
+        raise_envelope(
+            409,
+            "conflict",
+            "registry snapshot loop is not running (bus dormant — no ARCHIVER_REDIS_URL)",
+        )
+    trigger.set()
+    return RepublishRegistryResponse(triggered=True)

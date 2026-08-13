@@ -24,6 +24,7 @@ from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
 from src.core.changes import consumer as revisions_consumer
 from src.core.changes import publisher as outbox_publisher
+from src.core.changes import registry_snapshot
 from src.core.database import get_engine
 from src.core.db_safety import (
     ALLOW_PRODUCTION_DB_ENV,
@@ -119,6 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_event: asyncio.Event | None = None
     pub_task: asyncio.Task | None = None
     consumer_task: asyncio.Task | None = None
+    snapshot_task: asyncio.Task | None = None
 
     if redis_url:
         try:
@@ -135,6 +137,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # The drain loop publishes via the shared co-core bus driver; it
             # borrows the long-lived redis client (injection-only, never closes
             # it — the lifespan owns aclose below), and reuses it for the XTRIM.
+            # info.registry retention is a consumer contract riding each publish
+            # (replay-from-0-0 stream), so the topic is excluded from the global
+            # XTRIM loop and its deltas carry their own maxlen (archiver#141).
+            registry_maxlen = registry_snapshot.resolve_registry_maxlen(
+                os.environ.get("ARCHIVER_REGISTRY_STREAM_MAXLEN")
+            )
+            registry_topic = registry_snapshot.INFO_REGISTRY_TOPIC
             pub_task = asyncio.create_task(
                 outbox_publisher.run(
                     session_factory=session_factory,
@@ -142,6 +151,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     stop_event=stop_event,
                     redis_client=redis_client,
                     stream_maxlen=stream_maxlen,
+                    no_trim_topics=frozenset({registry_topic}),
+                    topic_maxlen={registry_topic: registry_maxlen},
                 )
             )
             pub_task.add_done_callback(_bus_task_exit_logger("outbox_publisher", stop_event))
@@ -149,12 +160,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.publisher_task = pub_task
             app.state.publisher_stop_event = stop_event
             logger.info("Outbox publisher started", extra={"redis_url": redis_url})
+
+            # --- Registry snapshot timer (archiver#141) ---
+            # Shares the publisher's client and stop event; its own task so a
+            # snapshot failure never touches the outbox drain. Publishes a full
+            # set at startup, then hourly (configurable). No retry — the next
+            # period is the repair, per the streams table's durability column.
+            snapshot_trigger = asyncio.Event()
+            snapshot_task = asyncio.create_task(
+                registry_snapshot.run(
+                    session_factory=session_factory,
+                    publisher=AsyncBusPublisher(redis_client),
+                    interval=registry_snapshot.resolve_snapshot_interval(
+                        os.environ.get("ARCHIVER_REGISTRY_SNAPSHOT_INTERVAL")
+                    ),
+                    maxlen=registry_maxlen,
+                    stop_event=stop_event,
+                    trigger=snapshot_trigger,
+                )
+            )
+            snapshot_task.add_done_callback(_bus_task_exit_logger("registry_snapshot", stop_event))
+            app.state.registry_snapshot_task = snapshot_task
+            app.state.registry_snapshot_trigger = snapshot_trigger
         except Exception:
             logger.exception("Failed to initialise outbox publisher; skipping")
             redis_client = None
             app.state.redis_client = None
             app.state.publisher_task = None
             app.state.publisher_stop_event = None
+            app.state.registry_snapshot_task = None
+            app.state.registry_snapshot_trigger = None
 
         # --- Optional content.revisions consumer (archiver#139) ---
         # Gated separately from the publisher and started in its own try, so a
@@ -199,6 +234,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.publisher_task = None
         app.state.publisher_stop_event = None
         app.state.revisions_consumer_task = None
+        app.state.registry_snapshot_task = None
+        app.state.registry_snapshot_trigger = None
         logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumer disabled")
 
     try:
@@ -207,7 +244,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Stop the bus tasks first — both watch the same stop event.
         if stop_event is not None:
             stop_event.set()
-        for task in (pub_task, consumer_task):
+        for task in (pub_task, consumer_task, snapshot_task):
             if task is None:
                 continue
             task.cancel()

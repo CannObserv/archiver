@@ -218,6 +218,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - `RepSpec` (`rep_specs`) — replication spec; `document` frozen once assigned
 - `InfoItemRepSpec` (`info_item_rep_specs`) — effective-dated assignment + `public_url`
 - `ChangesOutboxRow` (`changes_outbox`) — pending bus event awaiting publication
+- `RevokedInfoItem` (`revoked_info_items`) — deleted InfoItem's identity + final generation; feeds the snapshot's tombstone republish
 
 Per-entity contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The
 Phase 1–3a `InfoSpec` model is retired — no new `info_spec*` references.

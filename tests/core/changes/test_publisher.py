@@ -1173,3 +1173,82 @@ async def test_naive_occurred_at_dead_lettered(session_factory, publisher, fake_
         refreshed = await s.get(ChangesOutboxRow, row.id)
     assert refreshed.dead_lettered_at is not None
     assert BusMessageMalformedPayloadError.__name__ in refreshed.last_error
+
+
+@pytest.mark.asyncio
+async def test_registry_topic_publish_carries_its_own_maxlen(session_factory, fake_redis):
+    """info.registry retention rides the publish, not the XTRIM loop.
+
+    co-core's stream taxonomy: a config/state stream's retention is a consumer
+    contract carried by BusPublish.maxlen, because consumers boot by replaying
+    from 0-0 — out-of-band operator trimming sized for the fact stream would
+    silently violate the "at least one full snapshot plus deltas" floor.
+    """
+    captured: list = []
+    real = AsyncBusPublisher(fake_redis)
+
+    class SpyPublisher:
+        async def execute(self, effect):
+            captured.append(effect)
+            return await real.execute(effect)
+
+    await _insert_row(
+        session_factory, payload=_registry_announcement_state("item-maxlen"), topic="info.registry"
+    )
+    await _insert_row(session_factory, payload=_captured_event("rev-nomaxlen"))
+
+    n = await drain_once(
+        session_factory=session_factory,
+        publisher=SpyPublisher(),
+        topic_maxlen={"info.registry": 50_000},
+    )
+    assert n == 2
+
+    by_topic = {e.topic: e for e in captured}
+    assert by_topic["info.registry"].maxlen == 50_000
+    # The fact stream keeps its operator-side XTRIM; no publish-time cap.
+    assert by_topic["info.changes"].maxlen is None
+
+
+@pytest.mark.asyncio
+async def test_run_never_trims_excluded_topics(session_factory, publisher, fake_redis, monkeypatch):
+    """The trim loop applies one global MAXLEN to every seen topic — sized for
+    info.changes. A replay-from-0-0 stream subjected to it silently loses its
+    convergence floor, so info.registry must be excluded even after its deltas
+    put it in seen_topics."""
+    trim_calls: set[tuple[str, int]] = set()
+
+    async def _fake_trim(client, topic, maxlen):
+        trim_calls.add((topic, maxlen))
+
+    async def _fake_drain(*, seen_topics=None, **_kwargs):
+        if seen_topics is not None:
+            seen_topics.update({"info.changes", "info.registry"})
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
+    monkeypatch.setattr(publisher_mod, "drain_once", _fake_drain)
+
+    stop = asyncio.Event()
+
+    async def _stop_soon():
+        await asyncio.sleep(0.05)
+        stop.set()
+
+    await asyncio.gather(
+        publisher_mod.run(
+            session_factory=session_factory,
+            publisher=publisher,
+            redis_client=fake_redis,
+            stream_maxlen=100,
+            trim_interval_iterations=1,
+            stop_event=stop,
+            active_interval=0.001,
+            idle_interval=0.001,
+            no_trim_topics=frozenset({"info.registry"}),
+        ),
+        _stop_soon(),
+    )
+
+    assert ("info.changes", 100) in trim_calls
+    assert all(topic != "info.registry" for topic, _ in trim_calls)
