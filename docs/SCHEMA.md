@@ -39,6 +39,14 @@ see the never-rename rule in `AGENTS.md`.
   - **Boundary:** a WatchSpec is *per-item cadence*. `content.fetch-policy` (cannobserv#285) is
     *per-host spacing* — different key, stream, owner, and consumer. They are not the same knob.
 
+  `announcement_generation BIGINT NOT NULL DEFAULT 0` (archiver#141) — the LWW ordering token
+  for `info.registry`. Bumped **only** via the atomic `UPDATE … SET announcement_generation =
+  announcement_generation + 1 RETURNING` in `src/core/services/registry_announcement.py` — never
+  read-modify-write (two concurrent mutations would both write N+1 and every consumer would
+  discard the second announcement as a duplicate). Snapshots read it and never bump it. `0` means
+  never announced; the default is `0` and not a sentinel because co-core rejects negatives —
+  apply-iff-greater would never fire for a key sorting below every legitimate value.
+
   **Deletion — use `DELETE /info-items/{id}`, never psql** (archiver#141). An InfoItem's exit
   from the registry is announced as a `revoked: true` tombstone, and that tombstone must be
   written to `changes_outbox` in the deletion's own transaction. Raw SQL cannot do that, so a
@@ -114,6 +122,13 @@ see the never-rename rule in `AGENTS.md`.
   because its assignment rows assert which document produced the artefacts at their `public_url`;
   clone + migrate is #95. See `docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md`.
 - **`InfoItemRepSpec`** (`info_item_rep_specs`) — effective-dated assignment + `public_url` writeback target.
+- **`RevokedInfoItem`** (`revoked_info_items`) — a deleted InfoItem's identity + final
+  generation (archiver#141). Written in the deletion's transaction by `DELETE /info-items/{id}`;
+  what the hourly snapshot's tombstone republish reads once the item row is gone, because
+  absence-from-a-full-set is deliberately *not* the delete signal. No FK — the referent is gone by
+  design. Rows are kept forever; the table grows only with deletions. Same shape and reason as
+  Watcher's consumer-side table (watcher#254): every key keeps a left-hand side for
+  apply-iff-greater whether or not it still has a row.
 - **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
 
 The Phase 1–3a `InfoSpec` model has been retired. Avoid any new references to `info_spec*` outside historical alembic migration files. The "Archiver" rename was service-name-only; `info_*` table prefix and `information` schema preserved per design decision.
