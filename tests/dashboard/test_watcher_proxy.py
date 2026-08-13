@@ -9,6 +9,7 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,11 +18,12 @@ from watcher_client.errors import WatcherConflict, WatcherResponseError
 
 from src.api.deps import get_watcher_client
 from src.api.main import app
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import InfoItem, InfoItemSource, InfoSource, WatchStatus
 
 _HEADERS = {"X-ExeDev-UserID": "ext-watcher", "X-ExeDev-Email": "watcher@example.com"}
 _WI_ID = "01HZZWATCHER00000000000001"
 _TS = "2026-06-10T12:00:00+00:00"
+_STATUS_TS = datetime(2026, 6, 10, 11, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +70,22 @@ def _mock_watcher(wi: WatchedItemResponse | None = None) -> MagicMock:
     return m
 
 
+def _seed_status(session, item: InfoItem, **overrides) -> None:
+    """Seed the local watch_status cache the panel renders from (archiver#151)."""
+    defaults = dict(
+        info_item_id=item.info_item_id,
+        applied_generation=item.announcement_generation,
+        applied_active=True,
+        applied_interval=None,
+        last_attempt_at=_STATUS_TS,
+        last_observed_at=_STATUS_TS,
+        health="ok",
+        occurred_at=_STATUS_TS,
+    )
+    defaults.update(overrides)
+    session.add(WatchStatus(**defaults))
+
+
 @pytest.fixture(autouse=True)
 def _clear_watcher_override():
     """Ensure get_watcher_client override is removed after each test."""
@@ -76,12 +94,14 @@ def _clear_watcher_override():
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-status — not configured
+# GET /watcher-status — Watcher client not configured: local render, no actions
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_watcher_status_not_configured(client, session):
+    """The render is local state (archiver#151), so an unconfigured Watcher no
+    longer blanks the panel — it only hides the action buttons."""
     app.dependency_overrides[get_watcher_client] = lambda: None
     item = InfoItem(name="no watcher item")
     session.add(item)
@@ -92,7 +112,8 @@ async def test_watcher_status_not_configured(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "Watcher not configured" in r.text
+    assert "Not watching" in r.text
+    assert "begin-watching" not in r.text  # no client to provision with
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +149,8 @@ async def test_watcher_status_ok(client, session):
     item = InfoItem(name="ok item", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    _seed_status(session, item)
+    await session.flush()
 
     r = await client.get(
         f"/dashboard/info-items/{item.info_item_id}/watcher-status",
@@ -136,7 +159,8 @@ async def test_watcher_status_ok(client, session):
     assert r.status_code == 200
     assert "OK" in r.text
     assert "check-now" in r.text
-    watcher.get_watched_item.assert_awaited_once_with(_WI_ID)
+    # The whole point of archiver#151: the render makes zero SDK calls.
+    watcher.get_watched_item.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +170,13 @@ async def test_watcher_status_ok(client, session):
 
 @pytest.mark.asyncio
 async def test_watcher_status_paused(client, session):
-    watcher = _mock_watcher(_wi("ok", is_active=False))
+    """applied_active=False is a legitimate reported state, not absence."""
+    watcher = _mock_watcher()
     app.dependency_overrides[get_watcher_client] = lambda: watcher
     item = InfoItem(name="paused item", watcher_item_id=_WI_ID)
     session.add(item)
+    await session.flush()
+    _seed_status(session, item, applied_active=False)
     await session.flush()
 
     r = await client.get(
@@ -164,15 +191,17 @@ async def test_watcher_status_paused(client, session):
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-status — archived: Archived badge (not Paused), no toggle (#60)
+# GET /watcher-status — no status yet: the fourth state (archiver#151)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_watcher_status_archived(client, session):
-    watcher = _mock_watcher(_wi("ok", is_active=False, archived_at=_TS))
+async def test_watcher_status_no_status_yet_is_distinct(client, session):
+    """Provisioned but Watcher has never reported — distinct from paused and
+    from healthy. A booting consumer with an empty replay lands here."""
+    watcher = _mock_watcher()
     app.dependency_overrides[get_watcher_client] = lambda: watcher
-    item = InfoItem(name="archived item", watcher_item_id=_WI_ID)
+    item = InfoItem(name="silent item", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
 
@@ -181,9 +210,11 @@ async def test_watcher_status_archived(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "Archived" in r.text
+    assert "NO STATUS YET" in r.text
     assert "Paused" not in r.text
-    assert "toggle-watch-active" not in r.text
+    assert "OK" not in r.text
+    assert "Not watching" not in r.text
+    watcher.get_watched_item.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -193,10 +224,11 @@ async def test_watcher_status_archived(client, session):
 
 @pytest.mark.asyncio
 async def test_watcher_status_error(client, session):
-    watcher = _mock_watcher(_wi("error"))
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(name="error item", watcher_item_id=_WI_ID)
     session.add(item)
+    await session.flush()
+    _seed_status(session, item, health="error")
     await session.flush()
 
     r = await client.get(
@@ -208,16 +240,19 @@ async def test_watcher_status_error(client, session):
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-status — unknown state
+# GET /watcher-status — unknown health value renders verbatim, never as healthy
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_watcher_status_unknown(client, session):
-    watcher = _mock_watcher(_wi("unknown", last_checked_at=None))
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
+async def test_watcher_status_unknown_health_renders_verbatim_not_ok(client, session):
+    """`health` is an open vocabulary — "ok" is the only healthy value. A token
+    the panel has never seen renders verbatim as non-healthy (badge--danger)."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(name="unknown item", watcher_item_id=_WI_ID)
     session.add(item)
+    await session.flush()
+    _seed_status(session, item, health="degraded-someday")
     await session.flush()
 
     r = await client.get(
@@ -225,29 +260,37 @@ async def test_watcher_status_unknown(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "UNKNOWN" in r.text
+    assert "DEGRADED-SOMEDAY" in r.text
+    assert "badge--danger" in r.text
+    assert "badge--success" not in r.text
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-status — Watcher unreachable (degraded)
+# GET /watcher-status — a broken Watcher cannot break the render (archiver#151)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_watcher_status_degraded(client, session):
+async def test_watcher_status_renders_despite_watcher_being_down(client, session):
+    """The SDK-era render degraded when Watcher was unreachable; the local
+    render cannot — the SDK is never called on the read path."""
     watcher = MagicMock()
     watcher.get_watched_item = AsyncMock(side_effect=WatcherError("timeout"))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
     item = InfoItem(name="degraded item", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    _seed_status(session, item)
+    await session.flush()
 
     r = await client.get(
         f"/dashboard/info-items/{item.info_item_id}/watcher-status",
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "unavailable" in r.text.lower()
+    assert "OK" in r.text
+    assert "unavailable" not in r.text.lower()
+    watcher.get_watched_item.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +305,8 @@ async def test_check_now_calls_watcher(client, session):
     item = InfoItem(name="check item", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    _seed_status(session, item)
+    await session.flush()
 
     r = await client.post(
         f"/dashboard/info-items/{item.info_item_id}/check-now",
@@ -269,7 +314,7 @@ async def test_check_now_calls_watcher(client, session):
     )
     assert r.status_code == 200
     watcher.check_now.assert_awaited_once_with(_WI_ID)
-    assert "OK" in r.text
+    assert "OK" in r.text  # re-render comes from the local cache
 
 
 # ---------------------------------------------------------------------------
@@ -314,9 +359,11 @@ async def test_check_now_watcher_error(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "unavailable" in r.text.lower()
-    # The action failure is surfaced as a flash, not swallowed silently.
-    assert "showFlash" in r.headers.get("HX-Trigger", "")
+    # The action failure is surfaced as a flash; the body renders local state
+    # (archiver#151) and no longer degrades on a Watcher outage.
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "unavailable" in hx.lower()
 
 
 @pytest.mark.asyncio
@@ -466,7 +513,8 @@ async def test_begin_watching_already_provisioned(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "OK" in r.text
+    # Already provisioned, Watcher hasn't reported → the fourth state renders.
+    assert "NO STATUS YET" in r.text
     watcher.provision_watched_item.assert_not_awaited()
 
 
@@ -523,7 +571,8 @@ async def test_begin_watching_adopts_existing_on_conflict(client, session):
     )
     assert r.status_code == 200
     assert "Not watching" not in r.text
-    assert "OK" in r.text  # health badge from the adopted WatchedItem
+    # Adopted, but Watcher hasn't reported on the status stream yet.
+    assert "NO STATUS YET" in r.text
     watcher.get_by_info_item_id.assert_awaited_once()
     await session.refresh(item)
     assert item.watcher_item_id == _WI_ID
@@ -563,7 +612,6 @@ async def test_resync_watcher_calls_patch(client, session):
         source_specs=[{"schema_version": 1}],
         archiver_info_source_id=str(src.info_source_id),
     )
-    assert "OK" in r.text
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +644,10 @@ async def test_resync_watcher_error(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "unavailable" in r.text.lower()
+    # The failure is surfaced as a flash; the body renders local state.
+    hx = r.headers.get("HX-Trigger", "")
+    assert "showFlash" in hx
+    assert "unavailable" in hx.lower()
     watcher.patch_watched_item.assert_awaited_once()
 
 
@@ -860,10 +911,14 @@ async def test_begin_watching_no_source_unconfigured_watcher_no_flash(client, se
 @pytest.mark.asyncio
 async def test_toggle_pause_calls_patch(client, session):
     # Active item, request active=false → patch is_active=False, fires watcherUpdated.
+    # The re-render is local (archiver#151): it shows the *applied* state from the
+    # cache, which reflects the pause only once Watcher reports it back.
     watcher = _mock_watcher(_wi("ok", is_active=False))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
     item = InfoItem(name="pause item", watcher_item_id=_WI_ID)
     session.add(item)
+    await session.flush()
+    _seed_status(session, item, applied_active=False)  # Watcher has reported the pause
     await session.flush()
 
     r = await client.post(

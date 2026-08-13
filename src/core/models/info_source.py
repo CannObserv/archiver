@@ -37,6 +37,25 @@ class InfoSource(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
+    last_observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    """When Watcher last successfully extracted this source — verified current
+    as of T, whether or not the content changed (archiver#151).
+
+    A provenance fact, not a dashboard convenience: materially stronger than
+    "no record of a change", which conflates *verified same* with *never
+    looked*. Two properties downstream readers must hold:
+
+    - **Reported, not locally verified.** Watcher's claim on
+      ``info.watch-status`` is the only source; there is no cross-check.
+    - **A lower bound, not exact freshness.** The producer coalesces publishes,
+      so this under-reports by up to the republish period.
+
+    Written only by the watch-status consumer, monotonically (never backwards),
+    and only when the observation postdates the current active binding — an
+    observation older than the binding says nothing about *this* source.
+    """
 
     __table_args__ = (
         Index("ix_info_sources_url", "url"),

@@ -9,19 +9,37 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from watcher_client import WatchedItemResponse, WatcherError
+from watcher_client import WatchedItemResponse
 
 from src.api.deps import get_watcher_client
 from src.api.main import app
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import InfoItem, InfoItemSource, InfoSource, WatchStatus
 
 _HEADERS = {"X-ExeDev-UserID": "ext-section", "X-ExeDev-Email": "section@example.com"}
 _WI_ID = "01HZZWATCHER00000000000001"
 _TS = "2026-06-11T12:00:00+00:00"
 _BASE_URL = "https://watcher.example.com"
+_STATUS_TS = datetime(2026, 6, 11, 11, 0, tzinfo=UTC)
+
+
+def _seed_status(session, item: InfoItem, **overrides) -> None:
+    """Seed the local watch_status cache the panel renders from (archiver#151)."""
+    defaults = dict(
+        info_item_id=item.info_item_id,
+        applied_generation=item.announcement_generation,
+        applied_active=True,
+        applied_interval=None,
+        last_attempt_at=_STATUS_TS,
+        last_observed_at=_STATUS_TS,
+        health="ok",
+        occurred_at=_STATUS_TS,
+    )
+    defaults.update(overrides)
+    session.add(WatchStatus(**defaults))
 
 
 def _wi(
@@ -66,12 +84,14 @@ def _mock_watcher(wi: WatchedItemResponse | None = None, base_url: str = _BASE_U
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-section — not configured
+# GET /watcher-section — Watcher client not configured: local render, no actions
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_watcher_section_not_configured(client, session):
+    """The render is local state (archiver#151); an unconfigured Watcher only
+    hides the action buttons."""
     app.dependency_overrides[get_watcher_client] = lambda: None
     item = InfoItem(name="section-not-configured")
     session.add(item)
@@ -83,7 +103,8 @@ async def test_watcher_section_not_configured(client, session):
     )
     assert r.status_code == 200
     assert "watcher-section" in r.text
-    assert "not configured" in r.text.lower()
+    assert "Not watching" in r.text
+    assert "begin-watching" not in r.text  # no client to provision with
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +143,8 @@ async def test_watcher_section_watching_shows_details(client, session, monkeypat
     item = InfoItem(name="section-watching", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    _seed_status(session, item)
+    await session.flush()
 
     r = await client.get(
         f"/dashboard/info-items/{item.info_item_id}/watcher-section",
@@ -150,10 +173,11 @@ async def test_watcher_section_watching_shows_details(client, session, monkeypat
 
 @pytest.mark.asyncio
 async def test_watcher_section_paused_shows_resume(client, session):
-    wi = _wi("ok", is_active=False)
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(wi)
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(name="section-paused", watcher_item_id=_WI_ID)
     session.add(item)
+    await session.flush()
+    _seed_status(session, item, applied_active=False)
     await session.flush()
 
     r = await client.get(
@@ -169,15 +193,14 @@ async def test_watcher_section_paused_shows_resume(client, session):
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-section — archived: no pause/resume toggle (Watcher 409s) (#60)
+# GET /watcher-section — no status yet: the fourth state (archiver#151)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_archived_hides_toggle(client, session):
-    wi = _wi("ok", is_active=False, archived_at=_TS)
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(wi)
-    item = InfoItem(name="section-archived", watcher_item_id=_WI_ID)
+async def test_watcher_section_no_status_yet(client, session):
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="section-silent", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
 
@@ -186,34 +209,9 @@ async def test_watcher_section_archived_hides_toggle(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "toggle-watch-active" not in r.text
-    # Archived is a distinct state — must not be mislabeled "Paused".
-    assert "Archived" in r.text
+    assert "NO STATUS YET" in r.text
     assert "Paused" not in r.text
-
-
-# ---------------------------------------------------------------------------
-# GET /watcher-section — degraded (Watcher raises WatcherError)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_watcher_section_degraded(client, session):
-    watcher = MagicMock()
-    watcher.base_url = _BASE_URL
-    watcher.get_watched_item = AsyncMock(side_effect=WatcherError("timeout"))
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
-    item = InfoItem(name="section-degraded", watcher_item_id=_WI_ID)
-    session.add(item)
-    await session.flush()
-
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
-    assert r.status_code == 200
-    assert "unavailable" in r.text.lower()
+    assert "Not watching" not in r.text
 
 
 # ---------------------------------------------------------------------------

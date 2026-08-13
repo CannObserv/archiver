@@ -1,8 +1,9 @@
 """Information Item — the stable, externally-named target being tracked."""
 
 import json
+from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, Index, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
@@ -57,6 +58,15 @@ class InfoItem(Base, TimestampMixin):
     Snapshots read it and never bump it. Default ``0``, not a sentinel: co-core
     rejects negatives because apply-iff-greater would never fire for a key that
     sorted below every legitimate value (cannobserv#302).
+    """
+    announced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """When ``announcement_generation`` last bumped — stamped in the same atomic
+    UPDATE (archiver#151).
+
+    The drift detector's clock: "announced gen 9 · applied gen 7 — drift, 40m"
+    needs to know *when* gen 9 went out, and ``changes_outbox.published_at`` is
+    prunable under the #141 retention split, so the fact lives here. ``NULL``
+    until the first bump; snapshots republish without touching it.
     """
 
     __table_args__ = (

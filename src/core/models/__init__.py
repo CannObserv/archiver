@@ -12,11 +12,13 @@ from src.core.models.info_source import InfoSource
 from src.core.models.rep_spec import RepSpec
 from src.core.models.revoked_info_item import RevokedInfoItem
 from src.core.models.source_revision import SourceRevision
+from src.core.models.watch_status import BusTailCursor, WatchStatus
 
 __all__ = [
     "ApiKey",
     "AppUser",
     "Base",
+    "BusTailCursor",
     "ChangesOutboxRow",
     "Domain",
     "InfoItem",
@@ -28,5 +30,6 @@ __all__ = [
     "SourceRevision",
     "TimestampMixin",
     "ULIDType",
+    "WatchStatus",
     "generate_ulid",
 ]

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
-from watcher_client.errors import WatcherConflict, WatcherResponseError
+from watcher_client.errors import WatcherConflict, WatcherNotFound, WatcherResponseError
 
 from src.core.logging import get_logger
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -54,6 +54,12 @@ class WatcherSyncOutcome(StrEnum):
     (``WatcherResponseError``) — the watcher_client SDK is stale relative to the
     live Watcher API. Distinct from ``FAILED`` (a transport/HTTP failure) so
     callers can surface accurate, non-"try again" guidance; retrying never helps."""
+
+    NOT_FOUND = "not_found"
+    """Watcher reported the WatchedItem gone (404). Distinct from ``FAILED`` so
+    the caller can run the stale-link reconcile (``_clear_stale_watcher_link``)
+    — since archiver#151 the render path no longer touches the SDK, so an
+    action outcome is the only place a deleted WatchedItem can be observed."""
 
 
 async def provision_on_create(
@@ -165,9 +171,10 @@ async def sync_on_source_swap(
     handles on-demand provisioning in that case.
 
     Returns a :class:`WatcherSyncOutcome`: ``SKIPPED`` when no Watcher is
-    configured or the item isn't watched, ``OK`` on success, ``CONTRACT_ERROR``
-    when the response couldn't be parsed (stale SDK), ``FAILED`` when the call
-    otherwise raised (logged and swallowed).
+    configured or the item isn't watched, ``OK`` on success, ``NOT_FOUND``
+    when Watcher 404s (the WatchedItem was deleted — the caller reconciles),
+    ``CONTRACT_ERROR`` when the response couldn't be parsed (stale SDK),
+    ``FAILED`` when the call otherwise raised (logged and swallowed).
     """
     if watcher is None or not info_item.watcher_item_id:
         return WatcherSyncOutcome.SKIPPED
@@ -179,6 +186,13 @@ async def sync_on_source_swap(
             archiver_info_source_id=str(new_info_source.info_source_id),
         )
         return WatcherSyncOutcome.OK
+    except WatcherNotFound:
+        logger.warning(
+            "Watcher reports WatchedItem %s gone (404) during sync for InfoItem %s",
+            info_item.watcher_item_id,
+            info_item.info_item_id,
+        )
+        return WatcherSyncOutcome.NOT_FOUND
     except WatcherResponseError:
         logger.exception(
             "Watcher sync failed for InfoItem %s after primary source swap: response "

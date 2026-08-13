@@ -1,7 +1,11 @@
 {# Section 3 Watcher panel — loaded async via hx-get /watcher-section.
+   Renders from LOCAL state (watch_status cache + item.watch_spec — archiver#151); the action
+   buttons still proxy to Watcher over the SDK until the control-plane cutover (archiver#158).
    Root div carries hx-trigger="watcherUpdated from:body" so any check-now or
    resync-watcher response (which sends HX-Trigger: {"watcherUpdated":{}}) causes
-   this section to self-refresh without an explicit swap target. #}
+   this section to self-refresh without an explicit swap target.
+   States: not_watching / no_status (Watcher has never reported — distinct from paused and
+   healthy) / watching / degraded (an action failed; the local render itself cannot). #}
 <div id="watcher-section"
      aria-live="polite" aria-atomic="false"
      hx-get="/dashboard/info-items/{{ item_id }}/watcher-section"
@@ -9,64 +13,125 @@
      hx-swap="outerHTML"
      style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
 
-{% if state == "not_configured" %}
-  <p class="text-muted text-sm" style="margin:0;">Watcher not configured.</p>
-
-{% elif state == "not_watching" %}
+{% if state == "not_watching" %}
   <div style="display:flex;align-items:center;gap:var(--space-2);">
     <span class="text-muted text-sm">Not watching</span>
+    {% if can_provision %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/begin-watching"
           hx-swap="none"
           style="display:inline;">
       <button type="submit" class="btn btn--secondary btn--sm">Begin Watching</button>
     </form>
+    {% endif %}
   </div>
 
 {% elif state == "degraded" %}
   <p class="text-muted text-sm" style="margin:0;">Watcher unavailable{% if error_message %} — {{ error_message }}{% endif %}.</p>
 
-{% else %}{# state == "watching" #}
-  {% set hs = watched_item.health_status.value %}
+{% elif state == "no_status" %}
+  <div class="detail-grid" style="margin-bottom:var(--space-3);">
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Status</span>
+      <span class="detail-grid__value">
+        <span class="badge badge--muted" style="font-size:0.7rem;">NO STATUS YET</span>
+      </span>
+    </div>
+    {% if watch.cadence %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Cadence</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.cadence }}</span>
+    </div>
+    {% endif %}
+    {% if watch.last_changed_ago %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Last changed</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.last_changed_ago }}</span>
+    </div>
+    {% endif %}
+  </div>
+  <p class="text-muted text-sm" style="margin:0 0 var(--space-3);">Watcher hasn't reported on this item yet.</p>
+  {% if can_act %}
+  <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
+        hx-swap="none"
+        style="display:inline;">
+    <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
+  </form>
+  {% endif %}
 
+{% else %}{# state == "watching" #}
   <div class="detail-grid" style="margin-bottom:var(--space-3);">
     <div class="detail-grid__item">
       <span class="detail-grid__label">Health</span>
       <span class="detail-grid__value">
-        <span class="badge badge--{{ 'success' if hs == 'ok' else ('danger' if hs == 'error' else 'muted') }}"
-              style="font-size:0.7rem;">{{ hs.upper() }}</span>
-        {% if watched_item.archived_at %}
-        <span class="badge badge--muted" style="font-size:0.7rem;margin-left:var(--space-1);">Archived</span>
-        {% elif not watched_item.is_active %}
+        {% if watch.health %}
+        <span class="badge badge--{{ 'success' if watch.health_ok else 'danger' }}"
+              style="font-size:0.7rem;">{{ watch.health.upper() }}</span>
+        {% endif %}
+        {% if watch.applied_active is false %}
         <span class="badge badge--muted" style="font-size:0.7rem;margin-left:var(--space-1);">Paused</span>
+        {% endif %}
+        {% if watch.pending_toggle %}
+        <span class="badge badge--muted" style="font-size:0.7rem;margin-left:var(--space-1);">{{ 'Resume' if watch.pending_toggle == 'resume' else 'Pause' }} pending</span>
         {% endif %}
       </span>
     </div>
 
-    {% if last_checked_ago %}
+    {% if watch.last_attempt_ago %}
     <div class="detail-grid__item">
-      <span class="detail-grid__label">Last checked</span>
-      <span class="detail-grid__value text-sm text-muted">{{ last_checked_ago }}</span>
+      <span class="detail-grid__label">Last attempted</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.last_attempt_ago }}</span>
     </div>
     {% endif %}
 
-    {% if last_changed_ago %}
+    {% if watch.last_observed_ago %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Last observed</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.last_observed_ago }}</span>
+    </div>
+    {% endif %}
+
+    {% if watch.last_changed_ago %}
     <div class="detail-grid__item">
       <span class="detail-grid__label">Last changed</span>
-      <span class="detail-grid__value text-sm text-muted">{{ last_changed_ago }}</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.last_changed_ago }}</span>
     </div>
     {% endif %}
 
-    {% if cadence %}
+    {% if watch.applied_cadence or watch.cadence %}
     <div class="detail-grid__item">
       <span class="detail-grid__label">Cadence</span>
-      <span class="detail-grid__value text-sm text-muted">{{ cadence }}</span>
+      <span class="detail-grid__value text-sm text-muted">
+        {{ watch.applied_cadence or watch.cadence }}
+        {% if watch.cadence_drift %}
+        <span class="badge badge--danger" style="font-size:0.65rem;">announced {{ watch.cadence }}</span>
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+    {% if watch.next_due %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Next due</span>
+      <span class="detail-grid__value text-sm {{ 'text-danger' if watch.overdue else 'text-muted' }}">{{ watch.next_due }}</span>
+    </div>
+    {% endif %}
+
+    {% if watch.drift %}
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Announcement</span>
+      <span class="detail-grid__value text-sm text-muted">
+        gen {{ watch.drift.announced }} announced · {{ watch.drift.applied }} applied
+        {% if watch.drift.in_drift %}
+        <span class="badge badge--{{ 'danger' if watch.drift.alert else 'muted' }}" style="font-size:0.65rem;">drift{% if watch.drift.age %}, {{ watch.drift.age }}{% endif %}</span>
+        {% else %}✓{% endif %}
+      </span>
     </div>
     {% endif %}
   </div>
 
   <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
     {# Check-now is hidden while paused — Watcher 409s on check-now of a paused item. #}
-    {% if watched_item.is_active %}
+    {% if can_act and watch.applied_active %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
           hx-swap="none"
           style="display:inline;">
@@ -74,21 +139,20 @@
     </form>
     {% endif %}
 
-    {# Pause/resume — hidden for archived items (Watcher 409s; archive/restore owns activation). #}
-    {% if not watched_item.archived_at %}
+    {% if can_act %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
           hx-swap="none"
           style="display:inline;">
-      <input type="hidden" name="active" value="{{ 'false' if watched_item.is_active else 'true' }}">
-      <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watched_item.is_active else 'Resume' }}</button>
+      <input type="hidden" name="active" value="{{ 'false' if watch.applied_active else 'true' }}">
+      <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watch.applied_active else 'Resume' }}</button>
     </form>
-    {% endif %}
 
     <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
           hx-swap="none"
           style="display:inline;">
       <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
     </form>
+    {% endif %}
   </div>
 {% endif %}
 

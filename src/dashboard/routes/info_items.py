@@ -2,7 +2,6 @@
 
 import json
 import os
-import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,7 +28,7 @@ from src.core.watcher_provisioning import (
 )
 
 if TYPE_CHECKING:
-    from watcher_client import WatchedItemResponse, WatcherClient
+    from watcher_client import WatcherClient
 
 from src.core.models import (
     InfoItem,
@@ -38,6 +37,7 @@ from src.core.models import (
     InfoSource,
     RepSpec,
     SourceRevision,
+    WatchStatus,
 )
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError as AssignItemNotFoundError,
@@ -69,10 +69,10 @@ from src.core.tools.deactivate_info_item_source_binding import (
     deactivate_info_item_source_binding,
 )
 from src.core.url_canonicalization import canonicalize_url
-from src.dashboard.cadence import CADENCE_LABELS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
+from src.dashboard.watch_panel import build_watch_context
 
 router = APIRouter(prefix="/dashboard/info-items")
 
@@ -933,25 +933,6 @@ async def swap_primary_by_id(
 # ---------------------------------------------------------------------------
 
 
-def _format_age(dt: datetime | None) -> str:
-    """Return a human-readable relative age string, or '' when dt is None."""
-    if dt is None:
-        return ""
-    now = datetime.now(UTC)
-    aware = dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
-    seconds = max(0, int((now - aware).total_seconds()))
-    if seconds < 60:
-        return "just now"
-    if seconds < 3600:
-        m = seconds // 60
-        return f"{m} min ago"
-    if seconds < 86400:
-        h = seconds // 3600
-        return f"{h} hr ago"
-    d = seconds // 86400
-    return f"{d} day{'s' if d != 1 else ''} ago"
-
-
 def _format_spec_summary(source_specs: list) -> str:
     """Return a brief spec summary: '<algorithm> · N spec(s)' or '' when empty.
 
@@ -972,40 +953,6 @@ def _format_spec_summary(source_specs: list) -> str:
         parts.append(algo)
     parts.append(f"{n} spec{'s' if n != 1 else ''}")
     return " · ".join(parts)
-
-
-_CADENCE_UNIT_LABELS = {"s": "sec", "m": "min", "h": "hr", "d": "day"}
-
-
-def _format_cadence(schedule_config: object) -> str:
-    """Return a short cadence string from a Watcher schedule_config, or ''.
-
-    Watcher stores cadence as ``{"interval": "<N><unit>"}`` where unit is one of
-    ``s``/``m``/``h``/``d`` (see watcher ``parse_interval``). Recognised
-    registration cadences render with their friendly label (e.g. ``7d`` →
-    "Weekly", shared via ``src.dashboard.cadence``); any other valid interval
-    falls back to a generic ``~N unit`` form. Returns ``""`` when the config is
-    absent or the interval is missing/unparseable.
-    """
-    if schedule_config is None:
-        return ""
-    try:
-        interval = schedule_config.additional_properties.get("interval")  # type: ignore[attr-defined]
-    except AttributeError:
-        return ""
-    if not interval:
-        return ""
-    interval = str(interval).strip()
-    if interval in CADENCE_LABELS:
-        return CADENCE_LABELS[interval]
-    match = re.fullmatch(r"(\d+)([smhd])", interval)
-    if match is None:
-        return ""
-    amount = int(match.group(1))
-    unit = match.group(2)
-    label = _CADENCE_UNIT_LABELS[unit]
-    plural = "s" if (unit == "d" and amount != 1) else ""
-    return f"~{amount} {label}{plural}"
 
 
 # Copy for the WatchedItem-deleted (404) reconcile paths — shared so the flash
@@ -1091,58 +1038,53 @@ async def _clear_stale_watcher_link(session: AsyncSession, item: InfoItem) -> bo
     return True
 
 
+async def _watch_template_context(
+    session: AsyncSession, item: InfoItem, watcher: "WatcherClient | None"
+) -> dict:
+    """Panel context from local state alone — zero SDK calls (archiver#151).
+
+    ``watch_status`` (the ``info.watch-status`` cache), the item's own
+    ``watch_spec`` / generations, and the latest revision of the active source
+    are everything the render needs. The Watcher client gates only the action
+    buttons, which still ride the SDK until the control-plane cutover
+    (archiver#158).
+    """
+    status = await session.get(WatchStatus, item.info_item_id)
+    last_changed_at = (
+        await session.execute(
+            select(func.max(SourceRevision.captured_at))
+            .join(
+                InfoItemSource,
+                InfoItemSource.info_source_id == SourceRevision.info_source_id,
+            )
+            .where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    watch = build_watch_context(
+        item=item, status=status, last_changed_at=last_changed_at, now=datetime.now(UTC)
+    )
+    return {
+        "item_id": str(item.info_item_id),
+        "state": watch["state"],
+        "watch": watch,
+        "can_act": watcher is not None and bool(item.watcher_item_id),
+        "can_provision": watcher is not None,
+    }
+
+
 async def _render_status_partial(
     request: Request,
     *,
     session: AsyncSession,
     item: InfoItem,
     watcher: "WatcherClient | None",
-    pre_fetched: "WatchedItemResponse | None" = None,
 ) -> HTMLResponse:
-    """Render the _watcher_status.html partial for any state."""
-    item_id = str(item.info_item_id)
-
-    if watcher is None:
-        return _templates.TemplateResponse(
-            request,
-            "info_items/_watcher_status.html",
-            {"item_id": item_id, "state": "not_configured"},
-        )
-
-    if not item.watcher_item_id:
-        return _templates.TemplateResponse(
-            request,
-            "info_items/_watcher_status.html",
-            {"item_id": item_id, "state": "not_watching"},
-        )
-
-    wi = pre_fetched
-    if wi is None:
-        try:
-            wi = await watcher.get_watched_item(item.watcher_item_id)
-        except WatcherNotFound:
-            if await _clear_stale_watcher_link(session, item):
-                return _templates.TemplateResponse(
-                    request,
-                    "info_items/_watcher_status.html",
-                    {"item_id": item_id, "state": "not_watching"},
-                )
-            return _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
-        except Exception as e:
-            return _status_degraded(request, item_id, str(e))
-
-    return _templates.TemplateResponse(
-        request,
-        "info_items/_watcher_status.html",
-        {
-            "item_id": item_id,
-            "state": "watching",
-            "watched_item": wi,
-            "last_checked_ago": _format_age(wi.last_checked_at),
-            "last_changed_ago": _format_age(wi.last_changed_at),
-            "cadence": _format_cadence(wi.default_schedule_config),
-        },
-    )
+    """Render the _watcher_status.html partial from local state."""
+    context = await _watch_template_context(session, item, watcher)
+    return _templates.TemplateResponse(request, "info_items/_watcher_status.html", context)
 
 
 async def _render_watcher_section(
@@ -1152,48 +1094,9 @@ async def _render_watcher_section(
     item: InfoItem,
     watcher: "WatcherClient | None",
 ) -> HTMLResponse:
-    """Render the _watcher_section.html partial for any state."""
-    item_id = str(item.info_item_id)
-
-    if watcher is None:
-        return _templates.TemplateResponse(
-            request,
-            "info_items/_watcher_section.html",
-            {"item_id": item_id, "state": "not_configured"},
-        )
-
-    if not item.watcher_item_id:
-        return _templates.TemplateResponse(
-            request,
-            "info_items/_watcher_section.html",
-            {"item_id": item_id, "state": "not_watching"},
-        )
-
-    try:
-        wi = await watcher.get_watched_item(item.watcher_item_id)
-    except WatcherNotFound:
-        if await _clear_stale_watcher_link(session, item):
-            return _templates.TemplateResponse(
-                request,
-                "info_items/_watcher_section.html",
-                {"item_id": item_id, "state": "not_watching"},
-            )
-        return _section_degraded(request, item_id, _RECONCILE_FAILED_MSG)
-    except Exception as e:
-        return _section_degraded(request, item_id, str(e))
-
-    return _templates.TemplateResponse(
-        request,
-        "info_items/_watcher_section.html",
-        {
-            "item_id": item_id,
-            "state": "watching",
-            "watched_item": wi,
-            "last_checked_ago": _format_age(wi.last_checked_at),
-            "last_changed_ago": _format_age(wi.last_changed_at),
-            "cadence": _format_cadence(wi.default_schedule_config),
-        },
-    )
+    """Render the _watcher_section.html partial from local state."""
+    context = await _watch_template_context(session, item, watcher)
+    return _templates.TemplateResponse(request, "info_items/_watcher_section.html", context)
 
 
 def _watcher_hx_trigger(flash: tuple[str, str] | None = None) -> str:
@@ -1264,11 +1167,10 @@ async def check_now(
     if watcher is None or not item.watcher_item_id:
         return await _render_status_partial(request, session=session, item=item, watcher=watcher)
 
-    wi: WatchedItemResponse | None = None
     flash: tuple[str, str] | None = None
     reconcile_failed = False
     try:
-        wi = await watcher.check_now(item.watcher_item_id)
+        await watcher.check_now(item.watcher_item_id)
     except WatcherNotFound:
         # The WatchedItem is gone (deleted in Watcher). Clear the stale link so
         # the partial falls back to not_watching instead of looping on 404.
@@ -1286,8 +1188,8 @@ async def check_now(
         # transport outage. Flash honestly so the operator doesn't keep retrying.
         flash = ("error", f"Couldn't trigger a check — {_WATCHER_CONTRACT_SUFFIX}")
     except Exception:
-        # wi stays None; _render_status_partial re-fetches — shows degraded if that
-        # also fails. Either way, surface the action failure as a flash.
+        # The render below is local-state and cannot fail on Watcher being
+        # down; surface the action failure as a flash.
         flash = ("error", "Couldn't trigger a check — Watcher is unavailable. Try again shortly.")
 
     if reconcile_failed:
@@ -1296,7 +1198,7 @@ async def check_now(
         response = _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
     else:
         response = await _render_status_partial(
-            request, session=session, item=item, watcher=watcher, pre_fetched=wi
+            request, session=session, item=item, watcher=watcher
         )
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
@@ -1407,6 +1309,18 @@ async def resync_watcher(
             )
         elif outcome is WatcherSyncOutcome.CONTRACT_ERROR:
             flash = ("error", f"Couldn't re-sync with Watcher — {_WATCHER_CONTRACT_SUFFIX}")
+        elif outcome is WatcherSyncOutcome.NOT_FOUND:
+            # The WatchedItem is gone. Since #151 the render never observes a
+            # 404 (it is local-state), so the action outcome carries the
+            # reconcile: clear the stale link and fall back to not_watching.
+            if await _clear_stale_watcher_link(session, item):
+                flash = ("error", _WATCHER_REMOVED_FLASH)
+            else:
+                response = _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
+                response.headers["HX-Trigger"] = _watcher_hx_trigger(
+                    ("error", _RECONCILE_FAILED_FLASH)
+                )
+                return response
 
     response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
@@ -1430,20 +1344,25 @@ async def toggle_watch_active(
     """Pause or resume a WatchedItem via PATCH is_active; re-renders status partial.
 
     ``active`` is the desired target state ("true" → resume, anything else →
-    pause); the button submits the opposite of the current state. Watcher rejects
-    pause/resume on an archived item (409) — caught here so the partial re-renders
-    instead of 500ing.
+    pause); the button submits the opposite of the current *applied* state.
+    Watcher rejects pause/resume on an archived item (409) — caught here so the
+    partial re-renders instead of 500ing.
+
+    The re-render is local state (archiver#151), so the toggle reflects only
+    once Watcher reports it back on ``info.watch-status`` — the flash confirms
+    the action landed; the panel shows what is actually applied. The write
+    moves local (UPDATE ``watch_active`` + announcement) at the control-plane
+    cutover, archiver#158.
     """
     item = await _resolve_item(item_id, session)
 
     if watcher is None or not item.watcher_item_id:
         return await _render_status_partial(request, session=session, item=item, watcher=watcher)
 
-    wi: WatchedItemResponse | None = None
     flash: tuple[str, str] | None = None
     reconcile_failed = False
     try:
-        wi = await watcher.patch_watched_item(item.watcher_item_id, is_active=active == "true")
+        await watcher.patch_watched_item(item.watcher_item_id, is_active=active == "true")
     except WatcherNotFound:
         # The WatchedItem is gone (deleted in Watcher). Clear the stale link so
         # the partial falls back to not_watching instead of looping on 404.
@@ -1472,7 +1391,7 @@ async def toggle_watch_active(
         response = _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
     else:
         response = await _render_status_partial(
-            request, session=session, item=item, watcher=watcher, pre_fetched=wi
+            request, session=session, item=item, watcher=watcher
         )
     response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response

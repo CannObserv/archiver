@@ -156,7 +156,10 @@ the version is one the consumer recognises differently.
 
 ## Change-bus consumer — `content.revisions` (archiver#139)
 
-Archiver's **only** consumer role. It reads `source_revision_observed` facts
+Archiver's first consumer role, and one of exactly two — the other is the
+`info.watch-status` tail below. **No `content.blobs` consumer exists**, and the
+epic's role boundary stays unqualified: no read-only exception carved into it.
+It reads `source_revision_observed` facts
 (`co_core.pure.models.changes.SourceRevisionObservedEvent`, cannobserv#301) from
 `content.revisions` under the group **`archiver.revisions`**, one group per
 consuming service as the fact-stream posture requires.
@@ -219,3 +222,37 @@ message **pending**, and it is redelivered or reclaimed by `XAUTOCLAIM`.
 The HTTP write path (`POST` / `PATCH /source-revisions`) stays for authoring and
 backfill; retiring it is a separate call from retiring Watcher's *use* of it
 (CannObserv/watcher#253).
+
+## Change-bus tail — `info.watch-status` (archiver#151)
+
+The return leg of the announcement channel: Watcher broadcasts the generation it
+has *applied* plus scheduler state and observation freshness
+(`co_core.pure.models.changes.WatchStatusState`, cannobserv#321; producer
+CannObserv/watcher#264); Archiver tails it into the persisted `watch_status`
+cache and renders the watched-item panel from local state with **zero SDK
+calls**. `src/core/changes/watch_status_consumer.py` holds the loop;
+`src/core/services/watch_status.py` the apply. It runs under the FastAPI
+lifespan, dormant unless `ARCHIVER_REDIS_URL` is set — deliberately **not**
+gated on `ARCHIVER_BUS_CONSUMER`: that gate exists because a group consumer
+removes messages from production's PEL, and a groupless tail removes nothing.
+
+Shape is the config/state-stream posture, not the fact-stream one: groupless
+`AsyncBusTailReader`, LWW per `info_item_id` in stream order, replay from `0-0`
+on cold start, **no DLQ** (a frame that will not decode is logged and skipped —
+the producer's periodic republish is the repair). Restart resumes from the
+`bus_tail_cursors` row, advanced in the same transaction as each apply.
+
+Per message: unknown or malformed `info_item_id` → drop (the registry is the
+authority on what exists); `revoked` → delete the cache row (idempotent);
+otherwise upsert, and when `last_observed_at` is present, write it through to
+`info_sources.last_observed_at` under the monotonic and binding-age guards
+([docs/SCHEMA.md](SCHEMA.md)). Consumer rules the panel enforces: `health ==
+"ok"` is the only healthy value (open vocabulary; unknown tokens render
+verbatim as non-healthy); next-due derives from `last_attempt_at` +
+`applied_interval`, announced `watch_spec.interval` as fallback; announced
+(`info_items.announcement_generation`) vs applied generation is the drift
+detector, aged from `info_items.announced_at` with a 15-minute alert threshold
+(`src/dashboard/watch_panel.py`).
+
+**Nothing here may block a registry write** — this is observability and drift
+detection; a stale or absent status row degrades the panel only.
