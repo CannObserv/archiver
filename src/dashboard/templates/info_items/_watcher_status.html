@@ -1,49 +1,92 @@
 {# Watcher health strip partial — loaded via hx-get; re-rendered by check-now, begin-watching, resync-watcher.
-   Must be wrapped in #watcher-status-strip so hx-swap="outerHTML" replaces the whole div. #}
+   Renders from LOCAL state (watch_status cache + item.watch_spec — archiver#151); the action
+   buttons still proxy to Watcher over the SDK until the control-plane cutover (archiver#158).
+   Must be wrapped in #watcher-status-strip so hx-swap="outerHTML" replaces the whole div.
+   States: not_watching / no_status (Watcher has never reported — distinct from paused and
+   healthy) / watching / degraded (an action failed; the local render itself cannot). #}
 <div id="watcher-status-strip" aria-live="polite" aria-atomic="false" style="margin-top:var(--space-2);">
 
-{% if state == "not_configured" %}
-  <p class="text-muted text-sm" style="margin:0;">Watcher not configured.</p>
-
-{% elif state == "not_watching" %}
+{% if state == "not_watching" %}
   <span class="text-muted text-sm">Not watching</span>
+  {% if can_provision %}
   <form hx-post="/dashboard/info-items/{{ item_id }}/begin-watching"
         hx-target="#watcher-status-strip"
         hx-swap="outerHTML"
         style="display:inline;margin-left:var(--space-2);">
     <button type="submit" class="btn btn--secondary btn--sm">Begin Watching</button>
   </form>
+  {% endif %}
 
 {% elif state == "degraded" %}
   <p class="text-muted text-sm" style="margin:0;">Watcher unavailable{% if error_message %} — {{ error_message }}{% endif %}.</p>
 
-{% else %}{# state == "watching" #}
-  {% set hs = watched_item.health_status.value %}
+{% elif state == "no_status" %}
   <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;">
-    <span class="badge badge--{{ 'success' if hs == 'ok' else ('danger' if hs == 'error' else 'muted') }}"
-          style="font-size:0.7rem;">{{ hs.upper() }}</span>
+    <span class="badge badge--muted" style="font-size:0.7rem;">NO STATUS YET</span>
+    <span class="text-muted text-sm">Watcher hasn't reported on this item.</span>
+    {% if watch.cadence %}
+    <span class="text-muted text-sm">Cadence: {{ watch.cadence }}</span>
+    {% endif %}
+    {% if watch.last_changed_ago %}
+    <span class="text-muted text-sm">Last changed: {{ watch.last_changed_ago }}</span>
+    {% endif %}
+    {% if can_act %}
+    <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
+          hx-swap="none"
+          style="display:inline;">
+      <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
+    </form>
+    {% endif %}
+  </div>
 
-    {% if watched_item.archived_at %}
-    <span class="badge badge--muted" style="font-size:0.7rem;">Archived</span>
-    {% elif not watched_item.is_active %}
-    <span class="badge badge--muted" style="font-size:0.7rem;">Paused</span>
+{% else %}{# state == "watching" #}
+  <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;">
+    {% if watch.health %}
+    <span class="badge badge--{{ 'success' if watch.health_ok else 'danger' }}"
+          style="font-size:0.7rem;">{{ watch.health.upper() }}</span>
     {% endif %}
 
-    {% if last_checked_ago %}
-    <span class="text-muted text-sm">Last checked: {{ last_checked_ago }}</span>
+    {% if watch.applied_active is false %}
+    <span class="badge badge--muted" style="font-size:0.7rem;">Paused</span>
+    {% endif %}
+    {% if watch.pending_toggle %}
+    <span class="badge badge--muted" style="font-size:0.7rem;">{{ 'Resume' if watch.pending_toggle == 'resume' else 'Pause' }} pending</span>
+    {% endif %}
+
+    {% if watch.last_attempt_ago %}
+    <span class="text-muted text-sm">Last attempted: {{ watch.last_attempt_ago }}</span>
     {% else %}
     <span class="text-muted text-sm">No check yet</span>
     {% endif %}
 
-    {% if last_changed_ago %}
-    <span class="text-muted text-sm">Last changed: {{ last_changed_ago }}</span>
+    {% if watch.last_observed_ago %}
+    <span class="text-muted text-sm">Last observed: {{ watch.last_observed_ago }}</span>
     {% endif %}
 
-    {% if cadence %}
-    <span class="text-muted text-sm">Cadence: {{ cadence }}</span>
+    {% if watch.last_changed_ago %}
+    <span class="text-muted text-sm">Last changed: {{ watch.last_changed_ago }}</span>
     {% endif %}
 
-    {% if watched_item.is_active %}
+    {% if watch.cadence_drift %}
+    <span class="text-muted text-sm">Cadence: {{ watch.applied_cadence }} <span class="badge badge--danger" style="font-size:0.65rem;">announced {{ watch.cadence }}</span></span>
+    {% elif watch.applied_cadence or watch.cadence %}
+    <span class="text-muted text-sm">Cadence: {{ watch.applied_cadence or watch.cadence }}</span>
+    {% endif %}
+
+    {% if watch.next_due %}
+    <span class="text-muted text-sm{% if watch.overdue %} text-danger{% endif %}">Next due: {{ watch.next_due }}</span>
+    {% endif %}
+
+    {% if watch.drift %}
+    <span class="text-muted text-sm">
+      gen {{ watch.drift.announced }} announced · {{ watch.drift.applied }} applied
+      {% if watch.drift.in_drift %}
+      <span class="badge badge--{{ 'danger' if watch.drift.alert else 'muted' }}" style="font-size:0.65rem;">drift{% if watch.drift.age %}, {{ watch.drift.age }}{% endif %}</span>
+      {% else %}✓{% endif %}
+    </span>
+    {% endif %}
+
+    {% if can_act and watch.applied_active %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
           hx-target="#watcher-status-strip"
           hx-swap="outerHTML"
@@ -52,13 +95,13 @@
     </form>
     {% endif %}
 
-    {% if not watched_item.archived_at %}
+    {% if can_act %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
           hx-target="#watcher-status-strip"
           hx-swap="outerHTML"
           style="display:inline;">
-      <input type="hidden" name="active" value="{{ 'false' if watched_item.is_active else 'true' }}">
-      <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watched_item.is_active else 'Resume' }}</button>
+      <input type="hidden" name="active" value="{{ 'false' if watch.applied_active else 'true' }}">
+      <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watch.applied_active else 'Resume' }}</button>
     </form>
     {% endif %}
   </div>

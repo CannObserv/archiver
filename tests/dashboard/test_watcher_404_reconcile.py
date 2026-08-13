@@ -1,17 +1,22 @@
 """Self-heal a stale watcher_item_id when Watcher reports the WatchedItem gone (404).
 
-A permanently deleted WatchedItem 404s on every read. Archiver must distinguish
-that from a transient outage: on a confirmed 404 it clears watcher_item_id and
-falls back to the not_watching state (re-exposing "Begin Watching") instead of
-sticking in degraded forever. Transient failures (network/5xx) still render
-degraded and retain the id, so a brief outage never drops the link.
+A permanently deleted WatchedItem 404s on every *action*. Archiver must
+distinguish that from a transient outage: on a confirmed 404 it clears
+watcher_item_id and falls back to the not_watching state (re-exposing "Begin
+Watching") instead of sticking in degraded forever. Transient failures
+(network/5xx) flash and retain the id, so a brief outage never drops the link.
+
+The GET render paths stopped exercising this in archiver#151 — they render
+from local state with zero SDK calls, so there is no 404 to observe there.
+Only the action endpoints (which still ride the SDK until archiver#158/#142)
+can hit it. This recovery is slated for deletion in #142 once reconcile plus
+the status stream demonstrably subsume it.
 
 Covers:
-  GET  /watcher-section        404 -> not_watching, link cleared
-  GET  /watcher-status         404 -> not_watching, link cleared
-  GET  /watcher-section        network error -> degraded, link retained (regression)
   POST /check-now              404 -> not_watching + "no longer watched" flash, link cleared
   POST /toggle-watch-active    404 -> not_watching + "no longer watched" flash, link cleared
+  POST /resync-watcher         404 -> not_watching, link cleared
+  _clear_stale_watcher_link    commit failure -> False, link retained
 """
 
 from __future__ import annotations
@@ -50,74 +55,31 @@ def _watcher_down() -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-section — 404 self-heals to not_watching and clears the link
+# GET renders never touch the SDK — a deleted WatchedItem cannot degrade them
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_404_clears_link_and_shows_not_watching(client, session):
-    app.dependency_overrides[get_watcher_client] = lambda: _watcher_404()
+async def test_get_renders_ignore_watcher_entirely(client, session):
+    """archiver#151: the read path is local. A Watcher that 404s (or is down)
+    is invisible to GET; the link survives untouched for the action paths to
+    reconcile."""
+    watcher = _watcher_404()
+    app.dependency_overrides[get_watcher_client] = lambda: watcher
     item = InfoItem(name="section-404", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
-    assert r.status_code == 200
-    assert "Not watching" in r.text
-    assert "begin-watching" in r.text
-    assert "Watcher unavailable" not in r.text
+    for path in ("watcher-section", "watcher-status"):
+        r = await client.get(
+            f"/dashboard/info-items/{item.info_item_id}/{path}",
+            headers=_HEADERS,
+        )
+        assert r.status_code == 200
+        assert "NO STATUS YET" in r.text
+        assert "Watcher unavailable" not in r.text
 
-    await session.refresh(item)
-    assert item.watcher_item_id is None
-
-
-# ---------------------------------------------------------------------------
-# GET /watcher-status — 404 self-heals to not_watching and clears the link
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_watcher_status_404_clears_link_and_shows_not_watching(client, session):
-    app.dependency_overrides[get_watcher_client] = lambda: _watcher_404()
-    item = InfoItem(name="status-404", watcher_item_id=_WI_ID)
-    session.add(item)
-    await session.flush()
-
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
-        headers=_HEADERS,
-    )
-    assert r.status_code == 200
-    assert "Not watching" in r.text
-    assert "begin-watching" in r.text
-
-    await session.refresh(item)
-    assert item.watcher_item_id is None
-
-
-# ---------------------------------------------------------------------------
-# GET /watcher-section — transient failure stays degraded and retains the link
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_watcher_section_transient_error_stays_degraded_and_retains_link(client, session):
-    app.dependency_overrides[get_watcher_client] = lambda: _watcher_down()
-    item = InfoItem(name="section-down", watcher_item_id=_WI_ID)
-    session.add(item)
-    await session.flush()
-
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
-    assert r.status_code == 200
-    assert "Watcher unavailable" in r.text
-    assert "Not watching" not in r.text
-
+    watcher.get_watched_item.assert_not_awaited()
     await session.refresh(item)
     assert item.watcher_item_id == _WI_ID
 
@@ -229,29 +191,6 @@ async def test_clear_stale_watcher_link_returns_false_when_commit_fails(session,
 
     assert result is False
     # item remains usable and the link was not durably cleared
-    assert item.watcher_item_id == _WI_ID
-
-
-@pytest.mark.asyncio
-async def test_watcher_section_404_commit_failure_stays_degraded_and_retains_link(
-    client, session, monkeypatch
-):
-    """When clearing the stale link can't commit, the partial degrades (200) rather
-    than 500ing, and the link survives for the next read to retry."""
-    app.dependency_overrides[get_watcher_client] = lambda: _watcher_404()
-    item = InfoItem(name="section-404-commitfail", watcher_item_id=_WI_ID)
-    session.add(item)
-    await session.commit()  # durable so the helper's rollback preserves the row
-
-    monkeypatch.setattr(session, "commit", _boom)
-
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
-    assert r.status_code == 200
-    assert "Watcher unavailable" in r.text
-    assert "Not watching" not in r.text
     assert item.watcher_item_id == _WI_ID
 
 

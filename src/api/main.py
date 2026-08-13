@@ -24,7 +24,7 @@ from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
 from src.core.changes import consumer as revisions_consumer
 from src.core.changes import publisher as outbox_publisher
-from src.core.changes import registry_snapshot
+from src.core.changes import registry_snapshot, watch_status_consumer
 from src.core.database import get_engine
 from src.core.db_safety import (
     ALLOW_PRODUCTION_DB_ENV,
@@ -87,6 +87,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       noisy; consuming *removes* messages from a production consumer group, so
       that one gets an explicit opt-in only ``deploy/archiver.service`` sets
       (archiver#139).
+    - Optionally starts the ``info.watch-status`` tail (archiver#151), gated on
+      the Redis URL alone — deliberately **not** on ``ARCHIVER_BUS_CONSUMER``.
+      That gate exists because a group consumer removes messages from
+      production's PEL; a groupless tail removes nothing, so a stray tail is
+      harmless.
     """
     # Before any resource is built or any request is served.
     try:
@@ -121,6 +126,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     pub_task: asyncio.Task | None = None
     consumer_task: asyncio.Task | None = None
     snapshot_task: asyncio.Task | None = None
+    watch_status_task: asyncio.Task | None = None
 
     if redis_url:
         try:
@@ -225,6 +231,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "content.revisions consumer disabled",
                 extra={"reason": "gate" if redis_client is not None else "no_redis_client"},
             )
+
+        # --- info.watch-status tail (archiver#151) ---
+        # Groupless: no PEL, no gate beyond the Redis URL. Its own try so a
+        # tail that cannot start leaves the publisher and group consumer
+        # running; shares their client and stop event.
+        if redis_client is not None:
+            try:
+                ws_session_factory = async_sessionmaker(bind=get_engine(), expire_on_commit=False)
+                start_id = await watch_status_consumer.resolve_start_id(ws_session_factory)
+                watch_status_task = asyncio.create_task(
+                    watch_status_consumer.run(
+                        session_factory=ws_session_factory,
+                        reader=watch_status_consumer.build_reader(redis_client, start_id=start_id),
+                        stop_event=stop_event,
+                    )
+                )
+                watch_status_task.add_done_callback(
+                    _bus_task_exit_logger("watch_status_tail", stop_event)
+                )
+                app.state.watch_status_task = watch_status_task
+                logger.info("info.watch-status tail task scheduled", extra={"start_id": start_id})
+            except Exception:
+                logger.exception("Failed to initialise info.watch-status tail; skipping")
+                app.state.watch_status_task = None
+        else:
+            app.state.watch_status_task = None
     else:
         # Every dormant path nulls *both* handles. Leaving app.state.publisher_task
         # set from a previous lifespan made it describe a publisher that is not
@@ -236,7 +268,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.revisions_consumer_task = None
         app.state.registry_snapshot_task = None
         app.state.registry_snapshot_trigger = None
-        logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumer disabled")
+        app.state.watch_status_task = None
+        logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumers disabled")
 
     try:
         yield
@@ -244,7 +277,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Stop the bus tasks first — both watch the same stop event.
         if stop_event is not None:
             stop_event.set()
-        for task in (pub_task, consumer_task, snapshot_task):
+        for task in (pub_task, consumer_task, snapshot_task, watch_status_task):
             if task is None:
                 continue
             task.cancel()

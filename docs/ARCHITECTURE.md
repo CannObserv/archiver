@@ -13,7 +13,9 @@ lives here.
 src/api/                       FastAPI routes, deps, schemas, serializers
 src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, static/, deps.py,
                                pagination.py — shared clamped limit/offset dependency; see
-                               docs/UI.md for why the dashboard clamps where the API 422s)
+                               docs/UI.md for why the dashboard clamps where the API 422s;
+                               watch_panel.py — pure watched-item panel context from local
+                               state: states, health rule, next-due, drift, archiver#151)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,
@@ -44,7 +46,12 @@ src/core/                      Domain logic
                                retry (the next period is the repair), reading
                                generations without bumping (#141). The event
                                payload models live in co-core since #106, not
-                               here.
+                               here. watch_status_consumer.py tails
+                               info.watch-status groupless (AsyncBusTailReader,
+                               archiver#151) into the watch_status cache —
+                               resumes from bus_tail_cursors, no DLQ, and
+                               deliberately no ARCHIVER_BUS_CONSUMER gate: a
+                               tail removes nothing from a group PEL.
   services/                    Registry write paths shared by the HTTP surface
                                and the bus consumers. A service owns one
                                mutation end to end — domain validation, the

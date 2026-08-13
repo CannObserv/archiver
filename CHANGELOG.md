@@ -18,6 +18,18 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.10.0 (2026-08-13)
+
+[service] **The `info.watch-status` consumer — the panel renders from local state, and drift is visible** (archiver#151, step 4d of the #137 epic). Archiver now tails Watcher's scheduler-status broadcast (contract cannobserv#321, v0.9.2; producer CannObserv/watcher#264, still pending — until it publishes, every item honestly renders the new "no status yet" state) into a persisted `watch_status` cache, and the watched-item panel renders from that cache with **zero SDK calls**. The four action buttons still ride the SDK until the control-plane cutover (#158) and teardown (#142).
+
+**Migration `a7c3e91d5b02`**, four surfaces: `watch_status` (LWW cache, one row per InfoItem; tombstones delete the row), `bus_tail_cursors` (groupless tails have no server-side cursor — restart is a delta, not a `0-0` replay; advanced in the same transaction as each apply), `info_sources.last_observed_at` (durable provenance — "verified current as of T", which a change-only pipeline structurally cannot assert; a **reported lower bound**, written monotonically onto the active binding and only when the observation postdates it), and `info_items.announced_at` (stamped in the same atomic UPDATE as the generation bump — the drift detector's clock, since `changes_outbox.published_at` is prunable under the #141 retention split).
+
+**The drift detector.** The panel shows announced generation against applied — "gen 9 announced · 7 applied — drift, 40m" — escalating to an alert past 15 minutes. This answers #140's open question 8 without an ack path: a broadcast fact, strictly stronger than the HTTP push ever was (the PATCH confirmed receipt, never application). A cadence-only divergence is caught separately via `applied_interval`; next-due derives from it (announced interval as fallback) so the panel never reports a schedule Watcher is not running.
+
+**Consumer posture:** groupless `AsyncBusTailReader`, no DLQ (an undecodable frame is logged and durably skipped; the periodic republish is the repair), and gated on `ARCHIVER_REDIS_URL` alone — deliberately not `ARCHIVER_BUS_CONSUMER`, whose whole point is group-PEL membership a tail does not have. `health` is treated as an open vocabulary: `"ok"` is the only value that means healthy. Nothing on this path can block a registry write.
+
+The SDK-era 404 self-heal survives on the action paths (`sync_on_source_swap` now reports `NOT_FOUND` explicitly, since the render path can no longer observe a 404); its deletion is #142's call, gated on confirming reconcile + this stream subsume it.
+
 ## v4.9.0 (2026-08-13)
 
 [both] **The registry announcement producer — `info.registry` is live, SDK v5.4.0** (archiver#141, step 4c of the #137 epic). Archiver now broadcasts desired registry state on a durable stream and Watcher reconciles against it (watcher#254's consumer is already deployed and tailing). This replaces the delivery model behind `sync_on_spec_update`'s best-effort PATCH — the silent-permanent-drift bug where a failed push left Watcher extracting against an old spec forever with nothing detecting it. The HTTP push stays until the #142 teardown; both paths are idempotent, so the dual-run is safe.

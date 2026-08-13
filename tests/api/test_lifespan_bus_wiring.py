@@ -129,3 +129,48 @@ async def test_consumer_failure_leaves_the_publisher_running(
             assert app.state.publisher_task is not None
             assert not app.state.publisher_task.done()
             assert app.state.revisions_consumer_task is None
+
+
+@pytest.mark.asyncio
+async def test_watch_status_tail_runs_without_the_gate(bus_env, fake_redis_from_url, test_engine):
+    """The tail is gated on the Redis URL alone (archiver#151): groupless, it
+    removes nothing from a production PEL, so ``ARCHIVER_BUS_CONSUMER`` —
+    whose whole point is group membership — deliberately does not apply."""
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+
+    async with lifespan(app):
+        assert app.state.watch_status_task is not None
+        assert not app.state.watch_status_task.done()
+        assert app.state.revisions_consumer_task is None  # the gate still holds there
+
+
+@pytest.mark.asyncio
+async def test_watch_status_tail_dormant_without_redis(bus_env, test_engine):
+    async with lifespan(app):
+        assert app.state.watch_status_task is None
+
+
+@pytest.mark.asyncio
+async def test_watch_status_tail_stops_on_shutdown(bus_env, fake_redis_from_url, test_engine):
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+
+    async with lifespan(app):
+        tail_task = app.state.watch_status_task
+
+    assert tail_task.done()
+
+
+@pytest.mark.asyncio
+async def test_watch_status_failure_leaves_other_bus_tasks_running(
+    bus_env, fake_redis_from_url, test_engine
+):
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+
+    with patch(
+        "src.core.changes.watch_status_consumer.resolve_start_id",
+        side_effect=RuntimeError("no cursor for you"),
+    ):
+        async with lifespan(app):
+            assert app.state.publisher_task is not None
+            assert not app.state.publisher_task.done()
+            assert app.state.watch_status_task is None

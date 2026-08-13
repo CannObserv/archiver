@@ -47,6 +47,12 @@ see the never-rename rule in `AGENTS.md`.
   never announced; the default is `0` and not a sentinel because co-core rejects negatives —
   apply-iff-greater would never fire for a key sorting below every legitimate value.
 
+  `announced_at TIMESTAMPTZ NULL` (archiver#151) — when the generation last bumped, stamped in
+  the same atomic UPDATE. The drift detector's clock: "applied lags announced by 40m" needs to
+  know when the announced generation went out, and `changes_outbox.published_at` is prunable
+  under the #141 retention split, so the fact lives here. `NULL` until the first bump (including
+  rows that predate the column); the panel then shows drift without an age.
+
   **Deletion — use `DELETE /info-items/{id}`, never psql** (archiver#141). An InfoItem's exit
   from the registry is announced as a `revoked: true` tombstone, and that tombstone must be
   written to `changes_outbox` in the deletion's own transaction. Raw SQL cannot do that, so a
@@ -64,6 +70,19 @@ see the never-rename rule in `AGENTS.md`.
   (mutable array): first element is the primary extraction spec; subsequent elements are
   cross-check alternatives for selector-rot detection. Each spec: `{schema_version, extraction,
   fingerprint}` — no `target` section; URL is on the InfoSource directly.
+  `last_observed_at TIMESTAMPTZ NULL` (archiver#151) — when Watcher last **successfully
+  extracted** this source, changed or unchanged: "verified current as of T". A provenance fact,
+  materially stronger than "no record of a change", which conflates *verified same* with *never
+  looked* — a change-only pipeline (`content.revisions`) structurally cannot assert it. Three
+  properties every reader must hold:
+  - **Reported, not locally verified.** Watcher's claim on `info.watch-status` is the only
+    source; there is no cross-check. If Watcher stamps it wrongly, the registry records it wrongly.
+  - **A lower bound, not exact freshness.** The producer coalesces publishes, so the column
+    under-reports by up to the republish period. Safe direction — it never claims content is
+    fresher than it is — but a downstream treating it as exact will be subtly wrong.
+  - **Written only by the watch-status consumer**, monotonically (never backwards), onto the
+    item's *active* binding, and only when the observation postdates that binding — an
+    observation older than the binding was of some earlier source and says nothing about this one.
 - **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is
   `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`, enforced on both
   write paths (`src/core/fingerprints.py`) because a differently-spelled fingerprint for identical
@@ -130,5 +149,22 @@ see the never-rename rule in `AGENTS.md`.
   Watcher's consumer-side table (watcher#254): every key keeps a left-hand side for
   apply-iff-greater whether or not it still has a row.
 - **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
+- **`WatchStatus`** (`watch_status`) — local LWW cache of `info.watch-status`, one row per
+  InfoItem (archiver#151). What the watched-item panel renders from, with zero SDK calls. Every
+  value is **reported by Watcher, not locally verified**, and coalesced (timestamps under-report
+  by up to the republish period). `health` is an open vocabulary — `"ok"` is the only value that
+  means healthy; consumers test `health == "ok"`, never `health != "error"`. `applied_active =
+  false` is a legitimate state (deliberately paused), not absence. `applied_interval NULL` means
+  *Watcher's own default is in force* — a reportable state; next-due derives from it where
+  present, announced `watch_spec.interval` as fallback. A `revoked` message **deletes** the row
+  (idempotent; a republished tombstone is a no-op; a later live message legitimately recreates
+  it) — "no row" is the panel's "no status yet" state, distinct from paused and from healthy.
+  FK `ON DELETE CASCADE`; a status for an item the registry does not hold is dropped unrecorded.
+  **A stale or absent row degrades the panel and must never fail a mutation, route, or publish.**
+- **`BusTailCursor`** (`bus_tail_cursors`) — resume point per tailed stream (archiver#151). A
+  groupless tail reader has no server-side delivery cursor; this row makes a restart a delta
+  from the last-applied stream id instead of a full `0-0` replay. Advanced in the same
+  transaction as the write it covers, so a crash between the two is impossible and redelivery
+  re-applies an idempotent LWW upsert. One row per stream; today only `info.watch-status`.
 
 The Phase 1–3a `InfoSpec` model has been retired. Avoid any new references to `info_spec*` outside historical alembic migration files. The "Archiver" rename was service-name-only; `info_*` table prefix and `information` schema preserved per design decision.

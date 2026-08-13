@@ -83,12 +83,21 @@ def build_tombstone(*, info_item_id: ULID | str, generation: int) -> RegistryAnn
 
 
 async def _bump_generation(session: AsyncSession, info_item_id: ULID) -> int | None:
-    """Atomically increment and return the item's generation; None if no row."""
+    """Atomically increment and return the item's generation; None if no row.
+
+    ``announced_at`` rides the same UPDATE (archiver#151): it is the drift
+    detector's clock — "applied lags announced by 40m" needs to know when the
+    announced generation went out, and ``changes_outbox.published_at`` is
+    prunable under the retention split, so the stamp lives on the item.
+    """
     return (
         await session.execute(
             update(InfoItem)
             .where(InfoItem.info_item_id == info_item_id)
-            .values(announcement_generation=InfoItem.announcement_generation + 1)
+            .values(
+                announcement_generation=InfoItem.announcement_generation + 1,
+                announced_at=datetime.now(UTC),
+            )
             .returning(InfoItem.announcement_generation)
         )
     ).scalar_one_or_none()
