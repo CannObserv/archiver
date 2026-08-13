@@ -10,6 +10,7 @@ from src.core.models.info_item_rep_spec import InfoItemRepSpec
 from src.core.models.info_item_source import InfoItemSource
 from src.core.models.info_source import InfoSource
 from src.core.models.rep_spec import RepSpec
+from src.core.models.revoked_info_item import RevokedInfoItem
 from src.core.models.source_revision import SourceRevision
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "InfoItemSource",
     "InfoSource",
     "RepSpec",
+    "RevokedInfoItem",
     "SourceRevision",
     "TimestampMixin",
     "ULIDType",
