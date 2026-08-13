@@ -21,6 +21,7 @@ publish failure that persists past it (archiver#107).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -221,6 +222,7 @@ async def drain_once(
     publisher: AsyncBusPublisher,
     batch_size: int = DEFAULT_BATCH_SIZE,
     seen_topics: set[str] | None = None,
+    topic_maxlen: Mapping[str, int] | None = None,
 ) -> int:
     """Drain at most ``batch_size`` unpublished rows.
 
@@ -283,7 +285,14 @@ async def drain_once(
                 # at-least-once boundary: if the process dies between this XADD
                 # and the commit below, the row re-publishes next drain — safe
                 # only because consumers dedupe on the envelope idempotency key.
-                bus_result = await publisher.execute(BusPublish(topic=row.topic, fields=fields))
+                # Config/state streams (info.registry) carry retention ON the
+                # publish: their consumers replay from 0-0, so the cap is a
+                # consumer contract (co-core streams taxonomy), not operator
+                # housekeeping. Fact streams pass None and keep the XTRIM loop.
+                maxlen = (topic_maxlen or {}).get(row.topic)
+                bus_result = await publisher.execute(
+                    BusPublish(topic=row.topic, fields=fields, maxlen=maxlen)
+                )
                 row.published_at = datetime.now(UTC)
                 row.bus_message_id = bus_result.bus_message_id
                 row.last_error = None
@@ -346,6 +355,8 @@ async def run(
     trim_topic: str = CHANGE_STREAM_TOPIC,
     trim_interval_iterations: int = TRIM_INTERVAL_ITERATIONS,
     error_backoff_base: float = ERROR_BACKOFF_BASE_SECONDS,
+    no_trim_topics: frozenset[str] = frozenset(),
+    topic_maxlen: Mapping[str, int] | None = None,
 ) -> None:
     """Loop forever (until ``stop_event`` is set), draining the outbox.
 
@@ -376,6 +387,7 @@ async def run(
                 publisher=publisher,
                 batch_size=batch_size,
                 seen_topics=seen_topics,
+                topic_maxlen=topic_maxlen,
             )
             if consecutive_failures:
                 # Positive signal that the loop is healthy again (CR #14) — the
@@ -409,7 +421,11 @@ async def run(
         ):
             # Trim every stream produced to; fall back to the canonical topic so
             # a pre-existing stream is bounded even before the first publish.
-            for topic in seen_topics or {trim_topic}:
+            # no_trim_topics carve out the config/state streams: their retention
+            # is a consumer contract riding BusPublish.maxlen (above). One global
+            # MAXLEN sized for the fact stream would silently break the
+            # replay-from-0-0 convergence floor (archiver#141).
+            for topic in (seen_topics or {trim_topic}) - no_trim_topics:
                 await trim_stream(redis_client, topic, stream_maxlen)
 
         delay = _next_delay(

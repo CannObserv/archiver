@@ -51,6 +51,37 @@ from src.core.models import (
 INFO_REGISTRY_TOPIC = INFO_REGISTRY
 
 
+def build_live_announcement(
+    *, item: InfoItem, source: InfoSource, generation: int
+) -> RegistryAnnouncementEmit:
+    """One payload shape for both emit paths — delta (here) and snapshot.
+
+    Two builders would drift, and the failure directions differ: a delta that
+    diverges dead-letters loudly in the outbox build phase, but the snapshot
+    publishes directly, so its divergence would reach the stream.
+    """
+    return RegistryAnnouncementEmit(
+        occurred_at=datetime.now(UTC),
+        info_item_id=str(item.info_item_id),
+        generation=generation,
+        info_source_id=str(source.info_source_id),
+        url=source.url,
+        source_specs=source.source_specs,
+        active=item.watch_active,
+        watch_spec=item.watch_spec,
+    )
+
+
+def build_tombstone(*, info_item_id: ULID | str, generation: int) -> RegistryAnnouncementEmit:
+    """Minimal by contract: identity + generation + revoked, nothing hydrated."""
+    return RegistryAnnouncementEmit(
+        occurred_at=datetime.now(UTC),
+        info_item_id=str(info_item_id),
+        generation=generation,
+        revoked=True,
+    )
+
+
 async def _bump_generation(session: AsyncSession, info_item_id: ULID) -> int | None:
     """Atomically increment and return the item's generation; None if no row."""
     return (
@@ -111,23 +142,9 @@ async def announce_info_item(session: AsyncSession, info_item_id: ULID) -> None:
             # harmless, and un-bumping would need a second UPDATE racing the
             # first — so the first real announcement goes out as gen 2.
             return
-        event = RegistryAnnouncementEmit(
-            occurred_at=datetime.now(UTC),
-            info_item_id=str(info_item_id),
-            generation=generation,
-            revoked=True,
-        )
+        event = build_tombstone(info_item_id=info_item_id, generation=generation)
     else:
-        event = RegistryAnnouncementEmit(
-            occurred_at=datetime.now(UTC),
-            info_item_id=str(info_item_id),
-            generation=generation,
-            info_source_id=str(source.info_source_id),
-            url=source.url,
-            source_specs=source.source_specs,
-            active=item.watch_active,
-            watch_spec=item.watch_spec,
-        )
+        event = build_live_announcement(item=item, source=source, generation=generation)
     _add_outbox_row(session, event)
 
 
@@ -169,12 +186,4 @@ async def announce_info_item_revoked(session: AsyncSession, item: InfoItem) -> N
     if generation is None:
         return
     session.add(RevokedInfoItem(info_item_id=item.info_item_id, generation=generation))
-    _add_outbox_row(
-        session,
-        RegistryAnnouncementEmit(
-            occurred_at=datetime.now(UTC),
-            info_item_id=str(item.info_item_id),
-            generation=generation,
-            revoked=True,
-        ),
-    )
+    _add_outbox_row(session, build_tombstone(info_item_id=item.info_item_id, generation=generation))

@@ -257,3 +257,12 @@ class SelectorCandidateOut(BaseModel):
             "penalty for hash-looking class names."
         ),
     )
+
+
+class RepublishRegistryResponse(BaseModel):
+    """Response body for POST /api/v1/tools/republish-registry-announcements."""
+
+    triggered: bool = Field(
+        description="True — the snapshot loop was signalled; the publish itself "
+        "happens asynchronously on the loop's task (202 semantics)."
+    )
