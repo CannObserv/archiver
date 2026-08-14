@@ -26,6 +26,14 @@ write N+1, and every consumer would discard the second announcement as a
 duplicate (apply-iff-greater never fires). This is the failure the token
 exists to prevent, reintroduced by the obvious implementation.
 
+**The bump precedes the payload, so no announcement carries generation 0**
+(archiver#161) — the floor on the wire is 1, and that is load-bearing rather
+than incidental. The return leg spells "Watcher has never reconciled anything"
+as ``applied_generation = 0``, so an announcement at 0 would make the wire value
+ambiguous and the drift detector read an unapplied item as clean. Keep the bump
+above the build; do not add a path that emits a generation it read rather than
+incremented. ``0`` in the *column* still means never announced.
+
 **Deletion** (``announce_info_item_revoked``) additionally records a
 ``RevokedInfoItem`` row, because the item row is about to be gone and the
 snapshot's full-set republish must keep tombstoning the key — absence from a

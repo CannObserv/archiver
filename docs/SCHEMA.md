@@ -47,6 +47,20 @@ see the never-rename rule in `AGENTS.md`.
   never announced; the default is `0` and not a sentinel because co-core rejects negatives —
   apply-iff-greater would never fire for a key sorting below every legitimate value.
 
+  **An *announced* generation is never `0`** (archiver#161). The floor is 1 on the wire: the
+  bump precedes the payload, so the delta path cannot emit 0, and migration `e3a71c40b9d2`
+  lifted the rows that could reach a snapshot at 0 — those predating the column, plus rows the
+  #150 import classed `unchanged` and therefore never announced. It lifts only the
+  **announceable** ones (active binding, non-empty `source_specs`), because those are the only
+  rows a snapshot publishes at all at 0; an unbound or spec-less row is already filtered out of
+  both revoked lists by their own `> 0` guards, and lifting it would start a tombstone for a key
+  no consumer has ever held. Those stay at `0` and heal on their first real mutation. The reason is the return
+  leg: `info.watch-status` spells "never reconciled" as `applied_generation = 0`, so a
+  generation-0 *announcement* would make the wire value ambiguous and the #151 drift detector
+  read an unapplied item as clean. Reserved `0` in the DB (never announced) and a floor of 1 on
+  the wire are the two halves of that. A live snapshot entry at 0 is now logged as an anomaly —
+  it would mean an announceable item reached the snapshot without passing any announce site.
+
   `announced_at TIMESTAMPTZ NULL` (archiver#151) — when the generation last bumped, stamped in
   the same atomic UPDATE. The drift detector's clock: "applied lags announced by 40m" needs to
   know when the announced generation went out, and `changes_outbox.published_at` is prunable

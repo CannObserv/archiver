@@ -18,6 +18,20 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.10.2 (2026-08-14)
+
+[service] **No `info.registry` announcement carries generation 0 any more** (archiver#161). Migration `e3a71c40b9d2` lifts every un-bumped `info_items.announcement_generation` to 1 and stamps `announced_at`.
+
+**The ambiguity was on the return leg, and it failed in the wrong direction.** `info.watch-status` spells "Watcher has never reconciled any announcement" as `applied_generation = 0` — the co-core type is `ge=0`, so 0 is the only spelling available. With generation-0 *announcements* also reachable, that wire value collapsed two states: never reconciled, and correctly reconciled at 0. For the #151 drift detector (`applied < announced`) an item announced at 0 and not yet applied read **clean**, which is the lie-in-the-safe-direction inversion the whole channel was designed against. Three of Watcher's four watched items sat at `applied_generation = 0` in production on 2026-08-14, reconciled from real snapshot frames — and the panel suppresses drift entirely below generation 1, so the detector was not merely ambiguous for those items, it was off.
+
+**The zeros were data, not a producer bug.** The delta path already had the floor: `_bump_generation` increments before the payload is built, so its minimum is 1. Only the snapshot could republish an un-bumped row, and there were exactly two such populations — rows predating `f5c522f65657` (which added the column with `server_default="0"`), and rows the #150 import classed `unchanged`, whose early return skips the announce that would have healed them. The backfill lifts them; every future item passes a bump site before its first announcement, so no producer change was needed for the floor to hold. Consumers need no change either: apply-iff-greater is total over the shift, `1 > 0` fires, and the next full set re-announces each touched key once.
+
+**The backfill's scope is narrower than "every un-bumped row", and that is the load-bearing part of it.** It touches only rows the snapshot publishes *live* — active binding, non-empty `source_specs`. A row that is unbound or bound to a spec-less source announces nothing at generation 0, because both revoked lists filter on `announcement_generation > 0`; lifting one to 1 would make it start tombstoning a key no consumer has ever held, republished every period forever, and would falsify the snapshot's own rule that never-announced keys are absent from the full set. Those rows stay at 0 and heal the ordinary way, on their first real mutation.
+
+**The type stays `ge=0`.** The return leg needs 0 as its sentinel, so the floor is a producer invariant rather than a contract narrowing. It is now enforced where it can be observed: a live snapshot entry at generation 0 is logged as an anomaly — post-backfill that condition means an announceable item reached the snapshot without passing any announce site, i.e. a missing call site — and published anyway, since skipping would drop a real item from the registry and bumping would break the snapshot's read-never-bump rule.
+
+**Ordering note for #158:** land this before the control-plane dual-run. That issue's acceptance evidence is read off the drift detector, and until this migration runs the detector is dark for the majority of production items.
+
 ## v4.10.1 (2026-08-14)
 
 [service] **The watch-status tail can no longer stall on a message it cannot apply** (archiver#151, code-review round 1). Migration `c81f4a2e7d36` widens `watch_status.health` and `applied_interval` to `TEXT`.

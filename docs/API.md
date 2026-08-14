@@ -118,7 +118,9 @@ canonical classes are `extra="ignore"` (consumer-safe forward-compat). The
 producer surface, *config/state* kind rather than fact: per-InfoItem LWW state,
 keyed by the `info_item_id` payload field and ordered by a monotonic
 `generation` (`info_items.announcement_generation`, bumped atomically in the
-mutation's transaction). Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
+mutation's transaction; **never `0` on the wire** — archiver#161, so the return
+leg's `applied_generation = 0` unambiguously means "nothing applied yet").
+Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
 (emit sites use `RegistryAnnouncementEmit`). Consumer: Watcher's reconcile loop
 (watcher#254), replaying grouplessly from `0-0`.
 

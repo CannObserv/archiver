@@ -18,6 +18,7 @@ concurrent deltas, and defeat apply-iff-greater.
 
 import asyncio
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from co_core.pure.adapters.bus.envelope import payload_from_dict
@@ -289,6 +290,66 @@ async def test_run_survives_a_failing_publish_cycle(session_factory, fake_redis)
 
     stop.set()
     await asyncio.wait_for(task, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_a_live_entry_at_generation_zero_is_published_and_reported(
+    session_factory, publisher, fake_redis, monkeypatch
+):
+    """Generation 0 must not reach the wire as a live announcement (archiver#161).
+
+    The delta path cannot produce one — ``_bump_generation`` increments before
+    the payload is built, so its floor is 1. Only the snapshot can, by reading a
+    row that never passed an announce site: pre-``f5c522f65657`` rows carrying
+    the column's ``server_default`` of 0. The backfill migration removes that
+    population, and after it a live 0 means a *missing announce call site* — an
+    announceable item that mutated without announcing. Alarm on it.
+
+    Publish it anyway. Skipping would drop a real item from the registry, and
+    bumping here would violate this module's read-never-bump rule and race the
+    delta path for the counter. Loud is the remedy; silent omission is not.
+
+    Spies the module logger rather than using caplog: configure_logging()
+    replaces root.handlers, which defeats pytest's capture handler.
+    """
+    async with session_factory() as s:
+        item = InfoItem(name="unbumped")  # generation 0 — legacy shape
+        source = InfoSource(url="https://example.test/legacy", source_specs=_SPECS)
+        s.add_all([item, source])
+        await s.flush()
+        s.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id))
+        await s.commit()
+        item_id = str(item.info_item_id)
+
+    spy = MagicMock()
+    monkeypatch.setattr(registry_snapshot.logger, "warning", spy)
+
+    live, revoked = await publish_full_set(
+        session_factory=session_factory, publisher=publisher, maxlen=1000
+    )
+
+    assert (live, revoked) == (1, 0)
+    (payload,) = await _stream_payloads(fake_redis)
+    assert payload["info_item_id"] == item_id
+    assert payload["revoked"] is False
+
+    spy.assert_called_once()
+    assert "generation 0" in spy.call_args.args[0]
+    assert spy.call_args.kwargs["extra"]["info_item_id"] == item_id
+
+
+@pytest.mark.asyncio
+async def test_a_healthy_full_set_reports_no_generation_anomaly(
+    session_factory, publisher, monkeypatch
+):
+    """The alarm above must stay silent on ordinary state, or it is noise."""
+    await _seed(session_factory)
+    spy = MagicMock()
+    monkeypatch.setattr(registry_snapshot.logger, "warning", spy)
+
+    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+
+    spy.assert_not_called()
 
 
 def test_interval_and_maxlen_env_parsing():
