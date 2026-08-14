@@ -319,3 +319,47 @@ async def test_open_vocabulary_health_token_applies(fake_redis, session_factory,
         assert row.health == long_health
     finally:
         await _cleanup_cursor(session_factory)
+
+
+async def test_consecutive_skips_are_counted_and_throttled(fake_redis, session_factory, item):
+    """A stuck producer must not write one ERROR per message forever.
+
+    The count is carried across `consume_once` calls (that is what makes it
+    *consecutive*), mirrors the loop's own ERROR_LOG_EVERY escalation, and
+    resets the moment a message applies cleanly.
+    """
+    throttle = watch_status_consumer.SkipThrottle()
+    try:
+        for _ in range(watch_status_consumer.ERROR_LOG_EVERY + 1):
+            await fake_redis.xadd(WATCH_STATUS_TOPIC, _status(str(item.info_item_id)))
+        reader = watch_status_consumer.build_reader(fake_redis)
+
+        with patch.object(
+            watch_status_consumer,
+            "apply_watch_status",
+            side_effect=DataError("stmt", {}, Exception("nope")),
+        ):
+            for _ in range(watch_status_consumer.ERROR_LOG_EVERY + 1):
+                await watch_status_consumer.consume_once(
+                    session_factory=session_factory, reader=reader, skip_throttle=throttle
+                )
+
+        assert throttle.consecutive == watch_status_consumer.ERROR_LOG_EVERY + 1
+
+        # A clean apply resets the run — the next fault is loud again.
+        await fake_redis.xadd(WATCH_STATUS_TOPIC, _status(str(item.info_item_id)))
+        await watch_status_consumer.consume_once(
+            session_factory=session_factory, reader=reader, skip_throttle=throttle
+        )
+        assert throttle.consecutive == 0
+    finally:
+        await _cleanup_cursor(session_factory)
+
+
+def test_skip_throttle_logs_first_then_every_nth():
+    throttle = watch_status_consumer.SkipThrottle()
+    every = watch_status_consumer.ERROR_LOG_EVERY
+    emitted = [i for i in range(1, every * 2 + 1) if throttle.record()]
+    assert emitted[0] == 1
+    assert watch_status_consumer.ERROR_LOG_EVERY in emitted
+    assert len(emitted) < watch_status_consumer.ERROR_LOG_EVERY  # suppression happened

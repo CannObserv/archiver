@@ -48,15 +48,33 @@ _INTERVAL_RE = re.compile(r"^(\d+)([smhd])$")
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _UNIT_LABELS = {"s": "sec", "m": "min", "h": "hr", "d": "day"}
 
+# Ten years. The grammar puts no ceiling on the digit run, the wire type is an
+# unconstrained ``str``, and the column is ``TEXT`` — so nothing between
+# Watcher and this function caps the value, and ``timedelta`` overflows long
+# before Python's int does. Anything past this is not a cadence, and treating
+# it as unparseable degrades the panel (no next-due) instead of raising
+# ``OverflowError`` out of the render (CR round 2, finding 11). The failure
+# would also have been sticky rather than transient: the value is persisted
+# before the panel ever reads it, so an unguarded raise breaks the page on
+# every subsequent load.
+_MAX_INTERVAL_SECONDS = 10 * 365 * 86400
+
 
 def parse_interval_seconds(interval: str | None) -> int | None:
-    """Seconds for a Watcher interval string (``^[0-9]+[smhd]$``), else None."""
+    """Seconds for a Watcher interval string (``^[0-9]+[smhd]$``), else None.
+
+    ``None`` also covers a well-formed interval too large to schedule from;
+    callers already treat that as "no next-due", which is the honest reading.
+    """
     if not interval:
         return None
     match = _INTERVAL_RE.fullmatch(str(interval).strip())
     if match is None:
         return None
-    return int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
+    seconds = int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
+    if seconds > _MAX_INTERVAL_SECONDS:
+        return None
+    return seconds
 
 
 def format_interval(interval: str | None) -> str:

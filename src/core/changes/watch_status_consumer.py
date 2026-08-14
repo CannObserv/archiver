@@ -34,6 +34,7 @@ harmless, and the dormant-without-``ARCHIVER_REDIS_URL`` rule is sufficient.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from co_core.pure.adapters.bus.exceptions import BusMessageAnomaly
@@ -82,6 +83,34 @@ READ_BLOCK_MS = 5_000
 # code fault that silently swallowed every message would be far worse than a
 # stall an operator can see.
 _UNAPPLIABLE_DB_ERRORS = (DataError, IntegrityError, NotSupportedError, ProgrammingError)
+
+
+@dataclass
+class SkipThrottle:
+    """Consecutive un-appliable skips, so a stuck producer cannot flood the journal.
+
+    Each skip is a distinct dropped message and worth naming, but a producer
+    emitting a sustained run of them would otherwise write one ERROR per
+    message indefinitely — the same flood the loop's own ``ERROR_LOG_EVERY``
+    escalation exists to prevent (CR round 2, finding 14). The first is always
+    logged, then every ``ERROR_LOG_EVERY``-th, and every emitted line carries
+    the running count so a suppressed run stays visible rather than merely
+    absent.
+
+    Owned by ``run`` and threaded through ``consume_once``, because
+    *consecutive* is a property of the loop, not of a single read.
+    """
+
+    consecutive: int = 0
+
+    def record(self) -> bool:
+        """Count one skip; return whether this one should be logged."""
+        self.consecutive += 1
+        return self.consecutive == 1 or self.consecutive % ERROR_LOG_EVERY == 0
+
+    def reset(self) -> None:
+        """A message applied cleanly — the next fault is loud again."""
+        self.consecutive = 0
 
 
 async def resolve_start_id(session_factory: async_sessionmaker[AsyncSession]) -> str:
@@ -165,18 +194,29 @@ async def _skip_unappliable(
     session_factory: async_sessionmaker[AsyncSession],
     message: BusMessage,
     exc: Exception,
+    throttle: SkipThrottle,
 ) -> None:
     """Advance past a decoded message the registry can never write.
 
     The reader's in-memory cursor already moved past it during ``read``; only
     the durable cursor needs catching up. Logged at ERROR because this drops
-    state the producer sent, and the next republish is what restores it.
+    state the producer sent, and the next republish is what restores it —
+    throttled past the first of a consecutive run so a stuck producer cannot
+    flood the journal, with the running count on every line that survives.
+
+    The cursor advance is **not** throttled: suppressing a log line must never
+    suppress the skip itself, or the loop would silently start wedging again.
     """
-    logger.error(
-        "Skipping unappliable watch-status message",
-        extra={"message_id": message.message_id, "error": error_text(exc)},
-        exc_info=exc,
-    )
+    if throttle.record():
+        logger.error(
+            "Skipping unappliable watch-status message",
+            extra={
+                "message_id": message.message_id,
+                "error": error_text(exc),
+                "consecutive_skips": throttle.consecutive,
+            },
+            exc_info=exc,
+        )
     await _persist_skip(session_factory, message.message_id)
 
 
@@ -185,6 +225,7 @@ async def consume_once(
     session_factory: async_sessionmaker[AsyncSession],
     reader: AsyncBusTailReader,
     block_ms: int | None = None,
+    skip_throttle: SkipThrottle | None = None,
 ) -> int:
     """Read and apply up to ``READ_COUNT`` messages. Returns how many applied.
 
@@ -200,6 +241,7 @@ async def consume_once(
       the next iteration redelivers. The entry is never lost to an in-memory
       cursor that outran the persisted one.
     """
+    throttle = skip_throttle if skip_throttle is not None else SkipThrottle()
     resume_point = reader.cursor
     try:
         messages = await reader.read(count=READ_COUNT, block_ms=block_ms)
@@ -212,11 +254,12 @@ async def consume_once(
         try:
             disposition = await handle_message(session_factory, message)
         except _UNAPPLIABLE_DB_ERRORS as exc:
-            await _skip_unappliable(session_factory, message, exc)
+            await _skip_unappliable(session_factory, message, exc, throttle)
             continue
         except Exception:
             reader.seek(resume_point)
             raise
+        throttle.reset()
         logger.info(
             "Applied watch-status message",
             extra={"message_id": message.message_id, "disposition": disposition},
@@ -247,9 +290,17 @@ async def run(
     )
 
     consecutive_failures = 0
+    # One throttle for the loop's lifetime: "consecutive" spans reads, so a
+    # per-call instance would reset every iteration and never suppress anything.
+    skip_throttle = SkipThrottle()
     while not stop_event.is_set():
         try:
-            await consume_once(session_factory=session_factory, reader=reader, block_ms=block_ms)
+            await consume_once(
+                session_factory=session_factory,
+                reader=reader,
+                block_ms=block_ms,
+                skip_throttle=skip_throttle,
+            )
             if consecutive_failures:
                 logger.warning(
                     "info.watch-status tail recovered",
