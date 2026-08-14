@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrif
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces `info.changes` via an internal outbox publisher and consumes `content.revisions` (archiver#139).
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces `info.changes` and `info.registry` via an internal outbox publisher, and consumes exactly two streams — `content.revisions` (archiver#139) and `info.watch-status` (archiver#151). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
 
@@ -219,6 +219,8 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - `InfoItemRepSpec` (`info_item_rep_specs`) — effective-dated assignment + `public_url`
 - `ChangesOutboxRow` (`changes_outbox`) — pending bus event awaiting publication
 - `RevokedInfoItem` (`revoked_info_items`) — deleted InfoItem's identity + final generation; feeds the snapshot's tombstone republish
+- `WatchStatus` (`watch_status`) — local LWW cache of `info.watch-status`; what the watched-item panel renders from. Reported by Watcher, never locally verified
+- `BusTailCursor` (`bus_tail_cursors`) — resume point per groupless tail, so a restart is a delta not a `0-0` replay
 
 Per-entity contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The
 Phase 1–3a `InfoSpec` model is retired — no new `info_spec*` references.
