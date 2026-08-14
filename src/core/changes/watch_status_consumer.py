@@ -14,10 +14,15 @@ last applied id, advanced in the same transaction as the apply, so boot is a
 delta and a crash between write and cursor is impossible. A cold start (no
 cursor row) replays from ``0-0``.
 
-**No DLQ, matching ``content.fetch-policy``.** A frame that will not decode is
-logged and skipped — with no group there is no PEL to quarantine from, and on
-an LWW stream the producer's periodic republish is the repair. The skip is
-persisted too, so a restart does not re-hit the poison frame forever.
+**No DLQ, matching ``content.fetch-policy`` — which makes "retry forever" a
+stall, not a safety net.** With no group there is no PEL to quarantine from,
+and the cursor only advances on a successful apply, so any message that can
+never succeed would spin indefinitely and silently. Two skip paths exist for
+that reason: a frame that will not *decode*, and a decoded message the registry
+can never *write* (``_UNAPPLIABLE_DB_ERRORS``). Both are logged and stepped
+past durably, so a restart does not re-hit them; on an LWW stream the
+producer's periodic republish is what restores whatever a skip dropped.
+Everything else still rewinds and retries.
 
 **Gate: bus-URL presence only — deliberately not ``ARCHIVER_BUS_CONSUMER``.**
 That gate exists because a group consumer *removes* messages from
@@ -34,6 +39,7 @@ from typing import TYPE_CHECKING
 from co_core.pure.adapters.bus.exceptions import BusMessageAnomaly
 from co_core.pure.models.changes import WatchStatusState
 from co_core_aio.bus import AsyncBusTailReader, BusMessage
+from sqlalchemy.exc import DataError, IntegrityError, NotSupportedError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.changes.backoff import (
@@ -61,6 +67,21 @@ logger = get_logger(__name__)
 # At count=1 the frame that raised is unambiguous and seek is safe immediately.
 READ_COUNT = 1
 READ_BLOCK_MS = 5_000
+
+# Failures redelivery cannot resolve: the frame decoded, but the registry can
+# never write it — a value outside a column's domain, a constraint it violates,
+# a statement the server rejects. Retrying reproduces them exactly, and with no
+# DLQ and a cursor that only advances on a successful apply, the loop would spin
+# on one frame **forever** — a silent, total stall of the stream that exists to
+# detect silent drift (CR round 1, finding 1). Skipping is safe here in a way it
+# would not be on a fact stream: this is last-write-wins state, so the
+# producer's periodic republish is the repair.
+#
+# Deliberately an allow-list, not a catch-all. An *unclassified* failure keeps
+# rewinding and logging, because the plausible cause is a bug of ours, and a
+# code fault that silently swallowed every message would be far worse than a
+# stall an operator can see.
+_UNAPPLIABLE_DB_ERRORS = (DataError, IntegrityError, NotSupportedError, ProgrammingError)
 
 
 async def resolve_start_id(session_factory: async_sessionmaker[AsyncSession]) -> str:
@@ -95,6 +116,23 @@ async def handle_message(
     return disposition
 
 
+async def _persist_skip(session_factory: async_sessionmaker[AsyncSession], message_id: str) -> None:
+    """Durably record that a message was skipped, so a restart does not re-hit it.
+
+    Never raises: if the cursor write fails the in-memory advance still holds,
+    and a restart re-reads and re-skips the frame — noisy, not wedged.
+    """
+    try:
+        async with session_factory() as session:
+            await advance_cursor(session, WATCH_STATUS_TOPIC, message_id)
+            await session.commit()
+    except Exception:
+        logger.exception(
+            "Failed to persist skip; restart will re-process the frame",
+            extra={"message_id": message_id},
+        )
+
+
 async def _skip_poison(
     session_factory: async_sessionmaker[AsyncSession],
     reader: AsyncBusTailReader,
@@ -103,9 +141,13 @@ async def _skip_poison(
     """Advance past a frame that will not decode — in memory and durably.
 
     This log line is the only record the frame leaves behind (no DLQ on this
-    stream kind); the LWW republish is the repair for whatever state it
-    carried. If persisting the skip fails the in-memory seek still holds, and
-    a restart re-hits the frame and logs it again — noisy, not wedged.
+    stream kind); the LWW republish is the repair for whatever state it carried.
+
+    ``seek`` happens **after** the sentinel guard, not before: ``"?"`` is
+    ``from_wire``'s placeholder when no id was supplied, and seeking the cursor
+    to it would leave every subsequent ``xread`` raising on an invalid stream
+    id — a permanent wedge, strictly worse than not handling the case at all
+    (CR round 1, finding 2).
     """
     message_id = getattr(exc, "message_id", None) or "?"
     logger.error(
@@ -113,18 +155,29 @@ async def _skip_poison(
         extra={"message_id": message_id, "error": error_text(exc)},
         exc_info=exc,
     )
-    reader.seek(message_id)
     if message_id == "?":
         return
-    try:
-        async with session_factory() as session:
-            await advance_cursor(session, WATCH_STATUS_TOPIC, message_id)
-            await session.commit()
-    except Exception:
-        logger.exception(
-            "Failed to persist skip of undecodable frame; restart will re-log it",
-            extra={"message_id": message_id},
-        )
+    reader.seek(message_id)
+    await _persist_skip(session_factory, message_id)
+
+
+async def _skip_unappliable(
+    session_factory: async_sessionmaker[AsyncSession],
+    message: BusMessage,
+    exc: Exception,
+) -> None:
+    """Advance past a decoded message the registry can never write.
+
+    The reader's in-memory cursor already moved past it during ``read``; only
+    the durable cursor needs catching up. Logged at ERROR because this drops
+    state the producer sent, and the next republish is what restores it.
+    """
+    logger.error(
+        "Skipping unappliable watch-status message",
+        extra={"message_id": message.message_id, "error": error_text(exc)},
+        exc_info=exc,
+    )
+    await _persist_skip(session_factory, message.message_id)
 
 
 async def consume_once(
@@ -135,11 +188,17 @@ async def consume_once(
 ) -> int:
     """Read and apply up to ``READ_COUNT`` messages. Returns how many applied.
 
-    A decode failure is settled inside (logged + skipped), returning 0 so the
-    loop keeps its cadence. An apply failure (the database being down) rewinds
-    the reader to the pre-read cursor and re-raises, so the loop backs off and
-    the next iteration redelivers — the entry is never lost to an in-memory
-    cursor that outran the persisted one.
+    Three dispositions, and the middle one is the reason this is not a plain
+    try/except:
+
+    - **Decode failure** — settled inside (logged + skipped), returns 0 so the
+      loop keeps its cadence.
+    - **Un-appliable** (``_UNAPPLIABLE_DB_ERRORS``) — logged and skipped past.
+      Redelivery reproduces it exactly, so retrying is an infinite stall.
+    - **Anything else** (the database being down, a bug of ours) — rewinds the
+      reader to the pre-read cursor and re-raises, so the loop backs off and
+      the next iteration redelivers. The entry is never lost to an in-memory
+      cursor that outran the persisted one.
     """
     resume_point = reader.cursor
     try:
@@ -152,12 +211,14 @@ async def consume_once(
     for message in messages:
         try:
             disposition = await handle_message(session_factory, message)
+        except _UNAPPLIABLE_DB_ERRORS as exc:
+            await _skip_unappliable(session_factory, message, exc)
+            continue
         except Exception:
             reader.seek(resume_point)
             raise
         logger.info(
-            "watch-status message %s",
-            disposition,
+            "Applied watch-status message",
             extra={"message_id": message.message_id, "disposition": disposition},
         )
         applied += 1

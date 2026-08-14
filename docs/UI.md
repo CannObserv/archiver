@@ -133,6 +133,25 @@ Used for every external URL (source URLs, RepSpec `public_url`, http(s)
 `content_cache_uri`). Section-header deeplinks styled as headings (e.g. the
 InfoItem "Watcher ↗" `<h2>`) are intentionally exempt.
 
+**Reported state from another service.** Where a panel renders state some other
+service reports over the bus rather than state Archiver owns — the InfoItem
+watched-item panel is the reference (archiver#151, inventoried in
+[PAGES.md](PAGES.md)) — three rules hold, and they generalise to every such
+panel the cluster grows:
+
+1. **"Not reported yet" is its own state**, never folded into the nearest
+   negative. A consumer that has heard nothing and a subject that is genuinely
+   idle are different facts, and collapsing them makes a booting consumer
+   indistinguishable from a broken subject.
+2. **Open vocabularies fail toward not-OK.** Where the contract types a field as
+   a bare `str` so it can grow, exactly one value means healthy and every other
+   value — known or never seen — renders verbatim on the non-healthy styling.
+   Test `== "ok"`, never `!= "error"`; the tempting guess (unknown ⇒ fine) is
+   the one that fails silently.
+3. **Desired and applied are shown together** when they can diverge, with the
+   divergence and its age surfaced rather than reconciled away. A panel that
+   renders only what was asked for reports a state nothing is actually in.
+
 **HTMX mutations.** A mutating action on a detail page re-renders the affected
 region in place rather than full-page reloading: extract the region to a
 partial with a stable `id`, post via `hx-post`/`hx-patch` with
