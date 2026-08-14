@@ -1037,3 +1037,67 @@ async def test_toggle_failure_flashes_error(client, session):
     hx = r.headers.get("HX-Trigger", "")
     assert "showFlash" in hx
     assert '"level": "error"' in hx
+
+
+# ---------------------------------------------------------------------------
+# GET /watcher-status — the drift line renders (CR round 2, finding 13)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_renders_drift_badge(client, session):
+    """Announced ahead of applied is the detector's whole purpose."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="drifting item", watcher_item_id=_WI_ID, announcement_generation=9)
+    session.add(item)
+    await session.flush()
+    _seed_status(session, item, applied_generation=7)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "9 announced" in r.text
+    assert "7 applied" in r.text
+    assert "drift" in r.text
+
+
+@pytest.mark.asyncio
+async def test_watcher_status_renders_ahead_of_registry_badge(client, session):
+    """Applied *ahead* of announced is an anomaly, not health — and Jinja
+    renders an undefined attribute as empty, so only a render-level assertion
+    catches a typo in the template's context key."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="ahead item", watcher_item_id=_WI_ID, announcement_generation=5)
+    session.add(item)
+    await session.flush()
+    _seed_status(session, item, applied_generation=7)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-status",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "ahead of registry" in r.text
+    assert "drift" not in r.text  # not the same condition
+
+
+@pytest.mark.asyncio
+async def test_watcher_section_renders_ahead_of_registry_badge(client, session):
+    """Both partials carry the badge; both need the assertion."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="ahead section item", watcher_item_id=_WI_ID, announcement_generation=5)
+    session.add(item)
+    await session.flush()
+    _seed_status(session, item, applied_generation=7)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "ahead of registry" in r.text

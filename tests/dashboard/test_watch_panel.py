@@ -316,3 +316,40 @@ class TestDriftAhead:
         )
         assert ctx["drift"]["ahead"] is False
         assert ctx["drift"]["in_drift"] is False
+
+
+class TestPathologicalInterval:
+    """A reported interval the arithmetic cannot hold must degrade, not raise.
+
+    `applied_interval` is an unconstrained `str` from a service we do not
+    control, and the column is TEXT since CR round 1, so nothing upstream caps
+    it. `timedelta` overflows well before Python's int does — and the value is
+    already persisted by the time the panel reads it, so an unguarded raise
+    breaks the page on every subsequent load, not just once.
+    """
+
+    def test_absurd_interval_yields_no_next_due_instead_of_raising(self):
+        ctx = build_watch_context(
+            item=make_item(),
+            status=make_status(applied_interval="99999999999d"),
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert ctx["next_due"] is None
+        assert ctx["overdue"] is False
+        assert ctx["state"] == "watching"
+
+    def test_absurd_interval_still_renders_verbatim(self):
+        """Out of range for scheduling is not the same as untrue — the operator
+        should still see what Watcher reported."""
+        ctx = build_watch_context(
+            item=make_item(),
+            status=make_status(applied_interval="99999999999d"),
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert "99999999999" in ctx["applied_cadence"]
+
+    def test_parse_rejects_out_of_range_but_accepts_long_sane_ones(self):
+        assert parse_interval_seconds("99999999999d") is None
+        assert parse_interval_seconds("365d") == 365 * 86400
