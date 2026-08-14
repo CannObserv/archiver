@@ -59,12 +59,22 @@ class TestIntervals:
         assert parse_interval_seconds("daily") is None
 
     def test_format_friendly_and_generic(self):
+        assert format_interval("1h") == "Hourly"
+        assert format_interval("6h") == "Every 6 hours"
         assert format_interval("1d") == "Daily"
         assert format_interval("7d") == "Weekly"
         assert format_interval("3h") == "~3 hr"
         assert format_interval("2d") == "~2 days"
+        assert format_interval("1d ") == "Daily"  # whitespace tolerated
         assert format_interval("bogus") == ""
         assert format_interval(None) == ""
+
+    def test_format_generic_covers_every_unit(self):
+        """`_UNIT_LABELS` carries s/m/h/d; the minute and second arms had no
+        test after the SDK-era cadence tests were retired."""
+        assert format_interval("30s") == "~30 sec"
+        assert format_interval("15m") == "~15 min"
+        assert format_interval("1d") == "Daily"
 
 
 class TestStates:
@@ -207,6 +217,7 @@ class TestDrift:
             "announced": 7,
             "applied": 7,
             "in_drift": False,
+            "ahead": False,
             "alert": False,
             "age": None,
         }
@@ -252,3 +263,56 @@ class TestDrift:
         assert ctx["drift"]["in_drift"] is True
         assert ctx["drift"]["age"] is None
         assert ctx["drift"]["alert"] is False
+
+
+class TestClearedLinkPrecedence:
+    def test_cleared_link_falls_back_to_not_watching_despite_stale_row(self):
+        """A WatchedItem deleted in Watcher clears `watcher_item_id` on the next
+        action. If a stale cache row still rendered `watching`, the panel would
+        offer no "Begin Watching" affordance and the operator could not
+        re-provision — a dead end on a live recovery path.
+        """
+        ctx = build_watch_context(
+            item=make_item(watcher_item_id=None),
+            status=make_status(),
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert ctx["state"] == "not_watching"
+
+    def test_stale_row_never_reported_as_health_of_a_relinked_item(self):
+        """The same guard stops an old WatchedItem's health leaking onto an item
+        that has since been re-provisioned under a new id."""
+        ctx = build_watch_context(
+            item=make_item(watcher_item_id=None),
+            status=make_status(health="error", applied_active=False),
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert ctx["health"] is None
+        assert ctx["applied_active"] is None
+
+
+class TestDriftAhead:
+    def test_applied_ahead_of_announced_is_not_in_sync(self):
+        """A restored-from-backup registry can sit *behind* the consumer.
+        Rendering that as ✓ fails in the silent direction."""
+        ctx = build_watch_context(
+            item=make_item(announcement_generation=5),
+            status=make_status(applied_generation=7),
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert ctx["drift"]["ahead"] is True
+        assert ctx["drift"]["in_drift"] is False
+        assert ctx["drift"]["alert"] is False
+
+    def test_in_sync_is_not_flagged_ahead(self):
+        ctx = build_watch_context(
+            item=make_item(announcement_generation=7),
+            status=make_status(applied_generation=7),
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert ctx["drift"]["ahead"] is False
+        assert ctx["drift"]["in_drift"] is False

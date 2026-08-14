@@ -26,6 +26,7 @@ from co_core.pure.adapters.bus.envelope import to_wire
 from co_core.pure.models.changes import SourceRevisionObservedEvent, WatchStatusState
 from fakeredis import aioredis as fakeredis_aio
 from sqlalchemy import delete, select
+from sqlalchemy.exc import DataError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.changes import watch_status_consumer
@@ -230,3 +231,91 @@ async def test_run_stops_on_cancel(fake_redis, session_factory):
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
+
+
+async def test_terminal_apply_error_is_skipped_not_retried_forever(
+    fake_redis, session_factory, item
+):
+    """A message the registry can *never* apply must not wedge the tail.
+
+    With no DLQ on this stream kind and a cursor that only advances on a
+    successful apply, an un-appliable message would otherwise be retried
+    forever — a silent total stall of the very stream that exists to detect
+    silent drift. The skip is the disposition; the LWW republish is the repair.
+    """
+    entry_id = await fake_redis.xadd(WATCH_STATUS_TOPIC, _status(str(item.info_item_id)))
+    reader = watch_status_consumer.build_reader(fake_redis)
+
+    try:
+        with patch.object(
+            watch_status_consumer,
+            "apply_watch_status",
+            side_effect=DataError("stmt", {}, Exception("value too long for type")),
+        ):
+            applied = await watch_status_consumer.consume_once(
+                session_factory=session_factory, reader=reader
+            )
+
+        assert applied == 0
+        # The skip is durable: a restart must not re-hit the same frame.
+        async with session_factory() as s:
+            assert await read_cursor(s, WATCH_STATUS_TOPIC) == entry_id.decode()
+        assert reader.cursor == entry_id.decode()
+    finally:
+        await _cleanup_cursor(session_factory)
+
+
+async def test_transient_apply_error_still_rewinds_for_redelivery(
+    fake_redis, session_factory, item
+):
+    """The counterpart: a failure redelivery *can* resolve must never be skipped."""
+    await fake_redis.xadd(WATCH_STATUS_TOPIC, _status(str(item.info_item_id)))
+    reader = watch_status_consumer.build_reader(fake_redis)
+
+    try:
+        with (
+            patch.object(
+                watch_status_consumer,
+                "apply_watch_status",
+                side_effect=OperationalError("stmt", {}, Exception("connection lost")),
+            ),
+            pytest.raises(OperationalError),
+        ):
+            await watch_status_consumer.consume_once(session_factory=session_factory, reader=reader)
+
+        # Nothing persisted, reader rewound — the next pass redelivers it.
+        async with session_factory() as s:
+            assert await read_cursor(s, WATCH_STATUS_TOPIC) is None
+        assert (
+            await watch_status_consumer.consume_once(session_factory=session_factory, reader=reader)
+            == 1
+        )
+    finally:
+        await _cleanup_cursor(session_factory)
+
+
+async def test_open_vocabulary_health_token_applies(fake_redis, session_factory, item):
+    """`health` is an unconstrained str on the wire and the vocabulary is
+    expected to grow; a long token must persist, not wedge the consumer."""
+    long_health = "degraded-" + "x" * 200
+    frame = to_wire(
+        WatchStatusState(
+            occurred_at=OCCURRED_AT,
+            info_item_id=str(item.info_item_id),
+            applied_generation=1,
+            applied_active=True,
+            health=long_health,
+        )
+    )
+    try:
+        await fake_redis.xadd(WATCH_STATUS_TOPIC, frame)
+        reader = watch_status_consumer.build_reader(fake_redis)
+
+        assert (
+            await watch_status_consumer.consume_once(session_factory=session_factory, reader=reader)
+            == 1
+        )
+        row = await _get_row(session_factory, item.info_item_id)
+        assert row.health == long_health
+    finally:
+        await _cleanup_cursor(session_factory)

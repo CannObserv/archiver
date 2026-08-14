@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.10.1 (2026-08-14)
+
+[service] **The watch-status tail can no longer stall on a message it cannot apply** (archiver#151, code-review round 1). Migration `c81f4a2e7d36` widens `watch_status.health` and `applied_interval` to `TEXT`.
+
+**The stall was real and demonstrated, not theoretical.** With no DLQ on this stream kind and a cursor that only advances on a successful apply, *any* permanent write failure was retried forever — the same frame, the cursor pinned, and the journal falling quiet once log throttling kicked in. A total silent stall of the stream that exists to detect silent drift. The trigger was in reach: both fields are unconstrained `str` on the co-core contract, `health`'s vocabulary is documented as expected to grow, and the columns were `String(100)` / `String(20)`, so a longer-than-expected token would have wedged the consumer. Failures are now classified — `DataError`, `IntegrityError`, `ProgrammingError`, and `NotSupportedError` are logged at ERROR and skipped past (safe here precisely because this is last-write-wins state: the producer's next republish restores what a skip dropped), while everything else still rewinds and retries. The classification is an allow-list on purpose: an unclassified failure keeps retrying loudly rather than silently eating the stream.
+
+**A cleared Watcher link no longer strands an item.** When a WatchedItem is deleted in Watcher, the next action clears `watcher_item_id` — but a cached status row could outlive that clear and keep the panel rendering `watching`, with no "Begin Watching" affordance and no way to re-provision from the UI. The panel now decides on the link *before* the cache row, and `_clear_stale_watcher_link` drops the row in the same transaction; the invariant does not depend on the cleanup having run. The same fix stops a dead WatchedItem's health being reported as a re-provisioned item's.
+
+Also: an applied generation *ahead* of the announced one renders as an anomaly rather than a ✓ (it means the registry no longer knows what it published), and the undecodable-frame path no longer seeks the cursor to a sentinel `"?"` before the guard meant to prevent exactly that.
+
 ## v4.10.0 (2026-08-13)
 
 [service] **The `info.watch-status` consumer — the panel renders from local state, and drift is visible** (archiver#151, step 4d of the #137 epic). Archiver now tails Watcher's scheduler-status broadcast (contract cannobserv#321, v0.9.2; producer CannObserv/watcher#264, still pending — until it publishes, every item honestly renders the new "no status yet" state) into a persisted `watch_status` cache, and the watched-item panel renders from that cache with **zero SDK calls**. The four action buttons still ride the SDK until the control-plane cutover (#158) and teardown (#142).

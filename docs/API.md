@@ -238,9 +238,20 @@ removes messages from production's PEL, and a groupless tail removes nothing.
 
 Shape is the config/state-stream posture, not the fact-stream one: groupless
 `AsyncBusTailReader`, LWW per `info_item_id` in stream order, replay from `0-0`
-on cold start, **no DLQ** (a frame that will not decode is logged and skipped —
-the producer's periodic republish is the repair). Restart resumes from the
-`bus_tail_cursors` row, advanced in the same transaction as each apply.
+on cold start, **no DLQ**. Restart resumes from the `bus_tail_cursors` row,
+advanced in the same transaction as each apply.
+
+**Three dispositions, because "retry forever" is a stall on this stream.** With
+no DLQ and a cursor that only advances on success, a message that can never
+succeed would spin indefinitely — silently, once log throttling kicks in. So:
+a frame that will not *decode* is logged and skipped; a decoded message the
+registry can never *write* (`DataError`, `IntegrityError`, `ProgrammingError`,
+`NotSupportedError` — redelivery reproduces them exactly) is logged at ERROR
+and skipped; anything else (the database down, a bug of ours) rewinds the
+reader and retries. Skipping is safe here only because this is last-write-wins
+state — the producer's periodic republish restores whatever a skip dropped —
+and the classification is an allow-list on purpose: an unclassified failure
+keeps retrying loudly rather than silently eating the stream.
 
 Per message: unknown or malformed `info_item_id` → drop (the registry is the
 authority on what exists); `revoked` → delete the cache row (idempotent);

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 from watcher_client.errors import WatcherConflict, WatcherNotFound, WatcherResponseError
@@ -1005,6 +1005,15 @@ async def _clear_stale_watcher_link(session: AsyncSession, item: InfoItem) -> bo
     to ``not_watching`` so an operator can re-provision. Only a confirmed 404
     clears the link; transient failures keep it so a brief outage never drops it.
 
+    The cached ``watch_status`` row goes with it, in the same transaction
+    (archiver#151 CR round 1, finding 3). It describes a WatchedItem that no
+    longer exists, and leaving it behind does two kinds of harm: the panel keeps
+    rendering ``watching`` instead of offering "Begin Watching", and if the item
+    is later re-provisioned under a *new* id, the dead WatchedItem's health is
+    reported as the new one's. The panel guards against the first independently
+    — the invariant should not depend on this cleanup having run — but the stale
+    data itself is only fixable here.
+
     Never raises: the render/action paths it serves are designed to degrade rather
     than 500, so a failed commit is rolled back, logged, and reported as ``False``
     (the caller keeps degrading). ``item`` is refreshed on failure so callers may
@@ -1014,6 +1023,9 @@ async def _clear_stale_watcher_link(session: AsyncSession, item: InfoItem) -> bo
     stale_id = item.watcher_item_id
     item.watcher_item_id = None
     try:
+        await session.execute(
+            delete(WatchStatus).where(WatchStatus.info_item_id == item.info_item_id)
+        )
         await session.commit()
     except Exception:
         logger.exception(

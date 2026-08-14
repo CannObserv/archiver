@@ -21,6 +21,7 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,7 +29,7 @@ from watcher_client.errors import WatcherNotFound
 
 from src.api.deps import get_watcher_client
 from src.api.main import app
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import InfoItem, InfoItemSource, InfoSource, WatchStatus
 from src.dashboard.routes.info_items import _clear_stale_watcher_link
 
 _HEADERS = {"X-ExeDev-UserID": "ext-404", "X-ExeDev-Email": "reconcile@example.com"}
@@ -245,3 +246,33 @@ async def test_toggle_404_commit_failure_degrades_with_flash_and_retains_link(
     assert "showFlash" in hx_trigger
     assert "the local record" in hx_trigger
     assert item.watcher_item_id == _WI_ID
+
+
+@pytest.mark.asyncio
+async def test_clear_stale_watcher_link_drops_the_status_cache_row(session):
+    """Clearing the link must drop the cached status with it (archiver#151 CR).
+
+    The row describes a WatchedItem that no longer exists. Left behind it does
+    two kinds of harm: the panel keeps rendering `watching` (no re-provision
+    affordance), and if the item is later re-provisioned under a *new* id, the
+    dead WatchedItem's health is reported as the new one's.
+    """
+    stamp = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
+    item = InfoItem(name="cache-row-clear", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+    session.add(
+        WatchStatus(
+            info_item_id=item.info_item_id,
+            applied_generation=3,
+            applied_active=True,
+            health="error",
+            occurred_at=stamp,
+        )
+    )
+    await session.commit()
+
+    assert await _clear_stale_watcher_link(session, item) is True
+
+    assert item.watcher_item_id is None
+    assert (await session.get(WatchStatus, item.info_item_id)) is None

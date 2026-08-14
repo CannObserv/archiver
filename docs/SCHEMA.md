@@ -83,6 +83,12 @@ see the never-rename rule in `AGENTS.md`.
   - **Written only by the watch-status consumer**, monotonically (never backwards), onto the
     item's *active* binding, and only when the observation postdates that binding — an
     observation older than the binding was of some earlier source and says nothing about this one.
+  - **Deliberately internal for now.** No HTTP route or SDK model exposes it — the dashboard is
+    the only reader. That is a conscious hold, not an oversight: the column's two caveats above
+    (reported, and a lower bound) are easy to state on a page an operator is already reading and
+    easy to lose across a wire, and no consumer has asked for it yet. Surfacing it on
+    `InfoSourceResponse` is a deliberate future call carrying an SDK regen and a `CHANGELOG`
+    entry; until someone needs it, the narrower surface is the cheaper one to be right about.
 - **`SourceRevision`** (`source_revisions`) — content-addressed snapshot. Identity is
   `(info_source_id, content_fingerprint)`; fingerprint is always `sha256:<hex>`, enforced on both
   write paths (`src/core/fingerprints.py`) because a differently-spelled fingerprint for identical

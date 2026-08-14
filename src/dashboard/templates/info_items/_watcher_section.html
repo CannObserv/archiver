@@ -123,6 +123,9 @@
         gen {{ watch.drift.announced }} announced · {{ watch.drift.applied }} applied
         {% if watch.drift.in_drift %}
         <span class="badge badge--{{ 'danger' if watch.drift.alert else 'muted' }}" style="font-size:0.65rem;">drift{% if watch.drift.age %}, {{ watch.drift.age }}{% endif %}</span>
+        {% elif watch.drift.ahead %}
+        {# Watcher applied a generation this registry no longer knows it published. #}
+        <span class="badge badge--danger" style="font-size:0.65rem;">ahead of registry</span>
         {% else %}✓{% endif %}
       </span>
     </div>

@@ -18,7 +18,7 @@ recreates it (re-announcement at a higher generation).
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
 
@@ -43,18 +43,28 @@ class WatchStatus(Base, TimestampMixin):
     """What the scheduler is actually doing. ``False`` is a legitimate value
     (deliberately paused), not absence; ``None`` only ever arrives on a
     tombstone, which deletes the row instead of persisting."""
-    applied_interval: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    applied_interval: Mapped[str | None] = mapped_column(Text, nullable=True)
     """The cadence actually in use. ``None`` means Watcher's own default is in
     force — a reportable state, not a missing value. Next-due derives from this
-    where present, falling back to the announced ``watch_spec`` interval."""
+    where present, falling back to the announced ``watch_spec`` interval.
+
+    ``Text``, not a bounded ``String``: co-core types it as an unconstrained
+    ``str``, and a width narrower than the contract turns a longer-than-expected
+    value into a write the consumer can never complete (CR round 1, finding 1a).
+    """
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_observed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    health: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    health: Mapped[str | None] = mapped_column(Text, nullable=True)
     """Open vocabulary — ``"ok"`` is the only value that means healthy; every
     other value, known or unknown, is non-healthy and renders verbatim. Never
-    test ``health != "error"``."""
+    test ``health != "error"``.
+
+    ``Text`` for the same reason as ``applied_interval``, and more pointedly:
+    this vocabulary is *documented as expected to grow*, so a bounded column
+    would let a future token stall the stream (CR round 1, finding 1a).
+    """
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     """Watcher's publish-time stamp on the message that last wrote this row."""
 

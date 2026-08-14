@@ -108,6 +108,7 @@ class DriftContext(TypedDict):
     announced: int
     applied: int
     in_drift: bool
+    ahead: bool
     alert: bool
     age: str | None
 
@@ -136,6 +137,12 @@ def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContex
         return None  # never announced — there is nothing to lag behind
     applied = status.applied_generation
     in_drift = applied < announced
+    # Applied *ahead* of announced is not "in sync" — it means the consumer has
+    # seen a generation this registry no longer knows it published (a restore
+    # from backup, a generation reset). Rendering it as ✓ would fail in the
+    # silent direction, which is the failure mode this panel exists to remove
+    # (CR round 1, finding 6).
+    ahead = applied > announced
     age_seconds: int | None = None
     if in_drift and item.announced_at is not None:
         age_seconds = max(0, int((now - item.announced_at).total_seconds()))
@@ -143,6 +150,7 @@ def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContex
         announced=announced,
         applied=applied,
         in_drift=in_drift,
+        ahead=ahead,
         alert=in_drift
         and age_seconds is not None
         and age_seconds > DRIFT_ALERT_THRESHOLD.total_seconds(),
@@ -160,10 +168,18 @@ def build_watch_context(
     """The whole panel, from three local facts."""
     announced_interval = (item.watch_spec or {}).get("interval")
 
-    if status is None:
-        # Provisioned-but-silent is the fourth state; never-provisioned is the
-        # first. The split key is watcher_item_id until #142 removes it, after
-        # which an active binding takes over the role.
+    # The link is checked *before* the cache row, not after. A WatchedItem
+    # deleted in Watcher clears `watcher_item_id` on the next action, and a
+    # status row may outlive that clear (the tombstone has not arrived, or
+    # never will). Reading the row first would render `watching` with no
+    # "Begin Watching" affordance — a dead end the operator cannot escape —
+    # and, once the item is re-provisioned under a new id, would report the
+    # dead WatchedItem's health as the new one's (CR round 1, finding 3).
+    # The split key is watcher_item_id until #142 removes it, after which an
+    # active binding takes over the role.
+    if not item.watcher_item_id or status is None:
+        # Never provisioned, or provisioned and Watcher has never reported —
+        # the fourth state, which must not read as paused or as healthy.
         state = "no_status" if item.watcher_item_id else "not_watching"
         return WatchPanelContext(
             state=state,
