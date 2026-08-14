@@ -29,6 +29,17 @@ new code. Only the existing corpus needs moving. Consumers need no change:
 apply-iff-greater is total over the shift, ``1 > 0`` fires, and the next full
 set re-announces every touched key exactly once.
 
+**Scope is narrower than "every un-bumped row", deliberately** (code review
+round 1, finding 1). Only a row the snapshot publishes *live* can put a 0 on the
+wire — hence the ``EXISTS`` on an active binding with non-empty ``source_specs``,
+which is ``_collect_full_set``'s own liveness rule. A row that is unbound, or
+bound to a spec-less source, is filtered out of both revoked lists by their
+``announcement_generation > 0`` guards and so announces nothing at all at 0.
+Lifting one of those to 1 would make it start tombstoning a key no consumer has
+ever held, republished every period forever, and would falsify the snapshot
+module's stated rule that never-announced keys are absent from the full set.
+Those rows stay at 0 and heal the ordinary way, on their first real mutation.
+
 ``announced_at`` moves with the counter — it is the drift detector's clock, and
 a bumped generation with a NULL stamp would render as drift of unknown age.
 The consequence is that a backfilled row's drift age starts at *this migration*
@@ -56,12 +67,21 @@ logger = logging.getLogger("alembic.runtime.migration")
 
 
 def upgrade() -> None:
-    """Lift every un-bumped generation to 1. Idempotent — a re-run matches nothing."""
+    """Lift the announceable un-bumped rows to 1. Idempotent — a re-run matches nothing."""
     result = op.get_bind().execute(
         sa.text(
             "UPDATE information.info_items"
             "   SET announcement_generation = 1, announced_at = now()"
             " WHERE announcement_generation = 0"
+            "   AND EXISTS ("
+            "         SELECT 1"
+            "           FROM information.info_item_sources iis"
+            "           JOIN information.info_sources s"
+            "             ON s.info_source_id = iis.info_source_id"
+            "          WHERE iis.info_item_id = info_items.info_item_id"
+            "            AND iis.deactivated_at IS NULL"
+            "            AND jsonb_array_length(s.source_specs) > 0"
+            "       )"
         )
     )
     logger.info(
