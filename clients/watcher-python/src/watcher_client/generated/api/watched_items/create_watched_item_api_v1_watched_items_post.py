@@ -67,33 +67,51 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Create Watched Item
 
-     Create a standalone WatchedItem.
+     Create a WatchedItem for an Archiver InfoItem.
 
-    Two paths depending on which anchor is provided:
+    One path since #251: ``archiver_info_item_id``, ``url`` and
+    ``archiver_info_source_id`` are all required (schema-enforced). Errors:
+    duplicate InfoItem → 409.
 
-    **InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the
-    Archiver SDK; name defaults to the InfoItem's name.
-    Errors: NotFound → 422, AuthError → 500, ServerError/network → 503.
+    **No longer validates the InfoItem over HTTP** (#254). The
+    ``get_info_item`` call here was Watcher's last outbound request to Archiver,
+    and removing it is what let the SDK go. The registry announcement is the
+    authority now: whatever this route creates, the first announcement for the
+    key reconciles — including the ``name``, which this route may set and the
+    reconcile never overwrites.
 
-    **URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for
-    ``effective_url`` + ``domain_name``; name defaults to the probed domain.
-    ``archiver_info_item_id`` is null on the resulting record.
-    Error: unreachable URL → 422.
+    What that trades away, stated plainly: a POST naming an InfoItem that does
+    not exist now succeeds, and the row lingers, because **absence is not
+    revocation** on ``info.registry`` — only an explicit tombstone deletes. The
+    alternative was validating against the local reconciled view, which cannot
+    work on a create: Archiver provisions and POSTs immediately, well inside the
+    snapshot period, so every legitimate create would race its own announcement.
+    Once CannObserv/archiver#141's producer is live the reconcile creates rows on
+    its own and this route is redundant — retiring it belongs to the teardown
+    issue, not here, because until then it is the only way a WatchedItem exists.
 
-    At least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).
+    **Both ids must be canonical ULIDs — uppercase Crockford base32.** That is
+    what ``ULID.from_str`` accepts, so it is what path parameters have always
+    required and what ``ULIDRefStr`` now enforces here; the OpenAPI document
+    advertises the same pattern. Archiver's provisioning call satisfies this by
+    construction (``str()`` of a ``ULID``); a caller that lowercases its ids
+    gets a 422 naming the field.
 
     Args:
         body (WatchedItemCreate): Create a WatchedItem via ``POST /api/v1/watched-items``.
 
-            Two creation paths:
-            - **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence
-              is validated via the Archiver SDK (NotFound → 422); name defaults to the
-              InfoItem's name when omitted.
-            - **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed
-              for ``effective_url`` + ``domain_name``; name defaults to the probed
-              domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).
+            Every WatchedItem is an Archiver InfoItem being watched (#251).
+            ``archiver_info_item_id`` is **not** validated against Archiver — that HTTP
+            call was Watcher's last and went with the SDK (#254); the ``info.registry``
+            announcement for the key is the authority, and reconciles whatever this
+            route creates. ``url`` is the InfoSource URL Archiver is authoritative for
+            (stored as ``effective_url``, never re-probed); ``archiver_info_source_id``
+            identifies the InfoSource that observed revisions are reported against. All
+            three are required — the URL-only path was rolled back with bare-URL
+            WatchedItems.
 
-            At least one of ``archiver_info_item_id`` or ``url`` is required.
+            ``name`` defaults to a host+path derivation of ``url`` when omitted; a name
+            supplied here survives reconciliation, which never overwrites one.
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
@@ -127,33 +145,51 @@ def sync(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Create Watched Item
 
-     Create a standalone WatchedItem.
+     Create a WatchedItem for an Archiver InfoItem.
 
-    Two paths depending on which anchor is provided:
+    One path since #251: ``archiver_info_item_id``, ``url`` and
+    ``archiver_info_source_id`` are all required (schema-enforced). Errors:
+    duplicate InfoItem → 409.
 
-    **InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the
-    Archiver SDK; name defaults to the InfoItem's name.
-    Errors: NotFound → 422, AuthError → 500, ServerError/network → 503.
+    **No longer validates the InfoItem over HTTP** (#254). The
+    ``get_info_item`` call here was Watcher's last outbound request to Archiver,
+    and removing it is what let the SDK go. The registry announcement is the
+    authority now: whatever this route creates, the first announcement for the
+    key reconciles — including the ``name``, which this route may set and the
+    reconcile never overwrites.
 
-    **URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for
-    ``effective_url`` + ``domain_name``; name defaults to the probed domain.
-    ``archiver_info_item_id`` is null on the resulting record.
-    Error: unreachable URL → 422.
+    What that trades away, stated plainly: a POST naming an InfoItem that does
+    not exist now succeeds, and the row lingers, because **absence is not
+    revocation** on ``info.registry`` — only an explicit tombstone deletes. The
+    alternative was validating against the local reconciled view, which cannot
+    work on a create: Archiver provisions and POSTs immediately, well inside the
+    snapshot period, so every legitimate create would race its own announcement.
+    Once CannObserv/archiver#141's producer is live the reconcile creates rows on
+    its own and this route is redundant — retiring it belongs to the teardown
+    issue, not here, because until then it is the only way a WatchedItem exists.
 
-    At least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).
+    **Both ids must be canonical ULIDs — uppercase Crockford base32.** That is
+    what ``ULID.from_str`` accepts, so it is what path parameters have always
+    required and what ``ULIDRefStr`` now enforces here; the OpenAPI document
+    advertises the same pattern. Archiver's provisioning call satisfies this by
+    construction (``str()`` of a ``ULID``); a caller that lowercases its ids
+    gets a 422 naming the field.
 
     Args:
         body (WatchedItemCreate): Create a WatchedItem via ``POST /api/v1/watched-items``.
 
-            Two creation paths:
-            - **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence
-              is validated via the Archiver SDK (NotFound → 422); name defaults to the
-              InfoItem's name when omitted.
-            - **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed
-              for ``effective_url`` + ``domain_name``; name defaults to the probed
-              domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).
+            Every WatchedItem is an Archiver InfoItem being watched (#251).
+            ``archiver_info_item_id`` is **not** validated against Archiver — that HTTP
+            call was Watcher's last and went with the SDK (#254); the ``info.registry``
+            announcement for the key is the authority, and reconciles whatever this
+            route creates. ``url`` is the InfoSource URL Archiver is authoritative for
+            (stored as ``effective_url``, never re-probed); ``archiver_info_source_id``
+            identifies the InfoSource that observed revisions are reported against. All
+            three are required — the URL-only path was rolled back with bare-URL
+            WatchedItems.
 
-            At least one of ``archiver_info_item_id`` or ``url`` is required.
+            ``name`` defaults to a host+path derivation of ``url`` when omitted; a name
+            supplied here survives reconciliation, which never overwrites one.
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
@@ -182,33 +218,51 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Create Watched Item
 
-     Create a standalone WatchedItem.
+     Create a WatchedItem for an Archiver InfoItem.
 
-    Two paths depending on which anchor is provided:
+    One path since #251: ``archiver_info_item_id``, ``url`` and
+    ``archiver_info_source_id`` are all required (schema-enforced). Errors:
+    duplicate InfoItem → 409.
 
-    **InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the
-    Archiver SDK; name defaults to the InfoItem's name.
-    Errors: NotFound → 422, AuthError → 500, ServerError/network → 503.
+    **No longer validates the InfoItem over HTTP** (#254). The
+    ``get_info_item`` call here was Watcher's last outbound request to Archiver,
+    and removing it is what let the SDK go. The registry announcement is the
+    authority now: whatever this route creates, the first announcement for the
+    key reconciles — including the ``name``, which this route may set and the
+    reconcile never overwrites.
 
-    **URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for
-    ``effective_url`` + ``domain_name``; name defaults to the probed domain.
-    ``archiver_info_item_id`` is null on the resulting record.
-    Error: unreachable URL → 422.
+    What that trades away, stated plainly: a POST naming an InfoItem that does
+    not exist now succeeds, and the row lingers, because **absence is not
+    revocation** on ``info.registry`` — only an explicit tombstone deletes. The
+    alternative was validating against the local reconciled view, which cannot
+    work on a create: Archiver provisions and POSTs immediately, well inside the
+    snapshot period, so every legitimate create would race its own announcement.
+    Once CannObserv/archiver#141's producer is live the reconcile creates rows on
+    its own and this route is redundant — retiring it belongs to the teardown
+    issue, not here, because until then it is the only way a WatchedItem exists.
 
-    At least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).
+    **Both ids must be canonical ULIDs — uppercase Crockford base32.** That is
+    what ``ULID.from_str`` accepts, so it is what path parameters have always
+    required and what ``ULIDRefStr`` now enforces here; the OpenAPI document
+    advertises the same pattern. Archiver's provisioning call satisfies this by
+    construction (``str()`` of a ``ULID``); a caller that lowercases its ids
+    gets a 422 naming the field.
 
     Args:
         body (WatchedItemCreate): Create a WatchedItem via ``POST /api/v1/watched-items``.
 
-            Two creation paths:
-            - **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence
-              is validated via the Archiver SDK (NotFound → 422); name defaults to the
-              InfoItem's name when omitted.
-            - **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed
-              for ``effective_url`` + ``domain_name``; name defaults to the probed
-              domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).
+            Every WatchedItem is an Archiver InfoItem being watched (#251).
+            ``archiver_info_item_id`` is **not** validated against Archiver — that HTTP
+            call was Watcher's last and went with the SDK (#254); the ``info.registry``
+            announcement for the key is the authority, and reconciles whatever this
+            route creates. ``url`` is the InfoSource URL Archiver is authoritative for
+            (stored as ``effective_url``, never re-probed); ``archiver_info_source_id``
+            identifies the InfoSource that observed revisions are reported against. All
+            three are required — the URL-only path was rolled back with bare-URL
+            WatchedItems.
 
-            At least one of ``archiver_info_item_id`` or ``url`` is required.
+            ``name`` defaults to a host+path derivation of ``url`` when omitted; a name
+            supplied here survives reconciliation, which never overwrites one.
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.
@@ -240,33 +294,51 @@ async def asyncio(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Create Watched Item
 
-     Create a standalone WatchedItem.
+     Create a WatchedItem for an Archiver InfoItem.
 
-    Two paths depending on which anchor is provided:
+    One path since #251: ``archiver_info_item_id``, ``url`` and
+    ``archiver_info_source_id`` are all required (schema-enforced). Errors:
+    duplicate InfoItem → 409.
 
-    **InfoItem-linked** (``archiver_info_item_id`` set): validates the InfoItem via the
-    Archiver SDK; name defaults to the InfoItem's name.
-    Errors: NotFound → 422, AuthError → 500, ServerError/network → 503.
+    **No longer validates the InfoItem over HTTP** (#254). The
+    ``get_info_item`` call here was Watcher's last outbound request to Archiver,
+    and removing it is what let the SDK go. The registry announcement is the
+    authority now: whatever this route creates, the first announcement for the
+    key reconciles — including the ``name``, which this route may set and the
+    reconcile never overwrites.
 
-    **URL-only** (``url`` set, no ``archiver_info_item_id``): probes the URL for
-    ``effective_url`` + ``domain_name``; name defaults to the probed domain.
-    ``archiver_info_item_id`` is null on the resulting record.
-    Error: unreachable URL → 422.
+    What that trades away, stated plainly: a POST naming an InfoItem that does
+    not exist now succeeds, and the row lingers, because **absence is not
+    revocation** on ``info.registry`` — only an explicit tombstone deletes. The
+    alternative was validating against the local reconciled view, which cannot
+    work on a create: Archiver provisions and POSTs immediately, well inside the
+    snapshot period, so every legitimate create would race its own announcement.
+    Once CannObserv/archiver#141's producer is live the reconcile creates rows on
+    its own and this route is redundant — retiring it belongs to the teardown
+    issue, not here, because until then it is the only way a WatchedItem exists.
 
-    At least one of ``archiver_info_item_id`` or ``url`` is required (schema-enforced).
+    **Both ids must be canonical ULIDs — uppercase Crockford base32.** That is
+    what ``ULID.from_str`` accepts, so it is what path parameters have always
+    required and what ``ULIDRefStr`` now enforces here; the OpenAPI document
+    advertises the same pattern. Archiver's provisioning call satisfies this by
+    construction (``str()`` of a ``ULID``); a caller that lowercases its ids
+    gets a 422 naming the field.
 
     Args:
         body (WatchedItemCreate): Create a WatchedItem via ``POST /api/v1/watched-items``.
 
-            Two creation paths:
-            - **InfoItem-linked** (``archiver_info_item_id`` provided): the InfoItem's existence
-              is validated via the Archiver SDK (NotFound → 422); name defaults to the
-              InfoItem's name when omitted.
-            - **URL-only** (``url`` provided, no ``archiver_info_item_id``): the URL is probed
-              for ``effective_url`` + ``domain_name``; name defaults to the probed
-              domain. Produces a WatchedItem with ``archiver_info_item_id=None`` (#185 Phase A).
+            Every WatchedItem is an Archiver InfoItem being watched (#251).
+            ``archiver_info_item_id`` is **not** validated against Archiver — that HTTP
+            call was Watcher's last and went with the SDK (#254); the ``info.registry``
+            announcement for the key is the authority, and reconciles whatever this
+            route creates. ``url`` is the InfoSource URL Archiver is authoritative for
+            (stored as ``effective_url``, never re-probed); ``archiver_info_source_id``
+            identifies the InfoSource that observed revisions are reported against. All
+            three are required — the URL-only path was rolled back with bare-URL
+            WatchedItems.
 
-            At least one of ``archiver_info_item_id`` or ``url`` is required.
+            ``name`` defaults to a host+path derivation of ``url`` when omitted; a name
+            supplied here survives reconciliation, which never overwrites one.
 
             ``source_specs`` seeds the local pipeline extraction config. Optional at
             create time; updatable later via PATCH.

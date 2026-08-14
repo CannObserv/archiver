@@ -62,7 +62,20 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Restore Watched Item
 
-     Restore the WatchedItem — clears ``archived_at`` and re-activates.
+     Restore the WatchedItem — clears ``archived_at``; re-activates local items.
+
+    On a **reconciled** item (``applied_generation`` set) restore leaves
+    ``is_active`` alone (#254 CR-23): the registry owns it, and archive→restore
+    was otherwise a two-step bypass of the pause guard — archive flips it False
+    locally, restore flipped it True unconditionally, resurrecting an item
+    Archiver may have announced paused. The divergence would then be permanent,
+    because the snapshot re-announcing the same generation is ignored as stale.
+    A restored registry-owned item therefore stays paused until Archiver re-arms
+    it — which is the ownership working, not a gap, and the remedy is one click:
+    Archiver's ``PUT /info-items/{id}/watch-active`` writes and announces
+    **unconditionally**, with no same-value skip, so pressing resume there bumps
+    the generation and propagates even when Archiver already considers the item
+    active. No pause/resume round-trip is needed.
 
     Args:
         watched_item_id (str):
@@ -93,7 +106,20 @@ def sync(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Restore Watched Item
 
-     Restore the WatchedItem — clears ``archived_at`` and re-activates.
+     Restore the WatchedItem — clears ``archived_at``; re-activates local items.
+
+    On a **reconciled** item (``applied_generation`` set) restore leaves
+    ``is_active`` alone (#254 CR-23): the registry owns it, and archive→restore
+    was otherwise a two-step bypass of the pause guard — archive flips it False
+    locally, restore flipped it True unconditionally, resurrecting an item
+    Archiver may have announced paused. The divergence would then be permanent,
+    because the snapshot re-announcing the same generation is ignored as stale.
+    A restored registry-owned item therefore stays paused until Archiver re-arms
+    it — which is the ownership working, not a gap, and the remedy is one click:
+    Archiver's ``PUT /info-items/{id}/watch-active`` writes and announces
+    **unconditionally**, with no same-value skip, so pressing resume there bumps
+    the generation and propagates even when Archiver already considers the item
+    active. No pause/resume round-trip is needed.
 
     Args:
         watched_item_id (str):
@@ -119,7 +145,20 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | WatchedItemResponse]:
     """Restore Watched Item
 
-     Restore the WatchedItem — clears ``archived_at`` and re-activates.
+     Restore the WatchedItem — clears ``archived_at``; re-activates local items.
+
+    On a **reconciled** item (``applied_generation`` set) restore leaves
+    ``is_active`` alone (#254 CR-23): the registry owns it, and archive→restore
+    was otherwise a two-step bypass of the pause guard — archive flips it False
+    locally, restore flipped it True unconditionally, resurrecting an item
+    Archiver may have announced paused. The divergence would then be permanent,
+    because the snapshot re-announcing the same generation is ignored as stale.
+    A restored registry-owned item therefore stays paused until Archiver re-arms
+    it — which is the ownership working, not a gap, and the remedy is one click:
+    Archiver's ``PUT /info-items/{id}/watch-active`` writes and announces
+    **unconditionally**, with no same-value skip, so pressing resume there bumps
+    the generation and propagates even when Archiver already considers the item
+    active. No pause/resume round-trip is needed.
 
     Args:
         watched_item_id (str):
@@ -148,7 +187,20 @@ async def asyncio(
 ) -> HTTPValidationError | WatchedItemResponse | None:
     """Restore Watched Item
 
-     Restore the WatchedItem — clears ``archived_at`` and re-activates.
+     Restore the WatchedItem — clears ``archived_at``; re-activates local items.
+
+    On a **reconciled** item (``applied_generation`` set) restore leaves
+    ``is_active`` alone (#254 CR-23): the registry owns it, and archive→restore
+    was otherwise a two-step bypass of the pause guard — archive flips it False
+    locally, restore flipped it True unconditionally, resurrecting an item
+    Archiver may have announced paused. The divergence would then be permanent,
+    because the snapshot re-announcing the same generation is ignored as stale.
+    A restored registry-owned item therefore stays paused until Archiver re-arms
+    it — which is the ownership working, not a gap, and the remedy is one click:
+    Archiver's ``PUT /info-items/{id}/watch-active`` writes and announces
+    **unconditionally**, with no same-value skip, so pressing resume there bumps
+    the generation and propagates even when Archiver already considers the item
+    active. No pause/resume round-trip is needed.
 
     Args:
         watched_item_id (str):

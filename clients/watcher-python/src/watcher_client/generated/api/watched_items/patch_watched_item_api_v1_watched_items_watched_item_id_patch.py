@@ -74,9 +74,13 @@ def sync_detailed(
 
      Update mutable WatchedItem fields. All fields optional.
 
-    ``is_active`` (pause/resume) cannot be changed on an archived item — the
-    archive/restore lifecycle owns activation while archived. Such a PATCH
-    returns 409; use ``POST /{id}/restore`` to reactivate.
+    ``is_active`` (pause/resume) is governed by the shared
+    :func:`set_watched_item_active` service (#228): it cannot change on an
+    archived item (409 — restore owns activation), it cannot change at all on a
+    **registry-owned** item (409 — once ``applied_generation`` is set, pause and
+    resume live in Archiver, and a local toggle would be reverted by the next
+    ``info.registry`` announcement; #254), and an item cannot resume while its
+    domain is suspended (409 — kill-switch parity with the dashboard toggle).
 
     An ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /
     ``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the
@@ -120,9 +124,13 @@ def sync(
 
      Update mutable WatchedItem fields. All fields optional.
 
-    ``is_active`` (pause/resume) cannot be changed on an archived item — the
-    archive/restore lifecycle owns activation while archived. Such a PATCH
-    returns 409; use ``POST /{id}/restore`` to reactivate.
+    ``is_active`` (pause/resume) is governed by the shared
+    :func:`set_watched_item_active` service (#228): it cannot change on an
+    archived item (409 — restore owns activation), it cannot change at all on a
+    **registry-owned** item (409 — once ``applied_generation`` is set, pause and
+    resume live in Archiver, and a local toggle would be reverted by the next
+    ``info.registry`` announcement; #254), and an item cannot resume while its
+    domain is suspended (409 — kill-switch parity with the dashboard toggle).
 
     An ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /
     ``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the
@@ -161,9 +169,13 @@ async def asyncio_detailed(
 
      Update mutable WatchedItem fields. All fields optional.
 
-    ``is_active`` (pause/resume) cannot be changed on an archived item — the
-    archive/restore lifecycle owns activation while archived. Such a PATCH
-    returns 409; use ``POST /{id}/restore`` to reactivate.
+    ``is_active`` (pause/resume) is governed by the shared
+    :func:`set_watched_item_active` service (#228): it cannot change on an
+    archived item (409 — restore owns activation), it cannot change at all on a
+    **registry-owned** item (409 — once ``applied_generation`` is set, pause and
+    resume live in Archiver, and a local toggle would be reverted by the next
+    ``info.registry`` announcement; #254), and an item cannot resume while its
+    domain is suspended (409 — kill-switch parity with the dashboard toggle).
 
     An ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /
     ``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the
@@ -205,9 +217,13 @@ async def asyncio(
 
      Update mutable WatchedItem fields. All fields optional.
 
-    ``is_active`` (pause/resume) cannot be changed on an archived item — the
-    archive/restore lifecycle owns activation while archived. Such a PATCH
-    returns 409; use ``POST /{id}/restore`` to reactivate.
+    ``is_active`` (pause/resume) is governed by the shared
+    :func:`set_watched_item_active` service (#228): it cannot change on an
+    archived item (409 — restore owns activation), it cannot change at all on a
+    **registry-owned** item (409 — once ``applied_generation`` is set, pause and
+    resume live in Archiver, and a local toggle would be reverted by the next
+    ``info.registry`` announcement; #254), and an item cannot resume while its
+    domain is suspended (409 — kill-switch parity with the dashboard toggle).
 
     An ``is_active`` transition emits a dedicated ``WATCHED_ITEM_PAUSED`` /
     ``WATCHED_ITEM_RESUMED`` audit event (#189) and is excluded from the

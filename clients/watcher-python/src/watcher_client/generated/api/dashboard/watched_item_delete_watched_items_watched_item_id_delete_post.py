@@ -62,7 +62,8 @@ def sync_detailed(
 
      Permanently delete an archived WatchedItem (delegates to the API route, #210).
 
-    The API enforces the guards (404 not found, 409 not archived). On success the
+    The API enforces the guards (404 not found, 409 not archived, 409
+    registry-owned — #254 CR-7). On success the
     item is gone, so we redirect to the list rather than the now-missing detail
     page. A 409 (un-archived) surfaces as an OOB error flash for HTMX, or a
     redirect back to the still-present detail page for non-HTMX clients.
@@ -98,7 +99,8 @@ def sync(
 
      Permanently delete an archived WatchedItem (delegates to the API route, #210).
 
-    The API enforces the guards (404 not found, 409 not archived). On success the
+    The API enforces the guards (404 not found, 409 not archived, 409
+    registry-owned — #254 CR-7). On success the
     item is gone, so we redirect to the list rather than the now-missing detail
     page. A 409 (un-archived) surfaces as an OOB error flash for HTMX, or a
     redirect back to the still-present detail page for non-HTMX clients.
@@ -129,7 +131,8 @@ async def asyncio_detailed(
 
      Permanently delete an archived WatchedItem (delegates to the API route, #210).
 
-    The API enforces the guards (404 not found, 409 not archived). On success the
+    The API enforces the guards (404 not found, 409 not archived, 409
+    registry-owned — #254 CR-7). On success the
     item is gone, so we redirect to the list rather than the now-missing detail
     page. A 409 (un-archived) surfaces as an OOB error flash for HTMX, or a
     redirect back to the still-present detail page for non-HTMX clients.
@@ -163,7 +166,8 @@ async def asyncio(
 
      Permanently delete an archived WatchedItem (delegates to the API route, #210).
 
-    The API enforces the guards (404 not found, 409 not archived). On success the
+    The API enforces the guards (404 not found, 409 not archived, 409
+    registry-owned — #254 CR-7). On success the
     item is gone, so we redirect to the list rather than the now-missing detail
     page. A 409 (un-archived) surfaces as an OOB error flash for HTMX, or a
     redirect back to the still-present detail page for non-HTMX clients.

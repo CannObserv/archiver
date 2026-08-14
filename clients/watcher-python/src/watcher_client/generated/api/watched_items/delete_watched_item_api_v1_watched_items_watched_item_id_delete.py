@@ -63,7 +63,19 @@ def sync_detailed(
      Permanently delete an archived WatchedItem (#210).
 
     Pre-flight: 404 if not found / malformed id; 409 if the item is not archived
-    (archive first — archived already implies ``is_active=False``). On success the
+    (archive first — archived already implies ``is_active=False``); **409 if the
+    registry still announces it** (``applied_generation IS NOT NULL``, #254 CR-7).
+
+    That last guard exists because deletion is no longer durable for a
+    registry-owned item: ``info.registry`` is level-triggered, so the next
+    announcement — or the hourly snapshot, carrying no change at all — simply
+    recreates the row. Absence is not revocation; only a ``revoked: true``
+    tombstone retires a key, and that is Archiver's call to make. A 409 naming
+    the authority beats a delete that silently undoes itself within the snapshot
+    period, and mirrors the 409 this route already returns for un-archived items.
+    Rows the registry has no opinion on (``applied_generation IS NULL`` — created
+    over this route and never announced) still delete, which is the whole
+    population during the rollout. On success the
     DB cascades the item's children (``temporal_profiles``,
     ``notification_templates``, ``change_revisions``, ``pending_archiver_sync``)
     via their ``ON DELETE CASCADE`` FKs. An audit row is written before the delete
@@ -102,7 +114,19 @@ def sync(
      Permanently delete an archived WatchedItem (#210).
 
     Pre-flight: 404 if not found / malformed id; 409 if the item is not archived
-    (archive first — archived already implies ``is_active=False``). On success the
+    (archive first — archived already implies ``is_active=False``); **409 if the
+    registry still announces it** (``applied_generation IS NOT NULL``, #254 CR-7).
+
+    That last guard exists because deletion is no longer durable for a
+    registry-owned item: ``info.registry`` is level-triggered, so the next
+    announcement — or the hourly snapshot, carrying no change at all — simply
+    recreates the row. Absence is not revocation; only a ``revoked: true``
+    tombstone retires a key, and that is Archiver's call to make. A 409 naming
+    the authority beats a delete that silently undoes itself within the snapshot
+    period, and mirrors the 409 this route already returns for un-archived items.
+    Rows the registry has no opinion on (``applied_generation IS NULL`` — created
+    over this route and never announced) still delete, which is the whole
+    population during the rollout. On success the
     DB cascades the item's children (``temporal_profiles``,
     ``notification_templates``, ``change_revisions``, ``pending_archiver_sync``)
     via their ``ON DELETE CASCADE`` FKs. An audit row is written before the delete
@@ -136,7 +160,19 @@ async def asyncio_detailed(
      Permanently delete an archived WatchedItem (#210).
 
     Pre-flight: 404 if not found / malformed id; 409 if the item is not archived
-    (archive first — archived already implies ``is_active=False``). On success the
+    (archive first — archived already implies ``is_active=False``); **409 if the
+    registry still announces it** (``applied_generation IS NOT NULL``, #254 CR-7).
+
+    That last guard exists because deletion is no longer durable for a
+    registry-owned item: ``info.registry`` is level-triggered, so the next
+    announcement — or the hourly snapshot, carrying no change at all — simply
+    recreates the row. Absence is not revocation; only a ``revoked: true``
+    tombstone retires a key, and that is Archiver's call to make. A 409 naming
+    the authority beats a delete that silently undoes itself within the snapshot
+    period, and mirrors the 409 this route already returns for un-archived items.
+    Rows the registry has no opinion on (``applied_generation IS NULL`` — created
+    over this route and never announced) still delete, which is the whole
+    population during the rollout. On success the
     DB cascades the item's children (``temporal_profiles``,
     ``notification_templates``, ``change_revisions``, ``pending_archiver_sync``)
     via their ``ON DELETE CASCADE`` FKs. An audit row is written before the delete
@@ -173,7 +209,19 @@ async def asyncio(
      Permanently delete an archived WatchedItem (#210).
 
     Pre-flight: 404 if not found / malformed id; 409 if the item is not archived
-    (archive first — archived already implies ``is_active=False``). On success the
+    (archive first — archived already implies ``is_active=False``); **409 if the
+    registry still announces it** (``applied_generation IS NOT NULL``, #254 CR-7).
+
+    That last guard exists because deletion is no longer durable for a
+    registry-owned item: ``info.registry`` is level-triggered, so the next
+    announcement — or the hourly snapshot, carrying no change at all — simply
+    recreates the row. Absence is not revocation; only a ``revoked: true``
+    tombstone retires a key, and that is Archiver's call to make. A 409 naming
+    the authority beats a delete that silently undoes itself within the snapshot
+    period, and mirrors the 409 this route already returns for un-archived items.
+    Rows the registry has no opinion on (``applied_generation IS NULL`` — created
+    over this route and never announced) still delete, which is the whole
+    population during the rollout. On success the
     DB cascades the item's children (``temporal_profiles``,
     ``notification_templates``, ``change_revisions``, ``pending_archiver_sync``)
     via their ``ON DELETE CASCADE`` FKs. An audit row is written before the delete

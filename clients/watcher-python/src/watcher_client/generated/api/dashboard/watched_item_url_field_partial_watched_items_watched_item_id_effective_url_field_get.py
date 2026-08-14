@@ -84,6 +84,11 @@ def sync_detailed(
     Powers the inline Edit affordance on the detail page's URL row; the edit
     form posts to the sibling ``/effective-url`` route which re-probes.
 
+    A registry-owned item (``applied_generation`` set) is forced to view mode
+    (#254 CR-27). The template already drops the Edit button, but this route is
+    reachable directly, and handing back a form whose POST is guaranteed to
+    flash a refusal wastes the operator's typing.
+
     Args:
         watched_item_id (str):
         mode (WatchedItemUrlFieldPartialWatchedItemsWatchedItemIdEffectiveUrlFieldGetMode |
@@ -124,6 +129,11 @@ def sync(
     Powers the inline Edit affordance on the detail page's URL row; the edit
     form posts to the sibling ``/effective-url`` route which re-probes.
 
+    A registry-owned item (``applied_generation`` set) is forced to view mode
+    (#254 CR-27). The template already drops the Edit button, but this route is
+    reachable directly, and handing back a form whose POST is guaranteed to
+    flash a refusal wastes the operator's typing.
+
     Args:
         watched_item_id (str):
         mode (WatchedItemUrlFieldPartialWatchedItemsWatchedItemIdEffectiveUrlFieldGetMode |
@@ -158,6 +168,11 @@ async def asyncio_detailed(
 
     Powers the inline Edit affordance on the detail page's URL row; the edit
     form posts to the sibling ``/effective-url`` route which re-probes.
+
+    A registry-owned item (``applied_generation`` set) is forced to view mode
+    (#254 CR-27). The template already drops the Edit button, but this route is
+    reachable directly, and handing back a form whose POST is guaranteed to
+    flash a refusal wastes the operator's typing.
 
     Args:
         watched_item_id (str):
@@ -196,6 +211,11 @@ async def asyncio(
 
     Powers the inline Edit affordance on the detail page's URL row; the edit
     form posts to the sibling ``/effective-url`` route which re-probes.
+
+    A registry-owned item (``applied_generation`` set) is forced to view mode
+    (#254 CR-27). The template already drops the Edit button, but this route is
+    reachable directly, and handing back a form whose POST is guaranteed to
+    flash a refusal wastes the operator's typing.
 
     Args:
         watched_item_id (str):

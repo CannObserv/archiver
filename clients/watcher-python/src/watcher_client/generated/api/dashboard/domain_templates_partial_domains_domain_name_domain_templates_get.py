@@ -1,33 +1,26 @@
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.body_watched_item_create_submit_watched_items_new_post import (
-    BodyWatchedItemCreateSubmitWatchedItemsNewPost,
-)
 from ...models.http_validation_error import HTTPValidationError
-from ...types import UNSET, Response, Unset
+from ...types import Response
 
 
 def _get_kwargs(
-    *,
-    body: BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset = UNSET,
+    domain_name: str,
 ) -> dict[str, Any]:
-    headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/watched-items/new",
+        "method": "get",
+        "url": "/domains/{domain_name}/domain-templates".format(
+            domain_name=quote(str(domain_name), safe=""),
+        ),
     }
 
-    if not isinstance(body, Unset):
-        _kwargs["data"] = body.to_dict()
-    headers["Content-Type"] = "application/x-www-form-urlencoded"
-
-    _kwargs["headers"] = headers
     return _kwargs
 
 
@@ -61,21 +54,16 @@ def _build_response(
 
 
 def sync_detailed(
+    domain_name: str,
     *,
     client: AuthenticatedClient | Client,
-    body: BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset = UNSET,
 ) -> Response[Any | HTTPValidationError]:
-    r"""Watched Item Create Submit
+    """Domain Templates Partial
 
-     Create a standalone WatchedItem from the dashboard form.
-
-    Accepts a URL directly; probes it for effective_url + domain_name. The
-    content media type is auto-detected from the first fetch (#168), not
-    collected here. Unchecking ``is_active`` provisions the item paused (#188).
-    Audit row uses ``source=\"dashboard\"``.
+     HTMX partial: notification defaults assigned to a domain.
 
     Args:
-        body (BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset):
+        domain_name (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -86,7 +74,7 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        body=body,
+        domain_name=domain_name,
     )
 
     response = client.get_httpx_client().request(
@@ -97,21 +85,16 @@ def sync_detailed(
 
 
 def sync(
+    domain_name: str,
     *,
     client: AuthenticatedClient | Client,
-    body: BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset = UNSET,
 ) -> Any | HTTPValidationError | None:
-    r"""Watched Item Create Submit
+    """Domain Templates Partial
 
-     Create a standalone WatchedItem from the dashboard form.
-
-    Accepts a URL directly; probes it for effective_url + domain_name. The
-    content media type is auto-detected from the first fetch (#168), not
-    collected here. Unchecking ``is_active`` provisions the item paused (#188).
-    Audit row uses ``source=\"dashboard\"``.
+     HTMX partial: notification defaults assigned to a domain.
 
     Args:
-        body (BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset):
+        domain_name (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -122,27 +105,22 @@ def sync(
     """
 
     return sync_detailed(
+        domain_name=domain_name,
         client=client,
-        body=body,
     ).parsed
 
 
 async def asyncio_detailed(
+    domain_name: str,
     *,
     client: AuthenticatedClient | Client,
-    body: BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset = UNSET,
 ) -> Response[Any | HTTPValidationError]:
-    r"""Watched Item Create Submit
+    """Domain Templates Partial
 
-     Create a standalone WatchedItem from the dashboard form.
-
-    Accepts a URL directly; probes it for effective_url + domain_name. The
-    content media type is auto-detected from the first fetch (#168), not
-    collected here. Unchecking ``is_active`` provisions the item paused (#188).
-    Audit row uses ``source=\"dashboard\"``.
+     HTMX partial: notification defaults assigned to a domain.
 
     Args:
-        body (BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset):
+        domain_name (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -153,7 +131,7 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        body=body,
+        domain_name=domain_name,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -162,21 +140,16 @@ async def asyncio_detailed(
 
 
 async def asyncio(
+    domain_name: str,
     *,
     client: AuthenticatedClient | Client,
-    body: BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset = UNSET,
 ) -> Any | HTTPValidationError | None:
-    r"""Watched Item Create Submit
+    """Domain Templates Partial
 
-     Create a standalone WatchedItem from the dashboard form.
-
-    Accepts a URL directly; probes it for effective_url + domain_name. The
-    content media type is auto-detected from the first fetch (#168), not
-    collected here. Unchecking ``is_active`` provisions the item paused (#188).
-    Audit row uses ``source=\"dashboard\"``.
+     HTMX partial: notification defaults assigned to a domain.
 
     Args:
-        body (BodyWatchedItemCreateSubmitWatchedItemsNewPost | Unset):
+        domain_name (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -188,7 +161,7 @@ async def asyncio(
 
     return (
         await asyncio_detailed(
+            domain_name=domain_name,
             client=client,
-            body=body,
         )
     ).parsed

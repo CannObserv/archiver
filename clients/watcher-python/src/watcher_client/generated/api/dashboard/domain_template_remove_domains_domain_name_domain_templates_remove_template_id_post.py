@@ -17,7 +17,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/domains/{domain_name}/nc-defaults/remove/{template_id}".format(
+        "url": "/domains/{domain_name}/domain-templates/remove/{template_id}".format(
             domain_name=quote(str(domain_name), safe=""),
             template_id=quote(str(template_id), safe=""),
         ),
@@ -61,7 +61,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[Any | HTTPValidationError]:
-    """Domain Nc Default Remove
+    """Domain Template Remove
 
      Delete a domain-scoped notification template (#200: removal = delete the row).
 
@@ -95,7 +95,7 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
 ) -> Any | HTTPValidationError | None:
-    """Domain Nc Default Remove
+    """Domain Template Remove
 
      Delete a domain-scoped notification template (#200: removal = delete the row).
 
@@ -124,7 +124,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
 ) -> Response[Any | HTTPValidationError]:
-    """Domain Nc Default Remove
+    """Domain Template Remove
 
      Delete a domain-scoped notification template (#200: removal = delete the row).
 
@@ -156,7 +156,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
 ) -> Any | HTTPValidationError | None:
-    """Domain Nc Default Remove
+    """Domain Template Remove
 
      Delete a domain-scoped notification template (#200: removal = delete the row).
 
