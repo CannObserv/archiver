@@ -152,7 +152,11 @@ class WatchPanelContext(TypedDict):
 def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContext | None:
     announced = item.announcement_generation
     if announced <= 0:
-        return None  # never announced — there is nothing to lag behind
+        # Never announced — there is nothing to lag behind. Defensive after
+        # archiver#161: the backfill lifted every un-bumped row to 1, so a
+        # real item no longer reaches this branch. It stayed a *suppression*
+        # rather than an alarm because it fires on a genuinely new item too.
+        return None
     applied = status.applied_generation
     in_drift = applied < announced
     # Applied *ahead* of announced is not "in sync" — it means the consumer has

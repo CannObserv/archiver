@@ -129,6 +129,8 @@ The wire carries a **resolved document, never a reference.** The reusable-policy
 
 A mutation on an InfoSource bound to N items bumps N generations and emits N announcements. That is the fan-out `sync_on_spec_update` already performs.
 
+**Amended 2026-08-14 (archiver#161): the floor on the wire is 1, not 0.** The column keeps `DEFAULT 0` and `0` keeps meaning *never announced* — but no *announcement* may carry it. The return leg spells "Watcher has never reconciled anything" as `applied_generation = 0` (the co-core type is `ge=0`, so 0 is the only spelling available), and with generation-0 announcements reachable that wire value collapsed two states: never reconciled, and correctly reconciled at 0. For the drift detector (`applied < announced`) an item announced at 0 and not yet applied read **clean** — the lie-in-the-safe-direction inversion this channel exists to remove. The delta path already had the floor (the bump precedes the payload); only the snapshot could read an un-bumped row, and migration `e3a71c40b9d2` removed that population. `ge=0` stays on the co-core type — the return leg needs 0 as its sentinel, so the floor is a producer invariant, not a type one.
+
 ### Producer (archiver#141)
 
 **Deltas** — a `ChangesOutboxRow(topic="info.registry", …)` written in the mutation's transaction. Emit sites: InfoSource create, `update_info_source_specs`, primary-binding swap, binding deactivation, WatchSpec change, pause/resume (currently `patch_watched_item(is_active=…)` at `src/dashboard/routes/info_items.py:1431`), InfoItem deletion/deactivation. Verify against the code; that list is a starting point.

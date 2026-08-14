@@ -181,6 +181,11 @@ async def import_watch_specs(
             plan.watch_active,
         )
         if not plan.changed:
+            # No write, so no announcement — correct (nothing changed), but it
+            # means this pass cannot heal a row that never announced. That was
+            # one of the two populations sitting at generation 0 in production
+            # (archiver#161); migration e3a71c40b9d2 moved them, so an
+            # unchanged row is now announceable at >= 1 by the next snapshot.
             report.unchanged += 1
             report.mapping.append(row)
             continue

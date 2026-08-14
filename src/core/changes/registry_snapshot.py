@@ -21,6 +21,15 @@ defeat the consumer's apply-iff-greater guard. A healthy consumer sees the
 same generation it already holds and ignores the entry — the snapshot only
 does work for a consumer that is behind.
 
+Reading rather than bumping is also why *this* path was the only one that could
+put generation 0 on the wire (archiver#161): the delta path bumps before it
+builds a payload, so its floor is 1, but a snapshot faithfully republishes a row
+that never passed an announce site. Migration ``e3a71c40b9d2`` removed that
+population. A live entry at 0 is now logged as an anomaly rather than silently
+republished — post-backfill it means an announceable item mutated without
+announcing, i.e. a missing call site. It is still **published**: skipping would
+drop a real item from the registry, and bumping here would break the rule above.
+
 **Retention rides these publishes** (``BusPublish.maxlen``): a config/state
 stream's cap is a consumer contract, because consumers boot by replaying from
 ``0-0`` — the floor is "at least one full set plus the deltas since". The
@@ -161,6 +170,13 @@ async def publish_full_set(
     """
     async with session_factory() as session:
         live, revoked = await _collect_full_set(session)
+        for item, _source in live:
+            if item.announcement_generation <= 0:
+                logger.warning(
+                    "Announceable item republished at generation 0 — a mutation "
+                    "reached announceable state without announcing (archiver#161)",
+                    extra={"info_item_id": str(item.info_item_id)},
+                )
         events = [
             build_live_announcement(
                 item=item, source=source, generation=item.announcement_generation
