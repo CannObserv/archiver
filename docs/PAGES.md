@@ -100,25 +100,10 @@ immediately" / "Paused" via `watchActiveLabel`.
 
 **POST `/dashboard/info-items/new`** — legacy direct-create, still live. Form fields: `name`, `description`, `owner`, `rep_fields` (JSON), `initial_url` (string), `initial_source_specs` (JSON array). 303 to detail on success; 422 re-rendering `info_items/new.html` on validation error. Interactive registration goes through `/dashboard/register`.
 
-**GET `/dashboard/info-items/{id}`** — 5-section vertical-scroll hub page (`info_items/detail.html`):
-
-1. **Overview** — `.entity-card` header (canonical detail-screen pattern, #81): `.eyebrow` "Information Item" kicker → `<h1 class="entity-card__title" id="info-item-heading" tabindex="-1">` name → copyable ULID (shared `copyable` macro) → domain badge linking to `/dashboard/domains/{name}`, or a muted "No primary source" when unbound; `.detail-grid` with description, owner (if set), created_at. Watcher status is deliberately absent here — the status and its controls live in section 3 (#62).
-
-2. **Information Sources** — `x-data="{swapOpen:false}"` wrapper around a `data-table` of active `info_item_sources` bindings (columns: URL, Domain, Spec, Bound, Actions); the first row carries a brand left-border marking it primary. The **Spec** column summarises the InfoSource's primary `source_specs` entry (`_format_spec_summary`, e.g. `css · 2 specs`) out of `spec_summary_by_source_id`, computed by the detail route — the spec belongs here, not in the Watcher section (#62). The Actions cell on the primary row holds a "Swap primary" / "Cancel" toggle (`@click="swapOpen=!swapOpen"`) that reveals `info_items/_swap_primary.html` inside `<div x-show="swapOpen" x-cloak>`; with no active bindings that panel (`id="swap-panel"`) renders unconditionally, titled "Add primary source". Its "author new source" form posts with `hx-target-422="#swap-error"` and succeeds with 204 + `HX-Redirect`; the "bind by ID" `<details>` sub-form does the same against `#swap-by-id-error`.
-
-3. **Watcher** — the `<h2>` is itself the Watcher deeplink ("Watcher ↗", `target=_blank`) when the item is watched: the detail route computes `watcher_deeplink` from `WATCHER_PUBLIC_BASE_URL` (falling back to `WATCHER_BASE_URL`) + `item.watcher_item_id`, and renders a plain "Watcher" header when unwatched (#62). Body: `<div id="watcher-section">` loaded async via `hx-trigger="load"` + `hx-get="…/watcher-section"` + `hx-swap="outerHTML"`; the root element also carries `hx-trigger="watcherUpdated from:body"` so the panel self-refreshes whenever an action fires that event. Template `info_items/_watcher_section.html`.
-
-   **The panel renders from local state with zero SDK calls (archiver#151):** the `watch_status` cache (Archiver's tail of `info.watch-status`), `item.watch_spec` / `watch_active` / generations, and the latest `source_revisions.captured_at` of the active binding, composed by `src/dashboard/watch_panel.py` (`build_watch_context`). A missing `watcher_item_id` decides the state *before* the cache row is consulted, so an item whose link was cleared after a Watcher-side deletion always falls back to `not_watching` (offering re-provisioning) even if a stale status row outlives the clear. Four states: `not_watching` ("Begin Watching" button, gated on a configured Watcher client), **`no_status`** ("NO STATUS YET" — provisioned but Watcher has never reported; distinct from paused and from healthy, and what every item shows until watcher#264 publishes), `watching`, and `degraded` (only an *action* failure renders it — the local read path cannot degrade). The `watching` grid: health badge (open vocabulary — `"ok"` is the only healthy value; anything else, known or unknown, renders verbatim on `badge--danger`), last attempted / last observed / last changed ages, cadence (applied `applied_interval` first, announced fallback, with an "announced …" `badge--danger` when they diverge), next due (derived `last_attempt_at` + effective interval; overdue in `text-danger`), and the drift line — "gen N announced · M applied" with a ✓ when in sync, a `drift, 40m`-style badge when applied lags (danger past the 15-minute threshold, aged from `info_items.announced_at`), or an "ahead of registry" badge when applied *exceeds* announced, which is an anomaly rather than health. A **Paused** badge shows when `applied_active` is false, and a "Pause/Resume pending" badge when the item's desired `watch_active` differs from what Watcher reports applied.
-
-   **Begin Watching** provisions a WatchedItem on demand (still over the SDK until archiver#142 retires it). When Watcher already has one for this InfoItem (Archiver's `watcher_item_id` is NULL — e.g. a pre-#55 item), provisioning 409s and `provision_on_create` adopts the existing WatchedItem's ID rather than failing. While paused, "Check now" is hidden (Watcher 409s on check-now of a paused item) and the toggle reads "Resume".
-
-   **The control plane is local as of archiver#158.** Pause/resume and cadence are `UPDATE`s on `info_items` plus an `info.registry` announcement — no SDK call — and Watcher reconciles them off the stream. Two consequences on this panel. First, the **cadence editor** (`info_items/_cadence_editor.html`, a `form-select--sm` of `src/dashboard/cadence.py`'s vocabulary plus a "Set" button) posts to `watch-cadence`; it did not exist before, because post-registration cadence was display-only while the live value was Watcher's. It is deliberately **not** gated on `can_act`: cadence is registry policy, so the registry may hold an opinion whether or not a WatchedItem exists. Second, the **archived-item guard is gone**. Archiver models no per-item archived state (only `domains.archived_at`), and the design settled that a Watcher-local pause is reverted by reconciliation — archive is mechanism, not policy, like `domain_suspended`. An archived item's toggle now succeeds locally and the divergence surfaces as `applied_active != active` on the return leg, which the panel already renders, rather than as a silent 409.
-
-4. **Revision History** — `data-table` of the last 50 `source_revisions` captured across the item's InfoSource **bindings** — the active primary **plus** previous primaries (deactivated `info_item_sources` rows, preserved as succession history) — ordered `captured_at desc`, count in the heading. Columns: Fingerprint (linked to revision detail), Source (the InfoSource URL, linked to source detail — present because an item accumulates successive sources over its life), Captured (UTC), Cache (`.status-pill--cached/expired/missing`). The timeline is a query over bindings, **not** over the `info_item_source_revisions` pin table, which was dropped in archiver#101. The route computes `revisions` + `rev_sources_by_id`, the latter covering deactivated previous primaries that the active-only `sources_by_id` misses.
-
-5. **Replicator** — two sub-sections:
-   - *Rep Fields* — `x-data="repFieldsEditor()"` wrapper; HTMX-loaded `sortableChips` suggestions (`hx-trigger="load"`); `<textarea name="rep_fields">` with `PATCH /dashboard/info-items/{id}/rep-fields` inline save; flash target `#rep-fields-flash`.
-   - *Replication Specs* — `info_items/_rep_spec_assignments.html` (wrapper `#ii-rep-spec-assignments`, heading `#ii-rep-spec-heading`): `data-table` of active `info_item_rep_specs` assignments plus an assign form (`filter-card`, `rep_spec_id` field). Rows (`_rep_spec_row.html`) show `activated_at` UTC and an `open_button` next to the `public_url` input when a value is set. HTMX deactivate re-renders the whole section (table + empty state) and focuses the heading; per-row public-url edits swap the individual row.
+**GET `/dashboard/info-items/{id}`** — the 5-section vertical-scroll hub page
+(`info_items/detail.html`). Its section anatomy, partial templates, and swap
+targets are [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) — half this file
+before the split, and only needed when working on that screen.
 
 **The five Watcher action POSTs share a contract.** `begin-watching`,
 `check-now`, `toggle-watch-active`, `watch-cadence`, and `resync-watcher` each
@@ -169,33 +154,6 @@ only what each route adds.
 
 **PATCH `/dashboard/info-items/{id}/rep-fields`** — inline save for `rep_fields` JSONB (form field: `rep_fields` JSON string). Returns a flash fragment into `#rep-fields-flash`.
 
-Partial templates under `info_items/`:
-
-| Template | Swap target (`outerHTML`) | States |
-|---|---|---|
-| `_rep_spec_row.html` | its own `<tr>` | — |
-| `_swap_primary.html` | `#swap-panel` | — |
-| `_watcher_status.html` | `#watcher-status-strip` | `not_watching`, `no_status`, `degraded`, `watching` |
-| `_watcher_section.html` | `#watcher-section` | `not_watching`, `no_status`, `degraded`, `watching` |
-| `_cadence_editor.html` | — (included, `hx-swap="none"`) | — |
-
-Each root element carries its own `id`, so it survives the swap that replaces it;
-`_watcher_section.html`'s root additionally carries `hx-trigger="watcherUpdated
-from:body"` for the event-driven auto-refresh. Both Watcher partials take the
-context keys `state`, `item_id`, `watch` (the `build_watch_context` dict —
-health, ages, cadence, next-due, drift), `can_act`, `can_provision`, and
-`error_message` (degraded only), and both render the badges and toggle
-described in section 3. `not_configured` is gone: an unconfigured Watcher
-client only hides the action buttons (#151).
-
-`_swap_primary.html` is a full-width card — no max-width, so it spans the
-bindings table — titled "Swap primary source" or "Add primary source" depending
-on whether `iis_rows` is non-empty. It holds a URL input (`id="swap-url"`,
-`.form-input`), a source_specs textarea (`id="swap-specs"`, `.form-textarea`), a
-Preview HTMX button (`.btn--secondary`, `hx-include="#swap-url,#swap-specs"`)
-targeting `#swap-preview`, the submit to `swap-primary-source` (`.btn--primary`),
-and an advanced `<details>` for `swap-primary-by-id` (`.form-input` field +
-`.btn--secondary` Bind button).
 
 ## Information Sources (`/dashboard/info-sources/`)
 
