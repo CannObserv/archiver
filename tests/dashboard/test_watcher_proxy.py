@@ -963,30 +963,55 @@ async def test_toggle_resume_writes_locally(client, session):
 
 
 @pytest.mark.asyncio
-async def test_toggle_records_policy_even_when_not_watching(client, session):
-    """Desired policy is Archiver's to hold whether or not a WatchedItem exists.
+async def test_toggle_is_not_offered_without_an_announceable_source(client, session):
+    """The affordance is gated on announceability, not on the Watcher link
+    (CR round 1, finding 3).
 
-    Before the cutover this was a no-op because the write *was* the SDK call and
-    there was nothing to call. The registry now records intent regardless; an
-    item with no announceable source simply emits nothing (the announce service
-    skips it), and the strip still renders not_watching.
+    An item whose primary binding was deactivated keeps its `watcher_item_id`
+    and still renders `watching`, but pausing it would announce a **tombstone**
+    and burn a generation — which then reads as drift on the same panel, for an
+    item where nothing is actually wrong. `can_act` cannot express that: it
+    tests the link, and the link outlives the binding.
     """
-    watcher = _mock_watcher()
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-    item = InfoItem(name="no-watch toggle", watcher_item_id=None)
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(_wi("ok"))
+    item = InfoItem(name="unbound toggle", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    _seed_status(session, item)
+    await session.flush()
 
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
         headers=_HEADERS,
-        data={"active": "false"},
     )
     assert r.status_code == 200
-    assert "Not watching" in r.text
-    watcher.patch_watched_item.assert_not_awaited()
-    await session.refresh(item)
-    assert item.watch_active is False
+    assert "toggle-watch-active" not in r.text
+    # The other actions stay: re-sync is how an operator recovers from this.
+    assert "resync-watcher" in r.text
+
+
+@pytest.mark.asyncio
+async def test_toggle_is_offered_once_a_source_carries_specs(client, session):
+    """The mirror of the case above — the gate is announceability, so a bound
+    source with non-empty specs restores the affordance."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(_wi("ok"))
+    item = InfoItem(name="bound toggle", watcher_item_id=_WI_ID)
+    src = InfoSource(
+        url="https://example.com/bound-toggle",
+        source_specs=[{"schema_version": 1, "extraction": {"algorithm": "full_page"}}],
+    )
+    session.add_all([item, src])
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    _seed_status(session, item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "toggle-watch-active" in r.text
 
 
 @pytest.mark.asyncio

@@ -1079,6 +1079,25 @@ async def _watch_template_context(
             )
         )
     ).scalar_one_or_none()
+    # Announceability, by the same rule `_collect_full_set` and the announce
+    # service use: an active binding whose source carries non-empty specs. The
+    # pause toggle is gated on it (CR round 1, finding 3) because pausing an
+    # item that cannot announce live emits a *tombstone* and burns a generation
+    # — which then reads as drift on this very panel, for an item where nothing
+    # is wrong. `can_act` is the wrong test: it checks the Watcher link, and an
+    # item can keep its link after its primary binding is deactivated.
+    has_active_source = (
+        await session.execute(
+            select(InfoItemSource.info_item_id)
+            .join(InfoSource, InfoSource.info_source_id == InfoItemSource.info_source_id)
+            .where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+                func.jsonb_array_length(InfoSource.source_specs) > 0,
+            )
+            .limit(1)
+        )
+    ).first() is not None
     watch = build_watch_context(
         item=item, status=status, last_changed_at=last_changed_at, now=datetime.now(UTC)
     )
@@ -1088,10 +1107,13 @@ async def _watch_template_context(
         "watch": watch,
         "can_act": watcher is not None and bool(item.watcher_item_id),
         "can_provision": watcher is not None,
-        # Cadence is Archiver's own policy as of archiver#158, so its editor is
-        # deliberately NOT gated on ``can_act``: a WatchedItem need not exist for
-        # the registry to hold an opinion, and the announcement is what carries
-        # it. ``cadence_value`` is the announced interval, "" meaning delegate.
+        "has_active_source": has_active_source,
+        # Cadence is Archiver's own policy, so its editor is not gated on
+        # ``can_act`` (archiver#158). It renders wherever the panel shows a
+        # *provisioned* item — ``watching`` and ``no_status`` — because those
+        # are the states in which a cadence is a live question; ``not_watching``
+        # offers "Begin Watching" instead, and ``degraded`` shows an error.
+        # ``cadence_value`` is the announced interval, "" meaning delegate.
         "cadence_options": CADENCE_LABELS,
         "cadence_value": (item.watch_spec or {}).get("interval") or "",
     }
@@ -1453,7 +1475,7 @@ async def set_watch_cadence(
         )
         return response
 
-    document = {"schema_version": 1}
+    document: dict[str, object] = {"schema_version": 1}
     if interval:
         document["interval"] = interval
 

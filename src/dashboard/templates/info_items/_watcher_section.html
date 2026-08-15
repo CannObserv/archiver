@@ -50,13 +50,21 @@
     {% endif %}
   </div>
   <p class="text-muted text-sm" style="margin:0 0 var(--space-3);">Watcher hasn't reported on this item yet.</p>
-  {% if can_act %}
-  <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
-        hx-swap="none"
-        style="display:inline;">
-    <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
-  </form>
-  {% endif %}
+  <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
+    {% if can_act %}
+    <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
+          hx-swap="none"
+          style="display:inline;">
+      <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
+    </form>
+    {% endif %}
+
+    {# Cadence is editable here too, not only once Watcher has reported (CR
+       round 1, finding 1). A freshly registered item sits in no_status until
+       the first status frame arrives, which is exactly when an operator is
+       most likely to want to change the cadence they just picked. #}
+    {% include "info_items/_cadence_editor.html" %}
+  </div>
 
 {% else %}{# state == "watching" #}
   <div class="detail-grid" style="margin-bottom:var(--space-3);">
@@ -142,14 +150,21 @@
     </form>
     {% endif %}
 
-    {% if can_act %}
+    {# Pause/resume needs an announceable source, not just a Watcher link (CR
+       round 1, finding 3): an item whose primary binding was deactivated keeps
+       its link and still renders `watching`, but announcing its pause emits a
+       tombstone and burns a generation — surfacing as drift on this panel for
+       an item where nothing is wrong. #}
+    {% if can_act and has_active_source %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
           hx-swap="none"
           style="display:inline;">
       <input type="hidden" name="active" value="{{ 'false' if watch.applied_active else 'true' }}">
       <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watch.applied_active else 'Resume' }}</button>
     </form>
+    {% endif %}
 
+    {% if can_act %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
           hx-swap="none"
           style="display:inline;">

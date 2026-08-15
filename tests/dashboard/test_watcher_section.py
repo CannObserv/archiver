@@ -42,6 +42,23 @@ def _seed_status(session, item: InfoItem, **overrides) -> None:
     session.add(WatchStatus(**defaults))
 
 
+async def _bind_source(session, item: InfoItem, *, slug: str) -> None:
+    """Give the item an announceable primary source.
+
+    Required by any test asserting the pause/resume affordance: it is gated on
+    announceability, not on the Watcher link (CR round 1, finding 3). A watched
+    item with no bound source is not a state the app produces — provisioning
+    needs a primary source — so seeding one keeps these fixtures honest.
+    """
+    src = InfoSource(
+        url=f"https://example.test/{slug}",
+        source_specs=[{"schema_version": 1, "extraction": {"algorithm": "full_page"}}],
+    )
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+
+
 def _wi(
     health: str = "ok",
     last_checked_at: str | None = _TS,
@@ -143,6 +160,7 @@ async def test_watcher_section_watching_shows_details(client, session, monkeypat
     item = InfoItem(name="section-watching", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    await _bind_source(session, item, slug="section-watching")
     _seed_status(session, item)
     await session.flush()
 
@@ -177,6 +195,7 @@ async def test_watcher_section_paused_shows_resume(client, session):
     item = InfoItem(name="section-paused", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    await _bind_source(session, item, slug="section-paused")
     _seed_status(session, item, applied_active=False)
     await session.flush()
 
@@ -376,14 +395,35 @@ async def test_cadence_editor_selects_delegate_when_no_interval_is_announced(cli
 
 
 @pytest.mark.asyncio
-async def test_cadence_editor_renders_without_a_watcher_link(client, session):
-    """Not gated on can_act: cadence is registry policy, so the editor is offered
-    whether or not a WatchedItem exists to apply it."""
+async def test_cadence_editor_renders_before_watcher_has_ever_reported(client, session):
+    """The `no_status` state offers it too (CR round 1, finding 1).
+
+    A freshly registered item sits here until Watcher's first status frame, and
+    that is precisely when an operator wants to revise the cadence they just
+    picked. The editor previously rendered only under `watching`, so the window
+    the affordance was added for was the one window it was missing from.
+    """
     app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
-    item = InfoItem(name="section-cadence-unlinked", watcher_item_id=_WI_ID)
+    item = InfoItem(name="section-cadence-nostatus", watcher_item_id=_WI_ID)
     session.add(item)
-    await session.flush()
-    _seed_status(session, item)
+    await session.flush()  # no _seed_status -> no_status
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "NO STATUS YET" in r.text
+    assert "watch-cadence" in r.text
+
+
+@pytest.mark.asyncio
+async def test_cadence_editor_absent_when_not_watching(client, session):
+    """`not_watching` offers "Begin Watching" instead — there is no provisioned
+    item whose cadence is a live question yet."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="section-cadence-unwatched", watcher_item_id=None)
+    session.add(item)
     await session.flush()
 
     r = await client.get(
@@ -391,4 +431,5 @@ async def test_cadence_editor_renders_without_a_watcher_link(client, session):
         headers=_HEADERS,
     )
     assert r.status_code == 200
-    assert "watch-cadence" in r.text
+    assert "Not watching" in r.text
+    assert "watch-cadence" not in r.text
