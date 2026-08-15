@@ -1,0 +1,34 @@
+{#
+  Cadence editor — the announced fetch cadence (archiver#158).
+
+  Posts to /dashboard/info-items/{id}/watch-cadence, which writes
+  info_items.watch_spec and announces it on info.registry. hx-swap="none" like
+  its sibling action forms: the section root carries
+  hx-trigger="watcherUpdated from:body", and the response's HX-Trigger fires it,
+  so the panel re-renders itself once. Swapping the response in *and* firing the
+  trigger would render twice.
+
+  Deliberately not gated on can_act: cadence is Archiver's own policy, so the
+  registry may hold an opinion whether or not a WatchedItem exists. The blank
+  option is "delegate" — the consumer applies its own default, which may be a
+  per-domain one rather than a global constant, and it is only reachable
+  because the route replaces the document instead of merging into it.
+
+  Vocabulary comes from src/dashboard/cadence.py via the route context, not a
+  literal list here; the schema admits more intervals than the dropdown offers.
+#}
+<form hx-post="/dashboard/info-items/{{ item_id }}/watch-cadence"
+      hx-swap="none"
+      style="display:flex;align-items:center;gap:var(--space-1);">
+  <label for="cadence-{{ item_id }}" class="text-muted text-sm">Cadence</label>
+  <select id="cadence-{{ item_id }}"
+          name="interval"
+          class="form-select form-select--sm"
+          aria-label="Announced fetch cadence">
+    <option value=""{% if not cadence_value %} selected{% endif %}>Consumer default</option>
+    {% for value, label in cadence_options.items() %}
+    <option value="{{ value }}"{% if cadence_value == value %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn--secondary btn--sm">Set</button>
+</form>

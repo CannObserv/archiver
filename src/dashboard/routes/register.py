@@ -39,6 +39,7 @@ from src.core.tools.create_info_source import (
 )
 from src.core.tools.preview_extraction import preview_extraction
 from src.core.url_canonicalization import canonicalize_url
+from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC
 from src.core.watcher_provisioning import provision_on_create
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS, DEFAULT_CADENCE
 from src.dashboard.deps import get_dashboard_user
@@ -388,12 +389,26 @@ async def register_submit(
             status_code=422,
         )
 
-    # Create InfoItem
+    # Create InfoItem. Cadence and pause state are Archiver's own as of the
+    # control-plane cutover (archiver#158): they are written here, *before* the
+    # announcement, so the item's very first `info.registry` frame carries the
+    # policy the operator actually chose. Previously they rode the provisioning
+    # call as `schedule_config`/`is_active` while `watch_spec` kept its column
+    # default, so the first announcement disagreed with the form.
     owner_id = user.external_id if hasattr(user, "external_id") else None
     item = InfoItem(
         name=name.strip(),
         description=description.strip() or None,
         owner=owner_id,
+        # Only a recognised selection becomes an interval. Anything else leaves
+        # the column default standing, which spells "delegate to the consumer's
+        # own default" — never fabricate a cadence the operator did not pick.
+        watch_spec=(
+            {"schema_version": 1, "interval": cadence}
+            if cadence in CADENCE_OPTIONS
+            else dict(DEFAULT_WATCH_SPEC)
+        ),
+        watch_active=bool(watch_active),
     )
     session.add(item)
     await session.flush()
@@ -408,14 +423,17 @@ async def register_submit(
     await session.commit()
     await session.refresh(item)
 
-    # Only forward an explicit, recognised selection; otherwise send None so
-    # Watcher applies its own default cadence (don't fabricate one here).
-    schedule_config = {"interval": cadence} if cadence in CADENCE_OPTIONS else None
-    # Checked (default) → omit is_active, Watcher provisions active. Unchecked
-    # (checkbox absent from form) → explicit False to provision paused.
-    is_active = None if watch_active else False
+    # The provisioning push is still live through the dual-run, and it now
+    # forwards the *same* local values rather than a second, independent
+    # opinion — both paths idempotent, which is what makes the flip observable
+    # (design step 7). ARCHIVER_WATCHER_PUSH_ENABLED=0 disables this leg;
+    # archiver#142 deletes it.
+    # Watcher's `default_schedule_config` shape, not the WatchSpec document —
+    # `schema_version` is Archiver's framing and does not belong on the push.
+    interval = item.watch_spec.get("interval")
+    schedule_config = {"interval": interval} if interval else None
     await provision_on_create(
-        session, watcher, item, src, schedule_config=schedule_config, is_active=is_active
+        session, watcher, item, src, schedule_config=schedule_config, is_active=item.watch_active
     )
 
     return RedirectResponse(url=f"/dashboard/info-items/{item.info_item_id}", status_code=303)

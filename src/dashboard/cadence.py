@@ -7,9 +7,13 @@ Deliberately narrower than what is valid: the grammar an interval must satisfy
 interval that is not offered here — an imported per-domain default, say. This
 module is the UI subset, not the vocabulary.
 
-Cadence itself became Archiver-owned in archiver#150 (``info_items.watch_spec``);
-until the control-plane cutover the dashboard still displays Watcher's
-``default_schedule_config``.
+Cadence became Archiver-owned in archiver#150 (``info_items.watch_spec``), and
+the control-plane cutover (archiver#158) made this vocabulary the *editor's* as
+well as the registration form's: the InfoItem detail panel's cadence selector is
+built from ``CADENCE_LABELS``, and ``POST /watch-cadence`` validates against
+``CADENCE_OPTIONS`` rather than the schema alone. Nothing reads Watcher's
+``default_schedule_config`` any more — that display moved to ``watch_spec`` in
+archiver#151.
 """
 
 from __future__ import annotations

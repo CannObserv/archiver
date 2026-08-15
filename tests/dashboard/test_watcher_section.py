@@ -320,3 +320,75 @@ async def test_resync_watcher_triggers_watcher_updated(client, session):
     assert r.status_code == 200
     hx_trigger = r.headers.get("HX-Trigger", "")
     assert "watcherUpdated" in hx_trigger
+
+
+# ---------------------------------------------------------------------------
+# The cadence editor — new in archiver#158 (post-registration cadence was
+# display-only before the control-plane cutover)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_section_renders_the_cadence_editor_with_the_announced_value(client, session):
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(
+        name="section-cadence",
+        watcher_item_id=_WI_ID,
+        watch_spec={"schema_version": 1, "interval": "6h"},
+    )
+    session.add(item)
+    await session.flush()
+    _seed_status(session, item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "watch-cadence" in r.text
+    # The announced interval is the selected option, not merely present.
+    assert '<option value="6h" selected>' in r.text
+    # "Delegate" stays reachable — it is the only way back to the consumer default.
+    assert 'value="" selected' not in r.text
+    assert "Consumer default" in r.text
+
+
+@pytest.mark.asyncio
+async def test_cadence_editor_selects_delegate_when_no_interval_is_announced(client, session):
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(
+        name="section-cadence-delegate",
+        watcher_item_id=_WI_ID,
+        watch_spec={"schema_version": 1},
+    )
+    session.add(item)
+    await session.flush()
+    _seed_status(session, item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert '<option value="" selected>' in r.text
+
+
+@pytest.mark.asyncio
+async def test_cadence_editor_renders_without_a_watcher_link(client, session):
+    """Not gated on can_act: cadence is registry policy, so the editor is offered
+    whether or not a WatchedItem exists to apply it."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="section-cadence-unlinked", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+    _seed_status(session, item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "watch-cadence" in r.text

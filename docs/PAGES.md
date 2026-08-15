@@ -110,7 +110,9 @@ immediately" / "Paused" via `watchActiveLabel`.
 
    **The panel renders from local state with zero SDK calls (archiver#151):** the `watch_status` cache (Archiver's tail of `info.watch-status`), `item.watch_spec` / `watch_active` / generations, and the latest `source_revisions.captured_at` of the active binding, composed by `src/dashboard/watch_panel.py` (`build_watch_context`). A missing `watcher_item_id` decides the state *before* the cache row is consulted, so an item whose link was cleared after a Watcher-side deletion always falls back to `not_watching` (offering re-provisioning) even if a stale status row outlives the clear. Four states: `not_watching` ("Begin Watching" button, gated on a configured Watcher client), **`no_status`** ("NO STATUS YET" — provisioned but Watcher has never reported; distinct from paused and from healthy, and what every item shows until watcher#264 publishes), `watching`, and `degraded` (only an *action* failure renders it — the local read path cannot degrade). The `watching` grid: health badge (open vocabulary — `"ok"` is the only healthy value; anything else, known or unknown, renders verbatim on `badge--danger`), last attempted / last observed / last changed ages, cadence (applied `applied_interval` first, announced fallback, with an "announced …" `badge--danger` when they diverge), next due (derived `last_attempt_at` + effective interval; overdue in `text-danger`), and the drift line — "gen N announced · M applied" with a ✓ when in sync, a `drift, 40m`-style badge when applied lags (danger past the 15-minute threshold, aged from `info_items.announced_at`), or an "ahead of registry" badge when applied *exceeds* announced, which is an anomaly rather than health. A **Paused** badge shows when `applied_active` is false, and a "Pause/Resume pending" badge when the item's desired `watch_active` differs from what Watcher reports applied.
 
-   **Begin Watching** provisions a WatchedItem on demand (still over the SDK until the archiver#158 cutover, like all four actions). When Watcher already has one for this InfoItem (Archiver's `watcher_item_id` is NULL — e.g. a pre-#55 item), provisioning 409s and `provision_on_create` adopts the existing WatchedItem's ID rather than failing. While paused, "Check now" is hidden (Watcher 409s on check-now of a paused item) and the toggle reads "Resume". The Archived badge is gone with the SDK render — archived state is not on the status stream; an archived item's toggle 409s and flashes "the item may be archived".
+   **Begin Watching** provisions a WatchedItem on demand (still over the SDK until archiver#142 retires it). When Watcher already has one for this InfoItem (Archiver's `watcher_item_id` is NULL — e.g. a pre-#55 item), provisioning 409s and `provision_on_create` adopts the existing WatchedItem's ID rather than failing. While paused, "Check now" is hidden (Watcher 409s on check-now of a paused item) and the toggle reads "Resume".
+
+   **The control plane is local as of archiver#158.** Pause/resume and cadence are `UPDATE`s on `info_items` plus an `info.registry` announcement — no SDK call — and Watcher reconciles them off the stream. Two consequences on this panel. First, the **cadence editor** (`info_items/_cadence_editor.html`, a `form-select--sm` of `src/dashboard/cadence.py`'s vocabulary plus a "Set" button) posts to `watch-cadence`; it did not exist before, because post-registration cadence was display-only while the live value was Watcher's. It is deliberately **not** gated on `can_act`: cadence is registry policy, so the registry may hold an opinion whether or not a WatchedItem exists. Second, the **archived-item guard is gone**. Archiver models no per-item archived state (only `domains.archived_at`), and the design settled that a Watcher-local pause is reverted by reconciliation — archive is mechanism, not policy, like `domain_suspended`. An archived item's toggle now succeeds locally and the divergence surfaces as `applied_active != active` on the return leg, which the panel already renders, rather than as a silent 409.
 
 4. **Revision History** — `data-table` of the last 50 `source_revisions` captured across the item's InfoSource **bindings** — the active primary **plus** previous primaries (deactivated `info_item_sources` rows, preserved as succession history) — ordered `captured_at desc`, count in the heading. Columns: Fingerprint (linked to revision detail), Source (the InfoSource URL, linked to source detail — present because an item accumulates successive sources over its life), Captured (UTC), Cache (`.status-pill--cached/expired/missing`). The timeline is a query over bindings, **not** over the `info_item_source_revisions` pin table, which was dropped in archiver#101. The route computes `revisions` + `rev_sources_by_id`, the latter covering deactivated previous primaries that the active-only `sources_by_id` misses.
 
@@ -118,19 +120,24 @@ immediately" / "Paused" via `watchActiveLabel`.
    - *Rep Fields* — `x-data="repFieldsEditor()"` wrapper; HTMX-loaded `sortableChips` suggestions (`hx-trigger="load"`); `<textarea name="rep_fields">` with `PATCH /dashboard/info-items/{id}/rep-fields` inline save; flash target `#rep-fields-flash`.
    - *Replication Specs* — `info_items/_rep_spec_assignments.html` (wrapper `#ii-rep-spec-assignments`, heading `#ii-rep-spec-heading`): `data-table` of active `info_item_rep_specs` assignments plus an assign form (`filter-card`, `rep_spec_id` field). Rows (`_rep_spec_row.html`) show `activated_at` UTC and an `open_button` next to the `public_url` input when a value is set. HTMX deactivate re-renders the whole section (table + empty state) and focuses the heading; per-row public-url edits swap the individual row.
 
-**The four Watcher action POSTs share a contract.** `begin-watching`, `check-now`,
-`toggle-watch-active`, and `resync-watcher` each re-render
-`info_items/_watcher_status.html` and set `HX-Trigger: {"watcherUpdated":{}}`.
-Their forms use `hx-swap="none"`, so the rendered body is discarded and the
-trigger is what refreshes `#watcher-section`. On failure each adds a `showFlash`
-error to that trigger rather than 500ing, so a Watcher outage is surfaced instead
-of swallowed (#60, #61). A `WatcherNotFound` (404 — the WatchedItem was permanently deleted
-in Watcher) NULLs the stale `watcher_item_id`, commits, and flashes "no longer
-watched — it was removed in Watcher" so the re-render falls back to
-`not_watching` and "Begin Watching" reappears; **only a confirmed 404 clears the
-link** — transient failures (network/5xx) render `degraded` and retain it
-(CannObserv/archiver#63). Any other failure flashes "Watcher is unavailable". The
-entries below name only what each route adds.
+**The five Watcher action POSTs share a contract.** `begin-watching`,
+`check-now`, `toggle-watch-active`, `watch-cadence`, and `resync-watcher` each
+re-render a Watcher partial and set `HX-Trigger: {"watcherUpdated":{}}`. Their
+forms use `hx-swap="none"`, so the rendered body is discarded and the trigger is
+what refreshes `#watcher-section` — swapping the response in *and* firing the
+trigger would render twice. On failure each adds a `showFlash` error to that
+trigger rather than 500ing (#60, #61).
+
+Only the SDK-backed ones (`begin-watching`, `check-now`, `resync-watcher`) can
+observe a deleted WatchedItem: a `WatcherNotFound` (404) NULLs the stale
+`watcher_item_id`, commits, and flashes "no longer watched — it was removed in
+Watcher" so the re-render falls back to `not_watching` and "Begin Watching"
+reappears; **only a confirmed 404 clears the link** — transient failures
+(network/5xx) render `degraded` and retain it (CannObserv/archiver#63). Any other
+failure flashes "Watcher is unavailable". The two control-plane routes
+(`toggle-watch-active`, `watch-cadence`) are local writes as of archiver#158, so
+they never reach the SDK and never reconcile a stale link. The entries below name
+only what each route adds.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the four action POSTs.
 
@@ -142,7 +149,9 @@ entries below name only what each route adds.
 
 **POST `/dashboard/info-items/{id}/resync-watcher`** — PATCHes the WatchedItem with the current primary URL and specs via `sync_on_source_swap`, which returns a `WatcherSyncOutcome`; `FAILED` flashes "Couldn't re-sync with Watcher — it's unavailable". With no active primary source, flashes "No primary source to re-sync — bind one first." A deleted WatchedItem now surfaces as `NOT_FOUND` from the helper and the route runs the stale-link reconcile itself (#151 — the local re-render can no longer observe the 404), flashing "no longer watched".
 
-**POST `/dashboard/info-items/{id}/toggle-watch-active`** — pauses or resumes the WatchedItem via `patch_watched_item(is_active=…)`. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. The local re-render reflects the toggle only once Watcher reports it back on `info.watch-status` — the flash confirms the action; the panel shows what is applied. A `WatcherConflict` (409 — e.g. pause/resume on an archived item) flashes "the item may be archived". No-op, with no patch, when the InfoItem has no `watcher_item_id`.
+**POST `/dashboard/info-items/{id}/toggle-watch-active`** — pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. The re-render still shows applied state, so the button flips only once Watcher reports back on `info.watch-status` — the lag window is the announcement round-trip and stays visible as generation drift. Records policy even with no `watcher_item_id` (the registry's opinion does not require a WatchedItem). A failed local write rolls back, flashes "the change was not saved", and renders `degraded` **from the path id** — reading through the rolled-back ORM object would emit IO from the template and raise `MissingGreenlet`.
+
+**POST `/dashboard/info-items/{id}/watch-cadence`** — replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Whole-document replacement, never a merge — a merge would make "delegate" unreachable once an interval had been set, the same reasoning the API's `PUT /watch-spec` gives. Validated against `src/dashboard/cadence.py`'s offered vocabulary, which is deliberately narrower than the schema's `^[0-9]+[smhd]$`; a hand-posted value outside it re-renders with a flash and writes nothing (the API route is the escape hatch for the full grammar).
 
 **POST `/dashboard/info-items/{id}/swap-primary-source`** — inline primary-source swap: creates a new InfoSource (form fields: `url`, `source_specs` JSON array), deactivates the old active binding, binds the new source, best-effort `patch_watched_item` post-commit. 204 + `HX-Redirect` to detail on success; 422 with a `<div id="swap-error">` fragment on validation error. Template: `info_items/_swap_primary.html`.
 
@@ -168,6 +177,7 @@ Partial templates under `info_items/`:
 | `_swap_primary.html` | `#swap-panel` | — |
 | `_watcher_status.html` | `#watcher-status-strip` | `not_watching`, `no_status`, `degraded`, `watching` |
 | `_watcher_section.html` | `#watcher-section` | `not_watching`, `no_status`, `degraded`, `watching` |
+| `_cadence_editor.html` | — (included, `hx-swap="none"`) | — |
 
 Each root element carries its own `id`, so it survives the swap that replaces it;
 `_watcher_section.html`'s root additionally carries `hx-trigger="watcherUpdated

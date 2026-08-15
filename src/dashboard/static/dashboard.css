@@ -792,6 +792,15 @@ p:last-child { margin-bottom: 0; }
   color: var(--color-danger);
   margin-top: var(--space-1);
 }
+/* Inline-scale select for action rows (archiver#158 cadence editor). Sized to
+   .btn--sm so a select and a button sit on one baseline; auto width because the
+   base .form-select is a full-width block built for stacked form layouts. */
+.form-select--sm {
+  width: auto;
+  padding: var(--space-1) var(--space-2);
+  min-height: 32px;
+  font-size: var(--font-size-xs);
+}
 .form-input--error,
 .form-select--error,
 .form-textarea--error {

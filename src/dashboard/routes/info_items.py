@@ -21,6 +21,7 @@ from src.api.deps import get_db_session, get_watcher_client
 from src.api.errors import raise_envelope
 from src.core.logging import get_logger
 from src.core.services.registry_announcement import announce_info_item
+from src.core.watch_spec_schema.validator import validate_watch_spec
 from src.core.watcher_provisioning import (
     WatcherSyncOutcome,
     provision_on_create,
@@ -69,6 +70,7 @@ from src.core.tools.deactivate_info_item_source_binding import (
     deactivate_info_item_source_binding,
 )
 from src.core.url_canonicalization import canonicalize_url
+from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
@@ -962,6 +964,8 @@ _RECONCILE_FAILED_FLASH = (
     "Watcher reports this item gone, but the local record couldn't be updated — retrying shortly."
 )
 _RECONCILE_FAILED_MSG = "couldn't update the local record after Watcher reported it gone"
+_POLICY_WRITE_FAILED_MSG = "couldn't save the watch policy"
+_POLICY_WRITE_FAILED_FLASH = "Couldn't update the watch state — the change was not saved."
 # Suffix for the honest "contract drift" flash: a WatcherResponseError means the
 # watcher_client SDK is stale relative to the live Watcher API, not that Watcher is
 # down. Deliberately omits "try again" — retrying a contract mismatch never helps.
@@ -1084,6 +1088,12 @@ async def _watch_template_context(
         "watch": watch,
         "can_act": watcher is not None and bool(item.watcher_item_id),
         "can_provision": watcher is not None,
+        # Cadence is Archiver's own policy as of archiver#158, so its editor is
+        # deliberately NOT gated on ``can_act``: a WatchedItem need not exist for
+        # the registry to hold an opinion, and the announcement is what carries
+        # it. ``cadence_value`` is the announced interval, "" meaning delegate.
+        "cadence_options": CADENCE_LABELS,
+        "cadence_value": (item.watch_spec or {}).get("interval") or "",
     }
 
 
@@ -1353,57 +1363,125 @@ async def toggle_watch_active(
     session: AsyncSession = Depends(get_db_session),
     watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> HTMLResponse:
-    """Pause or resume a WatchedItem via PATCH is_active; re-renders status partial.
+    """Pause or resume by writing ``watch_active`` locally and announcing it.
 
     ``active`` is the desired target state ("true" → resume, anything else →
     pause); the button submits the opposite of the current *applied* state.
-    Watcher rejects pause/resume on an archived item (409) — caught here so the
-    partial re-renders instead of 500ing.
 
-    The re-render is local state (archiver#151), so the toggle reflects only
-    once Watcher reports it back on ``info.watch-status`` — the flash confirms
-    the action landed; the panel shows what is actually applied. The write
-    moves local (UPDATE ``watch_active`` + announcement) at the control-plane
-    cutover, archiver#158.
+    **The control plane is local as of archiver#158.** This was a
+    ``patch_watched_item`` over the SDK; it is now an ``UPDATE`` plus an
+    announcement in one transaction, and Watcher reconciles it off
+    ``info.registry``. The re-render still shows *applied* state (archiver#151),
+    so the button reflects the change only once Watcher reports it back on
+    ``info.watch-status`` — the lag window is the announcement round-trip and
+    stays visible as generation drift rather than becoming invisible.
+
+    **The archived-item guard is deliberately gone.** Watcher used to reject
+    pause/resume on an archived WatchedItem with a 409, which this caught and
+    flashed. Archiver has no local notion of archived — only ``domains``
+    carries one — and the design settled that a Watcher-local pause is
+    *reverted* by reconciliation, with the break-glass being host-level
+    ``domain_suspended``, untouched because it is mechanism rather than policy.
+    Archive is the same shape: Watcher-local mechanism. It now surfaces as
+    ``applied_active != active`` on the return leg, which the panel already
+    renders — visible divergence instead of a silent rejection.
     """
     item = await _resolve_item(item_id, session)
 
-    if watcher is None or not item.watcher_item_id:
-        return await _render_status_partial(request, session=session, item=item, watcher=watcher)
-
-    flash: tuple[str, str] | None = None
-    reconcile_failed = False
     try:
-        await watcher.patch_watched_item(item.watcher_item_id, is_active=active == "true")
-    except WatcherNotFound:
-        # The WatchedItem is gone (deleted in Watcher). Clear the stale link so
-        # the partial falls back to not_watching instead of looping on 404.
-        if await _clear_stale_watcher_link(session, item):
-            flash = ("error", _WATCHER_REMOVED_FLASH)
-        else:
-            flash = ("error", _RECONCILE_FAILED_FLASH)
-            reconcile_failed = True
-    except WatcherConflict:
-        # Watcher rejects pause/resume on an archived item (archive/restore owns
-        # activation there). The toggle is hidden in that state, but guard direct posts.
-        flash = ("error", "Watcher rejected the change — the item may be archived.")
-    except WatcherResponseError:
-        # Response couldn't be parsed — the watcher_client SDK is stale, not a
-        # transport outage. Flash honestly so the operator doesn't keep retrying.
-        flash = ("error", f"Couldn't update the watch state — {_WATCHER_CONTRACT_SUFFIX}")
+        item.watch_active = active == "true"
+        await announce_info_item(session, item.info_item_id)
+        await session.commit()
     except Exception:
-        flash = (
-            "error",
-            "Couldn't update the watch state — Watcher is unavailable. Try again shortly.",
-        )
+        # A failed local write is our fault, not an upstream outage — but the
+        # panel degrades rather than 500s (the #151 precedent). Render from the
+        # path id, not through ``item``: the rollback expires its attributes and
+        # re-reading them would emit IO from the template and raise
+        # MissingGreenlet.
+        await session.rollback()
+        logger.exception("Local watch_active write failed for InfoItem %s", item_id)
+        response = _status_degraded(request, item_id, _POLICY_WRITE_FAILED_MSG)
+        response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _POLICY_WRITE_FAILED_FLASH))
+        return response
 
-    if reconcile_failed:
-        # Clearing the link failed to commit; render degraded straight from the path
-        # id — don't re-render through the item (attrs may be expired) or re-fetch.
-        response = _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
-    else:
-        response = await _render_status_partial(
+    response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
+    response.headers["HX-Trigger"] = _watcher_hx_trigger()
+    return response
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/watch-cadence  (set the announced fetch cadence)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{item_id}/watch-cadence", response_class=HTMLResponse)
+async def set_watch_cadence(
+    item_id: str,
+    request: Request,
+    interval: str = Form(default=""),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    watcher: "WatcherClient | None" = Depends(get_watcher_client),
+) -> HTMLResponse:
+    """Replace the item's cadence policy and announce it (archiver#158).
+
+    **This affordance did not exist before the cutover.** Cadence was chosen at
+    registration and then display-only, because the live value was Watcher's and
+    the dashboard had nothing local to edit.
+
+    The empty selection means *delegate* — the document keeps only
+    ``schema_version`` and the consumer applies its own default, which may be a
+    per-domain one rather than a global constant. That is why this replaces the
+    whole document instead of merging: a merge would make "delegate"
+    unreachable once an interval had ever been set, the same reasoning the API's
+    whole-document ``PUT /watch-spec`` gives.
+
+    ``interval`` is validated against the dashboard's offered vocabulary, not
+    just the schema. The schema admits any ``^[0-9]+[smhd]$``; the dropdown is a
+    deliberately narrower UI subset, and a hand-posted value outside it is a
+    mistake worth refusing rather than a power-user feature — the API route is
+    the escape hatch for the full grammar.
+    """
+    item = await _resolve_item(item_id, session)
+
+    if interval and interval not in CADENCE_OPTIONS:
+        response = await _render_watcher_section(
             request, session=session, item=item, watcher=watcher
         )
-    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
+        response.headers["HX-Trigger"] = _watcher_hx_trigger(
+            ("error", f"“{interval}” is not one of the offered cadences.")
+        )
+        return response
+
+    document = {"schema_version": 1}
+    if interval:
+        document["interval"] = interval
+
+    ok, errors = validate_watch_spec(document)
+    if not ok:
+        # Belt and braces: the vocabulary check above should make this
+        # unreachable. If the two ever disagree, refuse rather than announce a
+        # document the consumer will fail to parse.
+        logger.error("Dashboard built an invalid watch_spec for InfoItem %s: %s", item_id, errors)
+        response = await _render_watcher_section(
+            request, session=session, item=item, watcher=watcher
+        )
+        response.headers["HX-Trigger"] = _watcher_hx_trigger(
+            ("error", "Couldn't set the cadence — the policy document was rejected.")
+        )
+        return response
+
+    try:
+        item.watch_spec = document
+        await announce_info_item(session, item.info_item_id)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        logger.exception("Local watch_spec write failed for InfoItem %s", item_id)
+        response = _section_degraded(request, item_id, _POLICY_WRITE_FAILED_MSG)
+        response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _POLICY_WRITE_FAILED_FLASH))
+        return response
+
+    response = await _render_watcher_section(request, session=session, item=item, watcher=watcher)
+    response.headers["HX-Trigger"] = _watcher_hx_trigger()
     return response
