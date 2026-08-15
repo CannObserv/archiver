@@ -1066,38 +1066,51 @@ async def _watch_template_context(
     (archiver#158).
     """
     status = await session.get(WatchStatus, item.info_item_id)
-    last_changed_at = (
+    # One pass over the active bindings for both facts (CR round 2, finding 12).
+    # Driven FROM the bindings with an outer join to revisions, so an item bound
+    # to a source that has never been fetched still reports its announceability
+    # — the previous revision-first query could not see a binding at all.
+    #
+    # `has_active_source` is announceability, by the same rule `_collect_full_set`
+    # and the announce service use: an active binding whose source carries
+    # non-empty specs. Pause/resume and the cadence editor are both gated on it
+    # (CR round 1 finding 3, round 2 finding 9) because mutating policy on an
+    # item that cannot announce *live* emits a **tombstone** and burns a
+    # generation — which then reads as drift on this very panel, for an item
+    # where nothing is wrong. `can_act` is the wrong test: it checks the Watcher
+    # link, and the link outlives the binding.
+    #
+    # `jsonb_typeof(...) = 'array'` guards the length call (CR round 2, finding
+    # 11): `jsonb_array_length` errors on a non-array, and this runs on the panel
+    # *render* path, which archiver#151 made unfailable on purpose. Not reachable
+    # through the app — both write paths validate a list — so the guard is about
+    # where a hand-edited row's blast radius lands, not a live defect.
+    aggregate = (
         await session.execute(
-            select(func.max(SourceRevision.captured_at))
-            .join(
-                InfoItemSource,
-                InfoItemSource.info_source_id == SourceRevision.info_source_id,
+            select(
+                func.max(SourceRevision.captured_at).label("last_changed_at"),
+                func.coalesce(
+                    func.bool_or(
+                        (func.jsonb_typeof(InfoSource.source_specs) == "array")
+                        & (func.jsonb_array_length(InfoSource.source_specs) > 0)
+                    ),
+                    False,
+                ).label("has_active_source"),
             )
-            .where(
-                InfoItemSource.info_item_id == item.info_item_id,
-                InfoItemSource.deactivated_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-    # Announceability, by the same rule `_collect_full_set` and the announce
-    # service use: an active binding whose source carries non-empty specs. The
-    # pause toggle is gated on it (CR round 1, finding 3) because pausing an
-    # item that cannot announce live emits a *tombstone* and burns a generation
-    # — which then reads as drift on this very panel, for an item where nothing
-    # is wrong. `can_act` is the wrong test: it checks the Watcher link, and an
-    # item can keep its link after its primary binding is deactivated.
-    has_active_source = (
-        await session.execute(
-            select(InfoItemSource.info_item_id)
+            .select_from(InfoItemSource)
             .join(InfoSource, InfoSource.info_source_id == InfoItemSource.info_source_id)
+            .outerjoin(
+                SourceRevision,
+                SourceRevision.info_source_id == InfoItemSource.info_source_id,
+            )
             .where(
                 InfoItemSource.info_item_id == item.info_item_id,
                 InfoItemSource.deactivated_at.is_(None),
-                func.jsonb_array_length(InfoSource.source_specs) > 0,
             )
-            .limit(1)
         )
-    ).first() is not None
+    ).one()  # an aggregate with no GROUP BY yields exactly one row, even on empty input
+    last_changed_at = aggregate.last_changed_at
+    has_active_source = aggregate.has_active_source
     watch = build_watch_context(
         item=item, status=status, last_changed_at=last_changed_at, now=datetime.now(UTC)
     )

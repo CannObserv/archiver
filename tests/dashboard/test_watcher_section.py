@@ -42,23 +42,6 @@ def _seed_status(session, item: InfoItem, **overrides) -> None:
     session.add(WatchStatus(**defaults))
 
 
-async def _bind_source(session, item: InfoItem, *, slug: str) -> None:
-    """Give the item an announceable primary source.
-
-    Required by any test asserting the pause/resume affordance: it is gated on
-    announceability, not on the Watcher link (CR round 1, finding 3). A watched
-    item with no bound source is not a state the app produces — provisioning
-    needs a primary source — so seeding one keeps these fixtures honest.
-    """
-    src = InfoSource(
-        url=f"https://example.test/{slug}",
-        source_specs=[{"schema_version": 1, "extraction": {"algorithm": "full_page"}}],
-    )
-    session.add(src)
-    await session.flush()
-    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
-
-
 def _wi(
     health: str = "ok",
     last_checked_at: str | None = _TS,
@@ -151,7 +134,7 @@ async def test_watcher_section_not_watching(client, session):
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_watching_shows_details(client, session, monkeypatch):
+async def test_watcher_section_watching_shows_details(client, session, monkeypatch, bind_source):
     monkeypatch.delenv("WATCHER_PUBLIC_BASE_URL", raising=False)
     wi = _wi("ok", effective_url="https://example.com/page")
     watcher = _mock_watcher(wi, base_url=_BASE_URL)
@@ -160,7 +143,7 @@ async def test_watcher_section_watching_shows_details(client, session, monkeypat
     item = InfoItem(name="section-watching", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
-    await _bind_source(session, item, slug="section-watching")
+    await bind_source(session, item, slug="section-watching")
     _seed_status(session, item)
     await session.flush()
 
@@ -190,12 +173,12 @@ async def test_watcher_section_watching_shows_details(client, session, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_paused_shows_resume(client, session):
+async def test_watcher_section_paused_shows_resume(client, session, bind_source):
     app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(name="section-paused", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
-    await _bind_source(session, item, slug="section-paused")
+    await bind_source(session, item, slug="section-paused")
     _seed_status(session, item, applied_active=False)
     await session.flush()
 
@@ -348,7 +331,9 @@ async def test_resync_watcher_triggers_watcher_updated(client, session):
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_renders_the_cadence_editor_with_the_announced_value(client, session):
+async def test_watcher_section_renders_the_cadence_editor_with_the_announced_value(
+    client, session, bind_source
+):
     app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(
         name="section-cadence",
@@ -357,6 +342,7 @@ async def test_watcher_section_renders_the_cadence_editor_with_the_announced_val
     )
     session.add(item)
     await session.flush()
+    await bind_source(session, item, slug="section-cadence")
     _seed_status(session, item)
     await session.flush()
 
@@ -374,7 +360,9 @@ async def test_watcher_section_renders_the_cadence_editor_with_the_announced_val
 
 
 @pytest.mark.asyncio
-async def test_cadence_editor_selects_delegate_when_no_interval_is_announced(client, session):
+async def test_cadence_editor_selects_delegate_when_no_interval_is_announced(
+    client, session, bind_source
+):
     app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(
         name="section-cadence-delegate",
@@ -383,6 +371,7 @@ async def test_cadence_editor_selects_delegate_when_no_interval_is_announced(cli
     )
     session.add(item)
     await session.flush()
+    await bind_source(session, item, slug="section-cadence-delegate")
     _seed_status(session, item)
     await session.flush()
 
@@ -395,7 +384,9 @@ async def test_cadence_editor_selects_delegate_when_no_interval_is_announced(cli
 
 
 @pytest.mark.asyncio
-async def test_cadence_editor_renders_before_watcher_has_ever_reported(client, session):
+async def test_cadence_editor_renders_before_watcher_has_ever_reported(
+    client, session, bind_source
+):
     """The `no_status` state offers it too (CR round 1, finding 1).
 
     A freshly registered item sits here until Watcher's first status frame, and
@@ -406,7 +397,9 @@ async def test_cadence_editor_renders_before_watcher_has_ever_reported(client, s
     app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(name="section-cadence-nostatus", watcher_item_id=_WI_ID)
     session.add(item)
-    await session.flush()  # no _seed_status -> no_status
+    await session.flush()
+    await bind_source(session, item, slug="section-cadence-nostatus")
+    # no _seed_status -> no_status
 
     r = await client.get(
         f"/dashboard/info-items/{item.info_item_id}/watcher-section",

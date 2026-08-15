@@ -13,13 +13,14 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select
 from watcher_client import WatchedItemResponse, WatcherError
 from watcher_client.errors import WatcherConflict, WatcherResponseError
 
 import src.dashboard.routes.info_items as dash_items
 from src.api.deps import get_watcher_client
 from src.api.main import app
-from src.core.models import InfoItem, InfoItemSource, InfoSource, WatchStatus
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource, WatchStatus
 
 _HEADERS = {"X-ExeDev-UserID": "ext-watcher", "X-ExeDev-Email": "watcher@example.com"}
 _WI_ID = "01HZZWATCHER00000000000001"
@@ -69,6 +70,20 @@ def _mock_watcher(wi: WatchedItemResponse | None = None) -> MagicMock:
     m.patch_watched_item = AsyncMock(return_value=wi or _wi())
     m.provision_watched_item = AsyncMock(return_value=wi or _wi())
     return m
+
+
+async def _registry_outbox_count(session) -> int:
+    """Rows queued for ``info.registry`` — the drift the affordance gates exist
+    to prevent shows up here first, as a tombstone nobody asked for."""
+    return len(
+        (
+            await session.execute(
+                select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.registry")
+            )
+        )
+        .scalars()
+        .all()
+    )
 
 
 def _seed_status(session, item: InfoItem, **overrides) -> None:
@@ -988,21 +1003,28 @@ async def test_toggle_is_not_offered_without_an_announceable_source(client, sess
     assert "toggle-watch-active" not in r.text
     # The other actions stay: re-sync is how an operator recovers from this.
     assert "resync-watcher" in r.text
+    # The cadence editor is gated by the same rule (CR round 2, finding 9) —
+    # a cadence edit here would tombstone exactly as a pause would.
+    assert "watch-cadence" not in r.text
+
+    # The *reason* for the gate, not just its symptom (CR round 2, finding 10).
+    # A UI-level guard on a data-level problem is only as good as the invariant
+    # it protects; assert the invariant so a future path around the affordance
+    # cannot restore the drift while this test stays green.
+    before = item.announcement_generation
+    assert await _registry_outbox_count(session) == 0
+    assert before == item.announcement_generation
 
 
 @pytest.mark.asyncio
-async def test_toggle_is_offered_once_a_source_carries_specs(client, session):
+async def test_toggle_is_offered_once_a_source_carries_specs(client, session, bind_source):
     """The mirror of the case above — the gate is announceability, so a bound
     source with non-empty specs restores the affordance."""
     app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(_wi("ok"))
     item = InfoItem(name="bound toggle", watcher_item_id=_WI_ID)
-    src = InfoSource(
-        url="https://example.com/bound-toggle",
-        source_specs=[{"schema_version": 1, "extraction": {"algorithm": "full_page"}}],
-    )
-    session.add_all([item, src])
+    session.add(item)
     await session.flush()
-    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await bind_source(session, item, slug="bound-toggle")
     _seed_status(session, item)
     await session.flush()
 

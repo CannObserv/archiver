@@ -62,8 +62,11 @@
     {# Cadence is editable here too, not only once Watcher has reported (CR
        round 1, finding 1). A freshly registered item sits in no_status until
        the first status frame arrives, which is exactly when an operator is
-       most likely to want to change the cadence they just picked. #}
+       most likely to want to change the cadence they just picked. Gated on
+       has_active_source for the same reason pause is (CR round 2, finding 9). #}
+    {% if has_active_source %}
     {% include "info_items/_cadence_editor.html" %}
+    {% endif %}
   </div>
 
 {% else %}{# state == "watching" #}
@@ -172,7 +175,12 @@
     </form>
     {% endif %}
 
+    {# Same announceability gate as the pause toggle above (CR round 2, finding
+       9): a cadence edit on an item that cannot announce live emits a tombstone
+       and burns a generation, which then reads as drift here. #}
+    {% if has_active_source %}
     {% include "info_items/_cadence_editor.html" %}
+    {% endif %}
   </div>
 {% endif %}
 
