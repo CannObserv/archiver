@@ -58,7 +58,7 @@ wheels = [
 
 [[package]]
 name = "archiver"
-version = "4.10.2"
+version = "4.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },

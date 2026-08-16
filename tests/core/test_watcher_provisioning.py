@@ -393,3 +393,81 @@ async def test_sync_on_spec_update_contract_error_logs_stale_sdk(session, monkey
 
     spy.assert_called_once()
     assert "contract mismatch" in spy.call_args.args[0]
+
+
+# ---------------------------------------------------------------------------
+# ARCHIVER_WATCHER_PUSH_ENABLED — the dual-run kill switch (archiver#158)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("raw", ["0", "false", "FALSE", "no", "off"])
+def test_push_disabled_by_falsey_values(raw, monkeypatch):
+    monkeypatch.setenv(wp.WATCHER_PUSH_ENABLED_ENV, raw)
+    assert wp.watcher_push_enabled() is False
+
+
+@pytest.mark.parametrize("raw", ["1", "true", "yes", "on", "anything-else"])
+def test_push_enabled_by_truthy_values(raw, monkeypatch):
+    monkeypatch.setenv(wp.WATCHER_PUSH_ENABLED_ENV, raw)
+    assert wp.watcher_push_enabled() is True
+
+
+def test_push_defaults_to_enabled_when_unset(monkeypatch):
+    """Absent means on. The flag exists to *disable* an existing behaviour for
+    the dual-run; a default of off would silently retire the push on every
+    deployment that forgot to set it."""
+    monkeypatch.delenv(wp.WATCHER_PUSH_ENABLED_ENV, raising=False)
+    assert wp.watcher_push_enabled() is True
+
+
+@pytest.mark.asyncio
+async def test_provision_on_create_skips_when_push_disabled(session, monkeypatch):
+    """The dual-run disables the write leg only — no SDK call, no exception."""
+    monkeypatch.setenv(wp.WATCHER_PUSH_ENABLED_ENV, "0")
+    item = InfoItem(name="test item")
+    src = InfoSource(url="https://example.com/", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+
+    watcher = _mock_watcher(_wi(_WI_ID))
+    outcome = await provision_on_create(session, watcher, item, src)
+
+    assert outcome is WatcherSyncOutcome.SKIPPED
+    watcher.provision_watched_item.assert_not_awaited()
+    assert item.watcher_item_id is None
+
+
+@pytest.mark.asyncio
+async def test_sync_on_source_swap_skips_when_push_disabled(session, monkeypatch):
+    monkeypatch.setenv(wp.WATCHER_PUSH_ENABLED_ENV, "0")
+    item = InfoItem(name="test", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/new", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock()
+    outcome = await sync_on_source_swap(session, watcher, item, src)
+
+    assert outcome is WatcherSyncOutcome.SKIPPED
+    watcher.patch_watched_item.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_on_spec_update_skips_when_push_disabled(session, monkeypatch):
+    monkeypatch.setenv(wp.WATCHER_PUSH_ENABLED_ENV, "0")
+    item = InfoItem(name="test", watcher_item_id=_WI_ID)
+    src = InfoSource(url="https://example.com/", source_specs=[])
+    session.add(item)
+    session.add(src)
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.flush()
+
+    watcher = MagicMock()
+    watcher.patch_watched_item = AsyncMock()
+    await sync_on_spec_update(session, watcher, src.info_source_id, [{"a": 1}])
+
+    watcher.patch_watched_item.assert_not_awaited()

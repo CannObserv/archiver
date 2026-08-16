@@ -18,6 +18,22 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.11.0 (2026-08-15)
+
+[service] **The dashboard control plane is local: pause/resume and cadence are writes to `info_items` plus an announcement, not calls to Watcher** (archiver#158, steps 6–7 of the #137 epic). No migration; the columns landed in #150.
+
+Strictly, no path in the changelog's trigger regex changed — this is dashboard and core-service code. It gets an entry anyway because it changes **what Watcher receives on a live bus contract**: registration now announces the operator's chosen cadence instead of the column default, and pause state arrives via `info.registry` rather than a PATCH.
+
+**What moved.** `toggle-watch-active` was `patch_watched_item(is_active=…)`; it is now an `UPDATE` on `watch_active` plus `announce_info_item` in one transaction. Registration writes `watch_spec` and `watch_active` *before* the announce, so an item's very first registry frame carries the policy the operator picked — previously the cadence rode the provisioning call as `schedule_config` while `watch_spec` kept its default, and the first announcement disagreed with the form. A **cadence editor** appears on the InfoItem detail panel in both provisioned states — `watching` and `no_status` — because a freshly registered item sits in `no_status` until Watcher's first status frame, which is exactly when an operator wants to revise the cadence they just picked. Post-registration cadence had no affordance at all before, because the live value was Watcher's. It replaces the whole document rather than merging, so "delegate to the consumer's default" stays reachable once an interval has been set.
+
+**Both policy affordances — pause/resume and the cadence editor — are gated on an announceable source**, not on the Watcher link. The link outlives the binding — deactivate an item's primary source and the panel still renders `watching` — and mutating policy on an item that cannot announce live emits a *tombstone* and burns a generation, which then reads as drift on the same panel for an item where nothing is wrong. Re-sync stays available: it is how the operator gets out of that state.
+
+**The archived-item guard is deliberately gone.** Watcher used to 409 pause/resume on an archived WatchedItem, which the dashboard caught and flashed. Archiver models no per-item archived state — only `domains.archived_at` — so there was nothing local to evaluate. The design already settled the analogous case: a Watcher-local pause is *reverted* by reconciliation, and the break-glass is host-level `domain_suspended`, untouched because it is mechanism rather than policy. Archive is the same shape. It now surfaces as `applied_active != active` on the return leg, which the panel already renders — visible divergence rather than a silent rejection.
+
+**Two new operator switches**, both documented in `docs/DEPLOYMENT.md`. `ARCHIVER_WATCHER_PUSH_ENABLED=0` disables every outbound Watcher *write* while leaving the client and the dashboard's deeplinks intact — the dual-run switch design step 7 calls for, and the reason it gates writes rather than the client is that unsetting `WATCHER_BASE_URL` would also take out unrelated reads. `ARCHIVER_ALLOW_WATCH_IMPORT=1` is now required to arm `scripts/import_watch_specs.py --apply`: its writes are blind overwrites, safe only while the dashboard did not write these columns, and a stray run would now clobber operator-authored policy *and announce the clobber* as desired state. Both follow `ARCHIVER_ALLOW_PRODUCTION_DB`'s posture — keep them out of env files.
+
+**Not yet done:** the dual-run observation itself, which is a production act rather than a test — re-run the import, flip the push off, edit a real spec, confirm propagation and `applied_generation` catch-up. #158 stays open until that is recorded on it.
+
 ## v4.10.2 (2026-08-14)
 
 [service] **No `info.registry` announcement carries generation 0 any more** (archiver#161). Migration `e3a71c40b9d2` lifts every un-bumped `info_items.announcement_generation` to 1 and stamps `announced_at`.

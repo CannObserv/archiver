@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import scripts.import_watch_specs as iws
 from scripts.import_watch_specs import format_report, parse_args, run
 from src.core.watch_spec_import import ImportAnomaly, ImportReport, MappingRow
 
@@ -99,3 +100,35 @@ async def test_run_exits_0_on_a_clean_report():
         patch("scripts.import_watch_specs._session_scope"),
     ):
         assert await run(dry_run=False) == 0
+
+
+# ---------------------------------------------------------------------------
+# Post-cutover write guard (archiver#158)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_is_refused_without_the_env_opt_in(monkeypatch, capsys):
+    """The cutover made the dashboard a concurrent writer of both columns, and
+    every write here is a blind overwrite. A stray ``--apply`` would clobber
+    operator-authored policy *and announce the clobber* as desired state."""
+    monkeypatch.delenv(iws.ALLOW_IMPORT_ENV, raising=False)
+
+    assert iws.main(["--apply"]) == 2
+    assert iws.ALLOW_IMPORT_ENV in capsys.readouterr().err
+
+
+def test_dry_run_needs_no_opt_in(monkeypatch):
+    """Reporting is always safe — the guard is on writing, not on looking."""
+    monkeypatch.delenv(iws.ALLOW_IMPORT_ENV, raising=False)
+    monkeypatch.delenv("WATCHER_BASE_URL", raising=False)
+
+    # Exits 2 for the *missing Watcher config* reason, not the guard.
+    assert iws.main([]) == 2
+
+
+def test_apply_proceeds_with_the_env_opt_in(monkeypatch):
+    monkeypatch.setenv(iws.ALLOW_IMPORT_ENV, "1")
+    monkeypatch.delenv("WATCHER_BASE_URL", raising=False)
+
+    # Past the guard, into the ordinary "no Watcher configured" exit.
+    assert iws.main(["--apply"]) == 2

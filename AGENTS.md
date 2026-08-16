@@ -251,4 +251,4 @@ Cross-project search to the sister `watcher` and `notifier` indexes requires a p
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — wheelhouse reproducibility, dev-server internals, full env-var reference
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — changelog trigger, journald logging contract, error-envelope examples
 - [docs/SKILLS.md](docs/SKILLS.md) — skill inventory, trigger table, SessionStart hook mechanics
-- The four dashboard docs — [docs/UI.md](docs/UI.md) URL map, auth, HTMX, detail-screen conventions; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory (large — open one section); [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility
+- The five dashboard docs — [docs/UI.md](docs/UI.md) URL map, auth, HTMX, detail-screen conventions; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory; [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) the InfoItem hub screen — its five sections, partials, swap targets; [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility

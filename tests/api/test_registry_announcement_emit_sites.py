@@ -9,9 +9,9 @@ Deliberate non-sites, pinned by tests where silence is load-bearing:
 
 - ``POST /info-sources`` — a fresh source has no bindings, so there is no
   announced state to change.
-- Dashboard ``toggle-watch-active`` — still SDK-only until the epic's step-6
-  control-plane cutover; it does not mutate ``info_items.watch_active``, so it
-  has nothing to announce yet.
+(``toggle-watch-active`` used to be listed here as SDK-only with nothing to
+announce. The step-6 control-plane cutover, archiver#158, made it a local write
+plus an announcement — it is now covered below.)
 """
 
 import pytest
@@ -20,6 +20,7 @@ from ulid import ULID
 
 from src.core.models import ChangesOutboxRow, InfoItem, InfoSource, RevokedInfoItem
 from src.core.models.domain import Domain
+from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 DASH_HEADERS = {"X-ExeDev-UserID": "ext-emit", "X-ExeDev-Email": "emit@example.com"}
@@ -352,3 +353,165 @@ async def test_dashboard_register_announces(client, session):
     rows = await _registry_rows(session)
     assert len(rows) == 1
     assert rows[0]["revoked"] is False
+
+
+@pytest.mark.asyncio
+async def test_dashboard_toggle_watch_active_announces_the_new_state(client, session):
+    """archiver#158: pause/resume is a local write plus an announcement.
+
+    Before the cutover this endpoint only PATCHed Watcher and mutated nothing
+    locally, so it had nothing to announce. It is now the control plane.
+    """
+    item_id, _source_id = await _make_bound_item(client)
+
+    resp = await client.post(
+        f"/dashboard/info-items/{item_id}/toggle-watch-active",
+        headers=DASH_HEADERS,
+        data={"active": "false"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    rows = sorted(await _registry_rows(session), key=lambda p: p["generation"])
+    assert len(rows) == 2  # the create's live announcement + the pause
+    assert rows[-1]["active"] is False
+    assert rows[-1]["revoked"] is False
+
+    item = (
+        await session.execute(
+            select(InfoItem).where(InfoItem.info_item_id == ULID.from_str(item_id))
+        )
+    ).scalar_one()
+    await session.refresh(item)
+    assert item.watch_active is False
+
+
+@pytest.mark.asyncio
+async def test_dashboard_toggle_watch_active_resume_announces_true(client, session):
+    item_id, _source_id = await _make_bound_item(client)
+
+    await client.post(
+        f"/dashboard/info-items/{item_id}/toggle-watch-active",
+        headers=DASH_HEADERS,
+        data={"active": "false"},
+    )
+    resp = await client.post(
+        f"/dashboard/info-items/{item_id}/toggle-watch-active",
+        headers=DASH_HEADERS,
+        data={"active": "true"},
+    )
+    assert resp.status_code == 200
+
+    rows = sorted(await _registry_rows(session), key=lambda p: p["generation"])
+    assert [r["active"] for r in rows[-2:]] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_register_announces_the_chosen_cadence_and_pause_state(client, session):
+    """archiver#158: registration writes Archiver's policy, not Watcher's.
+
+    Before the cutover the form's cadence went out as ``schedule_config`` on the
+    provisioning call and ``watch_spec`` kept its column default, so the very
+    first announcement disagreed with what the operator picked.
+    """
+    resp = await client.post(
+        "/dashboard/register",
+        headers=DASH_HEADERS,
+        data={
+            "url": "https://example.com/register-policy",
+            "source_specs": _FULL_PAGE_SPECS_JSON,
+            "name": "Policy At Registration",
+            "description": "",
+            "cadence": "6h",
+            # watch_active checkbox absent → registered paused
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+
+    rows = await _registry_rows(session)
+    assert len(rows) == 1
+    assert rows[0]["watch_spec"] == {"schema_version": 1, "interval": "6h"}
+    assert rows[0]["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_dashboard_register_falls_back_to_the_default_spec(client, session):
+    """An unrecognised cadence must not fabricate an interval — the column
+    default stands, which spells 'delegate to the consumer's own default'."""
+    resp = await client.post(
+        "/dashboard/register",
+        headers=DASH_HEADERS,
+        data={
+            "url": "https://example.com/register-default",
+            "source_specs": _FULL_PAGE_SPECS_JSON,
+            "name": "Default Cadence",
+            "description": "",
+            "cadence": "not-an-option",
+            "watch_active": "on",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+
+    rows = await _registry_rows(session)
+    assert len(rows) == 1
+    assert rows[0]["watch_spec"] == DEFAULT_WATCH_SPEC
+    assert rows[0]["active"] is True
+
+
+@pytest.mark.asyncio
+async def test_dashboard_set_cadence_announces(client, session):
+    """archiver#158: post-registration cadence is editable, and it announces.
+
+    Before the cutover cadence was display-only after registration — there was
+    no affordance at all, because the value lived in Watcher.
+    """
+    item_id, _source_id = await _make_bound_item(client)
+
+    resp = await client.post(
+        f"/dashboard/info-items/{item_id}/watch-cadence",
+        headers=DASH_HEADERS,
+        data={"interval": "7d"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    rows = sorted(await _registry_rows(session), key=lambda p: p["generation"])
+    assert rows[-1]["watch_spec"] == {"schema_version": 1, "interval": "7d"}
+
+
+@pytest.mark.asyncio
+async def test_dashboard_set_cadence_to_delegate_drops_the_interval(client, session):
+    """The empty selection is the only way to say 'use your own default' — a
+    merge-style edit would make that state unreachable once an interval is set."""
+    item_id, _source_id = await _make_bound_item(client)
+    await client.post(
+        f"/dashboard/info-items/{item_id}/watch-cadence",
+        headers=DASH_HEADERS,
+        data={"interval": "1h"},
+    )
+
+    resp = await client.post(
+        f"/dashboard/info-items/{item_id}/watch-cadence",
+        headers=DASH_HEADERS,
+        data={"interval": ""},
+    )
+    assert resp.status_code == 200
+
+    rows = sorted(await _registry_rows(session), key=lambda p: p["generation"])
+    assert rows[-1]["watch_spec"] == {"schema_version": 1}
+
+
+@pytest.mark.asyncio
+async def test_dashboard_set_cadence_rejects_an_unoffered_value(client, session):
+    """The dropdown is a closed vocabulary; a hand-posted value must not write."""
+    item_id, _source_id = await _make_bound_item(client)
+    before = len(await _registry_rows(session))
+
+    resp = await client.post(
+        f"/dashboard/info-items/{item_id}/watch-cadence",
+        headers=DASH_HEADERS,
+        data={"interval": "3f"},
+    )
+    assert resp.status_code == 200  # partial re-render, not a 4xx — HTMX target
+    assert "showFlash" in resp.headers.get("HX-Trigger", "")
+    assert len(await _registry_rows(session)) == before

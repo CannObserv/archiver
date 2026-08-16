@@ -464,7 +464,13 @@ async def test_register_invalid_cadence_sends_none(client, session):
 
 @pytest.mark.asyncio
 async def test_register_active_when_checkbox_present(client, session):
-    # "Watch active immediately" checked → omit is_active (Watcher defaults active).
+    """Checked → provision explicitly active (archiver#158).
+
+    This used to send ``is_active=None`` and let Watcher apply *its* default.
+    After the cutover the registry holds the opinion, so the push forwards what
+    was written locally rather than deferring — the two paths must agree for the
+    dual-run to mean anything.
+    """
     watcher = _mock_watcher()
     app.dependency_overrides[get_watcher_client] = lambda: watcher
 
@@ -481,7 +487,7 @@ async def test_register_active_when_checkbox_present(client, session):
     )
     assert resp.status_code == 303
     watcher.provision_watched_item.assert_awaited_once()
-    assert watcher.provision_watched_item.await_args.kwargs["is_active"] is None
+    assert watcher.provision_watched_item.await_args.kwargs["is_active"] is True
 
 
 @pytest.mark.asyncio

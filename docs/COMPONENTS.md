@@ -158,7 +158,7 @@ Multi-step Information Item registration wizard. Manages step navigation and for
 **Factory args:**
 - `initialStep: number` — starting step (1–4; defaults to `1`). The server passes a non-1 value on validation re-renders to re-open at the failing step.
 
-**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (Watcher fetch-cadence interval, default `"1d"`), `watchActive: boolean` (default `true`; "Watch active immediately" — false provisions paused), `checkHostname: string` / `checkDomainKnown: boolean|null` (last url-check result, fed by `urlCheckDispatch`; `null` = no check landed yet; the payload's `case` field is intentionally not stored — only the domain fact feeds the summary bar) *(#53)*.
+**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (the announced `watch_spec` interval, default `"1d"` — Archiver's own policy as of archiver#158, written locally at registration rather than forwarded to Watcher; editable afterwards from the InfoItem detail panel), `watchActive: boolean` (default `true`; "Watch active immediately" — false provisions paused), `checkHostname: string` / `checkDomainKnown: boolean|null` (last url-check result, fed by `urlCheckDispatch`; `null` = no check landed yet; the payload's `case` field is intentionally not stored — only the domain fact feeds the summary bar) *(#53)*.
 
 **Getters:**
 - `cadenceLabel` — returns the human-readable label for the selected cadence by reading the text of the matching `<option>` in `$refs.cadenceInput` (no hardcoded map; the server-rendered options are the single source). Shown in the Step 4 review row.

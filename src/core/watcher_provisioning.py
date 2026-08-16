@@ -11,10 +11,21 @@ means WATCHER_BASE_URL / WATCHER_API_KEY are unset and all calls are no-ops.
 re-raising — including ``CONTRACT_ERROR`` (the response couldn't be parsed; the
 SDK is stale) distinct from a transport ``FAILED``. ``sync_on_spec_update``
 patches N items with per-item logging and returns ``None``.
+
+**``ARCHIVER_WATCHER_PUSH_ENABLED=0`` disables every write here** — the
+dual-run's kill switch (archiver#158, design step 7). It gates *writes only*,
+which is the whole point: the blunt alternative is unsetting
+``WATCHER_BASE_URL``, but that also nulls the client and takes out the
+dashboard's unrelated reads (the Watcher deep-link on the index and item
+detail). Those must keep working while the announcement path is observed
+carrying policy on its own. Default is **on**: the flag exists to retire an
+existing behaviour deliberately, and a default of off would silently disable
+the push on any deployment that forgot to set it. #142 deletes all of this.
 """
 
 from __future__ import annotations
 
+import os
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -30,6 +41,21 @@ if TYPE_CHECKING:
     from watcher_client import WatcherClient
 
 logger = get_logger(__name__)
+
+WATCHER_PUSH_ENABLED_ENV = "ARCHIVER_WATCHER_PUSH_ENABLED"
+"""Env var gating the outbound HTTP push. See the module docstring."""
+
+_FALSEY = frozenset({"0", "false", "no", "off"})
+
+
+def watcher_push_enabled() -> bool:
+    """True unless the env var is explicitly set to a falsey spelling.
+
+    Read per call rather than captured at import so a test can flip it with
+    ``monkeypatch.setenv`` and an operator's ``systemctl restart`` is the only
+    ceremony the dual-run needs.
+    """
+    return os.environ.get(WATCHER_PUSH_ENABLED_ENV, "").strip().lower() not in _FALSEY
 
 
 class WatcherSyncOutcome(StrEnum):
@@ -84,7 +110,7 @@ async def provision_on_create(
     swallowed). API-route callers may ignore the result; the dashboard uses it
     to flash provisioning failures.
     """
-    if watcher is None:
+    if watcher is None or not watcher_push_enabled():
         return WatcherSyncOutcome.SKIPPED
     try:
         result = await watcher.provision_watched_item(
@@ -176,7 +202,7 @@ async def sync_on_source_swap(
     ``CONTRACT_ERROR`` when the response couldn't be parsed (stale SDK),
     ``FAILED`` when the call otherwise raised (logged and swallowed).
     """
-    if watcher is None or not info_item.watcher_item_id:
+    if watcher is None or not info_item.watcher_item_id or not watcher_push_enabled():
         return WatcherSyncOutcome.SKIPPED
     try:
         await watcher.patch_watched_item(
@@ -219,7 +245,7 @@ async def sync_on_spec_update(
     Queries InfoItems with an active binding to ``info_source_id`` that have a
     ``watcher_item_id``. Each is patched independently; failures are logged per-item.
     """
-    if watcher is None:
+    if watcher is None or not watcher_push_enabled():
         return
     result = await session.execute(
         select(InfoItem)

@@ -134,7 +134,7 @@ async def test_watcher_section_not_watching(client, session):
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_watching_shows_details(client, session, monkeypatch):
+async def test_watcher_section_watching_shows_details(client, session, monkeypatch, bind_source):
     monkeypatch.delenv("WATCHER_PUBLIC_BASE_URL", raising=False)
     wi = _wi("ok", effective_url="https://example.com/page")
     watcher = _mock_watcher(wi, base_url=_BASE_URL)
@@ -143,6 +143,7 @@ async def test_watcher_section_watching_shows_details(client, session, monkeypat
     item = InfoItem(name="section-watching", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    await bind_source(session, item, slug="section-watching")
     _seed_status(session, item)
     await session.flush()
 
@@ -172,11 +173,12 @@ async def test_watcher_section_watching_shows_details(client, session, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_paused_shows_resume(client, session):
+async def test_watcher_section_paused_shows_resume(client, session, bind_source):
     app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(name="section-paused", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    await bind_source(session, item, slug="section-paused")
     _seed_status(session, item, applied_active=False)
     await session.flush()
 
@@ -320,3 +322,107 @@ async def test_resync_watcher_triggers_watcher_updated(client, session):
     assert r.status_code == 200
     hx_trigger = r.headers.get("HX-Trigger", "")
     assert "watcherUpdated" in hx_trigger
+
+
+# ---------------------------------------------------------------------------
+# The cadence editor — new in archiver#158 (post-registration cadence was
+# display-only before the control-plane cutover)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watcher_section_renders_the_cadence_editor_with_the_announced_value(
+    client, session, bind_source
+):
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(
+        name="section-cadence",
+        watcher_item_id=_WI_ID,
+        watch_spec={"schema_version": 1, "interval": "6h"},
+    )
+    session.add(item)
+    await session.flush()
+    await bind_source(session, item, slug="section-cadence")
+    _seed_status(session, item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "watch-cadence" in r.text
+    # The announced interval is the selected option, not merely present.
+    assert '<option value="6h" selected>' in r.text
+    # "Delegate" stays reachable — it is the only way back to the consumer default.
+    assert 'value="" selected' not in r.text
+    assert "Consumer default" in r.text
+
+
+@pytest.mark.asyncio
+async def test_cadence_editor_selects_delegate_when_no_interval_is_announced(
+    client, session, bind_source
+):
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(
+        name="section-cadence-delegate",
+        watcher_item_id=_WI_ID,
+        watch_spec={"schema_version": 1},
+    )
+    session.add(item)
+    await session.flush()
+    await bind_source(session, item, slug="section-cadence-delegate")
+    _seed_status(session, item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert '<option value="" selected>' in r.text
+
+
+@pytest.mark.asyncio
+async def test_cadence_editor_renders_before_watcher_has_ever_reported(
+    client, session, bind_source
+):
+    """The `no_status` state offers it too (CR round 1, finding 1).
+
+    A freshly registered item sits here until Watcher's first status frame, and
+    that is precisely when an operator wants to revise the cadence they just
+    picked. The editor previously rendered only under `watching`, so the window
+    the affordance was added for was the one window it was missing from.
+    """
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="section-cadence-nostatus", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+    await bind_source(session, item, slug="section-cadence-nostatus")
+    # no _seed_status -> no_status
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "NO STATUS YET" in r.text
+    assert "watch-cadence" in r.text
+
+
+@pytest.mark.asyncio
+async def test_cadence_editor_absent_when_not_watching(client, session):
+    """`not_watching` offers "Begin Watching" instead — there is no provisioned
+    item whose cadence is a live question yet."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
+    item = InfoItem(name="section-cadence-unwatched", watcher_item_id=None)
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "Not watching" in r.text
+    assert "watch-cadence" not in r.text

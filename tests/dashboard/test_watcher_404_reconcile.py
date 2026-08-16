@@ -8,13 +8,14 @@ Watching") instead of sticking in degraded forever. Transient failures
 
 The GET render paths stopped exercising this in archiver#151 — they render
 from local state with zero SDK calls, so there is no 404 to observe there.
-Only the action endpoints (which still ride the SDK until archiver#158/#142)
-can hit it. This recovery is slated for deletion in #142 once reconcile plus
-the status stream demonstrably subsume it.
+The control-plane cutover (archiver#158) narrowed it again: pause/resume is a
+local write, so it no longer reaches the SDK either. Only the remaining action
+endpoints can hit it. This recovery is slated for deletion in #142 once
+reconcile plus the status stream demonstrably subsume it.
 
 Covers:
   POST /check-now              404 -> not_watching + "no longer watched" flash, link cleared
-  POST /toggle-watch-active    404 -> not_watching + "no longer watched" flash, link cleared
+  POST /toggle-watch-active    no SDK call at all -> link untouched, local write lands
   POST /resync-watcher         404 -> not_watching, link cleared
   _clear_stale_watcher_link    commit failure -> False, link retained
 """
@@ -25,6 +26,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select
 from watcher_client.errors import WatcherNotFound
 
 from src.api.deps import get_watcher_client
@@ -112,12 +114,19 @@ async def test_check_now_404_clears_link_and_flashes_removed(client, session):
 
 
 # ---------------------------------------------------------------------------
-# POST /toggle-watch-active — 404 self-heals to not_watching with an accurate flash
+# POST /toggle-watch-active no longer reaches the SDK at all (archiver#158)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_toggle_watch_active_404_clears_link_and_flashes_removed(client, session):
+async def test_toggle_watch_active_ignores_a_deleted_watched_item(client, session):
+    """The cutover moved pause/resume to a local write, so there is no 404 here
+    to reconcile — the link survives for the endpoints that still ride the SDK.
+
+    This is a *narrowing* of the self-heal, not a regression: check-now and
+    resync still observe a deleted WatchedItem and still clear the link. #142
+    removes the remaining ones along with the SDK.
+    """
     app.dependency_overrides[get_watcher_client] = lambda: _watcher_404()
     item = InfoItem(name="toggle-404", watcher_item_id=_WI_ID)
     session.add(item)
@@ -129,13 +138,11 @@ async def test_toggle_watch_active_404_clears_link_and_flashes_removed(client, s
         data={"active": "false"},
     )
     assert r.status_code == 200
-    assert "Not watching" in r.text
-    hx_trigger = r.headers.get("HX-Trigger", "")
-    assert "showFlash" in hx_trigger
-    assert "no longer watched" in hx_trigger
+    assert "showFlash" not in r.headers.get("HX-Trigger", "")
 
     await session.refresh(item)
-    assert item.watcher_item_id is None
+    assert item.watcher_item_id == _WI_ID  # untouched — no SDK call was made
+    assert item.watch_active is False  # the local write still landed
 
 
 # ---------------------------------------------------------------------------
@@ -225,27 +232,39 @@ async def test_check_now_404_commit_failure_degrades_with_flash_and_retains_link
 async def test_toggle_404_commit_failure_degrades_with_flash_and_retains_link(
     client, session, monkeypatch
 ):
-    """toggle 404 + failed reconcile commit: degrade (200) with the reconcile flash,
-    never 500, and keep the link (findings 6/9)."""
+    """A failed *local* commit degrades (200) with a flash, never 500s, and keeps
+    the link (archiver#158 — the fault moved from Watcher's side to ours)."""
     app.dependency_overrides[get_watcher_client] = lambda: _watcher_404()
     item = InfoItem(name="toggle-404-commitfail", watcher_item_id=_WI_ID)
     session.add(item)
-    await session.commit()  # durable so the helper's rollback preserves the row
+    await session.commit()  # durable so the handler's rollback preserves the row
 
+    item_id = item.info_item_id  # captured before the rollback expires it
     monkeypatch.setattr(session, "commit", _boom)
 
     r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+        f"/dashboard/info-items/{item_id}/toggle-watch-active",
         headers=_HEADERS,
         data={"active": "false"},
     )
     assert r.status_code == 200
-    assert "Watcher unavailable" in r.text
-    assert "Not watching" not in r.text
     hx_trigger = r.headers.get("HX-Trigger", "")
     assert "showFlash" in hx_trigger
-    assert "the local record" in hx_trigger
-    assert item.watcher_item_id == _WI_ID
+    assert '"level": "error"' in hx_trigger
+    assert "not saved" in hx_trigger
+
+    # Read through a fresh query, not the ORM object: the handler's rollback
+    # expired its attributes, and touching them here would emit IO outside the
+    # greenlet (the same trap the degraded render avoids).
+    row = (
+        await session.execute(
+            select(InfoItem.watcher_item_id, InfoItem.watch_active).where(
+                InfoItem.info_item_id == item_id
+            )
+        )
+    ).one()
+    assert row.watcher_item_id == _WI_ID
+    assert row.watch_active is None  # the write did not land
 
 
 @pytest.mark.asyncio

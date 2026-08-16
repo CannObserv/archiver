@@ -13,12 +13,14 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select
 from watcher_client import WatchedItemResponse, WatcherError
 from watcher_client.errors import WatcherConflict, WatcherResponseError
 
+import src.dashboard.routes.info_items as dash_items
 from src.api.deps import get_watcher_client
 from src.api.main import app
-from src.core.models import InfoItem, InfoItemSource, InfoSource, WatchStatus
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource, WatchStatus
 
 _HEADERS = {"X-ExeDev-UserID": "ext-watcher", "X-ExeDev-Email": "watcher@example.com"}
 _WI_ID = "01HZZWATCHER00000000000001"
@@ -68,6 +70,20 @@ def _mock_watcher(wi: WatchedItemResponse | None = None) -> MagicMock:
     m.patch_watched_item = AsyncMock(return_value=wi or _wi())
     m.provision_watched_item = AsyncMock(return_value=wi or _wi())
     return m
+
+
+async def _registry_outbox_count(session) -> int:
+    """Rows queued for ``info.registry`` — the drift the affordance gates exist
+    to prevent shows up here first, as a tombstone nobody asked for."""
+    return len(
+        (
+            await session.execute(
+                select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.registry")
+            )
+        )
+        .scalars()
+        .all()
+    )
 
 
 def _seed_status(session, item: InfoItem, **overrides) -> None:
@@ -909,10 +925,14 @@ async def test_begin_watching_no_source_unconfigured_watcher_no_flash(client, se
 
 
 @pytest.mark.asyncio
-async def test_toggle_pause_calls_patch(client, session):
-    # Active item, request active=false → patch is_active=False, fires watcherUpdated.
-    # The re-render is local (archiver#151): it shows the *applied* state from the
-    # cache, which reflects the pause only once Watcher reports it back.
+async def test_toggle_pause_writes_locally_and_never_calls_watcher(client, session):
+    """archiver#158: pause is an ``UPDATE`` plus an announcement, not a PATCH.
+
+    The re-render is still local *applied* state (archiver#151), so the strip
+    reflects the pause only once Watcher reports it back on
+    ``info.watch-status`` — the lag is the announcement round-trip and shows as
+    generation drift rather than disappearing.
+    """
     watcher = _mock_watcher(_wi("ok", is_active=False))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
     item = InfoItem(name="pause item", watcher_item_id=_WI_ID)
@@ -927,9 +947,11 @@ async def test_toggle_pause_calls_patch(client, session):
         data={"active": "false"},
     )
     assert r.status_code == 200
-    watcher.patch_watched_item.assert_awaited_once_with(_WI_ID, is_active=False)
+    watcher.patch_watched_item.assert_not_awaited()
+    await session.refresh(item)
+    assert item.watch_active is False
     assert "watcherUpdated" in r.headers.get("HX-Trigger", "")
-    # Re-rendered strip reflects the paused state and offers Resume.
+    # Re-rendered strip reflects the applied paused state and offers Resume.
     assert "Paused" in r.text
     assert "Resume" in r.text
     # Check-now suppressed in the strip once paused.
@@ -937,10 +959,10 @@ async def test_toggle_pause_calls_patch(client, session):
 
 
 @pytest.mark.asyncio
-async def test_toggle_resume_calls_patch(client, session):
+async def test_toggle_resume_writes_locally(client, session):
     watcher = _mock_watcher(_wi("ok", is_active=True))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
-    item = InfoItem(name="resume item", watcher_item_id=_WI_ID)
+    item = InfoItem(name="resume item", watcher_item_id=_WI_ID, watch_active=False)
     session.add(item)
     await session.flush()
 
@@ -950,30 +972,80 @@ async def test_toggle_resume_calls_patch(client, session):
         data={"active": "true"},
     )
     assert r.status_code == 200
-    watcher.patch_watched_item.assert_awaited_once_with(_WI_ID, is_active=True)
+    watcher.patch_watched_item.assert_not_awaited()
+    await session.refresh(item)
+    assert item.watch_active is True
 
 
 @pytest.mark.asyncio
-async def test_toggle_not_watching_is_noop(client, session):
-    watcher = _mock_watcher()
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-    item = InfoItem(name="no-watch toggle", watcher_item_id=None)
+async def test_toggle_is_not_offered_without_an_announceable_source(client, session):
+    """The affordance is gated on announceability, not on the Watcher link
+    (CR round 1, finding 3).
+
+    An item whose primary binding was deactivated keeps its `watcher_item_id`
+    and still renders `watching`, but pausing it would announce a **tombstone**
+    and burn a generation — which then reads as drift on the same panel, for an
+    item where nothing is actually wrong. `can_act` cannot express that: it
+    tests the link, and the link outlives the binding.
+    """
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(_wi("ok"))
+    item = InfoItem(name="unbound toggle", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+    _seed_status(session, item)
+    await session.flush()
 
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
         headers=_HEADERS,
-        data={"active": "false"},
     )
     assert r.status_code == 200
-    assert "Not watching" in r.text
-    watcher.patch_watched_item.assert_not_awaited()
+    assert "toggle-watch-active" not in r.text
+    # The other actions stay: re-sync is how an operator recovers from this.
+    assert "resync-watcher" in r.text
+    # The cadence editor is gated by the same rule (CR round 2, finding 9) —
+    # a cadence edit here would tombstone exactly as a pause would.
+    assert "watch-cadence" not in r.text
+
+    # The *reason* for the gate, not just its symptom (CR round 2, finding 10).
+    # A UI-level guard on a data-level problem is only as good as the invariant
+    # it protects; assert the invariant so a future path around the affordance
+    # cannot restore the drift while this test stays green.
+    before = item.announcement_generation
+    assert await _registry_outbox_count(session) == 0
+    assert before == item.announcement_generation
 
 
 @pytest.mark.asyncio
-async def test_toggle_conflict_does_not_crash(client, session):
-    # Watcher 409 (e.g. archived item) → re-render, no 500.
+async def test_toggle_is_offered_once_a_source_carries_specs(client, session, bind_source):
+    """The mirror of the case above — the gate is announceability, so a bound
+    source with non-empty specs restores the affordance."""
+    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher(_wi("ok"))
+    item = InfoItem(name="bound toggle", watcher_item_id=_WI_ID)
+    session.add(item)
+    await session.flush()
+    await bind_source(session, item, slug="bound-toggle")
+    _seed_status(session, item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "toggle-watch-active" in r.text
+
+
+@pytest.mark.asyncio
+async def test_toggle_succeeds_even_when_watcher_would_reject_it(client, session):
+    """The archived-item guard is gone, deliberately (archiver#158).
+
+    Watcher used to 409 pause/resume on an archived WatchedItem. Archiver has no
+    local archived state, and the design settled that a Watcher-local pause is
+    reverted by reconciliation — archive is mechanism, not policy, like
+    ``domain_suspended``. So the write lands and the divergence surfaces as
+    ``applied_active != active`` on the return leg instead of a silent rejection.
+    """
     watcher = MagicMock()
     watcher.patch_watched_item = AsyncMock(side_effect=WatcherConflict("archived"))
     watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
@@ -988,45 +1060,25 @@ async def test_toggle_conflict_does_not_crash(client, session):
         data={"active": "false"},
     )
     assert r.status_code == 200
-    # The conflict is surfaced to the operator, not swallowed.
-    assert "showFlash" in r.headers.get("HX-Trigger", "")
+    assert "showFlash" not in r.headers.get("HX-Trigger", "")
+    await session.refresh(item)
+    assert item.watch_active is False
 
 
 @pytest.mark.asyncio
-async def test_toggle_contract_error_flashes_stale_not_unavailable(client, session):
-    """WatcherResponseError (stale SDK / response drift) → honest 'out of date'
-    flash, not the transport 'unavailable. Try again shortly.'"""
-    watcher = MagicMock()
-    watcher.patch_watched_item = AsyncMock(side_effect=WatcherResponseError("stale SDK"))
-    watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-    item = InfoItem(name="contract toggle", watcher_item_id=_WI_ID)
-    session.add(item)
-    await session.flush()
-
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
-        headers=_HEADERS,
-        data={"active": "false"},
-    )
-    assert r.status_code == 200
-    watcher.patch_watched_item.assert_awaited_once()
-    hx = r.headers.get("HX-Trigger", "")
-    assert "showFlash" in hx
-    assert "out of date" in hx.lower()
-    assert "unavailable" not in hx.lower()
-    assert "try again" not in hx.lower()
-
-
-@pytest.mark.asyncio
-async def test_toggle_failure_flashes_error(client, session):
-    watcher = MagicMock()
-    watcher.patch_watched_item = AsyncMock(side_effect=WatcherError("down"))
-    watcher.get_watched_item = AsyncMock(return_value=_wi("ok"))
+async def test_toggle_local_write_failure_degrades_with_a_flash(client, session, monkeypatch):
+    """A failed local write flashes and re-renders rather than 500ing — the
+    #151 precedent, now applied to a fault that is ours rather than Watcher's."""
+    watcher = _mock_watcher(_wi("ok"))
     app.dependency_overrides[get_watcher_client] = lambda: watcher
     item = InfoItem(name="toggle flash", watcher_item_id=_WI_ID)
     session.add(item)
     await session.flush()
+
+    async def _boom(*_a, **_kw):
+        raise RuntimeError("outbox insert failed")
+
+    monkeypatch.setattr(dash_items, "announce_info_item", _boom)
 
     r = await client.post(
         f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",

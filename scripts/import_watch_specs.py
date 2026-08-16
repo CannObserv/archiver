@@ -15,17 +15,23 @@ pass reported anomalies, so a clean exit means a clean run.
 
     set -a; . /etc/archiver/.env; [ -f .env ] && . .env; set +a
     uv run python -m scripts.import_watch_specs            # report only
-    uv run python -m scripts.import_watch_specs --apply    # write
+    ARCHIVER_ALLOW_WATCH_IMPORT=1 \
+      uv run python -m scripts.import_watch_specs --apply  # write (see below)
 
 Exit codes:
   0  clean — no anomalies
   1  completed, but anomalies were reported (read them before trusting the run)
-  2  could not run (Watcher not configured, DB unreachable)
+  2  could not run (Watcher not configured, DB unreachable, or --apply not armed)
 
-**Concurrency.** The row set is read once and each write is a blind overwrite.
-Safe today — this is an operator-run script and the dashboard does not write
-either column yet — but the cutover makes the dashboard a concurrent writer of
-both, so revisit before then.
+**This script's job ended at the control-plane cutover (archiver#158), and
+``--apply`` is now gated behind ``ARCHIVER_ALLOW_WATCH_IMPORT=1``.** The row set
+is read once and each write is a blind overwrite, which was safe only while the
+dashboard did not write these columns. It now does: a stray ``--apply`` would
+clobber operator-authored policy *and announce the clobber* as desired state,
+which the whole announcement channel then faithfully propagates. Reporting stays
+ungated — the guard is on writing, not on looking. Keep the variable out of every
+env file, for the same reason ``ARCHIVER_ALLOW_PRODUCTION_DB`` is kept out:
+sourcing the environment must not arm it. archiver#142 deletes this script.
 
 **Cost model.** One row set held in memory and one Watcher call per InfoItem —
 bounded by the registry size at run time, which is four rows today and is
@@ -57,6 +63,15 @@ from src.core.watch_spec_import import (
 )
 
 logger = get_logger(__name__)
+
+
+ALLOW_IMPORT_ENV = "ARCHIVER_ALLOW_WATCH_IMPORT"
+"""Opt-in required for ``--apply`` after the control-plane cutover (archiver#158).
+
+Same posture as ``ARCHIVER_ALLOW_PRODUCTION_DB``: a deliberate, out-of-band
+gate that must never live in an env file, because the whole point is that
+sourcing the environment does not arm it.
+"""
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -276,6 +291,17 @@ async def run(*, dry_run: bool) -> int:
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     args = parse_args(argv)
+    if not args.dry_run and not os.environ.get(ALLOW_IMPORT_ENV, "").strip():
+        print(
+            f"Refusing to write: set {ALLOW_IMPORT_ENV}=1 to override.\n"
+            "The archiver#158 control-plane cutover made the dashboard a concurrent "
+            "writer of watch_spec and watch_active, and every write in this pass is a "
+            "blind overwrite — a stray run clobbers operator-authored policy AND "
+            "announces the clobber as desired state. This script's job ended at the "
+            "flip; archiver#142 deletes it.",
+            file=sys.stderr,
+        )
+        return 2
     return asyncio.run(run(dry_run=args.dry_run))
 
 
