@@ -39,6 +39,15 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # file, or the hole reopens for every process that sources them.
 Environment=ARCHIVER_BUS_CONSUMER=1
 
+# The archiver#158 dual-run: the outbound Watcher HTTP push is OFF, so watch
+# policy reaches Watcher only via the info.registry announcement. Unlike the two
+# variables above, this one is not a safety gate — it is a cutover step, and it
+# gates *writes* only. The client stays configured, so the dashboard's Watcher
+# deeplinks keep working; unsetting WATCHER_BASE_URL would have taken those out
+# too, which is why the flag exists. Remove this line to restore the push;
+# archiver#142 deletes the push, the flag, and the SDK together.
+Environment=ARCHIVER_WATCHER_PUSH_ENABLED=0
+
 # co-core / co-core-aio resolve from the local wheelhouse (archiver#72/#75).
 # Refresh it from the private GCS index before ExecStart, so `uv run` (which
 # auto-syncs from uv.lock) can resolve them. Auth is the co-pypi-reader SA key
