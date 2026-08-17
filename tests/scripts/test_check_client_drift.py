@@ -137,8 +137,8 @@ def test_main_returns_2_on_subprocess_error(monkeypatch, capsys):
 def test_main_write_invokes_write_client_and_returns_0(monkeypatch, capsys):
     called = []
     monkeypatch.setattr(mod, "write_client", lambda client: called.append(client.name))
-    assert mod.main(["--write", "watcher"]) == 0
-    assert called == ["watcher"]
+    assert mod.main(["--write", "archiver"]) == 0
+    assert called == ["archiver"]
     assert "wrote:" in capsys.readouterr().out
 
 
@@ -147,8 +147,21 @@ def test_main_write_returns_2_on_subprocess_error(monkeypatch, capsys):
         raise mod.DriftCheckError("regen failed")
 
     monkeypatch.setattr(mod, "write_client", boom)
-    assert mod.main(["--write", "watcher"]) == 2
+    assert mod.main(["--write", "archiver"]) == 2
     assert "regen failed" in capsys.readouterr().err
+
+
+# --- registry scope (archiver#142) -------------------------------------------
+
+
+def test_archiver_is_the_only_registered_client():
+    """The watcher half retired with the SDK (archiver#142).
+
+    ``archiver_client`` is still consumed by Replicator and external callers, so
+    the gate survives — singular. A re-added ``watcher`` entry would point at a
+    deleted tree and fail the CI job for a reason unrelated to drift.
+    """
+    assert sorted(mod.CLIENTS) == ["archiver"]
 
 
 # --- _run subprocess error surfacing (real subprocesses, no SDK) --------------

@@ -123,12 +123,11 @@ clients/watcher-python/        watcher_client SDK — Archiver adapter for the W
                                #66 stale-client drift). Fix hand-edits: python
                                scripts/check_client_drift.py --write watcher; on
                                a real Watcher change re-run regen.sh (refreshes
-                               snapshot + tree). The `client-drift` gate is
-                               consistency-only; a daily on-VM systemd timer
-                               (Layer C, #70) — check_watcher_live_drift.py +
-                               watcher_live_drift_pr.sh — detects the snapshot
-                               going stale vs LIVE Watcher (localhost:8000) and
-                               opens a regen PR. See deploy/watcher-live-drift.*.
+                               snapshot + tree).
+                               FROZEN — archiver#142 retired the `client-drift`
+                               watcher half and the Layer C live-drift timer that
+                               covered its snapshot-vs-live gap. Nothing regenerates
+                               this tree; it is deleted with the provisioning push.
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior;
@@ -148,12 +147,6 @@ scripts/                       sync_wheelhouse.py (mirror co-core wheels from th
                                check_client_drift.py (regen vendored clients from
                                committed OpenAPI snapshots; diff vs generated/;
                                CI gate, see client-drift job) +
-                               check_watcher_live_drift.py (Layer C #70: detect
-                               snapshot stale vs LIVE Watcher) +
-                               watcher_live_drift_pr.sh (timer remediation:
-                               regen + open PR on live drift) +
-                               ff_deploy_clone.sh (timer ExecStartPre: best-effort
-                               fast-forward clean main to origin/main) +
                                check_changelog_on_push.sh (pre-push guard;
                                wired via .pre-commit-config.yaml) +
                                check_changelog_lib.sh (the shared trigger-path
@@ -171,8 +164,6 @@ scripts/                       sync_wheelhouse.py (mirror co-core wheels from th
                                production DB — see "Server Lifecycle")
 deploy/                        README.md (install instructions) + systemd units:
                                archiver.service +
-                               watcher-live-drift.{service,timer} (Layer C #70
-                               daily live-drift check) +
                                redis-server.dropin.conf (the broker cap Archiver
                                owns — see the archiver#128 lockstep invariant)
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
