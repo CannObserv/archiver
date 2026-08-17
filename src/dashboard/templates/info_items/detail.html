@@ -117,14 +117,11 @@
 
   {# ── Section 3: Watcher ───────────────────────────────────────────── #}
   <section aria-label="Watcher" style="margin-bottom:var(--space-5);">
-    <h2 class="section-heading">
-      {% if watcher_deeplink %}
-      <a href="{{ watcher_deeplink }}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;">Watcher ↗</a>
-      {% else %}
-      Watcher
-      {% endif %}
-    </h2>
-    {# Loaded async; self-refreshes on watcherUpdated events from check-now/resync-watcher #}
+    {# The "Watcher ↗" deeplink retired with archiver#142 — it was keyed on
+       watcher_item_id, which announcements never hand back, so there is no
+       per-item Watcher URL left to build. #}
+    <h2 class="section-heading">Watcher</h2>
+    {# Loaded async; self-refreshes on watcherUpdated events from pause/resume + cadence #}
     <div id="watcher-section"
          hx-get="/dashboard/info-items/{{ item.info_item_id }}/watcher-section"
          hx-trigger="load"

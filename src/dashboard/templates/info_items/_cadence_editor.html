@@ -8,12 +8,13 @@
   so the panel re-renders itself once. Swapping the response in *and* firing the
   trigger would render twice.
 
-  Not gated on can_act — cadence is Archiver's own policy. Included from the
-  `watching` AND `no_status` branches of _watcher_section.html: a freshly
-  registered item sits in no_status until Watcher's first status frame, which
-  is exactly when an operator wants to revise the cadence they just picked.
-  `not_watching` offers "Begin Watching" instead and `degraded` shows an error,
-  so neither includes this. The blank option is "delegate" — the consumer
+  Gated on has_active_source — cadence is Archiver's own policy, but announcing
+  it for an unannounceable item burns a generation. Included from the `watching`
+  AND `no_status` branches of _watcher_section.html: a freshly registered item
+  sits in no_status until Watcher's first status frame, which is exactly when an
+  operator wants to revise the cadence they just picked. `not_watching` has no
+  announceable source by definition and `degraded` shows an error, so neither
+  includes this. The blank option is "delegate" — the consumer
   applies its own default, which may be a per-domain one rather than a global
   constant, and it is only reachable because the route replaces the document
   instead of merging into it.

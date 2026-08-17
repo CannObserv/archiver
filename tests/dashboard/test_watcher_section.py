@@ -1,28 +1,26 @@
-"""Tests for the Section 3 Watcher panel (GET /watcher-section) and
-HX-Trigger header on check-now / resync-watcher.
+"""Tests for the Section 3 Watcher panel (GET /watcher-section).
 
 Covers:
   GET  /dashboard/info-items/{id}/watcher-section
-  HX-Trigger: watcherUpdated on POST /check-now
-  HX-Trigger: watcherUpdated on POST /resync-watcher
+  HX-Trigger: watcherUpdated on the surviving control-plane actions
+
+The panel's *render* went local in archiver#151; archiver#142 removed the SDK
+its action buttons still rode, so nothing here mocks a Watcher client any more.
+The state key moved with it: a panel is `watching` because the item is in the
+announced set (an active binding whose source carries non-empty specs), not
+because a `watcher_item_id` was once written. Hence `bind_source` on every test
+that expects a watched state — an unbound item is `not_watching` by definition.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from watcher_client import WatchedItemResponse
 
-from src.api.deps import get_watcher_client
-from src.api.main import app
-from src.core.models import InfoItem, InfoItemSource, InfoSource, WatchStatus
+from src.core.models import InfoItem, WatchStatus
 
 _HEADERS = {"X-ExeDev-UserID": "ext-section", "X-ExeDev-Email": "section@example.com"}
-_WI_ID = "01HZZWATCHER00000000000001"
-_TS = "2026-06-11T12:00:00+00:00"
-_BASE_URL = "https://watcher.example.com"
 _STATUS_TS = datetime(2026, 6, 11, 11, 0, tzinfo=UTC)
 
 
@@ -42,156 +40,123 @@ def _seed_status(session, item: InfoItem, **overrides) -> None:
     session.add(WatchStatus(**defaults))
 
 
-def _wi(
-    health: str = "ok",
-    last_checked_at: str | None = _TS,
-    effective_url: str = "https://example.com/page",
-    source_specs: list | None = None,
-    *,
-    is_active: bool = True,
-    archived_at: str | None = None,
-) -> WatchedItemResponse:
-    return WatchedItemResponse.from_dict(
-        {
-            "id": _WI_ID,
-            "name": "Test Item",
-            "description": None,
-            "is_active": is_active,
-            "archived_at": archived_at,
-            "last_reviewed_at": None,
-            "last_checked_at": last_checked_at,
-            "last_changed_at": None,
-            "health_status": health,
-            "default_schedule_config": None,
-            "content_media_type": None,
-            "media_type_essence": None,
-            "default_tags": None,
-            "effective_url": effective_url,
-            "source_specs": source_specs or [],
-            "created_at": _TS,
-            "updated_at": _TS,
-        }
+async def _section(client, item: InfoItem):
+    return await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
+        headers=_HEADERS,
     )
 
 
-def _mock_watcher(wi: WatchedItemResponse | None = None, base_url: str = _BASE_URL) -> MagicMock:
-    m = MagicMock()
-    m.base_url = base_url
-    m.get_watched_item = AsyncMock(return_value=wi or _wi())
-    m.check_now = AsyncMock(return_value=wi or _wi())
-    m.patch_watched_item = AsyncMock(return_value=wi or _wi())
-    return m
-
-
 # ---------------------------------------------------------------------------
-# GET /watcher-section — Watcher client not configured: local render, no actions
+# GET /watcher-section — not watching (outside the announced set)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_not_configured(client, session):
-    """The render is local state (archiver#151); an unconfigured Watcher only
-    hides the action buttons."""
-    app.dependency_overrides[get_watcher_client] = lambda: None
-    item = InfoItem(name="section-not-configured")
+async def test_watcher_section_not_watching_when_unbound(client, session):
+    """No active binding → not in the announced set → not watched.
+
+    Before archiver#142 this keyed on `watcher_item_id`. The distinction matters:
+    an unbound item never reaches Watcher at all, so `not_watching` is now a
+    statement about the registry rather than about a remote row.
+    """
+    item = InfoItem(name="section-not-watching")
     session.add(item)
     await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "watcher-section" in r.text
     assert "Not watching" in r.text
-    assert "begin-watching" not in r.text  # no client to provision with
-
-
-# ---------------------------------------------------------------------------
-# GET /watcher-section — not watching (watcher_item_id IS NULL)
-# ---------------------------------------------------------------------------
+    # The provisioning affordance is gone — watching is a consequence, not an action.
+    assert "begin-watching" not in r.text
+    # ...replaced by a statement of what would close the gap.
+    assert "bind an active source" in r.text
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_not_watching(client, session):
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
-    item = InfoItem(name="section-not-watching", watcher_item_id=None)
+async def test_watcher_section_not_watching_when_bound_source_has_no_specs(
+    client, session, bind_source
+):
+    """Bound but unannounceable is the other half of the gate.
+
+    A source with empty `source_specs` is announced as a *tombstone*, so the item
+    is not watched even though a binding exists. The panel must agree with the
+    announcement rather than with the binding alone.
+    """
+    item = InfoItem(name="section-specless")
     session.add(item)
     await session.flush()
+    await bind_source(session, item, slug="section-specless", specs=[])
+    _seed_status(session, item)
+    await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "Not watching" in r.text
-    assert "begin-watching" in r.text
 
 
 # ---------------------------------------------------------------------------
-# GET /watcher-section — watching (ok health, action buttons)
+# GET /watcher-section — watching
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_watching_shows_details(client, session, monkeypatch, bind_source):
-    monkeypatch.delenv("WATCHER_PUBLIC_BASE_URL", raising=False)
-    wi = _wi("ok", effective_url="https://example.com/page")
-    watcher = _mock_watcher(wi, base_url=_BASE_URL)
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
-    item = InfoItem(name="section-watching", watcher_item_id=_WI_ID)
+async def test_watcher_section_watching_shows_details(client, session, bind_source):
+    item = InfoItem(name="section-watching")
     session.add(item)
     await session.flush()
     await bind_source(session, item, slug="section-watching")
     _seed_status(session, item)
     await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "watcher-section" in r.text
     # Health badge
     assert "OK" in r.text
     # The URL and the Watcher deeplink moved off the section (#62): URL lives in
-    # the Information Sources section; the deeplink is the detail-page header.
+    # the Information Sources section. The deeplink itself retired in #142.
     assert "https://example.com/page" not in r.text
     assert "View in Watcher" not in r.text
-    # Action buttons
-    assert "check-now" in r.text
-    assert "resync-watcher" in r.text
-    # Active item → Pause affordance present
+    # The SDK-backed actions are gone; the local control plane remains.
+    assert "check-now" not in r.text
+    assert "resync-watcher" not in r.text
     assert "toggle-watch-active" in r.text
     assert "Pause" in r.text
 
 
-# ---------------------------------------------------------------------------
-# GET /watcher-section — paused: Resume affordance + Paused badge, no check-now (#60)
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_watcher_section_paused_shows_resume(client, session, bind_source):
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
-    item = InfoItem(name="section-paused", watcher_item_id=_WI_ID)
+    item = InfoItem(name="section-paused")
     session.add(item)
     await session.flush()
     await bind_source(session, item, slug="section-paused")
     _seed_status(session, item, applied_active=False)
     await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "toggle-watch-active" in r.text
     assert "Resume" in r.text
     assert "Paused" in r.text
-    # Check-now is suppressed while paused (Watcher 409s on check-now of a paused item).
-    assert "check-now" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_pause_affordance_absent_without_an_announceable_source(client, session, bind_source):
+    """Announcing a pause for an unannounceable item burns a generation for
+    nothing (CR round 1, finding 3) — so the control is withheld, not merely
+    ineffective."""
+    item = InfoItem(name="section-pause-gated")
+    session.add(item)
+    await session.flush()
+    await bind_source(session, item, slug="section-pause-gated", specs=[])
+    _seed_status(session, item)
+    await session.flush()
+
+    r = await _section(client, item)
+    assert r.status_code == 200
+    assert "toggle-watch-active" not in r.text
 
 
 # ---------------------------------------------------------------------------
@@ -200,128 +165,74 @@ async def test_watcher_section_paused_shows_resume(client, session, bind_source)
 
 
 @pytest.mark.asyncio
-async def test_watcher_section_no_status_yet(client, session):
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
-    item = InfoItem(name="section-silent", watcher_item_id=_WI_ID)
+async def test_watcher_section_no_status_yet(client, session, bind_source):
+    """Announced, but Watcher has never reported. Distinct from both
+    `not_watching` and `watching` — #151's contract, unchanged by #142."""
+    item = InfoItem(name="section-silent")
     session.add(item)
     await session.flush()
+    await bind_source(session, item, slug="section-silent")
+    await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "NO STATUS YET" in r.text
     assert "Paused" not in r.text
     assert "Not watching" not in r.text
 
 
-# ---------------------------------------------------------------------------
-# GET /watcher-section — Spec row removed (moved to Information Sources, #62)
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_watcher_section_omits_spec_row(client, session):
-    specs = [
-        {
-            "schema_version": 1,
-            "extraction": {"algorithm": "css", "selector": "h1"},
-            "fingerprint": {},
-        },
-    ]
-    wi = _wi("ok", source_specs=specs)
-    watcher = _mock_watcher(wi)
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
-    item = InfoItem(name="section-no-spec", watcher_item_id=_WI_ID)
+async def test_watcher_section_omits_spec_row(client, session, bind_source):
+    """Spec now lives in the Information Sources section, not here (#62)."""
+    item = InfoItem(name="section-no-spec")
     session.add(item)
     await session.flush()
+    await bind_source(session, item, slug="section-no-spec")
+    _seed_status(session, item)
+    await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
-    # Spec now lives in the Information Sources section, not here.
     assert "Spec" not in r.text
 
 
-# ---------------------------------------------------------------------------
-# GET /watcher-section — partial carries hx-trigger for auto-refresh
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_watcher_section_carries_auto_refresh_trigger(client, session):
-    watcher = _mock_watcher(_wi("ok"))
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
-    item = InfoItem(name="section-auto-refresh", watcher_item_id=_WI_ID)
+async def test_watcher_section_carries_auto_refresh_trigger(client, session, bind_source):
+    item = InfoItem(name="section-auto-refresh")
     session.add(item)
     await session.flush()
+    await bind_source(session, item, slug="section-auto-refresh")
+    _seed_status(session, item)
+    await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "watcherUpdated" in r.text
 
 
 # ---------------------------------------------------------------------------
-# POST /check-now — response includes HX-Trigger: watcherUpdated
+# HX-Trigger on the surviving control-plane action (pause/resume)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_check_now_triggers_watcher_updated(client, session):
-    watcher = _mock_watcher(_wi("ok"))
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
-    item = InfoItem(name="check-now-trigger", watcher_item_id=_WI_ID)
+async def test_toggle_watch_active_triggers_watcher_updated(client, session, bind_source):
+    """The section self-refreshes off `watcherUpdated`; the SDK actions that used
+    to fire it are gone, so the local control plane must still send it."""
+    item = InfoItem(name="toggle-trigger")
     session.add(item)
+    await session.flush()
+    await bind_source(session, item, slug="toggle-trigger")
+    _seed_status(session, item)
     await session.flush()
 
     r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/check-now",
+        f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",
         headers=_HEADERS,
+        data={"active": "false"},
     )
     assert r.status_code == 200
-    hx_trigger = r.headers.get("HX-Trigger", "")
-    assert "watcherUpdated" in hx_trigger
-
-
-# ---------------------------------------------------------------------------
-# POST /resync-watcher — response includes HX-Trigger: watcherUpdated
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_resync_watcher_triggers_watcher_updated(client, session):
-    watcher = _mock_watcher(_wi("ok"))
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
-    item = InfoItem(name="resync-trigger", watcher_item_id=_WI_ID)
-    src = InfoSource(url="https://example.com/resync-trigger", source_specs=[])
-    session.add(item)
-    session.add(src)
-    await session.flush()
-    session.add(
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=src.info_source_id,
-        )
-    )
-    await session.flush()
-
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/resync-watcher",
-        headers=_HEADERS,
-    )
-    assert r.status_code == 200
-    hx_trigger = r.headers.get("HX-Trigger", "")
-    assert "watcherUpdated" in hx_trigger
+    assert "watcherUpdated" in r.headers.get("HX-Trigger", "")
 
 
 # ---------------------------------------------------------------------------
@@ -334,10 +245,8 @@ async def test_resync_watcher_triggers_watcher_updated(client, session):
 async def test_watcher_section_renders_the_cadence_editor_with_the_announced_value(
     client, session, bind_source
 ):
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
     item = InfoItem(
         name="section-cadence",
-        watcher_item_id=_WI_ID,
         watch_spec={"schema_version": 1, "interval": "6h"},
     )
     session.add(item)
@@ -346,10 +255,7 @@ async def test_watcher_section_renders_the_cadence_editor_with_the_announced_val
     _seed_status(session, item)
     await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "watch-cadence" in r.text
     # The announced interval is the selected option, not merely present.
@@ -363,22 +269,14 @@ async def test_watcher_section_renders_the_cadence_editor_with_the_announced_val
 async def test_cadence_editor_selects_delegate_when_no_interval_is_announced(
     client, session, bind_source
 ):
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
-    item = InfoItem(
-        name="section-cadence-delegate",
-        watcher_item_id=_WI_ID,
-        watch_spec={"schema_version": 1},
-    )
+    item = InfoItem(name="section-cadence-delegate", watch_spec={"schema_version": 1})
     session.add(item)
     await session.flush()
     await bind_source(session, item, slug="section-cadence-delegate")
     _seed_status(session, item)
     await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert '<option value="" selected>' in r.text
 
@@ -394,17 +292,13 @@ async def test_cadence_editor_renders_before_watcher_has_ever_reported(
     picked. The editor previously rendered only under `watching`, so the window
     the affordance was added for was the one window it was missing from.
     """
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
-    item = InfoItem(name="section-cadence-nostatus", watcher_item_id=_WI_ID)
+    item = InfoItem(name="section-cadence-nostatus")
     session.add(item)
     await session.flush()
     await bind_source(session, item, slug="section-cadence-nostatus")
     # no _seed_status -> no_status
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "NO STATUS YET" in r.text
     assert "watch-cadence" in r.text
@@ -412,17 +306,13 @@ async def test_cadence_editor_renders_before_watcher_has_ever_reported(
 
 @pytest.mark.asyncio
 async def test_cadence_editor_absent_when_not_watching(client, session):
-    """`not_watching` offers "Begin Watching" instead — there is no provisioned
-    item whose cadence is a live question yet."""
-    app.dependency_overrides[get_watcher_client] = lambda: _mock_watcher()
-    item = InfoItem(name="section-cadence-unwatched", watcher_item_id=None)
+    """`not_watching` has no announceable source by definition, so there is no
+    cadence that could take effect."""
+    item = InfoItem(name="section-cadence-unwatched")
     session.add(item)
     await session.flush()
 
-    r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/watcher-section",
-        headers=_HEADERS,
-    )
+    r = await _section(client, item)
     assert r.status_code == 200
     assert "Not watching" in r.text
     assert "watch-cadence" not in r.text

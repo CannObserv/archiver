@@ -1,21 +1,17 @@
-{# Watcher health strip partial — loaded via hx-get; re-rendered by check-now, begin-watching, resync-watcher.
-   Renders from LOCAL state (watch_status cache + item.watch_spec — archiver#151); the action
-   buttons still proxy to Watcher over the SDK until the control-plane cutover (archiver#158).
+{# Watcher health strip partial — loaded via hx-get; re-rendered by pause/resume and the
+   cadence editor. Renders from LOCAL state (watch_status cache + item.watch_spec —
+   archiver#151) and reaches Watcher not at all (archiver#142): the SDK actions
+   (check-now, begin-watching, re-sync) retired with the HTTP edge itself.
    Must be wrapped in #watcher-status-strip so hx-swap="outerHTML" replaces the whole div.
-   States: not_watching / no_status (Watcher has never reported — distinct from paused and
-   healthy) / watching / degraded (an action failed; the local render itself cannot). #}
+   States: not_watching (outside the announced set) / no_status (announced, Watcher has never
+   reported — distinct from paused and healthy) / watching / degraded (a local write failed). #}
 <div id="watcher-status-strip" aria-live="polite" aria-atomic="false" style="margin-top:var(--space-2);">
 
 {% if state == "not_watching" %}
-  <span class="text-muted text-sm">Not watching</span>
-  {% if can_provision %}
-  <form hx-post="/dashboard/info-items/{{ item_id }}/begin-watching"
-        hx-target="#watcher-status-strip"
-        hx-swap="outerHTML"
-        style="display:inline;margin-left:var(--space-2);">
-    <button type="submit" class="btn btn--secondary btn--sm">Begin Watching</button>
-  </form>
-  {% endif %}
+  {# No "Begin Watching" button since archiver#142: watching is not an action any
+     more, it is a consequence of being in the announced set. Say what closes the
+     gap instead of offering a control that cannot exist. #}
+  <span class="text-muted text-sm">Not watching — bind an active source with extraction specs to announce this item.</span>
 
 {% elif state == "degraded" %}
   <p class="text-muted text-sm" style="margin:0;">Watcher unavailable{% if error_message %} — {{ error_message }}{% endif %}.</p>
@@ -29,13 +25,6 @@
     {% endif %}
     {% if watch.last_changed_ago %}
     <span class="text-muted text-sm">Last changed: {{ watch.last_changed_ago }}</span>
-    {% endif %}
-    {% if can_act %}
-    <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
-          hx-swap="none"
-          style="display:inline;">
-      <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
-    </form>
     {% endif %}
   </div>
 
@@ -89,16 +78,9 @@
     </span>
     {% endif %}
 
-    {% if can_act and watch.applied_active %}
-    <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
-          hx-target="#watcher-status-strip"
-          hx-swap="outerHTML"
-          style="display:inline;">
-      <button type="submit" class="btn btn--secondary btn--sm">Check now</button>
-    </form>
-    {% endif %}
-
-    {% if can_act %}
+    {# Gated on announceability, not on a Watcher link: announcing policy for an
+       item that cannot announce live emits a tombstone and burns a generation. #}
+    {% if has_active_source %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
           hx-target="#watcher-status-strip"
           hx-swap="outerHTML"

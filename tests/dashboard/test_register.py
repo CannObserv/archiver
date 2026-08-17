@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 import re
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from co_core.effects.fetch import FetchResult
 from sqlalchemy import select
 
-from src.api.deps import get_watcher_client
 from src.api.main import app
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
@@ -18,14 +16,6 @@ from src.core.models.domain import Domain
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
 
 _VALID_SPEC = '[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'
-
-
-def _mock_watcher() -> MagicMock:
-    watcher = MagicMock()
-    result = MagicMock()
-    result.id = "01HZZWATCHER00000000000001"
-    watcher.provision_watched_item = AsyncMock(return_value=result)
-    return watcher
 
 
 # ---------------------------------------------------------------------------
@@ -389,15 +379,22 @@ async def test_register_sets_owner_from_dashboard_user(client, session):
 
 
 # ---------------------------------------------------------------------------
-# Watcher cadence forwarding (#50)
+# Cadence and pause state are recorded locally (#50, #60, archiver#142)
+#
+# These asserted the values forwarded on the provisioning call until archiver#142
+# deleted it. They assert the same operator intent one layer down — the columns
+# the announcement is built from — which is now the only path to Watcher. The
+# behaviour under test never changed; only the place it is observable did.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_register_forwards_selected_cadence(client, session):
-    watcher = _mock_watcher()
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
+async def _item_after_register(session, name: str):
+    row = (await session.execute(select(InfoItem).where(InfoItem.name == name))).scalar_one()
+    return row
 
+
+@pytest.mark.asyncio
+async def test_register_records_selected_cadence(client, session):
     resp = await client.post(
         "/dashboard/register",
         headers=_HEADERS,
@@ -410,16 +407,13 @@ async def test_register_forwards_selected_cadence(client, session):
         },
     )
     assert resp.status_code == 303
-    watcher.provision_watched_item.assert_awaited_once()
-    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] == {"interval": "6h"}
+    item = await _item_after_register(session, "Cadence Item")
+    assert item.watch_spec["interval"] == "6h"
 
 
 @pytest.mark.asyncio
 async def test_register_omits_cadence_when_absent(client, session):
-    # No cadence field → send None, let Watcher apply its own default.
-    watcher = _mock_watcher()
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
+    """No cadence field → no interval, which spells "consumer applies its own"."""
     resp = await client.post(
         "/dashboard/register",
         headers=_HEADERS,
@@ -431,16 +425,13 @@ async def test_register_omits_cadence_when_absent(client, session):
         },
     )
     assert resp.status_code == 303
-    watcher.provision_watched_item.assert_awaited_once()
-    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] is None
+    item = await _item_after_register(session, "Cadence Default Item")
+    assert item.watch_spec.get("interval") is None
 
 
 @pytest.mark.asyncio
-async def test_register_invalid_cadence_sends_none(client, session):
-    # Unrecognised value is not fabricated into a default; send None.
-    watcher = _mock_watcher()
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
+async def test_register_invalid_cadence_records_none(client, session):
+    """An unrecognised value is never fabricated into a default."""
     resp = await client.post(
         "/dashboard/register",
         headers=_HEADERS,
@@ -453,27 +444,17 @@ async def test_register_invalid_cadence_sends_none(client, session):
         },
     )
     assert resp.status_code == 303
-    watcher.provision_watched_item.assert_awaited_once()
-    assert watcher.provision_watched_item.await_args.kwargs["schedule_config"] is None
-
-
-# ---------------------------------------------------------------------------
-# Watcher active/paused forwarding (#60)
-# ---------------------------------------------------------------------------
+    item = await _item_after_register(session, "Cadence Bad Item")
+    assert item.watch_spec.get("interval") is None
 
 
 @pytest.mark.asyncio
 async def test_register_active_when_checkbox_present(client, session):
-    """Checked → provision explicitly active (archiver#158).
+    """Checked → explicitly active (archiver#158).
 
-    This used to send ``is_active=None`` and let Watcher apply *its* default.
-    After the cutover the registry holds the opinion, so the push forwards what
-    was written locally rather than deferring — the two paths must agree for the
-    dual-run to mean anything.
+    The registry holds the opinion rather than deferring to the consumer's
+    default, which is what makes the first announcement match the form.
     """
-    watcher = _mock_watcher()
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
     resp = await client.post(
         "/dashboard/register",
         headers=_HEADERS,
@@ -486,16 +467,13 @@ async def test_register_active_when_checkbox_present(client, session):
         },
     )
     assert resp.status_code == 303
-    watcher.provision_watched_item.assert_awaited_once()
-    assert watcher.provision_watched_item.await_args.kwargs["is_active"] is True
+    item = await _item_after_register(session, "Active Item")
+    assert item.watch_active is True
 
 
 @pytest.mark.asyncio
 async def test_register_paused_when_checkbox_absent(client, session):
-    # Unchecked checkbox sends nothing → provision paused (is_active=False).
-    watcher = _mock_watcher()
-    app.dependency_overrides[get_watcher_client] = lambda: watcher
-
+    """Unchecked checkbox sends nothing → registered paused."""
     resp = await client.post(
         "/dashboard/register",
         headers=_HEADERS,
@@ -507,8 +485,8 @@ async def test_register_paused_when_checkbox_absent(client, session):
         },
     )
     assert resp.status_code == 303
-    watcher.provision_watched_item.assert_awaited_once()
-    assert watcher.provision_watched_item.await_args.kwargs["is_active"] is False
+    item = await _item_after_register(session, "Paused Item")
+    assert item.watch_active is False
 
 
 @pytest.mark.asyncio

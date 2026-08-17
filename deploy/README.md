@@ -212,3 +212,33 @@ Archiver outbox publisher caps the stream operator-side via a periodic
 **Activation.** Set `ARCHIVER_REDIS_URL=redis://localhost:6379/0` in
 `/etc/archiver/.env` and restart `archiver`; the outbox publisher starts and
 drains to `info.changes`. Roll back by unsetting it and restarting.
+
+## Stopping a fetch — the operator runbook (archiver#142)
+
+With the Watcher SDK gone, the item-level control plane is Archiver's alone.
+Recorded here because it is an operational fact that no longer has a second
+route, and because the coarser fallback is not obvious from the dashboard.
+
+- **Item-level pause is Archiver's dashboard, and only Archiver's dashboard.**
+  Pause/resume writes `info_items.watch_active` and announces it; Watcher applies
+  `active` unconditionally on reconcile. A Watcher-local pause is therefore
+  **not sticky** — it is reverted on the next announcement. That is the design
+  working as intended (one control plane, level-triggered), not a bug, and
+  CannObserv/watcher#254 removes or 409s the affordance on that side so the
+  question stops being askable by pressing a button.
+
+- **Host-level break-glass is `domain_suspended`,** set in Watcher. Reconciliation
+  does not touch it because it is *mechanism* rather than *policy* — the same
+  reason an archived WatchedItem is Watcher's business and not the registry's.
+  Use it when a whole host must stop being fetched, or when Archiver is
+  unreachable and an item cannot be paused the normal way.
+
+- **Archiver is now a single point of operational dependency for stopping one
+  item.** This is the accepted price of a single control plane. `domain_suspended`
+  is the coarser fallback; there is no finer one, so an Archiver outage means
+  item-level pause is unavailable until it returns.
+
+The divergence between what was announced and what Watcher is actually running
+stays visible either way: `applied_active` and `applied_interval` come back on
+`info.watch-status` and render on the InfoItem detail panel, next to the
+announced-vs-applied generation drift.

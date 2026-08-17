@@ -6,6 +6,8 @@ Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrif
 
 Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by Watcher and (forthcoming) Replicator via the `archiver-client` Python SDK; produces `info.changes` and `info.registry` via an internal outbox publisher, and consumes exactly two streams — `content.revisions` (archiver#139) and `info.watch-status` (archiver#151). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
+**Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one — a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
+
 Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
 
 - `docs/plans/2026-05-08-archiver-v2-architecture-design.md`
@@ -48,8 +50,10 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
   the domain. The dashboard **clamps** paginated `limit`/`offset` where the API
   **422s** — deliberate, see [docs/UI.md](docs/UI.md).
 - `alembic/` is scoped to the `information` schema *inside* the archiver database.
-- `clients/` holds vendored SDKs regenerated from committed OpenAPI snapshots and
-  gated by the CI `client-drift` job — never hand-edit `generated/`.
+- `clients/python/` is the one vendored SDK — regenerated from a committed
+  OpenAPI snapshot, gated by the CI `client-drift` job; never hand-edit
+  `generated/`. It was two until archiver#142 retired the Watcher client along
+  with every outbound HTTP call to Watcher.
 - `src/core/db_safety.py` is mirrored by `scripts/dev_server.sh`, kept in step by
   `tests/scripts/test_db_guard_parity.py`.
 - `tests/` mirrors `src/`; `tests/deploy/` asserts installed systemd artifacts

@@ -2,7 +2,6 @@
 
 import os
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from co_core.pure.models.changes import InfoItemPrimaryChangedEmit
 from fastapi import APIRouter, Depends, Query
@@ -10,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.api.deps import get_db_session, get_watcher_client, require_api_key
+from src.api.deps import get_db_session, require_api_key
 from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_item import (
     InfoItemCreate,
@@ -75,13 +74,6 @@ from src.core.tools.deactivate_info_item_source_binding import (
     deactivate_info_item_source_binding,
 )
 from src.core.watch_spec_schema.validator import validate_watch_spec
-from src.core.watcher_provisioning import (
-    provision_on_create,
-    sync_on_source_swap,
-)
-
-if TYPE_CHECKING:
-    from watcher_client import WatcherClient
 
 router = APIRouter(prefix="/info-items", tags=["info-items"])
 
@@ -92,7 +84,6 @@ logger = get_logger(__name__)
 async def create_info_item(
     body: InfoItemCreate,
     session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> InfoItemOut:
     """Create an InfoItem.
 
@@ -196,9 +187,6 @@ async def create_info_item(
     await announce_info_item(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)
-
-    if info_source is not None:
-        await provision_on_create(session, watcher, item, info_source)
 
     return info_item_to_out(
         item,
@@ -342,7 +330,6 @@ async def add_info_source(
     info_item_id: ULIDStr,
     body: InfoItemSourceCreate,
     session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> InfoItemSourceOut:
     """Bind an existing InfoSource to an InfoItem.
 
@@ -423,12 +410,6 @@ async def add_info_source(
 
     await announce_info_item(session, item_ulid)
     await session.commit()
-
-    # Best-effort: sync new URL + specs to Watcher
-    new_source = await session.get(InfoSource, source_ulid)
-    item = await session.get(InfoItem, item_ulid)
-    if new_source is not None and item is not None:
-        await sync_on_source_swap(session, watcher, item, new_source)
 
     return info_item_source_to_out(binding)
 

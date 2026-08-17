@@ -57,39 +57,20 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 
 ## One-time data imports
 
-### `scripts/import_watch_specs.py` — Watcher's cadence + active state (archiver#150)
+### `scripts/import_watch_specs.py` — retired (archiver#150 → #142)
 
-Moves `default_schedule_config` and `is_active` off Watcher's `watched_items` onto
-`info_items.watch_spec` / `info_items.watch_active`. The `watcher_client` SDK is the only reader
-of those two fields, and archiver#142 deletes it — this is step 4b's single irreversible action.
+The one-time pass that moved Watcher's `default_schedule_config` and `is_active`
+onto `info_items.watch_spec` / `info_items.watch_active` ran on production and is
+gone, along with `src/core/watch_spec_import.py` and the
+`ARCHIVER_ALLOW_WATCH_IMPORT` guard that armed its `--apply`. It read those two
+fields over the `watcher_client` SDK, which archiver#142 deleted; there is nothing
+left to import *from*, and nothing to import *to* that the dashboard does not now
+own outright.
 
-```bash
-set -a; . /etc/archiver/.env; [ -f .env ] && . .env; set +a
-uv run python -m scripts.import_watch_specs            # dry run — default, writes nothing
-uv run python -m scripts.import_watch_specs --apply    # write
-```
-
-Ordering, which is the part that matters:
-
-1. **After** `uv run alembic upgrade head` — the columns must exist.
-2. **Again, immediately before** the announcement producer's first publish (archiver#141).
-   Watcher stays authoritative in between and its values can still change, so a snapshot taken
-   only at step 1 would be announced stale. The pass is idempotent, so the re-run is free.
-3. **Before** archiver#142 deletes the SDK. After that the source values are unreadable.
-
-A dry run prints a per-item mapping table — InfoItem, WatchedItem, disposition, resolved policy.
-That table **is** the verification artefact the acceptance criterion asks for: read it against the
-live WatchedItems before running `--apply`.
-
-Exit codes: `0` clean · `1` completed with anomalies · `2` could not run (Watcher not configured).
-Three things raise an anomaly, and the first is the one that fired on the production run:
-
-- **an InfoItem with no WatchedItem** — Watcher has no counterpart, so nothing was imported for it
-- a `watcher_item_id` mismatch (Watcher's link wins; the row still imports)
-- an unusable `default_schedule_config`, or a failed lookup or write
-
-It commits per row, so a transient Watcher failure or a failed write skips one item rather than
-discarding the pass; re-running picks up where it left off.
+Recorded because the ordering mattered and the reasoning outlives the script: the
+import had to complete before the SDK was deleted, since the SDK was the only
+reader of Watcher's copy. It did (archiver#150, closed), the control-plane cutover
+made those columns authoritative (archiver#158), and the teardown followed.
 
 ## Environment variable reference
 
@@ -109,12 +90,16 @@ discarding the pass; re-running picks up where it left off.
 - `ARCHIVER_BUS_CONSUMER` — *optional*. `1` opts this process into the `archiver.revisions` consumer group on `content.revisions` (archiver#139). **Only `deploy/archiver.service` sets it**, and — like `ARCHIVER_ALLOW_PRODUCTION_DB` — it must **never** appear in `/etc/archiver/.env` or `.env`, or every process that sources them joins the group. The asymmetry with the publisher is the point: producing from a stray process is noisy, whereas *consuming* removes messages from the group, so a second member silently takes half the revisions and writes them into whatever database it happens to hold. Unset (or with `ARCHIVER_REDIS_URL` unset) → the consumer is dormant and the service starts with no bus-read dependency. Setting it does not affect the publisher, and a consumer that fails to start leaves the publisher running. **The `info.watch-status` tail (archiver#151) is deliberately *not* behind this gate** — it is groupless, and a stray tail removes nothing from any PEL, so `ARCHIVER_REDIS_URL` alone starts it. Do not "fix" that by adding the gate: the gate's entire meaning is group membership.
 - `ARCHIVER_DEV_REDIS_URL` — *optional*. Dev change-bus broker for `scripts/dev_server.sh`. Unset → the dev server runs **bus-dormant** and never inherits prod's `ARCHIVER_REDIS_URL` from `/etc/archiver/.env` (the Redis analogue of the DB `_test`/`_dev` guard). Point it at a distinct broker or logical DB index (e.g. `.../1`); a value equal to the production URL is refused.
 - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance (e.g. `https://archiver.example.com`). When set, InfoItem API responses include `dashboard_url` pointing to the dashboard detail page (`{ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}`). Unset → `dashboard_url` is `null`. Set this to the URL end-users open in a browser, distinct from any internal service-to-service address. Set in `/etc/archiver/.env` on the VM.
-- `WATCHER_BASE_URL` — *optional*. Base URL of the sibling Watcher service for **service-to-service API calls** (e.g. `http://localhost:8000`). When set (together with `WATCHER_API_KEY`), the Archiver provisions WatchedItems on InfoItem create and patches them on primary-source swap. Unset → Watcher integration disabled; `watcher_item_id` stays `NULL` on all InfoItems. **Do not use a public proxy URL here on the same VM** — hairpin NAT means the proxy URL won't route from within the VM; use `http://localhost:<port>` instead.
-- `WATCHER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of the Watcher service for **browser deeplinks** (e.g. `https://watcher.exe.xyz:8000`). When set, the dashboard's Watcher-section header deeplink ("Watcher ↗" on the InfoItem detail page) uses this URL instead of `WATCHER_BASE_URL`. Unset → falls back to `WATCHER_BASE_URL`. Set in `/etc/archiver/.env`. Analogous to `ARCHIVER_PUBLIC_BASE_URL`.
-- `WATCHER_API_KEY` — *optional*. API key sent as `X-API-Key` to the Watcher service. Store in `/etc/archiver/.env`. Required when `WATCHER_BASE_URL` is set.
-- `ARCHIVER_WATCHER_PUSH_ENABLED` — *optional*, default **on**. `0`/`false`/`no`/`off` disables every outbound Watcher **write** (`provision_on_create`, `sync_on_source_swap`, `sync_on_spec_update`) while leaving the client — and therefore the dashboard's Watcher deeplinks — intact. This is the archiver#158 dual-run switch: the design's step 7 calls for disabling the HTTP push and confirming policy still propagates via the announcement, and the blunt alternative (unsetting `WATCHER_BASE_URL`) would also take out unrelated reads. Default is on because the flag exists to retire an existing behaviour deliberately; defaulting off would silently disable the push on any deployment that forgot to set it. archiver#142 deletes the flag with the SDK.
-- `ARCHIVER_ALLOW_WATCH_IMPORT` — *optional*. `1` arms `scripts/import_watch_specs.py --apply`. Same posture as `ARCHIVER_ALLOW_PRODUCTION_DB`: **never put it in an env file**, because sourcing the environment must not arm it. The script's writes are blind overwrites, which was safe only while the dashboard did not write `watch_spec`/`watch_active`; after the archiver#158 cutover it does, so a stray `--apply` would clobber operator-authored policy *and announce the clobber* as desired state. Dry runs stay ungated — the guard is on writing, not on looking.
 - `WATCHER_CACHE_DIR`, `WATCHER_CACHE_TTL_SECONDS`, `WATCHER_CACHE_SWEEP_INTERVAL_SECONDS` — Watcher-side, not Archiver-side; documented here because the `content_cache_uri` lifecycle protocol they govern is a registry contract (see design doc Section 2).
+
+**Retired with the Watcher HTTP edge (archiver#142).** `WATCHER_BASE_URL`,
+`WATCHER_PUBLIC_BASE_URL`, `WATCHER_API_KEY`, `ARCHIVER_WATCHER_PUSH_ENABLED`,
+and `ARCHIVER_ALLOW_WATCH_IMPORT` are no longer read by anything. Archiver has no
+outbound HTTP edge to Watcher at all — policy travels on `info.registry`, status
+returns on `info.watch-status` — so there is no base URL to configure, no key to
+present, and no push to gate. **Delete them from `/etc/archiver/.env`**: a stale
+credential that nothing reads is still a credential on disk, and a leftover
+`ARCHIVER_WATCHER_PUSH_ENABLED=0` reads as a live switch to whoever finds it next.
 
 ## Sourcing env files — why not `export $(cat … | xargs)`
 

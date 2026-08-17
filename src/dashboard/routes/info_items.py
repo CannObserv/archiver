@@ -1,36 +1,22 @@
 """Dashboard — Information Items (list, detail, create, sub-resource mutations)."""
 
 import json
-import os
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape as html_escape
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
-from watcher_client.errors import WatcherConflict, WatcherNotFound, WatcherResponseError
 
-from src.api.deps import get_db_session, get_watcher_client
+from src.api.deps import get_db_session
 from src.api.errors import raise_envelope
 from src.core.logging import get_logger
-from src.core.services.registry_announcement import announce_info_item
-from src.core.watch_spec_schema.validator import validate_watch_spec
-from src.core.watcher_provisioning import (
-    WatcherSyncOutcome,
-    provision_on_create,
-    sync_on_source_swap,
-)
-
-if TYPE_CHECKING:
-    from watcher_client import WatcherClient
-
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
@@ -40,6 +26,7 @@ from src.core.models import (
     SourceRevision,
     WatchStatus,
 )
+from src.core.services.registry_announcement import announce_info_item
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError as AssignItemNotFoundError,
 )
@@ -70,6 +57,7 @@ from src.core.tools.deactivate_info_item_source_binding import (
     deactivate_info_item_source_binding,
 )
 from src.core.url_canonicalization import canonicalize_url
+from src.core.watch_spec_schema.validator import validate_watch_spec
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
@@ -436,20 +424,10 @@ async def detail_info_item(
             .all()
         )
 
-    # Browser deeplink to the Watcher item, used to link the "Watcher" section
-    # header. Prefers WATCHER_PUBLIC_BASE_URL (browser-facing) over the internal
-    # WATCHER_BASE_URL, mirroring _render_watcher_section. None when the item is
-    # not yet watched or no Watcher base is configured.
-    watcher_base = (
-        os.environ.get("WATCHER_PUBLIC_BASE_URL", "").strip()
-        or os.environ.get("WATCHER_BASE_URL", "").strip()
-    )
-    watcher_deeplink = (
-        f"{watcher_base}/watched-items/{item.watcher_item_id}"
-        if watcher_base and item.watcher_item_id
-        else None
-    )
-
+    # The per-item Watcher deeplink retired with archiver#142. It was keyed on
+    # `watcher_item_id` — Watcher's primary key, which announcements never hand
+    # back — so there is no per-item URL left to build. Watcher exposes no lookup
+    # by `info_item_id`; if it grows one, the header link can return.
     return _templates.TemplateResponse(
         request,
         "info_items/detail.html",
@@ -464,7 +442,6 @@ async def detail_info_item(
             "revisions": revisions,
             "rev_sources_by_id": rev_sources_by_id,
             "now": datetime.now(UTC),
-            "watcher_deeplink": watcher_deeplink,
         },
     )
 
@@ -785,11 +762,11 @@ async def swap_primary_source(
     source_specs: str = Form(default="[]"),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> Response:
     """Author new InfoSource inline, deactivate old primary binding, bind new source.
 
-    Best-effort Watcher patch follows commit if watcher_item_id is set.
+    The announcement above carries the swap; Watcher reconciles it off
+    ``info.registry``. The post-commit HTTP patch retired with archiver#142.
     """
     item = await _resolve_item(item_id, session)
 
@@ -855,8 +832,6 @@ async def swap_primary_source(
     await announce_info_item(session, item.info_item_id)
     await session.commit()
 
-    await sync_on_source_swap(session, watcher, item, new_src)
-
     return Response(
         status_code=204,
         headers={"HX-Redirect": f"/dashboard/info-items/{item_id}"},
@@ -874,12 +849,11 @@ async def swap_primary_by_id(
     info_source_id: str = Form(...),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> Response:
     """Swap primary source to an existing InfoSource by ULID.
 
-    Deactivates the current active binding, creates a new one. Best-effort
-    Watcher patch follows commit if watcher_item_id is set.
+    Deactivates the current active binding, creates a new one. The announcement
+    carries the swap; the post-commit HTTP patch retired with archiver#142.
     """
     item = await _resolve_item(item_id, session)
 
@@ -922,8 +896,6 @@ async def swap_primary_by_id(
     await announce_info_item(session, item.info_item_id)
     await session.commit()
 
-    await sync_on_source_swap(session, watcher, item, new_src)
-
     return Response(
         status_code=204,
         headers={"HX-Redirect": f"/dashboard/info-items/{item_id}"},
@@ -938,8 +910,9 @@ async def swap_primary_by_id(
 def _format_spec_summary(source_specs: list) -> str:
     """Return a brief spec summary: '<algorithm> · N spec(s)' or '' when empty.
 
-    Handles both plain dicts and generated attrs models (WatchedItemResponseSourceSpecsItem)
-    which store all fields in additional_properties rather than direct attributes.
+    The ``to_dict()`` arm dates from when this also rendered SDK models; it is
+    kept because the summary is defensive by design and a stored spec is not
+    guaranteed to be a plain dict.
     """
     if not source_specs:
         return ""
@@ -957,22 +930,8 @@ def _format_spec_summary(source_specs: list) -> str:
     return " · ".join(parts)
 
 
-# Copy for the WatchedItem-deleted (404) reconcile paths — shared so the flash
-# and degraded-panel wording stay aligned across the render and action handlers.
-_WATCHER_REMOVED_FLASH = "This item is no longer watched — it was removed in Watcher."
-_RECONCILE_FAILED_FLASH = (
-    "Watcher reports this item gone, but the local record couldn't be updated — retrying shortly."
-)
-_RECONCILE_FAILED_MSG = "couldn't update the local record after Watcher reported it gone"
 _POLICY_WRITE_FAILED_MSG = "couldn't save the watch policy"
 _POLICY_WRITE_FAILED_FLASH = "Couldn't update the watch state — the change was not saved."
-# Suffix for the honest "contract drift" flash: a WatcherResponseError means the
-# watcher_client SDK is stale relative to the live Watcher API, not that Watcher is
-# down. Deliberately omits "try again" — retrying a contract mismatch never helps.
-_WATCHER_CONTRACT_SUFFIX = (
-    "Watcher returned an unexpected response; the integration may be out of date. "
-    "Check the logs — retrying won't help."
-)
 
 
 def _status_degraded(request: Request, item_id: str, error_message: str) -> HTMLResponse:
@@ -997,73 +956,13 @@ def _section_degraded(request: Request, item_id: str, error_message: str) -> HTM
     )
 
 
-async def _clear_stale_watcher_link(session: AsyncSession, item: InfoItem) -> bool:
-    """Best-effort NULL of a watcher_item_id after Watcher reports the WatchedItem
-    gone (404). Returns ``True`` when the link was durably cleared, ``False`` when
-    the commit failed.
-
-    A permanently deleted WatchedItem 404s on every read. Without this the
-    InfoItem sticks in the ``degraded`` state forever — indistinguishable from a
-    transient Watcher outage — and "Begin Watching" never reappears (it is gated
-    on a NULL ``watcher_item_id``). Clearing the pointer lets the item fall back
-    to ``not_watching`` so an operator can re-provision. Only a confirmed 404
-    clears the link; transient failures keep it so a brief outage never drops it.
-
-    The cached ``watch_status`` row goes with it, in the same transaction
-    (archiver#151 CR round 1, finding 3). It describes a WatchedItem that no
-    longer exists, and leaving it behind does two kinds of harm: the panel keeps
-    rendering ``watching`` instead of offering "Begin Watching", and if the item
-    is later re-provisioned under a *new* id, the dead WatchedItem's health is
-    reported as the new one's. The panel guards against the first independently
-    — the invariant should not depend on this cleanup having run — but the stale
-    data itself is only fixable here.
-
-    Never raises: the render/action paths it serves are designed to degrade rather
-    than 500, so a failed commit is rolled back, logged, and reported as ``False``
-    (the caller keeps degrading). ``item`` is refreshed on failure so callers may
-    keep using it; the next read retries the clear.
-    """
-    item_id = str(item.info_item_id)  # capture before commit/rollback can expire it
-    stale_id = item.watcher_item_id
-    item.watcher_item_id = None
-    try:
-        await session.execute(
-            delete(WatchStatus).where(WatchStatus.info_item_id == item.info_item_id)
-        )
-        await session.commit()
-    except Exception:
-        logger.exception(
-            "Failed to clear stale watcher_item_id %s for InfoItem %s (WatchedItem 404)",
-            stale_id,
-            item_id,
-        )
-        try:
-            await session.rollback()
-            await session.refresh(item)
-        except Exception:
-            logger.exception(
-                "Recovery after failed watcher_item_id clear also failed for InfoItem %s",
-                item_id,
-            )
-        return False
-    logger.info(
-        "Cleared stale watcher_item_id %s for InfoItem %s (WatchedItem 404)",
-        stale_id,
-        item_id,
-    )
-    return True
-
-
-async def _watch_template_context(
-    session: AsyncSession, item: InfoItem, watcher: "WatcherClient | None"
-) -> dict:
-    """Panel context from local state alone — zero SDK calls (archiver#151).
+async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict:
+    """Panel context from local state alone — no SDK at all (archiver#151, #142).
 
     ``watch_status`` (the ``info.watch-status`` cache), the item's own
     ``watch_spec`` / generations, and the latest revision of the active source
-    are everything the render needs. The Watcher client gates only the action
-    buttons, which still ride the SDK until the control-plane cutover
-    (archiver#158).
+    are everything the render needs. #151 made the *render* local; #142 removed
+    the SDK the action buttons still rode, so nothing here reaches Watcher.
     """
     status = await session.get(WatchStatus, item.info_item_id)
     # One pass over the active bindings for both facts (CR round 2, finding 12).
@@ -1077,8 +976,12 @@ async def _watch_template_context(
     # (CR round 1 finding 3, round 2 finding 9) because mutating policy on an
     # item that cannot announce *live* emits a **tombstone** and burns a
     # generation — which then reads as drift on this very panel, for an item
-    # where nothing is wrong. `can_act` is the wrong test: it checks the Watcher
-    # link, and the link outlives the binding.
+    # where nothing is wrong.
+    #
+    # Since archiver#142 it also selects the panel's *state*: it is what "watched"
+    # now means, the announced set being the whole of the contract with Watcher.
+    # It replaced `watcher_item_id`, which announcements never populate — keeping
+    # that key would have reported `not_watching` for every item.
     #
     # `jsonb_typeof(...) = 'array'` guards the length call (CR round 2, finding
     # 11): `jsonb_array_length` errors on a non-array, and this runs on the panel
@@ -1112,20 +1015,22 @@ async def _watch_template_context(
     last_changed_at = aggregate.last_changed_at
     has_active_source = aggregate.has_active_source
     watch = build_watch_context(
-        item=item, status=status, last_changed_at=last_changed_at, now=datetime.now(UTC)
+        is_announceable=has_active_source,
+        item=item,
+        status=status,
+        last_changed_at=last_changed_at,
+        now=datetime.now(UTC),
     )
     return {
         "item_id": str(item.info_item_id),
         "state": watch["state"],
         "watch": watch,
-        "can_act": watcher is not None and bool(item.watcher_item_id),
-        "can_provision": watcher is not None,
         "has_active_source": has_active_source,
-        # Cadence is Archiver's own policy, so its editor is not gated on
-        # ``can_act`` (archiver#158). It renders wherever the panel shows a
-        # *provisioned* item — ``watching`` and ``no_status`` — because those
-        # are the states in which a cadence is a live question; ``not_watching``
-        # offers "Begin Watching" instead, and ``degraded`` shows an error.
+        # Cadence is Archiver's own policy (archiver#158), gated only on
+        # announceability. It renders wherever the panel shows an announced item
+        # — ``watching`` and ``no_status`` — because those are the states in
+        # which a cadence is a live question; ``not_watching`` has no
+        # announceable source by definition, and ``degraded`` shows an error.
         # ``cadence_value`` is the announced interval, "" meaning delegate.
         "cadence_options": CADENCE_LABELS,
         "cadence_value": (item.watch_spec or {}).get("interval") or "",
@@ -1137,10 +1042,9 @@ async def _render_status_partial(
     *,
     session: AsyncSession,
     item: InfoItem,
-    watcher: "WatcherClient | None",
 ) -> HTMLResponse:
     """Render the _watcher_status.html partial from local state."""
-    context = await _watch_template_context(session, item, watcher)
+    context = await _watch_template_context(session, item)
     return _templates.TemplateResponse(request, "info_items/_watcher_status.html", context)
 
 
@@ -1149,10 +1053,9 @@ async def _render_watcher_section(
     *,
     session: AsyncSession,
     item: InfoItem,
-    watcher: "WatcherClient | None",
 ) -> HTMLResponse:
     """Render the _watcher_section.html partial from local state."""
-    context = await _watch_template_context(session, item, watcher)
+    context = await _watch_template_context(session, item)
     return _templates.TemplateResponse(request, "info_items/_watcher_section.html", context)
 
 
@@ -1180,11 +1083,10 @@ async def watcher_status(
     request: Request,
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> HTMLResponse:
     """HTMX partial: load WatchedItem health strip from Watcher."""
     item = await _resolve_item(item_id, session)
-    return await _render_status_partial(request, session=session, item=item, watcher=watcher)
+    return await _render_status_partial(request, session=session, item=item)
 
 
 # ---------------------------------------------------------------------------
@@ -1198,190 +1100,10 @@ async def watcher_section(
     request: Request,
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> HTMLResponse:
     """HTMX partial: detailed Watcher panel for Section 3 of the detail page."""
     item = await _resolve_item(item_id, session)
-    return await _render_watcher_section(request, session=session, item=item, watcher=watcher)
-
-
-# ---------------------------------------------------------------------------
-# POST /{item_id}/check-now
-# ---------------------------------------------------------------------------
-
-
-@router.post("/{item_id}/check-now", response_class=HTMLResponse)
-async def check_now(
-    item_id: str,
-    request: Request,
-    user=Depends(get_dashboard_user),
-    session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
-) -> HTMLResponse:
-    """Proxy to Watcher check-now; re-renders the watcher-status partial."""
-    item = await _resolve_item(item_id, session)
-
-    if watcher is None or not item.watcher_item_id:
-        return await _render_status_partial(request, session=session, item=item, watcher=watcher)
-
-    flash: tuple[str, str] | None = None
-    reconcile_failed = False
-    try:
-        await watcher.check_now(item.watcher_item_id)
-    except WatcherNotFound:
-        # The WatchedItem is gone (deleted in Watcher). Clear the stale link so
-        # the partial falls back to not_watching instead of looping on 404.
-        if await _clear_stale_watcher_link(session, item):
-            flash = ("error", _WATCHER_REMOVED_FLASH)
-        else:
-            flash = ("error", _RECONCILE_FAILED_FLASH)
-            reconcile_failed = True
-    except WatcherConflict:
-        # Watcher 409s on check-now of a paused item. The button is hidden when
-        # paused, but guard direct posts with the accurate reason.
-        flash = ("error", "Can't check a paused item — resume it first.")
-    except WatcherResponseError:
-        # Response couldn't be parsed — the watcher_client SDK is stale, not a
-        # transport outage. Flash honestly so the operator doesn't keep retrying.
-        flash = ("error", f"Couldn't trigger a check — {_WATCHER_CONTRACT_SUFFIX}")
-    except Exception:
-        # The render below is local-state and cannot fail on Watcher being
-        # down; surface the action failure as a flash.
-        flash = ("error", "Couldn't trigger a check — Watcher is unavailable. Try again shortly.")
-
-    if reconcile_failed:
-        # Clearing the link failed to commit; render degraded straight from the path
-        # id — don't re-render through the item (attrs may be expired) or re-fetch.
-        response = _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
-    else:
-        response = await _render_status_partial(
-            request, session=session, item=item, watcher=watcher
-        )
-    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
-    return response
-
-
-# ---------------------------------------------------------------------------
-# POST /{item_id}/begin-watching
-# ---------------------------------------------------------------------------
-
-
-@router.post("/{item_id}/begin-watching", response_class=HTMLResponse)
-async def begin_watching(
-    item_id: str,
-    request: Request,
-    user=Depends(get_dashboard_user),
-    session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
-) -> HTMLResponse:
-    """Provision a WatchedItem on demand for pre-existing InfoItems."""
-    item = await _resolve_item(item_id, session)
-
-    if item.watcher_item_id:
-        # Already provisioned — just re-render current state.
-        return await _render_status_partial(request, session=session, item=item, watcher=watcher)
-
-    # Find the active primary source.
-    binding = (
-        await session.execute(
-            select(InfoItemSource).where(
-                InfoItemSource.info_item_id == item.info_item_id,
-                InfoItemSource.deactivated_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-
-    primary_src = (
-        await session.get(InfoSource, binding.info_source_id) if binding is not None else None
-    )
-    if primary_src is None:
-        # No active primary source to watch — flash rather than silently re-render
-        # (but stay quiet when Watcher is unconfigured: the partial already shows
-        # the not_configured state, and a missing-source flash would mislead).
-        response = await _render_status_partial(
-            request, session=session, item=item, watcher=watcher
-        )
-        flash: tuple[str, str] | None = (
-            ("error", "No primary source to watch — bind one first.")
-            if watcher is not None
-            else None
-        )
-        response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
-        return response
-
-    outcome = await provision_on_create(session, watcher, item, primary_src)
-    flash: tuple[str, str] | None = None
-    if outcome is WatcherSyncOutcome.FAILED:
-        flash = ("error", "Couldn't start watching — Watcher is unavailable. Try again shortly.")
-    elif outcome is WatcherSyncOutcome.CONTRACT_ERROR:
-        flash = ("error", f"Couldn't start watching — {_WATCHER_CONTRACT_SUFFIX}")
-
-    response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
-    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
-    return response
-
-
-# ---------------------------------------------------------------------------
-# POST /{item_id}/resync-watcher
-# ---------------------------------------------------------------------------
-
-
-@router.post("/{item_id}/resync-watcher", response_class=HTMLResponse)
-async def resync_watcher(
-    item_id: str,
-    request: Request,
-    user=Depends(get_dashboard_user),
-    session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
-) -> HTMLResponse:
-    """PATCH WatchedItem with current URL and specs; re-renders status partial."""
-    item = await _resolve_item(item_id, session)
-
-    if watcher is None or not item.watcher_item_id:
-        return await _render_status_partial(request, session=session, item=item, watcher=watcher)
-
-    binding = (
-        await session.execute(
-            select(InfoItemSource).where(
-                InfoItemSource.info_item_id == item.info_item_id,
-                InfoItemSource.deactivated_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-
-    primary_src = (
-        await session.get(InfoSource, binding.info_source_id) if binding is not None else None
-    )
-
-    flash: tuple[str, str] | None = None
-    if primary_src is None:
-        # Watched item with no active primary source — nothing to re-sync.
-        flash = ("error", "No primary source to re-sync — bind one first.")
-    else:
-        outcome = await sync_on_source_swap(session, watcher, item, primary_src)
-        if outcome is WatcherSyncOutcome.FAILED:
-            flash = (
-                "error",
-                "Couldn't re-sync with Watcher — it's unavailable. Try again shortly.",
-            )
-        elif outcome is WatcherSyncOutcome.CONTRACT_ERROR:
-            flash = ("error", f"Couldn't re-sync with Watcher — {_WATCHER_CONTRACT_SUFFIX}")
-        elif outcome is WatcherSyncOutcome.NOT_FOUND:
-            # The WatchedItem is gone. Since #151 the render never observes a
-            # 404 (it is local-state), so the action outcome carries the
-            # reconcile: clear the stale link and fall back to not_watching.
-            if await _clear_stale_watcher_link(session, item):
-                flash = ("error", _WATCHER_REMOVED_FLASH)
-            else:
-                response = _status_degraded(request, item_id, _RECONCILE_FAILED_MSG)
-                response.headers["HX-Trigger"] = _watcher_hx_trigger(
-                    ("error", _RECONCILE_FAILED_FLASH)
-                )
-                return response
-
-    response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
-    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
-    return response
+    return await _render_watcher_section(request, session=session, item=item)
 
 
 # ---------------------------------------------------------------------------
@@ -1396,7 +1118,6 @@ async def toggle_watch_active(
     active: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> HTMLResponse:
     """Pause or resume by writing ``watch_active`` locally and announcing it.
 
@@ -1439,7 +1160,7 @@ async def toggle_watch_active(
         response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _POLICY_WRITE_FAILED_FLASH))
         return response
 
-    response = await _render_status_partial(request, session=session, item=item, watcher=watcher)
+    response = await _render_status_partial(request, session=session, item=item)
     response.headers["HX-Trigger"] = _watcher_hx_trigger()
     return response
 
@@ -1456,7 +1177,6 @@ async def set_watch_cadence(
     interval: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
 ) -> HTMLResponse:
     """Replace the item's cadence policy and announce it (archiver#158).
 
@@ -1480,9 +1200,7 @@ async def set_watch_cadence(
     item = await _resolve_item(item_id, session)
 
     if interval and interval not in CADENCE_OPTIONS:
-        response = await _render_watcher_section(
-            request, session=session, item=item, watcher=watcher
-        )
+        response = await _render_watcher_section(request, session=session, item=item)
         response.headers["HX-Trigger"] = _watcher_hx_trigger(
             ("error", f"“{interval}” is not one of the offered cadences.")
         )
@@ -1498,9 +1216,7 @@ async def set_watch_cadence(
         # unreachable. If the two ever disagree, refuse rather than announce a
         # document the consumer will fail to parse.
         logger.error("Dashboard built an invalid watch_spec for InfoItem %s: %s", item_id, errors)
-        response = await _render_watcher_section(
-            request, session=session, item=item, watcher=watcher
-        )
+        response = await _render_watcher_section(request, session=session, item=item)
         response.headers["HX-Trigger"] = _watcher_hx_trigger(
             ("error", "Couldn't set the cadence — the policy document was rejected.")
         )
@@ -1517,6 +1233,6 @@ async def set_watch_cadence(
         response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _POLICY_WRITE_FAILED_FLASH))
         return response
 
-    response = await _render_watcher_section(request, session=session, item=item, watcher=watcher)
+    response = await _render_watcher_section(request, session=session, item=item)
     response.headers["HX-Trigger"] = _watcher_hx_trigger()
     return response

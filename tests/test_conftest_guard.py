@@ -52,6 +52,11 @@ def test_outbound_service_env_is_scrubbed():
     watcher#233: a test process silently inheriting a production resource from a
     sourced env file.
 
+    That exact route is gone — archiver#142 deleted the SDK, so no lifespan can
+    build a Watcher client and no route can POST to it. The list this iterates
+    is now the Redis surface plus the two systemd-only gates. The guard is kept
+    against the *class* of failure, which outlived its first instance.
+
     conftest scrubs the whole outbound surface at import, before any fixture
     runs. A test that needs one of these sets it explicitly via monkeypatch —
     which is also why this test asserting absence stays correct: monkeypatch

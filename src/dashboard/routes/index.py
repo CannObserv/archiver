@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db_session, get_redis_client, get_watcher_client
+from src.api.deps import get_db_session, get_redis_client
 from src.core.logging import get_logger
 from src.core.models import (
     AppUser,
@@ -28,7 +28,6 @@ from src.dashboard.deps import get_dashboard_user
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as RedisAsync
-    from watcher_client import WatcherClient
 
 logger = get_logger(__name__)
 
@@ -43,31 +42,6 @@ async def dashboard_health_partial(
 ) -> HTMLResponse:
     """HTMX partial — Archiver health badge."""
     return HTMLResponse('<span class="badge badge--success">ok</span>')
-
-
-@router.get("/health/watcher", response_class=HTMLResponse)
-async def dashboard_health_watcher(
-    user: AppUser = Depends(get_dashboard_user),
-    watcher: "WatcherClient | None" = Depends(get_watcher_client),
-) -> HTMLResponse:
-    """HTMX partial — Watcher service health badge."""
-    if watcher is None:
-        return HTMLResponse('<span class="badge badge--muted">not configured</span>')
-    try:
-        status = await watcher.health_check()
-        if status == 200:
-            return HTMLResponse('<span class="badge badge--success">ok</span>')
-        reason = f"Watcher returned {status}"
-        logger.warning("Watcher health check degraded", extra={"reason": reason})
-        return HTMLResponse(
-            f'<span class="badge badge--warning" title="{html_escape(reason)}">degraded</span>'
-        )
-    except Exception as exc:
-        reason = str(exc)
-        logger.warning("Watcher health check failed", extra={"error": reason})
-        return HTMLResponse(
-            f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
-        )
 
 
 @router.get("/health/redis", response_class=HTMLResponse)
@@ -164,7 +138,6 @@ async def dashboard_index(
     # Domain overview — top 10 by InfoSource count
     domain_overview = await _get_domain_overview(session)
 
-    watcher_base_url = os.environ.get("WATCHER_BASE_URL", "").strip()
     redis_configured = bool(os.environ.get("ARCHIVER_REDIS_URL", "").strip())
 
     return _templates.TemplateResponse(
@@ -180,7 +153,6 @@ async def dashboard_index(
             "sources_by_id": sources_by_id,
             "items_by_source_id": items_by_source_id,
             "domain_overview": domain_overview,
-            "watcher_base_url": watcher_base_url or None,
             "redis_configured": redis_configured,
         },
     )
