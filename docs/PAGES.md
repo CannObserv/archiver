@@ -19,6 +19,8 @@ repeat it.
 
 **GET `/dashboard/`** — summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each linking to its list page. Service health indicator loads via `hx-get="/dashboard/health" hx-trigger="load"` — non-blocking, showing a "checking…" badge until HTMX fires. Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`; columns Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at as `%Y-%m-%d %H:%M`).
 
+The health row is **Archiver + Redis only** since archiver#142 — the absence of a Watcher badge is deliberate, not an omission (see the retired-badge note below).
+
 **GET `/dashboard/health`** — HTMX partial. Returns `<span class="badge badge--success">ok</span>`.
 
 **GET `/dashboard/health/redis`** — HTMX partial calling `redis.ping()`. Logs a warning on `degraded` and `error`; `not configured` returns before any logging:

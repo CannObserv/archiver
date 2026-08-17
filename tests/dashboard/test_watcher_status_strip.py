@@ -99,6 +99,9 @@ async def test_strip_watching_shows_health_and_pause(client, session, bind_sourc
 
     r = await _strip(client, item)
     assert r.status_code == 200
+    # The badge, not merely the text: "OK" alone would pass on a template that
+    # dropped the badge and gained any other uppercase token (CR round 2, #11).
+    assert "badge--success" in r.text
     assert "OK" in r.text
     assert "toggle-watch-active" in r.text
     # The SDK actions retired with the HTTP edge.
@@ -118,10 +121,10 @@ async def test_degraded_copy_blames_the_local_write_not_watcher(
     """`degraded` is unreachable from anything Watcher does (CR round 1, finding 1).
 
     Since archiver#142 there is no outbound call to fail: the only path into this
-    state is a local write failing, and both call sites pass "couldn't save the
-    watch policy". Copy that says "Watcher unavailable" sends the operator to
-    check a service that is not involved — the same class of miscue the teardown
-    removed elsewhere.
+    state is a local write failing, and both call sites pass a message naming that
+    write. Copy that says "Watcher unavailable" sends the operator to check a
+    service that is not involved — the same class of miscue the teardown removed
+    elsewhere.
     """
     item = InfoItem(name="strip-degraded")
     session.add(item)
