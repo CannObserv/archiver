@@ -182,27 +182,38 @@ def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContex
 
 def build_watch_context(
     *,
+    is_announceable: bool,
     item: InfoItem,
     status: WatchStatus | None,
     last_changed_at: datetime | None,
     now: datetime,
 ) -> WatchPanelContext:
-    """The whole panel, from three local facts."""
+    """The whole panel, from three local facts plus announceability.
+
+    ``is_announceable`` is membership of the announced set — an active binding
+    whose source carries non-empty ``source_specs``, the same rule
+    ``_collect_full_set`` publishes by. It is passed in rather than derived here
+    because deriving it needs the DB and this function is deliberately pure.
+    Required, not defaulted: either default would be a silent wrong answer for
+    half the corpus.
+    """
     announced_interval = (item.watch_spec or {}).get("interval")
 
-    # The link is checked *before* the cache row, not after. A WatchedItem
-    # deleted in Watcher clears `watcher_item_id` on the next action, and a
-    # status row may outlive that clear (the tombstone has not arrived, or
-    # never will). Reading the row first would render `watching` with no
-    # "Begin Watching" affordance — a dead end the operator cannot escape —
-    # and, once the item is re-provisioned under a new id, would report the
-    # dead WatchedItem's health as the new one's (CR round 1, finding 3).
-    # The split key is watcher_item_id until #142 removes it, after which an
-    # active binding takes over the role.
-    if not item.watcher_item_id or status is None:
-        # Never provisioned, or provisioned and Watcher has never reported —
-        # the fourth state, which must not read as paused or as healthy.
-        state = "no_status" if item.watcher_item_id else "not_watching"
+    # Announceability is checked *before* the cache row, not after. A status row
+    # can outlive the fact it describes — an item dropped from the announced set
+    # is tombstoned to Watcher, but the cached row lingers until the status
+    # stream catches up (or forever, if it never does). Reading the row first
+    # would render `watching` for an item nothing is watching, with no affordance
+    # to notice (CR round 1, finding 3 — inherited from the watcher_item_id era,
+    # the reasoning unchanged by the change of key).
+    #
+    # archiver#142 moved this off `watcher_item_id`. Under announcements Archiver
+    # never learns Watcher's primary key, so the old key would have reported
+    # `not_watching` for every item — an inversion, not a failure.
+    if not is_announceable or status is None:
+        # Outside the announced set, or inside it with Watcher never having
+        # reported — the fourth state, which must not read as paused or healthy.
+        state = "no_status" if is_announceable else "not_watching"
         return WatchPanelContext(
             state=state,
             health=None,

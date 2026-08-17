@@ -17,7 +17,6 @@ from src.core.models import ApiKey
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as RedisAsync
-    from watcher_client import WatcherClient
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
@@ -28,15 +27,6 @@ async def get_db_session() -> AsyncGenerator[AsyncSession]:
 async def get_redis_client(request: Request) -> "RedisAsync | None":
     """Return the lifespan-scoped Redis client, or None when not configured."""
     return getattr(request.app.state, "redis_client", None)
-
-
-async def get_watcher_client(request: Request) -> "WatcherClient | None":
-    """Return the lifespan-scoped WatcherClient, or None when Watcher is not configured.
-
-    None is returned when ``WATCHER_BASE_URL`` / ``WATCHER_API_KEY`` are unset.
-    Routes that accept this dependency treat None as "provisioning disabled".
-    """
-    return getattr(request.app.state, "watcher_client", None)
 
 
 async def get_fetch_driver(request: Request) -> AsyncFetchDriver:

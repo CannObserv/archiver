@@ -1,11 +1,13 @@
 {# Section 3 Watcher panel — loaded async via hx-get /watcher-section.
-   Renders from LOCAL state (watch_status cache + item.watch_spec — archiver#151); the action
-   buttons still proxy to Watcher over the SDK until the control-plane cutover (archiver#158).
-   Root div carries hx-trigger="watcherUpdated from:body" so any check-now or
-   resync-watcher response (which sends HX-Trigger: {"watcherUpdated":{}}) causes
-   this section to self-refresh without an explicit swap target.
-   States: not_watching / no_status (Watcher has never reported — distinct from paused and
-   healthy) / watching / degraded (an action failed; the local render itself cannot). #}
+   Renders from LOCAL state (watch_status cache + item.watch_spec — archiver#151) and
+   reaches Watcher not at all (archiver#142): the SDK actions retired with the HTTP edge.
+   What is left is Archiver's own control plane — pause/resume and cadence — which write
+   locally and announce.
+   Root div carries hx-trigger="watcherUpdated from:body" so a pause/resume or cadence
+   response (which sends HX-Trigger: {"watcherUpdated":{}}) causes this section to
+   self-refresh without an explicit swap target.
+   States: not_watching (outside the announced set) / no_status (announced, Watcher has never
+   reported — distinct from paused and healthy) / watching / degraded (a local write failed). #}
 <div id="watcher-section"
      aria-live="polite" aria-atomic="false"
      hx-get="/dashboard/info-items/{{ item_id }}/watcher-section"
@@ -14,19 +16,18 @@
      style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
 
 {% if state == "not_watching" %}
+  {# No "Begin Watching" button since archiver#142: watching is not an action any
+     more, it is a consequence of being in the announced set. Say what closes the
+     gap instead of offering a control that cannot exist. #}
   <div style="display:flex;align-items:center;gap:var(--space-2);">
-    <span class="text-muted text-sm">Not watching</span>
-    {% if can_provision %}
-    <form hx-post="/dashboard/info-items/{{ item_id }}/begin-watching"
-          hx-swap="none"
-          style="display:inline;">
-      <button type="submit" class="btn btn--secondary btn--sm">Begin Watching</button>
-    </form>
-    {% endif %}
+    <span class="text-muted text-sm">Not watching — bind an active source with extraction specs to announce this item.</span>
   </div>
 
 {% elif state == "degraded" %}
-  <p class="text-muted text-sm" style="margin:0;">Watcher unavailable{% if error_message %} — {{ error_message }}{% endif %}.</p>
+  {# `degraded` is unreachable from anything Watcher does — since archiver#142
+     there is no outbound call to fail. The only way in is a local write failing,
+     so the copy must not send the operator to check Watcher (CR round 1, finding 1). #}
+  <p class="text-muted text-sm" style="margin:0;">Couldn't update this item{% if error_message %} — {{ error_message }}{% endif %}.</p>
 
 {% elif state == "no_status" %}
   <div class="detail-grid" style="margin-bottom:var(--space-3);">
@@ -51,14 +52,6 @@
   </div>
   <p class="text-muted text-sm" style="margin:0 0 var(--space-3);">Watcher hasn't reported on this item yet.</p>
   <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
-    {% if can_act %}
-    <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
-          hx-swap="none"
-          style="display:inline;">
-      <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
-    </form>
-    {% endif %}
-
     {# Cadence is editable here too, not only once Watcher has reported (CR
        round 1, finding 1). A freshly registered item sits in no_status until
        the first status frame arrives, which is exactly when an operator is
@@ -144,34 +137,17 @@
   </div>
 
   <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
-    {# Check-now is hidden while paused — Watcher 409s on check-now of a paused item. #}
-    {% if can_act and watch.applied_active %}
-    <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
-          hx-swap="none"
-          style="display:inline;">
-      <button type="submit" class="btn btn--secondary btn--sm">Check now</button>
-    </form>
-    {% endif %}
-
-    {# Pause/resume needs an announceable source, not just a Watcher link (CR
-       round 1, finding 3): an item whose primary binding was deactivated keeps
-       its link and still renders `watching`, but announcing its pause emits a
-       tombstone and burns a generation — surfacing as drift on this panel for
-       an item where nothing is wrong. #}
-    {% if can_act and has_active_source %}
+    {# Pause/resume needs an announceable source (CR round 1, finding 3):
+       announcing a pause for an item that cannot announce live emits a tombstone
+       and burns a generation — surfacing as drift on this panel for an item where
+       nothing is wrong. Since archiver#142 this is also the state key, so the
+       gate and the state agree by construction rather than by coincidence. #}
+    {% if has_active_source %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
           hx-swap="none"
           style="display:inline;">
       <input type="hidden" name="active" value="{{ 'false' if watch.applied_active else 'true' }}">
       <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watch.applied_active else 'Resume' }}</button>
-    </form>
-    {% endif %}
-
-    {% if can_act %}
-    <form hx-post="/dashboard/info-items/{{ item_id }}/resync-watcher"
-          hx-swap="none"
-          style="display:inline;">
-      <button type="submit" class="btn btn--secondary btn--sm">Re-sync</button>
     </form>
     {% endif %}
 

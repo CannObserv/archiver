@@ -130,8 +130,9 @@ context.
 ↗"), `target=_blank rel=noopener noreferrer`, modeled on the Copy button so
 opening a URL reads as a distinct action separated from the displayed value.
 Used for every external URL (source URLs, RepSpec `public_url`, http(s)
-`content_cache_uri`). Section-header deeplinks styled as headings (e.g. the
-InfoItem "Watcher ↗" `<h2>`) are intentionally exempt.
+`content_cache_uri`). Section-header deeplinks styled as headings are
+intentionally exempt — the carve-out currently has no instance, its one example
+having been the InfoItem "Watcher ↗" `<h2>` that retired with archiver#142.
 
 **Reported state from another service.** Where a panel renders state some other
 service reports over the bus rather than state Archiver owns — the InfoItem

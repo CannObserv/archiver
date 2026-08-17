@@ -23,7 +23,6 @@ def make_item(**overrides):
     defaults = dict(
         watch_spec={"schema_version": 1, "interval": "1d"},
         watch_active=None,
-        watcher_item_id="wi-1",
         announcement_generation=3,
         announced_at=NOW - timedelta(minutes=5),
     )
@@ -78,9 +77,10 @@ class TestIntervals:
 
 
 class TestStates:
-    def test_not_watching_when_never_provisioned(self):
+    def test_not_watching_when_outside_the_announced_set(self):
         ctx = build_watch_context(
-            item=make_item(watcher_item_id=None),
+            is_announceable=False,
+            item=make_item(),
             status=None,
             last_changed_at=None,
             now=NOW,
@@ -88,14 +88,17 @@ class TestStates:
         assert ctx["state"] == "not_watching"
 
     def test_no_status_is_the_fourth_state(self):
-        """Provisioned but Watcher has never reported: not paused, not healthy."""
-        ctx = build_watch_context(item=make_item(), status=None, last_changed_at=None, now=NOW)
+        """Announced but Watcher has never reported: not paused, not healthy."""
+        ctx = build_watch_context(
+            is_announceable=True, item=make_item(), status=None, last_changed_at=None, now=NOW
+        )
         assert ctx["state"] == "no_status"
         assert ctx["health_ok"] is False
         assert ctx["applied_active"] is None
 
     def test_no_status_still_shows_announced_cadence_and_last_changed(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(),
             status=None,
             last_changed_at=NOW - timedelta(days=2),
@@ -106,7 +109,11 @@ class TestStates:
 
     def test_watching_with_status_row(self):
         ctx = build_watch_context(
-            item=make_item(), status=make_status(), last_changed_at=None, now=NOW
+            is_announceable=True,
+            item=make_item(),
+            status=make_status(),
+            last_changed_at=None,
+            now=NOW,
         )
         assert ctx["state"] == "watching"
         assert ctx["health_ok"] is True
@@ -117,6 +124,7 @@ class TestHealthRule:
     def test_only_ok_is_healthy(self):
         for value in ("error", "degraded", "some-future-token"):
             ctx = build_watch_context(
+                is_announceable=True,
                 item=make_item(),
                 status=make_status(health=value),
                 last_changed_at=None,
@@ -127,6 +135,7 @@ class TestHealthRule:
 
     def test_paused_is_a_state_not_absence(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(),
             status=make_status(applied_active=False),
             last_changed_at=None,
@@ -140,7 +149,11 @@ class TestNextDue:
     def test_derives_from_attempt_plus_announced_interval(self):
         # last attempt 2h ago, daily cadence → due in 22h
         ctx = build_watch_context(
-            item=make_item(), status=make_status(), last_changed_at=None, now=NOW
+            is_announceable=True,
+            item=make_item(),
+            status=make_status(),
+            last_changed_at=None,
+            now=NOW,
         )
         assert ctx["next_due"] == "in 22h"
         assert ctx["overdue"] is False
@@ -149,6 +162,7 @@ class TestNextDue:
         """Deriving from the announcement alone reports a schedule Watcher is
         not running (epic open hole #2)."""
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(),
             status=make_status(applied_interval="1h"),
             last_changed_at=None,
@@ -161,6 +175,7 @@ class TestNextDue:
 
     def test_no_interval_no_next_due(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(watch_spec={"schema_version": 1}),
             status=make_status(),
             last_changed_at=None,
@@ -170,6 +185,7 @@ class TestNextDue:
 
     def test_no_attempt_no_next_due(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(),
             status=make_status(last_attempt_at=None),
             last_changed_at=None,
@@ -181,6 +197,7 @@ class TestNextDue:
 class TestPendingToggle:
     def test_desired_pause_not_yet_applied(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(watch_active=False),
             status=make_status(applied_active=True),
             last_changed_at=None,
@@ -190,6 +207,7 @@ class TestPendingToggle:
 
     def test_no_hint_when_aligned_or_no_opinion(self):
         aligned = build_watch_context(
+            is_announceable=True,
             item=make_item(watch_active=True),
             status=make_status(applied_active=True),
             last_changed_at=None,
@@ -197,6 +215,7 @@ class TestPendingToggle:
         )
         assert aligned["pending_toggle"] is None
         no_opinion = build_watch_context(
+            is_announceable=True,
             item=make_item(watch_active=None),
             status=make_status(applied_active=False),
             last_changed_at=None,
@@ -208,6 +227,7 @@ class TestPendingToggle:
 class TestDrift:
     def test_in_sync(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(announcement_generation=7),
             status=make_status(applied_generation=7),
             last_changed_at=None,
@@ -224,6 +244,7 @@ class TestDrift:
 
     def test_drift_below_threshold_is_not_an_alert(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(announcement_generation=9, announced_at=NOW - timedelta(minutes=5)),
             status=make_status(applied_generation=7),
             last_changed_at=None,
@@ -235,6 +256,7 @@ class TestDrift:
 
     def test_drift_past_threshold_alerts(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(announcement_generation=9, announced_at=NOW - timedelta(minutes=40)),
             status=make_status(applied_generation=7),
             last_changed_at=None,
@@ -245,6 +267,7 @@ class TestDrift:
 
     def test_never_announced_has_no_drift_line(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(announcement_generation=0, announced_at=None),
             status=make_status(applied_generation=0),
             last_changed_at=None,
@@ -255,6 +278,7 @@ class TestDrift:
     def test_drift_without_announced_at_has_no_age_and_no_alert(self):
         """Pre-#151 rows never stamped announced_at; drift still shows, unaged."""
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(announcement_generation=9, announced_at=None),
             status=make_status(applied_generation=7),
             last_changed_at=None,
@@ -265,26 +289,36 @@ class TestDrift:
         assert ctx["drift"]["alert"] is False
 
 
-class TestClearedLinkPrecedence:
-    def test_cleared_link_falls_back_to_not_watching_despite_stale_row(self):
-        """A WatchedItem deleted in Watcher clears `watcher_item_id` on the next
-        action. If a stale cache row still rendered `watching`, the panel would
-        offer no "Begin Watching" affordance and the operator could not
-        re-provision — a dead end on a live recovery path.
+class TestAnnounceabilityPrecedence:
+    """Announceability is read *before* the status row, not after (archiver#142).
+
+    Inherited from the #151 rule that read `watcher_item_id` first. The reason
+    survives the change of key: a cache row can outlive the fact it describes,
+    and rendering the row first would show `watching` for an item Watcher has
+    already been told to drop — with no affordance to get back.
+    """
+
+    def test_unannounceable_falls_back_to_not_watching_despite_stale_row(self):
+        """Deactivating the binding (or emptying its source_specs) announces a
+        tombstone; Watcher drops the item but the cached row lingers until the
+        status stream says otherwise. Rendering `watching` off that row would
+        leave the operator no way to see the item is no longer covered.
         """
         ctx = build_watch_context(
-            item=make_item(watcher_item_id=None),
+            is_announceable=False,
+            item=make_item(),
             status=make_status(),
             last_changed_at=None,
             now=NOW,
         )
         assert ctx["state"] == "not_watching"
 
-    def test_stale_row_never_reported_as_health_of_a_relinked_item(self):
-        """The same guard stops an old WatchedItem's health leaking onto an item
-        that has since been re-provisioned under a new id."""
+    def test_stale_row_never_reported_as_health_of_an_unannounceable_item(self):
+        """The same guard stops a dropped item's last-known health rendering as
+        if it were current."""
         ctx = build_watch_context(
-            item=make_item(watcher_item_id=None),
+            is_announceable=False,
+            item=make_item(),
             status=make_status(health="error", applied_active=False),
             last_changed_at=None,
             now=NOW,
@@ -292,12 +326,41 @@ class TestClearedLinkPrecedence:
         assert ctx["health"] is None
         assert ctx["applied_active"] is None
 
+    def test_announceable_item_watches_without_any_watcher_link(self):
+        """The regression archiver#142 exists to prevent.
+
+        Under announcements Archiver never learns Watcher's primary key, so the
+        old `watcher_item_id` discriminator would report `not_watching` for
+        *every* item after the cutover — inverting the panel silently rather
+        than failing. Announceability is the key that survives.
+        """
+        ctx = build_watch_context(
+            is_announceable=True,
+            item=make_item(),
+            status=make_status(),
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert ctx["state"] == "watching"
+
+    def test_announceable_without_a_report_is_no_status_not_not_watching(self):
+        """The two states stay distinguishable — #151's contract."""
+        ctx = build_watch_context(
+            is_announceable=True,
+            item=make_item(),
+            status=None,
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert ctx["state"] == "no_status"
+
 
 class TestDriftAhead:
     def test_applied_ahead_of_announced_is_not_in_sync(self):
         """A restored-from-backup registry can sit *behind* the consumer.
         Rendering that as ✓ fails in the silent direction."""
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(announcement_generation=5),
             status=make_status(applied_generation=7),
             last_changed_at=None,
@@ -309,6 +372,7 @@ class TestDriftAhead:
 
     def test_in_sync_is_not_flagged_ahead(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(announcement_generation=7),
             status=make_status(applied_generation=7),
             last_changed_at=None,
@@ -330,6 +394,7 @@ class TestPathologicalInterval:
 
     def test_absurd_interval_yields_no_next_due_instead_of_raising(self):
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(),
             status=make_status(applied_interval="99999999999d"),
             last_changed_at=None,
@@ -343,6 +408,7 @@ class TestPathologicalInterval:
         """Out of range for scheduling is not the same as untrue — the operator
         should still see what Watcher reported."""
         ctx = build_watch_context(
+            is_announceable=True,
             item=make_item(),
             status=make_status(applied_interval="99999999999d"),
             last_changed_at=None,

@@ -5,8 +5,8 @@ template; Alpine.js ``registerWizard`` manages client-side step navigation.
 The final POST submits all fields atomically in a single transaction:
 ``get_or_create_domain`` (inside ``create_info_source``) + ``create_info_source``
 + ``InfoItem`` + ``InfoItemSource`` binding are all flushed before a single
-``session.commit()``. If Watcher is configured, a second commit follows to
-persist ``watcher_item_id`` on the new InfoItem.
+``session.commit()``. That commit's announcement is the whole of the hand-off to
+Watcher — there is no provisioning call (archiver#142).
 
 HTMX partials:
   GET  /dashboard/register/url-check     — domain badge + Case A/B/C card
@@ -27,7 +27,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db_session, get_watcher_client
+from src.api.deps import get_db_session
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
 from src.core.services.registry_announcement import announce_info_item
@@ -40,7 +40,6 @@ from src.core.tools.create_info_source import (
 from src.core.tools.preview_extraction import preview_extraction
 from src.core.url_canonicalization import canonicalize_url
 from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC
-from src.core.watcher_provisioning import provision_on_create
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS, DEFAULT_CADENCE
 from src.dashboard.deps import get_dashboard_user
 
@@ -298,7 +297,6 @@ async def register_submit(
     watch_active: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-    watcher=Depends(get_watcher_client),
 ):
     """Atomic: create_info_source → create InfoItem → bind → 303 to detail."""
     errors: dict[str, str] = {}
@@ -392,9 +390,9 @@ async def register_submit(
     # Create InfoItem. Cadence and pause state are Archiver's own as of the
     # control-plane cutover (archiver#158): they are written here, *before* the
     # announcement, so the item's very first `info.registry` frame carries the
-    # policy the operator actually chose. Previously they rode the provisioning
-    # call as `schedule_config`/`is_active` while `watch_spec` kept its column
-    # default, so the first announcement disagreed with the form.
+    # policy the operator actually chose — which, since archiver#142, is the only
+    # frame there is. Registration no longer provisions anything over HTTP; the
+    # announcement below *is* the registration as far as Watcher is concerned.
     owner_id = user.external_id if hasattr(user, "external_id") else None
     item = InfoItem(
         name=name.strip(),
@@ -422,18 +420,5 @@ async def register_submit(
     await announce_info_item(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)
-
-    # The provisioning push is still live through the dual-run, and it now
-    # forwards the *same* local values rather than a second, independent
-    # opinion — both paths idempotent, which is what makes the flip observable
-    # (design step 7). ARCHIVER_WATCHER_PUSH_ENABLED=0 disables this leg;
-    # archiver#142 deletes it.
-    # Watcher's `default_schedule_config` shape, not the WatchSpec document —
-    # `schema_version` is Archiver's framing and does not belong on the push.
-    interval = item.watch_spec.get("interval")
-    schedule_config = {"interval": interval} if interval else None
-    await provision_on_create(
-        session, watcher, item, src, schedule_config=schedule_config, is_active=item.watch_active
-    )
 
     return RedirectResponse(url=f"/dashboard/info-items/{item.info_item_id}", status_code=303)

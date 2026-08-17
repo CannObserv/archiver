@@ -19,16 +19,23 @@ repeat it.
 
 **GET `/dashboard/`** — summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each linking to its list page. Service health indicator loads via `hx-get="/dashboard/health" hx-trigger="load"` — non-blocking, showing a "checking…" badge until HTMX fires. Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`; columns Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at as `%Y-%m-%d %H:%M`).
 
+The health row is **Archiver + Redis only** since archiver#142 — the absence of a Watcher badge is deliberate, not an omission (see the retired-badge note below).
+
 **GET `/dashboard/health`** — HTMX partial. Returns `<span class="badge badge--success">ok</span>`.
 
-**GET `/dashboard/health/watcher`** — HTMX partial calling `WatcherClient.health_check()` (`GET /health` on Watcher). **GET `/dashboard/health/redis`** — HTMX partial calling `redis.ping()`. Both log a warning on `degraded` and `error`; `not configured` returns before any logging:
+**GET `/dashboard/health/redis`** — HTMX partial calling `redis.ping()`. Logs a warning on `degraded` and `error`; `not configured` returns before any logging:
 
-| Badge | `…/health/watcher` | `…/health/redis` |
-|---|---|---|
-| `badge--success` "ok" | HTTP 200 | ping succeeded |
-| `badge--warning` "degraded" | reachable, non-200 status; `title` contains "Watcher returned {status}" | — |
-| `badge--danger` "error" | network/connect failure; `title` contains the exception message | `title` contains the exception message |
-| `badge--muted` "not configured" | `WATCHER_BASE_URL` unset | `ARCHIVER_REDIS_URL` unset |
+| Badge | `…/health/redis` |
+|---|---|
+| `badge--success` "ok" | ping succeeded |
+| `badge--danger` "error" | network/connect failure; `title` contains the exception message |
+| `badge--muted` "not configured" | `ARCHIVER_REDIS_URL` unset |
+
+**`…/health/watcher` retired with archiver#142.** It pinged Watcher's `/health`
+over the SDK; with no HTTP edge left there is nothing to ping. The successor
+signal is per-item and better: the announced-vs-applied generation drift on the
+InfoItem detail panel measures whether Watcher is *acting on what we published*,
+which is the question the badge was a proxy for.
 
 ## Domain pages (`/dashboard/domains/`)
 
@@ -72,10 +79,12 @@ A **Fetch cadence** `<select.form-select>` (`name="cadence"`,
 server-side from the shared cadence vocabulary (`src/dashboard/cadence.py`:
 Hourly `1h` / Every 6 hours `6h` / Daily `1d` (default) / Weekly `7d`), injected
 as the `cadence_labels` / `default_cadence` Jinja globals. The value is a Watcher
-interval string; on submit the server forwards `{"interval": <value>}` as the
-WatchedItem `default_schedule_config` during provisioning (best-effort,
-post-commit) **only when the value is a recognised option**, otherwise `None` so
-Watcher applies its own default — the handler never fabricates a cadence. The
+interval string; on submit the server writes `{"schema_version": 1, "interval":
+<value>}` to `info_items.watch_spec` **only when the value is a recognised
+option**, otherwise leaving the column default standing, which spells "the
+consumer applies its own default" — the handler never fabricates a cadence. That
+column is what the `info.registry` announcement carries, and since archiver#142
+the announcement is the only path to Watcher. The
 selection is sticky across validation re-renders (`cadence_value` → `selected`
 attribute). Step 4 review shows the label via `cadenceLabel`. The same vocabulary
 backs `_format_cadence` on the InfoItem Watcher section, so recognised cadences
@@ -83,9 +92,10 @@ display with the same friendly labels in both places.
 
 A **Watch active immediately** checkbox (`<input type="checkbox"
 id="reg-watch-active" name="watch_active" value="on"`, `x-model="watchActive"`,
-`x-ref="watchActiveInput"`), checked by default. Checked → the server omits
-`is_active` so Watcher provisions the WatchedItem active; unchecked (the checkbox
-sends nothing) → the server forwards `is_active=False` to provision it **paused**.
+`x-ref="watchActiveInput"`), checked by default. Checked → the server writes
+`watch_active=True`; unchecked (the checkbox sends nothing) → `watch_active=False`,
+announcing the item **paused**. Both are written before the announcement, so the
+item's very first `info.registry` frame carries the policy the operator chose.
 Sticky across validation re-renders (`watch_active_value` → `checked` attribute,
 defaulting to checked via `|default(true)`). Step 4 review shows "Active
 immediately" / "Paused" via `watchActiveLabel`.
@@ -105,42 +115,34 @@ immediately" / "Paused" via `watchActiveLabel`.
 targets are [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) — half this file
 before the split, and only needed when working on that screen.
 
-**The five Watcher action POSTs share a contract.** `begin-watching`,
-`check-now`, `toggle-watch-active`, `watch-cadence`, and `resync-watcher` each
-re-render a Watcher partial and set `HX-Trigger: {"watcherUpdated":{}}`. Their
-forms use `hx-swap="none"`, so the rendered body is discarded and the trigger is
-what refreshes `#watcher-section` — swapping the response in *and* firing the
-trigger would render twice. On failure each adds a `showFlash` error to that
-trigger rather than 500ing (#60, #61).
+**The two Watcher action POSTs share a contract.** `toggle-watch-active` and
+`watch-cadence` each re-render a Watcher partial and set `HX-Trigger:
+{"watcherUpdated":{}}`. Their forms use `hx-swap="none"`, so the rendered body is
+discarded and the trigger is what refreshes `#watcher-section` — swapping the
+response in *and* firing the trigger would render twice. On failure each adds a
+`showFlash` error to that trigger rather than 500ing (#60, #61).
 
-Only the SDK-backed ones (`begin-watching`, `check-now`, `resync-watcher`) can
-observe a deleted WatchedItem: a `WatcherNotFound` (404) NULLs the stale
-`watcher_item_id`, commits, and flashes "no longer watched — it was removed in
-Watcher" so the re-render falls back to `not_watching` and "Begin Watching"
-reappears; **only a confirmed 404 clears the link** — transient failures
-(network/5xx) render `degraded` and retain it (CannObserv/archiver#63). Any other
-failure flashes "Watcher is unavailable". The two control-plane routes
-(`toggle-watch-active`, `watch-cadence`) are local writes as of archiver#158, so
-they never reach the SDK and never reconcile a stale link. The entries below name
-only what each route adds.
+**There were five.** `begin-watching`, `check-now`, and `resync-watcher` were the
+SDK-backed three, and they retired with the SDK in archiver#142 along with the
+stale-link reconcile they existed to trigger (a `WatcherNotFound` used to NULL
+`watcher_item_id` so the panel could offer "Begin Watching" again). Nothing
+replaces them individually, because nothing needs to: reconciliation is
+level-triggered off `info.registry`, so there is no per-item push to retry, no
+remote id to go stale, and no provisioning gesture to repeat. What survives are
+the two *local* writes, which announce and let Watcher converge. The entries below
+name only what each route adds.
 
-**GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the four action POSTs.
+**GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the two action POSTs.
 
-**GET `/dashboard/info-items/{id}/watcher-section`** — the section 3 partial (its anatomy is in [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md)), same local render. Loaded on page init via `hx-trigger="load"` and re-fetched on the `watcherUpdated` body event. The Watcher deeplink lives on the section's `<h2>`, rendered by the detail page rather than by this partial.
+**GET `/dashboard/info-items/{id}/watcher-section`** — the section 3 partial (its anatomy is in [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md)), same local render. Loaded on page init via `hx-trigger="load"` and re-fetched on the `watcherUpdated` body event. The section's `<h2>` is a plain heading — the Watcher deeplink it used to carry retired with archiver#142.
 
-**POST `/dashboard/info-items/{id}/check-now`** — proxies to Watcher `check-now`; the re-render is local state, so a Watcher failure flashes but never degrades the body. A `WatcherConflict` (409 — check-now on a paused item) flashes "resume it first".
-
-**POST `/dashboard/info-items/{id}/begin-watching`** — provisions a WatchedItem for an InfoItem that has no `watcher_item_id`, via `provision_on_create`, which returns a `WatcherSyncOutcome`. `FAILED` (provisioning attempted, Watcher unavailable) flashes an error; `SKIPPED` (no Watcher configured) flashes nothing. With no active primary source to watch, flashes "No primary source to watch — bind one first."
-
-**POST `/dashboard/info-items/{id}/resync-watcher`** — PATCHes the WatchedItem with the current primary URL and specs via `sync_on_source_swap`, which returns a `WatcherSyncOutcome`; `FAILED` flashes "Couldn't re-sync with Watcher — it's unavailable". With no active primary source, flashes "No primary source to re-sync — bind one first." A deleted WatchedItem now surfaces as `NOT_FOUND` from the helper and the route runs the stale-link reconcile itself (#151 — the local re-render can no longer observe the 404), flashing "no longer watched".
-
-**POST `/dashboard/info-items/{id}/toggle-watch-active`** — pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. The re-render still shows applied state, so the button flips only once Watcher reports back on `info.watch-status` — the lag window is the announcement round-trip and stays visible as generation drift. The affordance is gated on `has_active_source`, not on `can_act` — as the cadence editor is: mutating policy on an item that cannot announce live would emit a *tombstone* and burn a generation, reading as drift for an item where nothing is wrong. A failed local write rolls back, flashes "the change was not saved", and renders `degraded` **from the path id** — reading through the rolled-back ORM object would emit IO from the template and raise `MissingGreenlet`.
+**POST `/dashboard/info-items/{id}/toggle-watch-active`** — pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. The re-render still shows applied state, so the button flips only once Watcher reports back on `info.watch-status` — the lag window is the announcement round-trip and stays visible as generation drift. The affordance is gated on `has_active_source` — as the cadence editor is, and as the panel's own state now is (archiver#142): mutating policy on an item that cannot announce live would emit a *tombstone* and burn a generation, reading as drift for an item where nothing is wrong. A failed local write rolls back, flashes "the change was not saved", and renders `degraded` **from the path id** — reading through the rolled-back ORM object would emit IO from the template and raise `MissingGreenlet`.
 
 **POST `/dashboard/info-items/{id}/watch-cadence`** — replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Whole-document replacement, never a merge — a merge would make "delegate" unreachable once an interval had been set, the same reasoning the API's `PUT /watch-spec` gives. Validated against `src/dashboard/cadence.py`'s offered vocabulary, which is deliberately narrower than the schema's `^[0-9]+[smhd]$`; a hand-posted value outside it re-renders with a flash and writes nothing (the API route is the escape hatch for the full grammar).
 
-**POST `/dashboard/info-items/{id}/swap-primary-source`** — inline primary-source swap: creates a new InfoSource (form fields: `url`, `source_specs` JSON array), deactivates the old active binding, binds the new source, best-effort `patch_watched_item` post-commit. 204 + `HX-Redirect` to detail on success; 422 with a `<div id="swap-error">` fragment on validation error. Template: `info_items/_swap_primary.html`.
+**POST `/dashboard/info-items/{id}/swap-primary-source`** — inline primary-source swap: creates a new InfoSource (form fields: `url`, `source_specs` JSON array), deactivates the old active binding, binds the new source, and announces the whole swap as one `info.registry` frame. 204 + `HX-Redirect` to detail on success; 422 with a `<div id="swap-error">` fragment on validation error. Template: `info_items/_swap_primary.html`.
 
-**POST `/dashboard/info-items/{id}/swap-primary-by-id`** — the same swap flow for an existing InfoSource (form field: `info_source_id` ULID). Deactivates the old binding, binds the new source, best-effort Watcher patch. 204 + `HX-Redirect`; a ULID validation error returns 422 with a `<div id="swap-by-id-error">` fragment.
+**POST `/dashboard/info-items/{id}/swap-primary-by-id`** — the same swap flow for an existing InfoSource (form field: `info_source_id` ULID). Deactivates the old binding, binds the new source, announces once. 204 + `HX-Redirect`; a ULID validation error returns 422 with a `<div id="swap-by-id-error">` fragment.
 
 **POST `/dashboard/info-items/{id}/bind-source`** — binds an existing InfoSource (form field: `info_source_id`). 303 to detail; 409 if an active binding already exists. Not linked from the dashboard UI — interactive use goes through swap-primary-by-id.
 

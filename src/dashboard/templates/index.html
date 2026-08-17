@@ -26,22 +26,6 @@
         <span class="badge">checking…</span>
       </span>
     </span>
-    {% if watcher_base_url %}
-    <span>
-      <span class="text-sm text-muted">Watcher</span>&nbsp;
-      <span id="health-watcher"
-            hx-get="/dashboard/health/watcher"
-            hx-trigger="load"
-            hx-swap="innerHTML">
-        <span class="badge">checking…</span>
-      </span>
-    </span>
-    {% else %}
-    <span>
-      <span class="text-sm text-muted">Watcher</span>&nbsp;
-      <span class="badge badge--muted">not configured</span>
-    </span>
-    {% endif %}
     {% if redis_configured %}
     <span>
       <span class="text-sm text-muted">Redis</span>&nbsp;

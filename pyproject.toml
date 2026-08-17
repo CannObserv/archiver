@@ -1,6 +1,6 @@
 [project]
 name = "archiver"
-version = "4.11.0"
+version = "4.13.0"
 description = "Cannabis Observer Archiver service — central registry for Information Items, Information Sources, Source Revisions, and Replication Specifications."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,7 +23,6 @@ dependencies = [
     "co-core[extract]>=0.9.3,<0.10",
     "co-core-aio[bus]>=0.9.3,<0.10",
     "archiver-client",
-    "watcher-client",
 ]
 
 [dependency-groups]
@@ -54,7 +53,7 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = ["skills-vendor/", "clients/python/src/archiver_client/generated/", "clients/watcher-python/src/watcher_client/generated/"]
+exclude = ["skills-vendor/", "clients/python/src/archiver_client/generated/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
@@ -92,4 +91,3 @@ find-links = ["./.wheelhouse"]
 
 [tool.uv.sources]
 archiver-client = { path = "clients/python", editable = true }
-watcher-client = { path = "clients/watcher-python", editable = true }

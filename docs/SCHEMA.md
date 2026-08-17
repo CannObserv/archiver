@@ -6,9 +6,12 @@ see the never-rename rule in `AGENTS.md`.
 ## Entities
 
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
-  `watcher_item_id VARCHAR(50)` — nullable; stores the Watcher-allocated WatchedItem ID once
-  provisioned. `NULL` means not yet watched (use "Begin watching" in the dashboard or wait for
-  the next `create_info_item` call with Watcher configured).
+  `watcher_item_id` — **dropped** (archiver#142). It held *Watcher's* primary key on an *Archiver*
+  row, which is the coupling artifact the decoupling epic set out to remove. Announcements key on
+  Archiver's own `info_item_id` and Watcher reconciles against that, so nothing allocates a
+  WatchedItem id to store. "Watched" is no longer a column at all: it is membership of the
+  **announced set** — an active binding whose source carries non-empty `source_specs`, the same
+  predicate `_collect_full_set` publishes by and the watched-item panel selects its state with.
   `watch_spec JSONB NOT NULL` + `watch_active BOOLEAN NULL` (archiver#150) — **scheduling
   policy, split across two columns on purpose.**
   - **`watch_spec`** is *cadence only*, validated against `src/core/watch_spec_schema/v1.json`
@@ -34,8 +37,9 @@ see the never-rename rule in `AGENTS.md`.
     schema guarantee; nested in an untyped dict it had none. A nested `active` still *validates*
     on the wire while the envelope reports "no opinion" — `v1.json` rejecting the key is the only
     thing that catches it, which is why it is closed with `additionalProperties: false`.
-  - Real values arrive from `scripts/import_watch_specs.py`, which reads Watcher over the SDK and
-    is re-run immediately before the announcement producer's first publish.
+  - Real values arrived via a one-time import from Watcher (archiver#150); since the
+    control-plane cutover (archiver#158) the dashboard writes them directly and they are
+    authoritative. The import script and the SDK it read through are gone (archiver#142).
   - **Boundary:** a WatchSpec is *per-item cadence*. `content.fetch-policy` (cannobserv#285) is
     *per-host spacing* — different key, stream, owner, and consumer. They are not the same knob.
 
@@ -75,9 +79,10 @@ see the never-rename rule in `AGENTS.md`.
   precisely so that absence-from-a-full-set is *not* the delete signal. The route cascades the
   item's bindings and rep-spec assignments (both FKs are `ON DELETE CASCADE`); the InfoSource
   and its SourceRevisions survive, since the physical layer is shared and `source_revisions`
-  keys on `info_source_id`. **Until watcher#254 consumes tombstones, nothing tells Watcher** —
-  remove the orphaned WatchedItem there by hand. The route logs a WARNING naming both IDs when the
-  deleted item had a `watcher_item_id`, so the pending cleanup shows up in journald.
+  keys on `info_source_id`. The deletion **is** announced as a tombstone on `info.registry`, but
+  watcher#254 does not document tombstone handling, so an orphaned WatchedItem may still need
+  removing there by hand. The route logs a WARNING naming the InfoItem when the
+  deleted item had a `watch_status` row, so the pending cleanup shows up in journald.
 
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`

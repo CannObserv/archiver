@@ -84,18 +84,6 @@ src/core/                      Domain logic
   database.py                  Lazy async engine + async_sessionmaker singletons
                                (get_database_url / get_engine /
                                get_session_factory / reset_engine)
-  watch_spec_import.py         Pure mapping from a WatchedItem's cadence + active
-                               state onto the two registry columns. Owns no
-                               session and no transaction; the loop and the
-                               commits live in scripts/import_watch_specs.py
-  watcher_provisioning.py      Best-effort Watcher provisioning helpers, called
-                               post-commit from routes: provision_on_create,
-                               sync_on_source_swap, sync_on_spec_update. Never
-                               propagate — they swallow + log, and are no-ops when
-                               WATCHER_BASE_URL / WATCHER_API_KEY are unset. The
-                               first two return a WatcherSyncOutcome so the
-                               dashboard can flash CONTRACT_ERROR (stale SDK)
-                               separately from a transport FAILED
   log_config.json              uvicorn --log-config dictConfig — routes
                                uvicorn/.access/.error through build_json_formatter
                                so uvicorn lines match app logs (archiver#122);
@@ -114,21 +102,6 @@ src/core/                      Domain logic
 clients/python/                archiver_client SDK v5.x (generated + hand-written wrappers).
                                Version lives in clients/python/pyproject.toml and
                                bumps only when the SDK surface changes
-clients/watcher-python/        watcher_client SDK — Archiver adapter for the Watcher service
-                               (httpx-based; wraps provision, patch, get, check-now, list-revisions)
-                               Regen: bash clients/watcher-python/scripts/regen.sh
-                               watcher-openapi.json: committed OpenAPI snapshot
-                               (contract-of-record). CI `client-drift` job fails
-                               if generated/ != regen-from-snapshot (catches the
-                               #66 stale-client drift). Fix hand-edits: python
-                               scripts/check_client_drift.py --write watcher; on
-                               a real Watcher change re-run regen.sh (refreshes
-                               snapshot + tree). The `client-drift` gate is
-                               consistency-only; a daily on-VM systemd timer
-                               (Layer C, #70) — check_watcher_live_drift.py +
-                               watcher_live_drift_pr.sh — detects the snapshot
-                               going stale vs LIVE Watcher (localhost:8000) and
-                               opens a regen PR. See deploy/watcher-live-drift.*.
 alembic/                       Migration root (information schema scoped within the archiver database)
 tests/                         Mirrors src/ structure; tests/integration/ for cross-component flows
                                (HTTP + DB + bus); tests/api/ for single-route HTTP behavior;
@@ -148,12 +121,6 @@ scripts/                       sync_wheelhouse.py (mirror co-core wheels from th
                                check_client_drift.py (regen vendored clients from
                                committed OpenAPI snapshots; diff vs generated/;
                                CI gate, see client-drift job) +
-                               check_watcher_live_drift.py (Layer C #70: detect
-                               snapshot stale vs LIVE Watcher) +
-                               watcher_live_drift_pr.sh (timer remediation:
-                               regen + open PR on live drift) +
-                               ff_deploy_clone.sh (timer ExecStartPre: best-effort
-                               fast-forward clean main to origin/main) +
                                check_changelog_on_push.sh (pre-push guard;
                                wired via .pre-commit-config.yaml) +
                                check_changelog_lib.sh (the shared trigger-path
@@ -171,8 +138,6 @@ scripts/                       sync_wheelhouse.py (mirror co-core wheels from th
                                production DB — see "Server Lifecycle")
 deploy/                        README.md (install instructions) + systemd units:
                                archiver.service +
-                               watcher-live-drift.{service,timer} (Layer C #70
-                               daily live-drift check) +
                                redis-server.dropin.conf (the broker cap Archiver
                                owns — see the archiver#128 lockstep invariant)
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,

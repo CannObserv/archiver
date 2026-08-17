@@ -18,6 +18,32 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.13.0 (2026-08-17)
+
+[service] **`info_items.watcher_item_id` dropped** (archiver#142). Migration `b3f61a20d7c4`. No API surface change — the column was never serialized.
+
+The last structural trace of the Watcher HTTP edge. It stored *Watcher's* primary key on an *Archiver* row, which is precisely the coupling the #137 epic set out to remove; announcements key on Archiver's own `info_item_id` and Watcher reconciles against that.
+
+Its two remaining readers went first, in v4.12.0: the panel's state key became announceability, and the delete route's orphan warning re-keyed onto the `watch_status` row — evidence *from Watcher* that it is scheduling the item, rather than a stale local pointer. That re-key also fixed an under-fire the old column had hidden: `watcher_item_id` was only ever set by the retired HTTP push, so every post-cutover item deleted silently.
+
+**`downgrade()` restores the shape, not the values.** Watcher's ids were recorded nowhere else and the only reader that could re-fetch them is deleted, so a downgrade yields an all-NULL column — which is what a post-cutover registry would hold regardless.
+
+## v4.12.0 (2026-08-17)
+
+[service] **The Archiver→Watcher HTTP edge is gone: SDK, provisioning push, live-drift timer, and the client-drift watcher half all deleted** (archiver#142, step 4 of the #137 epic). No migration; no change to any request or response shape.
+
+The trigger regex fires on `src/api/routes/`, but the OpenAPI snapshot is byte-identical: what left those two route modules was a `Depends(get_watcher_client)` and the post-commit calls behind it, neither of which was ever part of the wire contract. The entry is here because the *cluster* contract changed — Archiver now reaches Watcher on `info.registry` and nowhere else.
+
+**What was deleted.** `clients/watcher-python/` (the vendored SDK and its committed `watcher-openapi.json`), `src/core/watcher_provisioning.py` (`provision_on_create`, `sync_on_source_swap`, `sync_on_spec_update`), the three SDK-backed dashboard routes (`begin-watching`, `check-now`, `resync-watcher`), the `/dashboard/health/watcher` badge, the per-item Watcher deeplink, the `watcher-live-drift` systemd timer with its three scripts, and the one-time watch-spec import tooling now that #150's import has landed. Five environment variables go with them — `WATCHER_BASE_URL`, `WATCHER_PUBLIC_BASE_URL`, `WATCHER_API_KEY`, `ARCHIVER_WATCHER_PUSH_ENABLED`, `ARCHIVER_ALLOW_WATCH_IMPORT` — and should be deleted from `/etc/archiver/.env`.
+
+**The panel's state key moved, which is the one behavioural change.** `build_watch_context` chose between `watching` / `no_status` / `not_watching` by reading `info_items.watcher_item_id` first. Announcements never populate that column — provisioning was its only writer — so leaving the key in place would have reported `not_watching` for **every** item after this change: an inversion rather than a failure, and silent. The successor is announceability (`is_announceable`), an active binding whose source carries non-empty `source_specs` — the same predicate `_collect_full_set` publishes by, and the one the pause and cadence affordances were already gated on. "Watched" now means "in the announced set", which is the whole of the contract with Watcher. The `no_status` / `not_watching` distinction is preserved, as archiver#151 requires.
+
+**"Begin Watching" is not replaced, deliberately.** Watching stopped being an action and became a consequence of registry state, so the `not_watching` panel states what closes the gap — bind an active source with extraction specs — instead of offering a button that could no longer do anything. The `_clear_stale_watcher_link` self-heal and the 409-adoption recovery go the same way: both existed to notice that Archiver's copy of *Watcher's* primary key had diverged from reality, and level-triggered reconciliation against Archiver's own `info_item_id` leaves no such key to diverge. Confirmed rather than assumed, as the issue asked: after this change they have zero callers.
+
+**Operational consequence, recorded in `deploy/README.md`.** Item-level pause is now Archiver's dashboard and only Archiver's dashboard; a Watcher-local pause is reverted on the next announcement. Host-level break-glass is `domain_suspended`, untouched by reconciliation because it is mechanism rather than policy. Archiver is therefore a single point of operational dependency for stopping one item — the accepted price of a single control plane.
+
+`info_items.watcher_item_id` itself survives this release as a vestigial column, dropped separately once the last legacy rows are confirmed uninteresting.
+
 ## v4.11.0 (2026-08-15)
 
 [service] **The dashboard control plane is local: pause/resume and cadence are writes to `info_items` plus an announcement, not calls to Watcher** (archiver#158, steps 6–7 of the #137 epic). No migration; the columns landed in #150.

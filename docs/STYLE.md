@@ -172,7 +172,7 @@ Rules:
 </div>
 ```
 
-The server-side action endpoint (e.g. `POST /check-now`) sends `HX-Trigger: {"watcherUpdated":{}}` in the response header. HTMX dispatches `watcherUpdated` on the triggering element; it bubbles to `body`, which causes the section to re-fetch. Use this to keep multiple independent sections in sync without coupling their endpoints.
+The server-side action endpoint (e.g. `POST /toggle-watch-active`) sends `HX-Trigger: {"watcherUpdated":{}}` in the response header. HTMX dispatches `watcherUpdated` on the triggering element; it bubbles to `body`, which causes the section to re-fetch. Use this to keep multiple independent sections in sync without coupling their endpoints.
 
 ### HTMX inline form error pattern
 

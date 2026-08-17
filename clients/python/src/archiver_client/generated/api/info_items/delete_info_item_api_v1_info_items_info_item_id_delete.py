@@ -113,11 +113,11 @@ def sync_detailed(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap until watcher#254 consumes tombstones.** Nothing tells Watcher.
-    The Watcher SDK has no delete, and adding one would be a new HTTP push in the
-    direction this epic is deleting; the announcement is the designed channel. So
-    until the consumer is live, a deleted InfoItem's WatchedItem must be removed
-    in Watcher by hand. See ``docs/SCHEMA.md``.
+    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
+    is announced on ``info.registry`` — that is the designed channel, and there is
+    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
+    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
+    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
 
     Args:
         info_item_id (str):
@@ -171,11 +171,11 @@ def sync(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap until watcher#254 consumes tombstones.** Nothing tells Watcher.
-    The Watcher SDK has no delete, and adding one would be a new HTTP push in the
-    direction this epic is deleting; the announcement is the designed channel. So
-    until the consumer is live, a deleted InfoItem's WatchedItem must be removed
-    in Watcher by hand. See ``docs/SCHEMA.md``.
+    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
+    is announced on ``info.registry`` — that is the designed channel, and there is
+    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
+    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
+    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
 
     Args:
         info_item_id (str):
@@ -224,11 +224,11 @@ async def asyncio_detailed(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap until watcher#254 consumes tombstones.** Nothing tells Watcher.
-    The Watcher SDK has no delete, and adding one would be a new HTTP push in the
-    direction this epic is deleting; the announcement is the designed channel. So
-    until the consumer is live, a deleted InfoItem's WatchedItem must be removed
-    in Watcher by hand. See ``docs/SCHEMA.md``.
+    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
+    is announced on ``info.registry`` — that is the designed channel, and there is
+    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
+    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
+    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
 
     Args:
         info_item_id (str):
@@ -280,11 +280,11 @@ async def asyncio(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap until watcher#254 consumes tombstones.** Nothing tells Watcher.
-    The Watcher SDK has no delete, and adding one would be a new HTTP push in the
-    direction this epic is deleting; the announcement is the designed channel. So
-    until the consumer is live, a deleted InfoItem's WatchedItem must be removed
-    in Watcher by hand. See ``docs/SCHEMA.md``.
+    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
+    is announced on ``info.registry`` — that is the designed channel, and there is
+    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
+    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
+    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
 
     Args:
         info_item_id (str):

@@ -79,7 +79,10 @@ os.environ.pop("DATABASE_URL", None)
 # 2026-08-13 a suite run with /etc/archiver/.env sourced provisioned 108 real
 # WatchedItems into production watcher — the lifespan read WATCHER_BASE_URL and
 # built a real client, and every provisioning route's POST went to the live
-# service (all 201; watch_error notification flood until hand-cleaned). The
+# service (all 201; watch_error notification flood until hand-cleaned). That
+# specific route is closed by construction since archiver#142 (no SDK, no
+# outbound HTTP to Watcher at all), so the two WATCHER_* names have left this
+# list — the incident stays because the *reasoning* generalises to what remains. The
 # Redis vars ride along because the lifespan starts the outbox publisher and
 # registry-snapshot tasks against ARCHIVER_REDIS_URL — the production broker,
 # where a live consumer now reconciles info.registry; only the savepoint
@@ -91,8 +94,6 @@ os.environ.pop("DATABASE_URL", None)
 # never restored. A test that needs one of these sets it explicitly
 # (monkeypatch.setenv), which restores itself on teardown.
 _OUTBOUND_SERVICE_ENV_VARS = (
-    "WATCHER_BASE_URL",
-    "WATCHER_API_KEY",
     "ARCHIVER_REDIS_URL",
     "ARCHIVER_DEV_REDIS_URL",
     "ARCHIVER_BUS_CONSUMER",

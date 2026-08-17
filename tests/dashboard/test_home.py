@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.api.deps import get_redis_client, get_watcher_client
+from src.api.deps import get_redis_client
 from src.api.main import app
 from src.core.models import (
     InfoItem,
@@ -132,48 +132,6 @@ async def test_home_recent_activity_shows_item_name_when_bound(client, session):
 
 
 @pytest.mark.asyncio
-async def test_health_watcher_ok(client):
-    mock_watcher = MagicMock()
-    mock_watcher.health_check = AsyncMock(return_value=200)
-    app.dependency_overrides[get_watcher_client] = lambda: mock_watcher
-    r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
-    assert r.status_code == 200
-    assert "badge--success" in r.text
-
-
-@pytest.mark.asyncio
-async def test_health_watcher_non200_shows_warning_badge_with_status(client):
-    mock_watcher = MagicMock()
-    mock_watcher.health_check = AsyncMock(return_value=503)
-    app.dependency_overrides[get_watcher_client] = lambda: mock_watcher
-    r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
-    assert r.status_code == 200
-    assert "badge--warning" in r.text
-    assert 'title="Watcher returned 503"' in r.text
-    assert ">degraded<" in r.text
-    assert "badge--danger" not in r.text
-
-
-@pytest.mark.asyncio
-async def test_health_watcher_network_error_shows_danger_badge(client):
-    mock_watcher = MagicMock()
-    mock_watcher.health_check = AsyncMock(side_effect=Exception("connection refused"))
-    app.dependency_overrides[get_watcher_client] = lambda: mock_watcher
-    r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
-    assert r.status_code == 200
-    assert "badge--danger" in r.text
-    assert "connection refused" in r.text
-
-
-@pytest.mark.asyncio
-async def test_health_watcher_not_configured(client):
-    app.dependency_overrides[get_watcher_client] = lambda: None
-    r = await client.get("/dashboard/health/watcher", headers=_HEADERS)
-    assert r.status_code == 200
-    assert "not configured" in r.text.lower()
-
-
-@pytest.mark.asyncio
 async def test_health_redis_ok(client):
     mock_redis = MagicMock()
     mock_redis.ping = AsyncMock(return_value=True)
@@ -200,12 +158,6 @@ async def test_health_redis_not_configured(client):
     r = await client.get("/dashboard/health/redis", headers=_HEADERS)
     assert r.status_code == 200
     assert "not configured" in r.text.lower()
-
-
-@pytest.mark.asyncio
-async def test_health_watcher_unauthenticated_redirects(client):
-    r = await client.get("/dashboard/health/watcher", follow_redirects=False)
-    assert r.status_code == 307
 
 
 @pytest.mark.asyncio
