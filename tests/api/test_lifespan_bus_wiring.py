@@ -21,6 +21,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from co_core.pure.adapters.bus.streams import CONTENT_REPLICATE
 from fakeredis import aioredis as fakeredis_aio
 
 from src.api.main import app, lifespan
@@ -174,3 +175,29 @@ async def test_watch_status_failure_leaves_other_bus_tasks_running(
             assert app.state.publisher_task is not None
             assert not app.state.publisher_task.done()
             assert app.state.watch_status_task is None
+
+
+@pytest.mark.asyncio
+async def test_command_stream_is_carved_out_of_the_trim_loop(
+    bus_env, fake_redis_from_url, test_engine
+):
+    """content.replicate must never be XTRIMmed (archiver#169).
+
+    The drain loop caps every topic it publishes to, which is right for a fact
+    stream Archiver owns and wrong for a *command* stream with a competing
+    consumer group: trimming it deletes commands nobody delivered and orphans
+    the PEL entries pointing at them. Retention on a command stream belongs to
+    the consumer's progress, not the producer's cap.
+    """
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+
+    with patch("src.core.changes.publisher.run", side_effect=_capture):
+        async with lifespan(app):
+            pass
+
+    assert CONTENT_REPLICATE in captured["no_trim_topics"]
+    assert "info.registry" in captured["no_trim_topics"]

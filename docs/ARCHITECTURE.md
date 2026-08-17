@@ -19,7 +19,7 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,
-                               changes_outbox)
+                               changes_outbox, replication_command)
   source_spec_schema/          SourceSpec JSON Schema v1 + validator
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)

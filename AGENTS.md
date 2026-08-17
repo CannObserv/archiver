@@ -224,6 +224,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - `ChangesOutboxRow` (`changes_outbox`) — pending bus event awaiting publication
 - `RevokedInfoItem` (`revoked_info_items`) — deleted InfoItem's identity + final generation; feeds the snapshot's tombstone republish
 - `WatchStatus` (`watch_status`) — local LWW cache of `info.watch-status`; what the watched-item panel renders from. Reported by Watcher, never locally verified
+- `ReplicationCommand` (`replication_commands`) — one `content.replicate` occasion: the MUST-2 mapping, the reaper's queue, and where a *skipped* replication is recorded rather than lost
 - `BusTailCursor` (`bus_tail_cursors`) — resume point per groupless tail, so a restart is a delta not a `0-0` replay
 
 Per-entity contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The

@@ -222,17 +222,21 @@ async def test_service_leaves_the_outbox_row_pending_in_the_caller_transaction(
     depend on the row and its outbox event landing in *one* caller-controlled
     transaction — a commit inside the service would split them.
 
-    Asserted via ``session.new``, which is the property the docstring actually
-    describes. An earlier version checked ``session.new or session.dirty or
-    session.identity_map``; ``identity_map`` is non-empty after any ``get``, so
-    the disjunction held whether or not the service committed (CR round 1,
-    finding 11).
+    Asserted on the *transaction*, not on ``session.new``. An earlier version
+    checked ``session.new or session.dirty or session.identity_map``;
+    ``identity_map`` is non-empty after any ``get``, so the disjunction held
+    whether or not the service committed (CR round 1, finding 11). ``session.new``
+    alone was right until replication issuance (archiver#169) put a SELECT after
+    the outbox ``add``, whose autoflush moves the row out of ``new`` — a flush
+    inside the caller's transaction, which is not what this test is about.
     """
     await record_revision(session, _facts(info_source.info_source_id))
 
-    pending = [obj for obj in session.new if isinstance(obj, ChangesOutboxRow)]
-    assert len(pending) == 1, "the outbox row must still be unflushed and uncommitted"
-    assert session.in_transaction()
+    assert session.in_transaction(), "the service must not commit"
+    assert await _outbox_count(session) == 1
+    # Uncommitted: rolling the caller's transaction back takes the row with it.
+    await session.rollback()
+    assert await _outbox_count(session) == 0
 
 
 @pytest.mark.asyncio

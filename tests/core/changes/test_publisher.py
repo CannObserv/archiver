@@ -1047,6 +1047,60 @@ def _fetch_policy_state(host: str = "example.test") -> dict:
 
 
 # One case per union member: (stored outbox payload, event_type, expected wire key).
+def _content_replicate_command(command_id: str = "cmd-r") -> dict:
+    """A full ``content_replicate`` command payload (cannobserv#303).
+
+    What archiver#169 writes to the outbox. ``destination`` is *rendered* — the
+    RepSpec's path_template never travels (the issuer contract's T3).
+    """
+    return {
+        "schema_version": 1,
+        "event_type": "content_replicate",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "blob_uri": "file:///var/lib/replicator/blobs/aa/bb/" + "e" * 64 + ".bin",
+        "media_type": "text/html",
+        "provider": "gcs",
+        "credentials_alias": "gcs-cannobserv-prod",
+        "destination": "archive/wa-lcb/" + "e" * 64 + ".html",
+        "object_options": {"storage_class": "STANDARD"},
+        "info_item_rep_spec_id": "01JQ0000000000000000000002",
+        "source_revision_id": "01JQ0000000000000000000003",
+        "info_source_id": _INFO_SOURCE_ID,
+    }
+
+
+def _replication_complete_event(command_id: str = "cmd-rc") -> dict:
+    """A full ``replication_complete`` payload — the fact archiver#170 consumes."""
+    return {
+        "schema_version": 1,
+        "event_type": "replication_complete",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "public_url": "https://storage.googleapis.com/co-archive/archive/wa-lcb/x.html",
+        "info_item_rep_spec_id": "01JQ0000000000000000000002",
+        "source_revision_id": "01JQ0000000000000000000003",
+        "info_source_id": _INFO_SOURCE_ID,
+    }
+
+
+def _replication_failed_event(command_id: str = "cmd-rf") -> dict:
+    """A full ``replication_failed`` payload. ``reason`` is producer-owned and opaque."""
+    return {
+        "schema_version": 1,
+        "event_type": "replication_failed",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "info_item_rep_spec_id": "01JQ0000000000000000000002",
+        "source_revision_id": "01JQ0000000000000000000003",
+        "info_source_id": _INFO_SOURCE_ID,
+        "reason": "blob_expired",
+        "terminal": True,
+        "attempts": 1,
+        "detail": "blob is past its horizon",
+    }
+
+
 # The single source for both the parametrize below and the completeness guard that
 # pins it to co-core's dispatch table (CR round 1, finding 3).
 _UNION_CASES = [
@@ -1080,6 +1134,17 @@ _UNION_CASES = [
         f"item-r:{_OCCURRED_AT}",
     ),
     (_watch_status_state("item-w"), "watch_status", f"item-w:{_OCCURRED_AT}"),
+    # The replicate trio (cannobserv#303). The command keys on command_id alone,
+    # exactly as content_fetch does; both outcome facts key on
+    # command_id:occurred_at, because one command legitimately emits more than
+    # one — T4's no-op row re-emits a success for an artifact already written.
+    (_content_replicate_command("cmd-r"), "content_replicate", "cmd-r"),
+    (
+        _replication_complete_event("cmd-rc"),
+        "replication_complete",
+        f"cmd-rc:{_OCCURRED_AT}",
+    ),
+    (_replication_failed_event("cmd-rf"), "replication_failed", f"cmd-rf:{_OCCURRED_AT}"),
 ]
 
 

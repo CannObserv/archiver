@@ -18,6 +18,22 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.15.0 (2026-08-17)
+
+[service] **Archiver issues `content.replicate`** (archiver#169, step 5 of the #137 epic). Migration `39f21d31fdec` creates `information.replication_commands`. No HTTP surface change; no SDK change.
+
+On a genuinely new SourceRevision, every active `info_item_rep_specs` assignment reachable through an *active* binding gets one command — never one command carrying a list, because a `command_id` identifies an occasion and N provider writes fail, retry and complete independently. The command row and the outbox row are written in the revision insert's own transaction, so "revision recorded" and "replication requested" cannot diverge; the idempotent no-op issues nothing, since a redelivery is the same occasion.
+
+`command_id` is minted fresh per occasion and never derived. A `command_id` derived from `(rep_spec_id, info_item_id)` breaks the second legitimate re-replication in a TTL-bounded, intermittent way — the trap the `content.fetch` issuer contract documents at length.
+
+**Skips are rows, not log lines.** An assignment that cannot be issued records `state="skipped"` with a local reason — `blob_absent`, `blob_expired_locally`, `unrenderable`, `destination_collision`, `unsupported_command`. Absent the row, the dashboard renders a replication that silently did not happen as "not yet" forever. The vocabulary is deliberately separate from Replicator's producer-owned failure tokens: these are conditions Archiver decided about *before* publishing.
+
+**`content.replicate` is exempt from the producer's XTRIM loop.** The drain loop caps every topic it publishes to, which is right for a fact stream Archiver owns and wrong for a command stream with a competing consumer group: trimming it deletes commands nobody delivered and orphans the PEL entries naming them.
+
+Pin bump: `co-core[extract]` / `co-core-aio[bus]` to `>=0.9.4,<0.10`, for the replicate contracts (`ContentReplicateCommandEmit`, `ReplicationCompleteEvent`, `ReplicationFailedEvent`).
+
+**Not yet closed:** nothing consumes `content.artifacts`, so `public_url` still has no automated writer and no reaper exists — archiver#170. An expired blob is surfaced, never repaired: Archiver is not a `content.fetch` issuer and archiver#142 leaves no call to make.
+
 ## v4.14.0 (2026-08-17)
 
 [service] **RepSpec `path_template` gains a contract, and `rep_fields` is checked for *renderability* at assignment** (archiver#168, step 5 groundwork for #143). No migration; no SDK change.

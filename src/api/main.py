@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from importlib.metadata import version as _package_version
 
+from co_core.pure.adapters.bus.streams import CONTENT_REPLICATE
 from co_core_aio.bus import AsyncBusPublisher
 from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import APIRouter, Depends, FastAPI
@@ -144,7 +145,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     stop_event=stop_event,
                     redis_client=redis_client,
                     stream_maxlen=stream_maxlen,
-                    no_trim_topics=frozenset({registry_topic}),
+                    # info.registry carries retention on each publish; and a
+                    # *command* stream must never be capped by its producer
+                    # (archiver#169) — an XTRIM on content.replicate deletes
+                    # commands Replicator's group has not delivered and orphans
+                    # the PEL entries naming them. Retention there is the
+                    # consumer's progress, not the producer's cap.
+                    no_trim_topics=frozenset({registry_topic, CONTENT_REPLICATE}),
                     topic_maxlen={registry_topic: registry_maxlen},
                 )
             )

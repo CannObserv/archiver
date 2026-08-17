@@ -10,6 +10,7 @@ from src.core.models.info_item_rep_spec import InfoItemRepSpec
 from src.core.models.info_item_source import InfoItemSource
 from src.core.models.info_source import InfoSource
 from src.core.models.rep_spec import RepSpec
+from src.core.models.replication_command import ReplicationCommand
 from src.core.models.revoked_info_item import RevokedInfoItem
 from src.core.models.source_revision import SourceRevision
 from src.core.models.watch_status import BusTailCursor, WatchStatus
@@ -26,6 +27,7 @@ __all__ = [
     "InfoItemSource",
     "InfoSource",
     "RepSpec",
+    "ReplicationCommand",
     "RevokedInfoItem",
     "SourceRevision",
     "TimestampMixin",

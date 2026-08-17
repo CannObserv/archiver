@@ -194,6 +194,24 @@ see the never-rename rule in `AGENTS.md`.
   design. Rows are kept forever; the table grows only with deletions. Same shape and reason as
   Watcher's consumer-side table (watcher#254): every key keeps a left-hand side for
   apply-iff-greater whether or not it still has a row.
+- **`ReplicationCommand`** (`replication_commands`) — one `content.replicate` occasion and what
+  became of it (archiver#169). Written in the *same transaction* as the revision insert and the
+  outbox row, which is what makes "revision recorded" and "replication requested" inseparable.
+  - **`command_id` is Text, minted fresh per occasion** — never derived from `(rep_spec_id,
+    info_item_id)` or anything else stable (MUST-1). A derived id breaks the second legitimate
+    re-replication in a TTL-bounded, intermittent way. Text rather than a ULID column because it
+    is a wire value Replicator echoes back verbatim; issuance mints ULIDs, but the column does not
+    require one.
+  - **`info_item_rep_spec_id` is the target**, not `(info_item_id, rep_spec_id)`: that pair has no
+    uniqueness, only a partial index over active rows, so it stops identifying a target once a spec
+    is deactivated and later reassigned.
+  - **States**: `requested` → `complete` | `failed` | `abandoned` (archiver#170 writes the last
+    three), plus `skipped` — terminal on arrival, nothing went on the wire. Skip reasons are
+    **local** (`blob_absent`, `blob_expired_locally`, `unrenderable`, `destination_collision`,
+    `unsupported_command`) and deliberately distinct from Replicator's producer-owned failure
+    tokens: these are conditions Archiver decided about before publishing.
+  - A skip is a *row*, not a log line. Absent one, the dashboard renders a replication that
+    silently did not happen as "not yet" forever (archiver#171).
 - **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
 - **`WatchStatus`** (`watch_status`) — local LWW cache of `info.watch-status`, one row per
   InfoItem (archiver#151). What the watched-item panel renders from, with zero SDK calls. Every
