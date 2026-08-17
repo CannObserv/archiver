@@ -14,7 +14,10 @@
   <span class="text-muted text-sm">Not watching — bind an active source with extraction specs to announce this item.</span>
 
 {% elif state == "degraded" %}
-  <p class="text-muted text-sm" style="margin:0;">Watcher unavailable{% if error_message %} — {{ error_message }}{% endif %}.</p>
+  {# `degraded` is unreachable from anything Watcher does — since archiver#142
+     there is no outbound call to fail. The only way in is a local write failing,
+     so the copy must not send the operator to check Watcher (CR round 1, finding 1). #}
+  <p class="text-muted text-sm" style="margin:0;">Couldn't update this item{% if error_message %} — {{ error_message }}{% endif %}.</p>
 
 {% elif state == "no_status" %}
   <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;">

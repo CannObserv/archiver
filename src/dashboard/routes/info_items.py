@@ -930,15 +930,18 @@ def _format_spec_summary(source_specs: list) -> str:
     return " · ".join(parts)
 
 
-_POLICY_WRITE_FAILED_MSG = "couldn't save the watch policy"
+_POLICY_WRITE_FAILED_MSG = "the watch policy write didn't commit"
 _POLICY_WRITE_FAILED_FLASH = "Couldn't update the watch state — the change was not saved."
 
 
 def _status_degraded(request: Request, item_id: str, error_message: str) -> HTMLResponse:
     """Render the _watcher_status.html partial in the degraded state from an id alone.
 
-    Takes ``item_id`` (not an ``InfoItem``) so it is safe to call after a failed
-    reconcile, when the ORM object may have expired attributes.
+    Takes ``item_id`` (not an ``InfoItem``) because its callers reach it from a
+    rolled-back transaction, where the ORM object's attributes are expired and
+    re-reading them would emit IO from the template and raise ``MissingGreenlet``.
+    (The original caller was the stale-link reconcile, deleted in archiver#142;
+    the constraint outlived it — the local-write rollback path has it too.)
     """
     return _templates.TemplateResponse(
         request,

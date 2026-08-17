@@ -733,7 +733,7 @@ async def delete_info_item(
     # Known blind spot, in the quiet direction: an item announced but not yet
     # reported on (the panel's `no_status` window) deletes silently. Narrow, and
     # preferable to warning on every delete.
-    watcher_reported = (await session.get(WatchStatus, ULID.from_str(info_item_id))) is not None
+    watcher_reported = (await session.get(WatchStatus, item.info_item_id)) is not None
     # Tombstone BEFORE the delete: the generation bump needs the row, and the
     # RevokedInfoItem record is what the snapshot republishes once it is gone.
     await announce_info_item_revoked(session, item)

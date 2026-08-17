@@ -54,8 +54,10 @@ from:body"` for the event-driven auto-refresh. Both Watcher partials take the
 context keys `state`, `item_id`, `watch` (the `build_watch_context` dict —
 health, ages, cadence, next-due, drift), `has_active_source`, and
 `error_message` (degraded only), and both render the badges and toggle
-described in section 3. `not_configured` is gone: an unconfigured Watcher
-client only hides the action buttons (#151).
+described in section 3. There is no `not_configured` state and no Watcher client
+to configure: #151 made the render local, #142 removed the client outright.
+`degraded` is likewise not a Watcher condition — the only path into it is a
+*local* write failing, which is why its copy names the write and not the service.
 
 `_swap_primary.html` is a full-width card — no max-width, so it spans the
 bindings table — titled "Swap primary source" or "Add primary source" depending
