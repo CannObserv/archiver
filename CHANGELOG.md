@@ -18,6 +18,24 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.14.0 (2026-08-17)
+
+[service] **RepSpec `path_template` gains a contract, and `rep_fields` is checked for *renderability* at assignment** (archiver#168, step 5 groundwork for #143). No migration; no SDK change.
+
+Archiver renders the `content.replicate` destination — Replicator receives strings and never interpolates (the issuer contract's T3). That makes the template half of a RepSpec document Archiver's problem to get right *before* it freezes, because `document` is immutable once assigned (#83).
+
+Three rules now gate `POST`/`PATCH /api/v1/rep-specs`, checked by the same parser the renderer uses so a document that validates is one that renders:
+
+- Every `{namespace.key}` drawn from the `rep_fields` bag must appear in `required_fields` — the two used to be able to diverge silently.
+- `source_revision.*` (`id`, `date`, `fingerprint`, `captured_at`) is supplied per replication occasion and is **rejected** in `required_fields`; no bag can hold it.
+- The template must carry `{source_revision.id}` or `{source_revision.fingerprint}`. A date-discriminated path renders one key for two revisions captured the same day, which returns from Replicator as `destination_conflict` — a conflict token for what is really a path-design error.
+
+`POST /api/v1/info-items` gains one 422 case: `rep_fields` that satisfies `required_fields` but cannot produce a path segment (`"WA LCB"` is present, non-null, and not a segment) is refused with `code="rep_fields_unrenderable"`. Assignment is the last synchronous moment to fix either side. The same pre-flight runs in `assign_rep_spec`.
+
+**Breaking for existing documents in principle, no-op in practice:** a template that validated before can 422 now. The production registry holds zero RepSpecs, which is exactly why the tightening lands now rather than after the first document freezes.
+
+**Bag values carry no path structure.** A value must match `[A-Za-z0-9._-]`, so `"co/active-licenses"` is refused where `"co-active-licenses"` is not — structure belongs in `path_template`, which is the record of how an artifact's URL was produced. Values are refused rather than slugified: the rendered path becomes a citable `public_url`, and two values that sanitize alike would collide.
+
 ## v4.13.0 (2026-08-17)
 
 [service] **`info_items.watcher_item_id` dropped** (archiver#142). Migration `b3f61a20d7c4`. No API surface change — the column was never serialized.

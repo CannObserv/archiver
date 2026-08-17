@@ -10,6 +10,7 @@ from src.core.tools.assign_rep_spec import (
     AssignmentError,
     InfoItemNotFoundError,
     RepFieldsIncompleteError,
+    RepFieldsUnrenderableError,
     RepSpecNotFoundError,
     assign_rep_spec,
 )
@@ -23,8 +24,12 @@ def _make_item(rep_fields: dict | None = None) -> InfoItem:
     return InfoItem(name="test-item", rep_fields=rep_fields or {})
 
 
-def _make_spec(required_fields: list[str] | None = None) -> RepSpec:
-    doc = {"required_fields": required_fields or []}
+def _make_spec(
+    required_fields: list[str] | None = None, path_template: str | None = None
+) -> RepSpec:
+    doc: dict = {"required_fields": required_fields or []}
+    if path_template is not None:
+        doc["path_template"] = path_template
     return RepSpec(provider="test", name="test-spec", schema_version=1, document=doc)
 
 
@@ -151,3 +156,47 @@ async def test_assignment_error_is_base_class(session):
     assert issubclass(InfoItemNotFoundError, AssignmentError)
     assert issubclass(RepSpecNotFoundError, AssignmentError)
     assert issubclass(RepFieldsIncompleteError, AssignmentError)
+
+
+@pytest.mark.asyncio
+async def test_assignment_refused_when_a_bag_value_cannot_be_a_path_segment(session):
+    """Present and non-null satisfies required_fields; it does not make a path (CR #5).
+
+    Assignment is the last synchronous moment to fix it — the document freezes
+    here (#83), and afterwards the failure is a bus fact on a service that
+    cannot repair it.
+    """
+    item = _make_item(rep_fields={"org": {"name": "WA LCB"}})
+    spec = _make_spec(
+        required_fields=["org.name"],
+        path_template="archive/{org.name}/{source_revision.id}.html",
+    )
+    session.add(item)
+    session.add(spec)
+    await session.flush()
+
+    with pytest.raises(RepFieldsUnrenderableError):
+        await assign_rep_spec(session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id)
+
+
+@pytest.mark.asyncio
+async def test_assignment_allowed_when_the_bag_renders(session):
+    item = _make_item(rep_fields={"org": {"name": "wa-lcb"}})
+    spec = _make_spec(
+        required_fields=["org.name"],
+        path_template="archive/{org.name}/{source_revision.id}.html",
+    )
+    session.add(item)
+    session.add(spec)
+    await session.flush()
+
+    assignment = await assign_rep_spec(
+        session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id
+    )
+    assert assignment.deactivated_at is None
+
+
+@pytest.mark.asyncio
+async def test_unrenderable_error_is_an_assignment_error(session):
+    """Callers that catch the family keep catching it."""
+    assert issubclass(RepFieldsUnrenderableError, AssignmentError)

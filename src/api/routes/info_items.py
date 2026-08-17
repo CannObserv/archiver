@@ -40,6 +40,8 @@ from src.core.models import (
     WatchStatus,
 )
 from src.core.rep_fields_schema.validator import validate_rep_fields_against_spec
+from src.core.replication.destination import probe_destination
+from src.core.replication.errors import ReplicationRenderError
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_info_item_revoked,
@@ -132,6 +134,23 @@ async def create_info_item(
                     ],
                     data={"rep_spec_id": str(assignment.rep_spec_id)},
                 )
+
+        # Presence satisfied; can it render? This path inserts InfoItemRepSpec
+        # rows directly rather than calling assign_rep_spec, so the pre-flight is
+        # repeated here rather than inherited (archiver#168 CR #5). Refusing now
+        # keeps the fix synchronous: the document freezes on assignment (#83).
+        try:
+            probe_destination(rep_spec.document or {}, body.rep_fields)
+        except ReplicationRenderError as e:
+            raise_422(
+                f"rep_fields cannot render RepSpec {assignment.rep_spec_id!r} path_template",
+                kind="domain",
+                errors=[
+                    FieldError(path="/rep_fields", message=str(e), code="rep_fields_unrenderable")
+                ],
+                data={"rep_spec_id": str(assignment.rep_spec_id)},
+                source_exc=e,
+            )
 
     # --- 2. Create InfoSource (if requested) BEFORE inserting the InfoItem ---
     info_source: InfoSource | None = None
