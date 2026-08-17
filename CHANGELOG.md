@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.13.0 (2026-08-17)
+
+[service] **`info_items.watcher_item_id` dropped** (archiver#142). Migration `b3f61a20d7c4`. No API surface change — the column was never serialized.
+
+The last structural trace of the Watcher HTTP edge. It stored *Watcher's* primary key on an *Archiver* row, which is precisely the coupling the #137 epic set out to remove; announcements key on Archiver's own `info_item_id` and Watcher reconciles against that.
+
+Its two remaining readers went first, in v4.12.0: the panel's state key became announceability, and the delete route's orphan warning re-keyed onto the `watch_status` row — evidence *from Watcher* that it is scheduling the item, rather than a stale local pointer. That re-key also fixed an under-fire the old column had hidden: `watcher_item_id` was only ever set by the retired HTTP push, so every post-cutover item deleted silently.
+
+**`downgrade()` restores the shape, not the values.** Watcher's ids were recorded nowhere else and the only reader that could re-fetch them is deleted, so a downgrade yields an all-NULL column — which is what a post-cutover registry would hold regardless.
+
 ## v4.12.0 (2026-08-17)
 
 [service] **The Archiver→Watcher HTTP edge is gone: SDK, provisioning push, live-drift timer, and the client-drift watcher half all deleted** (archiver#142, step 4 of the #137 epic). No migration; no change to any request or response shape.

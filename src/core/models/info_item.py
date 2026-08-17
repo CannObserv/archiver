@@ -43,7 +43,6 @@ class InfoItem(Base, TimestampMixin):
     ``active`` on the announcement envelope beside ``revoked`` rather than
     inside the untyped policy dict.
     """
-    watcher_item_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     announcement_generation: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default="0", default=0
     )

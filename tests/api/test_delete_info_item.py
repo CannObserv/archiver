@@ -28,7 +28,7 @@ from sqlalchemy import text
 from ulid import ULID
 
 import src.api.routes.info_items as info_items_routes
-from src.core.models import InfoItem, InfoItemRepSpec, RepSpec, SourceRevision
+from src.core.models import InfoItem, InfoItemRepSpec, RepSpec, SourceRevision, WatchStatus
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -228,21 +228,30 @@ async def test_delete_with_an_unknown_api_key_is_401(client, session):
 
 
 @pytest.mark.asyncio
-async def test_delete_warns_when_the_item_still_has_a_watcher_link(client, session, monkeypatch):
-    """An orphaned WatchedItem gets a log line, not just a docs paragraph.
+async def test_delete_warns_when_watcher_was_scheduling_the_item(client, session, monkeypatch):
+    """A possibly-orphaned WatchedItem gets a log line, not just a docs paragraph.
 
-    Nothing tells Watcher until watcher#254 consumes tombstones, so the deleted
-    item's WatchedItem keeps fetching until someone removes it by hand. Prose in
-    SCHEMA.md is the right *record* of an accepted gap; it is not a signal the
-    operator who caused it will see (CR round 1, finding 2).
+    Nothing is confirmed to consume the tombstone, so the deleted item may keep
+    being fetched until someone removes it in Watcher by hand. Prose in SCHEMA.md
+    is the right *record* of an accepted gap; it is not a signal the operator who
+    caused it will see (CR round 1, finding 2).
+
+    Keyed on a `watch_status` row since archiver#142 — evidence *from Watcher*
+    that it is scheduling this item. The old `watcher_item_id` key only covered
+    items provisioned over the retired HTTP push, so every post-cutover item
+    slipped through the warning it most needed.
 
     Spies the module logger rather than using caplog — ``configure_logging()``
-    replaces ``root.handlers``, which defeats pytest's capture handler. Same
-    reason as ``tests/core/test_watcher_provisioning.py``.
+    replaces ``root.handlers``, which defeats pytest's capture handler.
     """
     item_id = await _make_item(client)
-    item = await session.get(InfoItem, ULID.from_str(item_id))
-    item.watcher_item_id = "watched-123"
+    session.add(
+        WatchStatus(
+            info_item_id=ULID.from_str(item_id),
+            applied_generation=1,
+            occurred_at=datetime.now(UTC),
+        )
+    )
     await session.commit()
 
     spy = MagicMock()
@@ -252,13 +261,12 @@ async def test_delete_warns_when_the_item_still_has_a_watcher_link(client, sessi
     assert deleted.status_code == 204
 
     spy.assert_called_once()
-    assert spy.call_args.kwargs["extra"]["watcher_item_id"] == "watched-123"
     assert spy.call_args.kwargs["extra"]["info_item_id"] == item_id
 
 
 @pytest.mark.asyncio
-async def test_delete_of_an_unwatched_item_is_quiet(client, monkeypatch):
-    """No warning when there is no orphan — otherwise the signal is noise."""
+async def test_delete_is_quiet_when_watcher_never_reported(client, monkeypatch):
+    """No warning when Watcher was not scheduling it — otherwise it is noise."""
     item_id = await _make_item(client)
 
     spy = MagicMock()

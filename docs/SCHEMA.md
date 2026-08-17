@@ -6,12 +6,12 @@ see the never-rename rule in `AGENTS.md`.
 ## Entities
 
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
-  `watcher_item_id VARCHAR(50)` — nullable; stores the Watcher-allocated WatchedItem ID from the
-  provisioning era. **Vestigial since archiver#142** — nothing writes it (provisioning was the only
-  writer) and nothing reads it for behaviour; announcements key on Archiver's own `info_item_id`,
-  which Watcher reconciles against. "Watched" is no longer this column: it is membership of the
-  announced set — an active binding whose source carries non-empty `source_specs`. The column is
-  dropped once the last legacy row is confirmed uninteresting.
+  `watcher_item_id` — **dropped** (archiver#142). It held *Watcher's* primary key on an *Archiver*
+  row, which is the coupling artifact the decoupling epic set out to remove. Announcements key on
+  Archiver's own `info_item_id` and Watcher reconciles against that, so nothing allocates a
+  WatchedItem id to store. "Watched" is no longer a column at all: it is membership of the
+  **announced set** — an active binding whose source carries non-empty `source_specs`, the same
+  predicate `_collect_full_set` publishes by and the watched-item panel selects its state with.
   `watch_spec JSONB NOT NULL` + `watch_active BOOLEAN NULL` (archiver#150) — **scheduling
   policy, split across two columns on purpose.**
   - **`watch_spec`** is *cadence only*, validated against `src/core/watch_spec_schema/v1.json`
@@ -79,9 +79,10 @@ see the never-rename rule in `AGENTS.md`.
   precisely so that absence-from-a-full-set is *not* the delete signal. The route cascades the
   item's bindings and rep-spec assignments (both FKs are `ON DELETE CASCADE`); the InfoSource
   and its SourceRevisions survive, since the physical layer is shared and `source_revisions`
-  keys on `info_source_id`. **Until watcher#254 consumes tombstones, nothing tells Watcher** —
-  remove the orphaned WatchedItem there by hand. The route logs a WARNING naming both IDs when the
-  deleted item had a `watcher_item_id`, so the pending cleanup shows up in journald.
+  keys on `info_source_id`. The deletion **is** announced as a tombstone on `info.registry`, but
+  watcher#254 does not document tombstone handling, so an orphaned WatchedItem may still need
+  removing there by hand. The route logs a WARNING naming the InfoItem when the
+  deleted item had a `watch_status` row, so the pending cleanup shows up in journald.
 
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
