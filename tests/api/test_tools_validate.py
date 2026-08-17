@@ -80,7 +80,7 @@ async def test_validate_source_spec_requires_api_key(client):
 VALID_REP_SPEC = {
     "provider": "gcs",
     "credentials_alias": "default",
-    "path_template": "gs://bucket/{gcs.object_name}",
+    "path_template": "bucket/{gcs.object_name}/{source_revision.id}",
     "required_fields": ["gcs.object_name"],
 }
 
@@ -125,7 +125,7 @@ async def test_validate_rep_spec_requires_api_key(client):
 # POST /api/v1/tools/validate-rep-fields
 # ---------------------------------------------------------------------------
 
-VALID_BAG = {"gcs": {"object_name": "co/active-licenses"}}
+VALID_BAG = {"gcs": {"object_name": "co-active-licenses"}}
 
 
 @pytest.mark.asyncio

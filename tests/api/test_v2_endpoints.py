@@ -33,7 +33,7 @@ async def info_item(session) -> InfoItem:
         name="test-item",
         description=None,
         owner=None,
-        rep_fields={"gcs": {"object_name": "co/test"}},
+        rep_fields={"gcs": {"object_name": "co-test"}},
     )
     session.add(item)
     await session.flush()
@@ -68,7 +68,7 @@ async def rep_spec(session) -> RepSpec:
         document={
             "provider": "gcs",
             "credentials_alias": "default",
-            "path_template": "gs://bucket/{gcs.object_name}",
+            "path_template": "bucket/{gcs.object_name}/{source_revision.id}",
             "required_fields": ["gcs.object_name"],
         },
     )

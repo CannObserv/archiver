@@ -19,7 +19,7 @@ _NEW_URL = "/dashboard/rep-specs/new"
 _GCS_DOC = {
     "provider": "gcs",
     "credentials_alias": "default",
-    "path_template": "items/{info_item_id}.json",
+    "path_template": "items/{source_revision.id}.json",
     "required_fields": [],
 }
 
@@ -28,7 +28,7 @@ def _make_rep_spec(name: str = "Test Spec", provider: str = "gcs") -> RepSpec:
     doc = {
         "provider": provider,
         "credentials_alias": "default",
-        "path_template": "items/{info_item_id}.json",
+        "path_template": "items/{source_revision.id}.json",
         "required_fields": [],
     }
     return RepSpec(provider=provider, name=name, schema_version=1, document=doc)
@@ -69,7 +69,7 @@ async def test_list_provider_filter(client, session):
     gdrive_doc = {
         "provider": "gdrive",
         "credentials_alias": "default",
-        "path_template": "{info_item_id}",
+        "path_template": "{source_revision.id}",
         "required_fields": [],
     }
     session.add(
@@ -543,7 +543,7 @@ async def test_update_document_on_draft_persists(client, session):
     await session.flush()
     await session.commit()
 
-    new_doc = dict(_GCS_DOC, path_template="corrected/{info_item_id}.json")
+    new_doc = dict(_GCS_DOC, path_template="corrected/{source_revision.id}.json")
     r = await client.post(
         _DOC_URL.format(spec.rep_spec_id),
         headers=_HEADERS,
@@ -553,7 +553,7 @@ async def test_update_document_on_draft_persists(client, session):
     assert r.status_code == 303, r.text
 
     await session.refresh(spec)
-    assert spec.document["path_template"] == "corrected/{info_item_id}.json"
+    assert spec.document["path_template"] == "corrected/{source_revision.id}.json"
     assert spec.updated_at is not None
 
 
@@ -564,7 +564,7 @@ async def test_update_document_htmx_swaps_card_with_toast(client, session):
     await session.flush()
     await session.commit()
 
-    new_doc = dict(_GCS_DOC, path_template="swapped/{info_item_id}.json")
+    new_doc = dict(_GCS_DOC, path_template="swapped/{source_revision.id}.json")
     r = await client.post(
         _DOC_URL.format(spec.rep_spec_id),
         headers={**_HEADERS, "HX-Request": "true"},

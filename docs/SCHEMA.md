@@ -160,6 +160,27 @@ see the never-rename rule in `AGENTS.md`.
     changes.
 
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
+  **`path_template` contract** (archiver#168) — three rules the envelope schema cannot express,
+  checked by `src/core/replication/template.py` from the *same parser* the renderer uses, so a
+  document that validates is one that renders:
+  - Placeholders are `{namespace.key}`. A bag placeholder must appear in `required_fields` —
+    the list is hand-maintained, not derived, so the two are checked against each other before
+    the document can freeze.
+  - `source_revision.*` (`id`, `date`, `fingerprint`, `captured_at`) is the **occasion**
+    namespace: supplied per replication by `src.core.replication.destination.RenderOccasion`,
+    and therefore **rejected** in `required_fields` — no `rep_fields` bag can hold it.
+  - The template must carry `{source_revision.id}` or `{source_revision.fingerprint}` (the
+    issuer contract's R2). `date` is not a discriminator: two revisions captured the same day
+    would render one destination, which returns as `destination_conflict` — a conflict token
+    for what is really a path-design error.
+
+  Rendering refuses rather than rewrites: a bag value outside `[A-Za-z0-9._-]` is an error
+  naming the field, because the rendered path becomes a citable `public_url` and two values
+  that sanitize alike would collide. The rendered string is then checked against the consumer's
+  own guards (absolute, traversal, backslash, drive qualifier, control characters, untrimmed or
+  empty segments — before *and* after percent-decoding), so a path Archiver can refuse is never
+  published.
+
   **Tiered mutability** (#83): `name` always editable; `document` editable only while the RepSpec is a
   *draft* — zero `info_item_rep_specs` rows, active **or** deactivated; `provider` frozen always.
   `updated_at` is nullable and never backfilled (NULL = never edited). An assigned spec is frozen

@@ -24,6 +24,23 @@ src/core/                      Domain logic
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
   rep_fields_schema/           rep_fields meta-schema + validator
+  replication/                 The RepSpec path contract and the destination
+                               renderer (archiver#168). template.py holds the
+                               ONE placeholder parser — used by the create/update
+                               gate (via rep_spec_schema/validator.py) and by the
+                               renderer, so a document that validates is one that
+                               renders; it also owns the occasion namespace
+                               (source_revision.*, reserved out of
+                               required_fields) and the R2 discriminator rule.
+                               destination.py renders, refuses (segment charset,
+                               T3 path guards, naive datetimes), pre-flights a
+                               fan-out set for colliding paths, and probes
+                               renderability at assignment time. errors.py is the
+                               single base both raise under, so archiver#169 can
+                               record a skip by catching one class. Archiver
+                               renders because the issuer contract's T3 says so
+                               — Replicator receives strings and never
+                               interpolates. Do not write a second renderer.
   watch_spec_schema/           WatchSpec (cadence policy) v1 + validator. Cadence
                                only — pause state is info_items.watch_active
   changes/                     Two background asyncio tasks and their shared

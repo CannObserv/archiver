@@ -15,8 +15,8 @@ def _gcs_doc() -> dict:
     return {
         "provider": "gcs",
         "credentials_alias": "gcs-prod",
-        "path_template": "archive/{info_item.slug}/{source_revision.date}.html",
-        "required_fields": ["info_item.slug", "source_revision.date"],
+        "path_template": "archive/{info_item.slug}/{source_revision.fingerprint}.html",
+        "required_fields": ["info_item.slug"],
         "object_options": {"storage_class": "STANDARD"},
     }
 

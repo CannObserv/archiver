@@ -48,7 +48,7 @@ def _make_rep_spec(name: str = "Test Spec") -> RepSpec:
             "version": 1,
             "credentials_alias": "default",
             "bucket": "test-bucket",
-            "path_template": "items/{info_item_id}.json",
+            "path_template": "items/{source_revision.id}.json",
             "required_fields": [],
         },
     )
