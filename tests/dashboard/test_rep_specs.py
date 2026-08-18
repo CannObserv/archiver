@@ -9,7 +9,10 @@ from ulid import ULID
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
+    InfoSource,
+    ReplicationCommand,
     RepSpec,
+    SourceRevision,
 )
 
 _HEADERS = {"X-ExeDev-UserID": "ext-repspecs", "X-ExeDev-Email": "repspecs@example.com"}
@@ -733,3 +736,75 @@ async def test_htmx_document_error_still_moves_focus(client, session):
     assert r.status_code == 200
     assert "rep-spec-document-heading" in r.text
     assert "getElementById" in r.text
+
+
+# ---------------------------------------------------------------------------
+# Replication state on the RepSpec's assignment table (archiver#171)
+# ---------------------------------------------------------------------------
+#
+# The same question the InfoItem hub answers, asked from the other side: a spec
+# owner looking at "which items does this replicate?" needs to know which of
+# them actually did.
+
+
+@pytest.mark.asyncio
+async def test_detail_renders_the_latest_occasion_per_assignment(client, session):
+    spec = _make_rep_spec("Occasion Spec")
+    source = InfoSource(url="https://example.com/occasion", source_specs=[])
+    item = InfoItem(name="Occasion Item")
+    session.add_all([spec, source, item])
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    revision = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:" + "a" * 64,
+        captured_at=datetime(2026, 4, 2, tzinfo=UTC),
+    )
+    session.add_all([assignment, revision])
+    await session.flush()
+    session.add(
+        ReplicationCommand(
+            command_id="cmd-repspec-view",
+            info_item_rep_spec_id=assignment.id,
+            source_revision_id=revision.source_revision_id,
+            info_source_id=source.info_source_id,
+            provider="gcs",
+            credentials_alias="default",
+            media_type="text/html",
+            state="skipped",
+            reason="blob_absent",
+            closed_at=datetime(2026, 4, 3, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "cmd-repspec-view" in r.text
+    assert "blob_absent" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_says_when_an_assignment_has_never_replicated(client, session):
+    spec = _make_rep_spec("Untouched Spec")
+    item = InfoItem(name="Untouched Item")
+    session.add_all([spec, item])
+    await session.flush()
+    session.add(
+        InfoItemRepSpec(
+            info_item_id=item.info_item_id,
+            rep_spec_id=spec.rep_spec_id,
+            activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "Never replicated" in r.text

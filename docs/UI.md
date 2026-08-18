@@ -134,6 +134,28 @@ Used for every external URL (source URLs, RepSpec `public_url`, http(s)
 intentionally exempt — the carve-out currently has no instance, its one example
 having been the InfoItem "Watcher ↗" `<h2>` that retired with archiver#142.
 
+**Replication state affordance.** `replication_state(command)` from
+`_macros.html` — the latest `replication_commands` row for one assignment,
+rendered as a state badge (`complete`→success, `requested`→info, `failed`→danger,
+`abandoned`→warning, `skipped`→muted) plus the `reason` token, the `command_id`,
+and the close/issue timestamp. Used by both assignment tables — the InfoItem hub
+and the RepSpec detail — because "which items does this spec replicate?" and
+"has this item replicated?" are the same question from two sides.
+
+Two rules it encodes, both from archiver#171:
+
+- **A refusal is a state, not an absence.** Issuance persists a `skipped` row for
+  every assignment it declines to publish for, and this macro renders it. A
+  refusal that lives only in a log line shows as "not replicated yet" forever —
+  indistinguishable from one still in flight, and permanent.
+- **No occasion at all is its own state**, rendered "Never replicated" rather
+  than an em-dash. The same rule the reported-state panels below hold to.
+
+`reason` is shown **verbatim** — a producer-owned token for a failure, an
+Archiver-local one for a skip, from deliberately disjoint vocabularies. It is the
+string an operator will grep the logs and CannObserv/replicator for, so
+prettifying it costs more than it reads.
+
 **Reported state from another service.** Where a panel renders state some other
 service reports over the bus rather than state Archiver owns — the InfoItem
 watched-item panel is the reference (archiver#151, inventoried in

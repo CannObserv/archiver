@@ -88,6 +88,11 @@ src/core/                      Domain logic
                                "row and event in one transaction" is the outbox
                                guarantee. source_revision.py is why the bus and
                                HTTP paths cannot emit divergent payloads.
+                               replication_status.py is the one read-only member:
+                               a projection of replication_commands for the
+                               dashboard's assignment tables (archiver#171), so
+                               a public_url with an automated writer can say
+                               which occasion wrote it.
   spec_match.py                Compares an observed spec_fingerprint against the
                                InfoSource's own source_specs via co-core's shared
                                derivation (cannobserv#309). Every uncertain branch

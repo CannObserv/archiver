@@ -77,6 +77,42 @@ SKIP_UNSUPPORTED_COMMAND = "unsupported_command"
 DEFAULT_MEDIA_TYPE = "application/octet-stream"
 
 
+class ManualIssuanceError(Exception):
+    """A manual re-issue could not even be *attempted* (archiver#171).
+
+    Distinct from a skip on purpose. A skip is an occasion the registry
+    considered and declined, and it leaves a row; these are conditions under
+    which there is no occasion to consider — no live assignment, no bound source,
+    no content. Writing a skip row for them would invent an occasion that never
+    existed.
+    """
+
+    def __init__(self, assignment_id, message: str) -> None:
+        self.assignment_id = assignment_id
+        super().__init__(message)
+
+
+class AssignmentNotActiveError(ManualIssuanceError):
+    """The assignment has been deactivated."""
+
+    def __init__(self, assignment_id) -> None:
+        super().__init__(assignment_id, f"assignment {assignment_id} is not active")
+
+
+class NoActiveSourceError(ManualIssuanceError):
+    """The InfoItem has no active InfoSource binding to replicate from."""
+
+    def __init__(self, assignment_id) -> None:
+        super().__init__(assignment_id, f"assignment {assignment_id} has no active source binding")
+
+
+class NoRevisionError(ManualIssuanceError):
+    """The bound source has never been captured, so there are no bytes to copy."""
+
+    def __init__(self, assignment_id) -> None:
+        super().__init__(assignment_id, f"assignment {assignment_id} has no revision to replicate")
+
+
 @dataclass(frozen=True, slots=True)
 class _Target:
     """One active assignment, with everything a command needs."""
@@ -104,16 +140,99 @@ async def issue_for_revision(
             extra={"source_revision_id": str(revision.source_revision_id)},
         )
         return []
+    return _issue_targets(session, revision, targets, requested={t.assignment.id for t in targets})
+
+
+async def issue_for_assignment(
+    session: AsyncSession, assignment: InfoItemRepSpec
+) -> ReplicationCommand | None:
+    """Issue one occasion for *assignment* against its item's latest revision.
+
+    The operator's way out of a real gap (archiver#171): a new assignment on
+    *stable* content never replicates, because nothing issues until the next
+    revision arrives and for a stable InfoItem that may be never.
+
+    Deliberately the **same pipeline** as the automatic path rather than a second
+    one — blob guard, render, and the full collision domain. Narrowing the
+    collision domain to the single requested assignment would let the manual
+    button publish exactly what the automatic path refuses.
+
+    Returns ``None`` when the occasion was refused; the skip row is persisted, so
+    the refusal is something the dashboard can render rather than a log line.
+    Does not commit.
+
+    Raises:
+        AssignmentNotActiveError: the assignment has been deactivated.
+        NoActiveSourceError: the InfoItem has no active InfoSource binding.
+        NoRevisionError: the bound source has never been captured.
+    """
+    if assignment.deactivated_at is not None:
+        raise AssignmentNotActiveError(assignment.id)
+
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == assignment.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if binding is None:
+        raise NoActiveSourceError(assignment.id)
+
+    revision = (
+        await session.execute(
+            select(SourceRevision)
+            .where(SourceRevision.info_source_id == binding.info_source_id)
+            .order_by(SourceRevision.captured_at.desc(), SourceRevision.source_revision_id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if revision is None:
+        raise NoRevisionError(assignment.id)
+
+    targets = await _active_targets(session, revision)
+    issued = _issue_targets(session, revision, targets, requested={assignment.id})
+    logger.info(
+        "Manual replication requested",
+        extra={
+            "info_item_rep_spec_id": str(assignment.id),
+            "source_revision_id": str(revision.source_revision_id),
+            "issued": bool(issued),
+        },
+    )
+    return issued[0] if issued else None
+
+
+def _issue_targets(
+    session: AsyncSession,
+    revision: SourceRevision,
+    targets: list[_Target],
+    *,
+    requested: set,
+) -> list[ReplicationCommand]:
+    """Run the issuance pipeline over *targets*, publishing only for *requested*.
+
+    ``targets`` is the **collision domain** — every active assignment reachable
+    from this revision — while ``requested`` is what the caller actually wants
+    issued. They are the same set for the automatic path and differ only for a
+    manual re-issue, which must still see a sibling's destination to know its own
+    is ambiguous. Nothing outside ``requested`` is written, skips included: a
+    sibling that cannot render is not this occasion's business.
+    """
+    wanted = [t for t in targets if t.assignment.id in requested]
+    if not wanted:
+        return []
 
     blob_skip = _blob_skip_reason(revision)
     if blob_skip is not None:
-        _record_skips(session, revision, targets, blob_skip)
+        _record_skips(session, revision, wanted, blob_skip)
         logger.warning(
             "Revision cannot be replicated: %s",
             blob_skip,
             extra={
                 "source_revision_id": str(revision.source_revision_id),
-                "assignments": len(targets),
+                "assignments": len(wanted),
             },
         )
         return []
@@ -134,7 +253,8 @@ async def issue_for_revision(
                 occasion=occasion,
             )
         except ReplicationRenderError as e:
-            _record_skips(session, revision, [target], SKIP_UNRENDERABLE, detail=str(e))
+            if target.assignment.id in requested:
+                _record_skips(session, revision, [target], SKIP_UNRENDERABLE, detail=str(e))
             logger.warning(
                 "Assignment cannot render a destination; skipping replication",
                 extra={
@@ -158,7 +278,11 @@ async def issue_for_revision(
         _record_skips(
             session,
             revision,
-            [t for t in renderable if str(t.assignment.id) in colliding_keys],
+            [
+                t
+                for t in renderable
+                if str(t.assignment.id) in colliding_keys and t.assignment.id in requested
+            ],
             SKIP_DESTINATION_COLLISION,
             detail="; ".join(
                 f"{destination!r} rendered by {', '.join(keys)}"
@@ -175,7 +299,7 @@ async def issue_for_revision(
 
     issued: list[ReplicationCommand] = []
     for target in renderable:
-        if str(target.assignment.id) in colliding_keys:
+        if target.assignment.id not in requested or str(target.assignment.id) in colliding_keys:
             continue
         command = _issue_one(session, revision, target, rendered[str(target.assignment.id)])
         if command is not None:

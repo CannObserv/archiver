@@ -18,6 +18,20 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.17.0 (2026-08-18)
+
+[service] **The hand-edited `public_url` is retired; the assignment tables render replication state** (archiver#171, closing step 5 of the #137 epic). No migration; no `/api/v1` surface change; no SDK change.
+
+**`PATCH /dashboard/info-items/{id}/rep-spec-assignments/{aid}/public-url` is removed.** #170 gave `info_item_rep_specs.public_url` an automated writer, which turned the inline edit from a convenience into a bug: whatever an author typed, the next occasion silently clobbered. #143's rule is *do not ship a column that silently populates* — the field is now read-only, with the provenance an author actually needed beside it (which `command_id` wrote it, and when).
+
+**Both assignment tables render the latest occasion** — the InfoItem hub and the RepSpec detail, because "which items does this spec replicate?" and "has this item replicated?" are one question from two sides. The `replication_state` macro shows the state badge, the `reason` verbatim, the `command_id`, and the close time. It renders the `skipped` rows for the reason #169 persists them at all: a refusal that lives only in a log line reads as "not replicated yet" forever, indistinguishable from one still in flight. And "no occasion at all" is its own state — "Never replicated", not an em-dash.
+
+**`POST /dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** closes a real gap: a new assignment on *stable* content never replicates, because issuance is triggered by a new revision and a stable InfoItem may never produce one. It runs the **same pipeline** as the automatic path — blob guard, render, and the full collision domain across every active assignment on the revision — rather than a second one that could drift. Narrowing the collision domain to the single requested assignment would let the button publish exactly what the automatic path refuses.
+
+A refusal there is a **200**, not an error: the service records the skip with its reason, and the re-rendered row shows it. 422 is reserved for the conditions under which there is no occasion to consider at all — the assignment is deactivated, the item has no active source binding, or the bound source has never been captured. Those write no skip row, because a skip is an occasion the registry considered and these are not.
+
+Also: `_rep_spec_assignments.html` declared five columns while `_rep_spec_row.html` rendered four (provider was a badge inside the Spec cell). Provider is now its own column and the counts agree.
+
 ## v4.16.0 (2026-08-18)
 
 [service] **The replication loop closes: `public_url` acquires an automated writer** (archiver#170, step 5 of the #137 epic). No migration; no HTTP surface change; no SDK change.

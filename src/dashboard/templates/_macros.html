@@ -32,3 +32,39 @@
    aria-label="Open {{ url }} in new tab">{{ label }} ↗</a>
 {%- endif -%}
 {%- endmacro %}
+
+{# Replication state of one assignment (archiver#171). Takes the latest
+   ReplicationCommand for it, or a falsy value when the registry has never
+   considered an occasion.
+
+   Every state here is an *occasion the registry recorded*, skips included: #169
+   persists a row for each assignment it declined to publish for, because a
+   refusal that lives only in a log line renders as "not replicated yet" forever
+   — indistinguishable from one still in flight, and permanent.
+
+   `reason` is a producer-owned token for a failure and an Archiver-local one for
+   a skip, deliberately from disjoint vocabularies (see replication_issuance).
+   Shown verbatim rather than prettified: this is the string an operator will
+   grep the logs and CannObserv/replicator for. #}
+{% set _REPLICATION_BADGE = {
+     "complete": "success",
+     "requested": "info",
+     "failed": "danger",
+     "abandoned": "warning",
+     "skipped": "muted",
+   } %}
+{% macro replication_state(command) -%}
+{%- if not command -%}
+<span class="badge badge--muted">Never replicated</span>
+{%- else -%}
+<span class="badge badge--{{ _REPLICATION_BADGE.get(command.state, 'neutral') }}">{{ command.state }}</span>
+{%- if command.reason %}
+<span class="text-muted text-xs" style="margin-left:var(--space-1);"
+      {% if command.detail %}title="{{ command.detail }}"{% endif %}>{{ command.reason }}</span>
+{%- endif %}
+<div class="text-muted text-xs" style="margin-top:var(--space-1);word-break:break-all;">
+  <code>{{ command.command_id }}</code>
+  · {% if command.closed_at %}{{ command.closed_at.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}issued {{ command.issued_at.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %}
+</div>
+{%- endif -%}
+{%- endmacro %}

@@ -1,7 +1,10 @@
 {# Active Assignments section — included by rep_specs/detail.html and returned
    standalone by DELETE /dashboard/rep-specs/{id}/assignments/{aid} so the count
-   and empty-state re-render in one HTMX swap (#80). Self-imports the macro. #}
-{% from "_macros.html" import open_button %}
+   and empty-state re-render in one HTMX swap (#80). Self-imports the macros.
+   `public_url` is read-only here as it is on the InfoItem hub — #170 gave the
+   column an automated writer, so the useful thing to show beside it is which
+   occasion wrote it (archiver#171). #}
+{% from "_macros.html" import open_button, replication_state %}
 <div id="rep-spec-assignments" style="margin-top:var(--space-3);">
   <h2 id="rep-spec-assignments-heading" tabindex="-1">Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
   {% if assignments %}
@@ -10,6 +13,7 @@
       <tr>
         <th class="data-table__th">Information Item</th>
         <th class="data-table__th">Activated</th>
+        <th class="data-table__th">Replication</th>
         <th class="data-table__th">Public URL</th>
         <th class="data-table__th">Actions</th>
       </tr>
@@ -27,6 +31,9 @@
         </td>
         <td class="data-table__cell data-table__cell--muted">
           {{ assignment.activated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+        </td>
+        <td class="data-table__cell">
+          {{ replication_state(latest_commands.get(assignment.id)) }}
         </td>
         <td class="data-table__cell">
           {% if assignment.public_url %}

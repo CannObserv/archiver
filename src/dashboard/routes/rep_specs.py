@@ -15,8 +15,10 @@ from src.api.deps import get_db_session
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
+    ReplicationCommand,
     RepSpec,
 )
+from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.create_rep_spec import InvalidRepSpecError, create_rep_spec
 from src.core.tools.update_rep_spec import (
     InvalidRepSpecError as UpdateInvalidRepSpecError,
@@ -51,8 +53,13 @@ async def _resolve_spec(spec_id: str, session: AsyncSession) -> RepSpec:
 
 async def _load_active_assignments(
     spec: RepSpec, session: AsyncSession
-) -> tuple[list[InfoItemRepSpec], dict[ULID, InfoItem]]:
-    """Active (non-deactivated) assignments for *spec* plus their InfoItems."""
+) -> tuple[list[InfoItemRepSpec], dict[ULID, InfoItem], dict[ULID, ReplicationCommand]]:
+    """Active assignments for *spec*, their InfoItems, and their latest occasion.
+
+    The same question the InfoItem hub answers (archiver#171), asked from the
+    other side: "which items does this spec replicate?" is only half an answer
+    without "and which of them actually did?".
+    """
     assignment_rows = list(
         (
             await session.execute(
@@ -74,7 +81,8 @@ async def _load_active_assignments(
             .all()
         )
         items_by_id = {i.info_item_id: i for i in item_rows}
-    return assignment_rows, items_by_id
+    latest_commands = await latest_commands_by_assignment(session, [a.id for a in assignment_rows])
+    return assignment_rows, items_by_id, latest_commands
 
 
 async def _document_card_context(
@@ -221,7 +229,7 @@ async def detail_rep_spec(
 ) -> HTMLResponse:
     """Detail: provider, name, document (editable while draft), active assignments."""
     spec = await _resolve_spec(spec_id, session)
-    assignment_rows, items_by_id = await _load_active_assignments(spec, session)
+    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
 
     return _templates.TemplateResponse(
         request,
@@ -231,6 +239,7 @@ async def detail_rep_spec(
             "spec": spec,
             "assignments": assignment_rows,
             "items_by_id": items_by_id,
+            "latest_commands": latest_commands,
             **await _document_card_context(spec, session),
         },
     )
@@ -277,11 +286,19 @@ async def update_rep_spec_document_view(
         if is_htmx:
             # 200 so htmx swaps the card; the inline error stays visible.
             return _templates.TemplateResponse(request, "rep_specs/_document_card.html", ctx)
-        assignment_rows, items_by_id = await _load_active_assignments(spec, session)
+        assignment_rows, items_by_id, latest_commands = await _load_active_assignments(
+            spec, session
+        )
         return _templates.TemplateResponse(
             request,
             "rep_specs/detail.html",
-            {"user": user, "assignments": assignment_rows, "items_by_id": items_by_id, **ctx},
+            {
+                "user": user,
+                "assignments": assignment_rows,
+                "items_by_id": items_by_id,
+                "latest_commands": latest_commands,
+                **ctx,
+            },
             status_code=422,
         )
 
@@ -349,7 +366,7 @@ async def deactivate_assignment(
         await session.flush()
         await session.commit()
 
-    assignment_rows, items_by_id = await _load_active_assignments(spec, session)
+    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
     return _templates.TemplateResponse(
         request,
         "rep_specs/_assignments.html",
@@ -358,6 +375,7 @@ async def deactivate_assignment(
             "spec": spec,
             "assignments": assignment_rows,
             "items_by_id": items_by_id,
+            "latest_commands": latest_commands,
             "swapped": True,
         },
     )

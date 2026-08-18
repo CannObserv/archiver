@@ -1,30 +1,50 @@
-{# Partial: single rep-spec assignment row — returned by PATCH public-url. #}
-{% from "_macros.html" import open_button %}
+{# Partial: single rep-spec assignment row — returned by POST .../replicate so
+   one manual occasion re-renders its own row rather than the whole section.
+   Requires `assignment`, `rep_spec`, `item_id`, `latest_command` in context.
+
+   `public_url` is **read-only** (archiver#171). It acquired an automated writer
+   in #170, so an inline edit was a field whose value the next occasion silently
+   clobbered; the provenance beside it — which occasion wrote this, and when —
+   is what the author actually needed. #}
+{% from "_macros.html" import open_button, replication_state %}
 <tr id="rs-row-{{ assignment.id }}">
   <td class="data-table__cell">
     {% if rep_spec %}
     <a href="/dashboard/rep-specs/{{ assignment.rep_spec_id }}">{{ rep_spec.name }}</a>
-    <span class="badge badge--sm text-muted" style="margin-left:var(--space-1);">{{ rep_spec.provider }}</span>
     {% else %}
     <span class="text-muted">{{ assignment.rep_spec_id }}</span>
     {% endif %}
   </td>
   <td class="data-table__cell data-table__cell--muted">
+    {% if rep_spec %}<span class="badge badge--sm">{{ rep_spec.provider }}</span>{% else %}—{% endif %}
+  </td>
+  <td class="data-table__cell data-table__cell--muted">
     {{ assignment.activated_at.strftime('%Y-%m-%d %H:%M UTC') }}
   </td>
   <td class="data-table__cell">
-    <form hx-patch="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}/public-url"
-          hx-target="#rs-row-{{ assignment.id }}" hx-swap="outerHTML"
-          class="inline-rename-form">
-      <input type="text" name="public_url"
-             value="{{ assignment.public_url or '' }}"
-             class="form-input form-input--inline" placeholder="https://…"
-             aria-label="Public URL for {{ rep_spec.name if rep_spec else assignment.rep_spec_id }}">
-      <button type="submit" class="btn btn--sm btn--ghost">Save</button>
-      {% if assignment.public_url %}{{ open_button(assignment.public_url) }}{% endif %}
-    </form>
+    {{ replication_state(latest_command) }}
   </td>
   <td class="data-table__cell">
+    {% if assignment.public_url %}
+    <span class="text-sm" style="word-break:break-all;">{{ assignment.public_url }}</span>{{ open_button(assignment.public_url) }}
+    {% else %}
+    <span class="text-muted">—</span>
+    {% endif %}
+  </td>
+  <td class="data-table__cell">
+    {# Issues an occasion against the item's latest revision. It exists because a
+       new assignment on stable content otherwise never replicates: nothing
+       triggers issuance until the next revision, which may be never. Confirmed
+       because the target is a permanent store — archive.org cannot be deleted at
+       all — so a stray click is not free. #}
+    <button class="btn btn--sm btn--secondary"
+            hx-post="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}/replicate"
+            hx-target="#rs-row-{{ assignment.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Issue a replication for this assignment against the latest revision?"
+            aria-label="Replicate assignment {{ assignment.id }} now">
+      Replicate now
+    </button>
     <button class="btn btn--sm btn--danger"
             hx-delete="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}"
             hx-target="#ii-rep-spec-assignments"

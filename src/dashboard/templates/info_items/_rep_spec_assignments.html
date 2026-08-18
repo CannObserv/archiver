@@ -1,8 +1,8 @@
 {# Replication Specs assignments section — included by info_items/detail.html and
    returned by DELETE /dashboard/info-items/{id}/rep-spec-assignments/{aid} so a
    deactivate re-renders the table + empty-state in one swap and can move focus
-   (#81). Row-level public-url edits still swap the individual row. Requires
-   `item_id`, `irs_rows`, `rep_specs_by_id` in context. #}
+   (#81). A row-level "Replicate now" still swaps the individual row. Requires
+   `item_id`, `irs_rows`, `rep_specs_by_id`, `latest_commands` in context. #}
 <div id="ii-rep-spec-assignments">
   <h3 id="ii-rep-spec-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Replication Specs</h3>
   {% if irs_rows %}
@@ -12,6 +12,7 @@
         <th class="data-table__th">Spec</th>
         <th class="data-table__th">Provider</th>
         <th class="data-table__th">Activated</th>
+        <th class="data-table__th">Replication</th>
         <th class="data-table__th">Public URL</th>
         <th class="data-table__th">Actions</th>
       </tr>
@@ -19,6 +20,7 @@
     <tbody>
       {% for assignment in irs_rows %}
       {% set rep_spec = rep_specs_by_id.get(assignment.rep_spec_id) %}
+      {% set latest_command = latest_commands.get(assignment.id) %}
       {% include "info_items/_rep_spec_row.html" %}
       {% endfor %}
     </tbody>

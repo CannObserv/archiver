@@ -37,6 +37,10 @@ from src.core.services.replication_issuance import (
     SKIP_UNRENDERABLE,
     STATE_REQUESTED,
     STATE_SKIPPED,
+    AssignmentNotActiveError,
+    NoActiveSourceError,
+    NoRevisionError,
+    issue_for_assignment,
     issue_for_revision,
 )
 from src.core.services.source_revision import RevisionFacts, record_revision
@@ -44,6 +48,7 @@ from src.core.services.source_revision import RevisionFacts, record_revision
 FP_A = "sha256:" + "a" * 64
 FP_B = "sha256:" + "b" * 64
 CAPTURED_AT = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
+CAPTURED_AT_LATER = datetime(2026, 8, 17, 18, 0, tzinfo=UTC)
 BLOB_URI = "file:///var/lib/replicator/blobs/aa/bb/" + "a" * 64 + ".bin"
 
 
@@ -104,7 +109,7 @@ async def _revision(session, info_source: InfoSource, *, fingerprint: str = FP_A
     row = SourceRevision(
         info_source_id=info_source.info_source_id,
         content_fingerprint=fingerprint,
-        captured_at=CAPTURED_AT,
+        captured_at=overrides.pop("captured_at", CAPTURED_AT),
         content_cache_uri=overrides.pop("content_cache_uri", BLOB_URI),
         source_media_type=overrides.pop("source_media_type", "text/html"),
         **overrides,
@@ -444,3 +449,141 @@ async def test_command_ids_are_ulid_shaped(session, info_source):
     issued = await issue_for_revision(session, revision)
 
     assert ULID.from_str(issued[0].command_id)
+
+
+# ---------------------------------------------------------------------------
+# Manual re-issue — archiver#171
+# ---------------------------------------------------------------------------
+#
+# A new assignment on *stable* content never replicates: nothing triggers
+# issuance until the next revision, which for a stable InfoItem may be never.
+# `issue_for_assignment` is the operator's way out, and it is deliberately the
+# same pipeline — blob guard, render, collision domain — rather than a second
+# path that could drift from the automatic one.
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_uses_the_latest_revision_of_the_active_binding(session, info_source):
+    assignment = await _assigned_item(session, info_source)
+    await _revision(session, info_source, fingerprint=FP_A)
+    newest = await _revision(session, info_source, fingerprint=FP_B, captured_at=CAPTURED_AT_LATER)
+
+    command = await issue_for_assignment(session, assignment)
+
+    assert command is not None
+    assert command.source_revision_id == newest.source_revision_id
+    assert command.state == STATE_REQUESTED
+    assert command.destination.endswith(FP_B.removeprefix("sha256:") + ".html")
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_enqueues_the_outbox_row_in_the_caller_transaction(session, info_source):
+    """MUST-2 is not relaxed for the manual path — same mapping-before-publish."""
+    assignment = await _assigned_item(session, info_source)
+    await _revision(session, info_source)
+
+    command = await issue_for_assignment(session, assignment)
+    await session.flush()
+
+    rows = (
+        (
+            await session.execute(
+                select(ChangesOutboxRow).where(ChangesOutboxRow.topic == CONTENT_REPLICATE_TOPIC)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [row.payload["command_id"] for row in rows] == [command.command_id]
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_touches_only_the_requested_assignment(session, info_source):
+    """Two active assignments on one item; re-issuing one must not re-issue the
+    other, which may be mid-flight against the same revision."""
+    first = await _assigned_item(session, info_source, slug="alpha")
+    second = await _assigned_item(session, info_source, slug="beta")
+    await _revision(session, info_source)
+
+    command = await issue_for_assignment(session, first)
+
+    assert command.info_item_rep_spec_id == first.id
+    commands = await _commands(session)
+    assert [c.info_item_rep_spec_id for c in commands] == [first.id]
+    assert second.id not in {c.info_item_rep_spec_id for c in commands}
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_refuses_a_deactivated_assignment(session, info_source):
+    assignment = await _assigned_item(session, info_source)
+    assignment.deactivated_at = datetime.now(UTC)
+    await session.flush()
+    await _revision(session, info_source)
+
+    with pytest.raises(AssignmentNotActiveError):
+        await issue_for_assignment(session, assignment)
+
+    assert await _commands(session) == []
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_refuses_when_the_item_has_no_active_binding(session, info_source):
+    """A bare InfoItem has no source to replicate *from*. Distinct from "no
+    revision yet": one is a wiring gap, the other is patience."""
+    assignment = await _assigned_item(session, info_source)
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == assignment.info_item_id)
+        )
+    ).scalar_one()
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+    await _revision(session, info_source)
+
+    with pytest.raises(NoActiveSourceError):
+        await issue_for_assignment(session, assignment)
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_refuses_when_the_source_has_no_revision_yet(session, info_source):
+    assignment = await _assigned_item(session, info_source)
+
+    with pytest.raises(NoRevisionError):
+        await issue_for_assignment(session, assignment)
+
+    assert await _commands(session) == []
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_records_a_skip_when_the_blob_is_gone(session, info_source):
+    """Returns None rather than raising: the refusal is *recorded*, which is the
+    thing #171 has to render. An exception would leave nothing behind."""
+    assignment = await _assigned_item(session, info_source)
+    await _revision(
+        session,
+        info_source,
+        content_cache_uri=None,
+    )
+
+    assert await issue_for_assignment(session, assignment) is None
+
+    commands = await _commands(session)
+    assert [(c.state, c.reason) for c in commands] == [(STATE_SKIPPED, SKIP_BLOB_ABSENT)]
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_keeps_the_full_collision_domain(session, info_source):
+    """The colliding sibling is not the one being re-issued, and the destination
+    is still ambiguous. Rendering the collision domain as "just this assignment"
+    would let the manual path publish what the automatic path refuses."""
+    fixed = _document(path_template="archive/{source_revision.id}.html", required_fields=[])
+    first = await _assigned_item(session, info_source, slug="one", document=fixed)
+    await _assigned_item(session, info_source, slug="two", document=fixed)
+    await _revision(session, info_source)
+
+    assert await issue_for_assignment(session, first) is None
+
+    commands = await _commands(session)
+    assert [(c.info_item_rep_spec_id, c.state, c.reason) for c in commands] == [
+        (first.id, STATE_SKIPPED, SKIP_DESTINATION_COLLISION)
+    ]
