@@ -35,8 +35,8 @@ def _gcs_doc() -> dict:
     return {
         "provider": "gcs",
         "credentials_alias": "gcs-prod",
-        "path_template": "archive/{info_item.slug}/{source_revision.date}.html",
-        "required_fields": ["info_item.slug", "source_revision.date"],
+        "path_template": "archive/{info_item.slug}/{source_revision.fingerprint}.html",
+        "required_fields": ["info_item.slug"],
         "object_options": {"storage_class": "STANDARD"},
     }
 
@@ -110,13 +110,15 @@ async def test_name_only_update_leaves_document_untouched(session):
 @pytest.mark.asyncio
 async def test_replaces_document_on_a_draft(session):
     spec = await _draft(session)
-    new_doc = _gcs_doc() | {"path_template": "corrected/{info_item.slug}.html"}
+    new_doc = _gcs_doc() | {"path_template": "corrected/{info_item.slug}/{source_revision.id}.html"}
 
     updated = await update_rep_spec(session, rep_spec_id=spec.rep_spec_id, document=new_doc)
     await session.commit()
 
     fetched = await session.get(RepSpec, updated.rep_spec_id)
-    assert fetched.document["path_template"] == "corrected/{info_item.slug}.html"
+    assert (
+        fetched.document["path_template"] == "corrected/{info_item.slug}/{source_revision.id}.html"
+    )
 
 
 @pytest.mark.asyncio
@@ -141,7 +143,7 @@ async def test_document_update_rejected_when_active_assignment_exists(session):
         await update_rep_spec(
             session,
             rep_spec_id=spec.rep_spec_id,
-            document=_gcs_doc() | {"path_template": "nope/{info_item.slug}"},
+            document=_gcs_doc() | {"path_template": "nope/{info_item.slug}/{source_revision.id}"},
         )
 
 
@@ -155,7 +157,7 @@ async def test_document_update_rejected_when_only_deactivated_assignment_exists(
         await update_rep_spec(
             session,
             rep_spec_id=spec.rep_spec_id,
-            document=_gcs_doc() | {"path_template": "nope/{info_item.slug}"},
+            document=_gcs_doc() | {"path_template": "nope/{info_item.slug}/{source_revision.id}"},
         )
     assert exc.value.assignment_count == 1
 
@@ -205,7 +207,7 @@ async def test_rejects_provider_change(session):
     swapped = {
         "provider": "gdrive",
         "credentials_alias": "gdrive-prod",
-        "path_template": "{info_item.slug}",
+        "path_template": "{info_item.slug}/{source_revision.id}",
         "required_fields": ["info_item.slug"],
         "object_options": {},
     }
@@ -320,7 +322,7 @@ async def test_document_edit_and_assignment_serialize_on_the_rep_spec_row(
         await update_rep_spec(
             editor,
             rep_spec_id=spec_id,
-            document=_gcs_doc() | {"path_template": "edited/{info_item.slug}"},
+            document=_gcs_doc() | {"path_template": "edited/{info_item.slug}/{source_revision.id}"},
         )
 
         task = asyncio.create_task(
@@ -355,7 +357,7 @@ async def test_lock_rep_specs_blocks_a_concurrent_document_edit(test_engine, com
         await update_rep_spec(
             editor,
             rep_spec_id=spec_id,
-            document=_gcs_doc() | {"path_template": "edited/{info_item.slug}"},
+            document=_gcs_doc() | {"path_template": "edited/{info_item.slug}/{source_revision.id}"},
         )
 
         task = asyncio.create_task(lock_rep_specs(creator, [str(spec_id)]))

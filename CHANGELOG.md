@@ -18,6 +18,62 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.16.0 (2026-08-18)
+
+[service] **The replication loop closes: `public_url` acquires an automated writer** (archiver#170, step 5 of the #137 epic). No migration; no HTTP surface change; no SDK change.
+
+`info_item_rep_specs.public_url` has been a column with no automated writer since RepSpecs were built. Archiver now consumes `content.artifacts` under the group `archiver.artifacts` — same `ARCHIVER_BUS_CONSUMER` gate as the revisions consumer, since joining a group removes messages from it — and a `replication_complete` fact writes the URL onto the assignment row.
+
+Three properties from the issuer contract shape the writeback:
+
+- **A repeated success is expected traffic.** T4's no-op row has Replicator re-emit the same `public_url` when a redelivery finds matching bytes already at the destination, so the write is idempotent and a repeat is not an anomaly.
+- **`terminal` decides whether the command closes.** A provider 5xx is a *non-terminal* failure: Replicator keeps retrying, unbounded and silent, so treating any failure as final would close a command still being worked.
+- **`public_url` is not stable across occasions.** Each occasion writes its own artifact at its own path, so the assignment row holds the newest occasion's URL and an older occasion's late fact records itself without clobbering it. `replication_commands` keeps the full history either way.
+
+**A reaper for the silent case** (MUST-6). Replicator does not guarantee that every command either succeeds or is closed, so a timer closes commands open past a horizon as `abandoned` — `ARCHIVER_REPLICATION_REAP_INTERVAL` (default 900s) and `ARCHIVER_REPLICATION_REAP_HORIZON` (default 6h), both clamped to a floor rather than trusted. It runs on a clock rather than off an arrival, because the condition it detects is the *absence* of a message. **It never re-issues** — this capability writes into permanent stores, one of which cannot be deleted at all, so re-issue stays an operator act. Abandoned means "nothing came back in time", never "this definitely failed".
+
+`reason` is stored verbatim as an opaque string: the vocabulary is producer-owned, and Replicator's contract already lists a sixth token (`invalid_source`) that co-core's docstring does not (cannobserv#330).
+
+Ordering is guarded rather than assumed: `replication_commands.last_fact_at` records the newest fact applied, so a redelivered older one is ignored, a completed command never flips to `failed`, and `terminal` never downgrades. `skipped` occasions are excluded from the newest-occasion comparison — a skip produced no artifact, and skips are written for every active assignment whenever a revision arrives with no blob, so counting them would silently suppress the URL of a replication still in flight.
+
+The reaper runs whether or not the bus is configured. It touches no broker, and the case where the bus is misconfigured is exactly when stale in-flight commands are most likely; it stays gated on `ARCHIVER_BUS_CONSUMER` because two sweepers would race.
+
+Internally, the consumer-group loop — read, claim, quarantine, ack, back off, re-arm the group — moved to `src/core/changes/group_consumer.py` and is now shared by both group consumers rather than copied. Nearly every line of it encodes an incident or a review finding; a copy inherits those once and then drifts silently.
+
+## v4.15.0 (2026-08-17)
+
+[service] **Archiver issues `content.replicate`** (archiver#169, step 5 of the #137 epic). Migration `39f21d31fdec` creates `information.replication_commands`. No HTTP surface change; no SDK change.
+
+On a genuinely new SourceRevision, every active `info_item_rep_specs` assignment reachable through an *active* binding gets one command — never one command carrying a list, because a `command_id` identifies an occasion and N provider writes fail, retry and complete independently. The command row and the outbox row are written in the revision insert's own transaction, so "revision recorded" and "replication requested" cannot diverge; the idempotent no-op issues nothing, since a redelivery is the same occasion.
+
+`command_id` is minted fresh per occasion and never derived. A `command_id` derived from `(rep_spec_id, info_item_id)` breaks the second legitimate re-replication in a TTL-bounded, intermittent way — the trap the `content.fetch` issuer contract documents at length.
+
+**Skips are rows, not log lines.** An assignment that cannot be issued records `state="skipped"` with a local reason — `blob_absent`, `blob_expired_locally`, `unrenderable`, `destination_collision`, `unsupported_command`. Absent the row, the dashboard renders a replication that silently did not happen as "not yet" forever. The vocabulary is deliberately separate from Replicator's producer-owned failure tokens: these are conditions Archiver decided about *before* publishing.
+
+**`content.replicate` is exempt from the producer's XTRIM loop.** The drain loop caps every topic it publishes to, which is right for a fact stream Archiver owns and wrong for a command stream with a competing consumer group: trimming it deletes commands nobody delivered and orphans the PEL entries naming them.
+
+Pin bump: `co-core[extract]` / `co-core-aio[bus]` to `>=0.9.4,<0.10`, for the replicate contracts (`ContentReplicateCommandEmit`, `ReplicationCompleteEvent`, `ReplicationFailedEvent`).
+
+**Not yet closed:** nothing consumes `content.artifacts`, so `public_url` still has no automated writer and no reaper exists — archiver#170. An expired blob is surfaced, never repaired: Archiver is not a `content.fetch` issuer and archiver#142 leaves no call to make.
+
+## v4.14.0 (2026-08-17)
+
+[service] **RepSpec `path_template` gains a contract, and `rep_fields` is checked for *renderability* at assignment** (archiver#168, step 5 groundwork for #143). No migration; no SDK change.
+
+Archiver renders the `content.replicate` destination — Replicator receives strings and never interpolates (the issuer contract's T3). That makes the template half of a RepSpec document Archiver's problem to get right *before* it freezes, because `document` is immutable once assigned (#83).
+
+Three rules now gate `POST`/`PATCH /api/v1/rep-specs`, checked by the same parser the renderer uses so a document that validates is one that renders:
+
+- Every `{namespace.key}` drawn from the `rep_fields` bag must appear in `required_fields` — the two used to be able to diverge silently.
+- `source_revision.*` (`id`, `date`, `fingerprint`, `captured_at`) is supplied per replication occasion and is **rejected** in `required_fields`; no bag can hold it.
+- The template must carry `{source_revision.id}` or `{source_revision.fingerprint}`. A date-discriminated path renders one key for two revisions captured the same day, which returns from Replicator as `destination_conflict` — a conflict token for what is really a path-design error.
+
+`POST /api/v1/info-items` gains one 422 case: `rep_fields` that satisfies `required_fields` but cannot produce a path segment (`"WA LCB"` is present, non-null, and not a segment) is refused with `code="rep_fields_unrenderable"`. Assignment is the last synchronous moment to fix either side. The same pre-flight runs in `assign_rep_spec`.
+
+**Breaking for existing documents in principle, no-op in practice:** a template that validated before can 422 now. The production registry holds zero RepSpecs, which is exactly why the tightening lands now rather than after the first document freezes.
+
+**Bag values carry no path structure.** A value must match `[A-Za-z0-9._-]`, so `"co/active-licenses"` is refused where `"co-active-licenses"` is not — structure belongs in `path_template`, which is the record of how an artifact's URL was produced. Values are refused rather than slugified: the rendered path becomes a citable `public_url`, and two values that sanitize alike would collide.
+
 ## v4.13.0 (2026-08-17)
 
 [service] **`info_items.watcher_item_id` dropped** (archiver#142). Migration `b3f61a20d7c4`. No API surface change — the column was never serialized.

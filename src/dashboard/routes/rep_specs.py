@@ -15,8 +15,11 @@ from src.api.deps import get_db_session
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
+    ReplicationCommand,
     RepSpec,
 )
+from src.core.services.replication_issuance import ManualIssuanceError, issue_for_assignment
+from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.create_rep_spec import InvalidRepSpecError, create_rep_spec
 from src.core.tools.update_rep_spec import (
     InvalidRepSpecError as UpdateInvalidRepSpecError,
@@ -29,6 +32,7 @@ from src.core.tools.update_rep_spec import (
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
+from src.dashboard.replication_actions import outcome_flash_header
 
 router = APIRouter(prefix="/dashboard/rep-specs")
 
@@ -51,8 +55,13 @@ async def _resolve_spec(spec_id: str, session: AsyncSession) -> RepSpec:
 
 async def _load_active_assignments(
     spec: RepSpec, session: AsyncSession
-) -> tuple[list[InfoItemRepSpec], dict[ULID, InfoItem]]:
-    """Active (non-deactivated) assignments for *spec* plus their InfoItems."""
+) -> tuple[list[InfoItemRepSpec], dict[ULID, InfoItem], dict[ULID, ReplicationCommand]]:
+    """Active assignments for *spec*, their InfoItems, and their latest occasion.
+
+    The same question the InfoItem hub answers (archiver#171), asked from the
+    other side: "which items does this spec replicate?" is only half an answer
+    without "and which of them actually did?".
+    """
     assignment_rows = list(
         (
             await session.execute(
@@ -74,7 +83,8 @@ async def _load_active_assignments(
             .all()
         )
         items_by_id = {i.info_item_id: i for i in item_rows}
-    return assignment_rows, items_by_id
+    latest_commands = await latest_commands_by_assignment(session, [a.id for a in assignment_rows])
+    return assignment_rows, items_by_id, latest_commands
 
 
 async def _document_card_context(
@@ -221,7 +231,7 @@ async def detail_rep_spec(
 ) -> HTMLResponse:
     """Detail: provider, name, document (editable while draft), active assignments."""
     spec = await _resolve_spec(spec_id, session)
-    assignment_rows, items_by_id = await _load_active_assignments(spec, session)
+    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
 
     return _templates.TemplateResponse(
         request,
@@ -231,6 +241,7 @@ async def detail_rep_spec(
             "spec": spec,
             "assignments": assignment_rows,
             "items_by_id": items_by_id,
+            "latest_commands": latest_commands,
             **await _document_card_context(spec, session),
         },
     )
@@ -277,11 +288,19 @@ async def update_rep_spec_document_view(
         if is_htmx:
             # 200 so htmx swaps the card; the inline error stays visible.
             return _templates.TemplateResponse(request, "rep_specs/_document_card.html", ctx)
-        assignment_rows, items_by_id = await _load_active_assignments(spec, session)
+        assignment_rows, items_by_id, latest_commands = await _load_active_assignments(
+            spec, session
+        )
         return _templates.TemplateResponse(
             request,
             "rep_specs/detail.html",
-            {"user": user, "assignments": assignment_rows, "items_by_id": items_by_id, **ctx},
+            {
+                "user": user,
+                "assignments": assignment_rows,
+                "items_by_id": items_by_id,
+                "latest_commands": latest_commands,
+                **ctx,
+            },
             status_code=422,
         )
 
@@ -318,6 +337,78 @@ async def update_rep_spec_document_view(
     return RedirectResponse(url=f"/dashboard/rep-specs/{spec_id}", status_code=303)
 
 
+# ---------------------------------------------------------------------------
+# POST /dashboard/rep-specs/{id}/assignments/{aid}/replicate  (archiver#171)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{spec_id}/assignments/{aid}/replicate", response_class=HTMLResponse)
+async def replicate_assignment_now(
+    spec_id: str,
+    aid: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Issue one replication occasion for this assignment; re-renders the section.
+
+    The InfoItem hub's twin (archiver#171 CR #32). This screen is the natural
+    entry point for "this spec's assignments are all stale", and rendering the
+    state here while forcing a navigation hop per item to act on it makes the
+    diagnosis useless.
+
+    Re-renders the whole section rather than one row, matching the DELETE beside
+    it: the row shape here is this table's, not the hub's, and the swap destroys
+    the button that was clicked so it has to move focus (CR #37).
+
+    **Every outcome is a 200, and every outcome flashes** — identical handling to
+    the hub route, which is why the translation is shared rather than copied
+    (CR #36/#42).
+    """
+    spec = await _resolve_spec(spec_id, session)
+    try:
+        aid_ulid = ULID.from_str(aid)
+    except Exception as e:
+        raise DashboardNotFound("Assignment not found") from e
+
+    assignment = await session.get(InfoItemRepSpec, aid_ulid)
+    if assignment is None or assignment.rep_spec_id != spec.rep_spec_id:
+        raise DashboardNotFound("Assignment not found")
+
+    refusal: ManualIssuanceError | None = None
+    issued: ReplicationCommand | None = None
+    try:
+        issued = await issue_for_assignment(session, assignment)
+    except ManualIssuanceError as e:
+        # No rollback: every refusal path raises before writing anything.
+        refusal = e
+    else:
+        await session.commit()
+
+    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
+    response = _templates.TemplateResponse(
+        request,
+        "rep_specs/_assignments.html",
+        {
+            "user": user,
+            "spec": spec,
+            "assignments": assignment_rows,
+            "items_by_id": items_by_id,
+            "latest_commands": latest_commands,
+            "swapped": True,
+        },
+    )
+    response.headers["HX-Trigger"] = outcome_flash_header(
+        refusal=refusal, issued=issued, latest=latest_commands.get(assignment.id)
+    )
+    return response
+
+
+# ---------------------------------------------------------------------------
+# DELETE /dashboard/rep-specs/{id}/assignments/{aid}
+# ---------------------------------------------------------------------------
+
+
 @router.delete("/{spec_id}/assignments/{aid}", response_class=HTMLResponse)
 async def deactivate_assignment(
     spec_id: str,
@@ -349,7 +440,7 @@ async def deactivate_assignment(
         await session.flush()
         await session.commit()
 
-    assignment_rows, items_by_id = await _load_active_assignments(spec, session)
+    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
     return _templates.TemplateResponse(
         request,
         "rep_specs/_assignments.html",
@@ -358,6 +449,7 @@ async def deactivate_assignment(
             "spec": spec,
             "assignments": assignment_rows,
             "items_by_id": items_by_id,
+            "latest_commands": latest_commands,
             "swapped": True,
         },
     )

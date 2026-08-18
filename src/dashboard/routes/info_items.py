@@ -22,11 +22,17 @@ from src.core.models import (
     InfoItemRepSpec,
     InfoItemSource,
     InfoSource,
+    ReplicationCommand,
     RepSpec,
     SourceRevision,
     WatchStatus,
 )
 from src.core.services.registry_announcement import announce_info_item
+from src.core.services.replication_issuance import (
+    ManualIssuanceError,
+    issue_for_assignment,
+)
+from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError as AssignItemNotFoundError,
 )
@@ -62,6 +68,7 @@ from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
+from src.dashboard.replication_actions import outcome_flash_header
 from src.dashboard.watch_panel import build_watch_context
 
 router = APIRouter(prefix="/dashboard/info-items")
@@ -316,8 +323,14 @@ async def create_info_item(
 
 async def _load_active_rep_spec_assignments(
     item_id: ULID, session: AsyncSession
-) -> tuple[list[InfoItemRepSpec], dict[ULID, RepSpec]]:
-    """Active (non-deactivated) RepSpec assignments for *item_id* + their RepSpecs."""
+) -> tuple[list[InfoItemRepSpec], dict[ULID, RepSpec], dict[ULID, ReplicationCommand]]:
+    """Active RepSpec assignments for *item_id*, their RepSpecs, and their latest occasion.
+
+    The third element is what makes ``public_url`` honest (archiver#171): the
+    column has an automated writer since #170, so the table has to say which
+    occasion wrote it — or, for the assignments with no URL, whether that is
+    because none has been attempted, one is in flight, or one was refused.
+    """
     irs_rows = list(
         (
             await session.execute(
@@ -337,7 +350,8 @@ async def _load_active_rep_spec_assignments(
             await session.execute(select(RepSpec).where(RepSpec.rep_spec_id.in_(rs_ids)))
         ).scalars():
             rep_specs_by_id[rs.rep_spec_id] = rs
-    return irs_rows, rep_specs_by_id
+    latest_commands = await latest_commands_by_assignment(session, [a.id for a in irs_rows])
+    return irs_rows, rep_specs_by_id, latest_commands
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +397,9 @@ async def detail_info_item(
             )
 
     # Active rep_spec assignments + RepSpec rows
-    irs_rows, rep_specs_by_id = await _load_active_rep_spec_assignments(item.info_item_id, session)
+    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
+        item.info_item_id, session
+    )
 
     # Revision history (last 50). Sourced from source_revisions captured across
     # ALL of the item's InfoSource bindings — active primary plus previous
@@ -439,6 +455,7 @@ async def detail_info_item(
             "spec_summary_by_source_id": spec_summary_by_source_id,
             "irs_rows": irs_rows,
             "rep_specs_by_id": rep_specs_by_id,
+            "latest_commands": latest_commands,
             "revisions": revisions,
             "rev_sources_by_id": rev_sources_by_id,
             "now": datetime.now(UTC),
@@ -692,7 +709,9 @@ async def deactivate_rep_spec_assignment(
         await session.flush()
         await session.commit()
 
-    irs_rows, rep_specs_by_id = await _load_active_rep_spec_assignments(item_ulid, session)
+    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
+        item_ulid, session
+    )
     return _templates.TemplateResponse(
         request,
         "info_items/_rep_spec_assignments.html",
@@ -701,26 +720,47 @@ async def deactivate_rep_spec_assignment(
             "item_id": item_ulid,
             "irs_rows": irs_rows,
             "rep_specs_by_id": rep_specs_by_id,
+            "latest_commands": latest_commands,
             "swapped": True,
         },
     )
 
 
 # ---------------------------------------------------------------------------
-# PATCH /{item_id}/rep-spec-assignments/{aid}/public-url
+# POST /{item_id}/rep-spec-assignments/{aid}/replicate  (archiver#171)
 # ---------------------------------------------------------------------------
+#
+# This replaced ``PATCH .../public-url``. That route let an author type a URL
+# into a column #170 gave an automated writer, so the next occasion silently
+# clobbered whatever they entered — #143's "do not ship a column that silently
+# populates", from the other direction.
 
 
-@router.patch("/{item_id}/rep-spec-assignments/{aid}/public-url", response_class=HTMLResponse)
-async def set_assignment_public_url(
+@router.post("/{item_id}/rep-spec-assignments/{aid}/replicate", response_class=HTMLResponse)
+async def replicate_assignment_now(
     request: Request,
     item_id: str,
     aid: str,
-    public_url: str = Form(...),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Write a public URL back to a RepSpec assignment; returns an updated row fragment."""
+    """Issue one replication occasion for this assignment; re-renders the section.
+
+    Closes a real gap: a new assignment on *stable* content never replicates,
+    because issuance is triggered by a new revision and a stable InfoItem may
+    never produce one.
+
+    **Every outcome is a 200 that re-renders, and every outcome flashes.** A
+    refusal the service would not record rides an ``HX-Trigger`` error toast
+    because htmx discards a 4xx, so raising one reaches the operator as nothing
+    at all (CR #36); an issued command confirms at ``success`` and a recorded
+    skip warns, because silence is the wrong confirmation for an action that
+    writes somewhere permanent (CR #42).
+
+    Re-renders the whole section rather than the single row, matching the
+    Deactivate beside it: the swap destroys the button that was clicked, so it
+    has to move focus off it (CR #37).
+    """
     try:
         item_ulid = ULID.from_str(item_id)
         aid_ulid = ULID.from_str(aid)
@@ -731,22 +771,36 @@ async def set_assignment_public_url(
     if assignment is None or assignment.info_item_id != item_ulid:
         raise DashboardNotFound("Assignment not found")
 
-    rs = await session.get(RepSpec, assignment.rep_spec_id)
+    refusal: ManualIssuanceError | None = None
+    issued: ReplicationCommand | None = None
+    try:
+        issued = await issue_for_assignment(session, assignment)
+    except ManualIssuanceError as e:
+        # No rollback: every refusal path raises before writing anything, and a
+        # rollback here would only risk discarding the caller's own work.
+        refusal = e
+    else:
+        await session.commit()
 
-    assignment.public_url = public_url.strip() or None
-    await session.flush()
-    await session.commit()
-    await session.refresh(assignment)
-
-    return _templates.TemplateResponse(
+    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
+        item_ulid, session
+    )
+    response = _templates.TemplateResponse(
         request,
-        "info_items/_rep_spec_row.html",
+        "info_items/_rep_spec_assignments.html",
         {
-            "assignment": assignment,
-            "rep_spec": rs,
-            "item_id": item_id,
+            "user": user,
+            "item_id": item_ulid,
+            "irs_rows": irs_rows,
+            "rep_specs_by_id": rep_specs_by_id,
+            "latest_commands": latest_commands,
+            "swapped": True,
         },
     )
+    response.headers["HX-Trigger"] = outcome_flash_header(
+        refusal=refusal, issued=issued, latest=latest_commands.get(assignment.id)
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------

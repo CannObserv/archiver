@@ -36,7 +36,7 @@ async def rep_spec_row(session) -> RepSpec:
         document={
             "provider": "gcs",
             "credentials_alias": "default",
-            "path_template": "gs://bucket/{gcs.object_name}",
+            "path_template": "bucket/{gcs.object_name}/{source_revision.id}",
             "required_fields": ["gcs.object_name"],
         },
     )
@@ -126,7 +126,7 @@ async def test_create_with_rep_spec_assignment(client, session, rep_spec_row):
         headers=HEADERS,
         json={
             "name": "with-rep-spec",
-            "rep_fields": {"gcs": {"object_name": "co/active-licenses"}},
+            "rep_fields": {"gcs": {"object_name": "co-active-licenses"}},
             "initial_rep_spec_assignments": [{"rep_spec_id": rep_spec_id}],
         },
     )
@@ -146,6 +146,27 @@ async def test_create_with_rep_spec_assignment(client, session, rep_spec_row):
 
 
 @pytest.mark.asyncio
+async def test_create_rejects_rep_fields_that_cannot_render(client, session, rep_spec_row):
+    """A value that is present but not a path segment 422s here, not later (CR #5).
+
+    This path inserts InfoItemRepSpec rows directly instead of calling
+    assign_rep_spec, so the pre-flight has to be repeated rather than inherited.
+    """
+    response = await client.post(
+        "/api/v1/info-items",
+        headers=HEADERS,
+        json={
+            "name": "unrenderable-rep-fields",
+            "rep_fields": {"gcs": {"object_name": "co active licenses"}},
+            "initial_rep_spec_assignments": [{"rep_spec_id": str(rep_spec_row.rep_spec_id)}],
+        },
+    )
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert any(e["code"] == "rep_fields_unrenderable" for e in detail["errors"])
+
+
+@pytest.mark.asyncio
 async def test_create_with_explicit_activated_at(client, session, rep_spec_row):
     """activated_at supplied → stored verbatim."""
     rep_spec_id = str(rep_spec_row.rep_spec_id)
@@ -155,7 +176,7 @@ async def test_create_with_explicit_activated_at(client, session, rep_spec_row):
         headers=HEADERS,
         json={
             "name": "with-activated-at",
-            "rep_fields": {"gcs": {"object_name": "co/active-licenses"}},
+            "rep_fields": {"gcs": {"object_name": "co-active-licenses"}},
             "initial_rep_spec_assignments": [
                 {"rep_spec_id": rep_spec_id, "activated_at": activated_at}
             ],

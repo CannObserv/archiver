@@ -21,6 +21,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from co_core.pure.adapters.bus.streams import CONTENT_REPLICATE
 from fakeredis import aioredis as fakeredis_aio
 
 from src.api.main import app, lifespan
@@ -174,3 +175,85 @@ async def test_watch_status_failure_leaves_other_bus_tasks_running(
             assert app.state.publisher_task is not None
             assert not app.state.publisher_task.done()
             assert app.state.watch_status_task is None
+
+
+@pytest.mark.asyncio
+async def test_command_stream_is_carved_out_of_the_trim_loop(
+    bus_env, fake_redis_from_url, test_engine
+):
+    """content.replicate must never be XTRIMmed (archiver#169).
+
+    The drain loop caps every topic it publishes to, which is right for a fact
+    stream Archiver owns and wrong for a *command* stream with a competing
+    consumer group: trimming it deletes commands nobody delivered and orphans
+    the PEL entries pointing at them. Retention on a command stream belongs to
+    the consumer's progress, not the producer's cap.
+    """
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+
+    with patch("src.core.changes.publisher.run", side_effect=_capture):
+        async with lifespan(app):
+            pass
+
+    assert CONTENT_REPLICATE in captured["no_trim_topics"]
+    assert "info.registry" in captured["no_trim_topics"]
+
+
+@pytest.mark.asyncio
+async def test_artifacts_consumer_and_reaper_start_behind_the_gate(
+    bus_env, fake_redis_from_url, test_engine
+):
+    """Same gate as the revisions consumer: joining a group removes messages
+    from it, and the reaper closes the same commands that consumer would."""
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    bus_env.setenv("ARCHIVER_BUS_CONSUMER", "1")
+
+    async with lifespan(app):
+        assert app.state.artifacts_consumer_task is not None
+        assert app.state.replication_reaper_task is not None
+
+
+@pytest.mark.asyncio
+async def test_redis_without_the_gate_starts_neither_artifacts_nor_reaper(
+    bus_env, fake_redis_from_url, test_engine
+):
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+
+    async with lifespan(app):
+        assert app.state.artifacts_consumer_task is None
+        assert app.state.replication_reaper_task is None
+
+
+@pytest.mark.asyncio
+async def test_no_redis_url_nulls_both_new_handles(bus_env, test_engine):
+    """A dormant path nulls every handle, so a stale value from a previous
+    lifespan cannot satisfy an assertion (CR round 2, finding 15)."""
+    async with lifespan(app):
+        assert app.state.artifacts_consumer_task is None
+        assert app.state.replication_reaper_task is None
+
+
+@pytest.mark.asyncio
+async def test_reaper_runs_without_a_redis_url(bus_env, test_engine):
+    """The reaper touches no broker (CR #22).
+
+    It is a database-only safety net, and the case where the bus is
+    misconfigured is arguably when stale `requested` rows are most likely — so
+    its availability must not depend on ARCHIVER_REDIS_URL.
+    """
+    bus_env.setenv("ARCHIVER_BUS_CONSUMER", "1")
+
+    async with lifespan(app):
+        assert app.state.redis_client is None
+        assert app.state.replication_reaper_task is not None
+
+
+@pytest.mark.asyncio
+async def test_reaper_stays_gated_on_the_consumer_flag(bus_env, test_engine):
+    """Two sweepers would race to close the same commands."""
+    async with lifespan(app):
+        assert app.state.replication_reaper_task is None

@@ -54,6 +54,12 @@
                   required>{{ document_raw }}</textarea>
         <p class="text-sm text-muted" id="doc-hint">
           Must conform to the RepSpec v1 envelope schema for the selected provider.
+          <code>path_template</code> placeholders are <code>{namespace.key}</code>: bag values must
+          be listed in <code>required_fields</code>, and <code>source_revision.*</code>
+          (<code>id</code>, <code>date</code>, <code>fingerprint</code>, <code>captured_at</code>)
+          is supplied per replication — never listed there. Include
+          <code>{source_revision.id}</code> or <code>{source_revision.fingerprint}</code> so two
+          revisions cannot render one destination.
         </p>
         <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>
         {% if errors.document %}

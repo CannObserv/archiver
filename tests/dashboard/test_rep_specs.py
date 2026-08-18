@@ -9,17 +9,23 @@ from ulid import ULID
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
+    InfoItemSource,
+    InfoSource,
+    ReplicationCommand,
     RepSpec,
+    SourceRevision,
 )
+from tests.dashboard.conftest import read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-repspecs", "X-ExeDev-Email": "repspecs@example.com"}
 _LIST_URL = "/dashboard/rep-specs/"
 _NEW_URL = "/dashboard/rep-specs/new"
 
+
 _GCS_DOC = {
     "provider": "gcs",
     "credentials_alias": "default",
-    "path_template": "items/{info_item_id}.json",
+    "path_template": "items/{source_revision.id}.json",
     "required_fields": [],
 }
 
@@ -28,7 +34,7 @@ def _make_rep_spec(name: str = "Test Spec", provider: str = "gcs") -> RepSpec:
     doc = {
         "provider": provider,
         "credentials_alias": "default",
-        "path_template": "items/{info_item_id}.json",
+        "path_template": "items/{source_revision.id}.json",
         "required_fields": [],
     }
     return RepSpec(provider=provider, name=name, schema_version=1, document=doc)
@@ -69,7 +75,7 @@ async def test_list_provider_filter(client, session):
     gdrive_doc = {
         "provider": "gdrive",
         "credentials_alias": "default",
-        "path_template": "{info_item_id}",
+        "path_template": "{source_revision.id}",
         "required_fields": [],
     }
     session.add(
@@ -543,7 +549,7 @@ async def test_update_document_on_draft_persists(client, session):
     await session.flush()
     await session.commit()
 
-    new_doc = dict(_GCS_DOC, path_template="corrected/{info_item_id}.json")
+    new_doc = dict(_GCS_DOC, path_template="corrected/{source_revision.id}.json")
     r = await client.post(
         _DOC_URL.format(spec.rep_spec_id),
         headers=_HEADERS,
@@ -553,7 +559,7 @@ async def test_update_document_on_draft_persists(client, session):
     assert r.status_code == 303, r.text
 
     await session.refresh(spec)
-    assert spec.document["path_template"] == "corrected/{info_item_id}.json"
+    assert spec.document["path_template"] == "corrected/{source_revision.id}.json"
     assert spec.updated_at is not None
 
 
@@ -564,7 +570,7 @@ async def test_update_document_htmx_swaps_card_with_toast(client, session):
     await session.flush()
     await session.commit()
 
-    new_doc = dict(_GCS_DOC, path_template="swapped/{info_item_id}.json")
+    new_doc = dict(_GCS_DOC, path_template="swapped/{source_revision.id}.json")
     r = await client.post(
         _DOC_URL.format(spec.rep_spec_id),
         headers={**_HEADERS, "HX-Request": "true"},
@@ -733,3 +739,224 @@ async def test_htmx_document_error_still_moves_focus(client, session):
     assert r.status_code == 200
     assert "rep-spec-document-heading" in r.text
     assert "getElementById" in r.text
+
+
+# ---------------------------------------------------------------------------
+# Replication state on the RepSpec's assignment table (archiver#171)
+# ---------------------------------------------------------------------------
+#
+# The same question the InfoItem hub answers, asked from the other side: a spec
+# owner looking at "which items does this replicate?" needs to know which of
+# them actually did.
+
+
+@pytest.mark.asyncio
+async def test_detail_renders_the_latest_occasion_per_assignment(client, session):
+    spec = _make_rep_spec("Occasion Spec")
+    source = InfoSource(url="https://example.com/occasion", source_specs=[])
+    item = InfoItem(name="Occasion Item")
+    session.add_all([spec, source, item])
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    revision = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:" + "a" * 64,
+        captured_at=datetime(2026, 4, 2, tzinfo=UTC),
+    )
+    session.add_all([assignment, revision])
+    await session.flush()
+    session.add(
+        ReplicationCommand(
+            command_id="cmd-repspec-view",
+            info_item_rep_spec_id=assignment.id,
+            source_revision_id=revision.source_revision_id,
+            info_source_id=source.info_source_id,
+            provider="gcs",
+            credentials_alias="default",
+            media_type="text/html",
+            state="skipped",
+            reason="blob_absent",
+            closed_at=datetime(2026, 4, 3, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "cmd-repspec-view" in r.text
+    assert "blob_absent" in r.text
+
+
+@pytest.mark.asyncio
+async def test_detail_says_when_an_assignment_has_never_replicated(client, session):
+    spec = _make_rep_spec("Untouched Spec")
+    item = InfoItem(name="Untouched Item")
+    session.add_all([spec, item])
+    await session.flush()
+    session.add(
+        InfoItemRepSpec(
+            info_item_id=item.info_item_id,
+            rep_spec_id=spec.rep_spec_id,
+            activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "Never replicated" in r.text
+
+
+# ---------------------------------------------------------------------------
+# POST /dashboard/rep-specs/{id}/assignments/{aid}/replicate  (archiver#171 CR #32)
+# ---------------------------------------------------------------------------
+#
+# The RepSpec screen is the natural entry point for "this spec's assignments are
+# all stale". Rendering the state there while forcing a navigation hop per item
+# to act on it makes the diagnosis useless.
+
+
+async def _spec_with_replicable_assignment(session, *, name: str, url: str):
+    spec = _make_rep_spec(name)
+    source = InfoSource(url=url, source_specs=[])
+    item = InfoItem(name=f"{name} Item", rep_fields={})
+    session.add_all([spec, source, item])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add_all(
+        [
+            assignment,
+            SourceRevision(
+                info_source_id=source.info_source_id,
+                content_fingerprint="sha256:" + "b" * 64,
+                captured_at=datetime(2026, 4, 2, tzinfo=UTC),
+                content_cache_uri="file:///blobs/b.bin",
+                source_media_type="text/html",
+            ),
+        ]
+    )
+    await session.flush()
+    return spec, assignment
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_from_the_rep_spec_screen(client, session):
+    spec, assignment = await _spec_with_replicable_assignment(
+        session, name="Actionable Spec", url="https://example.com/actionable"
+    )
+
+    r = await client.post(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    # The whole section re-renders, matching the DELETE beside it — the row shape
+    # here is the RepSpec table's, not the InfoItem hub's.
+    assert 'id="rep-spec-assignments"' in r.text
+    # Focus moves to the section heading: the swap destroys the clicked button
+    # (CR #37), the same reason the Deactivate beside it does this.
+    assert 'getElementById("rep-spec-assignments-heading")' in r.text
+    assert "requested" in r.text
+    assert read_flash(r)["showFlash"]["level"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_the_rep_spec_replicate_button_disables_itself_in_flight(client, session):
+    """The same guard as the hub's, tested separately: a template edit could drop
+    it from one screen while the other's test stayed green (CR #45)."""
+    spec, _ = await _spec_with_replicable_assignment(
+        session, name="Guarded Spec", url="https://example.com/guarded"
+    )
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    replicate_button = r.text.split("Replicate now")[0].rsplit("<button", 1)[1]
+    assert 'hx-disabled-elt="this"' in replicate_button
+    assert 'hx-target="#rep-spec-assignments"' in replicate_button
+
+
+@pytest.mark.asyncio
+async def test_rep_spec_replicate_rejects_a_foreign_assignment(client, session):
+    """The assignment id is untrusted input; it must belong to this spec."""
+    _, assignment = await _spec_with_replicable_assignment(
+        session, name="Owned Spec", url="https://example.com/owned"
+    )
+    other = _make_rep_spec("Other Spec")
+    session.add(other)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/rep-specs/{other.rep_spec_id}/assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_rep_spec_replicate_refuses_without_a_source_binding(client, session):
+    """No binding at all — a wiring gap, distinct from "nothing captured yet"."""
+    spec = _make_rep_spec("Unbound Spec")
+    item = InfoItem(name="Unbound Item", rep_fields={})
+    session.add_all([spec, item])
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    # 200, not 422: htmx discards a 4xx, so the refusal rides the flash (CR #36).
+    assert r.status_code == 200
+    assert "no active source binding" in read_flash(r)["showFlash"]["body"]
+
+
+@pytest.mark.asyncio
+async def test_rep_spec_replicate_refuses_without_a_revision(client, session):
+    """Bound, but never captured — the condition the previous test's name claimed
+    and did not check (CR #39)."""
+    spec = _make_rep_spec("Uncaptured Spec")
+    source = InfoSource(url="https://example.com/uncaptured", source_specs=[])
+    item = InfoItem(name="Uncaptured Item", rep_fields={})
+    session.add_all([spec, source, item])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert "not been captured yet" in read_flash(r)["showFlash"]["body"]

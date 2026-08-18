@@ -26,6 +26,7 @@ from ulid import ULID
 from src.core.fingerprints import is_valid_fingerprint
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
+from src.core.services.replication_issuance import issue_for_revision
 from src.core.spec_match import (
     NOT_COMPARED,
     SUPERSEDED,
@@ -250,6 +251,11 @@ async def record_revision(
                 payload=(await _captured_emit(session, row)).model_dump(mode="json"),
             )
         )
+        # Replication rides the same transaction (archiver#169). Under the
+        # idempotent no-op it deliberately does not run: a redelivery is the
+        # same occasion, and a second command_id for it is exactly the
+        # re-replication MUST-1 reserves for a genuinely new one.
+        await issue_for_revision(session, row)
     else:
         _refresh_spec_comparison(row, facts, comparison)
 

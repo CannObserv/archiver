@@ -10,6 +10,8 @@ from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
 from src.core.rep_fields_schema.validator import validate_rep_fields_against_spec
+from src.core.replication.destination import probe_destination
+from src.core.replication.errors import ReplicationRenderError
 
 
 class AssignmentError(Exception):
@@ -30,6 +32,20 @@ class RepFieldsIncompleteError(AssignmentError):
     def __init__(self, missing: list[dict]) -> None:
         self.missing = missing
         super().__init__(f"rep_fields incomplete: {missing}")
+
+
+class RepFieldsUnrenderableError(AssignmentError):
+    """rep_fields satisfies required_fields but cannot produce a destination.
+
+    Presence is a weaker statement than renderability: ``"WA LCB"`` is present
+    and non-null, and is not a path segment. Refusing here rather than at
+    replication time is the point — ``document`` freezes on assignment (#83), so
+    this is the last moment an author can fix either side (archiver#168 CR #5).
+    """
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"rep_fields cannot render this RepSpec's path_template: {reason}")
 
 
 async def lock_rep_specs(
@@ -95,6 +111,13 @@ async def assign_rep_spec(
     ok, errors = validate_rep_fields_against_spec(item.rep_fields or {}, required_fields)
     if not ok:
         raise RepFieldsIncompleteError(errors)
+
+    # Presence is not renderability, and this is the last synchronous chance to
+    # say so (archiver#168 CR #5).
+    try:
+        probe_destination(spec.document or {}, item.rep_fields or {})
+    except ReplicationRenderError as e:
+        raise RepFieldsUnrenderableError(str(e)) from e
 
     assignment = InfoItemRepSpec(
         info_item_id=info_item_id,

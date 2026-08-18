@@ -22,8 +22,8 @@ def _gcs_doc() -> dict:
     return {
         "provider": "gcs",
         "credentials_alias": "gcs-prod",
-        "path_template": "archive/{info_item.slug}/{source_revision.date}.html",
-        "required_fields": ["info_item.slug", "source_revision.date"],
+        "path_template": "archive/{info_item.slug}/{source_revision.fingerprint}.html",
+        "required_fields": ["info_item.slug"],
         "object_options": {"storage_class": "STANDARD"},
     }
 
@@ -32,7 +32,7 @@ def _gdrive_doc() -> dict:
     return {
         "provider": "gdrive",
         "credentials_alias": "gdrive-prod",
-        "path_template": "{info_item.slug}",
+        "path_template": "{info_item.slug}/{source_revision.id}",
         "required_fields": ["info_item.slug"],
         "object_options": {},
     }
@@ -330,7 +330,7 @@ async def test_patch_renames_a_draft(client):
 @pytest.mark.asyncio
 async def test_patch_replaces_document_on_a_draft(client):
     spec = await _create_spec(client)
-    new_doc = _gcs_doc() | {"path_template": "corrected/{info_item.slug}.html"}
+    new_doc = _gcs_doc() | {"path_template": "corrected/{info_item.slug}/{source_revision.id}.html"}
 
     resp = await client.patch(
         f"/api/v1/rep-specs/{spec['rep_spec_id']}",
@@ -338,7 +338,10 @@ async def test_patch_replaces_document_on_a_draft(client):
         json={"document": new_doc},
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["document"]["path_template"] == "corrected/{info_item.slug}.html"
+    assert (
+        resp.json()["document"]["path_template"]
+        == "corrected/{info_item.slug}/{source_revision.id}.html"
+    )
 
 
 @pytest.mark.asyncio
@@ -377,7 +380,9 @@ async def test_patch_document_on_assigned_spec_returns_409(client, session):
     resp = await client.patch(
         f"/api/v1/rep-specs/{spec['rep_spec_id']}",
         headers=HEADERS,
-        json={"document": _gcs_doc() | {"path_template": "nope/{info_item.slug}"}},
+        json={
+            "document": _gcs_doc() | {"path_template": "nope/{info_item.slug}/{source_revision.id}"}
+        },
     )
     assert resp.status_code == 409, resp.text
     detail = resp.json()["detail"]
@@ -394,7 +399,9 @@ async def test_patch_document_blocked_by_deactivated_assignment(client, session)
     resp = await client.patch(
         f"/api/v1/rep-specs/{spec['rep_spec_id']}",
         headers=HEADERS,
-        json={"document": _gcs_doc() | {"path_template": "nope/{info_item.slug}"}},
+        json={
+            "document": _gcs_doc() | {"path_template": "nope/{info_item.slug}/{source_revision.id}"}
+        },
     )
     assert resp.status_code == 409, resp.text
 

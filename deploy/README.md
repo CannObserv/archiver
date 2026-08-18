@@ -124,9 +124,28 @@ what is running today:
 | `content.fetch` | Watcher → Replicator | command | `replicator.fetch` (exactly one — competing consumers) | `XPENDING` / group lag | `content.fetch.dlq` | **unasserted** — CannObserv/watcher#245 |
 | `content.blobs` | Replicator → Watcher | fact | one per consuming service | group lag per group | `content.blobs.dlq` | **unasserted** — CannObserv/replicator#19 |
 | `content.revisions` | Watcher → **Archiver** *(producer target: CannObserv/watcher#253)* | fact | `archiver.revisions` (one per consuming service) | `XPENDING` / group lag — **the first group Archiver owns**; threshold still to be set, see #130 | `content.revisions.dlq` — written by the ingest consumer's quarantine path | **unasserted** — CannObserv/watcher#253 |
+| `content.artifacts` | Replicator → **Archiver** *(consumer live — archiver#170)* | fact, broadcast (both replicate outcomes share it, so an issuer sees success and failure in one group) | `archiver.artifacts` (one per consuming service) | `XPENDING` / group lag; issuer-side, `information.replication_commands` rows still `state='requested'` past the reap horizon — the reaper logs each abandonment at WARNING | `content.artifacts.dlq` — written by this consumer's quarantine path | **n/a (consumer)** — producer durability is CannObserv/replicator#34's |
 | `content.fetch-policy` | Watcher → Replicator workers *(target; no producer or consumer exists yet)* | config/state, broadcast, last-write-wins per host key | **none, permanently — by design** | **last-entry age via `XINFO STREAM`** | **none applies** | **self-correcting** — full set is republished on a timer |
 | `info.registry` | **Archiver** → Watcher *(consumer live — watcher#254)* | config/state, broadcast, last-write-wins per `info_item_id`, `generation`-ordered | **none, permanently — by design** (every consumer needs every message; a group accumulates a PEL nothing drains) | **last-entry age via `XINFO STREAM`** — on a non-empty corpus the snapshot guarantees ≥1 entry/hour, so an age over ~2× the snapshot interval means the producer is down; an empty or never-announced registry publishes nothing, so the alarm needs a corpus-size guard. See #147 | **none applies** — a state message has nothing to close; quarantine is terminal and the next full set supersedes | **split by path**: deltas ride the transactional outbox and retry indefinitely (OOM transient); snapshots have **no retry** — one lost to an outage is corrected by the next period, not a re-attempt |
+| `content.replicate` | **Archiver** → Replicator *(producer live — archiver#169; consumer shipped for `gcs`, CannObserv/replicator#34)* | command | `replicator.replicate` (exactly one — competing consumers, `content.fetch`'s posture) | `XPENDING` / group lag, plus the issuer-side view `information.replication_commands` gives: rows still `state='requested'` past the reaper horizon, which the reaper (archiver#170) closes as `abandoned` and logs at WARNING | `content.replicate.dlq` — Replicator's to write; Archiver provisions nothing here | **retries indefinitely** — transactional outbox, OOM classified transient. **Never XTRIMmed by Archiver**: capping a command stream deletes commands the consumer group has not delivered and orphans the PEL entries naming them, so the topic is carved out of the drain loop's trim set (`no_trim_topics`) |
 | `info.watch-status` | Watcher → **Archiver** *(consumer live — archiver#151; producer target: CannObserv/watcher#264)* | config/state, broadcast, last-write-wins per `info_item_id` | **none, permanently — by design** — Archiver tails groupless (`AsyncBusTailReader`), resuming from its own `bus_tail_cursors` row rather than a full `0-0` replay | consumer-side: staleness of the `watch_status` cache vs the producer's republish period; broker-side last-entry age once #264 publishes | **none, matching `content.fetch-policy`** — **two** skip paths, both durable (the skip advances the persisted cursor) and both logged at ERROR: a frame that will not *decode*, and a decoded message the registry can never *write* (a value outside a column's domain, a constraint violation). With no DLQ and a cursor that only advances on success, retrying either forever would stall the stream silently; the periodic republish is what supersedes a skip. Everything else (broker or DB down) rewinds and retries rather than skipping | **self-correcting** — coalesced level signals, full republish on a timer (watcher#264) |
+
+⚠️ **`content.replicate` is the one stream where a test message is not free.**
+Every other topic here carries a fact or a piece of state — the worst a stray
+one costs is a confusing dashboard. A replicate command asks another service to
+write bytes into a **permanent** store, and one of the providers (archive.org)
+cannot be deleted at all. Two rules follow, and neither is enforceable by the
+broker:
+
+- **Never point a dev or test process at the production broker.**
+  `ARCHIVER_DEV_REDIS_URL` is unset by default and prod's `ARCHIVER_REDIS_URL`
+  is never inherited (the Redis analogue of the DB `_test` guard); #157 is what
+  the DB half of that lesson cost, and #162 is what a DLQ full of test residue
+  costs to clean up.
+- **The "Replicate now" button (archiver#171) writes for real.** It is an
+  operator action on the live dashboard — port 8020 — and it enqueues a genuine
+  command against the item's latest revision. It is `hx-confirm`-guarded for
+  that reason. There is no dry-run.
 
 **`content.revisions` is Archiver's first consumer role** — every other row is a
 stream it operates for someone else. Two operational consequences: the

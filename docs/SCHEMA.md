@@ -160,6 +160,27 @@ see the never-rename rule in `AGENTS.md`.
     changes.
 
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
+  **`path_template` contract** (archiver#168) — three rules the envelope schema cannot express,
+  checked by `src/core/replication/template.py` from the *same parser* the renderer uses, so a
+  document that validates is one that renders:
+  - Placeholders are `{namespace.key}`. A bag placeholder must appear in `required_fields` —
+    the list is hand-maintained, not derived, so the two are checked against each other before
+    the document can freeze.
+  - `source_revision.*` (`id`, `date`, `fingerprint`, `captured_at`) is the **occasion**
+    namespace: supplied per replication by `src.core.replication.destination.RenderOccasion`,
+    and therefore **rejected** in `required_fields` — no `rep_fields` bag can hold it.
+  - The template must carry `{source_revision.id}` or `{source_revision.fingerprint}` (the
+    issuer contract's R2). `date` is not a discriminator: two revisions captured the same day
+    would render one destination, which returns as `destination_conflict` — a conflict token
+    for what is really a path-design error.
+
+  Rendering refuses rather than rewrites: a bag value outside `[A-Za-z0-9._-]` is an error
+  naming the field, because the rendered path becomes a citable `public_url` and two values
+  that sanitize alike would collide. The rendered string is then checked against the consumer's
+  own guards (absolute, traversal, backslash, drive qualifier, control characters, untrimmed or
+  empty segments — before *and* after percent-decoding), so a path Archiver can refuse is never
+  published.
+
   **Tiered mutability** (#83): `name` always editable; `document` editable only while the RepSpec is a
   *draft* — zero `info_item_rep_specs` rows, active **or** deactivated; `provider` frozen always.
   `updated_at` is nullable and never backfilled (NULL = never edited). An assigned spec is frozen
@@ -173,6 +194,35 @@ see the never-rename rule in `AGENTS.md`.
   design. Rows are kept forever; the table grows only with deletions. Same shape and reason as
   Watcher's consumer-side table (watcher#254): every key keeps a left-hand side for
   apply-iff-greater whether or not it still has a row.
+- **`ReplicationCommand`** (`replication_commands`) — one `content.replicate` occasion and what
+  became of it (archiver#169). Written in the *same transaction* as the revision insert and the
+  outbox row, which is what makes "revision recorded" and "replication requested" inseparable.
+  - **`command_id` is Text, minted fresh per occasion** — never derived from `(rep_spec_id,
+    info_item_id)` or anything else stable (MUST-1). A derived id breaks the second legitimate
+    re-replication in a TTL-bounded, intermittent way. Text rather than a ULID column because it
+    is a wire value Replicator echoes back verbatim; issuance mints ULIDs, but the column does not
+    require one.
+  - **`info_item_rep_spec_id` is the target**, not `(info_item_id, rep_spec_id)`: that pair has no
+    uniqueness, only a partial index over active rows, so it stops identifying a target once a spec
+    is deactivated and later reassigned.
+  - **States**: `requested` → `complete` | `failed` | `abandoned` (archiver#170 writes the last
+    three), plus `skipped` — terminal on arrival, nothing went on the wire. Skip reasons are
+    **local** (`blob_absent`, `blob_expired_locally`, `unrenderable`, `destination_collision`,
+    `unsupported_command`) and deliberately distinct from Replicator's producer-owned failure
+    tokens: these are conditions Archiver decided about before publishing.
+  - A skip is a *row*, not a log line. Absent one, the dashboard renders a replication that
+    silently did not happen as "not yet" forever (archiver#171).
+  - **`last_fact_at` is the ordering high-water mark** (archiver#170). `content.artifacts` is
+    at-least-once and keyed `command_id:occurred_at` precisely because one command emits a
+    *sequence* of facts, so a redelivered older fact can land after a newer one; without the mark
+    a stale failure flips a completed replication to `failed` while its `public_url` still names a
+    live artifact. Equal timestamps are the same emission and still apply — T4 has Replicator
+    re-emit a success deliberately. Two consequences worth knowing: a `complete` command never
+    moves to `failed`, and `terminal` never downgrades from `True`.
+  - **`skipped` occasions are excluded from "newest occasion"**. A skip never reached the wire and
+    produced no artifact, so it has no claim on the assignment's `public_url` slot — and skips are
+    written for *every* active assignment whenever a revision arrives with no blob, so counting
+    them would let one such revision silently suppress the URL of a replication still in flight.
 - **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
 - **`WatchStatus`** (`watch_status`) — local LWW cache of `info.watch-status`, one row per
   InfoItem (archiver#151). What the watched-item panel renders from, with zero SDK calls. Every

@@ -38,8 +38,8 @@ def _valid_gcs_rep_spec(**overrides):
     doc = {
         "provider": "gcs",
         "credentials_alias": "gcs-cannobserv-prod",
-        "path_template": "archive/{info_item.slug}/{source_revision.date}.html",
-        "required_fields": ["info_item.slug", "source_revision.date"],
+        "path_template": "archive/{info_item.slug}/{source_revision.fingerprint}.html",
+        "required_fields": ["info_item.slug"],
         "object_options": {
             "storage_class": "STANDARD",
             "cache_control": "public, max-age=3600",
@@ -83,7 +83,7 @@ def test_envelope_accepts_gdrive_provider():
     doc = {
         "provider": "gdrive",
         "credentials_alias": "gdrive-cannobserv",
-        "path_template": "archive/{info_item.slug}",
+        "path_template": "archive/{info_item.slug}/{source_revision.id}",
         "required_fields": ["info_item.slug"],
     }
     validator.validate(doc)
@@ -96,7 +96,7 @@ def test_envelope_accepts_ia_provider():
     doc = {
         "provider": "ia",
         "credentials_alias": "ia-cannobserv",
-        "path_template": "archive/{info_item.slug}",
+        "path_template": "archive/{info_item.slug}/{source_revision.id}",
         "required_fields": ["info_item.slug"],
         "object_options": {"collection": "cannabis-observer", "mediatype": "web"},
     }

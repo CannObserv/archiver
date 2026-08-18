@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrif
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK — **not** by Watcher, whose edge is bus-only in both directions (archiver#142 / watcher#254). Produces `info.changes` and `info.registry` via an internal outbox publisher, and consumes exactly two streams — `content.revisions` (archiver#139) and `info.watch-status` (archiver#151). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK — **not** by Watcher, whose edge is bus-only in both directions (archiver#142 / watcher#254). Produces `info.changes`, `info.registry`, and `content.replicate` (archiver#169) via an internal outbox publisher, and consumes three streams — `content.revisions` (archiver#139), `info.watch-status` (archiver#151), and `content.artifacts` (archiver#170). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 **Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one — a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
 
@@ -224,6 +224,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - `ChangesOutboxRow` (`changes_outbox`) — pending bus event awaiting publication
 - `RevokedInfoItem` (`revoked_info_items`) — deleted InfoItem's identity + final generation; feeds the snapshot's tombstone republish
 - `WatchStatus` (`watch_status`) — local LWW cache of `info.watch-status`; what the watched-item panel renders from. Reported by Watcher, never locally verified
+- `ReplicationCommand` (`replication_commands`) — one `content.replicate` occasion: the MUST-2 mapping, the reaper's queue, and where a *skipped* replication is recorded rather than lost
 - `BusTailCursor` (`bus_tail_cursors`) — resume point per groupless tail, so a restart is a delta not a `0-0` replay
 
 Per-entity contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The

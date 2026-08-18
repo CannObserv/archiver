@@ -15,19 +15,50 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                pagination.py — shared clamped limit/offset dependency; see
                                docs/UI.md for why the dashboard clamps where the API 422s;
                                watch_panel.py — pure watched-item panel context from local
-                               state: states, health rule, next-due, drift, archiver#151)
+                               state: states, health rule, next-due, drift, archiver#151;
+                               replication_actions.py — the manual-replication outcome→flash
+                               translation shared by both screens that offer the action, and
+                               the one place that records why a refusal is a 200 rather than
+                               a 4xx, archiver#171)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,
-                               changes_outbox)
+                               changes_outbox, replication_command)
   source_spec_schema/          SourceSpec JSON Schema v1 + validator
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
   rep_fields_schema/           rep_fields meta-schema + validator
+  replication/                 The RepSpec path contract and the destination
+                               renderer (archiver#168). template.py holds the
+                               ONE placeholder parser — used by the create/update
+                               gate (via rep_spec_schema/validator.py) and by the
+                               renderer, so a document that validates is one that
+                               renders; it also owns the occasion namespace
+                               (source_revision.*, reserved out of
+                               required_fields) and the R2 discriminator rule.
+                               destination.py renders, refuses (segment charset,
+                               T3 path guards, naive datetimes), pre-flights a
+                               fan-out set for colliding paths, and probes
+                               renderability at assignment time. errors.py is the
+                               single base both raise under, so archiver#169 can
+                               record a skip by catching one class. Archiver
+                               renders because the issuer contract's T3 says so
+                               — Replicator receives strings and never
+                               interpolates. Do not write a second renderer.
   watch_spec_schema/           WatchSpec (cadence policy) v1 + validator. Cadence
                                only — pause state is info_items.watch_active
-  changes/                     Two background asyncio tasks and their shared
-                               pacing: publisher.py drains changes_outbox to
+  changes/                     The background asyncio tasks and their shared
+                               pacing. group_consumer.py owns the consumer-group
+                               loop — read, claim, quarantine, ack, back off,
+                               re-arm — and is SHARED by both group consumers
+                               rather than copied: nearly every line encodes an
+                               incident or a review finding, and a copy inherits
+                               those once and then drifts. artifacts_consumer.py
+                               applies replication outcomes from content.artifacts
+                               (archiver#170) — public_url's automated writer;
+                               replication_reaper.py closes commands that produced
+                               no fact at all, on a timer because it detects an
+                               absence. publisher.py drains changes_outbox to
                                info.changes; consumer.py ingests
                                source_revision_observed from content.revisions
                                (archiver#139) and is gated on
@@ -61,6 +92,11 @@ src/core/                      Domain logic
                                "row and event in one transaction" is the outbox
                                guarantee. source_revision.py is why the bus and
                                HTTP paths cannot emit divergent payloads.
+                               replication_status.py is the one read-only member:
+                               a projection of replication_commands for the
+                               dashboard's assignment tables (archiver#171), so
+                               a public_url with an automated writer can say
+                               which occasion wrote it.
   spec_match.py                Compares an observed spec_fingerprint against the
                                InfoSource's own source_specs via co-core's shared
                                derivation (cannobserv#309). Every uncertain branch

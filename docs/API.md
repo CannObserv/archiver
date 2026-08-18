@@ -1,8 +1,9 @@
 # archiver — API & Change-Bus Surface
 
-Every HTTP route, its SDK wrapper, and the `info.changes` event contract. The
-route inventory changes with each SDK release; `AGENTS.md` carries only the
-auth rule and a pointer here.
+Every HTTP route, its SDK wrapper, and the bus contracts Archiver produces and
+consumes — `info.changes`, `info.registry`, `content.replicate` out;
+`content.revisions` and `info.watch-status` in. The route inventory changes with
+each SDK release; `AGENTS.md` carries only the auth rule and a pointer here.
 
 ## Authoring tools + assignment endpoints (v2)
 
@@ -143,6 +144,49 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   so the floor is one full set plus the deltas since. The topic is excluded
   from the fact stream's periodic `XTRIM`.
 
+**`content.replicate` — the replication command channel (archiver#169).** A third
+producer surface, *command* kind: exactly one consumer group
+(`replicator.replicate`, competing consumers), `content.fetch`'s posture. Payload:
+`co_core.pure.models.changes.ContentReplicateCommandEmit`; idempotency key is the
+bare `command_id`. Archiver is the **sole issuer** — the normative contract is
+Replicator's `docs/contracts/content-replicate-issuer-contract.md`, where MUST-1,
+MUST-2, MUST-4 and MUST-6 of the `content.fetch` issuer contract apply verbatim
+and MUST-7 *inverts* into a scheduling obligation on this side.
+
+- **One command per active assignment**, never one carrying a list: a
+  `command_id` identifies an *occasion*, and N provider writes fail, retry and
+  complete independently, so a list-shaped command would leave a partial outcome
+  with no correlator.
+- **Issued on the revision insert, in its transaction** — `record_revision`
+  calls `src/core/services/replication_issuance.py`, which writes the
+  `replication_commands` row (MUST-2's durable mapping) and the outbox row
+  together. The idempotent no-op issues nothing: a redelivery is the same
+  occasion.
+- **`command_id` is minted fresh per occasion** and never derived from
+  `(rep_spec_id, info_item_id)` or anything else stable. A derived id breaks the
+  second legitimate re-replication in a TTL-bounded, intermittent way.
+- **Archiver renders `destination`** (the contract's T3/R1) — the RepSpec's
+  `path_template` never travels. See `docs/SCHEMA.md` for the template contract
+  and `src/core/replication/` for the one parser that both validates and renders.
+- **`media_type` echoes `source_revisions.source_media_type`**, falling back to
+  `application/octet-stream`: Replicator's blob store discards the media type it
+  was handed, so an omitted value lands in a *permanent* store as
+  `application/octet-stream` forever.
+- **Skips are rows, not silence.** An assignment that cannot be issued gets a
+  `replication_commands` row with `state="skipped"` and a local reason —
+  `blob_absent`, `blob_expired_locally`, `unrenderable`,
+  `destination_collision`, `unsupported_command`. These are Archiver's own
+  vocabulary for what it decided *before* publishing, deliberately distinct from
+  Replicator's producer-owned failure tokens. Only the colliding assignments are
+  skipped on a `destination_collision`; the rest of the fan-out still ships.
+- **Never `XTRIM`med by Archiver.** Capping a command stream deletes commands the
+  consumer group has not delivered and orphans the PEL entries naming them, so
+  the topic is carved out of the drain loop's trim set.
+- **Outcomes are not yet consumed.** `content.artifacts` carries
+  `replication_complete` / `replication_failed`; nothing reads it until
+  archiver#170, so `public_url` still has no automated writer and no reaper
+  exists for a command that closes without a fact.
+
 `source_revision_captured` schema_version is now **2** — `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 
 **Bus event versioning convention.** Every bus event payload carries
@@ -225,6 +269,50 @@ message **pending**, and it is redelivered or reclaimed by `XAUTOCLAIM`.
 The HTTP write path (`POST` / `PATCH /source-revisions`) stays for authoring and
 backfill; retiring it is a separate call from retiring Watcher's *use* of it
 (CannObserv/watcher#253).
+
+## Change-bus consumer — `content.artifacts` (archiver#170)
+
+The return leg of `content.replicate`, and what finally gives
+`info_item_rep_specs.public_url` an automated writer. Group
+**`archiver.artifacts`**, same `ARCHIVER_BUS_CONSUMER` gate as
+`content.revisions` — joining a group removes messages from it, so a stray
+process must not. Both outcomes share the stream by design: an issuer wants one
+group seeing success and failure, because "did this command close?" is one
+question.
+
+`replication_complete` → `public_url` onto the assignment row and the command
+closed. `replication_failed` → `reason` / `terminal` / `attempts` / `detail`
+recorded; the command closes **only** when `terminal` is true.
+
+- **A repeat is expected traffic** (MUST-4 / T4). A redelivery that finds
+  matching bytes at the destination no-ops and re-emits the same `public_url`,
+  so the writeback is idempotent by construction.
+- **An unknown `command_id` is ack-and-drop.** The registry is the authority on
+  what it issued; a fact about anything else is not something redelivery fixes —
+  the posture `content.revisions` takes for an unknown `info_source_id`.
+- **Newest occasion wins** (R3), counting only occasions that reached the wire —
+  a `skipped` row produced no artifact and does not claim the slot. An older
+  occasion's late fact records itself on its own `replication_commands` row
+  without overwriting the assignment's newer URL.
+- **Out-of-order facts are expected traffic.** `replication_commands.last_fact_at`
+  is the high-water mark: a fact older than one already applied is ignored, a
+  `complete` command never moves to `failed`, and `terminal` never downgrades.
+  Equal timestamps are the same emission and still apply.
+- **`reason` is opaque.** The vocabulary is producer-owned — Replicator's
+  contract lists six tokens where co-core's docstring registers five
+  (cannobserv#330) — so branching on it here would make every new token a code
+  change.
+- **Undecodable frames** are quarantined to `content.artifacts.dlq` by the shared
+  loop before any handler sees them; a database failure raises instead, leaving
+  the entry pending for redelivery.
+
+**The reaper** (`src/core/changes/replication_reaper.py`) closes the silent case
+MUST-6 names: Replicator does not guarantee that every command either succeeds or
+is closed, and a provider 5xx retries unbounded while publishing nothing. A timer
+(`ARCHIVER_REPLICATION_REAP_INTERVAL`, default 900s) marks commands open past
+`ARCHIVER_REPLICATION_REAP_HORIZON` (default 6h) as `abandoned`. It runs on a
+clock rather than off an arrival because it detects an *absence*, and it **never
+re-issues** — a second artifact in a permanent store has no way back.
 
 ## Change-bus tail — `info.watch-status` (archiver#151)
 

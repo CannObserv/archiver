@@ -1,4 +1,6 @@
-"""Shared fixtures for dashboard tests."""
+"""Shared fixtures and helpers for dashboard tests."""
+
+import json
 
 import pytest
 
@@ -7,6 +9,17 @@ from src.api.main import app
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 
 _ANNOUNCEABLE_SPECS = [{"schema_version": 1, "extraction": {"algorithm": "full_page"}}]
+
+
+def read_flash(response) -> dict:
+    """The parsed ``HX-Trigger`` header of a dashboard mutation.
+
+    One copy, because it is the reader's entry point to the convention the
+    manual-replication routes rest on: htmx discards a 4xx body, so an outcome
+    that has to reach the operator rides this header rather than a status code
+    (docs/STYLE.md, archiver#171 CR #36/#44).
+    """
+    return json.loads(response.headers["HX-Trigger"])
 
 
 @pytest.fixture(autouse=True)

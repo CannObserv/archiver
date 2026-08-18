@@ -58,7 +58,7 @@ wheels = [
 
 [[package]]
 name = "archiver"
-version = "4.13.0"
+version = "4.16.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -100,8 +100,8 @@ requires-dist = [
     { name = "archiver-client", editable = "clients/python" },
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "beautifulsoup4", specifier = ">=4.12.0,<5" },
-    { name = "co-core", extras = ["extract"], specifier = ">=0.9.3,<0.10" },
-    { name = "co-core-aio", extras = ["bus"], specifier = ">=0.9.3,<0.10" },
+    { name = "co-core", extras = ["extract"], specifier = ">=0.9.4,<0.10" },
+    { name = "co-core-aio", extras = ["bus"], specifier = ">=0.9.4,<0.10" },
     { name = "fastapi", specifier = ">=0.115.0,<1" },
     { name = "httpx", specifier = ">=0.28.0,<1" },
     { name = "jinja2", specifier = ">=3.1.0,<4" },
@@ -249,15 +249,15 @@ wheels = [
 
 [[package]]
 name = "co-core"
-version = "0.9.3"
+version = "0.9.4"
 source = { registry = ".wheelhouse" }
 dependencies = [
     { name = "dateparser" },
     { name = "pydantic" },
 ]
-sdist = { path = "co_core-0.9.3.tar.gz" }
+sdist = { path = "co_core-0.9.4.tar.gz" }
 wheels = [
-    { path = "co_core-0.9.3-py3-none-any.whl" },
+    { path = "co_core-0.9.4-py3-none-any.whl" },
 ]
 
 [package.optional-dependencies]
@@ -271,15 +271,15 @@ extract = [
 
 [[package]]
 name = "co-core-aio"
-version = "0.9.3"
+version = "0.9.4"
 source = { registry = ".wheelhouse" }
 dependencies = [
     { name = "co-core" },
     { name = "httpx" },
 ]
-sdist = { path = "co_core_aio-0.9.3.tar.gz" }
+sdist = { path = "co_core_aio-0.9.4.tar.gz" }
 wheels = [
-    { path = "co_core_aio-0.9.3-py3-none-any.whl" },
+    { path = "co_core_aio-0.9.4-py3-none-any.whl" },
 ]
 
 [package.optional-dependencies]

@@ -152,7 +152,13 @@ name only what each route adds.
 
 **DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** — HTMX delete; sets `deactivated_at = now()`, idempotent (skipped if already deactivated). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`), which updates the table/empty-state and moves focus to the section heading.
 
-**PATCH `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/public-url`** — sets `public_url` on an assignment (form field: `public_url`). Returns the `info_items/_rep_spec_row.html` fragment replacing the row.
+**POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** — issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading — the swap destroys the clicked button, exactly as the Deactivate beside it does. Guarded twice: `hx-confirm` because the target is a permanent store, `hx-disabled-elt="this"` because htmx does not deduplicate concurrent requests from an element.
+
+**Every outcome is a 200, and every outcome flashes** via `HX-Trigger: showFlash` — issued at `success` naming the rendered destination, a recorded `skipped` row at `warning` naming its reason (it also renders as state in the Replication column), and a refusal the service will not record — `not_active`, `no_active_source`, `no_revision`, `assignment_unreachable` — at `error`. Refusals are 200s rather than 422s because htmx discards a 4xx body (see UI.md § **Inline validation errors** and the STYLE.md rule it points at). The outcome→flash translation is `src/dashboard/replication_actions.py`, shared with the RepSpec route below.
+
+It exists because a new assignment on *stable* content otherwise never replicates — issuance is triggered by a new revision, and a stable InfoItem may never produce one.
+
+*(The former `PATCH .../public-url` is **retired**. `public_url` acquired an automated writer in archiver#170, so an inline edit was a field whose value the next occasion silently clobbered.)*
 
 **PATCH `/dashboard/info-items/{id}/rep-fields`** — inline save for `rep_fields` JSONB (form field: `rep_fields` JSON string). Returns a flash fragment into `#rep-fields-flash`.
 
@@ -195,11 +201,15 @@ name only what each route adds.
 
 - Header: `.entity-card` (canonical pattern, #80) — `.eyebrow` "Replication Specification" → `<h1 class="entity-card__title" id="rep-spec-heading" tabindex="-1">` name → copyable `rep_spec_id` → `.detail-grid` (provider badge, created_at UTC, plus **Updated** UTC *only when* `updated_at` is non-null — a null means "never edited", and rendering `created_at` there would blur that distinction, #83).
 - Document card — the `rep_specs/_document_card.html` partial, extracted so the update-document action can swap it in place (root `#rep-spec-document-card`, heading `#rep-spec-document-heading`). Shows the stored document JSON in `<pre class="code-block">`, then **conditionally** an edit form: the textarea renders only while the RepSpec is a *draft*, meaning zero `info_item_rep_specs` rows, active **or** deactivated. That count comes from `assignment_count()`, deliberately not `_load_active_assignments`, because a deactivated assignment still means a replication run happened under that document. A non-draft renders an `.alert--info` "frozen" notice with the assignment count instead of the form (#83; clone + migrate is #95).
-- Active assignments — `rep_specs/_assignments.html` (wrapper `#rep-spec-assignments`): count in heading; item name link, activated_at UTC, `public_url` with an `open_button`, and a **Deactivate** action. Deactivate is `hx-delete` to the RepSpec-scoped route below, targeting `#rep-spec-assignments` (`outerHTML`) so the row set, count, and empty-state re-render together. Assignments are manageable from either the RepSpec or the InfoItem screen (#80).
+- Active assignments — `rep_specs/_assignments.html` (wrapper `#rep-spec-assignments`): count in heading; item name link, activated_at UTC, **Replication** (the `replication_state` macro over the latest `replication_commands` row for that assignment), read-only `public_url` with an `open_button`, and **Replicate now** + **Deactivate** actions. Deactivate is `hx-delete` to the RepSpec-scoped route below, targeting `#rep-spec-assignments` (`outerHTML`) so the row set, count, and empty-state re-render together. Assignments are manageable from either the RepSpec or the InfoItem screen (#80).
 
 **POST `/dashboard/rep-specs/{id}/document`** — replaces the `document` on a **draft** RepSpec (form field: `document`, a JSON object string). An **editor card** (UI.md § **Editor cards**) against `#rep-spec-document-card`, error key `doc_error` — the same shape as the InfoSource source-specs editor. Whole-document replace, not merge (#83). Rejections: JSON parse failure, schema/sub-schema validation, an attempted `provider` change (immutable), and `RepSpecNotDraftError` — the last re-checked server-side, because a rendered editor goes stale if the spec acquires an assignment mid-edit.
 
 **DELETE `/dashboard/rep-specs/{id}/assignments/{aid}`** — deactivates a RepSpec assignment (sets `deactivated_at`); the assignment must belong to `{id}` (404 otherwise). Returns the re-rendered `rep_specs/_assignments.html` fragment.
+
+**POST `/dashboard/rep-specs/{id}/assignments/{aid}/replicate`** — the InfoItem hub's twin, spec-scoped (archiver#171). Issues one replication occasion against the item's latest SourceRevision; the assignment must belong to `{id}` (404 otherwise). Re-renders the whole `rep_specs/_assignments.html` section and moves focus to its heading. Identical outcome handling to the hub route: always 200, always a `showFlash` toast (`success` / `warning` / `error`).
+
+It exists because this screen is the natural entry point for "this spec's assignments are all stale", and rendering the state here while forcing a navigation hop per item to act on it makes the diagnosis useless.
 
 ## Settings — API Keys (`/dashboard/settings/api-keys`)
 

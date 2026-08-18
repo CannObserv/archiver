@@ -7,15 +7,20 @@ import pytest
 from sqlalchemy import select
 from ulid import ULID
 
+from src.api.main import app
 from src.core.models import (
+    ChangesOutboxRow,
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
     InfoSource,
+    ReplicationCommand,
     RepSpec,
     SourceRevision,
 )
 from src.core.models.domain import Domain
+from src.core.services.replication_issuance import ManualIssuanceError
+from tests.dashboard.conftest import read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-items", "X-ExeDev-Email": "items@example.com"}
 _LIST_URL = "/dashboard/info-items/"
@@ -48,7 +53,7 @@ def _make_rep_spec(name: str = "Test Spec") -> RepSpec:
             "version": 1,
             "credentials_alias": "default",
             "bucket": "test-bucket",
-            "path_template": "items/{info_item_id}.json",
+            "path_template": "items/{source_revision.id}.json",
             "required_fields": [],
         },
     )
@@ -684,37 +689,349 @@ async def test_deactivate_one_of_several_rerenders_remaining(client, session):
 
 
 # ---------------------------------------------------------------------------
-# PATCH /{item_id}/rep-spec-assignments/{aid}/public-url
+# Replication state on the assignment table (archiver#171)
 # ---------------------------------------------------------------------------
+#
+# `public_url` acquired an automated writer in #170. #143's rule — *do not ship
+# a column that silently populates* — makes the manual edit a bug rather than a
+# convenience: whatever an author typed, the next occasion overwrites.
 
 
-@pytest.mark.asyncio
-async def test_set_public_url_returns_fragment(client, session):
-    item = _make_item("Pub URL Item")
-    session.add(item)
+async def _assigned(session, *, name: str, url: str, with_revision: bool = True, **rev):
+    """An InfoItem bound to a fresh InfoSource with one active RepSpec assignment."""
+    item = _make_item(name, rep_fields={})
+    source = _make_source(url)
+    rs = _make_rep_spec(f"{name} Spec")
+    session.add_all([item, source, rs])
     await session.flush()
-    rs = _make_rep_spec("Pub URL Spec")
-    session.add(rs)
-    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
     assignment = InfoItemRepSpec(
         info_item_id=item.info_item_id,
         rep_spec_id=rs.rep_spec_id,
-        activated_at=datetime.now(UTC),
+        activated_at=datetime(2026, 5, 1, tzinfo=UTC),
     )
     session.add(assignment)
+    revision = None
+    if with_revision:
+        revision = SourceRevision(
+            info_source_id=source.info_source_id,
+            content_fingerprint="sha256:" + "f" * 64,
+            captured_at=datetime(2026, 5, 2, tzinfo=UTC),
+            content_cache_uri=rev.pop("content_cache_uri", "file:///blobs/f.bin"),
+            source_media_type="text/html",
+            **rev,
+        )
+        session.add(revision)
+    await session.flush()
+    return item, assignment, revision
+
+
+def _command_for(assignment, revision, **kw) -> ReplicationCommand:
+    return ReplicationCommand(
+        command_id=kw.pop("command_id", "cmd-dash-1"),
+        info_item_rep_spec_id=assignment.id,
+        source_revision_id=revision.source_revision_id,
+        info_source_id=revision.info_source_id,
+        provider="gcs",
+        credentials_alias="default",
+        media_type="text/html",
+        **kw,
+    )
+
+
+@pytest.mark.asyncio
+async def test_public_url_is_no_longer_editable(client, session):
+    """The inline form is gone: an author's URL was silently clobbered by the
+    next occasion, which is worse than not offering the field."""
+    item, assignment, revision = await _assigned(
+        session, name="ReadOnly Item", url="https://example.com/readonly"
+    )
+    assignment.public_url = "https://cdn.example.com/readonly.json"
     await session.flush()
 
-    r = await client.patch(
-        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/public-url",
-        data={"public_url": "https://storage.example.com/item.json"},
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert 'name="public_url"' not in r.text
+    assert "/public-url" not in r.text
+    assert "https://cdn.example.com/readonly.json" in r.text
+    assert ">Open ↗</a>" in r.text
+
+
+def test_the_public_url_patch_route_is_retired():
+    """Gone from the route table, not merely unlinked from the template — a
+    dashboard route with no UI is still a writable endpoint."""
+    paths = {getattr(route, "path", "") for route in app.routes}
+    assert not [p for p in paths if p.endswith("/public-url")]
+
+
+@pytest.mark.asyncio
+async def test_a_completed_occasion_renders_its_provenance(client, session):
+    """Where the URL came from: the occasion's id, when it landed, and its state."""
+    item, assignment, revision = await _assigned(
+        session, name="Provenance Item", url="https://example.com/provenance"
+    )
+    assignment.public_url = "https://cdn.example.com/prov.json"
+    session.add(
+        _command_for(
+            assignment,
+            revision,
+            command_id="cmd-provenance",
+            state="complete",
+            public_url="https://cdn.example.com/prov.json",
+            closed_at=datetime(2026, 5, 3, 7, 30, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "cmd-provenance" in r.text
+    assert "2026-05-03 07:30 UTC" in r.text
+    assert "badge--success" in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_skipped_occasion_renders_its_reason(client, session):
+    """The whole point of persisting skips: an invisible refusal reads as "not
+    replicated yet" forever."""
+    item, assignment, revision = await _assigned(
+        session, name="Skipped Item", url="https://example.com/skipped"
+    )
+    session.add(
+        _command_for(
+            assignment,
+            revision,
+            command_id="cmd-skipped",
+            state="skipped",
+            reason="blob_expired_locally",
+            closed_at=datetime(2026, 5, 3, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "skipped" in r.text
+    assert "blob_expired_locally" in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_terminal_failure_renders_the_producer_reason(client, session):
+    item, assignment, revision = await _assigned(
+        session, name="Failed Item", url="https://example.com/failed"
+    )
+    session.add(
+        _command_for(
+            assignment,
+            revision,
+            command_id="cmd-failed",
+            state="failed",
+            reason="destination_forbidden",
+            terminal=True,
+            closed_at=datetime(2026, 5, 3, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "destination_forbidden" in r.text
+    assert "badge--danger" in r.text
+
+
+@pytest.mark.asyncio
+async def test_an_assignment_with_no_occasion_says_so(client, session):
+    item, _, _ = await _assigned(session, name="Never Item", url="https://example.com/never")
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "Never replicated" in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_assignment_table_columns_line_up(client, session):
+    """#171's nit: the header declared five columns while the row rendered four."""
+    item, _, _ = await _assigned(session, name="Columns Item", url="https://example.com/columns")
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    table = r.text.split('aria-label="Active Replication Spec assignments"')[1].split("</table>")[0]
+    head, body = table.split("<tbody>")
+    assert head.count('class="data-table__th"') == body.count('class="data-table__cell')
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/rep-spec-assignments/{aid}/replicate  (archiver#171)
+# ---------------------------------------------------------------------------
+#
+# A new assignment on stable content never replicates: nothing issues until the
+# next revision, which for a stable InfoItem may be never.
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_issues_an_occasion_and_returns_the_row(client, session):
+    item, assignment, revision = await _assigned(
+        session, name="Replicate Item", url="https://example.com/replicate"
+    )
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
         headers=_HEADERS,
     )
-    assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
-    assert "https://storage.example.com/item.json" in r.text
 
-    await session.refresh(assignment)
-    assert assignment.public_url == "https://storage.example.com/item.json"
+    assert r.status_code == 200
+    # The whole section re-renders, matching the Deactivate beside it, so the
+    # swap can move focus off the button it destroys (CR #37).
+    assert 'id="ii-rep-spec-assignments"' in r.text
+    assert 'getElementById("ii-rep-spec-heading")' in r.text
+    assert "requested" in r.text
+
+    commands = (
+        (
+            await session.execute(
+                select(ReplicationCommand).where(
+                    ReplicationCommand.info_item_rep_spec_id == assignment.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [c.state for c in commands] == ["requested"]
+    assert commands[0].source_revision_id == revision.source_revision_id
+    # An irreversible action confirms itself; silence used to be the success
+    # signal and a toast the failure one, which is backwards (CR #42).
+    assert read_flash(r)["showFlash"]["level"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_enqueues_the_command_on_the_outbox(client, session):
+    """The button is the same transactional path as the automatic one — it does
+    not publish, it enqueues."""
+    item, assignment, _ = await _assigned(
+        session, name="Outbox Item", url="https://example.com/outbox"
+    )
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    rows = (
+        (
+            await session.execute(
+                select(ChangesOutboxRow).where(ChangesOutboxRow.topic == "content.replicate")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_renders_the_skip_rather_than_erroring(client, session):
+    """A refused occasion is recorded and shown — the operator asked, and got an
+    answer, not a 500."""
+    item, assignment, _ = await _assigned(
+        session,
+        name="Blobless Item",
+        url="https://example.com/blobless",
+        content_cache_uri=None,
+    )
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert "blob_absent" in r.text
+    assert read_flash(r)["showFlash"]["level"] == "warning"
+    assert "blob_absent" in read_flash(r)["showFlash"]["body"]
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_refuses_when_there_is_nothing_captured_yet(client, session):
+    item, assignment, _ = await _assigned(
+        session,
+        name="Uncaptured Item",
+        url="https://example.com/uncaptured",
+        with_revision=False,
+    )
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    # 200, not 422: a 4xx is discarded by htmx (docs/STYLE.md), so the refusal
+    # would reach the operator as nothing at all (CR #36).
+    assert r.status_code == 200
+    assert read_flash(r)["showFlash"]["level"] == "error"
+    assert "not been captured yet" in read_flash(r)["showFlash"]["body"]
+
+
+@pytest.mark.asyncio
+async def test_an_unregistered_refusal_still_reaches_the_operator(client, session, monkeypatch):
+    """The refusal vocabulary and the exceptions it keys on now live in one
+    module (CR #34), but a subclass can still be added without an entry — and a
+    bare dict subscript inside the except block would 500 (CR #28)."""
+    item, assignment, _ = await _assigned(
+        session, name="Unregistered Item", url="https://example.com/unregistered"
+    )
+
+    async def _raise(*_args, **_kwargs):
+        raise ManualIssuanceError(assignment.id, "a refusal nobody registered")
+
+    monkeypatch.setattr("src.dashboard.routes.info_items.issue_for_assignment", _raise)
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert "This replication could not be issued" in read_flash(r)["showFlash"]["body"]
+
+
+@pytest.mark.asyncio
+async def test_the_replicate_button_disables_itself_in_flight(client, session):
+    """htmx does not deduplicate concurrent requests from an element, and this
+    one writes into a permanent store — archive.org cannot be deleted at all, so
+    a double-click is not a free retry (CR #29)."""
+    item, _, _ = await _assigned(session, name="Debounce Item", url="https://example.com/debounce")
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    replicate_button = r.text.split("Replicate now")[0].rsplit("<button", 1)[1]
+    assert 'hx-disabled-elt="this"' in replicate_button
+    assert 'hx-target="#ii-rep-spec-assignments"' in replicate_button
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_rejects_a_foreign_assignment(client, session):
+    """The assignment id is untrusted input; it must belong to this item."""
+    _, assignment, _ = await _assigned(session, name="Owner Item", url="https://example.com/owner")
+    other = _make_item("Other Item")
+    session.add(other)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{other.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 404
 
 
 # ---------------------------------------------------------------------------
