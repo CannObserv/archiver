@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.api.errors import FieldError, raise_422, raise_envelope
+from src.api.errors import raise_envelope
 from src.core.logging import get_logger
 from src.core.models import (
     InfoItem,
@@ -31,7 +31,6 @@ from src.core.services.registry_announcement import announce_info_item
 from src.core.services.replication_issuance import (
     ManualIssuanceError,
     issue_for_assignment,
-    manual_issuance_refusal,
 )
 from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.assign_rep_spec import (
@@ -69,6 +68,7 @@ from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
+from src.dashboard.replication_actions import refusal_flash_header
 from src.dashboard.watch_panel import build_watch_context
 
 router = APIRouter(prefix="/dashboard/info-items")
@@ -744,17 +744,20 @@ async def replicate_assignment_now(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Issue one replication occasion for this assignment; returns the updated row.
+    """Issue one replication occasion for this assignment; re-renders the section.
 
     Closes a real gap: a new assignment on *stable* content never replicates,
     because issuance is triggered by a new revision and a stable InfoItem may
     never produce one.
 
-    A **refusal is a 200**, not an error — the service records a skip row with
-    its reason, and re-rendering that is exactly the answer the operator asked
-    for. Only the conditions under which there is no occasion to consider at all
-    (deactivated, no active binding, nothing ever captured, unreachable) are
-    422s; the vocabulary itself lives with the exceptions in the service.
+    **Every outcome is a 200 that re-renders**, refusals included. A recorded
+    skip renders as its own state, and a refusal the service would not even
+    record rides an ``HX-Trigger`` flash — htmx discards a 4xx, so raising one
+    here reaches the operator as nothing at all (CR #36).
+
+    Re-renders the whole section rather than the single row, matching the
+    Deactivate beside it: the swap destroys the button that was clicked, so it
+    has to move focus off it (CR #37).
     """
     try:
         item_ulid = ULID.from_str(item_id)
@@ -766,31 +769,34 @@ async def replicate_assignment_now(
     if assignment is None or assignment.info_item_id != item_ulid:
         raise DashboardNotFound("Assignment not found")
 
+    refusal: ManualIssuanceError | None = None
     try:
         await issue_for_assignment(session, assignment)
     except ManualIssuanceError as e:
-        code, message = manual_issuance_refusal(e)
-        raise_422(
-            message,
-            kind="domain",
-            errors=[FieldError(path="/assignment_id", message=str(e), code=code)],
-            source_exc=e,
-        )
+        # No rollback: every refusal path raises before writing anything, and a
+        # rollback here would only risk discarding the caller's own work.
+        refusal = e
+    else:
+        await session.commit()
 
-    await session.commit()
-
-    rs = await session.get(RepSpec, assignment.rep_spec_id)
-    latest = await latest_commands_by_assignment(session, [assignment.id])
-    return _templates.TemplateResponse(
+    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
+        item_ulid, session
+    )
+    response = _templates.TemplateResponse(
         request,
-        "info_items/_rep_spec_row.html",
+        "info_items/_rep_spec_assignments.html",
         {
-            "assignment": assignment,
-            "rep_spec": rs,
-            "item_id": item_id,
-            "latest_command": latest.get(assignment.id),
+            "user": user,
+            "item_id": item_ulid,
+            "irs_rows": irs_rows,
+            "rep_specs_by_id": rep_specs_by_id,
+            "latest_commands": latest_commands,
+            "swapped": True,
         },
     )
+    if refusal is not None:
+        response.headers["HX-Trigger"] = refusal_flash_header(refusal)
+    return response
 
 
 # ---------------------------------------------------------------------------

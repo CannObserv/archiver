@@ -32,7 +32,7 @@ Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
 
 5. **Replicator** — two sub-sections:
    - *Rep Fields* — `x-data="repFieldsEditor()"` wrapper; HTMX-loaded `sortableChips` suggestions (`hx-trigger="load"`); `<textarea name="rep_fields">` with `PATCH /dashboard/info-items/{id}/rep-fields` inline save; flash target `#rep-fields-flash`.
-   - *Replication Specs* — `info_items/_rep_spec_assignments.html` (wrapper `#ii-rep-spec-assignments`, heading `#ii-rep-spec-heading`): `data-table` of active `info_item_rep_specs` assignments plus an assign form (`filter-card`, `rep_spec_id` field). Rows (`_rep_spec_row.html`) carry six columns — Spec, Provider, Activated, **Replication**, Public URL, Actions. HTMX deactivate re-renders the whole section (table + empty state) and focuses the heading; a per-row **Replicate now** (confirm- and `hx-disabled-elt`-guarded) swaps the individual row.
+   - *Replication Specs* — `info_items/_rep_spec_assignments.html` (wrapper `#ii-rep-spec-assignments`, heading `#ii-rep-spec-heading`): `data-table` of active `info_item_rep_specs` assignments plus an assign form (`filter-card`, `rep_spec_id` field). Rows (`_rep_spec_row.html`) carry six columns — Spec, Provider, Activated, **Replication**, Public URL, Actions. **Both** row actions — deactivate and **Replicate now** (confirm- and `hx-disabled-elt`-guarded) — re-render the whole section (table + empty state) and focus the heading, because each destroys the button that was clicked.
 
      **Replication** renders the `replication_state` macro over the latest `replication_commands` row for that assignment: the state badge, the producer's `reason` for a failure or Archiver's local one for a skip (`detail` on the `title`), the `command_id`, and when it closed. Skips are shown for the reason they are persisted at all — a refusal that lives only in a log line renders as "not replicated yet" forever, indistinguishable from one still in flight.
 
@@ -46,7 +46,7 @@ Partial templates under `info_items/`:
 
 | Template | Swap target (`outerHTML`) | States |
 |---|---|---|
-| `_rep_spec_row.html` | its own `<tr>` | via `replication_state`: none, `requested`, `complete`, `failed`, `abandoned`, `skipped` |
+| `_rep_spec_row.html` | — (included only; both its actions swap `#ii-rep-spec-assignments`) | via `replication_state`: none, `requested`, `complete`, `failed`, `abandoned`, `skipped` |
 | `_swap_primary.html` | `#swap-panel` | — |
 | `_watcher_status.html` | `#watcher-status-strip` | `not_watching`, `no_status`, `degraded`, `watching` |
 | `_watcher_section.html` | `#watcher-section` | `not_watching`, `no_status`, `degraded`, `watching` |

@@ -590,6 +590,11 @@ async def test_manual_issue_keeps_the_full_collision_domain(session, info_source
     ]
 
 
+async def _no_active_targets(*_args, **_kwargs) -> list:
+    """Stand-in for ``_active_targets``; async because the real one is awaited."""
+    return []
+
+
 @pytest.mark.asyncio
 async def test_manual_issue_refuses_when_the_assignment_is_not_in_its_own_domain(
     session, info_source, monkeypatch
@@ -605,18 +610,13 @@ async def test_manual_issue_refuses_when_the_assignment_is_not_in_its_own_domain
     assignment = await _assigned_item(session, info_source)
     await _revision(session, info_source)
     monkeypatch.setattr(
-        "src.core.services.replication_issuance._active_targets",
-        lambda *_args, **_kwargs: _empty_targets(),
+        "src.core.services.replication_issuance._active_targets", _no_active_targets
     )
 
     with pytest.raises(AssignmentUnreachableError):
         await issue_for_assignment(session, assignment)
 
     assert await _commands(session) == []
-
-
-async def _empty_targets():
-    return []
 
 
 @pytest.mark.asyncio

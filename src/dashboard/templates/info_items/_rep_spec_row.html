@@ -1,5 +1,7 @@
-{# Partial: single rep-spec assignment row — returned by POST .../replicate so
-   one manual occasion re-renders its own row rather than the whole section.
+{# Partial: single rep-spec assignment row. Included by
+   `_rep_spec_assignments.html` only — never returned standalone. Both row
+   actions swap the enclosing section instead, because each destroys the button
+   that was clicked and has to move focus off it (archiver#171 CR #37).
    Requires `assignment`, `rep_spec`, `item_id`, `latest_command` in context.
 
    `public_url` is **read-only** (archiver#171). It acquired an automated writer
@@ -42,7 +44,7 @@
        second snapshot at a provider that cannot delete one (archiver#171 CR #29). #}
     <button class="btn btn--sm btn--secondary"
             hx-post="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}/replicate"
-            hx-target="#rs-row-{{ assignment.id }}"
+            hx-target="#ii-rep-spec-assignments"
             hx-swap="outerHTML"
             hx-disabled-elt="this"
             hx-confirm="Issue a replication for this assignment against the latest revision?"

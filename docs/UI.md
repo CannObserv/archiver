@@ -165,6 +165,12 @@ double-click issues two occasions. They render the same destination (the
 issuer contract's R2 determinism), so the bytes are safe, but the second
 snapshot is not free and `public_url` follows whichever lands second.
 
+Its refusals are **200s with a flash**, never 4xx — the same rule as inline
+validation errors above, for the same reason: htmx discards a non-2xx body, so a
+422 reaches the operator as nothing at all. The translation lives in
+`src/dashboard/replication_actions.py` so both screens offering the action refuse
+the same way.
+
 **Reported state from another service.** Where a panel renders state some other
 service reports over the bus rather than state Archiver owns — the InfoItem
 watched-item panel is the reference (archiver#151, inventoried in

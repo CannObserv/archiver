@@ -152,7 +152,9 @@ name only what each route adds.
 
 **DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** — HTMX delete; sets `deactivated_at = now()`, idempotent (skipped if already deactivated). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`), which updates the table/empty-state and moves focus to the section heading.
 
-**POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** — issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the `info_items/_rep_spec_row.html` fragment replacing the row, so the new state is visible immediately. `hx-confirm`-guarded: the target is a permanent store. A **refusal is a 200** — the service records a `skipped` row with its reason and the re-rendered row shows it, which is the answer the operator asked for. 422 only where there is no occasion to consider at all: `not_active`, `no_active_source`, `no_revision`, `assignment_unreachable`.
+**POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** — issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading — the swap destroys the clicked button, exactly as the Deactivate beside it does. Guarded twice: `hx-confirm` because the target is a permanent store, `hx-disabled-elt="this"` because htmx does not deduplicate concurrent requests from an element.
+
+**Every outcome is a 200.** A recorded `skipped` row renders as its own state in the Replication column. A refusal the service will not record — `not_active`, `no_active_source`, `no_revision`, `assignment_unreachable` — rides an `HX-Trigger: showFlash` error toast instead, because htmx discards a 4xx body (see UI.md § **Inline validation errors** and the STYLE.md rule it points at). The refusal→flash translation is `src/dashboard/replication_actions.py`, shared with the RepSpec route below.
 
 It exists because a new assignment on *stable* content otherwise never replicates — issuance is triggered by a new revision, and a stable InfoItem may never produce one.
 
@@ -205,7 +207,7 @@ It exists because a new assignment on *stable* content otherwise never replicate
 
 **DELETE `/dashboard/rep-specs/{id}/assignments/{aid}`** — deactivates a RepSpec assignment (sets `deactivated_at`); the assignment must belong to `{id}` (404 otherwise). Returns the re-rendered `rep_specs/_assignments.html` fragment.
 
-**POST `/dashboard/rep-specs/{id}/assignments/{aid}/replicate`** — the InfoItem hub's twin, spec-scoped (archiver#171). Issues one replication occasion against the item's latest SourceRevision; the assignment must belong to `{id}` (404 otherwise). Re-renders the whole `rep_specs/_assignments.html` section rather than one row, matching the DELETE beside it — the row shape here is this table's, not the hub's. Same refusal semantics as the hub route: a recorded skip is a 200 that renders, and only `not_active` / `no_active_source` / `no_revision` / `assignment_unreachable` are 422s.
+**POST `/dashboard/rep-specs/{id}/assignments/{aid}/replicate`** — the InfoItem hub's twin, spec-scoped (archiver#171). Issues one replication occasion against the item's latest SourceRevision; the assignment must belong to `{id}` (404 otherwise). Re-renders the whole `rep_specs/_assignments.html` section and moves focus to its heading. Identical outcome handling to the hub route: always 200, a recorded skip renders as state, an unrecorded refusal rides the `showFlash` toast.
 
 It exists because this screen is the natural entry point for "this spec's assignments are all stale", and rendering the state here while forcing a navigation hop per item to act on it makes the diagnosis useless.
 

@@ -15,7 +15,11 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                pagination.py — shared clamped limit/offset dependency; see
                                docs/UI.md for why the dashboard clamps where the API 422s;
                                watch_panel.py — pure watched-item panel context from local
-                               state: states, health rule, next-due, drift, archiver#151)
+                               state: states, health rule, next-due, drift, archiver#151;
+                               replication_actions.py — the manual-replication refusal→flash
+                               translation shared by both screens that offer the action, and
+                               the one place that records why a refusal is a 200 rather than
+                               a 4xx, archiver#171)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,

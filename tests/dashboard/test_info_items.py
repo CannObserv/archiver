@@ -26,6 +26,12 @@ _LIST_URL = "/dashboard/info-items/"
 _NEW_URL = "/dashboard/info-items/new"
 
 
+def _flash(response) -> dict:
+    """The parsed ``HX-Trigger`` header — where a refusal has to land, since htmx
+    discards a 4xx body (docs/STYLE.md)."""
+    return json.loads(response.headers["HX-Trigger"])
+
+
 def _spec() -> dict:
     return {
         "schema_version": 1,
@@ -886,7 +892,10 @@ async def test_replicate_now_issues_an_occasion_and_returns_the_row(client, sess
     )
 
     assert r.status_code == 200
-    assert f'id="rs-row-{assignment.id}"' in r.text
+    # The whole section re-renders, matching the Deactivate beside it, so the
+    # swap can move focus off the button it destroys (CR #37).
+    assert 'id="ii-rep-spec-assignments"' in r.text
+    assert 'getElementById("ii-rep-spec-heading")' in r.text
     assert "requested" in r.text
 
     commands = (
@@ -964,15 +973,18 @@ async def test_replicate_now_refuses_when_there_is_nothing_captured_yet(client, 
         headers=_HEADERS,
     )
 
-    assert r.status_code == 422
-    assert r.json()["detail"]["errors"][0]["code"] == "no_revision"
+    # 200, not 422: a 4xx is discarded by htmx (docs/STYLE.md), so the refusal
+    # would reach the operator as nothing at all (CR #36).
+    assert r.status_code == 200
+    assert _flash(r)["showFlash"]["level"] == "error"
+    assert "not been captured yet" in _flash(r)["showFlash"]["body"]
 
 
 @pytest.mark.asyncio
-async def test_an_unregistered_refusal_is_still_a_422(client, session, monkeypatch):
+async def test_an_unregistered_refusal_still_reaches_the_operator(client, session, monkeypatch):
     """The refusal vocabulary and the exceptions it keys on now live in one
     module (CR #34), but a subclass can still be added without an entry — and a
-    KeyError inside the except block turns a designed 422 into a 500 (CR #28)."""
+    bare dict subscript inside the except block would 500 (CR #28)."""
     item, assignment, _ = await _assigned(
         session, name="Unregistered Item", url="https://example.com/unregistered"
     )
@@ -987,8 +999,8 @@ async def test_an_unregistered_refusal_is_still_a_422(client, session, monkeypat
         headers=_HEADERS,
     )
 
-    assert r.status_code == 422
-    assert r.json()["detail"]["errors"][0]["code"] == "issuance_refused"
+    assert r.status_code == 200
+    assert "This replication could not be issued" in _flash(r)["showFlash"]["body"]
 
 
 @pytest.mark.asyncio
@@ -1003,6 +1015,7 @@ async def test_the_replicate_button_disables_itself_in_flight(client, session):
     assert r.status_code == 200
     replicate_button = r.text.split("Replicate now")[0].rsplit("<button", 1)[1]
     assert 'hx-disabled-elt="this"' in replicate_button
+    assert 'hx-target="#ii-rep-spec-assignments"' in replicate_button
 
 
 @pytest.mark.asyncio

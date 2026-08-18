@@ -272,9 +272,11 @@ def _issue_targets(
     is ambiguous. Nothing outside ``requested`` is written, skips included: a
     sibling that cannot render is not this occasion's business.
     """
+    # Every caller guarantees a non-empty intersection: ``issue_for_revision``
+    # passes every target's id, and ``issue_for_assignment`` raises
+    # AssignmentUnreachableError first. A silent empty return here would be the
+    # very ambiguity CR #31 removed one layer up, so there is none (CR #38).
     wanted = [t for t in targets if t.assignment.id in requested]
-    if not wanted:
-        return []
 
     blob_skip = _blob_skip_reason(revision)
     if blob_skip is not None:
