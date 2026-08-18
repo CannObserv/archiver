@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -111,6 +112,16 @@ class ReplicationCommand(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
+        # The vocabulary, enforced where it is *used* rather than only where it
+        # is written. The reaper's partial index below hard-codes
+        # ``state = 'requested'``, so a renamed or mistyped state would be
+        # written happily and simply stop matching — the reaper would then
+        # report an empty queue, which is precisely the silence MUST-6's reaper
+        # exists to break (CR #13).
+        CheckConstraint(
+            "state IN ('requested', 'complete', 'failed', 'abandoned', 'skipped')",
+            name="ck_replication_commands_state",
+        ),
         # The reaper's exact predicate: still open, oldest first.
         Index(
             "ix_replication_commands_open",

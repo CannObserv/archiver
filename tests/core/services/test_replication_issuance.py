@@ -349,6 +349,30 @@ async def test_colliding_destinations_are_skipped_not_published(session, info_so
 
 
 @pytest.mark.asyncio
+async def test_a_collision_does_not_silence_an_unrelated_assignment(session, info_source):
+    """Only the colliding pair is skipped (CR #11).
+
+    Assignments fail, retry and complete independently — that is MUST-1's
+    argument for one command per assignment rather than one carrying a list.
+    Refusing a third assignment whose destination is unique because two others
+    share a path contradicts it.
+    """
+    shared = _document(path_template="archive/{source_revision.fingerprint}.html")
+    await _assigned_item(session, info_source, slug="alpha", document=shared)
+    await _assigned_item(session, info_source, slug="beta", document=shared)
+    unique = await _assigned_item(session, info_source, slug="gamma")
+    revision = await _revision(session, info_source)
+
+    issued = await issue_for_revision(session, revision)
+
+    assert [str(c.info_item_rep_spec_id) for c in issued] == [str(unique.id)]
+    skipped = [c for c in await _commands(session) if c.state == STATE_SKIPPED]
+    assert {c.reason for c in skipped} == {SKIP_DESTINATION_COLLISION}
+    assert len(skipped) == 2
+    assert len(await _replicate_outbox(session)) == 1
+
+
+@pytest.mark.asyncio
 async def test_unsupported_provider_is_skipped_not_raised(session, info_source):
     """The Emit variant pins provider to a Literal; an unknown one must not take
     down the consumer that is writing the revision."""

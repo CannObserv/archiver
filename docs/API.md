@@ -1,8 +1,9 @@
 # archiver — API & Change-Bus Surface
 
-Every HTTP route, its SDK wrapper, and the `info.changes` event contract. The
-route inventory changes with each SDK release; `AGENTS.md` carries only the
-auth rule and a pointer here.
+Every HTTP route, its SDK wrapper, and the bus contracts Archiver produces and
+consumes — `info.changes`, `info.registry`, `content.replicate` out;
+`content.revisions` and `info.watch-status` in. The route inventory changes with
+each SDK release; `AGENTS.md` carries only the auth rule and a pointer here.
 
 ## Authoring tools + assignment endpoints (v2)
 
@@ -142,6 +143,49 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   `ARCHIVER_REGISTRY_STREAM_MAXLEN`, default 50k): consumers replay from `0-0`,
   so the floor is one full set plus the deltas since. The topic is excluded
   from the fact stream's periodic `XTRIM`.
+
+**`content.replicate` — the replication command channel (archiver#169).** A third
+producer surface, *command* kind: exactly one consumer group
+(`replicator.replicate`, competing consumers), `content.fetch`'s posture. Payload:
+`co_core.pure.models.changes.ContentReplicateCommandEmit`; idempotency key is the
+bare `command_id`. Archiver is the **sole issuer** — the normative contract is
+Replicator's `docs/contracts/content-replicate-issuer-contract.md`, where MUST-1,
+MUST-2, MUST-4 and MUST-6 of the `content.fetch` issuer contract apply verbatim
+and MUST-7 *inverts* into a scheduling obligation on this side.
+
+- **One command per active assignment**, never one carrying a list: a
+  `command_id` identifies an *occasion*, and N provider writes fail, retry and
+  complete independently, so a list-shaped command would leave a partial outcome
+  with no correlator.
+- **Issued on the revision insert, in its transaction** — `record_revision`
+  calls `src/core/services/replication_issuance.py`, which writes the
+  `replication_commands` row (MUST-2's durable mapping) and the outbox row
+  together. The idempotent no-op issues nothing: a redelivery is the same
+  occasion.
+- **`command_id` is minted fresh per occasion** and never derived from
+  `(rep_spec_id, info_item_id)` or anything else stable. A derived id breaks the
+  second legitimate re-replication in a TTL-bounded, intermittent way.
+- **Archiver renders `destination`** (the contract's T3/R1) — the RepSpec's
+  `path_template` never travels. See `docs/SCHEMA.md` for the template contract
+  and `src/core/replication/` for the one parser that both validates and renders.
+- **`media_type` echoes `source_revisions.source_media_type`**, falling back to
+  `application/octet-stream`: Replicator's blob store discards the media type it
+  was handed, so an omitted value lands in a *permanent* store as
+  `application/octet-stream` forever.
+- **Skips are rows, not silence.** An assignment that cannot be issued gets a
+  `replication_commands` row with `state="skipped"` and a local reason —
+  `blob_absent`, `blob_expired_locally`, `unrenderable`,
+  `destination_collision`, `unsupported_command`. These are Archiver's own
+  vocabulary for what it decided *before* publishing, deliberately distinct from
+  Replicator's producer-owned failure tokens. Only the colliding assignments are
+  skipped on a `destination_collision`; the rest of the fan-out still ships.
+- **Never `XTRIM`med by Archiver.** Capping a command stream deletes commands the
+  consumer group has not delivered and orphans the PEL entries naming them, so
+  the topic is carved out of the drain loop's trim set.
+- **Outcomes are not yet consumed.** `content.artifacts` carries
+  `replication_complete` / `replication_failed`; nothing reads it until
+  archiver#170, so `public_url` still has no automated writer and no reaper
+  exists for a command that closes without a fact.
 
 `source_revision_captured` schema_version is now **2** — `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 

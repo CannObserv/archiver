@@ -246,22 +246,38 @@ def probe_destination(document: Mapping[str, object], rep_fields: Mapping[str, o
     )
 
 
-def assert_distinct_destinations(rendered: Mapping[str, str]) -> None:
-    """Refuse a fan-out set in which two assignments target one path.
+def find_collisions(rendered: Mapping[str, str]) -> dict[str, list[str]]:
+    """Group a fan-out set by destination, keeping only the shared ones.
 
     Keyed by whatever identifies the assignment to the caller (archiver#169
-    passes ``info_item_rep_spec_id``), so the error names the rows an operator
-    has to reconcile.
+    passes ``info_item_rep_spec_id``). Returns ``{destination: [keys]}`` for
+    every destination more than one key renders, empty when all are distinct.
 
-    Raises:
-        DestinationCollisionError: two or more keys share a destination.
+    Non-raising because the issuance path decides *what to skip* from the
+    answer: raising on the first group found would leave a second collision
+    invisible, and skipping the whole set on account of one collision refuses
+    assignments that are perfectly fine (CR #11/#12).
     """
     by_destination: dict[str, list[str]] = {}
     for key, destination in rendered.items():
         by_destination.setdefault(destination, []).append(key)
-    for destination, keys in by_destination.items():
-        if len(keys) > 1:
-            raise DestinationCollisionError(destination, sorted(keys))
+    return {
+        destination: sorted(keys) for destination, keys in by_destination.items() if len(keys) > 1
+    }
+
+
+def assert_distinct_destinations(rendered: Mapping[str, str]) -> None:
+    """Refuse a fan-out set in which two assignments target one path.
+
+    The raising form, for callers that want a hard stop rather than a set to
+    triage.
+
+    Raises:
+        DestinationCollisionError: two or more keys share a destination.
+    """
+    collisions = find_collisions(rendered)
+    for destination, keys in collisions.items():
+        raise DestinationCollisionError(destination, keys)
 
 
 def _bag_value(rep_fields: Mapping[str, object], namespace: str, key: str) -> str:

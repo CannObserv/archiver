@@ -74,6 +74,14 @@ def upgrade() -> None:
             ["information.source_revisions.source_revision_id"],
             ondelete="RESTRICT",
         ),
+        # The state vocabulary, enforced in the database because the reaper's
+        # partial index below hard-codes ``state = 'requested'``: a renamed or
+        # mistyped state would otherwise write happily and simply stop matching,
+        # leaving the reaper reporting an empty queue (archiver#169 CR #13).
+        sa.CheckConstraint(
+            "state IN ('requested', 'complete', 'failed', 'abandoned', 'skipped')",
+            name="ck_replication_commands_state",
+        ),
         sa.PrimaryKeyConstraint("command_id"),
         schema="information",
     )

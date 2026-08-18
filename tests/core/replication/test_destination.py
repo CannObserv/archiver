@@ -19,6 +19,7 @@ from src.core.replication.destination import (
     RenderOccasion,
     UnsafeDestinationError,
     assert_distinct_destinations,
+    find_collisions,
     probe_destination,
     render_destination,
 )
@@ -250,6 +251,18 @@ def test_probe_is_a_no_op_without_a_path_template():
 
 def test_distinct_destinations_pass():
     assert_distinct_destinations({"assignment-a": "a/x", "assignment-b": "b/x"})
+
+
+def test_find_collisions_reports_every_group_not_just_the_first():
+    """The issuance path decides what to skip from this, so a partial answer
+    would silence assignments that do not collide (CR #12)."""
+    groups = find_collisions({"a": "x", "b": "x", "c": "unique", "d": "y", "e": "y"})
+
+    assert groups == {"x": ["a", "b"], "y": ["d", "e"]}
+
+
+def test_find_collisions_is_empty_when_every_destination_is_distinct():
+    assert find_collisions({"a": "x", "b": "y"}) == {}
 
 
 def test_colliding_destinations_refused_with_both_assignments_named():

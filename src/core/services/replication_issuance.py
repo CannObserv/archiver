@@ -47,9 +47,8 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.replication.destination import (
-    DestinationCollisionError,
     RenderOccasion,
-    assert_distinct_destinations,
+    find_collisions,
     render_destination,
 )
 from src.core.replication.errors import ReplicationRenderError
@@ -147,25 +146,37 @@ async def issue_for_revision(
             continue
         renderable.append(target)
 
-    try:
-        assert_distinct_destinations(rendered)
-    except DestinationCollisionError as e:
-        # Publishing both would return as destination_conflict, which reports a
-        # conflict rather than the path-design error it is. Refuse the whole
-        # set: which of two identical destinations is "the right one" is not a
-        # question this service can answer.
-        _record_skips(session, revision, renderable, SKIP_DESTINATION_COLLISION, detail=str(e))
+    # Publishing a colliding pair would return as destination_conflict, which
+    # reports a conflict rather than the path-design error it is — and which of
+    # two identical destinations is "the right one" is not a question this
+    # service can answer. Only the colliding assignments are refused: they fail,
+    # retry and complete independently, which is MUST-1's argument for one
+    # command per assignment rather than one carrying a list (CR #11).
+    collisions = find_collisions(rendered)
+    colliding_keys = {key for keys in collisions.values() for key in keys}
+    if collisions:
+        _record_skips(
+            session,
+            revision,
+            [t for t in renderable if str(t.assignment.id) in colliding_keys],
+            SKIP_DESTINATION_COLLISION,
+            detail="; ".join(
+                f"{destination!r} rendered by {', '.join(keys)}"
+                for destination, keys in sorted(collisions.items())
+            ),
+        )
         logger.error(
-            "Assignments render the same destination; skipping replication",
+            "Assignments render the same destination; skipping those assignments",
             extra={
                 "source_revision_id": str(revision.source_revision_id),
-                "error": str(e),
+                "collisions": {d: list(keys) for d, keys in collisions.items()},
             },
         )
-        return []
 
     issued: list[ReplicationCommand] = []
     for target in renderable:
+        if str(target.assignment.id) in colliding_keys:
+            continue
         command = _issue_one(session, revision, target, rendered[str(target.assignment.id)])
         if command is not None:
             issued.append(command)
@@ -187,7 +198,7 @@ def _issue_one(
         emit = ContentReplicateCommandEmit(
             occurred_at=datetime.now(UTC),
             command_id=command_id,
-            blob_uri=revision.content_cache_uri or "",
+            blob_uri=revision.content_cache_uri,
             media_type=media_type,
             provider=target.document.get("provider", ""),
             credentials_alias=target.document.get("credentials_alias", ""),
