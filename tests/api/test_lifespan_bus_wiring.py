@@ -235,3 +235,25 @@ async def test_no_redis_url_nulls_both_new_handles(bus_env, test_engine):
     async with lifespan(app):
         assert app.state.artifacts_consumer_task is None
         assert app.state.replication_reaper_task is None
+
+
+@pytest.mark.asyncio
+async def test_reaper_runs_without_a_redis_url(bus_env, test_engine):
+    """The reaper touches no broker (CR #22).
+
+    It is a database-only safety net, and the case where the bus is
+    misconfigured is arguably when stale `requested` rows are most likely — so
+    its availability must not depend on ARCHIVER_REDIS_URL.
+    """
+    bus_env.setenv("ARCHIVER_BUS_CONSUMER", "1")
+
+    async with lifespan(app):
+        assert app.state.redis_client is None
+        assert app.state.replication_reaper_task is not None
+
+
+@pytest.mark.asyncio
+async def test_reaper_stays_gated_on_the_consumer_flag(bus_env, test_engine):
+    """Two sweepers would race to close the same commands."""
+    async with lifespan(app):
+        assert app.state.replication_reaper_task is None

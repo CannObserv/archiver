@@ -242,7 +242,6 @@ async def test_non_terminal_failure_leaves_the_command_open_and_acks(
 async def test_unknown_command_id_is_dropped(fake_redis, session_factory, issued_command):
     """The registry is the authority on what it issued; a fact about anything
     else is ack-and-drop, matching content.revisions' unknown-source posture."""
-    fields = _complete(issued_command)
     stray = ReplicationCompleteEvent(
         occurred_at=OCCURRED_AT,
         command_id="never-issued",
@@ -258,7 +257,6 @@ async def test_unknown_command_id_is_dropped(fake_redis, session_factory, issued
 
     assignment = await _assignment(session_factory, issued_command)
     assert assignment.public_url is None
-    assert fields  # the well-formed one was never published; nothing else changed
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,15 @@ own artifact at its own path, so the assignment row holds the *newest* occasion'
 URL and an older occasion's late-arriving fact records itself without clobbering
 it. The command row keeps the history either way.
 
+**Facts arrive out of order, and that is expected traffic.** The stream is
+at-least-once and keyed ``command_id:occurred_at`` precisely because one command
+emits a *sequence* of facts, so a redelivered older fact can land after a newer
+one. ``last_fact_at`` is the high-water mark that makes every apply idempotent
+*and* order-independent; without it a stale failure flips a completed
+replication to ``failed`` while its ``public_url`` still names a real artifact.
+Equal timestamps are the same emission and still apply — T4 re-emits a success
+deliberately.
+
 ``reason`` is stored as an opaque string. The vocabulary is producer-owned —
 Replicator's contract lists six tokens where co-core's docstring registers five
 (cannobserv#330) — so branching on it here would make every new token a code
@@ -30,6 +39,7 @@ change on this side.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -37,7 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logging import get_logger
 from src.core.models import InfoItemRepSpec, ReplicationCommand
-from src.core.services.replication_issuance import STATE_REQUESTED
+from src.core.services.replication_issuance import STATE_REQUESTED, STATE_SKIPPED
 
 logger = get_logger(__name__)
 
@@ -91,6 +101,9 @@ async def apply_success(
         UnknownCommandError: the registry never issued this command.
     """
     command = await _load(session, command_id)
+    if _is_stale(command, occurred_at, command_id=command_id):
+        return command
+    command.last_fact_at = occurred_at
 
     command.public_url = public_url
     command.state = STATE_COMPLETE
@@ -153,6 +166,19 @@ async def apply_failure(
         UnknownCommandError: the registry never issued this command.
     """
     command = await _load(session, command_id)
+    if _is_stale(command, occurred_at, command_id=command_id):
+        return command
+    if command.state == STATE_COMPLETE:
+        # A success already landed for this command. Nothing Replicator emits
+        # afterwards unmakes the artifact, and reporting the replication as
+        # failed while public_url names a live object is the worse of the two
+        # wrong answers (CR #20).
+        logger.warning(
+            "Ignoring a failure fact for an already-completed replication",
+            extra={"command_id": command_id, "reason": reason, "terminal": terminal},
+        )
+        return command
+    command.last_fact_at = occurred_at
 
     command.reason = reason
     command.terminal = terminal
@@ -164,7 +190,7 @@ async def apply_failure(
             command.closed_at = datetime.now(UTC)
 
     logger.log(
-        30 if terminal else 20,  # WARNING when closed, INFO while retrying
+        logging.WARNING if terminal else logging.INFO,
         "Replication failed" if terminal else "Replication attempt failed; still retrying",
         extra={
             "command_id": command_id,
@@ -229,18 +255,46 @@ async def _load(session: AsyncSession, command_id: str) -> ReplicationCommand:
     return command
 
 
+def _is_stale(command: ReplicationCommand, occurred_at: datetime, *, command_id: str) -> bool:
+    """Whether a fact predates one already applied to this command.
+
+    Equal timestamps are **not** stale: that is a redelivery of the same
+    emission, and applying it again is a no-op by construction.
+    """
+    if command.last_fact_at is None or occurred_at >= command.last_fact_at:
+        return False
+    logger.info(
+        "Ignoring a replication fact older than one already applied",
+        extra={
+            "command_id": command_id,
+            "occurred_at": occurred_at.isoformat(),
+            "last_fact_at": command.last_fact_at.isoformat(),
+        },
+    )
+    return True
+
+
 async def _is_newest_occasion(session: AsyncSession, command: ReplicationCommand) -> bool:
-    """Whether this command is the latest issuance for its assignment.
+    """Whether this command is the latest *published* occasion for its assignment.
 
     The guard behind R3. Occasions are ordered by ``issued_at`` (the index
     ``ix_replication_commands_target`` covers exactly this lookup); ties fall back
     to ``command_id``, which is ULID-shaped and therefore monotonic within a
     millisecond — so two occasions minted in the same instant still order
     deterministically rather than by whichever fact arrived first.
+
+    **Skipped occasions are excluded** (CR #19). A skip never reached the wire
+    and produced no artifact, so it has no claim on the assignment's ``public_url``
+    slot — and skips are written for *every* active assignment whenever a revision
+    arrives with no blob, so counting them would let one such revision silently
+    suppress the URL of a replication still in flight.
     """
     result = await session.execute(
         select(ReplicationCommand.command_id)
-        .where(ReplicationCommand.info_item_rep_spec_id == command.info_item_rep_spec_id)
+        .where(
+            ReplicationCommand.info_item_rep_spec_id == command.info_item_rep_spec_id,
+            ReplicationCommand.state != STATE_SKIPPED,
+        )
         .order_by(ReplicationCommand.issued_at.desc(), ReplicationCommand.command_id.desc())
         .limit(1)
     )

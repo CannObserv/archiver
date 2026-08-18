@@ -290,9 +290,14 @@ recorded; the command closes **only** when `terminal` is true.
 - **An unknown `command_id` is ack-and-drop.** The registry is the authority on
   what it issued; a fact about anything else is not something redelivery fixes —
   the posture `content.revisions` takes for an unknown `info_source_id`.
-- **Newest occasion wins** (R3). An older occasion's late fact records itself on
-  its own `replication_commands` row without overwriting the assignment's newer
-  URL.
+- **Newest occasion wins** (R3), counting only occasions that reached the wire —
+  a `skipped` row produced no artifact and does not claim the slot. An older
+  occasion's late fact records itself on its own `replication_commands` row
+  without overwriting the assignment's newer URL.
+- **Out-of-order facts are expected traffic.** `replication_commands.last_fact_at`
+  is the high-water mark: a fact older than one already applied is ignored, a
+  `complete` command never moves to `failed`, and `terminal` never downgrades.
+  Equal timestamps are the same emission and still apply.
 - **`reason` is opaque.** The vocabulary is producer-owned — Replicator's
   contract lists six tokens where co-core's docstring registers five
   (cannobserv#330) — so branching on it here would make every new token a code

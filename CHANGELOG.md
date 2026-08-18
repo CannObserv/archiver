@@ -34,6 +34,10 @@ Three properties from the issuer contract shape the writeback:
 
 `reason` is stored verbatim as an opaque string: the vocabulary is producer-owned, and Replicator's contract already lists a sixth token (`invalid_source`) that co-core's docstring does not (cannobserv#330).
 
+Ordering is guarded rather than assumed: `replication_commands.last_fact_at` records the newest fact applied, so a redelivered older one is ignored, a completed command never flips to `failed`, and `terminal` never downgrades. `skipped` occasions are excluded from the newest-occasion comparison — a skip produced no artifact, and skips are written for every active assignment whenever a revision arrives with no blob, so counting them would silently suppress the URL of a replication still in flight.
+
+The reaper runs whether or not the bus is configured. It touches no broker, and the case where the bus is misconfigured is exactly when stale in-flight commands are most likely; it stays gated on `ARCHIVER_BUS_CONSUMER` because two sweepers would race.
+
 Internally, the consumer-group loop — read, claim, quarantine, ack, back off, re-arm the group — moved to `src/core/changes/group_consumer.py` and is now shared by both group consumers rather than copied. Nearly every line of it encodes an incident or a review finding; a copy inherits those once and then drifts silently.
 
 ## v4.15.0 (2026-08-17)

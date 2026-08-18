@@ -63,6 +63,7 @@ def upgrade() -> None:
         sa.Column("attempts", sa.Integer(), nullable=True),
         sa.Column("public_url", sa.Text(), nullable=True),
         sa.Column("closed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_fact_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
             ["info_item_rep_spec_id"], ["information.info_item_rep_specs.id"], ondelete="CASCADE"
         ),

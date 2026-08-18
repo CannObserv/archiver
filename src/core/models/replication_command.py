@@ -110,6 +110,17 @@ class ReplicationCommand(Base):
     the assignment row only when this is its newest occasion (R3: the URL is not
     stable across occasions)."""
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_fact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """``occurred_at`` of the newest outcome fact applied to this command.
+
+    The ordering guard. ``content.artifacts`` is at-least-once and keyed
+    ``command_id:occurred_at`` precisely because one command emits a *sequence*
+    of facts, so an out-of-order redelivery is expected traffic — and without a
+    recorded high-water mark a stale failure would flip a completed replication
+    to ``failed`` while its ``public_url`` still points at a real artifact
+    (archiver#170 CR #20/#21). NULL until the first fact arrives; equal
+    timestamps are the *same* emission and still apply, since T4 has Replicator
+    re-emit a success deliberately."""
 
     __table_args__ = (
         # The vocabulary, enforced where it is *used* rather than only where it

@@ -330,3 +330,125 @@ async def test_reaper_ignores_closed_and_skipped_commands(session, assignment):
     await session.flush()
 
     assert await reap_open_commands(session, horizon=timedelta(hours=6)) == 0
+
+
+# --- ordering and state monotonicity (CR round 3) ---
+
+
+@pytest.mark.asyncio
+async def test_a_later_skip_row_does_not_suppress_the_writeback(session, assignment):
+    """A skipped occasion produced no artifact, so it has no claim on the slot (CR #19).
+
+    Skips are written for every active assignment whenever a revision arrives
+    with no blob, so one of those while a replication is in flight would
+    otherwise suppress that artifact's URL permanently — silently, with the
+    command row holding a public_url the assignment never shows.
+    """
+    await _command(
+        session,
+        assignment,
+        command_id="cmd-real",
+        issued_at=datetime.now(UTC) - timedelta(minutes=10),
+    )
+    skip = await _command(session, assignment, command_id="cmd-skip")
+    skip.state = "skipped"
+    skip.closed_at = datetime.now(UTC)
+    await session.flush()
+
+    await apply_success(
+        session, command_id="cmd-real", public_url=PUBLIC_URL, occurred_at=OCCURRED_AT
+    )
+
+    assert assignment.public_url == PUBLIC_URL
+
+
+@pytest.mark.asyncio
+async def test_a_stale_failure_does_not_flip_a_completed_command(session, assignment):
+    """content.artifacts is at-least-once and keyed per emission, so an
+    out-of-order redelivery is expected traffic (CR #20)."""
+    command = await _command(session, assignment, command_id="cmd-1")
+    await apply_success(session, command_id="cmd-1", public_url=PUBLIC_URL, occurred_at=OCCURRED_AT)
+
+    await apply_failure(
+        session,
+        command_id="cmd-1",
+        reason="destination_conflict",
+        terminal=True,
+        attempts=1,
+        detail=None,
+        occurred_at=OCCURRED_AT - timedelta(hours=1),
+    )
+
+    assert command.state == STATE_COMPLETE
+    assert command.public_url == PUBLIC_URL
+
+
+@pytest.mark.asyncio
+async def test_a_stale_non_terminal_failure_does_not_downgrade_terminal(session, assignment):
+    """state='failed' with terminal=False contradicts itself, and the reaper
+    cannot correct it — it only looks at open commands (CR #21)."""
+    command = await _command(session, assignment, command_id="cmd-1")
+    await apply_failure(
+        session,
+        command_id="cmd-1",
+        reason="blob_expired",
+        terminal=True,
+        attempts=3,
+        detail=None,
+        occurred_at=OCCURRED_AT,
+    )
+
+    await apply_failure(
+        session,
+        command_id="cmd-1",
+        reason="provider_unavailable",
+        terminal=False,
+        attempts=1,
+        detail=None,
+        occurred_at=OCCURRED_AT - timedelta(hours=1),
+    )
+
+    assert command.state == STATE_FAILED
+    assert command.terminal is True
+    assert command.reason == "blob_expired"
+
+
+@pytest.mark.asyncio
+async def test_a_newer_fact_still_applies(session, assignment):
+    """The guard is on staleness, not on having seen a fact before."""
+    command = await _command(session, assignment, command_id="cmd-1")
+    await apply_failure(
+        session,
+        command_id="cmd-1",
+        reason="provider_unavailable",
+        terminal=False,
+        attempts=1,
+        detail=None,
+        occurred_at=OCCURRED_AT,
+    )
+
+    await apply_failure(
+        session,
+        command_id="cmd-1",
+        reason="blob_expired",
+        terminal=True,
+        attempts=2,
+        detail=None,
+        occurred_at=OCCURRED_AT + timedelta(minutes=5),
+    )
+
+    assert command.state == STATE_FAILED
+    assert command.reason == "blob_expired"
+    assert command.last_fact_at == OCCURRED_AT + timedelta(minutes=5)
+
+
+@pytest.mark.asyncio
+async def test_a_redelivery_of_the_same_emission_still_applies(session, assignment):
+    """Equal occurred_at is the same emission, not a stale one — T4 re-emits."""
+    command = await _command(session, assignment, command_id="cmd-1")
+
+    await apply_success(session, command_id="cmd-1", public_url=PUBLIC_URL, occurred_at=OCCURRED_AT)
+    await apply_success(session, command_id="cmd-1", public_url=PUBLIC_URL, occurred_at=OCCURRED_AT)
+
+    assert command.state == STATE_COMPLETE
+    assert assignment.public_url == PUBLIC_URL

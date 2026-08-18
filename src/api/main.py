@@ -120,6 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     consumer_task: asyncio.Task | None = None
     artifacts_task: asyncio.Task | None = None
     reaper_task: asyncio.Task | None = None
+    reaper_stop_event: asyncio.Event | None = None
     snapshot_task: asyncio.Task | None = None
     watch_status_task: asyncio.Task | None = None
 
@@ -267,38 +268,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 extra={"reason": "gate" if redis_client is not None else "no_redis_client"},
             )
 
-        # --- Replication reaper (archiver#170, MUST-6) ---
-        # Gated with the consumer, because it closes the same commands that
-        # consumer would have closed and a second process doing so concurrently
-        # would race it. Touches no broker at all — a command that produced no
-        # fact is detected by *absence*, so this runs on a timer rather than off
-        # an arrival.
-        if artifacts_consumer.consumer_enabled(gate) and stop_event is not None:
-            try:
-                reaper_task = asyncio.create_task(
-                    replication_reaper.run(
-                        session_factory=async_sessionmaker(
-                            bind=get_engine(), expire_on_commit=False
-                        ),
-                        stop_event=stop_event,
-                        interval=replication_reaper.resolve_interval(
-                            os.environ.get("ARCHIVER_REPLICATION_REAP_INTERVAL")
-                        ),
-                        horizon=replication_reaper.resolve_horizon(
-                            os.environ.get("ARCHIVER_REPLICATION_REAP_HORIZON")
-                        ),
-                    )
-                )
-                reaper_task.add_done_callback(
-                    _bus_task_exit_logger("replication_reaper", stop_event)
-                )
-                app.state.replication_reaper_task = reaper_task
-            except Exception:
-                logger.exception("Failed to initialise the replication reaper; skipping")
-                app.state.replication_reaper_task = None
-        else:
-            app.state.replication_reaper_task = None
-
         # --- info.watch-status tail (archiver#151) ---
         # Groupless: no PEL, no gate beyond the Redis URL. Its own try so a
         # tail that cannot start leaves the publisher and group consumer
@@ -337,15 +306,51 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.registry_snapshot_trigger = None
         app.state.watch_status_task = None
         app.state.artifacts_consumer_task = None
-        app.state.replication_reaper_task = None
         logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumers disabled")
+
+    # --- Replication reaper (archiver#170, MUST-6) ---
+    # Outside the Redis branch on purpose: it touches no broker at all. A command
+    # that produced no fact is detected by *absence*, from the database alone, and
+    # the case where the bus is misconfigured is exactly when stale `requested`
+    # rows are most likely (CR #22). Still gated on ARCHIVER_BUS_CONSUMER, because
+    # two processes sweeping would race to close the same commands — the same
+    # authority question the group consumers answer, for the same reason.
+    if artifacts_consumer.consumer_enabled(os.environ.get("ARCHIVER_BUS_CONSUMER")):
+        try:
+            # Its own stop event when the publisher has none: a bus-dormant
+            # process still gets an orderly shutdown.
+            reaper_stop_event = stop_event or asyncio.Event()
+            reaper_task = asyncio.create_task(
+                replication_reaper.run(
+                    session_factory=async_sessionmaker(bind=get_engine(), expire_on_commit=False),
+                    stop_event=reaper_stop_event,
+                    interval=replication_reaper.resolve_interval(
+                        os.environ.get("ARCHIVER_REPLICATION_REAP_INTERVAL")
+                    ),
+                    horizon=replication_reaper.resolve_horizon(
+                        os.environ.get("ARCHIVER_REPLICATION_REAP_HORIZON")
+                    ),
+                )
+            )
+            reaper_task.add_done_callback(
+                _bus_task_exit_logger("replication_reaper", reaper_stop_event)
+            )
+            app.state.replication_reaper_task = reaper_task
+        except Exception:
+            logger.exception("Failed to initialise the replication reaper; skipping")
+            app.state.replication_reaper_task = None
+    else:
+        app.state.replication_reaper_task = None
 
     try:
         yield
     finally:
-        # Stop the bus tasks first — both watch the same stop event.
+        # Stop the bus tasks first — they watch the same stop event, and the
+        # reaper watches its own when the bus is dormant.
         if stop_event is not None:
             stop_event.set()
+        if reaper_stop_event is not None:
+            reaper_stop_event.set()
         for task in (
             pub_task,
             consumer_task,

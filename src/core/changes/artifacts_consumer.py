@@ -32,6 +32,7 @@ arrives, which is precisely the condition it exists to detect.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS
@@ -128,7 +129,7 @@ async def handle_message(
 async def _apply(
     session_factory: async_sessionmaker[AsyncSession],
     message: BusMessage,
-    write,
+    write: Callable[[AsyncSession], Awaitable[object]],
     *,
     command_id: str,
 ) -> bool:

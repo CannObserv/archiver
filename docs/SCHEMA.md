@@ -212,6 +212,17 @@ see the never-rename rule in `AGENTS.md`.
     tokens: these are conditions Archiver decided about before publishing.
   - A skip is a *row*, not a log line. Absent one, the dashboard renders a replication that
     silently did not happen as "not yet" forever (archiver#171).
+  - **`last_fact_at` is the ordering high-water mark** (archiver#170). `content.artifacts` is
+    at-least-once and keyed `command_id:occurred_at` precisely because one command emits a
+    *sequence* of facts, so a redelivered older fact can land after a newer one; without the mark
+    a stale failure flips a completed replication to `failed` while its `public_url` still names a
+    live artifact. Equal timestamps are the same emission and still apply — T4 has Replicator
+    re-emit a success deliberately. Two consequences worth knowing: a `complete` command never
+    moves to `failed`, and `terminal` never downgrades from `True`.
+  - **`skipped` occasions are excluded from "newest occasion"**. A skip never reached the wire and
+    produced no artifact, so it has no claim on the assignment's `public_url` slot — and skips are
+    written for *every* active assignment whenever a revision arrives with no blob, so counting
+    them would let one such revision silently suppress the URL of a replication still in flight.
 - **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
 - **`WatchStatus`** (`watch_status`) — local LWW cache of `info.watch-status`, one row per
   InfoItem (archiver#151). What the watched-item panel renders from, with zero SDK calls. Every
