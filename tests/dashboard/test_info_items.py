@@ -19,6 +19,7 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.models.domain import Domain
+from src.core.services.replication_issuance import ManualIssuanceError
 
 _HEADERS = {"X-ExeDev-UserID": "ext-items", "X-ExeDev-Email": "items@example.com"}
 _LIST_URL = "/dashboard/info-items/"
@@ -965,6 +966,43 @@ async def test_replicate_now_refuses_when_there_is_nothing_captured_yet(client, 
 
     assert r.status_code == 422
     assert r.json()["detail"]["errors"][0]["code"] == "no_revision"
+
+
+@pytest.mark.asyncio
+async def test_an_unregistered_refusal_is_still_a_422(client, session, monkeypatch):
+    """The refusal vocabulary and the exceptions it keys on now live in one
+    module (CR #34), but a subclass can still be added without an entry — and a
+    KeyError inside the except block turns a designed 422 into a 500 (CR #28)."""
+    item, assignment, _ = await _assigned(
+        session, name="Unregistered Item", url="https://example.com/unregistered"
+    )
+
+    async def _raise(*_args, **_kwargs):
+        raise ManualIssuanceError(assignment.id, "a refusal nobody registered")
+
+    monkeypatch.setattr("src.dashboard.routes.info_items.issue_for_assignment", _raise)
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 422
+    assert r.json()["detail"]["errors"][0]["code"] == "issuance_refused"
+
+
+@pytest.mark.asyncio
+async def test_the_replicate_button_disables_itself_in_flight(client, session):
+    """htmx does not deduplicate concurrent requests from an element, and this
+    one writes into a permanent store — archive.org cannot be deleted at all, so
+    a double-click is not a free retry (CR #29)."""
+    item, _, _ = await _assigned(session, name="Debounce Item", url="https://example.com/debounce")
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    replicate_button = r.text.split("Replicate now")[0].rsplit("<button", 1)[1]
+    assert 'hx-disabled-elt="this"' in replicate_button
 
 
 @pytest.mark.asyncio

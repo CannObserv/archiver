@@ -25,6 +25,7 @@ naming them ``blob_expired`` would blur who observed what.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -113,6 +114,55 @@ class NoRevisionError(ManualIssuanceError):
         super().__init__(assignment_id, f"assignment {assignment_id} has no revision to replicate")
 
 
+class AssignmentUnreachableError(ManualIssuanceError):
+    """The assignment is not in the collision domain its own revision produced.
+
+    Defensive: every join in ``_active_targets`` is guaranteed by the lookups
+    ``issue_for_assignment`` already made, so there is no path here today. It is
+    raised rather than returning ``None`` because ``None`` is what a *recorded
+    skip* returns, and the two mean opposite things — a skip is an occasion the
+    registry considered and declined, this is nothing happening and nothing being
+    written. Collapsing them lets the dashboard re-render an older ``complete``
+    occasion and read as success (archiver#171 CR #31).
+    """
+
+    def __init__(self, assignment_id) -> None:
+        super().__init__(
+            assignment_id,
+            f"assignment {assignment_id} is absent from its own revision's active targets",
+        )
+
+
+# The refusal vocabulary, beside the exceptions it keys on. It lived in the
+# dashboard route until archiver#171 CR #34: a service owns its vocabulary end to
+# end — the skip reasons above are constants here, not strings at the call site —
+# and splitting it across two modules is what let a subclass be added without a
+# matching entry (CR #28). ``manual_issuance_refusal`` falls back rather than
+# raising KeyError, so an unregistered subclass still surfaces as the 422 it is.
+MANUAL_ISSUANCE_REFUSALS: dict[type[ManualIssuanceError], tuple[str, str]] = {
+    AssignmentNotActiveError: ("not_active", "This assignment is not active"),
+    NoActiveSourceError: (
+        "no_active_source",
+        "This Information Item has no active source binding to replicate from",
+    ),
+    NoRevisionError: (
+        "no_revision",
+        "The bound source has not been captured yet; there is nothing to replicate",
+    ),
+    AssignmentUnreachableError: (
+        "assignment_unreachable",
+        "This assignment could not be resolved against its own source; nothing was issued",
+    ),
+}
+
+_GENERIC_REFUSAL = ("issuance_refused", "This replication could not be issued")
+
+
+def manual_issuance_refusal(error: ManualIssuanceError) -> tuple[str, str]:
+    """``(code, message)`` for a refusal. Never raises on an unregistered subclass."""
+    return MANUAL_ISSUANCE_REFUSALS.get(type(error), _GENERIC_REFUSAL)
+
+
 @dataclass(frozen=True, slots=True)
 class _Target:
     """One active assignment, with everything a command needs."""
@@ -192,6 +242,8 @@ async def issue_for_assignment(
         raise NoRevisionError(assignment.id)
 
     targets = await _active_targets(session, revision)
+    if not any(target.assignment.id == assignment.id for target in targets):
+        raise AssignmentUnreachableError(assignment.id)
     issued = _issue_targets(session, revision, targets, requested={assignment.id})
     logger.info(
         "Manual replication requested",
@@ -253,9 +305,15 @@ def _issue_targets(
                 occasion=occasion,
             )
         except ReplicationRenderError as e:
-            if target.assignment.id in requested:
+            # Only a *requested* target gets a skip row, and only a requested
+            # target gets a WARNING: a log line with no state behind it is the
+            # thing the skip rows exist to eliminate, and on the manual path a
+            # sibling's broken template would emit one on every click (CR #30).
+            wanted_target = target.assignment.id in requested
+            if wanted_target:
                 _record_skips(session, revision, [target], SKIP_UNRENDERABLE, detail=str(e))
-            logger.warning(
+            logger.log(
+                logging.WARNING if wanted_target else logging.DEBUG,
                 "Assignment cannot render a destination; skipping replication",
                 extra={
                     "info_item_rep_spec_id": str(target.assignment.id),

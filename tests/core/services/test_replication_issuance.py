@@ -38,6 +38,7 @@ from src.core.services.replication_issuance import (
     STATE_REQUESTED,
     STATE_SKIPPED,
     AssignmentNotActiveError,
+    AssignmentUnreachableError,
     NoActiveSourceError,
     NoRevisionError,
     issue_for_assignment,
@@ -587,3 +588,57 @@ async def test_manual_issue_keeps_the_full_collision_domain(session, info_source
     assert [(c.info_item_rep_spec_id, c.state, c.reason) for c in commands] == [
         (first.id, STATE_SKIPPED, SKIP_DESTINATION_COLLISION)
     ]
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_refuses_when_the_assignment_is_not_in_its_own_domain(
+    session, info_source, monkeypatch
+):
+    """A defensive guard, not a reachable path today.
+
+    An empty issuance result and a *recorded skip* both used to come back as
+    None, and they mean opposite things: a skip says "considered and declined,
+    here is the row", while an unreachable target says nothing happened and
+    nothing was written. The route renders the row either way, so the second
+    case would show an older `complete` occasion and read as success (CR #31).
+    """
+    assignment = await _assigned_item(session, info_source)
+    await _revision(session, info_source)
+    monkeypatch.setattr(
+        "src.core.services.replication_issuance._active_targets",
+        lambda *_args, **_kwargs: _empty_targets(),
+    )
+
+    with pytest.raises(AssignmentUnreachableError):
+        await issue_for_assignment(session, assignment)
+
+    assert await _commands(session) == []
+
+
+async def _empty_targets():
+    return []
+
+
+@pytest.mark.asyncio
+async def test_a_sibling_that_cannot_render_does_not_warn_on_the_manual_path(
+    session, info_source, caplog
+):
+    """The sibling is in the collision domain but not the caller's business, and
+    it gets no skip row — so a WARNING about it is a log line with no state
+    behind it, the exact thing #169's skip rows exist to eliminate (CR #30)."""
+    healthy = await _assigned_item(session, info_source, slug="healthy")
+    await _assigned_item(
+        session,
+        info_source,
+        slug="broken",
+        document=_document(
+            path_template="archive/{info_item.missing}/{source_revision.id}.html",
+            required_fields=["info_item.missing"],
+        ),
+    )
+    await _revision(session, info_source)
+
+    with caplog.at_level("WARNING"):
+        assert await issue_for_assignment(session, healthy) is not None
+
+    assert "cannot render a destination" not in caplog.text

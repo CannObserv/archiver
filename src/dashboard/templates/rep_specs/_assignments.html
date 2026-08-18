@@ -43,8 +43,20 @@
           {% endif %}
         </td>
         <td class="data-table__cell">
-          {# Deactivate re-renders this whole section (count + empty-state) via a
-             RepSpec-scoped route, so the swap target is the section wrapper. #}
+          {# Both actions re-render this whole section (count + empty-state) via
+             RepSpec-scoped routes, so the swap target is the section wrapper.
+             Replicate is confirm-guarded and `hx-disabled-elt`-guarded: it writes
+             into a permanent store and htmx does not deduplicate concurrent
+             requests from an element (archiver#171). #}
+          <button class="btn btn--sm btn--secondary"
+                  hx-post="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}/replicate"
+                  hx-target="#rep-spec-assignments"
+                  hx-swap="outerHTML"
+                  hx-disabled-elt="this"
+                  hx-confirm="Issue a replication for this assignment against the latest revision?"
+                  aria-label="Replicate assignment {{ assignment.id }} now">
+            Replicate now
+          </button>
           <button class="btn btn--sm btn--danger"
                   hx-delete="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}"
                   hx-target="#rep-spec-assignments"

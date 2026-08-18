@@ -29,11 +29,9 @@ from src.core.models import (
 )
 from src.core.services.registry_announcement import announce_info_item
 from src.core.services.replication_issuance import (
-    AssignmentNotActiveError,
     ManualIssuanceError,
-    NoActiveSourceError,
-    NoRevisionError,
     issue_for_assignment,
+    manual_issuance_refusal,
 )
 from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.assign_rep_spec import (
@@ -738,20 +736,6 @@ async def deactivate_rep_spec_assignment(
 # populates", from the other direction.
 
 
-# One place for the refusal vocabulary, so the machine token and the sentence an
-# operator reads cannot drift apart.
-_MANUAL_ISSUANCE_CODES: dict[type[ManualIssuanceError], str] = {
-    AssignmentNotActiveError: "not_active",
-    NoActiveSourceError: "no_active_source",
-    NoRevisionError: "no_revision",
-}
-_MANUAL_ISSUANCE_MESSAGES: dict[type[ManualIssuanceError], str] = {
-    AssignmentNotActiveError: "This assignment is not active",
-    NoActiveSourceError: "This Information Item has no active source binding to replicate from",
-    NoRevisionError: "The bound source has not been captured yet; there is nothing to replicate",
-}
-
-
 @router.post("/{item_id}/rep-spec-assignments/{aid}/replicate", response_class=HTMLResponse)
 async def replicate_assignment_now(
     request: Request,
@@ -769,7 +753,8 @@ async def replicate_assignment_now(
     A **refusal is a 200**, not an error — the service records a skip row with
     its reason, and re-rendering that is exactly the answer the operator asked
     for. Only the conditions under which there is no occasion to consider at all
-    (no active binding, nothing ever captured) are 422s.
+    (deactivated, no active binding, nothing ever captured, unreachable) are
+    422s; the vocabulary itself lives with the exceptions in the service.
     """
     try:
         item_ulid = ULID.from_str(item_id)
@@ -784,16 +769,11 @@ async def replicate_assignment_now(
     try:
         await issue_for_assignment(session, assignment)
     except ManualIssuanceError as e:
+        code, message = manual_issuance_refusal(e)
         raise_422(
-            _MANUAL_ISSUANCE_MESSAGES[type(e)],
+            message,
             kind="domain",
-            errors=[
-                FieldError(
-                    path="/assignment_id",
-                    message=str(e),
-                    code=_MANUAL_ISSUANCE_CODES[type(e)],
-                )
-            ],
+            errors=[FieldError(path="/assignment_id", message=str(e), code=code)],
             source_exc=e,
         )
 

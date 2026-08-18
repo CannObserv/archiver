@@ -12,11 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
+from src.api.errors import FieldError, raise_422
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
     ReplicationCommand,
     RepSpec,
+)
+from src.core.services.replication_issuance import (
+    ManualIssuanceError,
+    issue_for_assignment,
+    manual_issuance_refusal,
 )
 from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.create_rep_spec import InvalidRepSpecError, create_rep_spec
@@ -333,6 +339,72 @@ async def update_rep_spec_document_view(
         return response
 
     return RedirectResponse(url=f"/dashboard/rep-specs/{spec_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /dashboard/rep-specs/{id}/assignments/{aid}/replicate  (archiver#171)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{spec_id}/assignments/{aid}/replicate", response_class=HTMLResponse)
+async def replicate_assignment_now(
+    spec_id: str,
+    aid: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Issue one replication occasion for this assignment; re-renders the section.
+
+    The InfoItem hub's twin (archiver#171 CR #32). This screen is the natural
+    entry point for "this spec's assignments are all stale", and rendering the
+    state here while forcing a navigation hop per item to act on it makes the
+    diagnosis useless.
+
+    Re-renders the whole section rather than one row, matching the DELETE beside
+    it: the row shape here is this table's, not the hub's. Refusal semantics are
+    the service's — a recorded skip is a 200 that renders, and only the
+    conditions under which there is no occasion to consider are 422s.
+    """
+    spec = await _resolve_spec(spec_id, session)
+    try:
+        aid_ulid = ULID.from_str(aid)
+    except Exception as e:
+        raise DashboardNotFound("Assignment not found") from e
+
+    assignment = await session.get(InfoItemRepSpec, aid_ulid)
+    if assignment is None or assignment.rep_spec_id != spec.rep_spec_id:
+        raise DashboardNotFound("Assignment not found")
+
+    try:
+        await issue_for_assignment(session, assignment)
+    except ManualIssuanceError as e:
+        code, message = manual_issuance_refusal(e)
+        raise_422(
+            message,
+            kind="domain",
+            errors=[FieldError(path="/assignment_id", message=str(e), code=code)],
+            source_exc=e,
+        )
+    await session.commit()
+
+    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
+    return _templates.TemplateResponse(
+        request,
+        "rep_specs/_assignments.html",
+        {
+            "user": user,
+            "spec": spec,
+            "assignments": assignment_rows,
+            "items_by_id": items_by_id,
+            "latest_commands": latest_commands,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /dashboard/rep-specs/{id}/assignments/{aid}
+# ---------------------------------------------------------------------------
 
 
 @router.delete("/{spec_id}/assignments/{aid}", response_class=HTMLResponse)

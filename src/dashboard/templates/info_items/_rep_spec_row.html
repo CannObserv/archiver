@@ -36,11 +36,15 @@
        new assignment on stable content otherwise never replicates: nothing
        triggers issuance until the next revision, which may be never. Confirmed
        because the target is a permanent store — archive.org cannot be deleted at
-       all — so a stray click is not free. #}
+       all — so a stray click is not free. `hx-disabled-elt` for the same reason:
+       htmx does not deduplicate concurrent requests from an element, and two
+       occasions against one revision render the same destination but cost a
+       second snapshot at a provider that cannot delete one (archiver#171 CR #29). #}
     <button class="btn btn--sm btn--secondary"
             hx-post="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}/replicate"
             hx-target="#rs-row-{{ assignment.id }}"
             hx-swap="outerHTML"
+            hx-disabled-elt="this"
             hx-confirm="Issue a replication for this assignment against the latest revision?"
             aria-label="Replicate assignment {{ assignment.id }} now">
       Replicate now

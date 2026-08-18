@@ -9,6 +9,7 @@ from ulid import ULID
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
+    InfoItemSource,
     InfoSource,
     ReplicationCommand,
     RepSpec,
@@ -808,3 +809,101 @@ async def test_detail_says_when_an_assignment_has_never_replicated(client, sessi
 
     assert r.status_code == 200
     assert "Never replicated" in r.text
+
+
+# ---------------------------------------------------------------------------
+# POST /dashboard/rep-specs/{id}/assignments/{aid}/replicate  (archiver#171 CR #32)
+# ---------------------------------------------------------------------------
+#
+# The RepSpec screen is the natural entry point for "this spec's assignments are
+# all stale". Rendering the state there while forcing a navigation hop per item
+# to act on it makes the diagnosis useless.
+
+
+async def _spec_with_replicable_assignment(session, *, name: str, url: str):
+    spec = _make_rep_spec(name)
+    source = InfoSource(url=url, source_specs=[])
+    item = InfoItem(name=f"{name} Item", rep_fields={})
+    session.add_all([spec, source, item])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add_all(
+        [
+            assignment,
+            SourceRevision(
+                info_source_id=source.info_source_id,
+                content_fingerprint="sha256:" + "b" * 64,
+                captured_at=datetime(2026, 4, 2, tzinfo=UTC),
+                content_cache_uri="file:///blobs/b.bin",
+                source_media_type="text/html",
+            ),
+        ]
+    )
+    await session.flush()
+    return spec, assignment
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_from_the_rep_spec_screen(client, session):
+    spec, assignment = await _spec_with_replicable_assignment(
+        session, name="Actionable Spec", url="https://example.com/actionable"
+    )
+
+    r = await client.post(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    # The whole section re-renders, matching the DELETE beside it — the row shape
+    # here is the RepSpec table's, not the InfoItem hub's.
+    assert 'id="rep-spec-assignments"' in r.text
+    assert "requested" in r.text
+
+
+@pytest.mark.asyncio
+async def test_rep_spec_replicate_rejects_a_foreign_assignment(client, session):
+    """The assignment id is untrusted input; it must belong to this spec."""
+    _, assignment = await _spec_with_replicable_assignment(
+        session, name="Owned Spec", url="https://example.com/owned"
+    )
+    other = _make_rep_spec("Other Spec")
+    session.add(other)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/rep-specs/{other.rep_spec_id}/assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_rep_spec_replicate_refuses_without_a_revision(client, session):
+    spec = _make_rep_spec("Uncaptured Spec")
+    item = InfoItem(name="Uncaptured Item", rep_fields={})
+    session.add_all([spec, item])
+    await session.flush()
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    session.add(assignment)
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 422
+    assert r.json()["detail"]["errors"][0]["code"] == "no_active_source"

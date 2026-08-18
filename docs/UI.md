@@ -156,6 +156,15 @@ Archiver-local one for a skip, from deliberately disjoint vocabularies. It is th
 string an operator will grep the logs and CannObserv/replicator for, so
 prettifying it costs more than it reads.
 
+**Irreversible actions guard themselves twice.** An action whose effect cannot
+be undone — today only "Replicate now", which asks Replicator to write into a
+permanent store, one of which (archive.org) cannot be deleted at all — carries
+both `hx-confirm` and `hx-disabled-elt="this"`. The second is not redundant:
+htmx does not deduplicate concurrent requests from an element, so without it a
+double-click issues two occasions. They render the same destination (the
+issuer contract's R2 determinism), so the bytes are safe, but the second
+snapshot is not free and `public_url` follows whichever lands second.
+
 **Reported state from another service.** Where a panel renders state some other
 service reports over the bus rather than state Archiver owns — the InfoItem
 watched-item panel is the reference (archiver#151, inventoried in
