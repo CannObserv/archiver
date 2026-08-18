@@ -15,16 +15,11 @@ from src.core.models import (
     RepSpec,
     SourceRevision,
 )
+from tests.dashboard.conftest import read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-repspecs", "X-ExeDev-Email": "repspecs@example.com"}
 _LIST_URL = "/dashboard/rep-specs/"
 _NEW_URL = "/dashboard/rep-specs/new"
-
-
-def _flash(response) -> dict:
-    """The parsed ``HX-Trigger`` header — where a refusal has to land, since htmx
-    discards a 4xx body (docs/STYLE.md)."""
-    return json.loads(response.headers["HX-Trigger"])
 
 
 _GCS_DOC = {
@@ -876,6 +871,23 @@ async def test_replicate_now_from_the_rep_spec_screen(client, session):
     # (CR #37), the same reason the Deactivate beside it does this.
     assert 'getElementById("rep-spec-assignments-heading")' in r.text
     assert "requested" in r.text
+    assert read_flash(r)["showFlash"]["level"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_the_rep_spec_replicate_button_disables_itself_in_flight(client, session):
+    """The same guard as the hub's, tested separately: a template edit could drop
+    it from one screen while the other's test stayed green (CR #45)."""
+    spec, _ = await _spec_with_replicable_assignment(
+        session, name="Guarded Spec", url="https://example.com/guarded"
+    )
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    replicate_button = r.text.split("Replicate now")[0].rsplit("<button", 1)[1]
+    assert 'hx-disabled-elt="this"' in replicate_button
+    assert 'hx-target="#rep-spec-assignments"' in replicate_button
 
 
 @pytest.mark.asyncio
@@ -918,7 +930,7 @@ async def test_rep_spec_replicate_refuses_without_a_source_binding(client, sessi
 
     # 200, not 422: htmx discards a 4xx, so the refusal rides the flash (CR #36).
     assert r.status_code == 200
-    assert "no active source binding" in _flash(r)["showFlash"]["body"]
+    assert "no active source binding" in read_flash(r)["showFlash"]["body"]
 
 
 @pytest.mark.asyncio
@@ -947,4 +959,4 @@ async def test_rep_spec_replicate_refuses_without_a_revision(client, session):
     )
 
     assert r.status_code == 200
-    assert "not been captured yet" in _flash(r)["showFlash"]["body"]
+    assert "not been captured yet" in read_flash(r)["showFlash"]["body"]

@@ -79,7 +79,7 @@ clamping, form-field errors are rendered.
 
 ### Flash messages
 
-Server returns `HX-Trigger: {"showFlash": {"level": "success", "body": "Saved."}}` alongside any mutating response. `flash.js` (loaded in `base.html`) injects `.flash--*` divs into `#flash-region` — a `position: fixed` viewport overlay (a direct `<body>` child, outside `<main>`, so HTMX content swaps can't wipe live toasts) anchored top-right on desktop and full-width top on narrow viewports, so toasts stay visible at any scroll position (archiver#65). **Note:** `flash.js` must be in the `base.html` script list — if it is dropped, every `showFlash` is silently ignored site-wide (CannObserv/archiver#62).
+Server returns `HX-Trigger: {"showFlash": {"level": "success", "body": "Saved."}}` alongside a mutating response **whose outcome the swap does not already make obvious**. A swap that visibly replaces what the operator just acted on — the assignment-table deactivate, say — carries no toast; a swap whose result is a badge inside a re-rendered region does, and an *irreversible* action carries one on every outcome (see **Irreversible actions guard themselves twice**). The rule is "the operator must be able to tell what happened", not "every mutation toasts". `flash.js` (loaded in `base.html`) injects `.flash--*` divs into `#flash-region` — a `position: fixed` viewport overlay (a direct `<body>` child, outside `<main>`, so HTMX content swaps can't wipe live toasts) anchored top-right on desktop and full-width top on narrow viewports, so toasts stay visible at any scroll position (archiver#65). **Note:** `flash.js` must be in the `base.html` script list — if it is dropped, every `showFlash` is silently ignored site-wide (CannObserv/archiver#62).
 
 Dismissal is severity-based: `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until the operator clicks `.flash__close` (failures must not vanish unseen). The visible overlay caps at 4 slots, with two overflow affordances (archiver#73):
 
@@ -165,11 +165,14 @@ double-click issues two occasions. They render the same destination (the
 issuer contract's R2 determinism), so the bytes are safe, but the second
 snapshot is not free and `public_url` follows whichever lands second.
 
-Its refusals are **200s with a flash**, never 4xx — the same rule as inline
-validation errors above, for the same reason: htmx discards a non-2xx body, so a
-422 reaches the operator as nothing at all. The translation lives in
-`src/dashboard/replication_actions.py` so both screens offering the action refuse
-the same way.
+**Every** outcome flashes — issued at `success` naming the rendered destination,
+a recorded skip at `warning` naming its reason, an unrecordable refusal at
+`error`. Refusals are **200s**, never 4xx: htmx discards a non-2xx body, so the
+same rule as inline validation errors above applies for the same reason, and a
+422 would reach the operator as nothing at all. Announcing only the failures was
+the first cut, and it is backwards — the irreversible outcome is the one that
+needs confirming. The translation lives in `src/dashboard/replication_actions.py`
+so both screens offering the action answer the same way.
 
 **Reported state from another service.** Where a panel renders state some other
 service reports over the bus rather than state Archiver owns — the InfoItem

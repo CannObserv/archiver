@@ -16,7 +16,7 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                docs/UI.md for why the dashboard clamps where the API 422s;
                                watch_panel.py — pure watched-item panel context from local
                                state: states, health rule, next-due, drift, archiver#151;
-                               replication_actions.py — the manual-replication refusal→flash
+                               replication_actions.py — the manual-replication outcome→flash
                                translation shared by both screens that offer the action, and
                                the one place that records why a refusal is a 200 rather than
                                a 4xx, archiver#171)

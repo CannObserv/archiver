@@ -68,7 +68,7 @@ from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
-from src.dashboard.replication_actions import refusal_flash_header
+from src.dashboard.replication_actions import outcome_flash_header
 from src.dashboard.watch_panel import build_watch_context
 
 router = APIRouter(prefix="/dashboard/info-items")
@@ -750,10 +750,12 @@ async def replicate_assignment_now(
     because issuance is triggered by a new revision and a stable InfoItem may
     never produce one.
 
-    **Every outcome is a 200 that re-renders**, refusals included. A recorded
-    skip renders as its own state, and a refusal the service would not even
-    record rides an ``HX-Trigger`` flash — htmx discards a 4xx, so raising one
-    here reaches the operator as nothing at all (CR #36).
+    **Every outcome is a 200 that re-renders, and every outcome flashes.** A
+    refusal the service would not record rides an ``HX-Trigger`` error toast
+    because htmx discards a 4xx, so raising one reaches the operator as nothing
+    at all (CR #36); an issued command confirms at ``success`` and a recorded
+    skip warns, because silence is the wrong confirmation for an action that
+    writes somewhere permanent (CR #42).
 
     Re-renders the whole section rather than the single row, matching the
     Deactivate beside it: the swap destroys the button that was clicked, so it
@@ -770,8 +772,9 @@ async def replicate_assignment_now(
         raise DashboardNotFound("Assignment not found")
 
     refusal: ManualIssuanceError | None = None
+    issued: ReplicationCommand | None = None
     try:
-        await issue_for_assignment(session, assignment)
+        issued = await issue_for_assignment(session, assignment)
     except ManualIssuanceError as e:
         # No rollback: every refusal path raises before writing anything, and a
         # rollback here would only risk discarding the caller's own work.
@@ -794,8 +797,9 @@ async def replicate_assignment_now(
             "swapped": True,
         },
     )
-    if refusal is not None:
-        response.headers["HX-Trigger"] = refusal_flash_header(refusal)
+    response.headers["HX-Trigger"] = outcome_flash_header(
+        refusal=refusal, issued=issued, latest=latest_commands.get(assignment.id)
+    )
     return response
 
 

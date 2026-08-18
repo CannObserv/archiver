@@ -20,16 +20,11 @@ from src.core.models import (
 )
 from src.core.models.domain import Domain
 from src.core.services.replication_issuance import ManualIssuanceError
+from tests.dashboard.conftest import read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-items", "X-ExeDev-Email": "items@example.com"}
 _LIST_URL = "/dashboard/info-items/"
 _NEW_URL = "/dashboard/info-items/new"
-
-
-def _flash(response) -> dict:
-    """The parsed ``HX-Trigger`` header — where a refusal has to land, since htmx
-    discards a 4xx body (docs/STYLE.md)."""
-    return json.loads(response.headers["HX-Trigger"])
 
 
 def _spec() -> dict:
@@ -911,6 +906,9 @@ async def test_replicate_now_issues_an_occasion_and_returns_the_row(client, sess
     )
     assert [c.state for c in commands] == ["requested"]
     assert commands[0].source_revision_id == revision.source_revision_id
+    # An irreversible action confirms itself; silence used to be the success
+    # signal and a toast the failure one, which is backwards (CR #42).
+    assert read_flash(r)["showFlash"]["level"] == "success"
 
 
 @pytest.mark.asyncio
@@ -957,6 +955,8 @@ async def test_replicate_now_renders_the_skip_rather_than_erroring(client, sessi
 
     assert r.status_code == 200
     assert "blob_absent" in r.text
+    assert read_flash(r)["showFlash"]["level"] == "warning"
+    assert "blob_absent" in read_flash(r)["showFlash"]["body"]
 
 
 @pytest.mark.asyncio
@@ -976,8 +976,8 @@ async def test_replicate_now_refuses_when_there_is_nothing_captured_yet(client, 
     # 200, not 422: a 4xx is discarded by htmx (docs/STYLE.md), so the refusal
     # would reach the operator as nothing at all (CR #36).
     assert r.status_code == 200
-    assert _flash(r)["showFlash"]["level"] == "error"
-    assert "not been captured yet" in _flash(r)["showFlash"]["body"]
+    assert read_flash(r)["showFlash"]["level"] == "error"
+    assert "not been captured yet" in read_flash(r)["showFlash"]["body"]
 
 
 @pytest.mark.asyncio
@@ -1000,7 +1000,7 @@ async def test_an_unregistered_refusal_still_reaches_the_operator(client, sessio
     )
 
     assert r.status_code == 200
-    assert "This replication could not be issued" in _flash(r)["showFlash"]["body"]
+    assert "This replication could not be issued" in read_flash(r)["showFlash"]["body"]
 
 
 @pytest.mark.asyncio

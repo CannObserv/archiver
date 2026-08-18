@@ -32,7 +32,7 @@ from src.core.tools.update_rep_spec import (
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
-from src.dashboard.replication_actions import refusal_flash_header
+from src.dashboard.replication_actions import outcome_flash_header
 
 router = APIRouter(prefix="/dashboard/rep-specs")
 
@@ -361,9 +361,9 @@ async def replicate_assignment_now(
     it: the row shape here is this table's, not the hub's, and the swap destroys
     the button that was clicked so it has to move focus (CR #37).
 
-    **Every outcome is a 200**, refusals included: a recorded skip renders as its
-    own state, and a refusal the service would not record rides an ``HX-Trigger``
-    flash, because htmx discards a 4xx body (CR #36).
+    **Every outcome is a 200, and every outcome flashes** — identical handling to
+    the hub route, which is why the translation is shared rather than copied
+    (CR #36/#42).
     """
     spec = await _resolve_spec(spec_id, session)
     try:
@@ -376,8 +376,9 @@ async def replicate_assignment_now(
         raise DashboardNotFound("Assignment not found")
 
     refusal: ManualIssuanceError | None = None
+    issued: ReplicationCommand | None = None
     try:
-        await issue_for_assignment(session, assignment)
+        issued = await issue_for_assignment(session, assignment)
     except ManualIssuanceError as e:
         # No rollback: every refusal path raises before writing anything.
         refusal = e
@@ -397,8 +398,9 @@ async def replicate_assignment_now(
             "swapped": True,
         },
     )
-    if refusal is not None:
-        response.headers["HX-Trigger"] = refusal_flash_header(refusal)
+    response.headers["HX-Trigger"] = outcome_flash_header(
+        refusal=refusal, issued=issued, latest=latest_commands.get(assignment.id)
+    )
     return response
 
 
