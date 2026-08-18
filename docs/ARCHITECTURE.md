@@ -43,8 +43,18 @@ src/core/                      Domain logic
                                interpolates. Do not write a second renderer.
   watch_spec_schema/           WatchSpec (cadence policy) v1 + validator. Cadence
                                only — pause state is info_items.watch_active
-  changes/                     Two background asyncio tasks and their shared
-                               pacing: publisher.py drains changes_outbox to
+  changes/                     The background asyncio tasks and their shared
+                               pacing. group_consumer.py owns the consumer-group
+                               loop — read, claim, quarantine, ack, back off,
+                               re-arm — and is SHARED by both group consumers
+                               rather than copied: nearly every line encodes an
+                               incident or a review finding, and a copy inherits
+                               those once and then drifts. artifacts_consumer.py
+                               applies replication outcomes from content.artifacts
+                               (archiver#170) — public_url's automated writer;
+                               replication_reaper.py closes commands that produced
+                               no fact at all, on a timer because it detects an
+                               absence. publisher.py drains changes_outbox to
                                info.changes; consumer.py ingests
                                source_revision_observed from content.revisions
                                (archiver#139) and is gated on

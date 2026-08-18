@@ -270,6 +270,45 @@ The HTTP write path (`POST` / `PATCH /source-revisions`) stays for authoring and
 backfill; retiring it is a separate call from retiring Watcher's *use* of it
 (CannObserv/watcher#253).
 
+## Change-bus consumer — `content.artifacts` (archiver#170)
+
+The return leg of `content.replicate`, and what finally gives
+`info_item_rep_specs.public_url` an automated writer. Group
+**`archiver.artifacts`**, same `ARCHIVER_BUS_CONSUMER` gate as
+`content.revisions` — joining a group removes messages from it, so a stray
+process must not. Both outcomes share the stream by design: an issuer wants one
+group seeing success and failure, because "did this command close?" is one
+question.
+
+`replication_complete` → `public_url` onto the assignment row and the command
+closed. `replication_failed` → `reason` / `terminal` / `attempts` / `detail`
+recorded; the command closes **only** when `terminal` is true.
+
+- **A repeat is expected traffic** (MUST-4 / T4). A redelivery that finds
+  matching bytes at the destination no-ops and re-emits the same `public_url`,
+  so the writeback is idempotent by construction.
+- **An unknown `command_id` is ack-and-drop.** The registry is the authority on
+  what it issued; a fact about anything else is not something redelivery fixes —
+  the posture `content.revisions` takes for an unknown `info_source_id`.
+- **Newest occasion wins** (R3). An older occasion's late fact records itself on
+  its own `replication_commands` row without overwriting the assignment's newer
+  URL.
+- **`reason` is opaque.** The vocabulary is producer-owned — Replicator's
+  contract lists six tokens where co-core's docstring registers five
+  (cannobserv#330) — so branching on it here would make every new token a code
+  change.
+- **Undecodable frames** are quarantined to `content.artifacts.dlq` by the shared
+  loop before any handler sees them; a database failure raises instead, leaving
+  the entry pending for redelivery.
+
+**The reaper** (`src/core/changes/replication_reaper.py`) closes the silent case
+MUST-6 names: Replicator does not guarantee that every command either succeeds or
+is closed, and a provider 5xx retries unbounded while publishing nothing. A timer
+(`ARCHIVER_REPLICATION_REAP_INTERVAL`, default 900s) marks commands open past
+`ARCHIVER_REPLICATION_REAP_HORIZON` (default 6h) as `abandoned`. It runs on a
+clock rather than off an arrival because it detects an *absence*, and it **never
+re-issues** — a second artifact in a permanent store has no way back.
+
 ## Change-bus tail — `info.watch-status` (archiver#151)
 
 The return leg of the announcement channel: Watcher broadcasts the generation it

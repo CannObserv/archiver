@@ -18,6 +18,24 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.16.0 (2026-08-18)
+
+[service] **The replication loop closes: `public_url` acquires an automated writer** (archiver#170, step 5 of the #137 epic). No migration; no HTTP surface change; no SDK change.
+
+`info_item_rep_specs.public_url` has been a column with no automated writer since RepSpecs were built. Archiver now consumes `content.artifacts` under the group `archiver.artifacts` — same `ARCHIVER_BUS_CONSUMER` gate as the revisions consumer, since joining a group removes messages from it — and a `replication_complete` fact writes the URL onto the assignment row.
+
+Three properties from the issuer contract shape the writeback:
+
+- **A repeated success is expected traffic.** T4's no-op row has Replicator re-emit the same `public_url` when a redelivery finds matching bytes already at the destination, so the write is idempotent and a repeat is not an anomaly.
+- **`terminal` decides whether the command closes.** A provider 5xx is a *non-terminal* failure: Replicator keeps retrying, unbounded and silent, so treating any failure as final would close a command still being worked.
+- **`public_url` is not stable across occasions.** Each occasion writes its own artifact at its own path, so the assignment row holds the newest occasion's URL and an older occasion's late fact records itself without clobbering it. `replication_commands` keeps the full history either way.
+
+**A reaper for the silent case** (MUST-6). Replicator does not guarantee that every command either succeeds or is closed, so a timer closes commands open past a horizon as `abandoned` — `ARCHIVER_REPLICATION_REAP_INTERVAL` (default 900s) and `ARCHIVER_REPLICATION_REAP_HORIZON` (default 6h), both clamped to a floor rather than trusted. It runs on a clock rather than off an arrival, because the condition it detects is the *absence* of a message. **It never re-issues** — this capability writes into permanent stores, one of which cannot be deleted at all, so re-issue stays an operator act. Abandoned means "nothing came back in time", never "this definitely failed".
+
+`reason` is stored verbatim as an opaque string: the vocabulary is producer-owned, and Replicator's contract already lists a sixth token (`invalid_source`) that co-core's docstring does not (cannobserv#330).
+
+Internally, the consumer-group loop — read, claim, quarantine, ack, back off, re-arm the group — moved to `src/core/changes/group_consumer.py` and is now shared by both group consumers rather than copied. Nearly every line of it encodes an incident or a review finding; a copy inherits those once and then drifts silently.
+
 ## v4.15.0 (2026-08-17)
 
 [service] **Archiver issues `content.replicate`** (archiver#169, step 5 of the #137 epic). Migration `39f21d31fdec` creates `information.replication_commands`. No HTTP surface change; no SDK change.
