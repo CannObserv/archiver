@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,6 +21,8 @@ from src.dashboard.pagination import Pagination, clamp_pagination, pagination
 
 router = APIRouter(prefix="/dashboard/domains")
 
+_templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+
 _ITEM_LIMIT_DESCRIPTION = (
     "Rows per page for the Information Items table. Clamped, not rejected — see "
     "src/dashboard/pagination.py."
@@ -28,8 +31,6 @@ _ITEM_OFFSET_DESCRIPTION = (
     "Row offset for the Information Items table. Clamped, not rejected — see "
     "src/dashboard/pagination.py."
 )
-
-_templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
 async def item_pagination(
@@ -159,21 +160,27 @@ async def detail_domain(
     # Items reachable from this domain: InfoItem → active InfoItemSource →
     # InfoSource.domain_name. `deactivated_at IS NULL` keeps a superseded primary
     # out — that binding is succession history, not a current dependency on this
-    # domain (see src/core/models/info_item_source.py). DISTINCT because an item
-    # can only hold one active binding, but the join is written to survive the
-    # day that stops being true.
-    item_join = (
-        select(InfoItem)
-        .join(
-            InfoItemSource,
-            (InfoItemSource.info_item_id == InfoItem.info_item_id)
-            & InfoItemSource.deactivated_at.is_(None),
-        )
+    # domain (see src/core/models/info_item_source.py).
+    #
+    # A semi-join (IN over the binding table), not a join onto InfoItem. Joining
+    # would multiply an item by its matching bindings and need DISTINCT to put it
+    # back — and DISTINCT here means deduplicating whole InfoItem rows, `rep_fields`
+    # and `watch_spec` JSONB payloads included, on every render. The semi-join
+    # cannot produce a duplicate in the first place, so it stays correct if the
+    # one-active-binding-per-item invariant is ever relaxed, without paying for the
+    # dedup while it holds.
+    items_on_domain = (
+        select(InfoItemSource.info_item_id)
         .join(InfoSource, InfoSource.info_source_id == InfoItemSource.info_source_id)
-        .where(InfoSource.domain_name == name)
+        .where(
+            InfoSource.domain_name == name,
+            InfoItemSource.deactivated_at.is_(None),
+        )
     )
+    item_query = select(InfoItem).where(InfoItem.info_item_id.in_(items_on_domain))
+
     item_total = (
-        await session.execute(select(func.count()).select_from(item_join.distinct().subquery()))
+        await session.execute(select(func.count()).select_from(item_query.subquery()))
     ).scalar_one()
 
     # Own limit+1 probe rather than a comparison against item_total, for the same
@@ -181,8 +188,7 @@ async def detail_domain(
     item_rows = list(
         (
             await session.execute(
-                item_join.distinct()
-                .order_by(InfoItem.created_at.desc(), InfoItem.info_item_id.desc())
+                item_query.order_by(InfoItem.created_at.desc(), InfoItem.info_item_id.desc())
                 .offset(item_page.offset)
                 .limit(item_page.limit + 1)
             )
@@ -218,26 +224,45 @@ async def detail_domain(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/{name}/notes", response_class=HTMLResponse)
+@router.post("/{name}/notes")
 async def update_notes(
     name: str,
     request: Request,
     notes: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-) -> HTMLResponse:
-    """HTMX: update domain notes inline, return updated notes partial."""
+):
+    """Update domain notes.
+
+    HTMX requests get the re-rendered ``_notes_partial.html`` swapped in place,
+    in read-only mode, with an ``HX-Trigger: showFlash`` toast and focus moved to
+    the heading. Non-HTMX requests — the operator submitting the same form with
+    JS off — get the plain POST→303 back to detail, so the fallback the form
+    declares actually lands somewhere rather than rendering a bare fragment as a
+    whole page. Branching on the header, not the target, per docs/UI.md Detail
+    Screen Conventions.
+
+    Notes have no validation-error path: any string is a legal note, and an
+    empty one clears the field.
+    """
     domain = await _get_domain_or_404(name, session)
     domain.notes = notes.strip() or None
     await session.commit()
     await session.refresh(domain)
-    return _templates.TemplateResponse(
+
+    if not request.headers.get("HX-Request"):
+        return RedirectResponse(url=f"/dashboard/domains/{name}", status_code=303)
+
+    response = _templates.TemplateResponse(
         request,
         "domains/_notes_partial.html",
-        # `swapped` gates the focus-move script — this route only ever renders
-        # the partial as a swap response (docs/UI.md HTMX mutations).
+        # `swapped` gates the focus-move script — emitted only for the swap.
         {"user": user, "domain": domain, "swapped": True},
     )
+    response.headers["HX-Trigger"] = json.dumps(
+        {"showFlash": {"level": "success", "body": "Notes updated."}}
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------

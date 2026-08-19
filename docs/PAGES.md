@@ -19,7 +19,7 @@ repeat it.
 
 **GET `/dashboard/`** — summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each linking to its list page. Service health indicator loads via `hx-get="/dashboard/health" hx-trigger="load"` — non-blocking, showing a "checking…" badge until HTMX fires. Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`; columns Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at as `%Y-%m-%d %H:%M`).
 
-The health row is **Archiver + Redis only** since archiver#142 — the absence of a Watcher badge is deliberate, not an omission (see the retired-badge note below).
+The health row is **Archiver + Redis only** since archiver#142 — the absence of a Watcher badge is deliberate, not an omission.
 
 **GET `/dashboard/health`** — HTMX partial. Returns `<span class="badge badge--success">ok</span>`.
 
@@ -31,19 +31,17 @@ The health row is **Archiver + Redis only** since archiver#142 — the absence o
 | `badge--danger` "error" | network/connect failure; `title` contains the exception message |
 | `badge--muted` "not configured" | `ARCHIVER_REDIS_URL` unset |
 
-**`…/health/watcher` retired with archiver#142.** It pinged Watcher's `/health`
-over the SDK; with no HTTP edge left there is nothing to ping. The successor
-signal is per-item and better: the announced-vs-applied generation drift on the
-InfoItem detail panel measures whether Watcher is *acting on what we published*,
-which is the question the badge was a proxy for.
+**`…/health/watcher` retired with archiver#142** — it pinged Watcher over the
+SDK, and AGENTS.md's no-outbound-HTTP rule left nothing to ping. The successor
+signal is the announced-vs-applied generation drift on the InfoItem detail panel.
 
 ## Domain pages (`/dashboard/domains/`)
 
 **GET `/dashboard/domains/`** — paginated list. Columns: Domain (linked to detail), Sources (count), Status badge, Created. Filter bar: `?is_active=true|false|` (all). Source counts come from a GROUP BY query.
 
-**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name, an `open_button` in the header's right slot → `.detail-grid` (Status badge, created_at UTC) → the notes row. `Domain` stores a hostname and no URL, so the Open target is `https://{name}` (#176). **Notes lives inside the header panel** (#176), read-only by default: the stored value renders in a bordered `.notes-readout` spanning the panel width with an inline Edit button to its right; Edit flips to the textarea plus Cancel + Save via the `domainNotes` Alpine component (COMPONENTS.md). Then two related-collection tables — **Information Items** (InfoItem → active `info_item_sources` → `info_sources.domain_name`; a deactivated binding is succession history and is excluded) and **Information Sources**, source URLs carrying `open_button`. Both headings count from a route `COUNT` so they stay accurate across pagination (#82). Each keeps its own `limit+1` `has_more` probe (see UI.md § **Related-collection tables**). **The two tables page independently**: Sources on `limit`/`offset`, Items on `item_limit`/`item_offset` (clamped by `item_pagination` in `routes/domains.py`, same contract as `pagination`). Every pagination link re-emits both windows, so following one table's link leaves the other where it was (#176). Each table carries two empty states: an overshot offset (stale bookmark, or rows removed mid-session) renders "No sources on this page" / "No items on this page" with a link back to that table's first page, a genuinely empty collection "No Information Sources registered for this domain yet" / "No Information Items bound to this domain yet" — the heading count would otherwise contradict the "none" copy. **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destruction, so it sits in the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely. Both stay full-page POST→303 by design — see the *allowed variant* note under UI.md § **HTMX mutations**.
+**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name, an `open_button` in the header's right slot targeting `https://{name}` — `Domain` stores a hostname, not a URL (#176) → `.detail-grid` (Status badge, created_at UTC) → the **notes row, inside the panel**, read-only with an inline Edit toggle (`domainNotes`, COMPONENTS.md). Then two related-collection tables — **Information Items** (bound to this domain's sources by an active `info_item_sources` row) and **Information Sources**, source URLs carrying `open_button`. Both headings count from a route `COUNT` (#82), both keep their own `limit+1` `has_more` probe, and they page independently on `limit`/`offset` and `item_limit`/`item_offset` (#176) — see UI.md §§ **Related-collection tables** and **Two paginated tables on one screen get two windows**. Each carries two empty states: an overshot offset renders "No sources/items on this page" with a link back to that table's first page, a genuinely empty collection "No Information Sources registered for this domain yet" / "No Information Items bound to this domain yet". **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destruction, so it sits in the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely. Both stay full-page POST→303 by design — see the *allowed variant* note under UI.md § **HTMX mutations**.
 
-**POST `/dashboard/domains/{name}/notes`** — HTMX partial; replaces `#notes-section` with `domains/_notes_partial.html`. Saves notes inline and returns the row in read-only mode. Renders with `swapped=True`, which emits the focus-move script onto `#domain-notes-heading` — this route only ever renders the partial as a swap response (UI.md § **HTMX mutations**).
+**POST `/dashboard/domains/{name}/notes`** — saves notes. HTMX: swaps `#notes-section` with `domains/_notes_partial.html` in read-only mode, `swapped=True` (focus move) plus a `showFlash` toast. Non-HTMX: 303 to detail, so the form's no-JS fallback lands (UI.md § **HTMX mutations**).
 
 **POST `/dashboard/domains/{name}/archive`** — sets `archived_at`, redirects 303 to detail. Triggered from the danger-zone Archive button.
 
@@ -112,8 +110,8 @@ immediately" / "Paused" via `watchActiveLabel`.
 
 **GET `/dashboard/info-items/{id}`** — the 5-section vertical-scroll hub page
 (`info_items/detail.html`). Its section anatomy, partial templates, and swap
-targets are [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) — half this file
-before the split, and only needed when working on that screen.
+targets are [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), needed only when
+working on that screen.
 
 **The two Watcher action POSTs share a contract.** `toggle-watch-active` and
 `watch-cadence` each re-render a Watcher partial and set `HX-Trigger:
@@ -122,15 +120,14 @@ discarded and the trigger is what refreshes `#watcher-section` — swapping the
 response in *and* firing the trigger would render twice. On failure each adds a
 `showFlash` error to that trigger rather than 500ing (#60, #61).
 
-**There were five.** `begin-watching`, `check-now`, and `resync-watcher` were the
-SDK-backed three, and they retired with the SDK in archiver#142 along with the
-stale-link reconcile they existed to trigger (a `WatcherNotFound` used to NULL
-`watcher_item_id` so the panel could offer "Begin Watching" again). Nothing
-replaces them individually, because nothing needs to: reconciliation is
-level-triggered off `info.registry`, so there is no per-item push to retry, no
-remote id to go stale, and no provisioning gesture to repeat. What survives are
-the two *local* writes, which announce and let Watcher converge. The entries below
-name only what each route adds.
+**There were five.** `begin-watching`, `check-now`, and `resync-watcher` were
+SDK-backed and retired with it in archiver#142, along with the stale-link
+reconcile they triggered (a `WatcherNotFound` NULLed `watcher_item_id` so the
+panel could re-offer "Begin Watching"). Nothing replaces them individually:
+reconciliation is level-triggered off `info.registry`, so there is no per-item
+push to retry and no remote id to go stale. The two survivors are *local* writes
+that announce and let Watcher converge; the entries below name only what each
+adds.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the two action POSTs.
 

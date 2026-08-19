@@ -11,8 +11,7 @@
    normally through the method/action fallback (docs/UI.md Detail Screen
    Conventions). #}
 <div id="notes-section" x-data="domainNotes" style="margin-top:var(--space-4);">
-  <h2 id="domain-notes-heading" tabindex="-1" class="detail-grid__label"
-      style="margin:0 0 var(--space-2);">Notes</h2>
+  <h2 id="domain-notes-heading" tabindex="-1" class="notes-heading">Notes</h2>
 
   {# View mode: stored notes + Edit. #}
   <div x-show="!editing" class="notes-row">
@@ -26,8 +25,13 @@
     </div>
   </div>
 
-  {# Edit mode. #}
-  <form x-show="editing" style="display:none;"
+  {# Edit mode. No inline `display:none` FOUC hint here, deliberately: it would
+     also hide the form when Alpine never runs, stranding the method/action
+     fallback below. Both halves rendering for a frame is the price of the
+     no-JS path staying usable — the same trade `_source_specs_card.html`
+     makes, and the opposite of `settings/_api_key_row.html`, where no no-JS
+     edit path exists to lose. #}
+  <form x-show="editing"
         class="notes-row"
         hx-post="/dashboard/domains/{{ domain.name }}/notes"
         hx-target="#notes-section" hx-swap="outerHTML"

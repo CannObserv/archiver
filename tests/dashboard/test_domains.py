@@ -353,6 +353,8 @@ async def test_domain_detail_notes_render_read_only_with_edit_button(client, ses
     assert r.status_code == 200
     assert 'x-data="domainNotes"' in r.text
     assert 'class="notes-readout"' in r.text
+    # Heading carries its own class, not a borrowed .detail-grid__label.
+    assert 'class="notes-heading"' in r.text
     assert "read me" in r.text
     # View mode hides on edit; edit mode hides on view — both are x-show driven.
     assert 'x-show="!editing"' in r.text
@@ -391,7 +393,7 @@ async def test_update_notes_partial_returns_view_mode(client, session):
 
     r = await client.post(
         "/dashboard/domains/notes-swap.example.com/notes",
-        headers=_HEADERS,
+        headers={**_HEADERS, "HX-Request": "true"},
         data={"notes": "swapped in"},
     )
     assert r.status_code == 200
@@ -399,6 +401,61 @@ async def test_update_notes_partial_returns_view_mode(client, session):
     assert "swapped in" in r.text
     # Focus-move script is emitted on the swap only (docs/UI.md HTMX mutations).
     assert 'getElementById("domain-notes-heading")' in r.text
+
+
+@pytest.mark.asyncio
+async def test_update_notes_htmx_carries_success_toast(client, session):
+    """UI.md HTMX mutations: the swap response also fires a showFlash toast."""
+    session.add(_make_domain("notes-toast.example.com"))
+    await session.flush()
+
+    r = await client.post(
+        "/dashboard/domains/notes-toast.example.com/notes",
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"notes": "toasted"},
+    )
+    assert r.status_code == 200
+    assert "showFlash" in r.headers["HX-Trigger"]
+
+
+@pytest.mark.asyncio
+async def test_update_notes_without_htmx_redirects(client, session):
+    """No-JS submit must land on the detail page, not on a bare fragment."""
+    session.add(_make_domain("notes-nojs.example.com"))
+    await session.flush()
+
+    r = await client.post(
+        "/dashboard/domains/notes-nojs.example.com/notes",
+        headers=_HEADERS,
+        data={"notes": "saved without js"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/dashboard/domains/notes-nojs.example.com"
+
+    detail = await client.get("/dashboard/domains/notes-nojs.example.com", headers=_HEADERS)
+    assert "saved without js" in detail.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_notes_edit_form_is_reachable_without_alpine(client, session):
+    """The edit form must not be hidden by inline CSS.
+
+    `x-show` alone leaves it visible when Alpine never runs, which is what makes
+    the method/action POST fallback reachable (docs/UI.md HTMX mutations). An
+    inline `display:none` would strand it — the fallback would be present in the
+    markup and unusable, which is worse than not claiming one.
+    """
+    session.add(_make_domain("notes-nojs-form.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/notes-nojs-form.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    form_start = r.text.index('x-show="editing"')
+    form_tag = r.text[form_start : r.text.index(">", form_start)]
+    assert "display:none" not in form_tag.replace(" ", "")
+    # And the fallback it protects is actually declared.
+    assert 'action="/dashboard/domains/notes-nojs-form.example.com/notes"' in r.text
 
 
 @pytest.mark.asyncio
@@ -511,7 +568,9 @@ async def test_domain_detail_items_overshot_offset_no_contradiction(client, sess
         "/dashboard/domains/items-overshoot.example.com?item_offset=50", headers=_HEADERS
     )
     assert r.status_code == 200
-    assert "No Information Items (2)" not in r.text
+    # The heading still reports the full total — that is what keeps the
+    # "no items on this page" copy from contradicting it.
+    assert "Information Items (2)" in r.text
     assert "No items on this page" in r.text
     assert "No Information Items bound to this domain yet." not in r.text
 
