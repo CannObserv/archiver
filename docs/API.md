@@ -69,7 +69,7 @@ an already-deleted item, not a silent 204. It exists to give the registry's exit
 home** (archiver#141): "gone from the registry" is announced as a `revoked` tombstone that has to be
 written in the deletion's own transaction, which raw SQL cannot do — and the periodic full republish
 does not repair a missed one, since absence-from-a-full-set is deliberately not the delete signal.
-The deletion is announced as a tombstone on `info.registry`, but watcher#254 does not document
+The deletion is announced as a tombstone on `info.registry` ([BUS.md](BUS.md)), but watcher#254 does not document
 tombstone handling, so an orphaned WatchedItem may still need removing there by hand. Deleting an
 item that Watcher has reported on (a `watch_status` row exists) logs a WARNING naming it, so the
 cleanup is discoverable from journald rather than only from this paragraph.
