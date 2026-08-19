@@ -116,7 +116,8 @@ rewrite time, which `maxmemory` also caps.
 Archiver **operates** the broker and, since archiver#139, consumes one of the
 streams on it. Inventory, so a future lag dashboard is built against what is
 actually here. Cells marked *(target)* describe the post-cutover arrangement, not
-what is running today:
+what is running today. The `DLQ` column names who **writes** each one; who
+**drains** it is a separate question, answered under *Who drains a DLQ* below:
 
 | Stream | Producer → consumer | Kind | Consumer group | Health primitive | DLQ | Producer durability under OOM |
 |---|---|---|---|---|---|---|
@@ -155,6 +156,51 @@ silently, while the stream keeps growing), and `content.revisions.dlq` is the
 first DLQ this service writes rather than merely provisions. Group membership is
 gated on `ARCHIVER_BUS_CONSUMER=1`, set only in `deploy/archiver.service` — a
 second process in the group silently takes half the revisions.
+
+#### Who drains a DLQ (archiver#162)
+
+Three roles, and no two of them are reliably the same service:
+
+- **Writer** — whichever service's consumer calls `AsyncBusConsumer.dead_letter()`
+  on that topic; the `DLQ` column above names it per stream. Archiver writes
+  `content.revisions.dlq` and `content.artifacts.dlq`, Replicator writes
+  `content.fetch.dlq` and `content.replicate.dlq`, and the groupless config/state
+  streams can write none at all.
+- **Drainer — Archiver, for every DLQ on this broker.** Same claim as the broker
+  itself (#109): operating the instance includes emptying the queues on it,
+  including the ones another service writes. A DLQ with nobody named against it
+  is a DLQ nobody empties, which is exactly how `content.fetch.dlq` reached 110.
+- **Polluter** — whoever put junk in it, which is automatically neither of the
+  above. The 110 were Replicator's writes, of Watcher's commands, caused by
+  Archiver's test suite (#157).
+
+**Resting state is depth 0 on every `*.dlq` key.** That is the invariant worth
+holding: a non-zero depth then means a real dead-letter awaiting triage, rather
+than a number an operator has to know the backstory of before ignoring it. Depth
+still has no surface — noticing it means a hand-run `XLEN` — and archiver#147 is
+where that lands, alongside the other streams that cannot use group lag.
+
+Draining is never in-band cleanup. Audit, back up, trim, verify — in that order,
+because reversing it destroys the evidence you needed to justify the trim:
+
+```bash
+redis-cli XLEN content.fetch.dlq                    # what you are about to delete
+redis-cli --no-raw XRANGE content.fetch.dlq - + > /var/tmp/fetch-dlq-$(date +%F).txt
+# read it: every payload residue, or is a real permanent failure hiding in there?
+redis-cli XINFO STREAM content.fetch.dlq | grep -A1 last-generated-id
+redis-cli XTRIM content.fetch.dlq MINID <last-generated-id, +1ms>
+redis-cli XLEN content.fetch.dlq                    # -> 0
+```
+
+`XTRIM MINID`, not `DEL`: the boundary confines the deletion to the entries you
+actually audited — anything dead-lettered while you were reading carries a higher
+id and survives — and the key plus any consumer groups stay in place.
+
+Worked example, the #162 drain (2026-08-19): 110 entries, every one a
+`content_fetch` command against `example.com`, all inside one 18-minute window on
+2026-08-13, zero non-residue payloads, zero consumer groups on the key.
+`XTRIM content.fetch.dlq MINID 1786635782730-0` removed exactly those 110 and
+left the key at depth 0.
 
 ⚠️ The `info.changes` health row is the one to fix first. It names a primitive
 that does not exist: nothing exposes outbox depth — no route, no dashboard panel,
