@@ -8,11 +8,6 @@ Central registry + authoring service for the Cannabis Observer information layer
 
 **Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one — a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
 
-Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
-
-- `docs/plans/2026-05-08-archiver-v2-architecture-design.md`
-- `docs/plans/2026-05-08-phase-4-archiver-v2-implementation.md`
-
 ## Development Methodology
 
 TDD required. Red → Green → Refactor. No production code without a failing test first.
@@ -38,8 +33,6 @@ SocratiCode is indexed on this repo (`.socraticodecontextartifacts.json` present
 **Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search.
 
 Tool-by-goal map and the `ToolSearch` prefetch query: [docs/SKILLS.md](docs/SKILLS.md).
-The SessionStart hook (`.claude/hooks/socraticode-reminder.sh`) prints the query every session,
-so it is not carried here.
 
 ## Architecture
 
@@ -67,7 +60,7 @@ Wiring detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **No cross-repo mirror discipline (CannObserv/watcher#159, #236).** Content
 acquisition is co-core's (above) and the change-bus contracts + driver are too
-(see [docs/API.md](docs/API.md)). `src/core/logging.py` is service-local — Watcher
+(see [docs/BUS.md](docs/BUS.md)). `src/core/logging.py` is service-local — Watcher
 keeps its own copy; there is no parity requirement and no sibling sync. Don't
 reintroduce a mirror obligation for anything under `src/`.
 
@@ -149,7 +142,8 @@ uv run pre-commit run --all-files            # manual sweep across the repo
 
 ## API & Change-Bus Surface
 
-Routes, SDK wrappers, and the `info.changes` event contract: [docs/API.md](docs/API.md).
+Routes and SDK wrappers: [docs/API.md](docs/API.md); the bus contracts and the
+`info.changes` payloads: [docs/BUS.md](docs/BUS.md).
 Rules holding across all of it:
 
 - `X-API-Key` on every route; only `/health` and `/openapi.json` are open.
@@ -239,27 +233,21 @@ Cross-project search to the sister `watcher` and `notifier` indexes requires a p
 ## SessionStart Hooks
 
 `.claude/settings.json` wires the SocratiCode prefetch reminder and the
-once-per-day `skills-vendor/` refresh. That refresh was **suspended** 2026-08-06
-to 2026-08-19 for the archiver#131 cohort hold; the hold is retired
-(archiver#163) and the hook is wired again. A future hold uses the
-`.skills/skills-pin` file, never an un-wiring — see [docs/SKILLS.md](docs/SKILLS.md)
-for why, plus the hook's gates and log paths. Three footguns:
-
-- `skills-submodule-update.sh` is a **symlink** into the vendored `managing-skills`
-  scripts. **Never re-copy it** — a copy freezes at the version it was taken from.
-- `.skills/doctor.sh` is a **committed real file**, not a symlink, so it survives a
-  fresh `git worktree add` and a shallow CI clone (`bash .skills/doctor.sh --version`).
-- A hook script in `.claude/hooks/` that `.claude/settings.json` does not name
-  never runs and looks identical to one that works. Adding a script is only half
-  an install; `tests/scripts/test_claude_hooks_registered.py` fails on the other
-  half being missing.
+once-per-day `skills-vendor/` refresh. Both halves of a hook are load-bearing: a
+script in `.claude/hooks/` that `settings.json` does not name never runs and
+looks identical to one that works — `tests/scripts/test_claude_hooks_registered.py`
+fails on the missing half. Never re-copy the `skills-submodule-update.sh`
+symlink, never turn the committed `.skills/doctor.sh` into one, and never
+un-wire the hook to hold a submodule — use `.skills/skills-pin`. Why each, plus
+the hook's gates and log paths: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## Detail Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — full repository layout tree and the co-core acquisition wiring
-- [docs/API.md](docs/API.md) — every HTTP route, its SDK wrapper, pagination, and the `info.changes` event contract
+- [docs/API.md](docs/API.md) — every HTTP route, its SDK wrapper, and pagination
+- [docs/BUS.md](docs/BUS.md) — the outbox producer, the three published streams, and the three consumed
 - [docs/SCHEMA.md](docs/SCHEMA.md) — per-table contracts and invariants for the five registry tables
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — wheelhouse reproducibility, dev-server internals, full env-var reference
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — changelog trigger, journald logging contract, error-envelope examples
 - [docs/SKILLS.md](docs/SKILLS.md) — skill inventory, trigger table, SessionStart hook mechanics
-- The five dashboard docs — [docs/UI.md](docs/UI.md) URL map, auth, HTMX, detail-screen conventions; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory; [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) the InfoItem hub screen — its five sections, partials, swap targets; [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility
+- The dashboard docs — [docs/UI.md](docs/UI.md) URL map, auth, HTMX, detail-screen conventions; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory; [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) the InfoItem hub screen — its five sections, partials, swap targets; [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility

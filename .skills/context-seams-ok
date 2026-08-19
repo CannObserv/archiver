@@ -1,0 +1,13 @@
+# Judged seam acknowledgements — see check-seams.sh --help.
+# One entry per judged line.
+
+# This run split docs/API.md into API.md (HTTP) + BUS.md (wire). The pointer
+# below is the split's own cross-link and names content that really is in API.md.
+docs/BUS.md :: live in [API.md](API.md); this file is the wire side
+
+# The three bus headings moved verbatim out of API.md. Their issue numbers were
+# already in the slug before the move; renaming them now would rewrite relocated
+# content for no reader benefit, and nothing links to those anchors.
+docs/BUS.md :: Change-bus consumer — `content.revisions` (archiver#139)
+docs/BUS.md :: Change-bus consumer — `content.artifacts` (archiver#170)
+docs/BUS.md :: Change-bus tail — `info.watch-status` (archiver#151)
