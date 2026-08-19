@@ -4,6 +4,14 @@
 {% block title %}{{ domain.name }}{% endblock %}
 
 {% block content %}
+{# Two paginated tables share this URL, so every pagination link must re-emit
+   BOTH windows — dropping the other table's params would silently reset it to
+   page one (#176). Each holds a complete href up to its own trailing
+   `offset=`, so the link appends only the number it moves — which also keeps
+   every `&` inside one autoescaped expression, rather than half the query
+   string escaping to `&amp;` and half staying raw. #}
+{% set items_url = "?limit=" ~ limit ~ "&offset=" ~ offset ~ "&item_limit=" ~ item_limit ~ "&item_offset=" %}
+{% set sources_url = "?limit=" ~ limit ~ "&item_limit=" ~ item_limit ~ "&item_offset=" ~ item_offset ~ "&offset=" %}
 <div class="entity-section">
 
   {# Header #}
@@ -13,6 +21,9 @@
         <p class="eyebrow">Domain</p>
         <h1 class="entity-card__title" id="domain-heading" tabindex="-1">{{ copyable(domain.name) }}</h1>
       </div>
+      {# Domain stores a hostname, not a URL — the openable target is the https
+         origin it names. open_button's scheme guard passes it through (#176). #}
+      <div>{{ open_button("https://" ~ domain.name) }}</div>
     </div>
 
     <div class="detail-grid">
@@ -42,12 +53,63 @@
         <span class="detail-grid__value text-muted">{{ domain.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
       </div>
     </div>
-  </div>
 
-  {# Notes — inline edit via HTMX #}
-  <div id="notes-section" style="margin-top:var(--space-3);margin-bottom:var(--space-4);">
+    {# Notes lives inside the header panel (#176) — read-only by default, Edit
+       flips it to the textarea. The partial owns #notes-section, the HTMX swap
+       target, so it is included bare rather than wrapped. #}
     {% include "domains/_notes_partial.html" %}
   </div>
+
+  {# Linked Information Items — the items these sources back, one hop out via
+     the active InfoItemSource binding. Paginated on its own item_* window so
+     paging it does not reposition the Sources table below (#176). #}
+  <h2 class="section-heading" style="margin-top:var(--space-4);">Information Items ({{ item_total }})</h2>
+  {% if items %}
+  <table class="data-table" aria-label="Information Items on {{ domain.name }}">
+    <thead>
+      <tr>
+        <th class="data-table__th">Name</th>
+        <th class="data-table__th">Owner</th>
+        <th class="data-table__th">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="data-table__cell">
+          <a href="/dashboard/info-items/{{ item.info_item_id }}">{{ item.name }}</a>
+        </td>
+        <td class="data-table__cell data-table__cell--muted text-sm">
+          {{ item.owner or '—' }}
+        </td>
+        <td class="data-table__cell data-table__cell--muted text-sm">
+          {{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if item_has_more or item_offset > 0 %}
+  <nav class="pagination" aria-label="Information Items pagination" style="margin-top:var(--space-3);">
+    {% if item_offset > 0 %}
+    <a href="{{ items_url }}{{ [item_offset - item_limit, 0] | max }}" class="btn btn--ghost">← Previous</a>
+    {% endif %}
+    {% if item_has_more %}
+    <a href="{{ items_url }}{{ item_offset + item_limit }}" class="btn btn--ghost">Next →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+
+  {% elif item_total %}
+  {# Overshot item_offset — same two-empty-states rule as Sources below. #}
+  <p class="text-muted">
+    No items on this page —
+    <a href="{{ items_url }}0">back to the first page</a>.
+  </p>
+  {% else %}
+  <p class="text-muted">No Information Items bound to this domain yet.</p>
+  {% endif %}
 
   {# Linked Information Sources #}
   {# Count comes from a route COUNT, not |length — the table below is paginated. #}
@@ -76,12 +138,12 @@
   </table>
 
   {% if has_more or offset > 0 %}
-  <nav class="pagination" aria-label="Pagination" style="margin-top:var(--space-3);">
+  <nav class="pagination" aria-label="Information Sources pagination" style="margin-top:var(--space-3);">
     {% if offset > 0 %}
-    <a href="?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}" class="btn btn--ghost">← Previous</a>
+    <a href="{{ sources_url }}{{ [offset - limit, 0] | max }}" class="btn btn--ghost">← Previous</a>
     {% endif %}
     {% if has_more %}
-    <a href="?offset={{ offset + limit }}&limit={{ limit }}" class="btn btn--ghost">Next →</a>
+    <a href="{{ sources_url }}{{ offset + limit }}" class="btn btn--ghost">Next →</a>
     {% endif %}
   </nav>
   {% endif %}
@@ -91,7 +153,7 @@
      is not empty, so the "none registered" copy would contradict the heading. #}
   <p class="text-muted">
     No sources on this page —
-    <a href="?offset=0&limit={{ limit }}">back to the first page</a>.
+    <a href="{{ sources_url }}0">back to the first page</a>.
   </p>
   {% else %}
   <p class="text-muted">No Information Sources registered for this domain yet.</p>

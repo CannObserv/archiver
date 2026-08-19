@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core.models import InfoSource
+from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
 
 _HEADERS = {"X-ExeDev-UserID": "ext-dom", "X-ExeDev-Email": "dom@example.com"}
@@ -165,8 +165,9 @@ async def test_domain_detail_offset_past_end_no_contradiction(client, session):
     # The "none registered" copy is reserved for a genuinely empty collection.
     assert "No Information Sources registered for this domain yet" not in r.text
     assert "No sources on this page" in r.text
-    # Offers a way back to a populated page (raw `&`, matching the pagination nav).
-    assert "?offset=0&limit=" in r.text
+    # Offers a way back to a populated page. Since #176 the link carries both
+    # tables' windows and resets only the source offset; `&` autoescapes.
+    assert "item_offset=0&amp;offset=0" in r.text
 
 
 @pytest.mark.asyncio
@@ -309,3 +310,235 @@ async def test_update_notes_returns_200_or_redirect(client, session):
         data={"notes": "my notes"},
     )
     assert r.status_code in (200, 303)
+
+
+# ---------------------------------------------------------------------------
+# Header panel — Open button + notes (#176)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_header_has_open_button(client, session):
+    """Domain has no URL column — the affordance targets https://{name} (#176)."""
+    session.add(_make_domain("open-btn.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/open-btn.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'href="https://open-btn.example.com"' in r.text
+    assert ">Open ↗</a>" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_notes_live_inside_header_card(client, session):
+    """Notes is a row of the header .entity-card, not a sibling block below it (#176)."""
+    session.add(_make_domain("notes-in-panel.example.com", notes="operator note"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/notes-in-panel.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    head = r.text.index('class="entity-card"')
+    notes = r.text.index('id="notes-section"')
+    sources = r.text.index("Information Sources (")
+    assert head < notes < sources
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_notes_render_read_only_with_edit_button(client, session):
+    """View mode: bordered read-only content + an Edit button; no bare textarea (#176)."""
+    session.add(_make_domain("notes-ro.example.com", notes="read me"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/notes-ro.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'x-data="domainNotes"' in r.text
+    assert 'class="notes-readout"' in r.text
+    assert "read me" in r.text
+    # View mode hides on edit; edit mode hides on view — both are x-show driven.
+    assert 'x-show="!editing"' in r.text
+    assert 'x-show="editing"' in r.text
+    assert '@click="editing = true"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_notes_edit_mode_has_cancel_and_save(client, session):
+    session.add(_make_domain("notes-actions.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/notes-actions.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'x-ref="notesBox"' in r.text
+    assert ">Cancel</button>" in r.text
+    assert ">Save</button>" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_notes_empty_state(client, session):
+    """A domain with no notes still shows the read-only region, with placeholder copy."""
+    session.add(_make_domain("notes-empty.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/notes-empty.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "No notes yet." in r.text
+
+
+@pytest.mark.asyncio
+async def test_update_notes_partial_returns_view_mode(client, session):
+    """The HTMX swap returns the same read-only-first partial, not a bare form (#176)."""
+    session.add(_make_domain("notes-swap.example.com"))
+    await session.flush()
+
+    r = await client.post(
+        "/dashboard/domains/notes-swap.example.com/notes",
+        headers=_HEADERS,
+        data={"notes": "swapped in"},
+    )
+    assert r.status_code == 200
+    assert 'x-data="domainNotes"' in r.text
+    assert "swapped in" in r.text
+    # Focus-move script is emitted on the swap only (docs/UI.md HTMX mutations).
+    assert 'getElementById("domain-notes-heading")' in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_notes_omits_focus_script_on_full_page(client, session):
+    """The focus move belongs to the swap response, not the initial render."""
+    session.add(_make_domain("notes-nofocus.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/notes-nofocus.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'getElementById("domain-notes-heading")' not in r.text
+
+
+# ---------------------------------------------------------------------------
+# Information Items section (#176)
+# ---------------------------------------------------------------------------
+
+
+def _make_item(name: str) -> InfoItem:
+    return InfoItem(name=name)
+
+
+def _bind(item: InfoItem, src: InfoSource) -> InfoItemSource:
+    return InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id)
+
+
+async def _domain_with_items(session, host: str, count: int) -> None:
+    session.add(_make_domain(host))
+    await session.flush()
+    for i in range(count):
+        src = _make_source(f"https://{host}/{i}", host)
+        item = _make_item(f"{host} item {i}")
+        session.add_all([src, item])
+        await session.flush()
+        session.add(_bind(item, src))
+    await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_lists_information_items(client, session):
+    await _domain_with_items(session, "items-list.example.com", 2)
+
+    r = await client.get("/dashboard/domains/items-list.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "items-list.example.com item 0" in r.text
+    assert "items-list.example.com item 1" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_items_section_sits_between_header_and_sources(client, session):
+    await _domain_with_items(session, "items-order.example.com", 1)
+
+    r = await client.get("/dashboard/domains/items-order.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert r.text.index("Information Items (") < r.text.index("Information Sources (")
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_item_count_is_total_not_page(client, session):
+    """Heading count is a route COUNT over all rows, not the page's length (docs/UI.md)."""
+    await _domain_with_items(session, "items-count.example.com", 3)
+
+    r = await client.get(
+        "/dashboard/domains/items-count.example.com?item_limit=2", headers=_HEADERS
+    )
+    assert r.status_code == 200
+    assert "Information Items (3)" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_items_exclude_deactivated_bindings(client, session):
+    """Only the active binding counts — a superseded primary is succession history."""
+    session.add(_make_domain("items-deact.example.com"))
+    await session.flush()
+    src = _make_source("https://items-deact.example.com/a", "items-deact.example.com")
+    item = _make_item("retired binding item")
+    session.add_all([src, item])
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=src.info_source_id,
+            deactivated_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/items-deact.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "Information Items (0)" in r.text
+    assert "retired binding item" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_items_empty_state(client, session):
+    session.add(_make_domain("items-none.example.com"))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/items-none.example.com", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "No Information Items bound to this domain yet." in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_items_overshot_offset_no_contradiction(client, session):
+    """Overshot item_offset gets its own empty state, not the "none bound" copy."""
+    await _domain_with_items(session, "items-overshoot.example.com", 2)
+
+    r = await client.get(
+        "/dashboard/domains/items-overshoot.example.com?item_offset=50", headers=_HEADERS
+    )
+    assert r.status_code == 200
+    assert "No Information Items (2)" not in r.text
+    assert "No items on this page" in r.text
+    assert "No Information Items bound to this domain yet." not in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_items_pagination_is_independent_of_sources(client, session):
+    """Two paginated tables on one page must not fight over limit/offset (#176)."""
+    await _domain_with_items(session, "items-indep.example.com", 3)
+
+    r = await client.get(
+        "/dashboard/domains/items-indep.example.com?item_limit=1&limit=1", headers=_HEADERS
+    )
+    assert r.status_code == 200
+    # Each Next link carries both windows so following one preserves the other:
+    # the Items link pins the source offset, the Sources link pins the item one.
+    assert "offset=0&amp;item_limit=1&amp;item_offset=1" in r.text
+    assert "item_offset=0&amp;offset=1" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_item_pagination_params_clamp(client, session):
+    """item_limit/item_offset clamp like limit/offset — no 422 on a hand-edited URL."""
+    await _domain_with_items(session, "items-clamp.example.com", 1)
+
+    r = await client.get(
+        "/dashboard/domains/items-clamp.example.com?item_limit=abc&item_offset=-9",
+        headers=_HEADERS,
+    )
+    assert r.status_code == 200
+    assert "items-clamp.example.com item 0" in r.text

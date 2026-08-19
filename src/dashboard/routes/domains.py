@@ -5,22 +5,46 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session
-from src.core.models import InfoSource
+from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
-from src.dashboard.pagination import Pagination, pagination
+from src.dashboard.pagination import Pagination, clamp_pagination, pagination
 
 router = APIRouter(prefix="/dashboard/domains")
 
+_ITEM_LIMIT_DESCRIPTION = (
+    "Rows per page for the Information Items table. Clamped, not rejected — see "
+    "src/dashboard/pagination.py."
+)
+_ITEM_OFFSET_DESCRIPTION = (
+    "Row offset for the Information Items table. Clamped, not rejected — see "
+    "src/dashboard/pagination.py."
+)
+
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+
+
+async def item_pagination(
+    item_limit: str | None = Query(default=None, description=_ITEM_LIMIT_DESCRIPTION),
+    item_offset: str | None = Query(default=None, description=_ITEM_OFFSET_DESCRIPTION),
+) -> Pagination:
+    """Second, independent page window for the detail screen's Items table.
+
+    Domain detail renders two paginated tables. Sharing one ``limit``/``offset``
+    pair would make paging either table silently reposition the other, so Items
+    gets its own params and Sources keeps the bare ones. Same clamp-don't-reject
+    contract as ``pagination`` — see ``src/dashboard/pagination.py`` for why
+    these arrive as ``str``.
+    """
+    return clamp_pagination(item_limit, item_offset)
 
 
 async def _get_domain_or_404(name: str, session: AsyncSession) -> Domain:
@@ -95,10 +119,11 @@ async def detail_domain(
     name: str,
     request: Request,
     page: Pagination = Depends(pagination),
+    item_page: Pagination = Depends(item_pagination),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Domain detail: notes, status, linked InfoSources."""
+    """Domain detail: notes, status, linked InfoItems and InfoSources."""
     domain = await _get_domain_or_404(name, session)
 
     # Exact total for the section heading — the table is paginated, so a template
@@ -131,6 +156,43 @@ async def detail_domain(
     has_more = len(src_rows) > page.limit
     src_rows = src_rows[: page.limit]
 
+    # Items reachable from this domain: InfoItem → active InfoItemSource →
+    # InfoSource.domain_name. `deactivated_at IS NULL` keeps a superseded primary
+    # out — that binding is succession history, not a current dependency on this
+    # domain (see src/core/models/info_item_source.py). DISTINCT because an item
+    # can only hold one active binding, but the join is written to survive the
+    # day that stops being true.
+    item_join = (
+        select(InfoItem)
+        .join(
+            InfoItemSource,
+            (InfoItemSource.info_item_id == InfoItem.info_item_id)
+            & InfoItemSource.deactivated_at.is_(None),
+        )
+        .join(InfoSource, InfoSource.info_source_id == InfoItemSource.info_source_id)
+        .where(InfoSource.domain_name == name)
+    )
+    item_total = (
+        await session.execute(select(func.count()).select_from(item_join.distinct().subquery()))
+    ).scalar_one()
+
+    # Own limit+1 probe rather than a comparison against item_total, for the same
+    # cross-snapshot reason spelled out above the sources probe.
+    item_rows = list(
+        (
+            await session.execute(
+                item_join.distinct()
+                .order_by(InfoItem.created_at.desc(), InfoItem.info_item_id.desc())
+                .offset(item_page.offset)
+                .limit(item_page.limit + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    item_has_more = len(item_rows) > item_page.limit
+    item_rows = item_rows[: item_page.limit]
+
     return _templates.TemplateResponse(
         request,
         "domains/detail.html",
@@ -142,6 +204,11 @@ async def detail_domain(
             "has_more": has_more,
             "limit": page.limit,
             "offset": page.offset,
+            "items": item_rows,
+            "item_total": item_total,
+            "item_has_more": item_has_more,
+            "item_limit": item_page.limit,
+            "item_offset": item_page.offset,
         },
     )
 
@@ -167,7 +234,9 @@ async def update_notes(
     return _templates.TemplateResponse(
         request,
         "domains/_notes_partial.html",
-        {"user": user, "domain": domain},
+        # `swapped` gates the focus-move script — this route only ever renders
+        # the partial as a swap response (docs/UI.md HTMX mutations).
+        {"user": user, "domain": domain, "swapped": True},
     )
 
 

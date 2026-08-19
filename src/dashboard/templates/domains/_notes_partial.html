@@ -1,13 +1,58 @@
-<div id="notes-section">
-  <h2 style="margin-bottom:var(--space-2);">Notes</h2>
-  <form hx-post="/dashboard/domains/{{ domain.name }}/notes"
-        hx-target="#notes-section"
-        hx-swap="outerHTML"
-        style="display:flex;flex-direction:column;gap:var(--space-2);max-width:40rem;">
-    <textarea name="notes" class="form-textarea" rows="3"
+{# Operator notes — a row of the domain header .entity-card (#176), swapped in
+   place by the HTMX save (id target).
+
+   Read-only first: the stored notes render inside a bordered `.notes-readout`
+   spanning the panel width, with the inline actions to its right. "Edit" flips
+   to the textarea + "Cancel"/"Save". Toggle is the `domainNotes` Alpine
+   component (main.js) — same edit/view idea as settings/_api_key_row.html.
+   Cancel discards client-side via the textarea's `defaultValue`; no server call.
+
+   Progressive enhancement: without Alpine both halves render and Save posts
+   normally through the method/action fallback (docs/UI.md Detail Screen
+   Conventions). #}
+<div id="notes-section" x-data="domainNotes" style="margin-top:var(--space-4);">
+  <h2 id="domain-notes-heading" tabindex="-1" class="detail-grid__label"
+      style="margin:0 0 var(--space-2);">Notes</h2>
+
+  {# View mode: stored notes + Edit. #}
+  <div x-show="!editing" class="notes-row">
+    <div class="notes-readout">
+      {%- if domain.notes %}{{ domain.notes }}{% else %}<span class="text-muted">No notes yet.</span>{% endif -%}
+    </div>
+    <div class="notes-row__actions">
+      <button type="button" class="btn btn--sm btn--secondary"
+              @click="editing = true"
+              aria-label="Edit notes for {{ domain.name }}">Edit</button>
+    </div>
+  </div>
+
+  {# Edit mode. #}
+  <form x-show="editing" style="display:none;"
+        class="notes-row"
+        hx-post="/dashboard/domains/{{ domain.name }}/notes"
+        hx-target="#notes-section" hx-swap="outerHTML"
+        method="POST" action="/dashboard/domains/{{ domain.name }}/notes">
+    {# No visible label — the heading above already names this control, and a
+       label that appears only on Edit causes layout jank. #}
+    <textarea name="notes" x-ref="notesBox" rows="3"
+              class="form-textarea"
+              aria-label="Notes for {{ domain.name }}"
               placeholder="Operator notes about this domain…">{{ domain.notes or '' }}</textarea>
-    <div>
-      <button type="submit" class="btn btn--primary">Save notes</button>
+    <div class="notes-row__actions">
+      <button type="button" class="btn btn--sm btn--secondary" @click="cancelEdit()">Cancel</button>
+      <button type="submit" class="btn btn--sm btn--primary">Save</button>
     </div>
   </form>
+
+  {% if swapped %}
+  {# Swap response only: the Save button that had focus was just removed by the
+     outerHTML swap, which drops keyboard focus to <body>. Move it to the
+     heading instead (docs/UI.md HTMX mutations). Never on full page load. #}
+  <script>
+    (function () {
+      var h = document.getElementById("domain-notes-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
 </div>

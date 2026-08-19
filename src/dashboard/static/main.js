@@ -56,6 +56,33 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * Domain detail "Notes" row — edit/view toggle inside the header panel.
+     *
+     * View mode shows the stored notes read-only; Edit reveals the textarea;
+     * Cancel discards client-side and returns to view mode; Save posts via
+     * HTMX, which swaps the whole row back in view mode. defaultValue is the
+     * canonical reset (as apiKeyRow does, not the data island sourceSpecsCard
+     * needs) — notes have no validation-error re-render, so the server-rendered
+     * value is always the stored one.
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("domainNotes", function () {
+        return {
+            editing: false,
+
+            /**
+             * Leave edit mode without a server call, discarding unsaved text.
+             */
+            cancelEdit: function () {
+                this.editing = false;
+                if (this.$refs.notesBox) {
+                    this.$refs.notesBox.value = this.$refs.notesBox.defaultValue;
+                }
+            }
+        };
+    });
+
+    /**
      * API key reveal — shows the raw key once after creation.
      * @returns {object} Alpine component data.
      */

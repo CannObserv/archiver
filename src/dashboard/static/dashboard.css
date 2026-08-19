@@ -910,6 +910,38 @@ p:last-child { margin-bottom: 0; }
 }
 
 /* ─── Code block ─────────────────────────────────────────────────────────── */
+/* Notes row (domain detail header panel, #176). The read-only content or the
+   textarea takes the full panel width; the inline actions sit to its right at a
+   fixed intrinsic width. Wraps on narrow viewports so the actions drop below
+   rather than squeezing the readout to nothing. */
+.notes-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.notes-row > .notes-readout,
+.notes-row > .form-textarea { flex: 1 1 20rem; }
+.notes-row__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+/* Read-only notes: same border/padding as the textarea it replaces, so the Edit
+   flip does not shift the panel. Preserves author line breaks. */
+.notes-readout {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  min-height: 2.5rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .code-block {
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
