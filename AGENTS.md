@@ -238,15 +238,21 @@ Cross-project search to the sister `watcher` and `notifier` indexes requires a p
 
 ## SessionStart Hooks
 
-`.claude/settings.json` wires the SocratiCode prefetch reminder. The once-per-day
-`skills-vendor/` refresh is **suspended** — it auto-commits submodule bumps on
-`main`, breaking the archiver#131 wave-A hold. Restore recipe + mechanics:
-[docs/SKILLS.md](docs/SKILLS.md). Two footguns:
+`.claude/settings.json` wires the SocratiCode prefetch reminder and the
+once-per-day `skills-vendor/` refresh. That refresh was **suspended** 2026-08-06
+to 2026-08-19 for the archiver#131 cohort hold; the hold is retired
+(archiver#163) and the hook is wired again. A future hold uses the
+`.skills/skills-pin` file, never an un-wiring — see [docs/SKILLS.md](docs/SKILLS.md)
+for why, plus the hook's gates and log paths. Three footguns:
 
 - `skills-submodule-update.sh` is a **symlink** into the vendored `managing-skills`
   scripts. **Never re-copy it** — a copy freezes at the version it was taken from.
 - `.skills/doctor.sh` is a **committed real file**, not a symlink, so it survives a
   fresh `git worktree add` and a shallow CI clone (`bash .skills/doctor.sh --version`).
+- A hook script in `.claude/hooks/` that `.claude/settings.json` does not name
+  never runs and looks identical to one that works. Adding a script is only half
+  an install; `tests/scripts/test_claude_hooks_registered.py` fails on the other
+  half being missing.
 
 ## Detail Docs
 
