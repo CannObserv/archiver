@@ -7,6 +7,13 @@ lives here.
 > The authoritative list of live reference documents is the **Detail Docs** index
 > in [AGENTS.md](../AGENTS.md); the `docs/` entry in the tree below mirrors it.
 
+## Current model (Phase 4 — Archiver v2)
+
+Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
+
+- `docs/plans/2026-05-08-archiver-v2-architecture-design.md`
+- `docs/plans/2026-05-08-phase-4-archiver-v2-implementation.md`
+
 ## Project Layout
 
 ```
@@ -177,7 +184,7 @@ deploy/                        README.md (install instructions) + systemd units:
                                redis-server.dropin.conf (the broker cap Archiver
                                owns — see the archiver#128 lockstep invariant)
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
-                               SCHEMA.md, DEPLOYMENT.md, CONVENTIONS.md,
+                               BUS.md, SCHEMA.md, DEPLOYMENT.md, CONVENTIONS.md,
                                SKILLS.md, plus the dashboard living docs
                                UI.md + PAGES.md + COMPONENTS.md + STYLE.md
                                (see "Dashboard living docs").

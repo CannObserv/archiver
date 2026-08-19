@@ -9,7 +9,8 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 [AGENTS.md](AGENTS.md) is the entry point; its **Detail Docs** index is the full list. Most-reached-for:
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — repository layout and the co-core acquisition wiring
-- [docs/API.md](docs/API.md) — every HTTP route, its SDK wrapper, and the `info.changes` event contract
+- [docs/API.md](docs/API.md) — every HTTP route and its SDK wrapper
+- [docs/BUS.md](docs/BUS.md) — the change-bus contracts, produced and consumed
 - [docs/SCHEMA.md](docs/SCHEMA.md) — per-table contracts and invariants
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — wheelhouse, dev server, environment variables
 - [docs/UI.md](docs/UI.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) — dashboard patterns, page inventory, the InfoItem hub screen, Alpine components, and styling

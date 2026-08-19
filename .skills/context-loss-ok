@@ -1,0 +1,35 @@
+# Judged loss warrants — see prove-no-loss.sh --help.
+# One entry per dropped line. Warrants: retarget, rename, duplicate, disproven, default.
+
+# --- retarget: this run split docs/API.md into API.md + BUS.md, so each of
+# --- these pointers names a location that no longer holds what it promised.
+retarget :: is service-local — Watcher
+retarget :: Routes, SDK wrappers, and the
+retarget :: every HTTP route, its SDK wrapper, pagination
+
+# --- duplicate: restates AGENTS.md's own SocratiCode paragraph two lines above
+# --- ("The SessionStart hook prints the prefetch query; run it before exploring").
+duplicate :: socraticode-reminder.sh`) prints the query every session
+duplicate :: so it is not carried here.
+
+# --- duplicate: the 2026-08-06 hold narrative is carried in full, and in more
+# --- detail, by docs/SKILLS.md "## SessionStart Hooks" (the suspension, the
+# --- archiver#131 control arm, skills#168 retiring it, and the skills-pin
+# --- alternative with the --merge caveat). The operative rule survives inline.
+duplicate :: That refresh was **suspended** 2026-08-06
+duplicate :: to 2026-08-19 for the archiver#131 cohort hold
+duplicate :: and the hook is wired again
+duplicate :: file, never an un-wiring
+duplicate :: Three footguns:
+
+# --- duplicate: each footgun is stated at length in docs/SKILLS.md — the
+# --- symlink/never-re-copy rule, the committed-doctor rationale, and the
+# --- partial-install test. AGENTS.md keeps all three as one-line rules.
+duplicate :: is a **symlink** into the vendored
+duplicate :: a copy freezes at the version it was taken from
+duplicate :: is a **committed real file**
+duplicate :: and a shallow CI clone
+duplicate :: - A hook script in
+duplicate :: Adding a script is only half
+duplicate :: fails on the other
+duplicate :: half being missing.
