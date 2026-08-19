@@ -9,6 +9,15 @@
             "command": "bash .claude/hooks/socraticode-reminder.sh"
           }
         ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/skills-submodule-update.sh\""
+          }
+        ]
       }
     ],
     "PostToolUse": [

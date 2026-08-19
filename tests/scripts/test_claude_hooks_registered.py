@@ -1,0 +1,67 @@
+"""Every hook script in ``.claude/hooks/`` must be wired into ``.claude/settings.json``.
+
+archiver#163: ``skills-submodule-update.sh`` sat in ``.claude/hooks/`` — tracked,
+resolving, executable — for twelve days while nothing ran it, because its
+``settings.json`` entry had been removed (archiver#131's cohort hold) and never
+restored. Claude Code runs what ``settings.json`` names, so the half that was
+missing was the half that would have run: an ``ls`` of ``.claude/hooks/`` shows a
+hook that is right there and does nothing.
+
+That is the *partial install* failure mode, and it is invisible from either side
+alone. This module closes it by asserting the two halves agree — a script present
+but unregistered fails here, which is the signal that was absent for twelve days.
+
+Deliberately one-directional. A registered command naming no local script is
+legitimate (``bash .skills/doctor.sh``, an inline shell guard), so only
+script-present-but-unwired is an error. Deliberately name-based rather than
+path-based: the registered command may address the script through
+``${CLAUDE_PROJECT_DIR}``, a relative path, or a guarded ``[ -f … ] &&`` prefix,
+and the parity that matters is *which* hook, not how it is spelled.
+"""
+
+import json
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+HOOKS_DIR = REPO_ROOT / ".claude" / "hooks"
+SETTINGS = REPO_ROOT / ".claude" / "settings.json"
+
+
+def _registered_commands() -> list[str]:
+    """Every ``command`` string in ``settings.json``, across all hook events."""
+    settings = json.loads(SETTINGS.read_text())
+    return [
+        entry["command"]
+        for matchers in settings.get("hooks", {}).values()
+        for matcher in matchers
+        for entry in matcher.get("hooks", [])
+        if entry.get("type") == "command"
+    ]
+
+
+def test_settings_json_is_valid_json_with_hooks() -> None:
+    assert SETTINGS.is_file(), f"{SETTINGS} is missing"
+    assert _registered_commands(), "settings.json registers no hook commands"
+
+
+def test_every_hook_script_is_registered() -> None:
+    """A script in ``.claude/hooks/`` that nothing invokes is a partial install."""
+    commands = _registered_commands()
+    scripts = sorted(p.name for p in HOOKS_DIR.glob("*.sh"))
+    assert scripts, f"no hook scripts found under {HOOKS_DIR}"
+
+    unwired = [name for name in scripts if not any(name in cmd for cmd in commands)]
+    assert not unwired, (
+        f"hook scripts present but not registered in .claude/settings.json: {unwired}. "
+        "A hook Claude Code never runs is indistinguishable from one that works "
+        "(archiver#163) — either wire it up or delete the script."
+    )
+
+
+def test_skills_refresh_hook_is_wired() -> None:
+    """The specific regression of archiver#163, named so a failure reads plainly."""
+    assert any("skills-submodule-update.sh" in cmd for cmd in _registered_commands()), (
+        "the skills auto-refresh hook is not registered; without it this repo's "
+        "vendored skills freeze at whatever commit was last bumped by hand "
+        "(archiver#163)"
+    )

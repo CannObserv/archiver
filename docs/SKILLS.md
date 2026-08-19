@@ -177,37 +177,34 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 
 ## SessionStart Hooks
 
-> **`skills-submodule-update.sh` is currently suspended.** Its
-> `.claude/settings.json` entry was removed on 2026-08-06 (archiver#131). The
-> hook auto-commits `skills-vendor/` bumps on `main`, and this repo is the
-> **control arm** of the `curating-context` cohort experiment: it must hold the
-> vendored pointer at v1.2 (`3fc7b71`) until the wave-B comparison resolves. An
-> automatic bump past v1.2 would put two skill versions inside one arm and make
-> `score-cohort.sh` return INCONCLUSIVE.
+> **The 2026-08-06 suspension is over (archiver#163).** The hook's
+> `.claude/settings.json` entry was removed under archiver#131, which asked this
+> repo to hold `skills-vendor/gregoryfoster-skills` at `curating-context` v1.2
+> (`3fc7b71`) as the control arm of the cohort experiment. That experiment
+> retired the wave A/B split on 2026-08-17
+> ([gregoryfoster/skills#168](https://github.com/gregoryfoster/skills/issues/168),
+> jointly with [#118](https://github.com/gregoryfoster/skills/issues/118)):
+> `wave:`/`pair:` are now rollout *staging*, never an assignment in force, and a
+> run's arm is the `skill_version` on its own telemetry row. With no version to
+> hold, the hold had nothing left to protect and the entry was restored on
+> 2026-08-19.
 >
-> The hook script and its symlink are untouched — only the wiring is gone.
-> Restore by re-adding this object to the `SessionStart` hooks array:
->
-> ```json
-> { "type": "command", "command": "bash .claude/hooks/skills-submodule-update.sh" }
-> ```
->
-> Until then, refresh vendored skills manually:
->
-> ```bash
-> git submodule update --remote skills-vendor/   # then review before committing
-> bash .skills/doctor.sh
-> ```
->
-> The proper fix is a per-submodule pin —
-> [gregoryfoster/skills#100](https://github.com/gregoryfoster/skills/issues/100),
-> which `CannObserv/cli` hit first. Note `submodule.<name>.update = none` alone
-> will not hold the pin against this hook: the hook passes `--merge`, which git
-> documents as overriding that setting (verified empirically; a pathspec alone
-> does not override it). Delete this note when the hold lifts or #100 lands and
-> the hook is re-wired.
+> Should a future hold be needed, do **not** un-wire the hook again — that also
+> stops the `obra-superpowers` refresh and the `.skills/doctor.sh` self-heal, and
+> it fails silently, which is exactly how twelve days passed unnoticed. Use the
+> per-submodule pin instead
+> ([gregoryfoster/skills#100](https://github.com/gregoryfoster/skills/issues/100),
+> landed 2026-08-11): a committed `.skills/skills-pin` line,
+> `skills-vendor/gregoryfoster-skills <commit-ish>`, which the hook consults and
+> logs. Note `submodule.<name>.update = none` is *not* an alternative: the hook
+> passes `--merge`, which git documents as overriding that setting (verified
+> empirically; a pathspec alone does not override it either).
 
-`.claude/settings.json` wires two `SessionStart` hooks (see `.claude/hooks/`):
+`.claude/settings.json` wires two `SessionStart` hooks (see `.claude/hooks/`).
+Both halves are load-bearing: a script sitting in `.claude/hooks/` that
+`settings.json` does not name never runs, and looks identical to one that
+works. `tests/scripts/test_claude_hooks_registered.py` asserts the two halves
+agree, so that state fails a test instead of going unnoticed (archiver#163).
 
 - `socraticode-reminder.sh` — prints the deferred-tool prefetch query for SocratiCode MCP tools.
 - `skills-submodule-update.sh` — **symlink** into
@@ -221,8 +218,10 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
   `skills-vendor/` and `.skills/doctor.sh` — never `.skills/` wholesale, which
   would absorb operator config. The commit message names what changed
   (`chore: update skills submodules`, `chore: refresh .skills/doctor.sh`, or
-  both). Feature branches fetch but don't commit. Network failures are logged
-  and don't block session start. Descended from watcher's hook
+  both). On a feature branch it stops at the branch gate — before the fetch and
+  before stamping the lock — so only the `.skills/doctor.sh` self-heal above it
+  runs there. Network failures are logged and don't block session start.
+  Descended from watcher's hook
   (CannObserv/watcher#153 → CannObserv/archiver#8).
 
 **`.skills/doctor.sh` is committed** (archiver#126). It is a real file copy, not
