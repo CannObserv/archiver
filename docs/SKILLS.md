@@ -66,8 +66,6 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 
 `reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) — no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
 
-Edits to mirrored content-acquisition modules (`src/core/fetchers/`, `src/core/extractors/`, `src/core/simhash.py`, `src/core/extraction_defaults.py`, `src/core/logging.py`) trigger a watcher mirror obligation — see `AGENTS.md` "Mirrored content-acquisition code" before shipping.
-
 ## SocratiCode (Codebase Search)
 
 This project is indexed with SocratiCode. Always use its MCP tools to explore the codebase before reading files directly.
