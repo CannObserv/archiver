@@ -48,6 +48,12 @@ the email if changed) and returns the row; absent headers → 307 redirect to
 `/__exe.dev/login?redirect=<path>`. Tests override via
 `app.dependency_overrides[get_dashboard_user]`.
 
+Identity is `external_id`; email is descriptive, **not unique** (#177 — the
+proxy doesn't guarantee it, and enforcing it locked colliding operators out
+with a 500). Don't reintroduce a unique constraint or key any lookup on email.
+The upsert is one atomic `INSERT … ON CONFLICT (external_id) DO UPDATE`, so
+concurrent first-logins can't race.
+
 The gate is universal, so the route entries in [PAGES.md](PAGES.md) do not repeat
 it: assume any dashboard route redirects 307 when unauthenticated.
 

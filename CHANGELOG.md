@@ -18,6 +18,12 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.16.2 (2026-08-20)
+
+[service] **`app_users.email` is no longer `UNIQUE`** (archiver#177). One migration; no HTTP surface change; no SDK change.
+
+Identity for `app_users` is `external_id`, the proxy's stable handle; email is descriptive data the proxy reports alongside it and never guaranteed unique. The constraint turned any collision — a re-issued proxy id, two identities sharing a mailbox, two operators swapping addresses — into an `IntegrityError` inside `get_dashboard_user`, which 500'd every dashboard page for that operator. Nothing joins or looks up by email (`api_keys` FKs on `app_users.id`), so the constraint is dropped. The upsert is now a single `INSERT … ON CONFLICT (external_id) DO UPDATE`, closing the select-then-insert race on concurrent first-logins as well.
+
 ## v4.16.1 (2026-08-19)
 
 [service] **`info_item_sources` gains an index for the source→item direction** (archiver#176). One migration; no HTTP surface change; no SDK change.
