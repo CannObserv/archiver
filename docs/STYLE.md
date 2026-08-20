@@ -1,4 +1,4 @@
-# Archiver Dashboard — Style Reference
+# Archiver Dashboard - Style Reference
 
 **Authoritative reference for CSS design tokens, component classes, theming, naming conventions, and accessibility requirements.**
 
@@ -9,9 +9,9 @@
 ## Theming
 
 Three-layer system:
-1. `:root { ... }` — light-mode defaults.
-2. `@media (prefers-color-scheme: dark) { :root { ... } }` — OS preference fallback (no JS required).
-3. `html.dark { ... }` / `html.light { ... }` — explicit user choice (wins by specificity).
+1. `:root { ... }` - light-mode defaults.
+2. `@media (prefers-color-scheme: dark) { :root { ... } }` - OS preference fallback (no JS required).
+3. `html.dark { ... }` / `html.light { ... }` - explicit user choice (wins by specificity).
 
 **FOUC prevention:** Inline `<script>` in `<head>` **before** `<link rel="stylesheet">` reads `localStorage.getItem('co-color-scheme')` and adds `.dark`/`.light` to `<html>` before first paint.
 
@@ -48,7 +48,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 |---|---|
 | `--font-sans` | System UI stack |
 | `--font-mono` | SFMono / Consolas stack |
-| `--font-size-2xs` – `--font-size-2xl` | 0.65 rem – 1.5 rem |
+| `--font-size-2xs` - `--font-size-2xl` | 0.65 rem - 1.5 rem |
 | `--font-weight-normal/medium/bold` | 400 / 500 / 700 |
 | `--line-height-tight/normal/loose` | 1.25 / 1.5 / 1.75 |
 
@@ -65,49 +65,49 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 ## Component Classes
 
 ### Layout
-- `.admin-layout` — flex wrapper; use inside `<body>` with `padding-top: var(--topbar-height)`.
-- `.topbar` — fixed top bar; contains `.topbar__brand` and `.topbar__actions`.
-- `.sidebar` — fixed left sidebar; contains `.sidebar__nav`, `.sidebar__link`, `.sidebar__section-label`.
-- `.main-content` — right content area with `margin-left: var(--sidebar-width)`.
+- `.admin-layout` - flex wrapper; use inside `<body>` with `padding-top: var(--topbar-height)`.
+- `.topbar` - fixed top bar; contains `.topbar__brand` and `.topbar__actions`.
+- `.sidebar` - fixed left sidebar; contains `.sidebar__nav`, `.sidebar__link`, `.sidebar__section-label`.
+- `.main-content` - right content area with `margin-left: var(--sidebar-width)`.
 
 ### Buttons
-- `.btn` — base; always pair with a modifier.
-- `.btn--primary` — brand filled.
-- `.btn--secondary` — outline (surface bg + border). Use for low-emphasis in-page actions that still need to read as buttons (e.g. Copy, Swap Primary, Begin Watching, Check now, Pause/Resume, Re-sync); pair with `.btn--sm` for compact contexts.
-- `.btn--danger` — destructive action.
-- `.btn--ghost` — transparent, borderless, no hover chrome beyond a faint fill. Reserved for the brand-colored **topbar** (Sign out, theme toggle), where `.topbar .btn--ghost` renders `--color-text-on-brand` (white). On page surfaces it defaults to `--color-text` but reads as plain text — prefer `.btn--secondary` for actions that should look clickable.
-- `.btn--active` — brand-subtle background with brand text; use for the currently-selected state of a toggle button group (e.g. sort mode buttons in `sortableChips`).
-- `.btn--sm` — compact size.
+- `.btn` - base; always pair with a modifier.
+- `.btn--primary` - brand filled.
+- `.btn--secondary` - outline (surface bg + border). Use for low-emphasis in-page actions that still need to read as buttons (e.g. Copy, Swap Primary, Begin Watching, Check now, Pause/Resume, Re-sync); pair with `.btn--sm` for compact contexts.
+- `.btn--danger` - destructive action.
+- `.btn--ghost` - transparent, borderless, no hover chrome beyond a faint fill. Reserved for the brand-colored **topbar** (Sign out, theme toggle), where `.topbar .btn--ghost` renders `--color-text-on-brand` (white). On page surfaces it defaults to `--color-text` but reads as plain text - prefer `.btn--secondary` for actions that should look clickable.
+- `.btn--active` - brand-subtle background with brand text; use for the currently-selected state of a toggle button group (e.g. sort mode buttons in `sortableChips`).
+- `.btn--sm` - compact size.
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
 
 ### Badges & Status
-- `.badge`, `.badge--primary/success/warning/danger/info/neutral/muted` — small inline label. `primary` is brand-subtle bg + brand text (use for the domain badge / brand-tagged labels). `neutral` and `muted` are synonyms (same visual — surface-alt bg, muted text); prefer `muted` for "not configured / disabled" states. `.badge` sets `text-decoration:none` so badges used as `<a>` links don't render underlined.
-- `.badge--sm` — extra-compact size (use in tight contexts like tab count indicators).
-- `.status-pill--cached/expired/missing` — SourceRevision cache state.
+- `.badge`, `.badge--primary/success/warning/danger/info/neutral/muted` - small inline label. `primary` is brand-subtle bg + brand text (use for the domain badge / brand-tagged labels). `neutral` and `muted` are synonyms (same visual - surface-alt bg, muted text); prefer `muted` for "not configured / disabled" states. `.badge` sets `text-decoration:none` so badges used as `<a>` links don't render underlined.
+- `.badge--sm` - extra-compact size (use in tight contexts like tab count indicators).
+- `.status-pill--cached/expired/missing` - SourceRevision cache state.
 
 ### Alerts & Flash
-- `.alert`, `.alert--success/warning/danger/info` — static inline alerts.
-- `.flash`, `.flash--success/warning/error/info` — toast notifications injected by `flash.js` into the `#flash-region` overlay. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`. `#flash-region` is `position: fixed` (top-right on desktop, full-width top on ≤640px), `z-index: 1000` — anchored to the viewport so toasts stay visible at any scroll position (archiver#65). `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until dismissed. Capped at 4 visible slots; on overflow a transient still flashes as a single lane and persistent excess collapses behind a `+N more` counter (archiver#73 — see `docs/UI.md` "Flash messages").
-- `.flash__more` — the `+N more` overflow counter button occupying the 4th slot when more than four persistent toasts stack; dashed-border, surface-alt pill. Click/Enter expands the overlay to reveal all (no re-collapse). Announcement is carried by the visually-hidden `#flash-announcer-assertive` / `#flash-announcer-polite` live regions (`.sr-only`), not the visible toasts.
+- `.alert`, `.alert--success/warning/danger/info` - static inline alerts.
+- `.flash`, `.flash--success/warning/error/info` - toast notifications injected by `flash.js` into the `#flash-region` overlay. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`. `#flash-region` is `position: fixed` (top-right on desktop, full-width top on ≤640px), `z-index: 1000` - anchored to the viewport so toasts stay visible at any scroll position (archiver#65). `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until dismissed. Capped at 4 visible slots; on overflow a transient still flashes as a single lane and persistent excess collapses behind a `+N more` counter (archiver#73 - see `docs/UI.md` "Flash messages").
+- `.flash__more` - the `+N more` overflow counter button occupying the 4th slot when more than four persistent toasts stack; dashed-border, surface-alt pill. Click/Enter expands the overlay to reveal all (no re-collapse). Announcement is carried by the visually-hidden `#flash-announcer-assertive` / `#flash-announcer-polite` live regions (`.sr-only`), not the visible toasts.
 
 ### Data display
-- `.data-table` — standard table; applies to `<table>`. Carries `margin-bottom` so it never butts against what follows (#176). It is the *only* source of that gap where two tables stack on one screen (domain detail), and it standardises three others: the registration button row, the InfoItem swap-primary panel, and `.pagination`, whose six inline `margin-top:var(--space-3)` overrides were removed once this rule made them redundant. A table that is the last child of a `<section>` with its own bottom margin is unaffected — the margins collapse. Spacing **above** a `.section-heading` or a `.pagination` therefore comes from the preceding element's bottom margin or from the class itself, never an inline `margin-top` on the component: such an override is either a no-op that collapses against that margin, or a sign the preceding element is missing one and the fix belongs here in the stylesheet. `tests/dashboard/test_template_style_rules.py` enforces it for both.
+- `.data-table` - standard table; applies to `<table>`. Carries `margin-bottom` so it never butts against what follows (#176). It is the *only* source of that gap where two tables stack on one screen (domain detail), and it standardises three others: the registration button row, the InfoItem swap-primary panel, and `.pagination`, whose six inline `margin-top:var(--space-3)` overrides were removed once this rule made them redundant. A table that is the last child of a `<section>` with its own bottom margin is unaffected - the margins collapse. Spacing **above** a `.section-heading` or a `.pagination` therefore comes from the preceding element's bottom margin or from the class itself, never an inline `margin-top` on the component: such an override is either a no-op that collapses against that margin, or a sign the preceding element is missing one and the fix belongs here in the stylesheet. `tests/dashboard/test_template_style_rules.py` enforces it for both.
 - `.entity-card`, `.entity-card__header`, `.entity-card__title`, `.entity-card__meta`, `.entity-card__actions`.
-- `.eyebrow` — small uppercase kicker label above an `.entity-card__title` (e.g. the entity kind). Non-interactive; distinct from a breadcrumb.
+- `.eyebrow` - small uppercase kicker label above an `.entity-card__title` (e.g. the entity kind). Non-interactive; distinct from a breadcrumb.
 - `.entity-section`, `.entity-section__header`, `.entity-section__title`. `.entity-section__title` is the `<h1>` page title inside an `.entity-section__header`; section-level `<h2>`s use `.section-heading` below.
-- `.section-heading` — related-collection section heading on a detail screen (`<h2>Revision History (12)</h2>`): bottom rule + spacing. Use for a plain heading-over-a-table; use `.entity-section__header` instead when the header needs a flex action slot. Replaced five verbatim inline-style copies (archiver#82). Applied to a bare `<h2>` — do **not** combine with `.entity-section__title`, which is for `<h1>` page titles inside an `.entity-section__header`; base `h2` already supplies the same size and weight, and combining the two made the rendered margin depend on stylesheet source order.
+- `.section-heading` - related-collection section heading on a detail screen (`<h2>Revision History (12)</h2>`): bottom rule + spacing. Use for a plain heading-over-a-table; use `.entity-section__header` instead when the header needs a flex action slot. Replaced five verbatim inline-style copies (archiver#82). Applied to a bare `<h2>` - do **not** combine with `.entity-section__title`, which is for `<h1>` page titles inside an `.entity-section__header`; base `h2` already supplies the same size and weight, and combining the two made the rendered margin depend on stylesheet source order.
 - `.detail-grid`, `.detail-grid__item`, `.detail-grid__label`, `.detail-grid__value`. `.detail-grid__item--full` spans every grid column (`grid-column: 1 / -1`) so long values (fingerprints, URLs) extend horizontally at wide viewports instead of cramping into one track.
-- `.notes-heading`, `.notes-row`, `.notes-row__actions`, `.notes-readout` — the read-only-first notes row inside a detail header panel (domain detail, #176). `.notes-heading` is the row's own `<h2>` label: a panel-internal section heading, quieter than `.section-heading`, and its own rule rather than borrowing `.detail-grid__label` from the grid above it. `.notes-row` is a wrapping flex row: the readout (or, in edit mode, the `.form-textarea`) takes the free width, `.notes-row__actions` holds the inline Edit / Cancel+Save buttons at intrinsic width and drops below on narrow viewports. `.notes-readout` matches the `.form-textarea` it swaps with on border, radius, and padding so the edges hold still; what stops the panel *resizing* on the flip is the shared `min-height` on `.notes-row > *` — the readout would otherwise sit at its content height against the textarea's floor. `white-space: pre-wrap` preserves author line breaks.
+- `.notes-heading`, `.notes-row`, `.notes-row__actions`, `.notes-readout` - the read-only-first notes row inside a detail header panel (domain detail, #176). `.notes-heading` is the row's own `<h2>` label: a panel-internal section heading, quieter than `.section-heading`, and its own rule rather than borrowing `.detail-grid__label` from the grid above it. `.notes-row` is a wrapping flex row: the readout (or, in edit mode, the `.form-textarea`) takes the free width, `.notes-row__actions` holds the inline Edit / Cancel+Save buttons at intrinsic width and drops below on narrow viewports. `.notes-readout` matches the `.form-textarea` it swaps with on border, radius, and padding so the edges hold still; what stops the panel *resizing* on the flip is the shared `min-height` on `.notes-row > *` - the readout would otherwise sit at its content height against the textarea's floor. `white-space: pre-wrap` preserves author line breaks.
 
 ### Forms
-- `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`. **There is no `.input` class** — `<input>`/`<textarea>`/`<select>` must use `.form-input`/`.form-textarea`/`.form-select` or they render unstyled (browser default).
-- `.form-input--error` / `.form-select--error` / `.form-textarea--error` — red border on invalid field.
-- `.form-input--inline` — compact width-auto variant for in-table rename inputs.
-- `.form-select--sm` — inline-scale `<select>` for action rows: `width:auto` and sized to `.btn--sm` (32px, `--font-size-xs`) so a select and a button share a baseline. The base `.form-select` is a full-width 44px block built for stacked forms and looks wrong beside a small button (added for the InfoItem cadence editor, archiver#158).
-- Use `.form-select` (not `.form-input`) on `<select>` elements so the select-specific focus ring and `.form-select--error` variant apply. Optional advanced/secondary form controls may be nested in a native `<details>`/`<summary>` disclosure (e.g. registration Step 3 "Watcher settings (advanced)") — no dedicated class; the `<summary>` carries `.text-sm`.
+- `.form-group`, `.form-label`, `.form-input`, `.form-select`, `.form-textarea`, `.form-hint`, `.form-error`. **There is no `.input` class** - `<input>`/`<textarea>`/`<select>` must use `.form-input`/`.form-textarea`/`.form-select` or they render unstyled (browser default).
+- `.form-input--error` / `.form-select--error` / `.form-textarea--error` - red border on invalid field.
+- `.form-input--inline` - compact width-auto variant for in-table rename inputs.
+- `.form-select--sm` - inline-scale `<select>` for action rows: `width:auto` and sized to `.btn--sm` (32px, `--font-size-xs`) so a select and a button share a baseline. The base `.form-select` is a full-width 44px block built for stacked forms and looks wrong beside a small button (added for the InfoItem cadence editor, archiver#158).
+- Use `.form-select` (not `.form-input`) on `<select>` elements so the select-specific focus ring and `.form-select--error` variant apply. Optional advanced/secondary form controls may be nested in a native `<details>`/`<summary>` disclosure (e.g. registration Step 3 "Watcher settings (advanced)") - no dedicated class; the `<summary>` carries `.text-sm`.
 - Checkboxes have no dedicated class: wrap the `<input type="checkbox">` and its caption in a single `<label class="form-label">` set to `display:flex;align-items:center;gap:var(--space-2)` so the box and text sit on one clickable line (e.g. registration Step 3 "Watch active immediately").
-- `.filter-card` — for single-row action/filter bars: heading + inputs in a horizontal flex row (`align-items: flex-end`). Use for simple one-input + submit patterns. For multi-field stacked forms, add `.filter-card--stacked`.
-- `.filter-card--stacked` — modifier; changes `filter-card` to a vertical column (`flex-direction: column; align-items: stretch`). Use when the card contains a heading above multiple stacked form fields.
+- `.filter-card` - for single-row action/filter bars: heading + inputs in a horizontal flex row (`align-items: flex-end`). Use for simple one-input + submit patterns. For multi-field stacked forms, add `.filter-card--stacked`.
+- `.filter-card--stacked` - modifier; changes `filter-card` to a vertical column (`flex-direction: column; align-items: stretch`). Use when the card contains a heading above multiple stacked form fields.
 
 ### Navigation
 - `.pagination`, `.pagination__btn`. Carries its own `margin-top`; templates must not add an inline one (see `.data-table` above).
@@ -115,33 +115,33 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.typeahead-results`, `.typeahead-results__item`, `.typeahead-results__item--focused`.
 
 ### Modals
-- `.modal-backdrop` — fixed overlay.
+- `.modal-backdrop` - fixed overlay.
 - `.modal`, `.modal__header`, `.modal__title`, `.modal__close`, `.modal__body`, `.modal__footer`.
 
 ### Shared Jinja macros (`templates/_macros.html`)
-- Import per-template: `{% from "_macros.html" import copyable, open_button %}` (works from any subdir — Jinja resolves import paths from the loader root).
-- `copyable(value)` — copy-to-clipboard affordance: a monospace value plus a `.btn--secondary .btn--sm` "Copy" button ("Copy"→"Copied ✓" for 1.5 s). The value is bound via `|tojson` to an Alpine data prop and copied through it (`writeText(v)`), never spliced into the handler's JS source, so arbitrary DB strings cannot break out of the JS-string context. Used for ULIDs and fingerprints on detail screens (InfoItem, Source Revision).
-- `open_button(url, label="Open")` — scheme-guarded external-open affordance rendered as a link styled as a small secondary button (`.btn .btn--secondary .btn--sm`), modeled on the "Copy" affordance so opening a target URL reads as a distinct action, cleanly separated from the displayed value. Always `target=_blank rel=noopener noreferrer`; anchor (not `<button>`) because it is navigation. **Only renders for `http(s)` URLs** — non-http values (provider-native `gs://`/`s3://`, or a `javascript:` injection attempt from an unvalidated field like RepSpec `public_url`) render nothing, so the macro is safe to call on any string. Used site-wide for external URLs: InfoItem/domain/revision source URLs, RepSpec `public_url`, and `content_cache_uri`. (Section-header deeplinks like the InfoItem "Watcher ↗" `<h2>` are intentionally not buttons — they are heading affordances, not value-adjacent ones.)
+- Import per-template: `{% from "_macros.html" import copyable, open_button %}` (works from any subdir - Jinja resolves import paths from the loader root).
+- `copyable(value)` - copy-to-clipboard affordance: a monospace value plus a `.btn--secondary .btn--sm` "Copy" button ("Copy"→"Copied ✓" for 1.5 s). The value is bound via `|tojson` to an Alpine data prop and copied through it (`writeText(v)`), never spliced into the handler's JS source, so arbitrary DB strings cannot break out of the JS-string context. Used for ULIDs and fingerprints on detail screens (InfoItem, Source Revision).
+- `open_button(url, label="Open")` - scheme-guarded external-open affordance rendered as a link styled as a small secondary button (`.btn .btn--secondary .btn--sm`), modeled on the "Copy" affordance so opening a target URL reads as a distinct action, cleanly separated from the displayed value. Always `target=_blank rel=noopener noreferrer`; anchor (not `<button>`) because it is navigation. **Only renders for `http(s)` URLs** - non-http values (provider-native `gs://`/`s3://`, or a `javascript:` injection attempt from an unvalidated field like RepSpec `public_url`) render nothing, so the macro is safe to call on any string. Used site-wide for external URLs: InfoItem/domain/revision source URLs, RepSpec `public_url`, and `content_cache_uri`. (Section-header deeplinks like the InfoItem "Watcher ↗" `<h2>` are intentionally not buttons - they are heading affordances, not value-adjacent ones.)
 
 ### Code
-- `.code-block` — monospace card for JSON display. Also used as `class="form-textarea code-block"` on `<textarea>` elements that contain JSON (e.g. `source_specs` array editor on InfoSource create/edit forms) to give the input a monospace font matching the display block.
+- `.code-block` - monospace card for JSON display. Also used as `class="form-textarea code-block"` on `<textarea>` elements that contain JSON (e.g. `source_specs` array editor on InfoSource create/edit forms) to give the input a monospace font matching the display block.
 
 ### Danger zone
-- `.danger-zone`, `.danger-zone__title` — destructive-action section at bottom of detail pages.
+- `.danger-zone`, `.danger-zone__title` - destructive-action section at bottom of detail pages.
 
 ### Error page
-- `.error-page`, `.error-page__heading`, `.error-page__actions` — the dashboard error page (`templates/_error.html` and its `_error_body.html` block, archiver#178). Centred and capped at `40rem` because it renders **without** the shell: the standalone page has no sidebar to sit in, and the htmx fragment replaces the one it had. It owns its own `margin`/`padding` for the same reason — nothing above it in either context supplies spacing. The incident id on a 5xx uses `.text-mono`.
+- `.error-page`, `.error-page__heading`, `.error-page__actions` - the dashboard error page (`templates/_error.html` and its `_error_body.html` block, archiver#178). Centred and capped at `40rem` because it renders **without** the shell: the standalone page has no sidebar to sit in, and the htmx fragment replaces the one it had. It owns its own `margin`/`padding` for the same reason - nothing above it in either context supplies spacing. The incident id on a 5xx uses `.text-mono`.
 
 ### Utilities
 - `.text-muted`, `.text-sm`, `.text-xs`, `.text-mono`, `.truncate`, `.sr-only`.
-- `.text-danger` — `color: var(--color-danger)`. Use on inline error messages and destructive-action labels.
-- `.text-success` — `color: var(--color-success)`. Use on inline confirmation/status messages.
-- `.skip-link` — top-of-page accessibility link.
+- `.text-danger` - `color: var(--color-danger)`. Use on inline error messages and destructive-action labels.
+- `.text-success` - `color: var(--color-success)`. Use on inline confirmation/status messages.
+- `.skip-link` - top-of-page accessibility link.
 
 ### Alpine.js integration
-- `[x-cloak] { display: none !important; }` — prevents FOUC on elements controlled by `x-show`. Add `x-cloak` to any element that should be hidden before Alpine initialises (e.g. collapsible panels). Do **not** add `x-cloak` to elements that should start visible.
+- `[x-cloak] { display: none !important; }` - prevents FOUC on elements controlled by `x-show`. Add `x-cloak` to any element that should be hidden before Alpine initialises (e.g. collapsible panels). Do **not** add `x-cloak` to elements that should start visible.
 - For elements that are conditionally hidden by `x-show` but start hidden, add `style="display:none;"` as an initial-state hint instead of `x-cloak`; Alpine's `x-show` manages their display after initialisation. This preserves the CSS class's `display` value (e.g. `display:flex` on `.entity-card__actions`) when the element is shown.
-- **Inline toggle panel pattern** — when a section needs a togglable sub-panel (e.g. Swap primary source), wrap both the trigger and the panel in `x-data="{open:false}"`. The trigger button uses `@click="open=!open"` and `x-text="open ? 'Cancel' : 'Open'"`. The panel uses `x-show="open" x-cloak`. No named Alpine component needed for single-use panels.
+- **Inline toggle panel pattern** - when a section needs a togglable sub-panel (e.g. Swap primary source), wrap both the trigger and the panel in `x-data="{open:false}"`. The trigger button uses `@click="open=!open"` and `x-text="open ? 'Cancel' : 'Open'"`. The panel uses `x-show="open" x-cloak`. No named Alpine component needed for single-use panels.
 
 ### HTMX async partial pattern
 
@@ -160,7 +160,7 @@ For non-blocking page sections that call a slow or potentially unavailable servi
 Rules:
 - `hx-trigger="load"` fires the request immediately after the page renders (no user interaction needed).
 - `hx-swap="outerHTML"` replaces the entire placeholder div. The server-rendered partial **must** include the same `id` as the placeholder so subsequent re-renders can re-target it.
-- `aria-live="polite" aria-atomic="false"` is required on async content sections (see Accessibility section). For error announcement targets, use `aria-atomic="true"` instead — see the inline form error pattern below.
+- `aria-live="polite" aria-atomic="false"` is required on async content sections (see Accessibility section). For error announcement targets, use `aria-atomic="true"` instead - see the inline form error pattern below.
 - The placeholder content degrades gracefully if JS is disabled or the request fails.
 - Use this pattern for sections that depend on a sibling service (Watcher, Replicator) so that service outages do not block the dashboard page load.
 
@@ -213,7 +213,7 @@ Rules:
 - Extract the card into its own partial whose root carries the target `id` (e.g. `#the-card`). The route renders that same partial for HTMX requests so the swap re-targets cleanly on subsequent actions.
 - **Progressive enhancement:** keep `method`/`action` (and, for buttons, a real submit) alongside the `hx-*` attributes so the action still works as a plain POST→303 when JS is disabled. Branch server-side on the `HX-Request` header: HTMX → partial; non-HTMX → 303 redirect (success) / full-page re-render (error).
 - On success the route sends `HX-Trigger: {"showFlash": {...}}` for a toast, and moves focus to the card heading (`tabindex="-1"`, focused by an inline `<script>` gated on a `swapped` flag) so keyboard users are not dropped to `<body>` after the swap (archiver#78).
-- **Validation errors** return the partial with the inline error at status **200** (not 422) so HTMX performs the swap — otherwise a 4xx is discarded unless the `response-targets` extension is wired (see the inline form error pattern above, which is the alternative when you want the error routed to a separate `#error` div rather than re-swapping the whole card). Give the inline error `<p>` `role="alert"` so screen readers announce it after the swap (focus lands on `<body>` otherwise), move focus to the card heading on the error swap too, and echo the operator's submitted input back into the field so a rejected edit isn't discarded.
+- **Validation errors** return the partial with the inline error at status **200** (not 422) so HTMX performs the swap - otherwise a 4xx is discarded unless the `response-targets` extension is wired (see the inline form error pattern above, which is the alternative when you want the error routed to a separate `#error` div rather than re-swapping the whole card). Give the inline error `<p>` `role="alert"` so screen readers announce it after the swap (focus lands on `<body>` otherwise), move focus to the card heading on the error swap too, and echo the operator's submitted input back into the field so a rejected edit isn't discarded.
 
 ### JSON data island pattern
 
@@ -238,16 +238,7 @@ Notes: `tojson` escapes `<` → `<`, so `</script>` inside JSON values cannot cl
 
 All components are registered via `window.Alpine.data('name', factory)` inside a `alpine:init` listener before `Alpine.start()`. Do **not** add inline `x-data="{ ... }"` blobs for logic that should be reusable or testable.
 
-| Component | File | Description |
-|---|---|---|
-| `sortableChips` | `main.js` | Chip strip for selector/rep-field suggestions with client-side sort. Uses JSON data island: `x-data="sortableChips('frequency')"` with `<script type="application/json">{{ chips \| tojson }}</script>` inside. Optional `value` field on each chip overrides the dispatch payload. Clicking dispatches `chip-insert` window event; caller listens with `@chip-insert.window`. Full docs in `docs/COMPONENTS.md`. |
-| `repFieldsEditor` | `main.js` | Wrapper for the rep_fields textarea + suggestion strip. Listens for `chip-insert` window events and merges the key into the existing JSON object. Usage: `x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)"`. Full docs in `docs/COMPONENTS.md`. |
-| `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
-| `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
-| `domainNotes` | `main.js` | Edit/view toggle for the notes row in the domain detail header panel (#176). Cancel resets the textarea to its `defaultValue`. Full docs in `docs/COMPONENTS.md`. |
-| `registerWizard` | `main.js` | 4-step registration wizard state: step navigation, field state synced from server-rendered values in `init()` (every `x-model` field must be synced there or validation re-renders wipe it — #53), rolling step-summary bar getters (`urlHostname`, `domainSummary`, `selectorSummary`). Full docs in `docs/COMPONENTS.md`. |
-| `previewNameDispatch` | `main.js` | One-shot dispatcher: bubbles a `preview-name` event from a JSON data island inside the preview-result fragment. Full docs in `docs/COMPONENTS.md`. |
-| `urlCheckDispatch` | `main.js` | One-shot dispatcher (#53): bubbles a `url-check` event (`{hostname, case, domain_known}`) from a JSON data island inside the `_url_check.html` fragment; feeds the wizard's rolling summary bar. Full docs in `docs/COMPONENTS.md`. |
+The per-component index moved to [COMPONENTS.md](COMPONENTS.md) § Catalogue index, beside the full entries it summarised - two lists of the same components drift, and the CSS classes they toggle are what this file is for.
 
 ---
 
