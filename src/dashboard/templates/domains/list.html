@@ -57,7 +57,7 @@
 
   {# Pagination #}
   {% if has_more or offset > 0 %}
-  <nav class="pagination" aria-label="Pagination" style="margin-top:var(--space-3);">
+  <nav class="pagination" aria-label="Pagination">
     {% if offset > 0 %}
     <a href="?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}{% if is_active %}&is_active={{ is_active }}{% endif %}" class="btn btn--ghost">← Previous</a>
     {% endif %}

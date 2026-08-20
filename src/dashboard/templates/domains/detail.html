@@ -91,7 +91,7 @@
   </table>
 
   {% if item_has_more or item_offset > 0 %}
-  <nav class="pagination" aria-label="Information Items pagination" style="margin-top:var(--space-3);">
+  <nav class="pagination" aria-label="Information Items pagination">
     {% if item_offset > 0 %}
     <a href="{{ items_url }}{{ [item_offset - item_limit, 0] | max }}" class="btn btn--ghost">← Previous</a>
     {% endif %}
@@ -138,7 +138,7 @@
   </table>
 
   {% if has_more or offset > 0 %}
-  <nav class="pagination" aria-label="Information Sources pagination" style="margin-top:var(--space-3);">
+  <nav class="pagination" aria-label="Information Sources pagination">
     {% if offset > 0 %}
     <a href="{{ sources_url }}{{ [offset - limit, 0] | max }}" class="btn btn--ghost">← Previous</a>
     {% endif %}

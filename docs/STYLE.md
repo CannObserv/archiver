@@ -91,7 +91,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.flash__more` — the `+N more` overflow counter button occupying the 4th slot when more than four persistent toasts stack; dashed-border, surface-alt pill. Click/Enter expands the overlay to reveal all (no re-collapse). Announcement is carried by the visually-hidden `#flash-announcer-assertive` / `#flash-announcer-polite` live regions (`.sr-only`), not the visible toasts.
 
 ### Data display
-- `.data-table` — standard table; applies to `<table>`. Carries `margin-bottom` so it never butts against what follows (#176). It is the *only* source of that gap where two tables stack on one screen (domain detail), and it standardises three others: the registration button row, the InfoItem swap-primary panel, and `.pagination`, whose six inline `margin-top:var(--space-3)` overrides collapse against the larger value here. A table that is the last child of a `<section>` with its own bottom margin is unaffected — the margins collapse. Spacing **above** a `.section-heading` therefore comes from the preceding element's bottom margin, never an inline `margin-top` on the heading: such an override is either a no-op that collapses against that margin, or a sign the preceding element is missing one and the fix belongs here in the stylesheet. `tests/dashboard/test_template_style_rules.py` enforces it.
+- `.data-table` — standard table; applies to `<table>`. Carries `margin-bottom` so it never butts against what follows (#176). It is the *only* source of that gap where two tables stack on one screen (domain detail), and it standardises three others: the registration button row, the InfoItem swap-primary panel, and `.pagination`, whose six inline `margin-top:var(--space-3)` overrides were removed once this rule made them redundant. A table that is the last child of a `<section>` with its own bottom margin is unaffected — the margins collapse. Spacing **above** a `.section-heading` or a `.pagination` therefore comes from the preceding element's bottom margin or from the class itself, never an inline `margin-top` on the component: such an override is either a no-op that collapses against that margin, or a sign the preceding element is missing one and the fix belongs here in the stylesheet. `tests/dashboard/test_template_style_rules.py` enforces it for both.
 - `.entity-card`, `.entity-card__header`, `.entity-card__title`, `.entity-card__meta`, `.entity-card__actions`.
 - `.eyebrow` — small uppercase kicker label above an `.entity-card__title` (e.g. the entity kind). Non-interactive; distinct from a breadcrumb.
 - `.entity-section`, `.entity-section__header`, `.entity-section__title`. `.entity-section__title` is the `<h1>` page title inside an `.entity-section__header`; section-level `<h2>`s use `.section-heading` below.
@@ -110,7 +110,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.filter-card--stacked` — modifier; changes `filter-card` to a vertical column (`flex-direction: column; align-items: stretch`). Use when the card contains a heading above multiple stacked form fields.
 
 ### Navigation
-- `.pagination`, `.pagination__btn`.
+- `.pagination`, `.pagination__btn`. Carries its own `margin-top`; templates must not add an inline one (see `.data-table` above).
 - `.tabs`, `.tabs__list`, `.tabs__btn`, `.tabs__btn--active`, `.tabs__panel`.
 - `.typeahead-results`, `.typeahead-results__item`, `.typeahead-results__item--focused`.
 
