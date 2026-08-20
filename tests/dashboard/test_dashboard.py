@@ -80,6 +80,28 @@ async def test_dashboard_index_updates_email_on_change(client, session):
 
 
 @pytest.mark.asyncio
+async def test_dashboard_repeat_login_same_email_returns_200(client, session):
+    # The upsert's ON CONFLICT DO UPDATE is guarded by `WHERE email != excluded`,
+    # so a repeat login writes nothing and RETURNING yields no row — the common
+    # production path, which then falls back to a plain SELECT (#177).
+    headers = {
+        "X-ExeDev-UserID": "ext-repeat",
+        "X-ExeDev-Email": "repeat@example.com",
+    }
+    first = await client.get("/dashboard/", headers=headers)
+    second = await client.get("/dashboard/", headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    # The rendered identity, not just the status: a dependency that returned
+    # None still 200s, because Jinja renders `None.email` as an empty string.
+    assert "repeat@example.com" in second.text
+    result = await session.execute(select(AppUser).where(AppUser.external_id == "ext-repeat"))
+    users = result.scalars().all()
+    assert len(users) == 1
+
+
+@pytest.mark.asyncio
 async def test_dashboard_new_user_with_existing_email_returns_200(client, session):
     # #177 path 1: new external_id, email already held by another row.
     await client.get(

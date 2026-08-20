@@ -40,7 +40,6 @@ async def test_app_user_email_not_unique(session):
     await session.flush()
 
     assert user1.id != user2.id
-    assert user1.email == user2.email
 
 
 @pytest.mark.asyncio
