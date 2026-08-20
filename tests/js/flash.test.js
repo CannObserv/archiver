@@ -57,6 +57,52 @@ function bodies(list) {
     });
 }
 
+describe("regions destroyed by a swap", function () {
+    // A boosted swap replaces everything inside <body>, including the overlay and
+    // both announcers - which is exactly what the error page does (archiver#178).
+    // Before this, the first toast after such a swap was dropped in silence: no
+    // visible toast, no announcement, on the one screen where the next thing an
+    // operator does is likely to fail again.
+    it("recreates the overlay so the toast is still shown", function () {
+        document.body.innerHTML = "";
+
+        emitFlash("error", "Could not reach the server.");
+
+        expect(region()).not.toBeNull();
+        expect(allToasts()).toHaveLength(1);
+        expect(allToasts()[0].textContent).toContain("Could not reach the server.");
+    });
+
+    it("recreates both announcers, with their live roles intact", function () {
+        document.body.innerHTML = "";
+
+        emitFlash("error", "assertive please");
+        emitFlash("info", "polite please");
+
+        expect(assertiveAnnouncer().getAttribute("aria-live")).toBe("assertive");
+        expect(politeAnnouncer().getAttribute("aria-live")).toBe("polite");
+        expect(assertiveAnnouncer().textContent).toContain("assertive please");
+        expect(politeAnnouncer().textContent).toContain("polite please");
+    });
+
+    it("keeps the announcers visually hidden", function () {
+        document.body.innerHTML = "";
+
+        emitFlash("info", "hello");
+
+        expect(politeAnnouncer().className).toContain("sr-only");
+    });
+
+    it("reuses the existing regions when they are present", function () {
+        emitFlash("info", "first");
+        var before = region();
+
+        emitFlash("info", "second");
+
+        expect(region()).toBe(before);
+    });
+});
+
 describe("flash.js", function () {
     beforeEach(function () {
         vi.useFakeTimers();

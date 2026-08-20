@@ -1,5 +1,12 @@
-"""Dashboard settings — API key management."""
+"""Dashboard settings - API key management.
 
+**A refusal is a 200 with a flash, never a 4xx** - the rule `docs/STYLE.md`
+states and `src/dashboard/replication_actions.py` explains. Both label checks
+here used to `raise_422`, and under `hx-boost` htmx discarded the response
+whole: no key created, no row renamed, nothing said (archiver#178).
+"""
+
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -10,12 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.api.errors import raise_422
 from src.core.models import ApiKey, AppUser
 from src.dashboard.deps import generate_api_key, get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 
 router = APIRouter(prefix="/dashboard/settings")
+
+# A label of spaces passes the input's `required` attribute, so this is a real
+# operator path rather than a broken template.
+_BLANK_LABEL_FLASH = json.dumps(
+    {"showFlash": {"level": "error", "body": "Label is required - nothing was saved."}}
+)
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
@@ -64,7 +76,13 @@ async def settings_create_api_key(
     """Create a new API key; returns the page with the raw key shown once."""
     label = label.strip()
     if not label:
-        raise_422("label is required")
+        keys = await _get_user_keys(session, user)
+        return _templates.TemplateResponse(
+            request,
+            "settings/api_keys.html",
+            {"user": user, "keys": keys, "new_raw_key": None},
+            headers={"HX-Trigger": _BLANK_LABEL_FLASH},
+        )
 
     raw_key, key_prefix, key_hash = generate_api_key()
     api_key = ApiKey(
@@ -105,12 +123,24 @@ async def settings_rename_api_key(
     user: AppUser = Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Rename one of the current user's API keys; returns updated row fragment."""
+    """Rename one of the current user's API keys; returns updated row fragment.
+
+    Ownership is resolved before the label is judged: someone else's key is a
+    404 whatever was typed into it.
+    """
+    api_key = await _resolve_key(key_id, user, session)
+
     label = label.strip()
     if not label:
-        raise_422("label is required")
+        # The unchanged row, so the swap still happens - a refused swap looks
+        # exactly like a rename that worked.
+        return _templates.TemplateResponse(
+            request,
+            "settings/_api_key_row.html",
+            {"key": api_key},
+            headers={"HX-Trigger": _BLANK_LABEL_FLASH},
+        )
 
-    api_key = await _resolve_key(key_id, user, session)
     api_key.label = label
     await session.commit()
 

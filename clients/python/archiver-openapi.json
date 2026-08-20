@@ -141,7 +141,7 @@
         "type": "object"
       },
       "EnvelopeResponse": {
-        "description": "Outer ``{\"detail\": ErrorEnvelope}`` wrapper for OpenAPI docs.\n\nPublic name (no leading underscore) so ``openapi-python-client`` generates a\ncleanly-named SDK model \u2014 the class name is what surfaces in\n``components/schemas`` and feeds the SDK code generator.",
+        "description": "Outer ``{\"detail\": ErrorEnvelope}`` wrapper for OpenAPI docs.\n\nPublic name (no leading underscore) so ``openapi-python-client`` generates a\ncleanly-named SDK model - the class name is what surfaces in\n``components/schemas`` and feeds the SDK code generator.",
         "properties": {
           "detail": {
             "$ref": "#/components/schemas/ErrorEnvelope"
@@ -1722,7 +1722,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.16.2"
+    "version": "4.16.3"
   },
   "openapi": "3.1.0",
   "paths": {

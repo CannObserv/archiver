@@ -3,34 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Archiver{% endblock %} — Cannabis Observer</title>
+  <title>{% block title %}Archiver{% endblock %} - Cannabis Observer</title>
   {# FOUC prevention: apply saved theme before stylesheet paint #}
-  <script>
-    (function () {
-      var s = localStorage.getItem('co-color-scheme');
-      if (s === 'dark') document.documentElement.classList.add('dark');
-      else if (s === 'light') document.documentElement.classList.add('light');
-    }());
-  </script>
+  {% include "_theme_boot.html" %}
   <link rel="stylesheet" href="{{ request.url_for('dashboard-static', path='dashboard.css') }}">
   <script src="{{ request.url_for('dashboard-static', path='dark-mode.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='vendor/htmx.min.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='vendor/htmx-ext-response-targets.min.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='main.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='flash.js') }}" defer></script>
+  {# htmx refuses to swap a non-2xx response; without this listener every failed
+     request - partial or boosted - is silence. See docs/UI.md, archiver#178. #}
+  <script src="{{ request.url_for('dashboard-static', path='htmx-errors.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='vendor/alpine.min.js') }}" defer></script>
 </head>
 <body hx-boost="true" hx-ext="response-targets">
   <a href="#main-content" class="skip-link">Skip to content</a>
 
-  {# Toast announcers (archiver#73) — visually-hidden live regions. flash.js
+  {# Toast announcers (archiver#73) - visually-hidden live regions. flash.js
      writes every message here so assistive tech hears it even when the visible
      cap suppresses or collapses the toast; visible toasts therefore carry no
      live role. Errors are assertive; all other levels polite. #}
   <div id="flash-announcer-assertive" class="sr-only" aria-live="assertive" aria-atomic="false"></div>
   <div id="flash-announcer-polite" class="sr-only" aria-live="polite" aria-atomic="false"></div>
 
-  {# Toast overlay (archiver#65) — direct <body> child, outside <main>, so HTMX
+  {# Toast overlay (archiver#65) - direct <body> child, outside <main>, so HTMX
      swaps can't wipe live toasts. Populated by flash.js; see docs/UI.md. #}
   <div id="flash-region"></div>
 

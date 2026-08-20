@@ -199,8 +199,8 @@ a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.m
 - Small, focused functions
 - Translated exceptions chain via `raise HTTPException(...) from e` (capture the source with `as e`). Ruff `B904` enforces this in CI.
 
-**Error envelope:** Every non-2xx response uses one shape (`ErrorEnvelope`,
-`src/api/errors.py`). Routes raise via `raise_envelope(...)` or `raise_422(...)`,
+**Error envelope:** Every non-2xx **API** response uses one shape
+(`ErrorEnvelope`, `src/api/errors.py`); `/dashboard` renders HTML instead. Routes raise via `raise_envelope(...)` or `raise_422(...)`,
 **never `HTTPException` directly**; always pass `source_exc=e` from inside
 `except X as e:`. Shape, worked examples, and the `kind` vocabulary:
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md).

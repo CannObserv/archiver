@@ -1,12 +1,12 @@
-# archiver — Conventions Reference
+# archiver - Conventions Reference
 
 The reasoning and worked examples behind the rules stated in `AGENTS.md`.
 
-## Changelog trigger — what the path regex means
+## Changelog trigger - what the path regex means
 
 That is: deployed migrations, the HTTP API surface, the Pydantic
-request/response models, and the SDK. Everything else — **dashboard UX
-included** — needs no entry, along with internal refactors, test-only,
+request/response models, and the SDK. Everything else - **dashboard UX
+included** - needs no entry, along with internal refactors, test-only,
 lint/tooling, and docs-only changes. A dashboard-only behaviour fix does
 not get a changelog entry even though it is user-visible; the surface
 that matters here is the contract, not the UI.
@@ -15,10 +15,10 @@ Tag each entry `[service]`, `[sdk]`, or `[both]` per the format header in
 `CHANGELOG.md`. The SDK README links here; do not maintain a second
 changelog there. On a PR, the `no-changelog` label opts out.
 
-## Logging — plain-text `ExecStartPre` lines in journald
+## Logging - plain-text `ExecStartPre` lines in journald
 
-The app's own records — including uvicorn's access/error lines via `--log-config`
-— are JSON. `ExecStartPre` steps in `deploy/archiver.service` (wheelhouse sync,
+The app's own records - including uvicorn's access/error lines via `--log-config`
+- are JSON. `ExecStartPre` steps in `deploy/archiver.service` (wheelhouse sync,
 redis floor check) write **plain text** to journald by design: they run
 outside the app process, before the Python logging config exists, so they
 cannot use `build_json_formatter()`. A journald consumer that blindly `json.loads` every
@@ -40,6 +40,14 @@ Routes raise via `raise_envelope(status, kind, message, ...)` or `raise_422(...)
 exception handlers in `register_error_handlers(app)` wrap any FastAPI-raised
 HTTPException (unmatched route 404, 405) or uncaught Exception (500) into the
 envelope. See archiver#15.
+
+**Except on `/dashboard`.** Those paths answer a browser, and JSON is unreadable
+to one - htmx will not even swap it. `register_dashboard(app)` therefore
+installs wrappers (`src/dashboard/errors.py`) that render HTML for a dashboard
+path and delegate every other path back to the handlers above; the envelope is
+unchanged for `/api/v1` and the SDK. Registration order is load-bearing, and the
+whole mechanism is described in [UI.md](UI.md) § Failures are surfaced, not
+swallowed (archiver#178).
 
 Examples:
 
@@ -73,38 +81,38 @@ validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachab
 `lookup` (404), `conflict` (409), `auth` (401/403), `unimplemented` (501/405),
 `server` (5xx).  Always pass `source_exc=e` from inside `except X as e:` blocks.
 
-## Dashboard living docs — which doc a change requires
+## Dashboard living docs - which doc a change requires
 
-**Dashboard living docs:** each doc is scoped to what it actually documents —
+**Dashboard living docs:** each doc is scoped to what it actually documents -
 update the one(s) the change touches, in the same commit. Failure to update an
 applicable doc is a CR blocker.
 
-- `docs/PAGES.md` — required for any change to a Jinja2 template in
+- `docs/PAGES.md` - required for any change to a Jinja2 template in
   `src/dashboard/templates/`, or a new/changed dashboard route. It is the
   per-page inventory: what the screen renders, what the route returns.
-- `docs/COMPONENTS.md` — required for any change to a JS module under
+- `docs/COMPONENTS.md` - required for any change to a JS module under
   `src/dashboard/static/`. Alpine components are catalogued there; a module
   that is not an Alpine component is documented where its behaviour lives
-  instead, and a change to it updates that doc — `flash.js` in `docs/UI.md`
+  instead, and a change to it updates that doc - `flash.js` in `docs/UI.md`
   ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
-- `docs/INFO_ITEM_DETAIL.md` — required when the change alters the InfoItem hub
+- `docs/INFO_ITEM_DETAIL.md` - required when the change alters the InfoItem hub
   screen itself: its five sections, a partial's swap target, or one of the
   action-route contracts that moved there in archiver#176. PAGES.md keeps the
   inventory line for those routes, so a behaviour change updates both.
-- `docs/UI.md` — required when the change alters a *shared* mechanic rather
+- `docs/UI.md` - required when the change alters a *shared* mechanic rather
   than one screen: the URL map, the auth gate, an HTMX swap pattern, or a
   detail-screen convention. A change that merely follows an existing
   convention updates PAGES.md alone.
-- `docs/STYLE.md` — required when the change introduces or alters *styling*:
+- `docs/STYLE.md` - required when the change introduces or alters *styling*:
   `src/dashboard/static/dashboard.css`, or a template that adds a new visual
   pattern rather than reusing existing classes.
 
 A template change that composes only existing CSS classes needs PAGES.md alone.
 
-## Import placement — scope and exemptions
+## Import placement - scope and exemptions
 
-- No inline module imports; all at file top — `src/`, `tests/`, `scripts/`, and
+- No inline module imports; all at file top - `src/`, `tests/`, `scripts/`, and
   `alembic/` alike. Ruff `PLC0415` enforces this in CI (archiver#97); `if
   TYPE_CHECKING:` guards are module-level and pass. The vendored SDKs under
-  `clients/` resolve their own `[tool.ruff]` config and are exempt — their
+  `clients/` resolve their own `[tool.ruff]` config and are exempt - their
   generated code imports lazily to dodge circular imports.

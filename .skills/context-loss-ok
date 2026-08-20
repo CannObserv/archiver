@@ -1,54 +1,18 @@
-# Judged loss warrants — see prove-no-loss.sh --help.
-# One entry per dropped line. Warrants: retarget, rename, duplicate, disproven, default.
+# Warranted losses (curating-context Phase 6). One judged line each.
+#
+# The Alpine catalogue index moved from docs/STYLE.md to docs/COMPONENTS.md
+# (archiver#178 curation). Every row ended "Full docs in `docs/COMPONENTS.md`."
+# - a pointer into the very file the row now lives in. This change is what
+# moved the target, so the row arrives with the pointer dropped.
+docs/STYLE.md :: retarget :: `sortableChips` | `main.js` | Chip strip for selector/rep-field suggestions
+docs/STYLE.md :: retarget :: `repFieldsEditor` | `main.js` | Wrapper for the rep_fields textarea
+docs/STYLE.md :: retarget :: `domainNotes` | `main.js` | Edit/view toggle for the notes row
+docs/STYLE.md :: retarget :: `registerWizard` | `main.js` | 4-step registration wizard state
+docs/STYLE.md :: retarget :: `previewNameDispatch` | `main.js` | One-shot dispatcher: bubbles a `preview-name`
+docs/STYLE.md :: retarget :: `urlCheckDispatch` | `main.js` | One-shot dispatcher (#53)
 
-# --- retarget: this run split docs/API.md into API.md + BUS.md, so each of
-# --- these pointers names a location that no longer holds what it promised.
-AGENTS.md :: retarget :: is service-local — Watcher
-AGENTS.md :: retarget :: Routes, SDK wrappers, and the
-AGENTS.md :: retarget :: every HTTP route, its SDK wrapper, pagination
-
-# --- duplicate: restates AGENTS.md's own SocratiCode paragraph two lines above
-# --- ("The SessionStart hook prints the prefetch query; run it before exploring").
-AGENTS.md :: duplicate :: socraticode-reminder.sh`) prints the query every session
-AGENTS.md :: duplicate :: so it is not carried here.
-
-# --- duplicate: the 2026-08-06 hold narrative is carried in full, and in more
-# --- detail, by docs/SKILLS.md "## SessionStart Hooks" (the suspension, the
-# --- archiver#131 control arm, skills#168 retiring it, and the skills-pin
-# --- alternative with the --merge caveat). The operative rule survives inline.
-AGENTS.md :: duplicate :: That refresh was **suspended** 2026-08-06
-AGENTS.md :: duplicate :: to 2026-08-19 for the archiver#131 cohort hold
-AGENTS.md :: duplicate :: and the hook is wired again
-AGENTS.md :: duplicate :: file, never an un-wiring
-AGENTS.md :: duplicate :: Three footguns:
-
-# --- duplicate: each footgun is stated at length in docs/SKILLS.md — the
-# --- symlink/never-re-copy rule, the committed-doctor rationale, and the
-# --- partial-install test. AGENTS.md keeps all three as one-line rules.
-AGENTS.md :: duplicate :: is a **symlink** into the vendored
-AGENTS.md :: duplicate :: a copy freezes at the version it was taken from
-AGENTS.md :: duplicate :: is a **committed real file**
-AGENTS.md :: duplicate :: and a shallow CI clone
-AGENTS.md :: duplicate :: - A hook script in
-AGENTS.md :: duplicate :: Adding a script is only half
-AGENTS.md :: duplicate :: fails on the other
-AGENTS.md :: duplicate :: half being missing.
-
-# --- docs/API.md: the split narrowed this doc to the HTTP half, so its title
-# --- and preamble had to be rewritten in the same run that moved the bus half.
-docs/API.md :: rename :: # archiver — API & Change-Bus Surface
-docs/API.md :: retarget :: Every HTTP route, its SDK wrapper, and the bus contracts
-docs/API.md :: retarget :: consumes — `info.changes`, `info.registry`, `content.replicate` out;
-docs/API.md :: retarget :: `content.revisions` and `info.watch-status` in.
-docs/API.md :: retarget :: each SDK release; `AGENTS.md` carries only the auth rule
-
-# --- CR round 1 fixes.
-# retarget: this run moved the `info.registry` contract to BUS.md, so the
-# tombstone sentence gained the pointer in the same change that invalidated it.
-docs/API.md :: retarget :: The deletion is announced as a tombstone on `info.registry`, but watcher#254
-
-# rename: the index entry's label lost its hard-coded count. The "five" was
-# accurate, but a count in a label has to be re-checked on every doc added and
-# the parallel list in ARCHITECTURE.md had already drifted to four. Content of
-# the entry is unchanged — only the label.
-AGENTS.md :: rename :: - The five dashboard docs — [docs/UI.md](docs/UI.md) URL map
+# check-seams class 3b: `#\d{2,}` in a permanent anchor slug. The heading lost
+# its issue ref; the sentence below it gained one, because the reference is
+# worth keeping and only the slug was the problem.
+docs/UI.md :: rename :: ### Failures are surfaced, not swallowed (archiver#178)
+docs/UI.md :: rename :: **htmx does not swap a non-2xx response.** With `hx-boost` on `<body>` that

@@ -1,5 +1,5 @@
 /*
- * Archiver Admin Dashboard — CSS Design Token System
+ * Archiver Admin Dashboard - CSS Design Token System
  * Three-layer theming: :root (light) → @media prefers-dark (OS) → html.dark / html.light (explicit)
  * Brand: Cannabis Observer purple  --color-brand: #6d4488 (light) / #a78bc4 (dark)
  * Ported from Power Map admin.css with CO-specific adjustments.
@@ -127,7 +127,7 @@
   }
 }
 
-/* ─── Layer 3: Explicit user choice — wins by specificity ───────────────── */
+/* ─── Layer 3: Explicit user choice - wins by specificity ───────────────── */
 html.dark {
   --color-brand:        #a78bc4;
   --color-brand-dark:   #c4a8db;
@@ -162,7 +162,7 @@ html.dark {
 }
 
 html.light {
-  /* Light-mode vars are already in :root — this block is a no-op unless
+  /* Light-mode vars are already in :root - this block is a no-op unless
      the OS is in dark mode and the user has explicitly chosen light. */
   --color-brand:        #6d4488;
   --color-brand-dark:   #5a3671;
@@ -506,7 +506,7 @@ p:last-child { margin-bottom: 0; }
 .alert--info    { background: var(--color-info-bg);    color: var(--color-info);    border-color: var(--color-info); }
 
 /* ─── Flash messages ─────────────────────────────────────────────────────── */
-/* Viewport-anchored toast overlay — stays visible regardless of scroll
+/* Viewport-anchored toast overlay - stays visible regardless of scroll
    position (archiver#65). position:fixed so it never consumes layout space;
    pointer-events pass through the gaps but land on the toasts themselves. */
 #flash-region {
@@ -542,7 +542,7 @@ p:last-child { margin-bottom: 0; }
 }
 /* Collapsed persistent toasts (archiver#73): `.flash{display:flex}` is an author
    rule and so overrides the UA `[hidden]{display:none}` regardless of specificity
-   — hide explicitly, matching the `.tabs__panel[hidden]` precedent below. */
+   - hide explicitly, matching the `.tabs__panel[hidden]` precedent below. */
 .flash[hidden] { display: none; }
 @keyframes flash-in {
   from { opacity: 0; transform: translateY(-4px); }
@@ -586,7 +586,7 @@ p:last-child { margin-bottom: 0; }
   color: var(--color-text);
   border-color: var(--color-text-muted);
 }
-/* Brand focus ring on the toast controls — the counter is the keyboard entry to
+/* Brand focus ring on the toast controls - the counter is the keyboard entry to
    the expand affordance and the close button is its focus landing (archiver#73);
    matches the project convention (docs/STYLE.md "Focus rings"). */
 .flash__more:focus-visible,
@@ -620,7 +620,7 @@ p:last-child { margin-bottom: 0; }
      #176), which had none at all. Three other successors exist and each was
      accepted deliberately: the registration wizard's button row and the
      InfoItem swap-primary panel each gain this margin, and `.pagination`
-     standardises to it — six of its seven usages inline `--space-3`, which
+     standardises to it - six of its seven usages inline `--space-3`, which
      collapses against the larger value here. Where a table is the last child of
      a `<section>` carrying its own bottom margin, the two collapse and nothing
      moves. */
@@ -662,7 +662,7 @@ p:last-child { margin-bottom: 0; }
   margin: 0;
 }
 /* Eyebrow: a small uppercase kicker label above an entity-card title (e.g. the
-   entity kind). Non-interactive — distinct from a breadcrumb. */
+   entity kind). Non-interactive - distinct from a breadcrumb. */
 .eyebrow {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
@@ -925,7 +925,7 @@ p:last-child { margin-bottom: 0; }
    fixed intrinsic width. Wraps on narrow viewports so the actions drop below
    rather than squeezing the readout to nothing. */
 /* Heading for the notes row. A panel-internal section label rather than a page
-   or collection heading — smaller and quieter than `.section-heading`, and its
+   or collection heading - smaller and quieter than `.section-heading`, and its
    own rule rather than borrowing `.detail-grid__label`, which belongs to the
    grid above it. */
 .notes-heading {
@@ -1057,6 +1057,19 @@ p:last-child { margin-bottom: 0; }
   padding: var(--space-2);
   min-width: 44px;
 }
+
+/* ─── Error page (#178) ──────────────────────────────────────────────────── */
+/* `_error.html` / `_error_body.html`. Centred and narrow because it renders
+   without the sidebar: the standalone page has no shell to sit in, and the htmx
+   fragment replaces the one it had. Padding is its own - nothing above it in
+   either context supplies spacing. */
+.error-page {
+  max-width: 40rem;
+  margin: var(--space-8) auto;
+  padding: var(--space-5);
+}
+.error-page__heading { margin-bottom: var(--space-3); }
+.error-page__actions { margin-top: var(--space-4); }
 
 /* ─── Alpine.js ──────────────────────────────────────────────────────────── */
 [x-cloak] { display: none !important; }

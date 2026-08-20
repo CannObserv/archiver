@@ -1,0 +1,13 @@
+{# Colour-scheme boot, included by every page that has a `<head>` of its own -
+   `base.html` and the standalone `_error.html`, which cannot extend it
+   (archiver#178). Must sit ABOVE the stylesheet link: it applies layer 3 of the
+   theming system (docs/STYLE.md) before first paint, and as two copies the next
+   change to the storage key would fix the everyday page and leave the one an
+   operator sees when something has already gone wrong. #}
+<script>
+  (function () {
+    var s = localStorage.getItem('co-color-scheme');
+    if (s === 'dark') document.documentElement.classList.add('dark');
+    else if (s === 'light') document.documentElement.classList.add('light');
+  }());
+</script>

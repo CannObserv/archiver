@@ -23,7 +23,7 @@
  *     never silently dropped.
  *   - Persistent (error/warning) overflow beyond the cap collapses into a
  *     "+N more" counter (newest kept visible); activating it expands to show all
- *     and does not re-collapse — the operator dismisses each.
+ *     and does not re-collapse - the operator dismisses each.
  */
 (function () {
     "use strict";
@@ -42,13 +42,41 @@
 
     /**
      * Whether a level stays until manually dismissed.
-     * Errors and warnings persist — failures must not vanish unseen (archiver#65);
+     * Errors and warnings persist - failures must not vanish unseen (archiver#65);
      * success/info are transient.
      * @param {string} level
      * @returns {boolean}
      */
     function isPersistent(level) {
         return level === "error" || level === "warning";
+    }
+
+    /**
+     * Return an element by id, creating it as a <body> child if it is gone.
+     *
+     * base.html declares all three regions, but a boosted htmx swap replaces
+     * everything inside <body> - the dashboard error page (archiver#178) does
+     * exactly that. Without this, the first toast after such a swap was dropped
+     * in silence, on the one screen where the operator's next action is most
+     * likely to fail again.
+     *
+     * @param {string} id       Element id to find or create.
+     * @param {string} cssClass Class applied when creating it.
+     * @param {string} live     aria-live value, or "" for the visible overlay.
+     * @returns {HTMLElement} The existing or newly created element.
+     */
+    function ensureRegion(id, cssClass, live) {
+        var el = document.getElementById(id);
+        if (el) { return el; }
+        el = document.createElement("div");
+        el.id = id;
+        if (cssClass) { el.className = cssClass; }
+        if (live) {
+            el.setAttribute("aria-live", live);
+            el.setAttribute("aria-atomic", "false");
+        }
+        document.body.appendChild(el);
+        return el;
     }
 
     /**
@@ -60,13 +88,20 @@
      * @param {string} body
      */
     function announce(level, body) {
-        var id = (
-            level === "error"
-            ? "flash-announcer-assertive"
-            : "flash-announcer-polite"
+        var assertive = level === "error";
+        var region = ensureRegion(
+            (
+                assertive
+                ? "flash-announcer-assertive"
+                : "flash-announcer-polite"
+            ),
+            "sr-only",
+            (
+                assertive
+                ? "assertive"
+                : "polite"
+            )
         );
-        var region = document.getElementById(id);
-        if (!region) { return; }
         var msg = document.createElement("div");
         msg.textContent = body;
         region.appendChild(msg);
@@ -206,8 +241,7 @@
     function showFlash(level, body) {
         announce(level, body); // always, independent of visual slotting
 
-        var region = document.getElementById("flash-region");
-        if (!region) { return; }
+        var region = ensureRegion("flash-region", "", "");
 
         // A fresh pile (region was empty) starts collapsed again, even if a
         // prior pile had been expanded.
