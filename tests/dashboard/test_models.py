@@ -31,12 +31,16 @@ async def test_app_user_external_id_unique(session):
 
 
 @pytest.mark.asyncio
-async def test_app_user_email_unique(session):
+async def test_app_user_email_not_unique(session):
+    # Identity is external_id; email is descriptive data the proxy reports and
+    # does not guarantee unique (#177). Two identities may share a mailbox.
     user1 = AppUser(external_id="ext-a", email="dup@example.com")
     user2 = AppUser(external_id="ext-b", email="dup@example.com")
     session.add_all([user1, user2])
-    with pytest.raises(IntegrityError):
-        await session.flush()
+    await session.flush()
+
+    assert user1.id != user2.id
+    assert user1.email == user2.email
 
 
 @pytest.mark.asyncio
