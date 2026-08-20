@@ -2,10 +2,12 @@
 
 import hashlib
 import secrets
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from fastapi import Depends, Request
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session
@@ -27,6 +29,9 @@ async def get_dashboard_user(
 
     Raises ``DashboardAuthRequired`` (→ 307 redirect) when either header is
     absent.  Email is updated if it changed since the last login.
+
+    The upsert is a single ``INSERT … ON CONFLICT (external_id) DO UPDATE`` so
+    two concurrent first-logins cannot race the unique constraint (#177).
     """
     external_id = request.headers.get("X-ExeDev-UserID")
     email = request.headers.get("X-ExeDev-Email")
@@ -34,16 +39,23 @@ async def get_dashboard_user(
         target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         raise DashboardAuthRequired(redirect_to=f"/__exe.dev/login?redirect={quote(target)}")
 
-    result = await session.execute(select(AppUser).where(AppUser.external_id == external_id))
-    user = result.scalar_one_or_none()
-
+    # The DO UPDATE's WHERE skips the write when email is unchanged (the common
+    # case) — RETURNING then yields no row, and the SELECT below picks it up.
+    stmt = (
+        pg_insert(AppUser)
+        .values(external_id=external_id, email=email)
+        .on_conflict_do_update(
+            index_elements=[AppUser.external_id],
+            set_={"email": email, "updated_at": datetime.now(UTC)},
+            where=AppUser.email != email,
+        )
+        .returning(AppUser)
+    )
+    orm_stmt = select(AppUser).from_statement(stmt).execution_options(populate_existing=True)
+    user = (await session.execute(orm_stmt)).scalar_one_or_none()
     if user is None:
-        user = AppUser(external_id=external_id, email=email)
-        session.add(user)
-        await session.flush()
-    elif user.email != email:
-        user.email = email
-        await session.flush()
+        result = await session.execute(select(AppUser).where(AppUser.external_id == external_id))
+        user = result.scalar_one()
 
     return user
 
