@@ -52,3 +52,10 @@ docs/API.md :: retarget :: The deletion is announced as a tombstone on `info.reg
 # the parallel list in ARCHITECTURE.md had already drifted to four. Content of
 # the entry is unchanged — only the label.
 AGENTS.md :: rename :: - The five dashboard docs — [docs/UI.md](docs/UI.md) URL map
+
+# archiver#176. Two cross-references inside blocks moved from PAGES.md into
+# INFO_ITEM_DETAIL.md pointed at PAGES.md neighbours ("the entries below", "the
+# RepSpec route below"). Both would lie verbatim in the destination; each was
+# retargeted at what it actually names. Nothing else in the five blocks changed.
+docs/INFO_ITEM_DETAIL.md :: retarget :: that announce and let Watcher converge; the entries below name only what each
+docs/INFO_ITEM_DETAIL.md :: retarget :: The outcome→flash translation is `src/dashboard/replication_actions.py`, shared with the RepSpec route below.

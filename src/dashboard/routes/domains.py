@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
 
 from src.api.deps import get_db_session
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -180,7 +181,11 @@ async def detail_domain(
     item_query = select(InfoItem).where(InfoItem.info_item_id.in_(items_on_domain))
 
     item_total = (
-        await session.execute(select(func.count()).select_from(item_query.subquery()))
+        await session.execute(
+            select(func.count())
+            .select_from(InfoItem)
+            .where(InfoItem.info_item_id.in_(items_on_domain))
+        )
     ).scalar_one()
 
     # Own limit+1 probe rather than a comparison against item_total, for the same
@@ -231,7 +236,7 @@ async def update_notes(
     notes: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> Response:
     """Update domain notes.
 
     HTMX requests get the re-rendered ``_notes_partial.html`` swapped in place,

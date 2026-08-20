@@ -33,13 +33,15 @@ The health row is **Archiver + Redis only** since archiver#142 — the absence o
 
 **`…/health/watcher` retired with archiver#142** — it pinged Watcher over the
 SDK, and AGENTS.md's no-outbound-HTTP rule left nothing to ping. The successor
-signal is the announced-vs-applied generation drift on the InfoItem detail panel.
+signal is the announced-vs-applied generation drift on the InfoItem detail panel:
+it measures whether Watcher is *acting on what we published*, which is the
+question the badge was a proxy for.
 
 ## Domain pages (`/dashboard/domains/`)
 
 **GET `/dashboard/domains/`** — paginated list. Columns: Domain (linked to detail), Sources (count), Status badge, Created. Filter bar: `?is_active=true|false|` (all). Source counts come from a GROUP BY query.
 
-**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name, an `open_button` in the header's right slot targeting `https://{name}` — `Domain` stores a hostname, not a URL (#176) → `.detail-grid` (Status badge, created_at UTC) → the **notes row, inside the panel**, read-only with an inline Edit toggle (`domainNotes`, COMPONENTS.md). Then two related-collection tables — **Information Items** (bound to this domain's sources by an active `info_item_sources` row) and **Information Sources**, source URLs carrying `open_button`. Both headings count from a route `COUNT` (#82), both keep their own `limit+1` `has_more` probe, and they page independently on `limit`/`offset` and `item_limit`/`item_offset` (#176) — see UI.md §§ **Related-collection tables** and **Two paginated tables on one screen get two windows**. Each carries two empty states: an overshot offset renders "No sources/items on this page" with a link back to that table's first page, a genuinely empty collection "No Information Sources registered for this domain yet" / "No Information Items bound to this domain yet". **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destruction, so it sits in the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely. Both stay full-page POST→303 by design — see the *allowed variant* note under UI.md § **HTMX mutations**.
+**GET `/dashboard/domains/{name}`** — detail. `.entity-card` header (canonical detail-screen pattern, #82): `.eyebrow` "Domain" kicker → `<h1 class="entity-card__title" id="domain-heading" tabindex="-1">` with the copyable domain name, an `open_button` in the header's right slot targeting `https://{name}` — `Domain` stores a hostname, not a URL (#176) → `.detail-grid` (Status badge, created_at UTC) → the **notes row, inside the panel**, read-only with an inline Edit toggle (`domainNotes`, COMPONENTS.md). Then two related-collection tables — **Information Items** (bound to this domain's sources by an active `info_item_sources` row) and **Information Sources**, source URLs carrying `open_button`. Both headings count from a route `COUNT` (#82), both keep their own `limit+1` `has_more` probe, and they page independently on `limit`/`offset` and `item_limit`/`item_offset` (#176) — see UI.md §§ **Related-collection tables** and **Two paginated tables on one screen get two windows**. Each carries two empty states: an overshot offset renders "No sources on this page" / "No items on this page" with a link back to that table's first page, a genuinely empty collection "No Information Sources registered for this domain yet" / "No Information Items bound to this domain yet". **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destruction, so it sits in the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely. Both stay full-page POST→303 by design — see the *allowed variant* note under UI.md § **HTMX mutations**.
 
 **POST `/dashboard/domains/{name}/notes`** — saves notes. HTMX: swaps `#notes-section` with `domains/_notes_partial.html` in read-only mode, `swapped=True` (focus move) plus a `showFlash` toast. Non-HTMX: 303 to detail, so the form's no-JS fallback lands (UI.md § **HTMX mutations**).
 
@@ -113,21 +115,11 @@ immediately" / "Paused" via `watchActiveLabel`.
 targets are [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), needed only when
 working on that screen.
 
-**The two Watcher action POSTs share a contract.** `toggle-watch-active` and
-`watch-cadence` each re-render a Watcher partial and set `HX-Trigger:
-{"watcherUpdated":{}}`. Their forms use `hx-swap="none"`, so the rendered body is
-discarded and the trigger is what refreshes `#watcher-section` — swapping the
-response in *and* firing the trigger would render twice. On failure each adds a
-`showFlash` error to that trigger rather than 500ing (#60, #61).
-
-**There were five.** `begin-watching`, `check-now`, and `resync-watcher` were
-SDK-backed and retired with it in archiver#142, along with the stale-link
-reconcile they triggered (a `WatcherNotFound` NULLed `watcher_item_id` so the
-panel could re-offer "Begin Watching"). Nothing replaces them individually:
-reconciliation is level-triggered off `info.registry`, so there is no per-item
-push to retry and no remote id to go stale. The two survivors are *local* writes
-that announce and let Watcher converge; the entries below name only what each
-adds.
+**The hub screen's action-route contracts** — the shared Watcher-POST contract,
+the three routes that retired with the SDK, and the always-200 always-flash
+replication outcome rule — are in
+[docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
+The entries below stay the inventory: method, path, and what each route does.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the two action POSTs.
 
@@ -150,12 +142,6 @@ adds.
 **DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** — HTMX delete; sets `deactivated_at = now()`, idempotent (skipped if already deactivated). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`), which updates the table/empty-state and moves focus to the section heading.
 
 **POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** — issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading — the swap destroys the clicked button, exactly as the Deactivate beside it does. Guarded twice: `hx-confirm` because the target is a permanent store, `hx-disabled-elt="this"` because htmx does not deduplicate concurrent requests from an element.
-
-**Every outcome is a 200, and every outcome flashes** via `HX-Trigger: showFlash` — issued at `success` naming the rendered destination, a recorded `skipped` row at `warning` naming its reason (it also renders as state in the Replication column), and a refusal the service will not record — `not_active`, `no_active_source`, `no_revision`, `assignment_unreachable` — at `error`. Refusals are 200s rather than 422s because htmx discards a 4xx body (see UI.md § **Inline validation errors** and the STYLE.md rule it points at). The outcome→flash translation is `src/dashboard/replication_actions.py`, shared with the RepSpec route below.
-
-It exists because a new assignment on *stable* content otherwise never replicates — issuance is triggered by a new revision, and a stable InfoItem may never produce one.
-
-*(The former `PATCH .../public-url` is **retired**. `public_url` acquired an automated writer in archiver#170, so an inline edit was a field whose value the next occasion silently clobbered.)*
 
 **PATCH `/dashboard/info-items/{id}/rep-fields`** — inline save for `rep_fields` JSONB (form field: `rep_fields` JSON string). Returns a flash fragment into `#rep-fields-flash`.
 
