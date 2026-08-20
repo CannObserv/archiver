@@ -1,9 +1,9 @@
 """Tests for the dashboard's HTML error pages (#178).
 
 Every case here is a browser reaching a failure path. The API answers those with
-the JSON envelope (`src/api/errors.py`); a browser must get HTML instead, and —
+the JSON envelope (`src/api/errors.py`); a browser must get HTML instead, and -
 because `<body hx-boost="true">` makes nearly every dashboard request an htmx
-one — the *shape* of that HTML depends on the `HX-Request` header: a full
+one - the *shape* of that HTML depends on the `HX-Request` header: a full
 standalone document for a hard load, a bare fragment for an htmx swap.
 
 Two apps are exercised:
@@ -13,7 +13,7 @@ Two apps are exercised:
   routes cannot be made to raise on cue, and the wiring order is itself under
   test: `Exception` has one handler slot app-wide, so a dashboard handler that
   *replaced* rather than wrapped the API's would silently take `/api/v1` with it.
-* the real `app`, for the paths no test route can reproduce — FastAPI's own 404
+* the real `app`, for the paths no test route can reproduce - FastAPI's own 404
   on an unrouted `/dashboard/...` URL.
 """
 
@@ -23,8 +23,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI, Form
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import PlainTextResponse
 from httpx import ASGITransport, AsyncClient
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.api.errors import raise_envelope, register_error_handlers
 from src.api.main import app as real_app
@@ -60,6 +62,10 @@ def boom_app() -> FastAPI:
     async def _dashboard_needs_form(label: str = Form(...)) -> PlainTextResponse:
         return PlainTextResponse(label)
 
+    @app.get("/dashboard/server-error")
+    async def _dashboard_server_error() -> PlainTextResponse:
+        raise_envelope(503, "server", "The registry is briefly unavailable")
+
     @app.get("/api/v1/boom")
     async def _api_boom() -> PlainTextResponse:
         raise RuntimeError(_LEAK)
@@ -72,7 +78,7 @@ async def boom_client(boom_app):
     """Client that lets the handler answer instead of re-raising into the test.
 
     ``raise_app_exceptions`` defaults to True, which surfaces the exception in
-    the test and never runs `ServerErrorMiddleware`'s handler — the thing under
+    the test and never runs `ServerErrorMiddleware`'s handler - the thing under
     test.
     """
     transport = ASGITransport(app=boom_app, raise_app_exceptions=False)
@@ -145,7 +151,7 @@ async def test_api_500_still_returns_the_json_envelope(boom_client):
 
 
 # ---------------------------------------------------------------------------
-# HTTPException paths — FastAPI's own 404/405, and route-raised envelopes
+# HTTPException paths - FastAPI's own 404/405, and route-raised envelopes
 # ---------------------------------------------------------------------------
 
 
@@ -177,7 +183,7 @@ async def test_method_not_allowed_on_dashboard_renders_html(boom_client):
 
 @pytest.mark.asyncio
 async def test_route_raised_envelope_renders_html_with_its_message(boom_client):
-    """`raise_envelope` in a dashboard route is author-written prose — show it."""
+    """`raise_envelope` in a dashboard route is author-written prose - show it."""
     r = await boom_client.get("/dashboard/conflict")
 
     assert r.status_code == 409
@@ -246,6 +252,99 @@ async def test_api_errors_carry_no_error_message_header(boom_client):
     assert "X-Error-Message" not in r.headers
 
 
+@pytest.mark.asyncio
+async def test_deliberate_5xx_gets_an_incident_id(boom_client):
+    """A 5xx a route *raised* still sends the operator to the log.
+
+    The message is author-written, so it renders; what it cannot supply is the
+    join to the traceback, which is the whole point of the id.
+    """
+    r = await boom_client.get("/dashboard/server-error")
+
+    assert r.status_code == 503
+    assert "The registry is briefly unavailable" in r.text
+    assert _incident_id(r.text)
+
+
+@pytest.mark.asyncio
+async def test_deliberate_5xx_logs_the_traceback_with_the_id(boom_client, monkeypatch):
+    """Logging the message alone tells the operator what the page already did."""
+    spy = MagicMock()
+    monkeypatch.setattr(dashboard_errors.logger, "exception", spy)
+
+    r = await boom_client.get("/dashboard/server-error")
+
+    spy.assert_called_once()
+    assert spy.call_args.kwargs["extra"]["incident_id"] == _incident_id(r.text)
+    assert spy.call_args.kwargs["exc_info"] is not None
+
+
+@pytest.mark.asyncio
+async def test_405_keeps_its_allow_header(boom_client):
+    """`Allow` is required on a 405 (RFC 9110) and rides on the exception."""
+    r = await boom_client.post("/dashboard/boom")
+
+    assert r.status_code == 405
+    assert "GET" in r.headers.get("allow", "")
+
+
+# ---------------------------------------------------------------------------
+# Header encoding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_toast_text_survives_the_header_verbatim(boom_client):
+    """Headers are latin-1: an em dash here reaches the operator as `?`.
+
+    It shipped that way once (`Something went wrong ? incident a1b2c3d4`), which
+    is why the project writes ASCII hyphens and this asserts the exact string
+    rather than a substring of it.
+    """
+    r = await boom_client.get("/dashboard/boom", headers={"HX-Request": "true"})
+
+    incident = _incident_id(r.text)
+    assert r.headers["X-Error-Message"] == f"Something went wrong - incident {incident}."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    ["/dashboard/boom", "/dashboard/conflict", "/dashboard/missing", "/dashboard/server-error"],
+)
+async def test_no_error_message_is_mangled_by_the_header(boom_client, path):
+    """`?` in a toast means a character the header could not carry."""
+    r = await boom_client.get(path, headers={"HX-Request": "true"})
+
+    assert "?" not in r.headers["X-Error-Message"]
+
+
+def test_no_dash_that_a_header_cannot_carry_in_the_error_sources():
+    """The rule, where it broke: em/en dashes are latin-1-unrepresentable.
+
+    A docstring saying "use ASCII hyphens" is undone by the next edit that types
+    the prettier character; the strings on this path all end up in a header.
+    """
+    for name in ("src/dashboard/errors.py", "src/dashboard/static/htmx-errors.js"):
+        text = (Path(__file__).resolve().parents[2] / name).read_text()
+        offenders = [line for line in text.splitlines() if "\u2014" in line or "\u2013" in line]
+        assert not offenders, f"{name} contains em/en dashes:\n  " + "\n  ".join(offenders)
+
+
+@pytest.mark.asyncio
+async def test_standalone_page_applies_the_operator_theme(boom_client):
+    """The error page is the worst moment to flash the wrong colour scheme.
+
+    `_error.html` cannot extend `base.html`, so the FOUC-prevention script is
+    copied into it; without that, layer 3 of the theming system (the explicit
+    `co-color-scheme` choice) does not apply and a dark-mode operator gets a
+    white page.
+    """
+    r = await boom_client.get("/dashboard/boom")
+
+    assert "co-color-scheme" in r.text
+
+
 # ---------------------------------------------------------------------------
 # The real app
 # ---------------------------------------------------------------------------
@@ -273,7 +372,7 @@ def test_base_html_loads_the_scripts_that_surface_failures():
 
     `htmx-errors.js` is what turns a refused swap into something visible, and it
     speaks through `flash.js`. Dropping either from the list breaks the other's
-    only delivery route, with no error anywhere — the failure mode archiver#62
+    only delivery route, with no error anywhere - the failure mode archiver#62
     recorded for `flash.js` alone.
     """
     base = (Path(__file__).resolve().parents[2] / "src/dashboard/templates/base.html").read_text()
@@ -282,13 +381,17 @@ def test_base_html_loads_the_scripts_that_surface_failures():
         assert script in base, f"base.html must load {script}"
 
 
-def test_dashboard_handlers_wrap_rather_than_replace():
-    """The registration itself, pinned where a reader will look for it.
+def test_dashboard_handlers_are_the_installed_ones():
+    """The dashboard wrapper, not the API handler, must hold each slot.
 
-    `register_dashboard` must leave the API handler reachable for each class it
-    touches. Asserting the handler *identity* changed would pass just as well
-    for a replacement, so the behavioural tests above are the real guard — this
-    one only fails the accident of forgetting to register at all.
+    Registration order decides this: `register_dashboard(app)` runs after
+    `register_error_handlers(app)` in `src/api/main.py`, and swapping the two
+    would put the API handlers back on top with every behavioural test in this
+    file still passing for `/api/v1` and none of them passing for `/dashboard`.
     """
-    for exc_class in (Exception, DashboardNotFound):
-        assert exc_class in real_app.exception_handlers
+    installed = real_app.exception_handlers
+
+    assert installed[Exception] is dashboard_errors.dashboard_unhandled_exception
+    assert installed[StarletteHTTPException] is dashboard_errors.dashboard_http_exception
+    assert installed[RequestValidationError] is dashboard_errors.dashboard_request_validation
+    assert installed[DashboardNotFound] is dashboard_errors.dashboard_not_found

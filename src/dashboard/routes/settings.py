@@ -1,6 +1,6 @@
-"""Dashboard settings — API key management.
+"""Dashboard settings - API key management.
 
-**A refusal is a 200 with a flash, never a 4xx** — the rule `docs/STYLE.md`
+**A refusal is a 200 with a flash, never a 4xx** - the rule `docs/STYLE.md`
 states and `src/dashboard/replication_actions.py` explains. Both label checks
 here used to `raise_422`, and under `hx-boost` htmx discarded the response
 whole: no key created, no row renamed, nothing said (archiver#178).
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/dashboard/settings")
 # A label of spaces passes the input's `required` attribute, so this is a real
 # operator path rather than a broken template.
 _BLANK_LABEL_FLASH = json.dumps(
-    {"showFlash": {"level": "error", "body": "Label is required — nothing was saved."}}
+    {"showFlash": {"level": "error", "body": "Label is required - nothing was saved."}}
 )
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -132,7 +132,7 @@ async def settings_rename_api_key(
 
     label = label.strip()
     if not label:
-        # The unchanged row, so the swap still happens — a refused swap looks
+        # The unchanged row, so the swap still happens - a refused swap looks
         # exactly like a rename that worked.
         return _templates.TemplateResponse(
             request,

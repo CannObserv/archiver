@@ -1,18 +1,29 @@
 <!doctype html>
-{# Standalone error page (#178) — every dashboard failure a *browser* reaches
+{# Standalone error page (#178) - every dashboard failure a *browser* reaches
    directly: a hard load, a reload, a typed URL. htmx requests get
    `_error_body.html` alone instead, because a boosted swap puts the response
    inside an existing `<body>`.
 
    Deliberately not `{% extends "base.html" %}`: that template needs `user`,
    which came from a database session that may be the very thing that just
-   failed. Stylesheet by literal path for the same reason — `url_for` needs the
+   failed. Stylesheet by literal path for the same reason - `url_for` needs the
    route table. #}
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ heading }} — Archiver Dashboard</title>
+  <title>{{ heading }} - Archiver Dashboard</title>
+  {# FOUC prevention, copied from base.html rather than inherited: layer 3 of the
+     theming system (docs/STYLE.md) is an explicit choice in localStorage, and
+     without this an operator who chose dark on a light OS meets a white page at
+     the worst possible moment. Must stay above the stylesheet link. #}
+  <script>
+    (function () {
+      var s = localStorage.getItem('co-color-scheme');
+      if (s === 'dark') document.documentElement.classList.add('dark');
+      else if (s === 'light') document.documentElement.classList.add('light');
+    }());
+  </script>
   <link rel="stylesheet" href="/dashboard/static/dashboard.css">
 </head>
 <body>

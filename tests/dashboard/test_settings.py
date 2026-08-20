@@ -80,7 +80,7 @@ async def test_post_create_key_empty_label_flashes_instead_of_422(client):
     ``required`` on the input stops an *empty* submit, but a label of spaces
     passes it and lands here. As a 422 under `hx-boost` the whole submission was
     silent: htmx refused the swap, no key was created, and the button appeared
-    dead. The key is still not created — the operator is now told.
+    dead. The key is still not created - the operator is now told.
     """
     response = await client.post(
         _URL,
@@ -224,7 +224,7 @@ async def test_patch_other_users_key_returns_404(client, session):
 
 
 # ---------------------------------------------------------------------------
-# Issue #37 — UX improvements
+# Issue #37 - UX improvements
 # ---------------------------------------------------------------------------
 
 

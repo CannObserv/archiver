@@ -1,4 +1,4 @@
-{# Shared error block (#178) — the whole of an htmx error response, and the body
+{# Shared error block (#178) - the whole of an htmx error response, and the body
    of the standalone `_error.html` page.
 
    It renders from three values and nothing else: no `user`, no query, no
@@ -10,7 +10,7 @@
   <p class="text-muted">{{ message }}</p>
   {% if incident_id %}
   <p class="text-muted text-sm">
-    Incident <code class="text-mono">{{ incident_id }}</code> — quote it when reading the logs:
+    Incident <code class="text-mono">{{ incident_id }}</code> - quote it when reading the logs:
     <code class="text-mono">journalctl -u archiver | grep {{ incident_id }}</code>
   </p>
   {% endif %}

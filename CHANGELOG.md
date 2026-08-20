@@ -18,6 +18,12 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.16.3 (2026-08-20)
+
+[both] **Docstring text only: an em dash in `EnvelopeResponse` became a hyphen** (archiver#178). No schema, field, route, or method change; the SDK surface is byte-identical apart from that one line of prose.
+
+The project no longer emits em dashes anywhere: HTTP headers are latin-1, and one in a dashboard toast message reached operators as `?`. The class docstring is published as an OpenAPI `description`, so sweeping it drifts the committed snapshot and one generated model - regenerated in lockstep rather than left stale.
+
 ## v4.16.2 (2026-08-20)
 
 [service] **`app_users.email` is no longer `UNIQUE`** (archiver#177). One migration; no HTTP surface change; no SDK change.

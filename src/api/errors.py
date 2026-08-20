@@ -71,7 +71,7 @@ class EnvelopeResponse(BaseModel):
     """Outer ``{"detail": ErrorEnvelope}`` wrapper for OpenAPI docs.
 
     Public name (no leading underscore) so ``openapi-python-client`` generates a
-    cleanly-named SDK model — the class name is what surfaces in
+    cleanly-named SDK model - the class name is what surfaces in
     ``components/schemas`` and feeds the SDK code generator.
     """
 
@@ -91,7 +91,7 @@ def raise_envelope(
 
     Pass ``source_exc`` (typically the ``e`` from an ``except X as e`` block)
     to preserve exception chaining (ruff B904).  Construct ``errors`` as either
-    dicts or ``FieldError`` instances — both round-trip through Pydantic.
+    dicts or ``FieldError`` instances - both round-trip through Pydantic.
     """
     field_errors: list[FieldError] = []
     if errors:
@@ -133,7 +133,7 @@ def _kind_for_status(status_code: int) -> Kind:
 
     Note 405 → ``unimplemented``: the closed ``Kind`` set has no ``method_not_allowed``
     bucket, and 405 most often surfaces because a verb genuinely isn't supported on
-    that route — semantically closer to "not implemented" than to auth.  If we ever
+    that route - semantically closer to "not implemented" than to auth.  If we ever
     need a finer split, add a kind value and update this map.
     """
     if status_code in _STATUS_TO_KIND:
@@ -141,7 +141,7 @@ def _kind_for_status(status_code: int) -> Kind:
     if 500 <= status_code < 600:
         return "server"
     if status_code == 422:
-        return "body"  # only used if a bare-string 422 escapes — routes should set their own kind.
+        return "body"  # only used if a bare-string 422 escapes - routes should set their own kind.
     # Fallback: treat as generic 4xx -> "lookup" (matches the most common case).
     return "lookup"
 
@@ -178,13 +178,13 @@ async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSO
     """Wrap any HTTPException whose ``detail`` isn't already an envelope.
 
     Route code that already calls ``raise_envelope``/``raise_422`` passes a dict
-    matching the envelope shape — we recognize that and pass it through.
+    matching the envelope shape - we recognize that and pass it through.
     Bare-string ``detail`` values (FastAPI's own 404/405, plus any residual route
     code) get wrapped here.
     """
     detail = exc.detail
     if isinstance(detail, dict) and "kind" in detail and "message" in detail:
-        # Already envelope-shaped — pass through verbatim.
+        # Already envelope-shaped - pass through verbatim.
         return JSONResponse(status_code=exc.status_code, content={"detail": detail})
 
     if isinstance(detail, str):
@@ -203,7 +203,7 @@ async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSO
 async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     """Catch-all: log the traceback, return a generic 500 envelope.
 
-    Never leak ``str(exc)`` into the response — diagnostics live in logs only.
+    Never leak ``str(exc)`` into the response - diagnostics live in logs only.
     """
     logger.exception("Unhandled exception in request handler", exc_info=exc)
     env = ErrorEnvelope(kind="server", message="internal server error", errors=[])

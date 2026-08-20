@@ -1,6 +1,6 @@
 /*jslint browser */
 /**
- * Tests for htmx-errors.js — the client half of #178.
+ * Tests for htmx-errors.js - the client half of #178.
  *
  * htmx does not swap a non-2xx response, so before this listener existed a
  * failed request produced *nothing*: no error, no change, no clue. The server's
@@ -80,14 +80,14 @@ describe("full-page (boosted) failures", function () {
         expect(detail.isError).toBe(false);
     });
 
-    it("does not also toast — the page already says what happened", function () {
+    it("does not also toast - the page already says what happened", function () {
         beforeSwap({ isError: true, shouldSwap: false, boosted: true, xhr: fakeXhr(500) });
         vi.runAllTimers();
 
         expect(flashes).toHaveLength(0);
     });
 
-    it("covers 404 as well as 500 — htmx discards both", function () {
+    it("covers 404 as well as 500 - htmx discards both", function () {
         const detail = beforeSwap({
             isError: true,
             shouldSwap: false,
@@ -100,7 +100,7 @@ describe("full-page (boosted) failures", function () {
 });
 
 describe("partial failures", function () {
-    it("toasts instead of swapping — a fragment must not replace the screen", function () {
+    it("toasts instead of swapping - a fragment must not replace the screen", function () {
         const detail = beforeSwap({
             isError: true,
             shouldSwap: false,
@@ -150,7 +150,7 @@ describe("partial failures", function () {
 });
 
 describe("no response at all", function () {
-    it("toasts on a network error — responseError never fires without a response", function () {
+    it("toasts on a network error - responseError never fires without a response", function () {
         document.dispatchEvent(new CustomEvent("htmx:sendError", { detail: {} }));
 
         expect(flashes).toHaveLength(1);

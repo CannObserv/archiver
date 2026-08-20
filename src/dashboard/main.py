@@ -1,4 +1,4 @@
-"""Dashboard registration — call register_dashboard(app) once at startup."""
+"""Dashboard registration - call register_dashboard(app) once at startup."""
 
 from pathlib import Path
 
@@ -55,7 +55,7 @@ def register_dashboard(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, dashboard_request_validation)
     # include_in_schema=False on every router: dashboard routes are HTML +
     # proxy-header auth, and clients/python/scripts/regen.sh generates the SDK
-    # from app.openapi() — any leaked path becomes public client surface (#87).
+    # from app.openapi() - any leaked path becomes public client surface (#87).
     for router in (
         domains_router,
         register_router,

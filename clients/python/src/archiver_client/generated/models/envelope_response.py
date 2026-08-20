@@ -18,7 +18,7 @@ class EnvelopeResponse:
     """Outer ``{"detail": ErrorEnvelope}`` wrapper for OpenAPI docs.
 
     Public name (no leading underscore) so ``openapi-python-client`` generates a
-    cleanly-named SDK model — the class name is what surfaces in
+    cleanly-named SDK model - the class name is what surfaces in
     ``components/schemas`` and feeds the SDK code generator.
 
         Attributes:

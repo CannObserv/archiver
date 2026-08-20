@@ -11,21 +11,21 @@
  * Two shapes, because a failure means different things in each:
  *
  *   - **Full-page (boosted) request.** The operator asked to go somewhere and
- *     got nothing. Swap the error document in — it is a whole screen, and the
+ *     got nothing. Swap the error document in - it is a whole screen, and the
  *     server sent the fragment form knowing it lands inside `<body>`.
  *   - **Partial request.** A fragment must not replace the screen, so the swap
  *     is left refused and the failure is toasted instead. The message comes
  *     from the `X-Error-Message` header, since the body htmx would have to
  *     parse is exactly the thing it discards.
  *
- * Also covers `htmx:sendError` and `htmx:timeout` — no response means
+ * Also covers `htmx:sendError` and `htmx:timeout` - no response means
  * `htmx:responseError` never fires, and "the service is restarting" is the
  * most common way an operator meets this silence.
  */
 (function () {
     "use strict";
 
-    var NETWORK_MESSAGE = "Could not reach the server. The page was not updated — check your "
+    var NETWORK_MESSAGE = "Could not reach the server. The page was not updated - check your "
         + "connection, or whether the service is restarting, then try again.";
     var TIMEOUT_MESSAGE = "The server did not respond in time. The page was not updated.";
 
@@ -66,8 +66,8 @@
         // extension onEvent hooks *after* DOM listeners, so a form carrying
         // `hx-target-422` has not been retargeted at this point. Defer the
         // decision one task; by then response-targets has either set shouldSwap
-        // — the error is going somewhere visible, and a toast would double-report
-        // it — or it has not, and nothing else will speak.
+        // - the error is going somewhere visible, and a toast would double-report
+        // it - or it has not, and nothing else will speak.
         var message = messageFor(detail.xhr);
         setTimeout(function () {
             if (detail.shouldSwap) { return; }
