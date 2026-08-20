@@ -615,12 +615,15 @@ p:last-child { margin-bottom: 0; }
   width: 100%;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
-  /* Separates the table from whatever follows — the next section heading on a
-     screen with two stacked tables (domain detail, #176), or an empty-state
-     paragraph. Screens that wrap heading+table in a `<section>` with its own
-     bottom margin are unaffected: the table is that section's last child, so
-     the two margins collapse to the larger. Likewise against `.pagination`,
-     whose `margin-top` already matches. */
+  /* Separates the table from whatever follows. The case that prompted it is the
+     next section heading on a screen with two stacked tables (domain detail,
+     #176), which had none at all. Three other successors exist and each was
+     accepted deliberately: the registration wizard's button row and the
+     InfoItem swap-primary panel each gain this margin, and `.pagination`
+     standardises to it — six of its seven usages inline `--space-3`, which
+     collapses against the larger value here. Where a table is the last child of
+     a `<section>` carrying its own bottom margin, the two collapse and nothing
+     moves. */
   margin-bottom: var(--space-4);
 }
 .data-table th,
