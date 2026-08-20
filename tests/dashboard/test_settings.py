@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from src.core.models import ApiKey, AppUser
 from src.dashboard.deps import generate_api_key
+from tests.dashboard.conftest import read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-settings", "X-ExeDev-Email": "settings@example.com"}
 _URL = "/dashboard/settings/api-keys"
@@ -73,13 +74,61 @@ async def test_post_create_key_returns_200_with_raw_key(client, session):
 
 
 @pytest.mark.asyncio
-async def test_post_create_key_empty_label_returns_422(client):
+async def test_post_create_key_empty_label_flashes_instead_of_422(client):
+    """A refusal is a 200 with a flash, not a 4xx (#178, docs/STYLE.md).
+
+    ``required`` on the input stops an *empty* submit, but a label of spaces
+    passes it and lands here. As a 422 under `hx-boost` the whole submission was
+    silent: htmx refused the swap, no key was created, and the button appeared
+    dead. The key is still not created — the operator is now told.
+    """
     response = await client.post(
         _URL,
-        data={"label": ""},
+        data={"label": "   "},
         headers=_HEADERS,
     )
-    assert response.status_code == 422
+    assert response.status_code == 200
+
+    flash = read_flash(response)["showFlash"]
+    assert flash["level"] == "error"
+    assert "label" in flash["body"].lower()
+
+
+@pytest.mark.asyncio
+async def test_post_create_key_empty_label_creates_nothing(client, session):
+    await client.post(_URL, data={"label": "   "}, headers=_HEADERS)
+
+    result = await session.execute(select(ApiKey).where(ApiKey.label.in_(["", "   "])))
+    assert result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_patch_empty_label_flashes_and_keeps_the_old_label(client, session):
+    """The rename target is one table row, so the refusal re-renders that row.
+
+    Returning the row unchanged at 200 is what makes the swap happen at all: a
+    422 here left the row exactly as it was with nothing said, which is
+    indistinguishable from a rename that worked.
+    """
+    user = AppUser(external_id="ext-settings", email="settings@example.com")
+    session.add(user)
+    await session.flush()
+    _, key_prefix, key_hash = generate_api_key()
+    api_key = ApiKey(user_id=user.id, label="Keep me", key_prefix=key_prefix, key_hash=key_hash)
+    session.add(api_key)
+    await session.flush()
+
+    response = await client.patch(
+        f"{_URL}/{str(api_key.id)}",
+        data={"label": "  "},
+        headers=_HEADERS,
+    )
+    assert response.status_code == 200
+    assert "Keep me" in response.text
+    assert read_flash(response)["showFlash"]["level"] == "error"
+
+    await session.refresh(api_key)
+    assert api_key.label == "Keep me"
 
 
 # ---------------------------------------------------------------------------

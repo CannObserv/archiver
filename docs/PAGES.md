@@ -200,9 +200,11 @@ It exists because this screen is the natural entry point for "this spec's assign
 
 **POST** — creates a key (`label` form field required). Returns the full page with `new_raw_key` in the template context so `apiKeyReveal` shows the raw key once; the create form collapses (`showForm` resets to false) and the reveal panel appears above the table. After navigation the raw key is gone.
 
+A blank label — spaces, which pass the input's `required` attribute — returns the page **at 200** with `HX-Trigger: showFlash` at `error` level and no key created. It was a `raise_422` until archiver#178, and since the form is boosted htmx discarded the response whole: the button looked dead.
+
 **DELETE `/dashboard/settings/api-keys/{id}`** — HTMX delete; the response replaces `<tr id="key-row-{id}">` with an empty string, removing the row. 404 if the key belongs to a different user.
 
-**PATCH `/dashboard/settings/api-keys/{id}`** — renames the label (`label` form field, submitted via `hx-include`). Returns the `settings/_api_key_row.html` fragment replacing the row in view mode. 404 if the key belongs to a different user
+**PATCH `/dashboard/settings/api-keys/{id}`** — renames the label (`label` form field, submitted via `hx-include`). Returns the `settings/_api_key_row.html` fragment replacing the row in view mode. 404 if the key belongs to a different user — ownership is resolved before the label is judged. A blank label returns the **unchanged** row at 200 with an `error` flash (archiver#178): a refused swap left the row looking exactly as it does after a successful rename.
 
 Partial template: `settings/_api_key_row.html` — reusable `<tr x-data="apiKeyRow">` used both in the list render and as the PATCH response. Starts in view mode (`editing: false`); Edit switches to edit mode, Save sends the PATCH, Cancel reverts with no server call.
 
