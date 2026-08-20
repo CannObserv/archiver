@@ -55,7 +55,7 @@
   </table>
 
   {# Pagination #}
-  <div class="pagination" style="margin-top:var(--space-3);">
+  <div class="pagination">
     {% if offset > 0 %}
     <a href="/dashboard/rep-specs/?offset={{ [offset - limit, 0] | max }}&limit={{ limit }}{% if provider %}&provider={{ provider }}{% endif %}"
        class="btn btn--ghost btn--sm">← Previous</a>
