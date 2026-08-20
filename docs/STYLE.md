@@ -129,6 +129,9 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 ### Danger zone
 - `.danger-zone`, `.danger-zone__title` — destructive-action section at bottom of detail pages.
 
+### Error page
+- `.error-page`, `.error-page__heading`, `.error-page__actions` — the dashboard error page (`templates/_error.html` and its `_error_body.html` block, archiver#178). Centred and capped at `40rem` because it renders **without** the shell: the standalone page has no sidebar to sit in, and the htmx fragment replaces the one it had. It owns its own `margin`/`padding` for the same reason — nothing above it in either context supplies spacing. The incident id on a 5xx uses `.text-mono`.
+
 ### Utilities
 - `.text-muted`, `.text-sm`, `.text-xs`, `.text-mono`, `.truncate`, `.sr-only`.
 - `.text-danger` — `color: var(--color-danger)`. Use on inline error messages and destructive-action labels.

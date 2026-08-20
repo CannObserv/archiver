@@ -202,6 +202,26 @@ It exists because this screen is the natural entry point for "this spec's assign
 
 **DELETE `/dashboard/settings/api-keys/{id}`** — HTMX delete; the response replaces `<tr id="key-row-{id}">` with an empty string, removing the row. 404 if the key belongs to a different user.
 
-**PATCH `/dashboard/settings/api-keys/{id}`** — renames the label (`label` form field, submitted via `hx-include`). Returns the `settings/_api_key_row.html` fragment replacing the row in view mode. 404 if the key belongs to a different user.
+**PATCH `/dashboard/settings/api-keys/{id}`** — renames the label (`label` form field, submitted via `hx-include`). Returns the `settings/_api_key_row.html` fragment replacing the row in view mode. 404 if the key belongs to a different user
 
 Partial template: `settings/_api_key_row.html` — reusable `<tr x-data="apiKeyRow">` used both in the list render and as the PATCH response. Starts in view mode (`editing: false`); Edit switches to edit mode, Save sends the PATCH, Cancel reverts with no server call.
+
+## Error pages (no route of their own)
+
+Rendered by the exception handlers in `src/dashboard/errors.py`, not by a route,
+so they appear under no URL above — any `/dashboard` path can produce them.
+
+- `_error.html` — standalone document (`<!doctype html>`, its own stylesheet
+  link), returned when the request carries no `HX-Request` header: a hard load,
+  a reload, a typed URL.
+- `_error_body.html` — the `<main class="error-page">` block alone, returned to
+  an htmx request because the swap lands inside the existing `<body>`.
+  `_error.html` includes it, so the two cannot drift.
+
+Both render from `heading`, `message`, and an optional `incident_id` only —
+deliberately **not** extending `base.html`, which needs `user` from a database
+session that may be the thing that failed. Status-specific behaviour, the
+`X-Error-Message` header, and the client listener that makes any of it visible:
+[UI.md](UI.md) § Failures are surfaced, not swallowed.
+
+Replaces `_404.html`, which covered one status and appeared only on a hard load.

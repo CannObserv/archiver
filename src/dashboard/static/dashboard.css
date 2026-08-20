@@ -1058,6 +1058,19 @@ p:last-child { margin-bottom: 0; }
   min-width: 44px;
 }
 
+/* ─── Error page (#178) ──────────────────────────────────────────────────── */
+/* `_error.html` / `_error_body.html`. Centred and narrow because it renders
+   without the sidebar: the standalone page has no shell to sit in, and the htmx
+   fragment replaces the one it had. Padding is its own — nothing above it in
+   either context supplies spacing. */
+.error-page {
+  max-width: 40rem;
+  margin: var(--space-8) auto;
+  padding: var(--space-5);
+}
+.error-page__heading { margin-bottom: var(--space-3); }
+.error-page__actions { margin-top: var(--space-4); }
+
 /* ─── Alpine.js ──────────────────────────────────────────────────────────── */
 [x-cloak] { display: none !important; }
 

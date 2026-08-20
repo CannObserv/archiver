@@ -1,0 +1,21 @@
+<!doctype html>
+{# Standalone error page (#178) — every dashboard failure a *browser* reaches
+   directly: a hard load, a reload, a typed URL. htmx requests get
+   `_error_body.html` alone instead, because a boosted swap puts the response
+   inside an existing `<body>`.
+
+   Deliberately not `{% extends "base.html" %}`: that template needs `user`,
+   which came from a database session that may be the very thing that just
+   failed. Stylesheet by literal path for the same reason — `url_for` needs the
+   route table. #}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ heading }} — Archiver Dashboard</title>
+  <link rel="stylesheet" href="/dashboard/static/dashboard.css">
+</head>
+<body>
+  {% include "_error_body.html" %}
+</body>
+</html>

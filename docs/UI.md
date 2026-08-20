@@ -100,6 +100,58 @@ Levels: `"success"` | `"warning"` | `"error"` | `"info"`.
 
 SourceSpec and RepSpec editors use HTMX to POST to `/api/v1/tools/validate-source-spec` (or `-rep-spec`) on blur and render inline error feedback.
 
+### Failures are surfaced, not swallowed (archiver#178)
+
+**htmx does not swap a non-2xx response.** With `hx-boost` on `<body>` that
+covers nearly every interaction, so before #178 a failed request did *nothing at
+all*: no error, no change, no clue the click was even received. Two halves fix
+it, and neither works alone.
+
+**Server — `src/dashboard/errors.py`.** Three exception classes are wrapped so a
+`/dashboard` path gets HTML where the API keeps its JSON envelope: `Exception`
+(the crash), `StarletteHTTPException` (FastAPI's own 404 on a mistyped URL, its
+405, and any `raise_envelope` a dashboard route makes), and
+`RequestValidationError` (a `Form(...)` field that never arrived — the one arm
+the pagination clamp below cannot close). Each wrapper *delegates* the
+non-dashboard case back to the API handler: there is one handler slot per
+exception class app-wide, so adding rather than wrapping would have answered the
+SDK with HTML. `register_dashboard(app)` must
+therefore run **after** `register_error_handlers(app)`.
+
+The response shape follows the `HX-Request` header — `_error.html` (standalone
+document) for a hard load, `_error_body.html` (the block alone) for an htmx
+request, which lands inside an existing `<body>`. Neither extends `base.html`:
+that template needs `user`, and the session that would supply it may be what
+failed. A 5xx page carries an **incident id**, printed once and logged beside
+the traceback (`journalctl -u archiver | grep <id>`); the exception text itself
+never reaches the page.
+
+**Client — `static/htmx-errors.js`,** loaded from `base.html`. On
+`htmx:beforeSwap` for a failed response:
+
+- **boosted (full-page) request** → `shouldSwap = true`, `isError = false`, so
+  the server's error page is shown. This is also what finally makes a 404
+  visible: `DashboardNotFound` has rendered a page since long before #178, and
+  every in-dashboard link to a stale ID discarded it.
+- **partial request** → the swap is left refused (a fragment must not replace
+  the screen) and the failure becomes an `error` toast. Its text comes from the
+  **`X-Error-Message`** response header, because the body is exactly what htmx
+  discards. The decision is deferred by one task: htmx runs extension `onEvent`
+  hooks *after* DOM listeners, so a form carrying `hx-target-422` has not been
+  retargeted yet — by the timeout, `detail.shouldSwap` says whether
+  response-targets claimed it, and a claimed failure is not toasted twice.
+
+`htmx:sendError` and `htmx:timeout` toast as well: with no response at all
+`htmx:responseError` never fires, and "the service is restarting" is the most
+common way an operator meets this silence.
+
+**What this does not change: a refusal is still a 200 with a flash.** Visible is
+not the same as well-placed — a whole-screen error page in answer to a bad label
+is worse than a toast over the form the operator is still looking at. Routes
+that *decline* keep returning their partial at 200 with `HX-Trigger: showFlash`
+(see **Flash messages** and `src/dashboard/replication_actions.py`). The error
+page is for failures with no partial to return to.
+
 ---
 
 ## Detail Screen Conventions

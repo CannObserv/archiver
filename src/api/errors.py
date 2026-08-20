@@ -161,7 +161,7 @@ def _pointer_from_loc(loc: tuple[str | int, ...]) -> str:
     return "/" + "/".join(str(p) for p in parts)
 
 
-async def _request_validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+async def request_validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     errors = [
         FieldError(
             path=_pointer_from_loc(tuple(e["loc"])),
@@ -174,7 +174,7 @@ async def _request_validation_handler(_: Request, exc: RequestValidationError) -
     return JSONResponse(status_code=422, content={"detail": env.model_dump(exclude_none=True)})
 
 
-async def _http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Wrap any HTTPException whose ``detail`` isn't already an envelope.
 
     Route code that already calls ``raise_envelope``/``raise_422`` passes a dict
@@ -200,7 +200,7 @@ async def _http_exception_handler(_: Request, exc: StarletteHTTPException) -> JS
     )
 
 
-async def _unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     """Catch-all: log the traceback, return a generic 500 envelope.
 
     Never leak ``str(exc)`` into the response — diagnostics live in logs only.
@@ -215,6 +215,6 @@ def register_error_handlers(app: FastAPI) -> None:
 
     Must be called once during app construction, *after* ``app = FastAPI(...)``.
     """
-    app.add_exception_handler(RequestValidationError, _request_validation_handler)
-    app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
-    app.add_exception_handler(Exception, _unhandled_exception_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)

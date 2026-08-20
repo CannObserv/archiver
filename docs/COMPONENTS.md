@@ -14,6 +14,11 @@ summary table and the CSS classes these components toggle.
 
 All components registered as `Alpine.data('name', factory)` in `main.js` before `Alpine.start()`. No inline `x-data="{ ... }"` blobs in templates.
 
+Three JS modules under `src/dashboard/static/` register **no** Alpine component
+and are catalogued at the foot of this file instead: `flash.js`,
+`dark-mode.js`, and `htmx-errors.js`. They attach document-level listeners at
+load and are wired only by their `<script>` tag in `base.html`.
+
 ## `apiKeyCreate`
 
 Create-form toggle for the API Keys settings page.
@@ -266,3 +271,54 @@ Wrapper for the `rep_fields` textarea + sortableChips suggestion strip on the In
   </form>
 </div>
 ```
+
+---
+
+## Document-level scripts (not Alpine)
+
+Each is an IIFE that attaches listeners to `document` on load, surviving HTMX
+body swaps because nothing it binds to is inside the swapped tree. Dropping any
+of them from the `base.html` script list is silent — the behaviour simply stops
+(archiver#62).
+
+### `flash.js`
+
+Toast/flash system. Listens for the `showFlash` `CustomEvent` — dispatched by
+htmx from an `HX-Trigger` response header, or directly by other scripts — and
+injects `.flash--*` toasts into the `#flash-region` overlay, announcing every
+message through the two visually-hidden live regions. Levels, dismissal rules,
+the visible cap and its two overflow affordances: [UI.md](UI.md) § Flash
+messages.
+
+### `dark-mode.js`
+
+Colour-scheme toggle (`[data-theme-toggle]`), persisting the choice in
+`localStorage` under `co-color-scheme`. `base.html` re-reads that key in a
+blocking inline script before the stylesheet paints, to prevent FOUC.
+
+### `htmx-errors.js`
+
+Makes failed htmx requests visible (archiver#178). htmx refuses to swap a
+non-2xx response, so without this a failure is indistinguishable from a click
+that never happened.
+
+**Listens for:**
+- `htmx:beforeSwap` — on a failed response, either swaps the server's error page
+  in (boosted/full-page request: sets `detail.shouldSwap = true` and
+  `detail.isError = false`) or, for a partial, leaves the swap refused and
+  raises an `error` toast through `flash.js`.
+- `htmx:sendError`, `htmx:timeout` — no response arrived, so
+  `htmx:responseError` never fires; both toast.
+
+**Reads:** the `X-Error-Message` response header for the toast body, falling
+back to the status code. The header exists because the response *body* is what
+htmx discards.
+
+**Defers by one task before toasting.** htmx runs extension `onEvent` hooks
+after DOM listeners, so at listener time the `response-targets` extension has
+not yet decided whether an `hx-target-422` claims this failure. The deferred
+check reads `detail.shouldSwap`: set means the error is already going somewhere
+visible, and toasting would report it twice.
+
+The server half — which paths render HTML, and why `_error.html` does not extend
+`base.html` — is in [UI.md](UI.md) § Failures are surfaced, not swallowed.

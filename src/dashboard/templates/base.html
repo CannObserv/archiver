@@ -18,6 +18,9 @@
   <script src="{{ request.url_for('dashboard-static', path='vendor/htmx-ext-response-targets.min.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='main.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='flash.js') }}" defer></script>
+  {# htmx refuses to swap a non-2xx response; without this listener every failed
+     request — partial or boosted — is silence. See docs/UI.md, archiver#178. #}
+  <script src="{{ request.url_for('dashboard-static', path='htmx-errors.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='vendor/alpine.min.js') }}" defer></script>
 </head>
 <body hx-boost="true" hx-ext="response-targets">
