@@ -41,6 +41,14 @@ exception handlers in `register_error_handlers(app)` wrap any FastAPI-raised
 HTTPException (unmatched route 404, 405) or uncaught Exception (500) into the
 envelope. See archiver#15.
 
+**Except on `/dashboard`.** Those paths answer a browser, and JSON is unreadable
+to one - htmx will not even swap it. `register_dashboard(app)` therefore
+installs wrappers (`src/dashboard/errors.py`) that render HTML for a dashboard
+path and delegate every other path back to the handlers above; the envelope is
+unchanged for `/api/v1` and the SDK. Registration order is load-bearing, and the
+whole mechanism is described in [UI.md](UI.md) § Failures are surfaced, not
+swallowed (archiver#178).
+
 Examples:
 
 ```python
