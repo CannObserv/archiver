@@ -119,7 +119,7 @@ working on that screen.
 the three routes that retired with the SDK, and the always-200 always-flash
 replication outcome rule — are in
 [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
-The entries below stay the inventory: method, path, and what each route does.
+The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** — HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the two action POSTs.
 

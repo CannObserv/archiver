@@ -7,11 +7,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import Response
 
 from src.api.deps import get_db_session
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -178,14 +177,13 @@ async def detail_domain(
             InfoItemSource.deactivated_at.is_(None),
         )
     )
-    item_query = select(InfoItem).where(InfoItem.info_item_id.in_(items_on_domain))
+    # Bound once: the count and the page must ask the same question, and nothing
+    # else enforces that they do.
+    on_domain = InfoItem.info_item_id.in_(items_on_domain)
+    item_query = select(InfoItem).where(on_domain)
 
     item_total = (
-        await session.execute(
-            select(func.count())
-            .select_from(InfoItem)
-            .where(InfoItem.info_item_id.in_(items_on_domain))
-        )
+        await session.execute(select(func.count()).select_from(InfoItem).where(on_domain))
     ).scalar_one()
 
     # Own limit+1 probe rather than a comparison against item_total, for the same
