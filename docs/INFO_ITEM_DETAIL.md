@@ -71,3 +71,32 @@ Preview HTMX button (`.btn--secondary`, `hx-include="#swap-url,#swap-specs"`)
 targeting `#swap-preview`, the submit to `swap-primary-source` (`.btn--primary`),
 and an advanced `<details>` for `swap-primary-by-id` (`.form-input` field +
 `.btn--secondary` Bind button).
+
+## Action-route contracts
+
+Moved here from [PAGES.md](PAGES.md), which keeps the inventory line for each of
+these routes. This is the behaviour behind them.
+
+**The two Watcher action POSTs share a contract.** `toggle-watch-active` and
+`watch-cadence` each re-render a Watcher partial and set `HX-Trigger:
+{"watcherUpdated":{}}`. Their forms use `hx-swap="none"`, so the rendered body is
+discarded and the trigger is what refreshes `#watcher-section` — swapping the
+response in *and* firing the trigger would render twice. On failure each adds a
+`showFlash` error to that trigger rather than 500ing (#60, #61).
+
+**There were five.** `begin-watching`, `check-now`, and `resync-watcher` were
+SDK-backed and retired with it in archiver#142, along with the stale-link
+reconcile they triggered (a `WatcherNotFound` NULLed `watcher_item_id` so the
+panel could re-offer "Begin Watching"). Nothing replaces them individually:
+reconciliation is level-triggered off `info.registry`, so there is no per-item
+push to retry, no remote id to go stale, and no provisioning gesture to repeat.
+The two survivors are *local* writes
+that announce and let Watcher converge; the route entries in [PAGES.md](PAGES.md) name only what each adds.
+
+### Replication actions
+
+**Every outcome is a 200, and every outcome flashes** via `HX-Trigger: showFlash` — issued at `success` naming the rendered destination, a recorded `skipped` row at `warning` naming its reason (it also renders as state in the Replication column), and a refusal the service will not record — `not_active`, `no_active_source`, `no_revision`, `assignment_unreachable` — at `error`. Refusals are 200s rather than 422s because htmx discards a 4xx body (see UI.md § **Inline validation errors** and the STYLE.md rule it points at). The outcome→flash translation is `src/dashboard/replication_actions.py`, shared with the RepSpec-scoped twin (PAGES.md § **Replication Specifications**).
+
+It exists because a new assignment on *stable* content otherwise never replicates — issuance is triggered by a new revision, and a stable InfoItem may never produce one.
+
+*(The former `PATCH .../public-url` is **retired**. `public_url` acquired an automated writer in archiver#170, so an inline edit was a field whose value the next occasion silently clobbered.)*

@@ -158,6 +158,11 @@ see the never-rename rule in `AGENTS.md`.
   - **Previous primary** — a deactivated row (`deactivated_at IS NOT NULL`). Preserved indefinitely
     as succession history. Watcher may continue watching previous primaries for unanticipated
     changes.
+  - **Both directions are indexed.** The composite primary key leads with `info_item_id`, so a
+    lookup by `info_source_id` alone cannot use it — Postgres has no skip scan. Partial index
+    `ix_info_item_sources_active_source` covers that direction (archiver#176), matching the same
+    `deactivated_at IS NULL` predicate its consumers filter by: reaching *items* from a *source*
+    is by definition a question about current bindings.
 
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
   **`path_template` contract** (archiver#168) — three rules the envelope schema cannot express,

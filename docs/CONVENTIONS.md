@@ -87,6 +87,10 @@ applicable doc is a CR blocker.
   that is not an Alpine component is documented where its behaviour lives
   instead, and a change to it updates that doc — `flash.js` in `docs/UI.md`
   ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
+- `docs/INFO_ITEM_DETAIL.md` — required when the change alters the InfoItem hub
+  screen itself: its five sections, a partial's swap target, or one of the
+  action-route contracts that moved there in archiver#176. PAGES.md keeps the
+  inventory line for those routes, so a behaviour change updates both.
 - `docs/UI.md` — required when the change alters a *shared* mechanic rather
   than one screen: the URL map, the auth gate, an HTMX swap pattern, or a
   detail-screen convention. A change that merely follows an existing

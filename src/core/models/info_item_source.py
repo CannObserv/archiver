@@ -46,5 +46,15 @@ class InfoItemSource(Base):
             unique=True,
             postgresql_where=text("deactivated_at IS NULL"),
         ),
+        # The source→item direction (archiver#176). The composite primary key
+        # leads with info_item_id, and Postgres has no skip scan, so a lookup by
+        # info_source_id alone cannot use it — the domain detail screen would
+        # sequentially scan this table twice per render. Partial on the same
+        # predicate its only consumer filters by.
+        Index(
+            "ix_info_item_sources_active_source",
+            "info_source_id",
+            postgresql_where=text("deactivated_at IS NULL"),
+        ),
         {"schema": "information"},
     )

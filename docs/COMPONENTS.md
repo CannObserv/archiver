@@ -35,6 +35,20 @@ Inline edit/view toggle for a single API key table row.
 
 **Usage:** `x-data="apiKeyRow"` on each `<tr id="key-row-{id}">`. View mode shows the label as text with Edit + Delete buttons. Edit mode reveals a label input (`x-ref="labelInput"`) and Save + Cancel buttons. Save uses HTMX `hx-patch` with `hx-include="#label-{id}"` to send the updated label; the server returns a fresh `_api_key_row.html` fragment that initialises with `editing: false`. Cancel calls `cancelEdit()`. Edit-mode elements carry `style="display:none;"` as an initial-state hint to prevent FOUC before Alpine runs.
 
+## `domainNotes`
+
+Edit/view toggle for the operator-notes row in the Domain detail header panel.
+
+**State:**
+- `editing: boolean` — whether the row shows the textarea instead of the read-only readout.
+
+**Methods:**
+- `cancelEdit()` — set `editing = false` without a server call, and reset the textarea to its server-rendered value via `$refs.notesBox.defaultValue` so an abandoned edit is discarded rather than lingering in the next Save.
+
+**Usage:** `x-data="domainNotes"` on `#notes-section` in `domains/_notes_partial.html`. View mode (`x-show="!editing"`) renders the stored notes in a `.notes-readout` beside an Edit button; edit mode (`x-show="editing"`) reveals `<textarea x-ref="notesBox">` beside Cancel + Save. Save posts via HTMX (`hx-target="#notes-section" hx-swap="outerHTML"`), and the returned partial re-initialises with `editing: false` — so a saved edit lands back in view mode without any client-side bookkeeping. The edit form deliberately carries **no** inline `display:none` FOUC hint — unlike `apiKeyRow`, whose row has no no-JS edit path to lose. Hiding it inline would also hide it when Alpine never runs, stranding the `method`/`action` fallback; both halves rendering for a frame is the price of Save still working without JS, and the route answers a non-HTMX POST with a 303 rather than a bare fragment.
+
+`defaultValue` is the right canonical source here, where `sourceSpecsCard` needs a JSON data island: notes have no validation-error re-render path, so the server-rendered value is always the stored one.
+
 ## `apiKeyReveal`
 
 Reveal-once panel for a newly created API key.

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -82,3 +83,31 @@ async def test_deactivated_allows_new_active(session, item, make_source):
     await session.commit()
     await session.refresh(new)
     assert new.deactivated_at is None
+
+
+@pytest.mark.asyncio
+async def test_info_item_sources_has_active_source_index(session):
+    """The source→item direction needs its own index (archiver#176).
+
+    Every earlier consumer entered this table by ``info_item_id``, which the
+    composite primary key leads with. Domain detail enters by
+    ``info_source_id`` instead — a column the PK index cannot serve, since
+    Postgres has no skip scan — so without this index the domain screen
+    sequentially scans every binding, twice per render.
+
+    Partial on ``deactivated_at IS NULL`` because that predicate is in the
+    query: a deactivated binding is succession history, never a current
+    dependency.
+    """
+    result = await session.execute(
+        text(
+            "SELECT indexname, indexdef FROM pg_indexes "
+            "WHERE schemaname = 'information' AND tablename = 'info_item_sources'"
+        )
+    )
+    indexes = {row[0]: row[1] for row in result.all()}
+    name = "ix_info_item_sources_active_source"
+    assert name in indexes, f"missing index {name}: {sorted(indexes)}"
+    definition = indexes[name].lower()
+    assert "info_source_id" in definition, definition
+    assert "deactivated_at is null" in definition, definition

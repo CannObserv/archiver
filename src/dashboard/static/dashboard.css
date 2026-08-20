@@ -910,6 +910,54 @@ p:last-child { margin-bottom: 0; }
 }
 
 /* ─── Code block ─────────────────────────────────────────────────────────── */
+/* Notes row (domain detail header panel, #176). The read-only content or the
+   textarea takes the full panel width; the inline actions sit to its right at a
+   fixed intrinsic width. Wraps on narrow viewports so the actions drop below
+   rather than squeezing the readout to nothing. */
+/* Heading for the notes row. A panel-internal section label rather than a page
+   or collection heading — smaller and quieter than `.section-heading`, and its
+   own rule rather than borrowing `.detail-grid__label`, which belongs to the
+   grid above it. */
+.notes-heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+.notes-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+/* Both halves share a min-height so flipping to Edit does not resize the panel.
+   5rem is the natural height of the rows="3" textarea at this font size; the
+   readout would otherwise sit at ~2.5rem and the panel would jump ~2.5rem on
+   every Edit. */
+.notes-row > .notes-readout,
+.notes-row > .form-textarea { flex: 1 1 20rem; min-height: 5rem; }
+.notes-row__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+/* Read-only notes: border, radius, and padding matched to the textarea it swaps
+   with (height is matched on .notes-row above) so the edges do not move on the
+   flip. Preserves author line breaks. */
+.notes-readout {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .code-block {
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);

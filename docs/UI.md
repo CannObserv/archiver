@@ -251,6 +251,18 @@ collapsing them makes the heading contradict the body. Cache state uses the
 `.status-pill--cached/expired/missing` pills, not `.badge` variants. A
 succession/currency status column uses `.badge--primary`/`.badge--muted`.
 
+**Two paginated tables on one screen get two windows.** A detail screen showing
+more than one paginated related collection must not share `limit`/`offset`
+between them — paging one would silently reposition the other. The second table
+declares its own prefixed params and clamps them through a sibling dependency
+that delegates to `clamp_pagination` (Domain detail's `item_limit`/`item_offset`
+and `item_pagination`, #176). Every pagination link on the page then re-emits
+**both** windows and overrides only the offset it moves; a link that drops the
+other table's params resets it to page one on the next click. Build each link
+from a single autoescaped expression rather than concatenating raw `&`
+separators around it, or half the query string escapes to `&amp;` and half does
+not.
+
 **Pagination params are clamped, not validated.** Every paginated dashboard
 route takes `page: Pagination = Depends(pagination)`
 (`src/dashboard/pagination.py`) rather than bare `limit`/`offset` ints. `limit`

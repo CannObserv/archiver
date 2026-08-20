@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.16.1 (2026-08-19)
+
+[service] **`info_item_sources` gains an index for the source→item direction** (archiver#176). One migration; no HTTP surface change; no SDK change.
+
+`ix_info_item_sources_active_source` indexes `info_source_id`, partial on `deactivated_at IS NULL`. Every read path before this one entered the binding table by `info_item_id`, which the composite primary key leads with. The new domain-detail Information Items table enters by `info_source_id` instead — a column the PK index cannot serve, since Postgres has no skip scan — so the traversal fell back to a sequential scan, paid twice per render (heading `COUNT` plus the page query).
+
+The partial predicate matches the query: a deactivated binding is a superseded primary, succession history rather than a current dependency, and is excluded from the listing.
+
+Plain `CREATE INDEX`, not `CONCURRENTLY` — the table is small enough today. If it grows before this ships elsewhere, the migration's docstring names the switch.
+
 ## v4.16.0 (2026-08-18)
 
 [service] **The replication loop closes: `public_url` acquires an automated writer** (archiver#170, step 5 of the #137 epic). No migration; no HTTP surface change; no SDK change.
