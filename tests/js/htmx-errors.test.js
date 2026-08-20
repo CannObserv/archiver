@@ -17,12 +17,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // Importing the module runs the IIFE once, attaching its document listeners.
 import "../../src/dashboard/static/htmx-errors.js";
 
-function fakeXhr(status, errorMessage) {
+// `flashed` mirrors what the server sends a failed partial: an HX-Trigger
+// header htmx has already acted on by the time beforeSwap runs.
+function fakeXhr(status, flashed) {
     return {
         status: status,
         getResponseHeader: function (name) {
-            if (name.toLowerCase() === "x-error-message" && errorMessage) {
-                return errorMessage;
+            if (name.toLowerCase() === "hx-trigger" && flashed) {
+                return JSON.stringify({
+                    showFlash: { level: "error", body: "server said so" }
+                });
             }
             return null;
         }
@@ -100,26 +104,31 @@ describe("full-page (boosted) failures", function () {
 });
 
 describe("partial failures", function () {
-    it("toasts instead of swapping - a fragment must not replace the screen", function () {
+    it("stays quiet when the server already flashed", function () {
+        // htmx raises HX-Trigger events before it decides whether to swap, so
+        // by the time this listener runs the toast is on screen. Speaking again
+        // would double-report the one failure.
         const detail = beforeSwap({
             isError: true,
             shouldSwap: false,
             boosted: false,
-            xhr: fakeXhr(500, "Something went wrong - incident a1b2c3d4.")
+            xhr: fakeXhr(500, true)
         });
         vi.runAllTimers();
 
         expect(detail.shouldSwap).toBe(false);
-        expect(flashes).toHaveLength(1);
-        expect(flashes[0].level).toBe("error");
-        expect(flashes[0].body).toBe("Something went wrong - incident a1b2c3d4.");
+        expect(flashes).toHaveLength(0);
     });
 
-    it("falls back to the status when no X-Error-Message is set", function () {
+    it("toasts the status when nothing flashed - silence is the bug", function () {
+        // A failure from outside /dashboard, or before the handler ran at all:
+        // no HX-Trigger, and a refused swap that says nothing is exactly what
+        // archiver#178 is about.
         beforeSwap({ isError: true, shouldSwap: false, boosted: false, xhr: fakeXhr(503) });
         vi.runAllTimers();
 
         expect(flashes).toHaveLength(1);
+        expect(flashes[0].level).toBe("error");
         expect(flashes[0].body).toContain("503");
     });
 

@@ -222,8 +222,10 @@ so they appear under no URL above - any `/dashboard` path can produce them.
 
 Both render from `heading`, `message`, and an optional `incident_id` only -
 deliberately **not** extending `base.html`, which needs `user` from a database
-session that may be the thing that failed. Status-specific behaviour, the
-`X-Error-Message` header, and the client listener that makes any of it visible:
+session that may be the thing that failed. `_error.html` shares
+`_theme_boot.html` with it instead, so the operator's colour scheme survives.
+Status-specific behaviour, the `HX-Trigger: showFlash` a partial failure
+carries, and the client listener that makes any of it visible:
 [UI.md](UI.md) § Failures are surfaced, not swallowed.
 
 Replaces `_404.html`, which covered one status and appeared only on a hard load.

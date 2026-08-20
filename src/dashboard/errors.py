@@ -25,14 +25,21 @@ the standalone `_error.html`.
 
 **And htmx will not swap a non-2xx at all** unless told to, which is why the
 page alone is not the fix: see the `htmx:beforeSwap` listener in
-`static/htmx-errors.js`. For a partial (non-boosted) failure that listener shows
-a toast rather than swapping, and reads its text from the ``X-Error-Message``
-header set here - the body is discarded before any JS could parse it.
+`static/htmx-errors.js`, which swaps the error page in for a boosted request.
+
+A *partial* failure must not replace the screen, so it is announced instead -
+through ``HX-Trigger: showFlash``, the same mechanism every other dashboard
+outcome uses. htmx reads that header before it decides whether to swap, so the
+event fires from a response it then discards (proved against the real library in
+``tests/js/htmx-error-trigger.test.js``). Reusing it also makes one class of bug
+unrepresentable: ``json.dumps`` escapes non-ASCII, where the hand-written header
+this replaced was latin-1 and turned an em dash into ``?`` on every crash toast.
 """
 
 from __future__ import annotations
 
 import http
+import json
 import secrets
 from pathlib import Path
 
@@ -53,10 +60,6 @@ from src.dashboard.exceptions import DashboardNotFound
 logger = get_logger(__name__)
 
 DASHBOARD_PREFIX = "/dashboard"
-
-# Header the toast reads. Not `HX-Trigger`: htmx's trigger handling is part of
-# the response-swap path this listener exists precisely because it is skipped.
-ERROR_MESSAGE_HEADER = "X-Error-Message"
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -87,20 +90,15 @@ def _heading_for(status_code: int) -> str:
         return f"{status_code} - Error"
 
 
-def _header_safe(text: str) -> str:
-    """Fold a message into something a response header can carry.
+def _flash_header(message: str) -> str:
+    """The ``HX-Trigger`` value that raises one error toast.
 
-    Headers are latin-1 and single-line, and the fold is a backstop, not a
-    strategy: `errors="replace"` turns anything wider into `?`, which is how
-    "Something went wrong - incident a1b2c3d4." once reached operators with a
-    `?` where its em dash had been. Messages on this path are written in ASCII
-    for that reason (`test_no_dash_that_a_header_cannot_carry_in_the_error_sources`);
-    what remains here is the guarantee that no message can raise *inside the
-    error handler*, which would cost the operator the page as well as the
-    request.
+    ASCII by construction: `json.dumps` escapes anything wider, so no message -
+    including one interpolated from a row an operator typed - can either mangle
+    the toast or raise inside the error handler, which would cost them the page
+    as well as the request.
     """
-    collapsed = " ".join(text.split())
-    return collapsed.encode("latin-1", "replace").decode("latin-1")[:200]
+    return json.dumps({"showFlash": {"level": "error", "body": " ".join(message.split())}})
 
 
 def _render(
@@ -114,11 +112,15 @@ def _render(
     extra_headers: dict[str, str] | None = None,
 ) -> Response:
     """Render the error page: full document, or bare block for an htmx swap."""
-    template = "_error_body.html" if "HX-Request" in request.headers else "_error.html"
+    is_htmx = "HX-Request" in request.headers
+    template = "_error_body.html" if is_htmx else "_error.html"
     # `Allow` on a 405 is required by RFC 9110 and rides on the exception, so
-    # those go on first; the toast header is ours and wins any collision.
+    # those go on first; the flash is ours and wins any collision.
     headers = dict(extra_headers or {})
-    headers[ERROR_MESSAGE_HEADER] = _header_safe(toast or message)
+    # Only a *partial* gets the toast. A hard load has no htmx to read it, and a
+    # boosted request swaps the page in, which has already said this once.
+    if is_htmx and request.headers.get("HX-Boosted") != "true":
+        headers["HX-Trigger"] = _flash_header(toast or message)
     return _templates.TemplateResponse(
         request,
         template,
@@ -186,6 +188,7 @@ async def dashboard_http_exception(request: Request, exc: StarletteHTTPException
         status_code=exc.status_code,
         message=message,
         incident_id=incident_id,
+        toast=None if incident_id is None else f"{message} - incident {incident_id}.",
         extra_headers=exc.headers,
     )
 
@@ -218,7 +221,6 @@ async def dashboard_not_found(request: Request, exc: DashboardNotFound) -> Respo
 
 
 __all__ = [
-    "ERROR_MESSAGE_HEADER",
     "dashboard_http_exception",
     "dashboard_not_found",
     "dashboard_request_validation",

@@ -5,13 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Archiver{% endblock %} - Cannabis Observer</title>
   {# FOUC prevention: apply saved theme before stylesheet paint #}
-  <script>
-    (function () {
-      var s = localStorage.getItem('co-color-scheme');
-      if (s === 'dark') document.documentElement.classList.add('dark');
-      else if (s === 'light') document.documentElement.classList.add('light');
-    }());
-  </script>
+  {% include "_theme_boot.html" %}
   <link rel="stylesheet" href="{{ request.url_for('dashboard-static', path='dashboard.css') }}">
   <script src="{{ request.url_for('dashboard-static', path='dark-mode.js') }}" defer></script>
   <script src="{{ request.url_for('dashboard-static', path='vendor/htmx.min.js') }}" defer></script>

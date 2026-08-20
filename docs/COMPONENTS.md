@@ -328,9 +328,10 @@ that never happened.
 - `htmx:sendError`, `htmx:timeout` - no response arrived, so
   `htmx:responseError` never fires; both toast.
 
-**Reads:** the `X-Error-Message` response header for the toast body, falling
-back to the status code. The header exists because the response *body* is what
-htmx discards.
+**Reads:** the response's `HX-Trigger` header. A dashboard error carries
+`showFlash`, which htmx raises before `beforeSwap` runs, so the listener stays
+silent rather than double-reporting; a failure carrying no flash gets a
+status-code toast rather than silence.
 
 **Defers by one task before toasting.** htmx runs extension `onEvent` hooks
 after DOM listeners, so at listener time the `response-targets` extension has

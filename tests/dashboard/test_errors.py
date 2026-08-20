@@ -17,6 +17,7 @@ Two apps are exercised:
   on an unrouted `/dashboard/...` URL.
 """
 
+import json
 import re
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -210,8 +211,13 @@ async def test_dashboard_not_found_keeps_its_message(boom_client):
 
 
 # ---------------------------------------------------------------------------
-# htmx: fragment shape and the toast message
+# htmx: fragment shape and the toast
 # ---------------------------------------------------------------------------
+
+
+def _flash(response) -> dict:
+    """The `showFlash` payload htmx will raise from this response."""
+    return json.loads(response.headers["HX-Trigger"])["showFlash"]
 
 
 @pytest.mark.asyncio
@@ -228,28 +234,62 @@ async def test_htmx_request_gets_a_fragment_not_a_document(boom_client):
 
 
 @pytest.mark.asyncio
-async def test_error_message_header_carries_the_toast_text(boom_client):
-    """htmx discards a non-2xx body on a partial swap, so the message the toast
-    shows travels in a header the client can read without parsing HTML."""
+async def test_partial_failure_flashes_through_hx_trigger(boom_client):
+    """htmx discards a non-2xx body, but it raises `HX-Trigger` events from any
+    response - it reads that header before it decides whether to swap
+    (`tests/js/htmx-error-trigger.test.js` drives the real library to prove it).
+    So a failed partial speaks through the flash mechanism every other dashboard
+    outcome uses, rather than a header of its own."""
     r = await boom_client.get("/dashboard/conflict", headers={"HX-Request": "true"})
 
-    assert r.headers["X-Error-Message"] == "An active binding already exists"
+    flash = _flash(r)
+    assert flash["level"] == "error"
+    assert flash["body"] == "An active binding already exists"
 
 
 @pytest.mark.asyncio
-async def test_error_message_header_on_a_crash_is_generic(boom_client):
+async def test_partial_crash_flash_is_generic_and_carries_the_incident(boom_client):
     r = await boom_client.get("/dashboard/boom", headers={"HX-Request": "true"})
 
-    assert _LEAK not in r.headers["X-Error-Message"]
-    assert _incident_id(r.text) in r.headers["X-Error-Message"]
+    body = _flash(r)["body"]
+    assert _LEAK not in body
+    assert _incident_id(r.text) in body
 
 
 @pytest.mark.asyncio
-async def test_api_errors_carry_no_error_message_header(boom_client):
-    """The header is a dashboard affordance; the SDK reads the envelope."""
-    r = await boom_client.get("/api/v1/boom")
+async def test_deliberate_5xx_flash_carries_the_incident_too(boom_client):
+    """The toast is the whole of what a partial failure shows: the body is
+    discarded, so an incident id only on the page is one the operator cannot
+    read."""
+    r = await boom_client.get("/dashboard/server-error", headers={"HX-Request": "true"})
 
-    assert "X-Error-Message" not in r.headers
+    assert _incident_id(r.text) in _flash(r)["body"]
+
+
+@pytest.mark.asyncio
+async def test_boosted_failure_does_not_flash(boom_client):
+    """A boosted request swaps the error page in, which says it once already."""
+    r = await boom_client.get(
+        "/dashboard/boom", headers={"HX-Request": "true", "HX-Boosted": "true"}
+    )
+
+    assert "HX-Trigger" not in r.headers
+
+
+@pytest.mark.asyncio
+async def test_hard_load_failure_does_not_flash(boom_client):
+    """No htmx on the wire, no one to read the header."""
+    r = await boom_client.get("/dashboard/boom")
+
+    assert "HX-Trigger" not in r.headers
+
+
+@pytest.mark.asyncio
+async def test_api_errors_never_flash(boom_client):
+    """The flash is a dashboard affordance; the SDK reads the envelope."""
+    r = await boom_client.get("/api/v1/boom", headers={"HX-Request": "true"})
+
+    assert "HX-Trigger" not in r.headers
 
 
 @pytest.mark.asyncio
@@ -295,16 +335,16 @@ async def test_405_keeps_its_allow_header(boom_client):
 
 @pytest.mark.asyncio
 async def test_toast_text_survives_the_header_verbatim(boom_client):
-    """Headers are latin-1: an em dash here reaches the operator as `?`.
+    """Headers are latin-1, and this one carried an em dash to operators as `?`.
 
-    It shipped that way once (`Something went wrong ? incident a1b2c3d4`), which
-    is why the project writes ASCII hyphens and this asserts the exact string
-    rather than a substring of it.
+    `json.dumps` defaults to `ensure_ascii=True`, so routing the toast through
+    `HX-Trigger` makes the whole class unrepresentable rather than merely
+    absent - which is the reason to prefer it over a header written by hand.
     """
     r = await boom_client.get("/dashboard/boom", headers={"HX-Request": "true"})
 
     incident = _incident_id(r.text)
-    assert r.headers["X-Error-Message"] == f"Something went wrong - incident {incident}."
+    assert _flash(r)["body"] == f"Something went wrong - incident {incident}."
 
 
 @pytest.mark.asyncio
@@ -312,23 +352,35 @@ async def test_toast_text_survives_the_header_verbatim(boom_client):
     "path",
     ["/dashboard/boom", "/dashboard/conflict", "/dashboard/missing", "/dashboard/server-error"],
 )
-async def test_no_error_message_is_mangled_by_the_header(boom_client, path):
-    """`?` in a toast means a character the header could not carry."""
+async def test_every_error_header_is_ascii(boom_client, path):
+    """A `?` in a toast is a character the header could not carry.
+
+    Asserted on the wire rather than by scanning source for em dashes: this
+    holds whatever anyone types, including text interpolated from a row.
+    """
     r = await boom_client.get(path, headers={"HX-Request": "true"})
 
-    assert "?" not in r.headers["X-Error-Message"]
+    for name, value in r.headers.items():
+        assert value.isascii(), f"non-ASCII in {name}: {value!r}"
 
 
-def test_no_dash_that_a_header_cannot_carry_in_the_error_sources():
-    """The rule, where it broke: em/en dashes are latin-1-unrepresentable.
+def test_theme_boot_is_shared_not_copied():
+    """One FOUC script, included twice - `_error.html` cannot extend base.html.
 
-    A docstring saying "use ASCII hyphens" is undone by the next edit that types
-    the prettier character; the strings on this path all end up in a header.
+    As two copies, the next change to the storage key or the class names fixes
+    the page an operator sees every day and leaves the one they see when
+    something has already gone wrong.
     """
-    for name in ("src/dashboard/errors.py", "src/dashboard/static/htmx-errors.js"):
-        text = (Path(__file__).resolve().parents[2] / name).read_text()
-        offenders = [line for line in text.splitlines() if "\u2014" in line or "\u2013" in line]
-        assert not offenders, f"{name} contains em/en dashes:\n  " + "\n  ".join(offenders)
+    templates = Path(__file__).resolve().parents[2] / "src/dashboard/templates"
+    boot = templates / "_theme_boot.html"
+
+    assert boot.exists(), "the shared theme-boot partial is missing"
+    assert "co-color-scheme" in boot.read_text()
+    for name in ("base.html", "_error.html"):
+        assert "_theme_boot.html" in (templates / name).read_text(), (
+            f"{name} must include the shared partial, not carry its own copy"
+        )
+    assert "co-color-scheme" not in (templates / "_error.html").read_text()
 
 
 @pytest.mark.asyncio

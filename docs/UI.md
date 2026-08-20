@@ -122,9 +122,20 @@ The response shape follows the `HX-Request` header - `_error.html` (standalone
 document) for a hard load, `_error_body.html` (the block alone) for an htmx
 request, which lands inside an existing `<body>`. Neither extends `base.html`:
 that template needs `user`, and the session that would supply it may be what
-failed. A 5xx page carries an **incident id**, printed once and logged beside
-the traceback (`journalctl -u archiver | grep <id>`); the exception text itself
-never reaches the page.
+failed; both include `_theme_boot.html`, so the operator's colour scheme
+survives the failure. A 5xx page carries an **incident id**, printed once and
+logged beside the traceback (`journalctl -u archiver | grep <id>`); the
+exception text itself never reaches the page.
+
+A *partial* failure also carries `HX-Trigger: showFlash` - the same flash
+mechanism as any other outcome, because htmx raises those events **before** it
+decides whether to swap, so they survive a response it discards
+(`tests/js/htmx-error-trigger.test.js` drives the real library to prove it). A
+hard load has no htmx to read the header, and a boosted request swaps the page
+in, so neither carries one. Reusing the flash also makes a class of bug
+unrepresentable: `json.dumps` escapes non-ASCII, where the hand-written header
+this replaced was latin-1 and reached operators as `Something went wrong ?
+incident a1b2c3d4`.
 
 **Client - `static/htmx-errors.js`,** loaded from `base.html`. On
 `htmx:beforeSwap` for a failed response:
@@ -134,12 +145,14 @@ never reaches the page.
   visible: `DashboardNotFound` has rendered a page since long before #178, and
   every in-dashboard link to a stale ID discarded it.
 - **partial request** → the swap is left refused (a fragment must not replace
-  the screen) and the failure becomes an `error` toast. Its text comes from the
-  **`X-Error-Message`** response header, because the body is exactly what htmx
-  discards. The decision is deferred by one task: htmx runs extension `onEvent`
-  hooks *after* DOM listeners, so a form carrying `hx-target-422` has not been
-  retargeted yet - by the timeout, `detail.shouldSwap` says whether
-  response-targets claimed it, and a claimed failure is not toasted twice.
+  the screen) and the server's `showFlash` has already toasted. The listener
+  speaks only when the response carries no flash - a failure from outside
+  `/dashboard`, or one that never reached the handler - since a refused swap
+  that says nothing is the whole of this issue. That fallback is deferred by one
+  task: htmx runs extension `onEvent` hooks *after* DOM listeners, so a form
+  carrying `hx-target-422` has not been retargeted yet - by the timeout,
+  `detail.shouldSwap` says whether response-targets claimed it, and a claimed
+  failure is not toasted twice.
 
 `htmx:sendError` and `htmx:timeout` toast as well: with no response at all
 `htmx:responseError` never fires, and "the service is restarting" is the most
