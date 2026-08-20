@@ -615,6 +615,13 @@ p:last-child { margin-bottom: 0; }
   width: 100%;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
+  /* Separates the table from whatever follows — the next section heading on a
+     screen with two stacked tables (domain detail, #176), or an empty-state
+     paragraph. Screens that wrap heading+table in a `<section>` with its own
+     bottom margin are unaffected: the table is that section's last child, so
+     the two margins collapse to the larger. Likewise against `.pagination`,
+     whose `margin-top` already matches. */
+  margin-bottom: var(--space-4);
 }
 .data-table th,
 .data-table td {

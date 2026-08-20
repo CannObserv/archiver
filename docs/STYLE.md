@@ -91,7 +91,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - `.flash__more` — the `+N more` overflow counter button occupying the 4th slot when more than four persistent toasts stack; dashed-border, surface-alt pill. Click/Enter expands the overlay to reveal all (no re-collapse). Announcement is carried by the visually-hidden `#flash-announcer-assertive` / `#flash-announcer-polite` live regions (`.sr-only`), not the visible toasts.
 
 ### Data display
-- `.data-table` — standard table; applies to `<table>`.
+- `.data-table` — standard table; applies to `<table>`. Carries `margin-bottom` so it never butts against what follows (#176): the next `.section-heading` where two tables stack on one screen, or an empty-state paragraph. Screens that wrap heading+table in a `<section>` with its own bottom margin see no change — the table is that section's last child, so the margins collapse to the larger. Do **not** re-add a per-heading inline `margin-top` to compensate; that is the inline-copy pattern `.section-heading` was introduced to retire.
 - `.entity-card`, `.entity-card__header`, `.entity-card__title`, `.entity-card__meta`, `.entity-card__actions`.
 - `.eyebrow` — small uppercase kicker label above an `.entity-card__title` (e.g. the entity kind). Non-interactive; distinct from a breadcrumb.
 - `.entity-section`, `.entity-section__header`, `.entity-section__title`. `.entity-section__title` is the `<h1>` page title inside an `.entity-section__header`; section-level `<h2>`s use `.section-heading` below.
