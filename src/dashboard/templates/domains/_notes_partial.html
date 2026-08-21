@@ -8,8 +8,7 @@
    Cancel discards client-side via the textarea's `defaultValue`; no server call.
 
    Progressive enhancement: without Alpine both halves render and Save posts
-   normally through the method/action fallback (docs/UI.md Detail Screen
-   Conventions). #}
+   normally through the method/action fallback (docs/SCREENS.md). #}
 <div id="notes-section" x-data="domainNotes" style="margin-top:var(--space-4);">
   <h2 id="domain-notes-heading" tabindex="-1" class="notes-heading">Notes</h2>
 
@@ -51,7 +50,7 @@
   {% if swapped %}
   {# Swap response only: the Save button that had focus was just removed by the
      outerHTML swap, which drops keyboard focus to <body>. Move it to the
-     heading instead (docs/UI.md HTMX mutations). Never on full page load. #}
+     heading instead (docs/SCREENS.md HTMX mutations). Never on full page load. #}
   <script>
     (function () {
       var h = document.getElementById("domain-notes-heading");

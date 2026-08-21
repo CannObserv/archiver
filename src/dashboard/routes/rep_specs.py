@@ -268,7 +268,7 @@ async def update_rep_spec_document_view(
     swap) that is announced (``role="alert"``), moves focus to the heading, and
     preserves the operator's submitted text. Non-HTMX requests keep the plain
     full-page POST→303 (success) / 422 re-render (error) fallback. See
-    docs/UI.md Detail Screen Conventions.
+    docs/SCREENS.md.
 
     A spec that has acquired an assignment since the page was rendered is
     rejected here as well as in the template gate — the editor can be stale.

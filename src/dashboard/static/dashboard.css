@@ -731,6 +731,20 @@ p:last-child { margin-bottom: 0; }
   word-break: break-all;
 }
 
+/* An *authored* row of detail cells, where .detail-grid is an auto-filled one.
+   Same .detail-grid__item/__label/__value cells inside - only the container
+   differs, because the Watcher panel (archiver#181) groups its fields by
+   meaning (status at a glance, then provenance) rather than letting a grid
+   pack them by width. Wraps at narrow viewports; `min-width: 0` lets a long
+   value shrink instead of forcing the row wider than the panel. */
+.detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.detail-row > .detail-grid__item { flex: 1 1 12rem; min-width: 0; }
+
 /* ─── Filter card ────────────────────────────────────────────────────────── */
 .filter-card {
   background: var(--color-surface);
@@ -966,6 +980,73 @@ p:last-child { margin-bottom: 0; }
   border-radius: var(--radius-md);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* Row-level view/edit control, generalised from .notes-row above (#176) for the
+   Watcher panel's editable fields (#181). Same shape - the value on the left,
+   Edit or Cancel+Save on the right - but sized for a single-line control, where
+   .notes-row is sized for a rows="3" textarea. Both halves share a min-height
+   for the same reason .notes-row does: the flip must not resize the panel. */
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.field-row > .field-row__readout,
+.field-row > .form-select--sm { flex: 1 1 14rem; min-height: 32px; }
+.field-row__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+/* One editable field: its label stacked above the view/edit row, so the label
+   does not move when the row flips. Same quiet treatment as .notes-heading. */
+.field-row-group { display: flex; flex-direction: column; gap: var(--space-1); }
+.field-row__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+/* Border, radius, padding and font-size matched to the .form-select--sm it
+   swaps with, so neither the edges nor the text move on the flip. */
+.field-row__readout {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+}
+
+/* Watcher panel (#181). Was an inline style on #watcher-section, including a
+   `var(--radius)` that names no token - the panel had square corners nobody
+   had noticed. */
+.watch-panel {
+  background: var(--color-surface-alt);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+}
+/* Panel header: the pause/resume toggle, pinned to the top right inside corner.
+   flex-end rather than absolute positioning, so the control reserves its own
+   space instead of overlapping the first row when that row wraps. */
+.watch-panel__header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+/* Editable fields, one per row, below the read-only rows. */
+.watch-panel__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .code-block {

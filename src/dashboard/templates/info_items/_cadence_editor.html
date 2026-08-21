@@ -1,5 +1,31 @@
 {#
-  Cadence editor — the announced fetch cadence (archiver#158).
+  Cadence editor - the announced fetch cadence (archiver#158), as a view/edit
+  row (archiver#181).
+
+  One of the panel's editable fields, one per row below the read-only rows.
+  Follows the pattern Domains established in #176: a readout of the stored value
+  beside a row-level "Edit", flipping to the control beside "Cancel" + "Save".
+  It was a bare select plus a "Set" button, which is the only editable field on
+  the dashboard that committed without an explicit edit gesture.
+
+  Toggle is the generic `editableField` Alpine component (main.js), reached
+  through `x-ref="field"`; Cancel restores the option carrying the server-rendered
+  `selected` attribute, client-side, no server call.
+
+  Labelled "Announced cadence", not "Cadence" (CR round 1, finding 3): row one
+  of the panel leads with the interval Watcher reports *applied*, and under
+  drift the two disagree. Two fields both reading "Cadence" left no way to tell
+  which was which.
+
+  The display label is `watch.cadence` - `format_interval` of the same value the
+  select carries - and never a second lookup against `cadence_options` (CR round
+  1, finding 1): that vocabulary holds four of the intervals the schema admits,
+  so rebuilding the label here rendered `30m` beside row one's `~30 min`.
+
+  The edit half carries the inline `display:none` FOUC hint - the
+  `settings/_api_key_row.html` trade rather than the `domains/_notes_partial.html`
+  one. There is no no-JS save path to strand here: `watch-cadence` answers with
+  a bare fragment rather than a 303, and this form only ever posted over HTMX.
 
   Posts to /dashboard/info-items/{id}/watch-cadence, which writes
   info_items.watch_spec and announces it on info.registry. hx-swap="none" like
@@ -8,32 +34,69 @@
   so the panel re-renders itself once. Swapping the response in *and* firing the
   trigger would render twice.
 
-  Gated on has_active_source — cadence is Archiver's own policy, but announcing
+  Gated on has_active_source - cadence is Archiver's own policy, but announcing
   it for an unannounceable item burns a generation. Included from the `watching`
   AND `no_status` branches of _watcher_section.html: a freshly registered item
   sits in no_status until Watcher's first status frame, which is exactly when an
   operator wants to revise the cadence they just picked. `not_watching` has no
   announceable source by definition and `degraded` shows an error, so neither
-  includes this. The blank option is "delegate" — the consumer
-  applies its own default, which may be a per-domain one rather than a global
-  constant, and it is only reachable because the route replaces the document
-  instead of merging into it.
+  includes this. The blank option is "delegate" - the consumer applies its own
+  default, which may be a per-domain one rather than a global constant, and it
+  is only reachable because the route replaces the document instead of merging
+  into it.
 
   Vocabulary comes from src/dashboard/cadence.py via the route context, not a
   literal list here; the schema admits more intervals than the dropdown offers.
 #}
-<form hx-post="/dashboard/info-items/{{ item_id }}/watch-cadence"
-      hx-swap="none"
-      style="display:flex;align-items:center;gap:var(--space-1);">
-  <label for="cadence-{{ item_id }}" class="text-muted text-sm">Cadence</label>
-  <select id="cadence-{{ item_id }}"
-          name="interval"
-          class="form-select form-select--sm"
-          aria-label="Announced fetch cadence">
-    <option value=""{% if not cadence_value %} selected{% endif %}>Consumer default</option>
-    {% for value, label in cadence_options.items() %}
-    <option value="{{ value }}"{% if cadence_value == value %} selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit" class="btn btn--secondary btn--sm">Set</button>
-</form>
+{# One value, three renderings to keep in step: the readout, the option the
+   select carries, and row one's cell. `watch.cadence` is the first two.
+   Falling through to `cadence_value` covers a stored interval outside the
+   grammar, where `format_interval` yields "" - only a hand-edited row reaches
+   that, but the fallback is what keeps the readout honest instead of quietly
+   reporting a set policy as delegated. #}
+{% set cadence_display = watch.cadence or cadence_value or "Consumer default" %}
+<div class="field-row-group" x-data="editableField">
+  <label class="field-row__label" for="cadence-{{ item_id }}">Announced cadence</label>
+
+  {# View mode: the announced policy, which is not necessarily what row one
+     shows - that cell leads with the interval Watcher reports *applied*. #}
+  <div class="field-row" x-show="!editing">
+    <div class="field-row__readout">{{ cadence_display }}</div>
+    <div class="field-row__actions">
+      {# No aria-label: the <label> above is associated with the control this
+         reveals, so an added one only makes a screen reader say "announced
+         cadence" twice on tab-through (CR round 2, finding 10). #}
+      <button type="button" class="btn btn--sm btn--secondary"
+              @click="editing = true">Edit</button>
+    </div>
+  </div>
+
+  {# Edit mode. #}
+  <form class="field-row"
+        x-show="editing" style="display:none;"
+        hx-post="/dashboard/info-items/{{ item_id }}/watch-cadence"
+        hx-swap="none">
+    <select id="cadence-{{ item_id }}"
+            name="interval"
+            x-ref="field"
+            class="form-select form-select--sm">
+      <option value=""{% if not cadence_value %} selected{% endif %}>Consumer default</option>
+      {# An announced interval the dropdown does not offer is still stored policy,
+         and a control that cannot show its own value destroys it (CR round 1,
+         finding 2): with no option matching, the browser selects index 0 -
+         "Consumer default" - so Edit then Save, touching nothing, replaced the
+         policy with delegate and announced it. The route accepts this value back
+         for the same reason it is offered. #}
+      {% if cadence_value and cadence_value not in cadence_options %}
+      <option value="{{ cadence_value }}" selected>{{ cadence_display }}</option>
+      {% endif %}
+      {% for value, label in cadence_options.items() %}
+      <option value="{{ value }}"{% if cadence_value == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <div class="field-row__actions">
+      <button type="button" class="btn btn--sm btn--secondary" @click="cancelEdit()">Cancel</button>
+      <button type="submit" class="btn btn--sm btn--primary">Save</button>
+    </div>
+  </form>
+</div>

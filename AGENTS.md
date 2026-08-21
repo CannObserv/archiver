@@ -41,7 +41,7 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
 
 - `src/api/` is the HTTP contract, `src/dashboard/` the HTMX admin UI, `src/core/`
   the domain. The dashboard **clamps** paginated `limit`/`offset` where the API
-  **422s** — deliberate, see [docs/UI.md](docs/UI.md).
+  **422s** — deliberate, see [docs/SCREENS.md](docs/SCREENS.md).
 - `alembic/` is scoped to the `information` schema *inside* the archiver database.
 - `clients/python/` is the one vendored SDK — regenerated from a committed
   OpenAPI snapshot, gated by the CI `client-drift` job; never hand-edit
@@ -175,7 +175,7 @@ What the regex covers and what it deliberately does not:
 
 **Dashboard living docs:** update the doc a change touches in the same commit —
 PAGES.md (templates, routes), COMPONENTS.md (dashboard JS), UI.md (shared
-patterns), STYLE.md (styling). Failing to is a CR blocker; per-trigger detail in
+patterns), SCREENS.md (detail screens), STYLE.md (styling). Failing to is a CR blocker; per-trigger detail in
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 
 **Logging:**
@@ -250,4 +250,4 @@ the hook's gates and log paths: [docs/SKILLS.md](docs/SKILLS.md).
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — wheelhouse reproducibility, dev-server internals, full env-var reference
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — changelog trigger, journald logging contract, error-envelope examples
 - [docs/SKILLS.md](docs/SKILLS.md) — skill inventory, trigger table, SessionStart hook mechanics
-- The dashboard docs — [docs/UI.md](docs/UI.md) URL map, auth, HTMX, detail-screen conventions; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory; [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) the InfoItem hub screen — its five sections, partials, swap targets; [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility
+- The dashboard docs — [docs/UI.md](docs/UI.md) URL map, auth, HTMX, and the detail-screen doc it indexes; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory; [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) the InfoItem hub screen — its five sections, partials, swap targets; [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility

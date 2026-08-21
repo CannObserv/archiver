@@ -83,6 +83,65 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * Row-level view/edit toggle for a single editable field (archiver#181).
+     *
+     * The generalisation of `domainNotes`: same `editing` flag and same
+     * discard-on-cancel, but agnostic about the control it wraps, so the
+     * Watcher panel's editable rows can share one component as more fields
+     * join cadence. The control is reached through `$refs.field`.
+     *
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("editableField", function () {
+        return {
+            editing: false,
+
+            /**
+             * Leave edit mode without a server call, discarding the unsaved value.
+             */
+            cancelEdit: function () {
+                this.editing = false;
+                var el = this.$refs.field;
+                if (!el) { return; }
+                if (!el.options) {
+                    el.value = el.defaultValue;
+                    return;
+                }
+                // <select> has no `defaultValue`. The server-rendered choice
+                // is the `selected` ATTRIBUTE - read that rather than the
+                // `defaultSelected` property, which jsdom does not implement,
+                // so this branch stays covered by the vitest suite.
+                var i = 0;
+                if (el.multiple) {
+                    // No single "the" selection to restore, so the per-option
+                    // walk is the only option and is safe here.
+                    while (i < el.options.length) {
+                        el.options[i].selected = el.options[i].hasAttribute("selected");
+                        i += 1;
+                    }
+                    return;
+                }
+                // Single select: assign selectedIndex once. Walking
+                // `option.selected` instead is order-dependent, and its last
+                // iteration deselecting an option asks the select for a reset,
+                // which lands on index 0 - so Cancel restored "Consumer
+                // default" over an announced cadence. 0 is also the right
+                // fallback when the server marked nothing selected, because
+                // index 0 is what it rendered.
+                var restored = 0;
+                while (i < el.options.length) {
+                    if (el.options[i].hasAttribute("selected")) {
+                        restored = i;
+                        break;
+                    }
+                    i += 1;
+                }
+                el.selectedIndex = restored;
+            }
+        };
+    });
+
+    /**
      * API key reveal — shows the raw key once after creation.
      * @returns {object} Alpine component data.
      */
