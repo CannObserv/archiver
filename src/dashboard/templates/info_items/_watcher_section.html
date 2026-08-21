@@ -1,57 +1,64 @@
-{# Section 3 Watcher panel — loaded async via hx-get /watcher-section.
-   Renders from LOCAL state (watch_status cache + item.watch_spec — archiver#151) and
+{# Section 3 Watcher panel - loaded async via hx-get /watcher-section.
+   Renders from LOCAL state (watch_status cache + item.watch_spec - archiver#151) and
    reaches Watcher not at all (archiver#142): the SDK actions retired with the HTTP edge.
-   What is left is Archiver's own control plane — pause/resume and cadence — which write
+   What is left is Archiver's own control plane - pause/resume and cadence - which write
    locally and announce.
    Root div carries hx-trigger="watcherUpdated from:body" so a pause/resume or cadence
    response (which sends HX-Trigger: {"watcherUpdated":{}}) causes this section to
    self-refresh without an explicit swap target.
    States: not_watching (outside the announced set) / no_status (announced, Watcher has never
-   reported — distinct from paused and healthy) / watching / degraded (a local write failed). #}
+   reported - distinct from paused and healthy) / watching / degraded (a local write failed).
+
+   Layout, archiver#181: a header holding the pause toggle at the top right, then
+   two *authored* .detail-row rows - status at a glance, then provenance - then the
+   editable fields one per row. The rows are authored rather than auto-filled
+   because grouping by meaning is the whole point: an operator reading the panel
+   asks "healthy, how often, when next" before asking anything else. #}
 <div id="watcher-section"
+     class="watch-panel"
      aria-live="polite" aria-atomic="false"
      hx-get="/dashboard/info-items/{{ item_id }}/watcher-section"
      hx-trigger="watcherUpdated from:body"
-     hx-swap="outerHTML"
-     style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
+     hx-swap="outerHTML">
 
 {% if state == "not_watching" %}
   {# No "Begin Watching" button since archiver#142: watching is not an action any
      more, it is a consequence of being in the announced set. Say what closes the
      gap instead of offering a control that cannot exist. #}
   <div style="display:flex;align-items:center;gap:var(--space-2);">
-    <span class="text-muted text-sm">Not watching — bind an active source with extraction specs to announce this item.</span>
+    <span class="text-muted text-sm">Not watching - bind an active source with extraction specs to announce this item.</span>
   </div>
 
 {% elif state == "degraded" %}
-  {# `degraded` is unreachable from anything Watcher does — since archiver#142
+  {# `degraded` is unreachable from anything Watcher does - since archiver#142
      there is no outbound call to fail. The only way in is a local write failing,
      so the copy must not send the operator to check Watcher (CR round 1, finding 1). #}
-  <p class="text-muted text-sm" style="margin:0;">Couldn't update this item{% if error_message %} — {{ error_message }}{% endif %}.</p>
+  <p class="text-muted text-sm" style="margin:0;">Couldn't update this item{% if error_message %} - {{ error_message }}{% endif %}.</p>
 
 {% elif state == "no_status" %}
-  <div class="detail-grid" style="margin-bottom:var(--space-3);">
+  {# Announced, never reported. Every provenance field is empty by construction,
+     so this state gets the status row alone rather than a second row of dashes.
+     No pause toggle either: `applied_active` is None here, so the button could
+     not name its own effect - "Pause" and "Resume" would both be guesses. #}
+  <div class="detail-row">
     <div class="detail-grid__item">
-      <span class="detail-grid__label">Status</span>
+      <span class="detail-grid__label">Health</span>
       <span class="detail-grid__value">
         <span class="badge badge--muted" style="font-size:0.7rem;">NO STATUS YET</span>
       </span>
     </div>
-    {% if watch.cadence %}
     <div class="detail-grid__item">
       <span class="detail-grid__label">Cadence</span>
-      <span class="detail-grid__value text-sm text-muted">{{ watch.cadence }}</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.cadence or "-" }}</span>
     </div>
-    {% endif %}
-    {% if watch.last_changed_ago %}
     <div class="detail-grid__item">
-      <span class="detail-grid__label">Last changed</span>
-      <span class="detail-grid__value text-sm text-muted">{{ watch.last_changed_ago }}</span>
+      <span class="detail-grid__label">Next due</span>
+      <span class="detail-grid__value text-sm text-muted">-</span>
     </div>
-    {% endif %}
   </div>
   <p class="text-muted text-sm" style="margin:0 0 var(--space-3);">Watcher hasn't reported on this item yet.</p>
-  <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
+
+  <div class="watch-panel__fields">
     {# Cadence is editable here too, not only once Watcher has reported (CR
        round 1, finding 1). A freshly registered item sits in no_status until
        the first status frame arrives, which is exactly when an operator is
@@ -63,13 +70,35 @@
   </div>
 
 {% else %}{# state == "watching" #}
-  <div class="detail-grid" style="margin-bottom:var(--space-3);">
+  {# Panel header. Pause/resume needs an announceable source (CR round 1,
+     finding 3): announcing a pause for an item that cannot announce live emits
+     a tombstone and burns a generation - surfacing as drift on this panel for
+     an item where nothing is wrong. Since archiver#142 this is also the state
+     key, so the gate and the state agree by construction rather than by
+     coincidence, and the header is empty only in a state this branch cannot
+     reach. #}
+  {% if has_active_source %}
+  <div class="watch-panel__header">
+    <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
+          hx-swap="none">
+      <input type="hidden" name="active" value="{{ 'false' if watch.applied_active else 'true' }}">
+      <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watch.applied_active else 'Resume' }}</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {# Row one - status at a glance. Cells render unconditionally so the row keeps
+     its three slots; an authored row that reflows as fields come and go is an
+     auto-filled grid with extra steps. #}
+  <div class="detail-row">
     <div class="detail-grid__item">
       <span class="detail-grid__label">Health</span>
       <span class="detail-grid__value">
         {% if watch.health %}
         <span class="badge badge--{{ 'success' if watch.health_ok else 'danger' }}"
               style="font-size:0.7rem;">{{ watch.health.upper() }}</span>
+        {% else %}
+        <span class="text-sm text-muted">-</span>
         {% endif %}
         {% if watch.applied_active is false %}
         <span class="badge badge--muted" style="font-size:0.7rem;margin-left:var(--space-1);">Paused</span>
@@ -80,50 +109,43 @@
       </span>
     </div>
 
-    {% if watch.last_attempt_ago %}
-    <div class="detail-grid__item">
-      <span class="detail-grid__label">Last attempted</span>
-      <span class="detail-grid__value text-sm text-muted">{{ watch.last_attempt_ago }}</span>
-    </div>
-    {% endif %}
-
-    {% if watch.last_observed_ago %}
-    <div class="detail-grid__item">
-      <span class="detail-grid__label">Last observed</span>
-      <span class="detail-grid__value text-sm text-muted">{{ watch.last_observed_ago }}</span>
-    </div>
-    {% endif %}
-
-    {% if watch.last_changed_ago %}
-    <div class="detail-grid__item">
-      <span class="detail-grid__label">Last changed</span>
-      <span class="detail-grid__value text-sm text-muted">{{ watch.last_changed_ago }}</span>
-    </div>
-    {% endif %}
-
-    {% if watch.applied_cadence or watch.cadence %}
+    {# Applied first, announced as the fallback: this cell answers "how often is
+       it actually running". The editable row below answers "what did we ask
+       for" - which is why both exist and why the drift badge sits here. #}
     <div class="detail-grid__item">
       <span class="detail-grid__label">Cadence</span>
       <span class="detail-grid__value text-sm text-muted">
-        {{ watch.applied_cadence or watch.cadence }}
+        {{ watch.applied_cadence or watch.cadence or "-" }}
         {% if watch.cadence_drift %}
         <span class="badge badge--danger" style="font-size:0.65rem;">announced {{ watch.cadence }}</span>
         {% endif %}
       </span>
     </div>
-    {% endif %}
 
-    {% if watch.next_due %}
     <div class="detail-grid__item">
       <span class="detail-grid__label">Next due</span>
-      <span class="detail-grid__value text-sm {{ 'text-danger' if watch.overdue else 'text-muted' }}">{{ watch.next_due }}</span>
+      <span class="detail-grid__value text-sm {{ 'text-danger' if watch.overdue else 'text-muted' }}">{{ watch.next_due or "-" }}</span>
     </div>
-    {% endif %}
+  </div>
 
-    {% if watch.drift %}
+  {# Row two - provenance. "Last changed" left the panel in archiver#181: the
+     two authored rows hold six fields, and Revision History further down this
+     same screen already carries every `captured_at`. #}
+  <div class="detail-row">
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Last attempted</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.last_attempt_ago or "-" }}</span>
+    </div>
+
+    <div class="detail-grid__item">
+      <span class="detail-grid__label">Last observed</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.last_observed_ago or "-" }}</span>
+    </div>
+
     <div class="detail-grid__item">
       <span class="detail-grid__label">Announcement</span>
       <span class="detail-grid__value text-sm text-muted">
+        {% if watch.drift %}
         gen {{ watch.drift.announced }} announced · {{ watch.drift.applied }} applied
         {% if watch.drift.in_drift %}
         <span class="badge badge--{{ 'danger' if watch.drift.alert else 'muted' }}" style="font-size:0.65rem;">drift{% if watch.drift.age %}, {{ watch.drift.age }}{% endif %}</span>
@@ -131,26 +153,12 @@
         {# Watcher applied a generation this registry no longer knows it published. #}
         <span class="badge badge--danger" style="font-size:0.65rem;">ahead of registry</span>
         {% else %}✓{% endif %}
+        {% else %}-{% endif %}
       </span>
     </div>
-    {% endif %}
   </div>
 
-  <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
-    {# Pause/resume needs an announceable source (CR round 1, finding 3):
-       announcing a pause for an item that cannot announce live emits a tombstone
-       and burns a generation — surfacing as drift on this panel for an item where
-       nothing is wrong. Since archiver#142 this is also the state key, so the
-       gate and the state agree by construction rather than by coincidence. #}
-    {% if has_active_source %}
-    <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
-          hx-swap="none"
-          style="display:inline;">
-      <input type="hidden" name="active" value="{{ 'false' if watch.applied_active else 'true' }}">
-      <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watch.applied_active else 'Resume' }}</button>
-    </form>
-    {% endif %}
-
+  <div class="watch-panel__fields">
     {# Same announceability gate as the pause toggle above (CR round 2, finding
        9): a cadence edit on an item that cannot announce live emits a tombstone
        and burns a generation, which then reads as drift here. #}

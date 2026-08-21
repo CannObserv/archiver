@@ -83,6 +83,40 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * Row-level view/edit toggle for a single editable field (archiver#181).
+     *
+     * The generalisation of `domainNotes`: same `editing` flag and same
+     * discard-on-cancel, but agnostic about the control it wraps, so the
+     * Watcher panel's editable rows can share one component as more fields
+     * join cadence. The control is reached through `$refs.field`.
+     *
+     * @returns {object} Alpine component data.
+     */
+    window.Alpine.data("editableField", function () {
+        return {
+            editing: false,
+
+            /**
+             * Leave edit mode without a server call, discarding the unsaved value.
+             */
+            cancelEdit: function () {
+                this.editing = false;
+                var el = this.$refs.field;
+                if (!el) { return; }
+                if (el.options) {
+                    // <select> has no `defaultValue`; the server-rendered choice
+                    // lives on each option's `defaultSelected` instead.
+                    for (var i = 0; i < el.options.length; i += 1) {
+                        el.options[i].selected = el.options[i].defaultSelected;
+                    }
+                } else {
+                    el.value = el.defaultValue;
+                }
+            }
+        };
+    });
+
+    /**
      * API key reveal — shows the raw key once after creation.
      * @returns {object} Alpine component data.
      */

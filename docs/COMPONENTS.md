@@ -28,6 +28,7 @@ load and are wired only by their `<script>` tag in `base.html`.
 | `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
 | `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
 | `domainNotes` | `main.js` | Edit/view toggle for the notes row in the domain detail header panel (#176). Cancel resets the textarea to its `defaultValue`. |
+| `editableField` | `main.js` | Row-level edit/view toggle for a single field, agnostic about the control it wraps (#181). The Watcher panel's editable rows use it. Cancel restores the server-rendered value through `$refs.field`. |
 | `registerWizard` | `main.js` | 4-step registration wizard state: step navigation, field state synced from server-rendered values in `init()` (every `x-model` field must be synced there or validation re-renders wipe it - #53), rolling step-summary bar getters (`urlHostname`, `domainSummary`, `selectorSummary`). |
 | `previewNameDispatch` | `main.js` | One-shot dispatcher: bubbles a `preview-name` event from a JSON data island inside the preview-result fragment. |
 | `urlCheckDispatch` | `main.js` | One-shot dispatcher (#53): bubbles a `url-check` event (`{hostname, case, domain_known}`) from a JSON data island inside the `_url_check.html` fragment; feeds the wizard's rolling summary bar. |
@@ -68,6 +69,32 @@ Edit/view toggle for the operator-notes row in the Domain detail header panel.
 **Usage:** `x-data="domainNotes"` on `#notes-section` in `domains/_notes_partial.html`. View mode (`x-show="!editing"`) renders the stored notes in a `.notes-readout` beside an Edit button; edit mode (`x-show="editing"`) reveals `<textarea x-ref="notesBox">` beside Cancel + Save. Save posts via HTMX (`hx-target="#notes-section" hx-swap="outerHTML"`), and the returned partial re-initialises with `editing: false` - so a saved edit lands back in view mode without any client-side bookkeeping. The edit form deliberately carries **no** inline `display:none` FOUC hint - unlike `apiKeyRow`, whose row has no no-JS edit path to lose. Hiding it inline would also hide it when Alpine never runs, stranding the `method`/`action` fallback; both halves rendering for a frame is the price of Save still working without JS, and the route answers a non-HTMX POST with a 303 rather than a bare fragment.
 
 `defaultValue` is the right canonical source here, where `sourceSpecsCard` needs a JSON data island: notes have no validation-error re-render path, so the server-rendered value is always the stored one.
+
+## `editableField`
+
+Row-level edit/view toggle for a single editable field. The generalisation of
+`domainNotes`: same `editing` flag and same discard-on-cancel, but with no
+opinion about the control it wraps, so several fields on one panel can share it.
+
+**State:**
+- `editing: boolean` - whether the row shows the control instead of the read-only readout.
+
+**Methods:**
+- `cancelEdit()` - set `editing = false` without a server call and restore the server-rendered value through `$refs.field`. A `<select>` has no `defaultValue`, so it restores each option's `defaultSelected` instead; anything else falls back to `el.value = el.defaultValue`.
+
+**Usage:** `x-data="editableField"` on the `.field-row-group` wrapper in
+`info_items/_cadence_editor.html`. View mode (`x-show="!editing"`) renders the
+current cadence label in a `.field-row__readout` beside Edit; edit mode
+(`x-show="editing"`) reveals `<select x-ref="field">` beside Cancel + Save. Save
+posts over HTMX with `hx-swap="none"`, and the response's
+`HX-Trigger: {"watcherUpdated":{}}` re-renders `#watcher-section` once - so a
+saved edit lands back in view mode because the whole panel is replaced, not
+because the component reset itself.
+
+Unlike `domainNotes`, the edit half **does** carry the inline `display:none`
+FOUC hint - the `apiKeyRow` trade. There is no no-JS save path to strand:
+`watch-cadence` answers with a bare fragment rather than a 303, and the form
+only ever posted over HTMX.
 
 ## `apiKeyReveal`
 

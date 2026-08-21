@@ -1,5 +1,21 @@
 {#
-  Cadence editor — the announced fetch cadence (archiver#158).
+  Cadence editor - the announced fetch cadence (archiver#158), as a view/edit
+  row (archiver#181).
+
+  One of the panel's editable fields, one per row below the read-only rows.
+  Follows the pattern Domains established in #176: a readout of the stored value
+  beside a row-level "Edit", flipping to the control beside "Cancel" + "Save".
+  It was a bare select plus a "Set" button, which is the only editable field on
+  the dashboard that committed without an explicit edit gesture.
+
+  Toggle is the generic `editableField` Alpine component (main.js), reached
+  through `x-ref="field"`; Cancel restores each option's `defaultSelected`
+  client-side, no server call.
+
+  The edit half carries the inline `display:none` FOUC hint - the
+  `settings/_api_key_row.html` trade rather than the `domains/_notes_partial.html`
+  one. There is no no-JS save path to strand here: `watch-cadence` answers with
+  a bare fragment rather than a 303, and this form only ever posted over HTMX.
 
   Posts to /dashboard/info-items/{id}/watch-cadence, which writes
   info_items.watch_spec and announces it on info.registry. hx-swap="none" like
@@ -8,32 +24,51 @@
   so the panel re-renders itself once. Swapping the response in *and* firing the
   trigger would render twice.
 
-  Gated on has_active_source — cadence is Archiver's own policy, but announcing
+  Gated on has_active_source - cadence is Archiver's own policy, but announcing
   it for an unannounceable item burns a generation. Included from the `watching`
   AND `no_status` branches of _watcher_section.html: a freshly registered item
   sits in no_status until Watcher's first status frame, which is exactly when an
   operator wants to revise the cadence they just picked. `not_watching` has no
   announceable source by definition and `degraded` shows an error, so neither
-  includes this. The blank option is "delegate" — the consumer
-  applies its own default, which may be a per-domain one rather than a global
-  constant, and it is only reachable because the route replaces the document
-  instead of merging into it.
+  includes this. The blank option is "delegate" - the consumer applies its own
+  default, which may be a per-domain one rather than a global constant, and it
+  is only reachable because the route replaces the document instead of merging
+  into it.
 
   Vocabulary comes from src/dashboard/cadence.py via the route context, not a
   literal list here; the schema admits more intervals than the dropdown offers.
 #}
-<form hx-post="/dashboard/info-items/{{ item_id }}/watch-cadence"
-      hx-swap="none"
-      style="display:flex;align-items:center;gap:var(--space-1);">
-  <label for="cadence-{{ item_id }}" class="text-muted text-sm">Cadence</label>
-  <select id="cadence-{{ item_id }}"
-          name="interval"
-          class="form-select form-select--sm"
-          aria-label="Announced fetch cadence">
-    <option value=""{% if not cadence_value %} selected{% endif %}>Consumer default</option>
-    {% for value, label in cadence_options.items() %}
-    <option value="{{ value }}"{% if cadence_value == value %} selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit" class="btn btn--secondary btn--sm">Set</button>
-</form>
+<div class="field-row-group" x-data="editableField">
+  <span class="field-row__label" id="cadence-label-{{ item_id }}">Cadence</span>
+
+  {# View mode: the announced policy, which is not necessarily what row one
+     shows - that cell leads with the interval Watcher reports *applied*. #}
+  <div class="field-row" x-show="!editing">
+    <div class="field-row__readout">{{ cadence_label }}</div>
+    <div class="field-row__actions">
+      <button type="button" class="btn btn--sm btn--secondary"
+              @click="editing = true"
+              aria-label="Edit announced cadence">Edit</button>
+    </div>
+  </div>
+
+  {# Edit mode. #}
+  <form class="field-row"
+        x-show="editing" style="display:none;"
+        hx-post="/dashboard/info-items/{{ item_id }}/watch-cadence"
+        hx-swap="none">
+    <select name="interval"
+            x-ref="field"
+            class="form-select form-select--sm"
+            aria-labelledby="cadence-label-{{ item_id }}">
+      <option value=""{% if not cadence_value %} selected{% endif %}>Consumer default</option>
+      {% for value, label in cadence_options.items() %}
+      <option value="{{ value }}"{% if cadence_value == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <div class="field-row__actions">
+      <button type="button" class="btn btn--sm btn--secondary" @click="cancelEdit()">Cancel</button>
+      <button type="submit" class="btn btn--sm btn--primary">Save</button>
+    </div>
+  </form>
+</div>

@@ -1078,6 +1078,7 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
         last_changed_at=last_changed_at,
         now=datetime.now(UTC),
     )
+    cadence_value = (item.watch_spec or {}).get("interval") or ""
     return {
         "item_id": str(item.info_item_id),
         "state": watch["state"],
@@ -1090,7 +1091,13 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
         # announceable source by definition, and ``degraded`` shows an error.
         # ``cadence_value`` is the announced interval, "" meaning delegate.
         "cadence_options": CADENCE_LABELS,
-        "cadence_value": (item.watch_spec or {}).get("interval") or "",
+        "cadence_value": cadence_value,
+        # The view half of the editable row (archiver#181) reads the same
+        # vocabulary the select offers, so a readout never shows a raw `6h`.
+        # An interval outside the dashboard's subset - the API admits the whole
+        # grammar - falls back to itself rather than to "Consumer default",
+        # which would misreport a set policy as a delegated one.
+        "cadence_label": CADENCE_LABELS.get(cadence_value, cadence_value) or "Consumer default",
     }
 
 
