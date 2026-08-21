@@ -183,7 +183,14 @@ async def test_dashboard_repeat_visit_emits_no_app_user_write(client, session, t
         event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
 
     assert response.status_code == 200
-    writes = [s for s in statements if "app_users" in s and "SELECT" not in s.split("\n")[0]]
+    # A listener that captured nothing would pass the write assertion for the
+    # wrong reason, so prove it was live before trusting its silence.
+    assert statements, "before_cursor_execute captured nothing - listener not live"
+    writes = [
+        s
+        for s in statements
+        if "app_users" in s and s.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
+    ]
     assert writes == []
 
 
@@ -199,20 +206,39 @@ async def test_dashboard_read_only_visit_persists_app_user(test_engine, committe
         async with factory() as db:
             yield db
 
-    app.dependency_overrides[get_db_session] = _real_session
-    try:
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as http:
-            response = await http.get(
-                "/dashboard/health",
-                headers={"X-ExeDev-UserID": "ext-persist", "X-ExeDev-Email": "persist@example.com"},
-            )
-    finally:
-        app.dependency_overrides.pop(get_db_session, None)
+    async def _visit(email: str):
+        app.dependency_overrides[get_db_session] = _real_session
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as http:
+                return await http.get(
+                    "/dashboard/health",
+                    headers={"X-ExeDev-UserID": "ext-persist", "X-ExeDev-Email": email},
+                )
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
-    assert response.status_code == 200
-    async with factory() as db:
-        result = await db.execute(select(AppUser).where(AppUser.external_id == "ext-persist"))
-        user = result.scalar_one_or_none()
-        assert user is not None
-        committed_rows.append((AppUser, user.id))
+    async def _stored() -> AppUser | None:
+        async with factory() as db:
+            result = await db.execute(select(AppUser).where(AppUser.external_id == "ext-persist"))
+            return result.scalar_one_or_none()
+
+    first = await _visit("persist@example.com")
+    created = await _stored()
+    # Register cleanup before asserting. The row is really committed, so a
+    # failing assertion below would otherwise leak it into every later test.
+    if created is not None:
+        committed_rows.append((AppUser, created.id))
+
+    assert first.status_code == 200
+    assert created is not None
+    assert created.email == "persist@example.com"
+
+    # The other write path: a known external_id whose email drifted. That
+    # update has to commit as well, or the new address is lost at session close.
+    second = await _visit("moved@example.com")
+    moved = await _stored()
+
+    assert second.status_code == 200
+    assert moved is not None
+    assert moved.email == "moved@example.com"

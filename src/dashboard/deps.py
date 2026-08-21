@@ -25,7 +25,7 @@ async def get_dashboard_user(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
 ) -> AppUser:
-    """Resolve the current operator from exe.dev proxy headers, upsert into DB.
+    """Resolve the current operator from exe.dev proxy headers, writing only on change.
 
     Raises ``DashboardAuthRequired`` (307 redirect) when either header is
     absent.  Email is updated if it changed since the last login.
