@@ -35,28 +35,30 @@
   {% if siblings %}
   <div style="margin-top:var(--space-3);">
     <h2>Other Sources at This URL ({{ siblings | length }}{% if siblings_has_more %}+{% endif %})</h2>
-    <table class="data-table" aria-label="Other sources at this URL">
-      <thead>
-        <tr>
-          <th class="data-table__th">Source</th>
-          <th class="data-table__th">Created</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for sib in siblings %}
-        <tr>
-          <td class="data-table__cell">
-            <a href="/dashboard/info-sources/{{ sib.info_source_id }}">
-              <code class="text-sm">{{ sib.info_source_id }}</code>
-            </a>
-          </td>
-          <td class="data-table__cell data-table__cell--muted">
-            {{ sib.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Other sources at this URL">
+      <table class="data-table" aria-label="Other sources at this URL">
+        <thead>
+          <tr>
+            <th class="data-table__th">Source</th>
+            <th class="data-table__th">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sib in siblings %}
+          <tr>
+            <td class="data-table__cell">
+              <a href="/dashboard/info-sources/{{ sib.info_source_id }}">
+                <code class="text-sm">{{ sib.info_source_id }}</code>
+              </a>
+            </td>
+            <td class="data-table__cell data-table__cell--muted">
+              {{ sib.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
   {% endif %}
 
@@ -64,31 +66,33 @@
   <div style="margin-top:var(--space-3);">
     <h2>Bound Information Items{% if bindings %} ({{ bindings | length }}){% endif %}</h2>
     {% if bindings %}
-    <table class="data-table" aria-label="Bound Information Items">
-      <thead>
-        <tr>
-          <th class="data-table__th">Item</th>
-          <th class="data-table__th">Bound</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for binding in bindings %}
-        {% set item = items_by_id.get(binding.info_item_id) %}
-        <tr>
-          <td class="data-table__cell">
-            {% if item %}
-            <a href="/dashboard/info-items/{{ binding.info_item_id }}">{{ item.name }}</a>
-            {% else %}
-            <span class="text-muted">{{ binding.info_item_id }}</span>
-            {% endif %}
-          </td>
-          <td class="data-table__cell data-table__cell--muted">
-            {{ binding.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Bound Information Items">
+      <table class="data-table" aria-label="Bound Information Items">
+        <thead>
+          <tr>
+            <th class="data-table__th">Item</th>
+            <th class="data-table__th">Bound</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for binding in bindings %}
+          {% set item = items_by_id.get(binding.info_item_id) %}
+          <tr>
+            <td class="data-table__cell">
+              {% if item %}
+              <a href="/dashboard/info-items/{{ binding.info_item_id }}">{{ item.name }}</a>
+              {% else %}
+              <span class="text-muted">{{ binding.info_item_id }}</span>
+              {% endif %}
+            </td>
+            <td class="data-table__cell data-table__cell--muted">
+              {{ binding.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <p class="text-muted">No active bindings.</p>
     {% endif %}
@@ -98,40 +102,42 @@
   <div style="margin-top:var(--space-3);">
     <h2>Revision History{% if revisions %} ({{ revisions | length }}){% endif %}</h2>
     {% if revisions %}
-    <table class="data-table" aria-label="Revision history">
-      <thead>
-        <tr>
-          <th class="data-table__th">Fingerprint</th>
-          <th class="data-table__th">Captured</th>
-          <th class="data-table__th">Cache</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for rev in revisions %}
-        <tr>
-          <td class="data-table__cell">
-            <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
-              <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
-            </a>
-          </td>
-          <td class="data-table__cell data-table__cell--muted">
-            {{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}
-          </td>
-          <td class="data-table__cell">
-            {% if rev.content_cache_uri %}
-              {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
-              <span class="status-pill status-pill--expired">expired</span>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Revision history">
+      <table class="data-table" aria-label="Revision history">
+        <thead>
+          <tr>
+            <th class="data-table__th">Fingerprint</th>
+            <th class="data-table__th">Captured</th>
+            <th class="data-table__th">Cache</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rev in revisions %}
+          <tr>
+            <td class="data-table__cell">
+              <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
+                <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
+              </a>
+            </td>
+            <td class="data-table__cell data-table__cell--muted">
+              {{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            </td>
+            <td class="data-table__cell">
+              {% if rev.content_cache_uri %}
+                {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
+                <span class="status-pill status-pill--expired">expired</span>
+                {% else %}
+                <span class="status-pill status-pill--cached">cached</span>
+                {% endif %}
               {% else %}
-              <span class="status-pill status-pill--cached">cached</span>
+              <span class="status-pill status-pill--missing">—</span>
               {% endif %}
-            {% else %}
-            <span class="status-pill status-pill--missing">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <p class="text-muted">No revisions captured yet.</p>
     {% endif %}

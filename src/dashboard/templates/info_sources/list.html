@@ -26,32 +26,34 @@
   </div>
 
   {% if sources %}
-  <table class="data-table" aria-label="Information Sources">
-    <thead>
-      <tr>
-        <th class="data-table__th">URL</th>
-        <th class="data-table__th">ID</th>
-        <th class="data-table__th">Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for src in sources %}
-      <tr>
-        <td class="data-table__cell">
-          <a href="/dashboard/info-sources/{{ src.info_source_id }}">
-            <code class="text-sm">{{ src.url }}</code>
-          </a>
-        </td>
-        <td class="data-table__cell data-table__cell--muted">
-          <code class="text-sm">{{ src.info_source_id }}</code>
-        </td>
-        <td class="data-table__cell data-table__cell--muted">
-          {{ src.created_at.strftime('%Y-%m-%d') }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Information Sources">
+    <table class="data-table" aria-label="Information Sources">
+      <thead>
+        <tr>
+          <th class="data-table__th">URL</th>
+          <th class="data-table__th">ID</th>
+          <th class="data-table__th">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for src in sources %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/info-sources/{{ src.info_source_id }}">
+              <code class="text-sm">{{ src.url }}</code>
+            </a>
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            <code class="text-sm">{{ src.info_source_id }}</code>
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ src.created_at.strftime('%Y-%m-%d') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {# Pagination #}
   <div class="pagination">

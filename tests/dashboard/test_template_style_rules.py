@@ -184,3 +184,72 @@ def test_the_content_column_can_shrink_below_its_contents() -> None:
 
     assert "min-width: 0" in main, "a flex item that cannot shrink widens the page"
     assert "overflow-x" in main, "something still has to contain a table wider than the column"
+
+
+# ---------------------------------------------------------------------------
+# Every data table scrolls in its own box (archiver#182)
+#
+# `.data-table` has a large min-content width and will not shrink below it. Left
+# unwrapped it pushed the width outward until something contained it - which,
+# before archiver#181, was nothing, so the table's width became the page's. #181
+# stopped that at `.main-content`, but a column-wide scroll takes every sibling
+# with it. The table is the thing that overflows, so the table is what scrolls.
+# ---------------------------------------------------------------------------
+
+_DATA_TABLE_TAG = re.compile(r"<table[^>]*\bclass=\"[^\"]*\bdata-table\b[^\"]*\"[^>]*>")
+_SCROLL_TAG = re.compile(r"<div[^>]*\bclass=\"[^\"]*\btable-scroll\b[^\"]*\"[^>]*>")
+_SCROLL_OPEN = re.compile(_SCROLL_TAG.pattern + r"\s*$", re.S)
+
+
+def _data_table_sites() -> list[tuple[Path, str]]:
+    """(path, text-before-the-tag) for every `.data-table` in the template tree."""
+    sites = []
+    for path in _template_files():
+        text = path.read_text()
+        for match in _DATA_TABLE_TAG.finditer(text):
+            sites.append((path, text[: match.start()]))
+    return sites
+
+
+def test_data_tables_exist() -> None:
+    """Non-vacuity: a guard that walks nothing passes forever."""
+    assert len(_data_table_sites()) > 10
+
+
+def test_every_data_table_sits_in_a_scroll_container() -> None:
+    """The wrapper must open immediately before the table, nothing between.
+
+    Checked positionally rather than by counting, because a file with two tables
+    and one wrapper would satisfy a count while leaving one table unwrapped.
+    """
+    offenders = [
+        str(path.relative_to(_TEMPLATES))
+        for path, before in _data_table_sites()
+        if not _SCROLL_OPEN.search(before)
+    ]
+    assert not offenders, "`.data-table` outside a `.table-scroll`:\n  " + "\n  ".join(offenders)
+
+
+def test_the_scroll_container_is_reachable_by_keyboard() -> None:
+    """A scrollable region that only a mouse can scroll fails WCAG 2.1.1.
+
+    Browsers give keyboard scrolling to a scroll container only when it can take
+    focus, so the wrapper carries `tabindex="0"`; focusable *and* unnamed is its
+    own defect, so it carries a role and a label too. Static rather than applied
+    by script: without JS the tab stop is a harmless extra, while without the
+    tab stop the content is unreachable.
+    """
+    required = ('tabindex="0"', 'role="region"', "aria-label")
+    unreachable = []
+    for path in _template_files():
+        for tag in _SCROLL_TAG.findall(path.read_text()):
+            if any(bit not in tag for bit in required):
+                unreachable.append(f"{path.relative_to(_TEMPLATES)} :: {tag[:80]}")
+    assert not unreachable, "scroll container not keyboard-reachable:\n  " + "\n  ".join(
+        unreachable
+    )
+
+
+def test_the_scroll_container_actually_scrolls() -> None:
+    """The class the templates lean on has to carry the overflow."""
+    assert "overflow-x" in _rule(".table-scroll", _CSS.read_text())

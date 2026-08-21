@@ -58,50 +58,52 @@
     {% if iis_rows %}
     {# Wrap table + swap panel in a single Alpine component for toggle #}
     <div x-data="{swapOpen:false}">
-      <table class="data-table" aria-label="Bound Information Sources" style="margin-bottom:var(--space-3);">
-        <thead>
-          <tr>
-            <th class="data-table__th">URL</th>
-            <th class="data-table__th">Domain</th>
-            <th class="data-table__th">Spec</th>
-            <th class="data-table__th">Bound</th>
-            <th class="data-table__th">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for binding in iis_rows %}
-          {% set src = sources_by_id.get(binding.info_source_id) %}
-          <tr style="{% if loop.first %}border-left:3px solid var(--color-brand);{% endif %}">
-            <td class="data-table__cell">
-              {% if src %}
-              <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-sm">{{ src.url }}</a>
-              {{ open_button(src.url) }}
-              {% else %}
-              <span class="text-muted text-sm">{{ binding.info_source_id }}</span>
-              {% endif %}
-            </td>
-            <td class="data-table__cell data-table__cell--muted text-sm">
-              {% if src and src.domain_name %}
-              <a href="/dashboard/domains/{{ src.domain_name }}">{{ src.domain_name }}</a>
-              {% else %}—{% endif %}
-            </td>
-            <td class="data-table__cell data-table__cell--muted text-sm">
-              {{ spec_summary_by_source_id.get(binding.info_source_id) or '—' }}
-            </td>
-            <td class="data-table__cell data-table__cell--muted text-sm">
-              {{ binding.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
-            </td>
-            <td class="data-table__cell">
-              {% if loop.first %}
-              <button type="button" class="btn btn--secondary btn--sm"
-                      @click="swapOpen=!swapOpen"
-                      x-text="swapOpen ? 'Cancel' : 'Swap Primary'">Swap Primary</button>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Bound Information Sources">
+        <table class="data-table" aria-label="Bound Information Sources" style="margin-bottom:var(--space-3);">
+          <thead>
+            <tr>
+              <th class="data-table__th">URL</th>
+              <th class="data-table__th">Domain</th>
+              <th class="data-table__th">Spec</th>
+              <th class="data-table__th">Bound</th>
+              <th class="data-table__th">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for binding in iis_rows %}
+            {% set src = sources_by_id.get(binding.info_source_id) %}
+            <tr style="{% if loop.first %}border-left:3px solid var(--color-brand);{% endif %}">
+              <td class="data-table__cell">
+                {% if src %}
+                <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-sm">{{ src.url }}</a>
+                {{ open_button(src.url) }}
+                {% else %}
+                <span class="text-muted text-sm">{{ binding.info_source_id }}</span>
+                {% endif %}
+              </td>
+              <td class="data-table__cell data-table__cell--muted text-sm">
+                {% if src and src.domain_name %}
+                <a href="/dashboard/domains/{{ src.domain_name }}">{{ src.domain_name }}</a>
+                {% else %}—{% endif %}
+              </td>
+              <td class="data-table__cell data-table__cell--muted text-sm">
+                {{ spec_summary_by_source_id.get(binding.info_source_id) or '—' }}
+              </td>
+              <td class="data-table__cell data-table__cell--muted text-sm">
+                {{ binding.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+              </td>
+              <td class="data-table__cell">
+                {% if loop.first %}
+                <button type="button" class="btn btn--secondary btn--sm"
+                        @click="swapOpen=!swapOpen"
+                        x-text="swapOpen ? 'Cancel' : 'Swap Primary'">Swap Primary</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
       {# Swap primary panel — shown when button toggled #}
       <div x-show="swapOpen" x-cloak>
@@ -144,49 +146,51 @@
     </h2>
 
     {% if revisions %}
-    <table class="data-table" aria-label="Revision history">
-      <thead>
-        <tr>
-          <th class="data-table__th">Fingerprint</th>
-          <th class="data-table__th">Source</th>
-          <th class="data-table__th">Captured</th>
-          <th class="data-table__th">Cache</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for rev in revisions %}
-        {% set src = rev_sources_by_id.get(rev.info_source_id) %}
-        <tr>
-          <td class="data-table__cell">
-            <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}" class="text-sm">
-              <code>{{ rev.content_fingerprint[:20] }}…</code>
-            </a>
-          </td>
-          <td class="data-table__cell text-sm">
-            {% if src %}
-            <a href="/dashboard/info-sources/{{ rev.info_source_id }}">{{ src.url }}</a>
-            {% else %}
-            <span class="text-muted">{{ rev.info_source_id }}</span>
-            {% endif %}
-          </td>
-          <td class="data-table__cell data-table__cell--muted text-sm">
-            {{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}
-          </td>
-          <td class="data-table__cell">
-            {% if rev.content_cache_uri %}
-              {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
-              <span class="status-pill status-pill--expired">expired</span>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Revision history">
+      <table class="data-table" aria-label="Revision history">
+        <thead>
+          <tr>
+            <th class="data-table__th">Fingerprint</th>
+            <th class="data-table__th">Source</th>
+            <th class="data-table__th">Captured</th>
+            <th class="data-table__th">Cache</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rev in revisions %}
+          {% set src = rev_sources_by_id.get(rev.info_source_id) %}
+          <tr>
+            <td class="data-table__cell">
+              <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}" class="text-sm">
+                <code>{{ rev.content_fingerprint[:20] }}…</code>
+              </a>
+            </td>
+            <td class="data-table__cell text-sm">
+              {% if src %}
+              <a href="/dashboard/info-sources/{{ rev.info_source_id }}">{{ src.url }}</a>
               {% else %}
-              <span class="status-pill status-pill--cached">cached</span>
+              <span class="text-muted">{{ rev.info_source_id }}</span>
               {% endif %}
-            {% else %}
-            <span class="status-pill status-pill--missing">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            </td>
+            <td class="data-table__cell data-table__cell--muted text-sm">
+              {{ rev.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            </td>
+            <td class="data-table__cell">
+              {% if rev.content_cache_uri %}
+                {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
+                <span class="status-pill status-pill--expired">expired</span>
+                {% else %}
+                <span class="status-pill status-pill--cached">cached</span>
+                {% endif %}
+              {% else %}
+              <span class="status-pill status-pill--missing">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <p class="text-muted">No revisions captured yet.</p>
     {% endif %}

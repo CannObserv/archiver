@@ -8,68 +8,70 @@
 <div id="rep-spec-assignments" style="margin-top:var(--space-3);">
   <h2 id="rep-spec-assignments-heading" tabindex="-1">Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
   {% if assignments %}
-  <table class="data-table" aria-label="Active assignments">
-    <thead>
-      <tr>
-        <th class="data-table__th">Information Item</th>
-        <th class="data-table__th">Activated</th>
-        <th class="data-table__th">Replication</th>
-        <th class="data-table__th">Public URL</th>
-        <th class="data-table__th">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for assignment in assignments %}
-      {% set item = items_by_id.get(assignment.info_item_id) %}
-      <tr>
-        <td class="data-table__cell">
-          {% if item %}
-          <a href="/dashboard/info-items/{{ assignment.info_item_id }}">{{ item.name }}</a>
-          {% else %}
-          <span class="text-muted">{{ assignment.info_item_id }}</span>
-          {% endif %}
-        </td>
-        <td class="data-table__cell data-table__cell--muted">
-          {{ assignment.activated_at.strftime('%Y-%m-%d %H:%M UTC') }}
-        </td>
-        <td class="data-table__cell">
-          {{ replication_state(latest_commands.get(assignment.id)) }}
-        </td>
-        <td class="data-table__cell">
-          {% if assignment.public_url %}
-          <span class="text-sm" style="word-break:break-all;">{{ assignment.public_url }}</span>{{ open_button(assignment.public_url) }}
-          {% else %}
-          <span class="text-muted">—</span>
-          {% endif %}
-        </td>
-        <td class="data-table__cell">
-          {# Both actions re-render this whole section (count + empty-state) via
-             RepSpec-scoped routes, so the swap target is the section wrapper.
-             Replicate is confirm-guarded and `hx-disabled-elt`-guarded: it writes
-             into a permanent store and htmx does not deduplicate concurrent
-             requests from an element (archiver#171). #}
-          <button class="btn btn--sm btn--secondary"
-                  hx-post="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}/replicate"
-                  hx-target="#rep-spec-assignments"
-                  hx-swap="outerHTML"
-                  hx-disabled-elt="this"
-                  hx-confirm="Issue a replication for this assignment against the latest revision?"
-                  aria-label="Replicate assignment {{ assignment.id }} now">
-            Replicate now
-          </button>
-          <button class="btn btn--sm btn--danger"
-                  hx-delete="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}"
-                  hx-target="#rep-spec-assignments"
-                  hx-swap="outerHTML"
-                  hx-confirm="Deactivate this replication spec assignment?"
-                  aria-label="Deactivate assignment {{ assignment.id }}">
-            Deactivate
-          </button>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Active assignments">
+    <table class="data-table" aria-label="Active assignments">
+      <thead>
+        <tr>
+          <th class="data-table__th">Information Item</th>
+          <th class="data-table__th">Activated</th>
+          <th class="data-table__th">Replication</th>
+          <th class="data-table__th">Public URL</th>
+          <th class="data-table__th">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for assignment in assignments %}
+        {% set item = items_by_id.get(assignment.info_item_id) %}
+        <tr>
+          <td class="data-table__cell">
+            {% if item %}
+            <a href="/dashboard/info-items/{{ assignment.info_item_id }}">{{ item.name }}</a>
+            {% else %}
+            <span class="text-muted">{{ assignment.info_item_id }}</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ assignment.activated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+          </td>
+          <td class="data-table__cell">
+            {{ replication_state(latest_commands.get(assignment.id)) }}
+          </td>
+          <td class="data-table__cell">
+            {% if assignment.public_url %}
+            <span class="text-sm" style="word-break:break-all;">{{ assignment.public_url }}</span>{{ open_button(assignment.public_url) }}
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell">
+            {# Both actions re-render this whole section (count + empty-state) via
+               RepSpec-scoped routes, so the swap target is the section wrapper.
+               Replicate is confirm-guarded and `hx-disabled-elt`-guarded: it writes
+               into a permanent store and htmx does not deduplicate concurrent
+               requests from an element (archiver#171). #}
+            <button class="btn btn--sm btn--secondary"
+                    hx-post="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}/replicate"
+                    hx-target="#rep-spec-assignments"
+                    hx-swap="outerHTML"
+                    hx-disabled-elt="this"
+                    hx-confirm="Issue a replication for this assignment against the latest revision?"
+                    aria-label="Replicate assignment {{ assignment.id }} now">
+              Replicate now
+            </button>
+            <button class="btn btn--sm btn--danger"
+                    hx-delete="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}"
+                    hx-target="#rep-spec-assignments"
+                    hx-swap="outerHTML"
+                    hx-confirm="Deactivate this replication spec assignment?"
+                    aria-label="Deactivate assignment {{ assignment.id }}">
+              Deactivate
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
   <p class="text-muted">No active assignments.</p>
   {% endif %}
