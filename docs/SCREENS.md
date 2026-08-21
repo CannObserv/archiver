@@ -32,12 +32,14 @@ full-width row via `.detail-grid__item--full` so they extend horizontally
 instead of cramping into one ~200px track. Timestamps are UTC-suffixed
 (`%Y-%m-%d %H:%M UTC`) everywhere, including table cells.
 
-**Authored rows.** `.detail-row` is the same cells in a wrapping flex row the
-author composed, where `.detail-grid` packs them by width. Reach for it when
-*which* fields share a row is the point - the Watcher panel splits
-status-at-a-glance from provenance that way (#181). Cells then render
-**unconditionally**, falling back to a muted `-`: a row that reflows as fields
-come and go is an auto-filled grid with extra steps.
+**Authored rows.** `.detail-row` is the same cells in a row the author
+composed, where `.detail-grid` packs them by width. Reach for it when *which*
+fields share a row is the point - the Watcher panel splits status-at-a-glance
+from provenance that way (#181). Cells then render **unconditionally**, falling
+back to a muted `-`: a row that reflows as fields come and go is an auto-filled
+grid with extra steps. It steps 3 -> 2 -> 1 columns on the way down, every track
+`minmax(0, 1fr)` so a track can narrow past its content instead of forcing the
+row wider than its container - see [STYLE.md](STYLE.md).
 
 **Row-level view/edit.** A value renders read-only beside an "Edit" that flips
 the row to its control plus "Cancel" + "Save". Two variants, differing only in

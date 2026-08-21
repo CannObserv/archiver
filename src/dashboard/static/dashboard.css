@@ -738,12 +738,23 @@ p:last-child { margin-bottom: 0; }
    pack them by width. Wraps at narrow viewports; `min-width: 0` lets a long
    value shrink instead of forcing the row wider than the panel. */
 .detail-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-3);
 }
-.detail-row > .detail-grid__item { flex: 1 1 12rem; min-width: 0; }
+/* `minmax(0, 1fr)` rather than a bare `1fr`: a bare one floors each track at
+   its content's min-width, and a badge or a fingerprint does not break, so the
+   row grew wider than its panel instead of narrowing. The 0 floor lets the
+   track shrink and the value wrap inside it. */
+/* px, and 640 reused, to match the stylesheet's one existing width breakpoint
+   (the #flash-region strip) rather than introducing a second scale. */
+@media (max-width: 900px) {
+  .detail-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .detail-row { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ─── Filter card ────────────────────────────────────────────────────────── */
 .filter-card {
@@ -1028,19 +1039,36 @@ p:last-child { margin-bottom: 0; }
    `var(--radius)` that names no token - the panel had square corners nobody
    had noticed. */
 .watch-panel {
+  position: relative;
   background: var(--color-surface-alt);
   padding: var(--space-3);
   border-radius: var(--radius-lg);
 }
-/* Panel header: the pause/resume toggle, pinned to the top right inside corner.
-   flex-end rather than absolute positioning, so the control reserves its own
-   space instead of overlapping the first row when that row wraps. */
+/* Panel header: the pause/resume toggle, anchored to the top right inside
+   corner and OUT OF FLOW. In flow it was a block-level row of its own, so one
+   button cost a full button's height of vertical space and pushed row one
+   down. Out of flow it costs none - at the price of a gutter on the row it now
+   sits beside, below. */
 .watch-panel__header {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
   display: flex;
-  justify-content: flex-end;
-  align-items: flex-start;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+}
+/* The gutter. Sized for the widest label the button takes ("Resume") at
+   .btn--sm, and applied to the whole row rather than one cell because which
+   cell sits under the button changes with the column count: the third at
+   3-up, the first once the row is 1-up. */
+.watch-panel__header + .detail-row { padding-right: 6rem; }
+/* Once the row is 1-up only its FIRST cell is beside the button; the rest are
+   stacked below it and were being indented for nothing, at the width where
+   there is least to give. */
+@media (max-width: 640px) {
+  .watch-panel__header + .detail-row { padding-right: 0; }
+  .watch-panel__header + .detail-row > .detail-grid__item:first-child {
+    padding-right: 6rem;
+  }
 }
 /* Editable fields, one per row, below the read-only rows. */
 .watch-panel__fields {

@@ -69,3 +69,77 @@ def test_no_inline_margin_on_spacing_owning_class(css_class: str) -> None:
                 offenders.append(f"{path.relative_to(_TEMPLATES)} :: {tag}")
 
     assert not offenders, f"inline margin on .{css_class}:\n  " + "\n  ".join(offenders)
+
+
+# ---------------------------------------------------------------------------
+# The Watcher panel's layout contract (archiver#181)
+#
+# Two things about this panel are load-bearing and invisible in the markup, so
+# an unrelated commit can undo either without a template diff showing it.
+# ---------------------------------------------------------------------------
+
+_CSS = Path(__file__).resolve().parents[2] / "src" / "dashboard" / "static" / "dashboard.css"
+
+
+def _rule(selector: str, css: str) -> str:
+    """The declaration block for ``selector``, or "" when it has no rule.
+
+    Anchored at a line start so `.detail-row` does not also match
+    `.watch-panel__header + .detail-row`.
+    """
+    match = re.search(
+        rf"^{re.escape(selector)}\s*\{{(.*?)\}}",
+        css,
+        re.M | re.S,
+    )
+    return match.group(1) if match else ""
+
+
+def test_the_pause_toggle_is_anchored_without_taking_a_row() -> None:
+    """The header is pulled out of flow, so row one starts at the panel's top.
+
+    It was a block-level flex row of its own, which cost a full button's height
+    of vertical space for one control. Out of flow it needs a gutter beside it
+    instead, or the first row's cells run underneath the button.
+    """
+    css = _CSS.read_text()
+
+    assert "position: relative" in _rule(".watch-panel", css), (
+        ".watch-panel must establish a containing block for its header"
+    )
+    assert "position: absolute" in _rule(".watch-panel__header", css), (
+        "the header must be out of flow, or it takes a row of its own again"
+    )
+    gutter = _rule(".watch-panel__header + .detail-row", css)
+    assert "padding-right" in gutter, (
+        "the row after the header must reserve space for the button it sits beside"
+    )
+    # Once the row is 1-up the gutter narrows to the one cell actually beside
+    # the button, instead of indenting the cells stacked below it.
+    assert ".watch-panel__header + .detail-row > .detail-grid__item:first-child" in css
+
+
+def test_the_detail_row_steps_three_two_one_across_breakpoints() -> None:
+    """An explicit column progression, not a flex squeeze.
+
+    `flex: 1 1 12rem` let the three cells shrink instead of wrapping, so a
+    narrow viewport got three cramped columns rather than one readable one.
+    """
+    css = _CSS.read_text()
+
+    base = _rule(".detail-row", css)
+    assert "grid-template-columns" in base, ".detail-row must declare its columns"
+    assert "repeat(3," in base, "three columns at full width"
+
+    # Both narrower steps live in media queries, so pull every override.
+    overrides = re.findall(r"\.detail-row\s*\{([^}]*grid-template-columns[^}]*)\}", css)
+    assert any("repeat(2," in o for o in overrides), "no 2-column step"
+    assert any(
+        "repeat(2," not in o and "repeat(3," not in o and "grid-template-columns" in o
+        for o in overrides
+    ), "no single-column step"
+
+    # minmax(0, …) is what lets a track shrink below its content's min-width;
+    # without it the cells refuse to narrow and the row overflows the viewport,
+    # which is the defect this replaced.
+    assert "minmax(0," in base

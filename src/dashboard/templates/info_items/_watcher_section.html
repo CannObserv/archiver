@@ -9,9 +9,11 @@
    States: not_watching (outside the announced set) / no_status (announced, Watcher has never
    reported - distinct from paused and healthy) / watching / degraded (a local write failed).
 
-   Layout, archiver#181: a header holding the pause toggle at the top right, then
-   two *authored* .detail-row rows - status at a glance, then provenance - then the
-   editable fields one per row. The rows are authored rather than auto-filled
+   Layout, archiver#181: a header anchoring the pause toggle to the top right
+   inside corner - out of flow, so it costs no vertical space and row one starts
+   at the top of the panel - then two *authored* .detail-row grids (status at a
+   glance, then provenance, stepping 3 -> 2 -> 1 columns as the viewport
+   narrows), then the editable fields one per row. The rows are authored rather than auto-filled
    because grouping by meaning is the whole point: an operator reading the panel
    asks "healthy, how often, when next" before asking anything else. #}
 <div id="watcher-section"
