@@ -95,7 +95,12 @@ these routes. This is the behaviour behind them.
 {"watcherUpdated":{}}`. Their forms use `hx-swap="none"`, so the rendered body is
 discarded and the trigger is what refreshes `#watcher-section` - swapping the
 response in *and* firing the trigger would render twice. On failure each adds a
-`showFlash` error to that trigger rather than 500ing (#60, #61).
+`showFlash` error to that trigger rather than 500ing (#60, #61). Each also carries
+`hx-on::after-request` moving focus to `#watcher-heading` (archiver#181): the
+refresh destroys the control that was clicked, and the `<h2>` is the nearest
+thing that survives it, living in `detail.html` outside the swapped region. The
+focus-script-in-the-response trick the domain notes row uses cannot work here -
+`hx-swap="none"` discards the body a script would ride in.
 
 **There were five.** `begin-watching`, `check-now`, and `resync-watcher` were
 SDK-backed and retired with it in archiver#142, along with the stale-link

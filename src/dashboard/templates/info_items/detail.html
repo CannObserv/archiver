@@ -120,14 +120,17 @@
     {# The "Watcher ↗" deeplink retired with archiver#142 — it was keyed on
        watcher_item_id, which announcements never hand back, so there is no
        per-item Watcher URL left to build. #}
-    <h2 class="section-heading">Watcher</h2>
+    {# id + tabindex make this the focus target for the panel's actions: each
+       destroys the control that was clicked, and this heading sits outside
+       #watcher-section so it survives the swap (archiver#181). #}
+    <h2 class="section-heading" id="watcher-heading" tabindex="-1">Watcher</h2>
     {# Loaded async; self-refreshes on watcherUpdated events from pause/resume + cadence #}
     <div id="watcher-section"
          hx-get="/dashboard/info-items/{{ item.info_item_id }}/watcher-section"
          hx-trigger="load"
          hx-swap="outerHTML"
-         aria-live="polite" aria-atomic="false"
-         style="background:var(--color-surface-alt,var(--color-surface));padding:var(--space-3);border-radius:var(--radius);">
+         class="watch-panel"
+         aria-live="polite" aria-atomic="false">
       <p class="text-muted text-sm" style="margin:0;">Loading…</p>
     </div>
   </section>

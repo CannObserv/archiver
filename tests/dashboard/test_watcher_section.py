@@ -649,3 +649,42 @@ async def test_an_unoffered_interval_the_item_does_not_hold_is_still_refused(
 
     await session.refresh(item)
     assert item.watch_spec == {"schema_version": 1, "interval": "6h"}
+
+
+# ---------------------------------------------------------------------------
+# Focus after swap (the issue's Constraints section)
+#
+# Every control on this panel is destroyed by the refresh it triggers: the
+# actions post with hx-swap="none", the response fires `watcherUpdated`, and
+# #watcher-section replaces itself outerHTML. Keyboard focus lands on <body>.
+# The <h2> lives in detail.html, OUTSIDE the swapped region, so it survives the
+# refresh and is the stable target - which is why the forms focus it directly
+# rather than the response rendering a focus script the way the domain notes
+# row does (that body is discarded here, so a script in it would never run).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_watcher_heading_is_a_focus_target(client, session, bind_source):
+    """id + tabindex="-1" on a heading outside the swapped region."""
+    item = InfoItem(name="focus-heading")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'id="watcher-heading"' in r.text
+    assert 'tabindex="-1"' in r.text.split('id="watcher-heading"')[0][-60:] or (
+        'tabindex="-1"' in r.text.split('id="watcher-heading"')[1][:60]
+    )
+
+
+@pytest.mark.asyncio
+async def test_both_actions_move_focus_to_the_heading(client, session, bind_source):
+    """Pause and Save each destroy the button that was clicked."""
+    r = await _watching(client, session, bind_source, "focus-actions")
+    assert r.status_code == 200
+
+    handlers = r.text.count("watcher-heading")
+    assert handlers == 2, f"expected the pause and cadence forms to move focus, found {handlers}"
+    assert "hx-on::after-request" in r.text

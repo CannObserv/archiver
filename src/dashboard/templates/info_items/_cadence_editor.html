@@ -75,7 +75,8 @@
   <form class="field-row"
         x-show="editing" style="display:none;"
         hx-post="/dashboard/info-items/{{ item_id }}/watch-cadence"
-        hx-swap="none">
+        hx-swap="none"
+        hx-on::after-request="var h=document.getElementById('watcher-heading'); if (h) { h.focus(); }">
     <select id="cadence-{{ item_id }}"
             name="interval"
             x-ref="field"

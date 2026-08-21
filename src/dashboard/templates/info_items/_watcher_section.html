@@ -79,8 +79,13 @@
      reach. #}
   {% if has_active_source %}
   <div class="watch-panel__header">
+    {# Focus the section heading: this button is about to be destroyed by the
+       refresh its own response triggers, dropping keyboard focus to <body>.
+       Done here rather than in the response body, which hx-swap="none"
+       discards (docs/SCREENS.md HTMX mutations). #}
     <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
-          hx-swap="none">
+          hx-swap="none"
+          hx-on::after-request="var h=document.getElementById('watcher-heading'); if (h) { h.focus(); }">
       <input type="hidden" name="active" value="{{ 'false' if watch.applied_active else 'true' }}">
       <button type="submit" class="btn btn--secondary btn--sm">{{ 'Pause' if watch.applied_active else 'Resume' }}</button>
     </form>
