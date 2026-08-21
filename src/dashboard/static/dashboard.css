@@ -367,6 +367,18 @@ p:last-child { margin-bottom: 0; }
   flex: 1;
   padding: var(--space-8);
   max-width: calc(var(--content-max-w) + var(--sidebar-width));
+  /* A flex item defaults to `min-width: auto` - it will not shrink below its
+     content's min-content width. A .data-table has a large one, so the widest
+     table on a screen became the width of the PAGE: the fixed topbar (sized to
+     the viewport) ended mid-content and the whole document scrolled sideways,
+     which is what the sidebar appeared not to be accounted for in. */
+  min-width: 0;
+  /* ...and once it can shrink, something must contain what still does not fit.
+     Scrolling the column keeps the topbar and sidebar fixed where they belong.
+     A per-table scroll wrapper would be better - it would scroll only the table
+     rather than the column - but that is 18 templates, so it is archiver#182
+     rather than smuggled into a fix. */
+  overflow-x: auto;
 }
 
 /* ─── Buttons ────────────────────────────────────────────────────────────── */
@@ -737,23 +749,21 @@ p:last-child { margin-bottom: 0; }
    meaning (status at a glance, then provenance) rather than letting a grid
    pack them by width. Wraps at narrow viewports; `min-width: 0` lets a long
    value shrink instead of forcing the row wider than the panel. */
+/* Steps 3 -> 2 -> 1 columns on the width the row ACTUALLY HAS, not the
+   viewport's. Viewport media queries cannot see the fixed sidebar: at a 1000px
+   viewport the content column is ~555px, so a row keyed to `min-width: 900px`
+   still drew three columns and overflowed. `auto-fit` reads the container, so
+   the sidebar - and any future panel, card or split - is accounted for by
+   construction rather than by a number somebody has to keep in step.
+   `min(100%, 14rem)` is the floor: 14rem is the narrowest a label-and-value
+   cell stays readable at, and the `min()` drops it to the full width when the
+   container is narrower than that, which is what makes the last step a clean
+   single column instead of an overflow. */
 .detail-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-3);
-}
-/* `minmax(0, 1fr)` rather than a bare `1fr`: a bare one floors each track at
-   its content's min-width, and a badge or a fingerprint does not break, so the
-   row grew wider than its panel instead of narrowing. The 0 floor lets the
-   track shrink and the value wrap inside it. */
-/* px, and 640 reused, to match the stylesheet's one existing width breakpoint
-   (the #flash-region strip) rather than introducing a second scale. */
-@media (max-width: 900px) {
-  .detail-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 640px) {
-  .detail-row { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ─── Filter card ────────────────────────────────────────────────────────── */
@@ -1061,15 +1071,6 @@ p:last-child { margin-bottom: 0; }
    cell sits under the button changes with the column count: the third at
    3-up, the first once the row is 1-up. */
 .watch-panel__header + .detail-row { padding-right: 6rem; }
-/* Once the row is 1-up only its FIRST cell is beside the button; the rest are
-   stacked below it and were being indented for nothing, at the width where
-   there is least to give. */
-@media (max-width: 640px) {
-  .watch-panel__header + .detail-row { padding-right: 0; }
-  .watch-panel__header + .detail-row > .detail-grid__item:first-child {
-    padding-right: 6rem;
-  }
-}
 /* Editable fields, one per row, below the read-only rows. */
 .watch-panel__fields {
   display: flex;

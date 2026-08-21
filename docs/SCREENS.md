@@ -37,9 +37,9 @@ composed, where `.detail-grid` packs them by width. Reach for it when *which*
 fields share a row is the point - the Watcher panel splits status-at-a-glance
 from provenance that way (#181). Cells then render **unconditionally**, falling
 back to a muted `-`: a row that reflows as fields come and go is an auto-filled
-grid with extra steps. It steps 3 -> 2 -> 1 columns on the way down, every track
-`minmax(0, 1fr)` so a track can narrow past its content instead of forcing the
-row wider than its container - see [STYLE.md](STYLE.md).
+grid with extra steps. It steps 3 -> 2 -> 1 columns on the width the row *has*
+rather than the viewport's, because a viewport breakpoint cannot see the fixed
+sidebar - see [STYLE.md](STYLE.md).
 
 **Row-level view/edit.** A value renders read-only beside an "Edit" that flips
 the row to its control plus "Cancel" + "Save". Two variants, differing only in

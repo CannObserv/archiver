@@ -114,32 +114,42 @@ def test_the_pause_toggle_is_anchored_without_taking_a_row() -> None:
     assert "padding-right" in gutter, (
         "the row after the header must reserve space for the button it sits beside"
     )
-    # Once the row is 1-up the gutter narrows to the one cell actually beside
-    # the button, instead of indenting the cells stacked below it.
-    assert ".watch-panel__header + .detail-row > .detail-grid__item:first-child" in css
 
 
-def test_the_detail_row_steps_three_two_one_across_breakpoints() -> None:
-    """An explicit column progression, not a flex squeeze.
+def test_the_detail_row_wraps_on_its_container_not_the_viewport() -> None:
+    """3 -> 2 -> 1 columns driven by the space the row actually has.
 
-    `flex: 1 1 12rem` let the three cells shrink instead of wrapping, so a
-    narrow viewport got three cramped columns rather than one readable one.
+    The first attempt used viewport media queries, which cannot see the fixed
+    sidebar: at a 1000px viewport the content column is ~555px, so a row keyed
+    to `min-width: 900px` still laid out three columns and overflowed. `auto-fit`
+    reads the container instead, so the sidebar is accounted for by construction.
     """
     css = _CSS.read_text()
-
     base = _rule(".detail-row", css)
-    assert "grid-template-columns" in base, ".detail-row must declare its columns"
-    assert "repeat(3," in base, "three columns at full width"
 
-    # Both narrower steps live in media queries, so pull every override.
-    overrides = re.findall(r"\.detail-row\s*\{([^}]*grid-template-columns[^}]*)\}", css)
-    assert any("repeat(2," in o for o in overrides), "no 2-column step"
-    assert any(
-        "repeat(2," not in o and "repeat(3," not in o and "grid-template-columns" in o
-        for o in overrides
-    ), "no single-column step"
+    assert "grid-template-columns" in base
+    assert "auto-fit" in base, "column count must follow the container, not the viewport"
+    # `min(100%, …)` keeps the track from exceeding a container narrower than the
+    # floor itself, which is what turns the last step into a clean single column
+    # instead of an overflow.
+    assert "min(100%," in base
 
-    # minmax(0, …) is what lets a track shrink below its content's min-width;
-    # without it the cells refuse to narrow and the row overflows the viewport,
-    # which is the defect this replaced.
-    assert "minmax(0," in base
+    assert not re.search(r"@media[^{]*\{\s*\.detail-row", css), (
+        "a viewport media query on .detail-row reintroduces the sidebar blind spot"
+    )
+
+
+def test_the_content_column_can_shrink_below_its_contents() -> None:
+    """The defect behind the clipped topbar and the page-wide scrollbar.
+
+    `.main-content` is a flex item, and a flex item defaults to
+    `min-width: auto` - it will not shrink below its content's min-content
+    width. A `.data-table` has a large one, so the table's width became the
+    page's width: the fixed topbar (sized to the viewport) then ended
+    mid-content and the whole document scrolled sideways.
+    """
+    css = _CSS.read_text()
+    main = _rule(".main-content", css)
+
+    assert "min-width: 0" in main, "a flex item that cannot shrink widens the page"
+    assert "overflow-x" in main, "something still has to contain a table wider than the column"
