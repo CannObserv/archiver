@@ -29,3 +29,14 @@ AGENTS.md :: retarget :: URL map, auth, HTMX, detail-screen conventions
 # and the dashboard living-docs list, which now names the new doc as a target.
 AGENTS.md :: retarget :: deliberate, see [docs/UI.md](docs/UI.md).
 AGENTS.md :: retarget :: patterns), STYLE.md (styling). Failing to is a CR blocker
+
+# archiver#181 CR round 2, finding 9: three PAGES.md detail entries re-derived
+# the canonical `.entity-card` header anatomy - eyebrow, the `<h1
+# class="entity-card__title" id="…" tabindex="-1">`, the focus-target reason -
+# once per screen. That anatomy acquired a canonical home in this same change
+# (docs/SCREENS.md § Header), so each entry now points there and keeps only what
+# is true of its own screen: the eyebrow text, the title value, the heading id,
+# and the issue that adopted it. Nothing screen-specific was dropped.
+docs/PAGES.md :: retarget :: `.eyebrow` "Domain" kicker
+docs/PAGES.md :: retarget :: `.eyebrow` "Information Source" → `<h1 class="entity-card__title" id="info-source-heading"
+docs/PAGES.md :: retarget :: `.eyebrow` "Replication Specification" → `<h1 class="entity-card__title" id="rep-spec-heading"

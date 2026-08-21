@@ -63,9 +63,11 @@
   <div class="field-row" x-show="!editing">
     <div class="field-row__readout">{{ cadence_display }}</div>
     <div class="field-row__actions">
+      {# No aria-label: the <label> above is associated with the control this
+         reveals, so an added one only makes a screen reader say "announced
+         cadence" twice on tab-through (CR round 2, finding 10). #}
       <button type="button" class="btn btn--sm btn--secondary"
-              @click="editing = true"
-              aria-label="Edit announced cadence">Edit</button>
+              @click="editing = true">Edit</button>
     </div>
   </div>
 
