@@ -1010,13 +1010,13 @@ p:last-child { margin-bottom: 0; }
   letter-spacing: 0.06em;
   color: var(--color-text-muted);
 }
-/* Border, radius and padding matched to the .form-select--sm it swaps with, so
-   the edges do not move on the flip. */
+/* Border, radius, padding and font-size matched to the .form-select--sm it
+   swaps with, so neither the edges nor the text move on the flip. */
 .field-row__readout {
   display: flex;
   align-items: center;
   padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   color: var(--color-text);
   background: var(--color-surface);
   border: 1px solid var(--color-border);

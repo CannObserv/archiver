@@ -11,8 +11,21 @@ docs/STYLE.md :: retarget :: `registerWizard` | `main.js` | 4-step registration 
 docs/STYLE.md :: retarget :: `previewNameDispatch` | `main.js` | One-shot dispatcher: bubbles a `preview-name`
 docs/STYLE.md :: retarget :: `urlCheckDispatch` | `main.js` | One-shot dispatcher (#53)
 
-# check-seams class 3b: `#\d{2,}` in a permanent anchor slug. The heading lost
-# its issue ref; the sentence below it gained one, because the reference is
-# worth keeping and only the slug was the problem.
-docs/UI.md :: rename :: ### Failures are surfaced, not swallowed (archiver#178)
-docs/UI.md :: rename :: **htmx does not swap a non-2xx response.** With `hx-boost` on `<body>` that
+# archiver#181 curation: `## Detail Screen Conventions` was 56% of docs/UI.md,
+# so it split out to docs/SCREENS.md. Three lines described UI.md as the
+# file holding those conventions and one counted its siblings; this change is
+# what moved the target, so each is rewritten in place rather than relocated.
+# The section body itself moved verbatim - 200 lines, 0 duplicated.
+docs/UI.md :: retarget :: patterns, and the conventions every detail screen follows.
+docs/UI.md :: retarget :: The other two parts of this reference, under the same living-doc rule:
+docs/UI.md :: retarget :: **The dashboard's shared mechanics: URL map, proxy-header auth, HTMX swap
+
+# Same change, policy-file side: the Detail Docs index described docs/UI.md as
+# carrying the detail-screen conventions, which it now indexes instead.
+AGENTS.md :: retarget :: URL map, auth, HTMX, detail-screen conventions
+
+# Same change, source side: two policy-file lines pointed at docs/UI.md for
+# conventions that moved to docs/SCREENS.md in this run - the clamp rule
+# and the dashboard living-docs list, which now names the new doc as a target.
+AGENTS.md :: retarget :: deliberate, see [docs/UI.md](docs/UI.md).
+AGENTS.md :: retarget :: patterns), STYLE.md (styling). Failing to is a CR blocker

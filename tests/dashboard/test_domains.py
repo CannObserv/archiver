@@ -111,7 +111,7 @@ async def test_domain_detail_shows_linked_sources(client, session):
 
 @pytest.mark.asyncio
 async def test_domain_detail_shows_source_count_in_heading(client, session):
-    """Related-collection tables carry the row count in the <h2> (#82, docs/UI.md)."""
+    """Related-collection tables carry the row count in the <h2> (#82, docs/SCREENS.md)."""
     session.add(_make_domain("count-head.example.com"))
     await session.flush()
     for i in range(3):
@@ -399,13 +399,13 @@ async def test_update_notes_partial_returns_view_mode(client, session):
     assert r.status_code == 200
     assert 'x-data="domainNotes"' in r.text
     assert "swapped in" in r.text
-    # Focus-move script is emitted on the swap only (docs/UI.md HTMX mutations).
+    # Focus-move script is emitted on the swap only (docs/SCREENS.md).
     assert 'getElementById("domain-notes-heading")' in r.text
 
 
 @pytest.mark.asyncio
 async def test_update_notes_htmx_carries_success_toast(client, session):
-    """UI.md HTMX mutations: the swap response also fires a showFlash toast."""
+    """SCREENS.md HTMX mutations: the swap also fires a showFlash toast."""
     session.add(_make_domain("notes-toast.example.com"))
     await session.flush()
 
@@ -442,7 +442,7 @@ async def test_domain_detail_notes_edit_form_is_reachable_without_alpine(client,
     """The edit form must not be hidden by inline CSS.
 
     `x-show` alone leaves it visible when Alpine never runs, which is what makes
-    the method/action POST fallback reachable (docs/UI.md HTMX mutations). An
+    the method/action POST fallback reachable (docs/SCREENS.md). An
     inline `display:none` would strand it — the fallback would be present in the
     markup and unusable, which is worse than not claiming one.
     """
@@ -515,7 +515,10 @@ async def test_domain_detail_items_section_sits_between_header_and_sources(clien
 
 @pytest.mark.asyncio
 async def test_domain_detail_item_count_is_total_not_page(client, session):
-    """Heading count is a route COUNT over all rows, not the page's length (docs/UI.md)."""
+    """Heading count is a route COUNT over all rows, not the page's length.
+
+    docs/SCREENS.md § Related-collection tables.
+    """
     await _domain_with_items(session, "items-count.example.com", 3)
 
     r = await client.get(

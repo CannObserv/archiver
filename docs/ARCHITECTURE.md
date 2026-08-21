@@ -20,7 +20,7 @@ Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-
 src/api/                       FastAPI routes, deps, schemas, serializers
 src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, static/, deps.py,
                                pagination.py — shared clamped limit/offset dependency; see
-                               docs/UI.md for why the dashboard clamps where the API 422s;
+                               docs/SCREENS.md for why the dashboard clamps where the API 422s;
                                watch_panel.py — pure watched-item panel context from local
                                state: states, health rule, next-due, drift, archiver#151;
                                replication_actions.py — the manual-replication outcome→flash
@@ -186,8 +186,8 @@ deploy/                        README.md (install instructions) + systemd units:
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                BUS.md, SCHEMA.md, DEPLOYMENT.md, CONVENTIONS.md,
                                SKILLS.md, plus the dashboard living docs
-                               UI.md + PAGES.md + INFO_ITEM_DETAIL.md +
-                               COMPONENTS.md + STYLE.md
+                               UI.md + SCREENS.md + PAGES.md +
+                               INFO_ITEM_DETAIL.md + COMPONENTS.md + STYLE.md
                                (see "Dashboard living docs").
                                Indexed by the Detail Docs section of AGENTS.md.
                                Archival subtrees: plans/ + research/

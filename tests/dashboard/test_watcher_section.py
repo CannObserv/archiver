@@ -490,3 +490,162 @@ async def test_cadence_row_hides_its_edit_half_before_alpine_runs(client, sessio
     assert r.status_code == 200
     edit_half = r.text.split('x-show="editing"')[1][:200]
     assert "display:none" in edit_half
+
+
+# ---------------------------------------------------------------------------
+# CR round 1 - the editor must be able to represent what it is editing
+#
+# `watch_spec.interval` accepts the whole `^[0-9]+[smhd]$` grammar through
+# `PUT /api/v1/info-items/{id}/watch-spec`; the dashboard offers four values of
+# it. An interval outside that subset is legitimate stored policy, and both
+# halves of the row have to survive contact with one.
+# ---------------------------------------------------------------------------
+
+_OUT_OF_VOCABULARY = "30m"
+
+
+def _readout(html: str) -> str:
+    return html.split('class="field-row__readout"')[1].split("</div>")[0]
+
+
+def _row_one_cadence(html: str) -> str:
+    """The applied-cadence cell, which row one leads with."""
+    row_one, _ = _rows(html)
+    return row_one.split('">Cadence</span>')[1].split("</span>")[0]
+
+
+@pytest.mark.asyncio
+async def test_readout_and_row_one_agree_on_an_out_of_vocabulary_interval(
+    client, session, bind_source
+):
+    """CR finding 1: one interval, one label.
+
+    The readout used to build its own label from `CADENCE_LABELS`, which has no
+    entry for `30m` and fell back to the raw string - so the same value rendered
+    `~30 min` in row one and `30m` here. Both now read `format_interval`, the
+    function that already owned this.
+    """
+    r = await _watching(
+        client,
+        session,
+        bind_source,
+        "cadence-oov-label",
+        watch_spec={"schema_version": 1, "interval": _OUT_OF_VOCABULARY},
+    )
+    assert r.status_code == 200
+    assert "~30 min" in _readout(r.text)
+    assert "~30 min" in _row_one_cadence(r.text)
+    assert "30m" not in _readout(r.text)
+
+
+@pytest.mark.asyncio
+async def test_the_select_carries_an_out_of_vocabulary_interval_as_its_selection(
+    client, session, bind_source
+):
+    """CR finding 2: a control that cannot show its own value destroys it.
+
+    With no matching option the browser selects index 0 - "Consumer default" -
+    so Edit then Save, without touching anything, silently replaced a set policy
+    with delegate and announced it.
+    """
+    r = await _watching(
+        client,
+        session,
+        bind_source,
+        "cadence-oov-option",
+        watch_spec={"schema_version": 1, "interval": _OUT_OF_VOCABULARY},
+    )
+    assert r.status_code == 200
+    assert '<option value="30m" selected>~30 min</option>' in r.text
+    # Delegate must NOT be the selection: that is the clobber this guards.
+    assert '<option value="" selected>' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_an_unparseable_stored_interval_still_shows_itself(client, session, bind_source):
+    """`format_interval` returns "" for a value outside the grammar, which the
+    readout must not mistake for delegate. Only a hand-edited row reaches this -
+    both write paths schema-validate - but the fallback is what keeps the row
+    honest rather than quietly wrong."""
+    r = await _watching(
+        client,
+        session,
+        bind_source,
+        "cadence-unparseable",
+        watch_spec={"schema_version": 1, "interval": "banana"},
+    )
+    assert r.status_code == 200
+    assert "banana" in _readout(r.text)
+    assert "Consumer default" not in _readout(r.text)
+
+
+@pytest.mark.asyncio
+async def test_the_editable_row_says_which_cadence_it_edits(client, session, bind_source):
+    """CR finding 3: row one is the *applied* cadence, this row the *announced*
+    one. Both labelled "Cadence" left an operator no way to tell them apart -
+    least of all under drift, when they disagree."""
+    r = await _watching(client, session, bind_source, "cadence-labelled")
+    assert r.status_code == 200
+    assert "Announced cadence" in r.text
+    # CR finding 6: a real <label for>, not aria-labelledby alone, so clicking
+    # the word focuses the control.
+    assert 'for="cadence-' in r.text
+
+
+# ---------------------------------------------------------------------------
+# POST /watch-cadence - the vocabulary guard
+# ---------------------------------------------------------------------------
+
+
+async def _seed_for_post(session, bind_source, slug: str, interval: str | None):
+    spec: dict = {"schema_version": 1}
+    if interval:
+        spec["interval"] = interval
+    item = InfoItem(name=slug, watch_spec=spec)
+    session.add(item)
+    await session.flush()
+    await bind_source(session, item, slug=slug)
+    _seed_status(session, item)
+    await session.flush()
+    return item
+
+
+@pytest.mark.asyncio
+async def test_resaving_the_items_own_out_of_vocabulary_interval_is_a_no_op_not_a_refusal(
+    client, session, bind_source
+):
+    """The guard exists to refuse a *hand-posted* value the dashboard never
+    offered. Re-submitting what the item already announces is neither - and
+    refusing it would strand the operator on any item the API configured."""
+    item = await _seed_for_post(session, bind_source, "post-oov-own", _OUT_OF_VOCABULARY)
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/watch-cadence",
+        headers=_HEADERS,
+        data={"interval": _OUT_OF_VOCABULARY},
+    )
+    assert r.status_code == 200
+    assert "showFlash" not in r.headers.get("HX-Trigger", "")
+
+    await session.refresh(item)
+    assert item.watch_spec == {"schema_version": 1, "interval": _OUT_OF_VOCABULARY}
+
+
+@pytest.mark.asyncio
+async def test_an_unoffered_interval_the_item_does_not_hold_is_still_refused(
+    client, session, bind_source
+):
+    """Widening the guard must not open it: a value that is neither offered nor
+    already announced is still a mistake, and the write must not land."""
+    item = await _seed_for_post(session, bind_source, "post-oov-foreign", "6h")
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/watch-cadence",
+        headers=_HEADERS,
+        data={"interval": "45m"},
+    )
+    assert r.status_code == 200
+    assert "showFlash" in r.headers.get("HX-Trigger", "")
+
+    await session.refresh(item)
+    assert item.watch_spec == {"schema_version": 1, "interval": "6h"}

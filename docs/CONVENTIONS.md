@@ -100,8 +100,8 @@ applicable doc is a CR blocker.
   action-route contracts that moved there in archiver#176. PAGES.md keeps the
   inventory line for those routes, so a behaviour change updates both.
 - `docs/UI.md` - required when the change alters a *shared* mechanic rather
-  than one screen: the URL map, the auth gate, an HTMX swap pattern, or a
-  detail-screen convention. A change that merely follows an existing
+  than one screen: the URL map, the auth gate, or an HTMX swap pattern.
+  `docs/SCREENS.md` for a detail-screen convention. A change that merely follows an existing
   convention updates PAGES.md alone.
 - `docs/STYLE.md` - required when the change introduces or alters *styling*:
   `src/dashboard/static/dashboard.css`, or a template that adds a new visual

@@ -27,3 +27,9 @@ docs/DEPLOYMENT.md :: retired (archiver#150
 # modules; the tail still points flash.js and dark-mode.js at the docs that
 # carry their patterns, and neither pattern moved.
 docs/CONVENTIONS.md :: ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
+
+# archiver#181 curation: SCREENS.md split out of UI.md, so its own two
+# back-pointers at UI.md are the split describing itself. Nothing they point at
+# moved - UI.md still holds the shared mechanics they name.
+docs/SCREENS.md :: Split out of [UI.md](UI.md) when that file passed its context
+docs/SCREENS.md :: Sibling docs: [UI.md](UI.md) shared mechanics

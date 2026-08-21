@@ -242,8 +242,8 @@ async def update_notes(
     the heading. Non-HTMX requests — the operator submitting the same form with
     JS off — get the plain POST→303 back to detail, so the fallback the form
     declares actually lands somewhere rather than rendering a bare fragment as a
-    whole page. Branching on the header, not the target, per docs/UI.md Detail
-    Screen Conventions.
+    whole page. Branching on the header, not the target, per
+    docs/SCREENS.md.
 
     Notes have no validation-error path: any string is a legal note, and an
     empty one clears the field.

@@ -279,8 +279,8 @@ async def update_info_source_specs_view(
     htmx performs the swap) that is announced (``role="alert"``), moves focus to
     the heading, and preserves the operator's submitted text. Non-HTMX requests
     keep the plain full-page POST→303 (success) / 422 re-render (error, also
-    preserving submitted text) fallback (progressive enhancement). See docs/UI.md
-    Detail Screen Conventions.
+    preserving submitted text) fallback (progressive enhancement). See
+    docs/SCREENS.md.
     """
     src = await _resolve_source(source_id, session)
     is_htmx = bool(request.headers.get("HX-Request"))
