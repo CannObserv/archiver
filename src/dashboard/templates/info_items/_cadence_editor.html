@@ -63,11 +63,16 @@
   <div class="field-row" x-show="!editing">
     <div class="field-row__readout">{{ cadence_display }}</div>
     <div class="field-row__actions">
-      {# No aria-label: the <label> above is associated with the control this
-         reveals, so an added one only makes a screen reader say "announced
-         cadence" twice on tab-through (CR round 2, finding 10). #}
+      {# Named, but not by repeating the label's own words. The <label> above is
+         associated with the <select>, not with this button, so without a name
+         of its own the button reads as a bare "Edit" in a screen reader's
+         element list, where controls are announced out of context (CR round 3,
+         finding 15). "Edit cadence" against a label reading "Announced cadence"
+         says which control it opens without the tab-through echo that removing
+         the label entirely was meant to fix (CR round 2, finding 10). #}
       <button type="button" class="btn btn--sm btn--secondary"
-              @click="editing = true">Edit</button>
+              @click="editing = true"
+              aria-label="Edit cadence">Edit</button>
     </div>
   </div>
 

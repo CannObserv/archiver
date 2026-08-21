@@ -590,6 +590,10 @@ async def test_the_editable_row_says_which_cadence_it_edits(client, session, bin
     # CR finding 6: a real <label for>, not aria-labelledby alone, so clicking
     # the word focuses the control.
     assert 'for="cadence-' in r.text
+    # CR round 3, finding 15: the <label> names the *select*, not the button, so
+    # a bare "Edit" is what a screen reader's button list reads out. Named, but
+    # not by repeating the label's own words - that was finding 10.
+    assert 'aria-label="Edit cadence"' in r.text
 
 
 # ---------------------------------------------------------------------------

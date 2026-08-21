@@ -39,7 +39,10 @@ from provenance that way (#181). Cells then render **unconditionally**, falling
 back to a muted `-`: a row that reflows as fields come and go is an auto-filled
 grid with extra steps. It steps 3 -> 2 -> 1 columns on the width the row *has*
 rather than the viewport's, because a viewport breakpoint cannot see the fixed
-sidebar - see [STYLE.md](STYLE.md).
+sidebar. Two consequences worth knowing before reusing it: rows that share a
+container must be handed the same width or they compute different column counts,
+and the column floor is the `--detail-row-min` property rather than a constant -
+see [STYLE.md](STYLE.md).
 
 **Row-level view/edit.** A value renders read-only beside an "Edit" that flips
 the row to its control plus "Cancel" + "Save". Two variants, differing only in

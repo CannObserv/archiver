@@ -81,6 +81,24 @@ def test_no_inline_margin_on_spacing_owning_class(css_class: str) -> None:
 _CSS = Path(__file__).resolve().parents[2] / "src" / "dashboard" / "static" / "dashboard.css"
 
 
+def _media_blocks(css: str) -> list[str]:
+    r"""Every ``@media`` block's body, brace-matched.
+
+    A regex cannot do this: `@media[^{]*\{` stops at the first brace, so it only
+    ever sees the block's *first* rule. The likeliest way a viewport breakpoint
+    comes back is somebody adding a selector to an existing block, which is
+    exactly the case that pattern misses (CR round 3, finding 14).
+    """
+    blocks = []
+    for start in (m.end() for m in re.finditer(r"@media[^{]*\{", css)):
+        depth, i = 1, start
+        while i < len(css) and depth:
+            depth += (css[i] == "{") - (css[i] == "}")
+            i += 1
+        blocks.append(css[start : i - 1])
+    return blocks
+
+
 def _rule(selector: str, css: str) -> str:
     """The declaration block for ``selector``, or "" when it has no rule.
 
@@ -110,9 +128,18 @@ def test_the_pause_toggle_is_anchored_without_taking_a_row() -> None:
     assert "position: absolute" in _rule(".watch-panel__header", css), (
         "the header must be out of flow, or it takes a row of its own again"
     )
-    gutter = _rule(".watch-panel__header + .detail-row", css)
+    # Every row after the header, not just the first (CR round 3, finding 12).
+    # `auto-fit` counts columns from the container it is given, so a gutter on
+    # one row alone makes that row compute a different column count from its
+    # sibling - the two authored rows then misalign across ~96px-wide bands of
+    # panel width, which is the alignment the pattern exists to guarantee.
+    gutter = _rule(".watch-panel__header ~ .detail-row", css)
     assert "padding-right" in gutter, (
-        "the row after the header must reserve space for the button it sits beside"
+        "every row beside the button must reserve the same space, or the rows "
+        "disagree about their column count"
+    )
+    assert not _rule(".watch-panel__header + .detail-row", css), (
+        "an adjacent-sibling gutter reaches only the first row"
     )
 
 
@@ -133,8 +160,12 @@ def test_the_detail_row_wraps_on_its_container_not_the_viewport() -> None:
     # floor itself, which is what turns the last step into a clean single column
     # instead of an overflow.
     assert "min(100%," in base
+    # The floor is a custom property so a screen with longer or terser values can
+    # retune it without editing the shared rule (CR round 3, finding 16).
+    assert "var(--detail-row-min" in base
 
-    assert not re.search(r"@media[^{]*\{\s*\.detail-row", css), (
+    offenders = [b for b in _media_blocks(css) if re.search(r"(^|[,{}\s])\.detail-row\b", b)]
+    assert not offenders, (
         "a viewport media query on .detail-row reintroduces the sidebar blind spot"
     )
 

@@ -370,8 +370,10 @@ p:last-child { margin-bottom: 0; }
   /* A flex item defaults to `min-width: auto` - it will not shrink below its
      content's min-content width. A .data-table has a large one, so the widest
      table on a screen became the width of the PAGE: the fixed topbar (sized to
-     the viewport) ended mid-content and the whole document scrolled sideways,
-     which is what the sidebar appeared not to be accounted for in. */
+     the viewport) ended mid-content and the whole document scrolled sideways.
+     This, and ONLY this, was the horizontal-overflow defect - the cramped
+     Watcher rows fixed alongside it were a legibility bug that could not
+     overflow anything (CR round 3, finding 13). */
   min-width: 0;
   /* ...and once it can shrink, something must contain what still does not fit.
      Scrolling the column keeps the topbar and sidebar fixed where they belong.
@@ -750,18 +752,27 @@ p:last-child { margin-bottom: 0; }
    pack them by width. Wraps at narrow viewports; `min-width: 0` lets a long
    value shrink instead of forcing the row wider than the panel. */
 /* Steps 3 -> 2 -> 1 columns on the width the row ACTUALLY HAS, not the
-   viewport's. Viewport media queries cannot see the fixed sidebar: at a 1000px
-   viewport the content column is ~555px, so a row keyed to `min-width: 900px`
-   still drew three columns and overflowed. `auto-fit` reads the container, so
-   the sidebar - and any future panel, card or split - is accounted for by
-   construction rather than by a number somebody has to keep in step.
-   `min(100%, 14rem)` is the floor: 14rem is the narrowest a label-and-value
-   cell stays readable at, and the `min()` drops it to the full width when the
-   container is narrower than that, which is what makes the last step a clean
-   single column instead of an overflow. */
+   viewport's. Viewport media queries cannot see the fixed sidebar, so a row
+   keyed to `min-width: 900px` kept three columns in a content column far
+   narrower than 900px, and drew them CRAMPED where two would have been
+   readable. It did not overflow - `minmax(0, 1fr)` lets every track shrink to
+   zero, so that grid could not exceed its container; the page-wide scrollbar
+   was a separate defect, `.main-content`'s `min-width: auto`, fixed there
+   (CR round 3, finding 13 - the first version of this comment welded the two
+   together). `auto-fit` reads the container, so the sidebar, and any future
+   panel or split, is accounted for by construction rather than by a number
+   somebody keeps in step.
+
+   `--detail-row-min` is the column floor: the narrowest a label-over-value cell
+   stays readable at. It is a property rather than a constant so a screen with
+   longer or terser values can retune it on its own container without editing
+   this rule. The `min()` drops the track to the full width when the container
+   is narrower than the floor itself, which is what makes the last step a clean
+   single column rather than an overflow. */
 .detail-row {
+  --detail-row-min: 14rem;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--detail-row-min)), 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-3);
 }
@@ -1069,8 +1080,15 @@ p:last-child { margin-bottom: 0; }
 /* The gutter. Sized for the widest label the button takes ("Resume") at
    .btn--sm, and applied to the whole row rather than one cell because which
    cell sits under the button changes with the column count: the third at
-   3-up, the first once the row is 1-up. */
-.watch-panel__header + .detail-row { padding-right: 6rem; }
+   3-up, the first once the row is 1-up.
+
+   `~`, not `+`: EVERY row in the panel, not just the one under the button.
+   `auto-fit` counts columns from the container it is handed, so a gutter on one
+   row alone made that row 2-up while its sibling was still 3-up - two ~96px
+   bands of panel width where the panel's two authored rows visibly disagreed
+   about the grid they share (CR round 3, finding 12). Row two spends 6rem it
+   does not need; the rows staying locked together is worth more. */
+.watch-panel__header ~ .detail-row { padding-right: 6rem; }
 /* Editable fields, one per row, below the read-only rows. */
 .watch-panel__fields {
   display: flex;
