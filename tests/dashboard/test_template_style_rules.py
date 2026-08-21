@@ -53,8 +53,9 @@ def test_no_inline_margin_on_spacing_owning_class(css_class: str) -> None:
     """These classes own their spacing; templates must not override it inline.
 
     Spacing above a `.section-heading` or a `.pagination` comes from the
-    preceding element's bottom margin — `.entity-card` and `.data-table` both
-    carry one — or from the class itself. An inline `margin-top` is therefore
+    preceding element's bottom margin — `.entity-card`, and since archiver#182
+    the `.table-scroll` wrapping every `.data-table` rather than the table
+    itself — or from the class itself. An inline `margin-top` is therefore
     either a no-op that collapses against the neighbour's margin, or a sign the
     neighbour is missing one and the fix belongs in the stylesheet. Both cases
     are real: the `.section-heading` override removed in archiver#176 was the
@@ -240,16 +241,51 @@ def test_the_scroll_container_is_reachable_by_keyboard() -> None:
     tab stop the content is unreachable.
     """
     required = ('tabindex="0"', 'role="region"', "aria-label")
-    unreachable = []
+    seen, unreachable = 0, []
     for path in _template_files():
         for tag in _SCROLL_TAG.findall(path.read_text()):
+            seen += 1
             if any(bit not in tag for bit in required):
                 unreachable.append(f"{path.relative_to(_TEMPLATES)} :: {tag[:80]}")
     assert not unreachable, "scroll container not keyboard-reachable:\n  " + "\n  ".join(
         unreachable
     )
+    # Non-vacuity: deleting every wrapper must not turn this into a pass.
+    assert seen > 10, f"expected a wrapper per data table, found {seen}"
 
 
 def test_the_scroll_container_actually_scrolls() -> None:
     """The class the templates lean on has to carry the overflow."""
     assert "overflow-x" in _rule(".table-scroll", _CSS.read_text())
+
+
+def test_the_wrapper_owns_the_spacing_below_a_table() -> None:
+    """A BFC traps its child's bottom margin, so the wrapper must carry it.
+
+    `overflow-x: auto` makes `.table-scroll` a block formatting context, and per
+    CSS 2.1 10.6.3 the last child's bottom margin then cannot collapse out of
+    it. Leaving the margin on `.data-table` meant it sat *inside* the wrapper and
+    the following element's `margin-top` added to it instead of collapsing with
+    it - the gap under every paginated table doubled (CR round 4, finding 17).
+    The wrapper is the block-level box in flow now, so the wrapper owns the
+    margin and collapses the way the table used to.
+    """
+    css = _CSS.read_text()
+
+    assert "margin-bottom" in _rule(".table-scroll", css), (
+        "the wrapper must own the gap below it, or the table's is trapped inside"
+    )
+    assert "margin-bottom" not in _rule(".data-table", css), (
+        "a margin here is trapped by the wrapper's BFC and stacks with the next "
+        "element's instead of collapsing against it"
+    )
+
+    # Inline margins are trapped the same way, and beat the stylesheet.
+    offenders = []
+    for path, before in _data_table_sites():
+        tag = _DATA_TABLE_TAG.search(path.read_text()[len(before) :])
+        if tag and re.search(r"style=\"[^\"]*margin-bottom", tag.group(0)):
+            offenders.append(str(path.relative_to(_TEMPLATES)))
+    assert not offenders, "inline margin-bottom trapped inside a scroll wrapper:\n  " + "\n  ".join(
+        offenders
+    )

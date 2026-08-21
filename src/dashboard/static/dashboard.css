@@ -638,10 +638,19 @@ p:last-child { margin-bottom: 0; }
    sibling along with it. The table is what overflows, so the table is what
    scrolls.
 
-   No margin here: `.data-table` carries its own, and this element is a block
-   formatting context (overflow is not `visible`), so that margin stays inside
-   and the gap below is unchanged. Adding one would double it. */
-.table-scroll { overflow-x: auto; }
+   THE WRAPPER OWNS THE GAP BELOW, not the table. `overflow-x` makes this a block
+   formatting context, and per CSS 2.1 10.6.3 the last child's bottom margin
+   cannot then collapse out of it. So a margin left on `.data-table` sits inside
+   this box and the next element's `margin-top` ADDS to it rather than collapsing
+   against it - which doubled the gap under every paginated table until CR round
+   4 caught it. The wrapper is the block-level box in flow now, so the margin
+   belongs here, where it collapses the way the table's used to. (The first
+   version of this comment said the gap was "unchanged" and warned against
+   exactly this fix - the mechanism was right and the conclusion backwards.) */
+.table-scroll {
+  overflow-x: auto;
+  margin-bottom: var(--space-4);
+}
 /* The wrapper takes focus so the region is keyboard-scrollable, which means it
    needs a visible focus ring like any other focusable thing. Matched to .btn's. */
 .table-scroll:focus-visible {
@@ -653,16 +662,11 @@ p:last-child { margin-bottom: 0; }
   width: 100%;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
-  /* Separates the table from whatever follows. The case that prompted it is the
-     next section heading on a screen with two stacked tables (domain detail,
-     #176), which had none at all. Three other successors exist and each was
-     accepted deliberately: the registration wizard's button row and the
-     InfoItem swap-primary panel each gain this margin, and `.pagination`
-     standardises to it - six of its seven usages inline `--space-3`, which
-     collapses against the larger value here. Where a table is the last child of
-     a `<section>` carrying its own bottom margin, the two collapse and nothing
-     moves. */
-  margin-bottom: var(--space-4);
+  /* No margin: `.table-scroll` carries it (archiver#182). The separation itself
+     is still #176's - the case that prompted it was the next section heading on
+     a screen with two stacked tables (domain detail), which had none at all -
+     but the wrapper is what sits in flow now, and a margin here would be trapped
+     inside its formatting context instead of collapsing against what follows. */
 }
 .data-table th,
 .data-table td {

@@ -183,7 +183,13 @@ clear-cache, which swaps the one contiguous `#revision-card` partial. The 303
 also preserves correct back-button semantics for a state transition.
 
 **Related-collection tables.** `.data-table` under an `<h2 class="section-heading">`
-carrying the row count (e.g. "Revision History (12)"). When the table is **paginated**,
+carrying the row count (e.g. "Revision History (12)"). **Every `.data-table` sits
+inside a `.table-scroll`** (#182) - a table will not shrink below its min-content
+width, so an unwrapped one widens the column instead of scrolling. The wrapper is
+`tabindex="0"` + `role="region"` + the table's own `aria-label`, and it carries
+the bottom margin, because its formatting context traps one left on the table. A
+tripwire fails the build if a new table arrives without it; [STYLE.md](STYLE.md)
+has the class. When the table is **paginated**,
 the count must come from a route-level `COUNT` over the full result set, never
 a template `|length` - that would report only the current page. Domain detail
 (`source_total`) is the reference; InfoSource detail's "Other Sources at This
