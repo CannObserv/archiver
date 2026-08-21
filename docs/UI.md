@@ -100,6 +100,24 @@ This is the form-level counterpart to the pagination clamp (see **Pagination
 params are clamped, not validated**) - query-param errors are removed by
 clamping, form-field errors are rendered.
 
+For forms that submit via HTMX and need inline validation errors without a full-page reload, use `hx-target-422` from the `htmx-ext-response-targets` extension (vendored as `vendor/htmx-ext-response-targets.min.js` v2.0.4, activated globally via `hx-ext="response-targets"` on `<body>`):
+
+```html
+<form hx-post="/dashboard/path/to/action"
+      hx-target-422="#my-error">
+  <div id="my-error" role="alert" aria-live="polite" aria-atomic="true"></div>
+  <!-- fields -->
+</form>
+```
+
+Rules:
+- `hx-target-422="#my-error"` routes 422 responses into `#my-error`. Requires the `response-targets` extension; without it the attribute is silently ignored and 4xx responses are discarded.
+- The server returns `422` with an HTML fragment: `<div id="my-error" role="alert" aria-live="polite" aria-atomic="true"><p class="text-danger">…</p></div>`. Including the same `id` in the response preserves the element for subsequent submissions (default swap style is `outerHTML`).
+- `aria-live="polite" aria-atomic="true"` is required on the error target so screen readers announce the complete message on each update.
+- On success, the server returns `204` with an `HX-Redirect` header. HTMX follows it as a full-page navigation regardless of `hx-target` settings.
+- Place the error div inside the same Alpine `x-show` container as the form so it stays in DOM when the panel is toggled. Placing it inside the `<form>` element satisfies this by default; outside-form placements (e.g. after `</form>` but within the same `<details>`) are valid if the enclosing container is under the same Alpine toggle.
+
+
 ### Flash messages
 
 Server returns `HX-Trigger: {"showFlash": {"level": "success", "body": "Saved."}}` alongside a mutating response **whose outcome the swap does not already make obvious**. A swap that visibly replaces what the operator just acted on - the assignment-table deactivate, say - carries no toast; a swap whose result is a badge inside a re-rendered region does, and an *irreversible* action carries one on every outcome (see **Irreversible actions guard themselves twice**). The rule is "the operator must be able to tell what happened", not "every mutation toasts". `flash.js` (loaded in `base.html`) injects `.flash--*` divs into `#flash-region` - a `position: fixed` viewport overlay (a direct `<body>` child, outside `<main>`, so HTMX content swaps can't wipe live toasts) anchored top-right on desktop and full-width top on narrow viewports, so toasts stay visible at any scroll position (archiver#65). `flash.js` recreates `#flash-region` and both announcers if they are missing, so a swap that replaces the whole of `<body>` (the error page below) cannot silence the next toast. **Note:** `flash.js` must be in the `base.html` script list - if it is dropped, every `showFlash` is silently ignored site-wide (CannObserv/archiver#62).
@@ -183,6 +201,78 @@ that *decline* keep returning their partial at 200 with `HX-Trigger: showFlash`
 page is for failures with no partial to return to.
 
 ---
+
+### HTMX async partial pattern
+
+For non-blocking page sections that call a slow or potentially unavailable service, load them after the page renders:
+
+```html
+<div id="target-id"
+     hx-get="/dashboard/path/to/partial"
+     hx-trigger="load"
+     hx-swap="outerHTML"
+     aria-live="polite" aria-atomic="false">
+  <p class="text-muted text-sm">Loading…</p>
+</div>
+```
+
+Rules:
+- `hx-trigger="load"` fires the request immediately after the page renders (no user interaction needed).
+- `hx-swap="outerHTML"` replaces the entire placeholder div. The server-rendered partial **must** include the same `id` as the placeholder so subsequent re-renders can re-target it.
+- `aria-live="polite" aria-atomic="false"` is required on async content sections (see Accessibility section). For error announcement targets, use `aria-atomic="true"` instead - see the inline form error pattern below.
+- The placeholder content degrades gracefully if JS is disabled or the request fails.
+- Use this pattern for sections that depend on a sibling service (Watcher, Replicator) so that service outages do not block the dashboard page load.
+
+**Event-driven refresh variant.** When a panel should auto-refresh in response to actions elsewhere on the page, add `hx-trigger="<event-name> from:body"` alongside `hx-trigger="load"` using HTMX's comma-separated multi-trigger syntax:
+
+```html
+<div id="watcher-section"
+     hx-get="/dashboard/path/to/section"
+     hx-trigger="load, watcherUpdated from:body"
+     hx-swap="outerHTML"
+     aria-live="polite" aria-atomic="false">
+  <p class="text-muted text-sm">Loading…</p>
+</div>
+```
+
+The server-side action endpoint (e.g. `POST /toggle-watch-active`) sends `HX-Trigger: {"watcherUpdated":{}}` in the response header. HTMX dispatches `watcherUpdated` on the triggering element; it bubbles to `body`, which causes the section to re-fetch. Use this to keep multiple independent sections in sync without coupling their endpoints.
+
+### HTMX action-swaps-card pattern
+
+For a mutating action on a detail page (submit a form, click a button) that should update just the affected card without a full-page reload, swap the card in place and toast the result. Used by clear-cache (`source_revisions/_detail_card.html`) and the Source Specs editor (`info_sources/_source_specs_card.html`).
+
+```html
+<form hx-post="/dashboard/path/to/action"
+      hx-target="#the-card" hx-swap="outerHTML"
+      method="POST" action="/dashboard/path/to/action">
+  <!-- fields + submit -->
+</form>
+```
+
+Rules:
+- Extract the card into its own partial whose root carries the target `id` (e.g. `#the-card`). The route renders that same partial for HTMX requests so the swap re-targets cleanly on subsequent actions.
+- **Progressive enhancement:** keep `method`/`action` (and, for buttons, a real submit) alongside the `hx-*` attributes so the action still works as a plain POST→303 when JS is disabled. Branch server-side on the `HX-Request` header: HTMX → partial; non-HTMX → 303 redirect (success) / full-page re-render (error).
+- On success the route sends `HX-Trigger: {"showFlash": {...}}` for a toast, and moves focus to the card heading (`tabindex="-1"`, focused by an inline `<script>` gated on a `swapped` flag) so keyboard users are not dropped to `<body>` after the swap (archiver#78).
+- **Validation errors** return the partial with the inline error at status **200** (not 422) so HTMX performs the swap - otherwise a 4xx is discarded unless the `response-targets` extension is wired (see the inline form error pattern above, which is the alternative when you want the error routed to a separate `#error` div rather than re-swapping the whole card). Give the inline error `<p>` `role="alert"` so screen readers announce it after the swap (focus lands on `<body>` otherwise), move focus to the card heading on the error swap too, and echo the operator's submitted input back into the field so a rejected edit isn't discarded.
+
+### JSON data island pattern
+
+When an Alpine component needs server-rendered data at initialisation, place the data in a `<script type="application/json">` child element rather than embedding JSON inside the `x-data` attribute. Jinja2's `tojson` filter does **not** escape `"`, so JSON in a double-quoted attribute is silently truncated by the HTML parser; single-quoted attributes work but are fragile to copy. The data island avoids both problems:
+
+```html
+<div x-data="myComponent()">
+  <script type="application/json">{{ my_data | tojson }}</script>
+  ...
+</div>
+```
+
+In `init()`, read it with:
+```javascript
+var el = this.$el.querySelector('script[type="application/json"]');
+var data = el ? JSON.parse(el.textContent || "[]") : [];
+```
+
+Notes: `tojson` escapes `<` → `<`, so `</script>` inside JSON values cannot close the tag early. Browsers do not execute `<script type="application/json">`. Alpine and HTMX ignore it. Apply this pattern to any Alpine component that needs a non-trivial server-rendered data structure at startup.
 
 ## Detail Screen Conventions
 

@@ -67,47 +67,49 @@
   {# Recent Activity #}
   <h2 style="margin-bottom:var(--space-2);">Recent Activity</h2>
   {% if recent_revisions %}
-  <table class="data-table" aria-label="Recent activity" style="margin-bottom:var(--space-4);">
-    <thead>
-      <tr>
-        <th class="data-table__th">Item</th>
-        <th class="data-table__th">Source</th>
-        <th class="data-table__th">Revision</th>
-        <th class="data-table__th">Observed</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for rev in recent_revisions %}
-      {% set src = sources_by_id.get(rev.info_source_id) %}
-      {% set item = items_by_source_id.get(rev.info_source_id) %}
-      <tr>
-        <td class="data-table__cell">
-          {% if item %}
-          <a href="/dashboard/info-items/{{ item.info_item_id }}" class="text-sm">{{ item.name }}</a>
-          {% else %}
-          <span class="text-muted text-sm">—</span>
-          {% endif %}
-        </td>
-        <td class="data-table__cell">
-          {% if src %}
-          <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
-             class="text-sm">{{ src.url or rev.info_source_id }}</a>
-          {% else %}
-          <span class="text-muted text-sm">{{ rev.info_source_id }}</span>
-          {% endif %}
-        </td>
-        <td class="data-table__cell">
-          <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
-            <code class="text-sm">{{ rev.content_fingerprint[:20] }}…</code>
-          </a>
-        </td>
-        <td class="data-table__cell data-table__cell--muted">
-          {{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Recent activity">
+    <table class="data-table" aria-label="Recent activity" style="margin-bottom:var(--space-4);">
+      <thead>
+        <tr>
+          <th class="data-table__th">Item</th>
+          <th class="data-table__th">Source</th>
+          <th class="data-table__th">Revision</th>
+          <th class="data-table__th">Observed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rev in recent_revisions %}
+        {% set src = sources_by_id.get(rev.info_source_id) %}
+        {% set item = items_by_source_id.get(rev.info_source_id) %}
+        <tr>
+          <td class="data-table__cell">
+            {% if item %}
+            <a href="/dashboard/info-items/{{ item.info_item_id }}" class="text-sm">{{ item.name }}</a>
+            {% else %}
+            <span class="text-muted text-sm">—</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell">
+            {% if src %}
+            <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
+               class="text-sm">{{ src.url or rev.info_source_id }}</a>
+            {% else %}
+            <span class="text-muted text-sm">{{ rev.info_source_id }}</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell">
+            <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
+              <code class="text-sm">{{ rev.content_fingerprint[:20] }}…</code>
+            </a>
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
   <p class="text-muted" style="margin-bottom:var(--space-4);">No activity yet.</p>
   {% endif %}
@@ -115,36 +117,38 @@
   {# Domain overview — top 10 by InfoSource count #}
   {% if domain_overview %}
   <h2 style="margin-bottom:var(--space-2);">Domains</h2>
-  <table class="data-table" aria-label="Domain overview">
-    <thead>
-      <tr>
-        <th class="data-table__th">Domain</th>
-        <th class="data-table__th">Sources</th>
-        <th class="data-table__th">Items</th>
-        <th class="data-table__th">Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in domain_overview %}
-      <tr>
-        <td class="data-table__cell">
-          <a href="/dashboard/domains/{{ row.name }}" class="text-sm">{{ row.name }}</a>
-        </td>
-        <td class="data-table__cell data-table__cell--muted">{{ row.source_count }}</td>
-        <td class="data-table__cell data-table__cell--muted">{{ row.item_count }}</td>
-        <td class="data-table__cell">
-          {% if row.archived_at %}
-          <span class="badge badge--warning">archived</span>
-          {% elif not row.is_active %}
-          <span class="badge badge--muted">inactive</span>
-          {% else %}
-          <span class="badge badge--success">active</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Domain overview">
+    <table class="data-table" aria-label="Domain overview">
+      <thead>
+        <tr>
+          <th class="data-table__th">Domain</th>
+          <th class="data-table__th">Sources</th>
+          <th class="data-table__th">Items</th>
+          <th class="data-table__th">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in domain_overview %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/domains/{{ row.name }}" class="text-sm">{{ row.name }}</a>
+          </td>
+          <td class="data-table__cell data-table__cell--muted">{{ row.source_count }}</td>
+          <td class="data-table__cell data-table__cell--muted">{{ row.item_count }}</td>
+          <td class="data-table__cell">
+            {% if row.archived_at %}
+            <span class="badge badge--warning">archived</span>
+            {% elif not row.is_active %}
+            <span class="badge badge--muted">inactive</span>
+            {% else %}
+            <span class="badge badge--success">active</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% endif %}
 
 </div>

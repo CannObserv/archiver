@@ -29,30 +29,32 @@
   </div>
 
   {% if specs %}
-  <table class="data-table" aria-label="Replication Specifications">
-    <thead>
-      <tr>
-        <th class="data-table__th">Name</th>
-        <th class="data-table__th">Provider</th>
-        <th class="data-table__th">Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for spec in specs %}
-      <tr>
-        <td class="data-table__cell">
-          <a href="/dashboard/rep-specs/{{ spec.rep_spec_id }}">{{ spec.name }}</a>
-        </td>
-        <td class="data-table__cell">
-          <span class="badge badge--sm">{{ spec.provider }}</span>
-        </td>
-        <td class="data-table__cell data-table__cell--muted">
-          {{ spec.created_at.strftime('%Y-%m-%d') }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Replication Specifications">
+    <table class="data-table" aria-label="Replication Specifications">
+      <thead>
+        <tr>
+          <th class="data-table__th">Name</th>
+          <th class="data-table__th">Provider</th>
+          <th class="data-table__th">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for spec in specs %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/rep-specs/{{ spec.rep_spec_id }}">{{ spec.name }}</a>
+          </td>
+          <td class="data-table__cell">
+            <span class="badge badge--sm">{{ spec.provider }}</span>
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ spec.created_at.strftime('%Y-%m-%d') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {# Pagination #}
   <div class="pagination">

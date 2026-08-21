@@ -20,40 +20,42 @@
   </form>
 
   {% if domains %}
-  <table class="data-table" aria-label="Domains">
-    <thead>
-      <tr>
-        <th class="data-table__th">Domain</th>
-        <th class="data-table__th">Sources</th>
-        <th class="data-table__th">Status</th>
-        <th class="data-table__th">Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for domain in domains %}
-      <tr>
-        <td class="data-table__cell">
-          <a href="/dashboard/domains/{{ domain.name }}">{{ domain.name }}</a>
-        </td>
-        <td class="data-table__cell data-table__cell--muted">
-          {{ source_counts.get(domain.name, 0) }}
-        </td>
-        <td class="data-table__cell">
-          {% if domain.archived_at %}
-          <span class="badge badge--warning">archived</span>
-          {% elif not domain.is_active %}
-          <span class="badge badge--muted">inactive</span>
-          {% else %}
-          <span class="badge badge--success">active</span>
-          {% endif %}
-        </td>
-        <td class="data-table__cell data-table__cell--muted text-sm">
-          {{ domain.created_at.strftime('%Y-%m-%d') }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Domains">
+    <table class="data-table" aria-label="Domains">
+      <thead>
+        <tr>
+          <th class="data-table__th">Domain</th>
+          <th class="data-table__th">Sources</th>
+          <th class="data-table__th">Status</th>
+          <th class="data-table__th">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for domain in domains %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/domains/{{ domain.name }}">{{ domain.name }}</a>
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ source_counts.get(domain.name, 0) }}
+          </td>
+          <td class="data-table__cell">
+            {% if domain.archived_at %}
+            <span class="badge badge--warning">archived</span>
+            {% elif not domain.is_active %}
+            <span class="badge badge--muted">inactive</span>
+            {% else %}
+            <span class="badge badge--success">active</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-sm">
+            {{ domain.created_at.strftime('%Y-%m-%d') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {# Pagination #}
   {% if has_more or offset > 0 %}

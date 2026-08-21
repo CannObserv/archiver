@@ -23,35 +23,37 @@
   </form>
 
   {% if items %}
-  <table class="data-table" aria-label="Information Items">
-    <thead>
-      <tr>
-        <th class="data-table__th">Name</th>
-        <th class="data-table__th">Information Source</th>
-        <th class="data-table__th">Observed</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in items %}
-      <tr>
-        <td class="data-table__cell">
-          <a href="/dashboard/info-items/{{ row.item.info_item_id }}">{{ row.item.name }}</a>
-        </td>
-        <td class="data-table__cell">
-          {% if row.primary_info_source_id %}
-          <a href="/dashboard/info-sources/{{ row.primary_info_source_id }}"
-             class="text-sm">{{ row.primary_url or row.primary_info_source_id }}</a>
-          {% else %}
-          <span aria-label="none">—</span>
-          {% endif %}
-        </td>
-        <td class="data-table__cell data-table__cell--muted">
-          {{ row.observed_at.strftime('%Y-%m-%d %H:%M') if row.observed_at else '—' }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Information Items">
+    <table class="data-table" aria-label="Information Items">
+      <thead>
+        <tr>
+          <th class="data-table__th">Name</th>
+          <th class="data-table__th">Information Source</th>
+          <th class="data-table__th">Observed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in items %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/info-items/{{ row.item.info_item_id }}">{{ row.item.name }}</a>
+          </td>
+          <td class="data-table__cell">
+            {% if row.primary_info_source_id %}
+            <a href="/dashboard/info-sources/{{ row.primary_info_source_id }}"
+               class="text-sm">{{ row.primary_url or row.primary_info_source_id }}</a>
+            {% else %}
+            <span aria-label="none">—</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ row.observed_at.strftime('%Y-%m-%d %H:%M') if row.observed_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% if has_more or offset > 0 %}
   <nav class="pagination" aria-label="Pagination">

@@ -65,30 +65,32 @@
      paging it does not reposition the Sources table below (#176). #}
   <h2 class="section-heading">Information Items ({{ item_total }})</h2>
   {% if items %}
-  <table class="data-table" aria-label="Information Items on {{ domain.name }}">
-    <thead>
-      <tr>
-        <th class="data-table__th">Name</th>
-        <th class="data-table__th">Owner</th>
-        <th class="data-table__th">Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in items %}
-      <tr>
-        <td class="data-table__cell">
-          <a href="/dashboard/info-items/{{ item.info_item_id }}">{{ item.name }}</a>
-        </td>
-        <td class="data-table__cell data-table__cell--muted text-sm">
-          {{ item.owner or '—' }}
-        </td>
-        <td class="data-table__cell data-table__cell--muted text-sm">
-          {{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Information Items on {{ domain.name }}">
+    <table class="data-table" aria-label="Information Items on {{ domain.name }}">
+      <thead>
+        <tr>
+          <th class="data-table__th">Name</th>
+          <th class="data-table__th">Owner</th>
+          <th class="data-table__th">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/info-items/{{ item.info_item_id }}">{{ item.name }}</a>
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-sm">
+            {{ item.owner or '—' }}
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-sm">
+            {{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% if item_has_more or item_offset > 0 %}
   <nav class="pagination" aria-label="Information Items pagination">
@@ -115,27 +117,29 @@
   {# Count comes from a route COUNT, not |length — the table below is paginated. #}
   <h2 class="section-heading">Information Sources ({{ source_total }})</h2>
   {% if sources %}
-  <table class="data-table" aria-label="Information Sources on {{ domain.name }}">
-    <thead>
-      <tr>
-        <th class="data-table__th">URL</th>
-        <th class="data-table__th">Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for src in sources %}
-      <tr>
-        <td class="data-table__cell">
-          <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-sm">{{ src.url }}</a>
-          {{ open_button(src.url) }}
-        </td>
-        <td class="data-table__cell data-table__cell--muted text-sm">
-          {{ src.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Information Sources on {{ domain.name }}">
+    <table class="data-table" aria-label="Information Sources on {{ domain.name }}">
+      <thead>
+        <tr>
+          <th class="data-table__th">URL</th>
+          <th class="data-table__th">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for src in sources %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/info-sources/{{ src.info_source_id }}" class="text-sm">{{ src.url }}</a>
+            {{ open_button(src.url) }}
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-sm">
+            {{ src.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% if has_more or offset > 0 %}
   <nav class="pagination" aria-label="Information Sources pagination">

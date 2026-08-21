@@ -862,8 +862,11 @@ async def test_the_assignment_table_columns_line_up(client, session):
 
     r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
 
-    table = r.text.split('aria-label="Active Replication Spec assignments"')[1].split("</table>")[0]
-    head, body = table.split("<tbody>")
+    # Split on the <table> tag, not on the label alone: since archiver#182 the
+    # scroll region wrapping the table carries the same accessible name, so the
+    # bare string matches twice and the first slice holds no <tbody> at all.
+    tag = '<table class="data-table" aria-label="Active Replication Spec assignments"'
+    head, body = r.text.split(tag)[1].split("</table>")[0].split("<tbody>")
     assert head.count('class="data-table__th"') == body.count('class="data-table__cell')
 
 
@@ -973,7 +976,7 @@ async def test_replicate_now_refuses_when_there_is_nothing_captured_yet(client, 
         headers=_HEADERS,
     )
 
-    # 200, not 422: a 4xx is discarded by htmx (docs/STYLE.md), so the refusal
+    # 200, not 422: a 4xx is discarded by htmx (docs/UI.md), so the refusal
     # would reach the operator as nothing at all (CR #36).
     assert r.status_code == 200
     assert read_flash(r)["showFlash"]["level"] == "error"

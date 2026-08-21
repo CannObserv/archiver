@@ -33,50 +33,52 @@
   </div>
 
   {% if revisions %}
-  <table class="data-table" aria-label="Information Source Revisions">
-    <thead>
-      <tr>
-        <th class="data-table__th">Fingerprint</th>
-        <th class="data-table__th">Source</th>
-        <th class="data-table__th">Captured</th>
-        <th class="data-table__th">Cache</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for rev in revisions %}
-      {% set src = sources_by_id.get(rev.info_source_id) %}
-      <tr>
-        <td class="data-table__cell">
-          <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
-            <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
-          </a>
-        </td>
-        <td class="data-table__cell">
-          {% if src %}
-          <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
-             class="text-sm">{{ src.url or rev.info_source_id }}</a>
-          {% else %}
-          <span class="text-muted text-sm">{{ rev.info_source_id }}</span>
-          {% endif %}
-        </td>
-        <td class="data-table__cell data-table__cell--muted">
-          {{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}
-        </td>
-        <td class="data-table__cell">
-          {% if rev.content_cache_uri %}
-            {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
-            <span class="status-pill status-pill--expired">expired</span>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Information Source Revisions">
+    <table class="data-table" aria-label="Information Source Revisions">
+      <thead>
+        <tr>
+          <th class="data-table__th">Fingerprint</th>
+          <th class="data-table__th">Source</th>
+          <th class="data-table__th">Captured</th>
+          <th class="data-table__th">Cache</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rev in revisions %}
+        {% set src = sources_by_id.get(rev.info_source_id) %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/source-revisions/{{ rev.source_revision_id }}">
+              <code class="text-sm">{{ rev.content_fingerprint[:24] }}…</code>
+            </a>
+          </td>
+          <td class="data-table__cell">
+            {% if src %}
+            <a href="/dashboard/info-sources/{{ rev.info_source_id }}"
+               class="text-sm">{{ src.url or rev.info_source_id }}</a>
             {% else %}
-            <span class="status-pill status-pill--cached">cached</span>
+            <span class="text-muted text-sm">{{ rev.info_source_id }}</span>
             {% endif %}
-          {% else %}
-          <span class="status-pill status-pill--missing">—</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+          </td>
+          <td class="data-table__cell data-table__cell--muted">
+            {{ rev.captured_at.strftime('%Y-%m-%d %H:%M') }}
+          </td>
+          <td class="data-table__cell">
+            {% if rev.content_cache_uri %}
+              {% if rev.content_cache_expires_at and rev.content_cache_expires_at < now %}
+              <span class="status-pill status-pill--expired">expired</span>
+              {% else %}
+              <span class="status-pill status-pill--cached">cached</span>
+              {% endif %}
+            {% else %}
+            <span class="status-pill status-pill--missing">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {# Pagination #}
   <div class="pagination">

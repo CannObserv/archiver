@@ -376,10 +376,14 @@ p:last-child { margin-bottom: 0; }
      overflow anything (CR round 3, finding 13). */
   min-width: 0;
   /* ...and once it can shrink, something must contain what still does not fit.
-     Scrolling the column keeps the topbar and sidebar fixed where they belong.
-     A per-table scroll wrapper would be better - it would scroll only the table
-     rather than the column - but that is 18 templates, so it is archiver#182
-     rather than smuggled into a fix. */
+     A BACKSTOP as of archiver#182, no longer the mechanism: both classes that
+     actually overflowed now scroll themselves - `.data-table` via
+     `.table-scroll`, `.code-block` via its own `overflow-x`. Kept rather than
+     dropped because the failure it prevents is the worse one: without it an
+     unknown wide element goes page-level again, clipping the fixed topbar and
+     scrolling the whole document. The cost is that such an element scrolls the
+     column quietly instead of announcing itself, which is why the class of bug
+     is guarded at source by a tripwire on the wrapper rather than left to this. */
   overflow-x: auto;
 }
 
@@ -625,6 +629,26 @@ p:last-child { margin-bottom: 0; }
 }
 
 /* ─── Data table ─────────────────────────────────────────────────────────── */
+/* A data table scrolls inside its own box rather than widening what contains it
+   (archiver#182). `.data-table` has a large min-content width - several columns
+   of URLs, ULIDs and UTC timestamps - and will not shrink below it, so an
+   unwrapped one pushes outward until something stops it. Before archiver#181
+   nothing did, and the widest table on a screen became the width of the page;
+   #181 stopped it at `.main-content`, but a column-wide scroll drags every
+   sibling along with it. The table is what overflows, so the table is what
+   scrolls.
+
+   No margin here: `.data-table` carries its own, and this element is a block
+   formatting context (overflow is not `visible`), so that margin stays inside
+   and the gap below is unchanged. Adding one would double it. */
+.table-scroll { overflow-x: auto; }
+/* The wrapper takes focus so the region is keyboard-scrollable, which means it
+   needs a visible focus ring like any other focusable thing. Matched to .btn's. */
+.table-scroll:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
