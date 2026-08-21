@@ -80,7 +80,7 @@ opinion about the control it wraps, so several fields on one panel can share it.
 - `editing: boolean` - whether the row shows the control instead of the read-only readout.
 
 **Methods:**
-- `cancelEdit()` - set `editing = false` without a server call and restore the server-rendered value through `$refs.field`. A `<select>` has no `defaultValue`, so it restores each option's `defaultSelected` instead; anything else falls back to `el.value = el.defaultValue`.
+- `cancelEdit()` - set `editing = false` without a server call and restore the server-rendered value through `$refs.field`. A `<select>` has no `defaultValue`, so it restores from the `selected` **attribute** - the server-rendered choice by definition, and unlike the `defaultSelected` property it is implemented in jsdom, so `tests/js/editable-field.test.js` can cover it. It assigns `selectedIndex` once rather than walking `option.selected`: that walk is order-dependent, and its last iteration deselecting an option asks the select for a reset that lands on index 0. Anything else falls back to `el.value = el.defaultValue`.
 
 **Usage:** `x-data="editableField"` on the `.field-row-group` wrapper in
 `info_items/_cadence_editor.html`. View mode (`x-show="!editing"`) renders the

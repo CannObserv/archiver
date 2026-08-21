@@ -9,8 +9,8 @@
   the dashboard that committed without an explicit edit gesture.
 
   Toggle is the generic `editableField` Alpine component (main.js), reached
-  through `x-ref="field"`; Cancel restores each option's `defaultSelected`
-  client-side, no server call.
+  through `x-ref="field"`; Cancel restores the option carrying the server-rendered
+  `selected` attribute, client-side, no server call.
 
   Labelled "Announced cadence", not "Cadence" (CR round 1, finding 3): row one
   of the panel leads with the interval Watcher reports *applied*, and under
