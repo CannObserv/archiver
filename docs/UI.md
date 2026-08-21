@@ -43,16 +43,31 @@ The other two parts of this reference, under the same living-doc rule:
 
 Every dashboard request - full pages and HTMX partials alike - passes through
 `get_dashboard_user` (`src/dashboard/deps.py`). It reads the `X-ExeDev-UserID`
-and `X-ExeDev-Email` request headers, upserts `AppUser` (creates if new, updates
-the email if changed) and returns the row; absent headers → 307 redirect to
-`/__exe.dev/login?redirect=<path>`. Tests override via
+and `X-ExeDev-Email` request headers, resolves the `AppUser` (creating it on
+first sight, updating the email if changed) and returns the row; absent headers
+→ 307 redirect to `/__exe.dev/login?redirect=<path>`. Tests override via
 `app.dependency_overrides[get_dashboard_user]`.
 
 Identity is `external_id`; email is descriptive, **not unique** (#177 - the
 proxy doesn't guarantee it, and enforcing it locked colliding operators out
 with a 500). Don't reintroduce a unique constraint or key any lookup on email.
-The upsert is one atomic `INSERT … ON CONFLICT (external_id) DO UPDATE`, so
-concurrent first-logins can't race.
+
+**The steady state is a read.** One indexed SELECT on `external_id`, no write.
+Only first sight or a real email change reaches the `INSERT … ON CONFLICT
+(external_id) DO UPDATE`, which keeps concurrent first-logins from racing
+(#177) and commits inside the dependency - `get_db_session` doesn't commit and
+a read-only route won't either, so an identity that rode the route's
+transaction was rolled back at session close. Don't restore the unconditional
+upsert: `DO UPDATE` locks the conflicting row even when its `WHERE` skips the
+write, and this dependency resolves before the route body, so the lock spanned
+the whole request and an operator's parallel partials queued on their own row
+(#180).
+
+Because identity is `external_id` and nothing reconciles on email, a proxy that
+ever re-issues an id yields a *second* `AppUser` row. The first row's API keys
+keep authenticating - `require_api_key` matches on `key_hash` alone - but no
+longer appear on the settings page, so they can't be revoked from the UI. That
+is the accepted cost of not letting a header pair adopt an existing identity.
 
 The gate is universal, so the route entries in [PAGES.md](PAGES.md) do not repeat
 it: assume any dashboard route redirects 307 when unauthenticated.

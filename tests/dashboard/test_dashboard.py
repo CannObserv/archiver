@@ -1,8 +1,12 @@
-"""Dashboard foundation tests — index route, auth redirect, user upsert."""
+"""Dashboard foundation tests - index route, auth redirect, user upsert."""
 
 import pytest
-from sqlalchemy import select
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from src.api.deps import get_db_session
+from src.api.main import app
 from src.core.models import AppUser
 
 
@@ -55,7 +59,7 @@ async def test_dashboard_index_creates_app_user(client, session):
 
 @pytest.mark.asyncio
 async def test_dashboard_index_updates_email_on_change(client, session):
-    # First request — creates user
+    # First request - creates user
     await client.get(
         "/dashboard/",
         headers={
@@ -64,7 +68,7 @@ async def test_dashboard_index_updates_email_on_change(client, session):
         },
     )
 
-    # Second request — email changed on proxy side
+    # Second request - email changed on proxy side
     await client.get(
         "/dashboard/",
         headers={
@@ -81,9 +85,9 @@ async def test_dashboard_index_updates_email_on_change(client, session):
 
 @pytest.mark.asyncio
 async def test_dashboard_repeat_login_same_email_returns_200(client, session):
-    # The upsert's ON CONFLICT DO UPDATE is guarded by `WHERE email != excluded`,
-    # so a repeat login writes nothing and RETURNING yields no row — the common
-    # production path, which then falls back to a plain SELECT (#177).
+    # The common production path: a known external_id whose email has not
+    # moved resolves on the SELECT and never reaches the upsert at all (#180).
+    # It stayed a repeat-login regression test through that change (#177).
     headers = {
         "X-ExeDev-UserID": "ext-repeat",
         "X-ExeDev-Email": "repeat@example.com",
@@ -156,3 +160,59 @@ async def test_dashboard_email_change_onto_existing_email_returns_200(client, se
     user = result.scalar_one_or_none()
     assert user is not None
     assert user.email == "held@example.com"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_repeat_visit_emits_no_app_user_write(client, session, test_engine):
+    # #180: the identity upsert is a write on the read path. Worse than its
+    # cost: ON CONFLICT DO UPDATE locks the conflicting row even when the
+    # update is skipped, and the dependency holds it for the whole request,
+    # so an operator's concurrent partials queue on their own app_users row.
+    headers = {"X-ExeDev-UserID": "ext-noop", "X-ExeDev-Email": "noop@example.com"}
+    await client.get("/dashboard/", headers=headers)
+
+    statements: list[str] = []
+
+    def _record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _record)
+    try:
+        response = await client.get("/dashboard/", headers=headers)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
+
+    assert response.status_code == 200
+    writes = [s for s in statements if "app_users" in s and "SELECT" not in s.split("\n")[0]]
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_dashboard_read_only_visit_persists_app_user(test_engine, committed_rows):
+    # #180: get_db_session never commits and read-only routes don't either, so
+    # before the fix this row was inserted and rolled back on every page view.
+    # Needs real per-request sessions - the shared-SAVEPOINT `session` fixture
+    # keeps one uncommitted session across requests and hides the rollback.
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+
+    async def _real_session():
+        async with factory() as db:
+            yield db
+
+    app.dependency_overrides[get_db_session] = _real_session
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as http:
+            response = await http.get(
+                "/dashboard/health",
+                headers={"X-ExeDev-UserID": "ext-persist", "X-ExeDev-Email": "persist@example.com"},
+            )
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
+
+    assert response.status_code == 200
+    async with factory() as db:
+        result = await db.execute(select(AppUser).where(AppUser.external_id == "ext-persist"))
+        user = result.scalar_one_or_none()
+        assert user is not None
+        committed_rows.append((AppUser, user.id))
