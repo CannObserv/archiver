@@ -976,7 +976,7 @@ async def test_replicate_now_refuses_when_there_is_nothing_captured_yet(client, 
         headers=_HEADERS,
     )
 
-    # 200, not 422: a 4xx is discarded by htmx (docs/STYLE.md), so the refusal
+    # 200, not 422: a 4xx is discarded by htmx (docs/UI.md), so the refusal
     # would reach the operator as nothing at all (CR #36).
     assert r.status_code == 200
     assert read_flash(r)["showFlash"]["level"] == "error"

@@ -147,96 +147,12 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - For elements that are conditionally hidden by `x-show` but start hidden, add `style="display:none;"` as an initial-state hint instead of `x-cloak`; Alpine's `x-show` manages their display after initialisation. This preserves the CSS class's `display` value (e.g. `display:flex` on `.entity-card__actions`) when the element is shown.
 - **Inline toggle panel pattern** - when a section needs a togglable sub-panel (e.g. Swap primary source), wrap both the trigger and the panel in `x-data="{open:false}"`. The trigger button uses `@click="open=!open"` and `x-text="open ? 'Cancel' : 'Open'"`. The panel uses `x-show="open" x-cloak`. No named Alpine component needed for single-use panels.
 
-### HTMX async partial pattern
+### HTMX and Alpine patterns
 
-For non-blocking page sections that call a slow or potentially unavailable service, load them after the page renders:
-
-```html
-<div id="target-id"
-     hx-get="/dashboard/path/to/partial"
-     hx-trigger="load"
-     hx-swap="outerHTML"
-     aria-live="polite" aria-atomic="false">
-  <p class="text-muted text-sm">Loading…</p>
-</div>
-```
-
-Rules:
-- `hx-trigger="load"` fires the request immediately after the page renders (no user interaction needed).
-- `hx-swap="outerHTML"` replaces the entire placeholder div. The server-rendered partial **must** include the same `id` as the placeholder so subsequent re-renders can re-target it.
-- `aria-live="polite" aria-atomic="false"` is required on async content sections (see Accessibility section). For error announcement targets, use `aria-atomic="true"` instead - see the inline form error pattern below.
-- The placeholder content degrades gracefully if JS is disabled or the request fails.
-- Use this pattern for sections that depend on a sibling service (Watcher, Replicator) so that service outages do not block the dashboard page load.
-
-**Event-driven refresh variant.** When a panel should auto-refresh in response to actions elsewhere on the page, add `hx-trigger="<event-name> from:body"` alongside `hx-trigger="load"` using HTMX's comma-separated multi-trigger syntax:
-
-```html
-<div id="watcher-section"
-     hx-get="/dashboard/path/to/section"
-     hx-trigger="load, watcherUpdated from:body"
-     hx-swap="outerHTML"
-     aria-live="polite" aria-atomic="false">
-  <p class="text-muted text-sm">Loading…</p>
-</div>
-```
-
-The server-side action endpoint (e.g. `POST /toggle-watch-active`) sends `HX-Trigger: {"watcherUpdated":{}}` in the response header. HTMX dispatches `watcherUpdated` on the triggering element; it bubbles to `body`, which causes the section to re-fetch. Use this to keep multiple independent sections in sync without coupling their endpoints.
-
-### HTMX inline form error pattern
-
-For forms that submit via HTMX and need inline validation errors without a full-page reload, use `hx-target-422` from the `htmx-ext-response-targets` extension (vendored as `vendor/htmx-ext-response-targets.min.js` v2.0.4, activated globally via `hx-ext="response-targets"` on `<body>`):
-
-```html
-<form hx-post="/dashboard/path/to/action"
-      hx-target-422="#my-error">
-  <div id="my-error" role="alert" aria-live="polite" aria-atomic="true"></div>
-  <!-- fields -->
-</form>
-```
-
-Rules:
-- `hx-target-422="#my-error"` routes 422 responses into `#my-error`. Requires the `response-targets` extension; without it the attribute is silently ignored and 4xx responses are discarded.
-- The server returns `422` with an HTML fragment: `<div id="my-error" role="alert" aria-live="polite" aria-atomic="true"><p class="text-danger">…</p></div>`. Including the same `id` in the response preserves the element for subsequent submissions (default swap style is `outerHTML`).
-- `aria-live="polite" aria-atomic="true"` is required on the error target so screen readers announce the complete message on each update.
-- On success, the server returns `204` with an `HX-Redirect` header. HTMX follows it as a full-page navigation regardless of `hx-target` settings.
-- Place the error div inside the same Alpine `x-show` container as the form so it stays in DOM when the panel is toggled. Placing it inside the `<form>` element satisfies this by default; outside-form placements (e.g. after `</form>` but within the same `<details>`) are valid if the enclosing container is under the same Alpine toggle.
-
-### HTMX action-swaps-card pattern
-
-For a mutating action on a detail page (submit a form, click a button) that should update just the affected card without a full-page reload, swap the card in place and toast the result. Used by clear-cache (`source_revisions/_detail_card.html`) and the Source Specs editor (`info_sources/_source_specs_card.html`).
-
-```html
-<form hx-post="/dashboard/path/to/action"
-      hx-target="#the-card" hx-swap="outerHTML"
-      method="POST" action="/dashboard/path/to/action">
-  <!-- fields + submit -->
-</form>
-```
-
-Rules:
-- Extract the card into its own partial whose root carries the target `id` (e.g. `#the-card`). The route renders that same partial for HTMX requests so the swap re-targets cleanly on subsequent actions.
-- **Progressive enhancement:** keep `method`/`action` (and, for buttons, a real submit) alongside the `hx-*` attributes so the action still works as a plain POST→303 when JS is disabled. Branch server-side on the `HX-Request` header: HTMX → partial; non-HTMX → 303 redirect (success) / full-page re-render (error).
-- On success the route sends `HX-Trigger: {"showFlash": {...}}` for a toast, and moves focus to the card heading (`tabindex="-1"`, focused by an inline `<script>` gated on a `swapped` flag) so keyboard users are not dropped to `<body>` after the swap (archiver#78).
-- **Validation errors** return the partial with the inline error at status **200** (not 422) so HTMX performs the swap - otherwise a 4xx is discarded unless the `response-targets` extension is wired (see the inline form error pattern above, which is the alternative when you want the error routed to a separate `#error` div rather than re-swapping the whole card). Give the inline error `<p>` `role="alert"` so screen readers announce it after the swap (focus lands on `<body>` otherwise), move focus to the card heading on the error swap too, and echo the operator's submitted input back into the field so a rejected edit isn't discarded.
-
-### JSON data island pattern
-
-When an Alpine component needs server-rendered data at initialisation, place the data in a `<script type="application/json">` child element rather than embedding JSON inside the `x-data` attribute. Jinja2's `tojson` filter does **not** escape `"`, so JSON in a double-quoted attribute is silently truncated by the HTML parser; single-quoted attributes work but are fragile to copy. The data island avoids both problems:
-
-```html
-<div x-data="myComponent()">
-  <script type="application/json">{{ my_data | tojson }}</script>
-  ...
-</div>
-```
-
-In `init()`, read it with:
-```javascript
-var el = this.$el.querySelector('script[type="application/json"]');
-var data = el ? JSON.parse(el.textContent || "[]") : [];
-```
-
-Notes: `tojson` escapes `<` → `<`, so `</script>` inside JSON values cannot close the tag early. Browsers do not execute `<script type="application/json">`. Alpine and HTMX ignore it. Apply this pattern to any Alpine component that needs a non-trivial server-rendered data structure at startup.
+Moved to [UI.md](UI.md) § **HTMX Patterns** (#182 curation) - the async partial,
+inline form error, action-swaps-card and JSON data island patterns are HTMX and
+Alpine *mechanics*, with no CSS in them, and UI.md is the doc whose stated scope
+is the dashboard's shared mechanics. This file keeps the classes they toggle.
 
 ### Alpine component catalogue (`main.js`)
 

@@ -40,3 +40,16 @@ AGENTS.md :: retarget :: patterns), STYLE.md (styling). Failing to is a CR block
 docs/PAGES.md :: retarget :: `.eyebrow` "Domain" kicker
 docs/PAGES.md :: retarget :: `.eyebrow` "Information Source" → `<h1 class="entity-card__title" id="info-source-heading"
 docs/PAGES.md :: retarget :: `.eyebrow` "Replication Specification" → `<h1 class="entity-card__title" id="rep-spec-heading"
+
+# archiver#182 curation: four HTMX/Alpine pattern sections left docs/STYLE.md for
+# docs/UI.md, whose stated scope is the dashboard's shared mechanics - none of
+# the four contained any CSS. Three moved whole. The fourth was a near-duplicate
+# of UI.md's own "Inline validation errors (`hx-target-422`)": UI.md had the
+# prose, STYLE.md the worked example and the rules. The body merged into that
+# canonical section rather than landing beside it as a second copy, so only the
+# now-redundant heading has no home.
+docs/STYLE.md :: rename :: ### HTMX inline form error pattern
+
+# Same change: the pointer named docs/STYLE.md for a section this run moved to
+# docs/UI.md, so it is retargeted in place rather than relocated.
+docs/COMPONENTS.md :: retarget :: the reason it exists is `docs/STYLE.md` § **JSON data island pattern**
