@@ -122,9 +122,18 @@ Condensed from the table above, in the form the policy file carried until the
 | Verify index is up to date | `codebase_status` |
 | DB schemas, deployment topology, runbook context | `codebase_context` / `codebase_context_search` |
 
-Prefetch query (run via `ToolSearch` once per session if the SessionStart reminder isn't loaded):
+Prefetch query: the SessionStart reminder hook prints it, and
+`.claude/hooks/socraticode-reminder.sh` is the one copy of it in this repo. To
+run it by hand, take the string that hook emits:
 
-`select:mcp__plugin_socraticode_socraticode__codebase_search,mcp__plugin_socraticode_socraticode__codebase_symbol,mcp__plugin_socraticode_socraticode__codebase_symbols,mcp__plugin_socraticode_socraticode__codebase_flow,mcp__plugin_socraticode_socraticode__codebase_impact,mcp__plugin_socraticode_socraticode__codebase_graph_query,mcp__plugin_socraticode_socraticode__codebase_graph_circular,mcp__plugin_socraticode_socraticode__codebase_graph_stats,mcp__plugin_socraticode_socraticode__codebase_graph_visualize,mcp__plugin_socraticode_socraticode__codebase_status,mcp__plugin_socraticode_socraticode__codebase_context,mcp__plugin_socraticode_socraticode__codebase_context_search`
+```bash
+bash .claude/hooks/socraticode-reminder.sh
+```
+
+It is not transcribed here on purpose. The hook is a symlink into
+`skills-vendor/`, so upstream can change which tools the query selects; a second
+copy in this doc would go stale silently, and the doc copy is the one an operator
+reads (archiver#184 CR).
 
 > **Keep the connection alive during indexing.** Indexing runs in the background. Some MCP hosts disconnect idle connections. Call `codebase_status` roughly every 60 seconds after starting `codebase_index` until it completes.
 

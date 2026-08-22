@@ -20,8 +20,9 @@ and the parity that matters is *which* hook, not how it is spelled.
 """
 
 import json
-import os
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOKS_DIR = REPO_ROOT / ".claude" / "hooks"
@@ -83,44 +84,54 @@ def test_socraticode_health_hook_is_wired() -> None:
     )
 
 
-def test_socraticode_health_hook_is_a_symlink_into_the_vendor() -> None:
-    """It is silent when clean, so a frozen copy looks exactly like a healthy one.
+# Both SocratiCode hooks must be symlinks into ``skills-vendor/`` rather than
+# copies, for reasons that differ per hook - hence the rationale rides on the
+# parameter rather than living in one shared docstring.
+VENDORED_HOOKS = [
+    pytest.param(
+        "socraticode-health.sh",
+        "it is silent when clean, so a frozen copy that has stopped detecting "
+        "anything is indistinguishable from a healthy install "
+        "(gregoryfoster/skills#179)",
+        id="health",
+    ),
+    pytest.param(
+        "socraticode-reminder.sh",
+        "the prefetch query it prints must stay in step with the skill's own "
+        "template, and it carries no per-project state - which is the argument "
+        "for linking rather than copying (gregoryfoster/skills#186)",
+        id="reminder",
+    ),
+]
 
-    Every other hook betrays a stale copy eventually by printing something dated.
-    This one's success output is nothing at all, which is also what a copy that
-    has stopped detecting anything prints (gregoryfoster/skills#179). Symlinked
-    into ``skills-vendor/``, it tracks upstream on the normal submodule refresh
-    and ``.skills/doctor.sh`` can see it break; copied, neither holds.
+
+def _submodule_checked_out() -> bool:
+    """Whether ``skills-vendor/gregoryfoster-skills`` has content.
+
+    CI checks out with ``actions/checkout@v5`` and no ``submodules:`` input, so
+    the submodule directory is empty there and every vendor symlink dangles -
+    the state ``.skills/doctor.sh`` exists to repair, and the reason
+    ``skills-submodule-update.sh`` has dangled in every CI run to date without
+    failing anything. Resolution is therefore only assertable where the content
+    is present; the symlink *shape* is assertable everywhere, and it is the
+    shape that carries the copy-vs-symlink guarantee.
     """
-    hook = HOOKS_DIR / "socraticode-health.sh"
-    assert hook.is_symlink(), (
-        f"{hook} is not a symlink into skills-vendor/ - a copy freezes at install "
-        "day and this hook is silent when clean, so the drift is undetectable"
-    )
-    target = hook.resolve()
-    assert target.is_file(), f"{hook} dangles: {os.readlink(hook)}"
-    assert (REPO_ROOT / "skills-vendor") in target.parents, (
-        f"{hook} resolves to {target}, outside skills-vendor/"
-    )
+    return (REPO_ROOT / "skills-vendor" / "gregoryfoster-skills" / "skills").is_dir()
 
 
-def test_socraticode_reminder_hook_is_a_symlink_into_the_vendor() -> None:
-    """It carries no per-project state, which is the argument for the symlink.
+@pytest.mark.parametrize(("hook_name", "rationale"), VENDORED_HOOKS)
+def test_socraticode_hook_is_a_symlink_into_the_vendor(hook_name: str, rationale: str) -> None:
+    """A vendored hook tracks upstream on the normal submodule refresh; a copy
+    freezes at the day it was installed."""
+    hook = HOOKS_DIR / hook_name
+    assert hook.is_symlink(), f"{hook} is a copy, not a symlink - {rationale}"
 
-    Until gregoryfoster/skills#186 this hook had no vendored source at all - it
-    was rendered from prose, so every consumer's copy was whatever the installing
-    agent typed that day. This repo's was one of those. Linked into
-    ``skills-vendor/``, an upstream edit to the prefetch query now arrives on the
-    normal submodule refresh instead of waiting for someone to notice.
-    """
-    hook = HOOKS_DIR / "socraticode-reminder.sh"
-    assert hook.is_symlink(), (
-        f"{hook} is a copy, not a symlink into skills-vendor/ - it freezes at the "
-        "day it was typed, and the prefetch query it prints has to stay in step "
-        "with the skill's own template"
+    link = hook.readlink()
+    assert not link.is_absolute(), (
+        f"{hook} -> {link} is absolute; it must be relative to survive a clone to a different path"
     )
-    target = hook.resolve()
-    assert target.is_file(), f"{hook} dangles: {os.readlink(hook)}"
-    assert (REPO_ROOT / "skills-vendor") in target.parents, (
-        f"{hook} resolves to {target}, outside skills-vendor/"
-    )
+    assert "skills-vendor" in link.parts, f"{hook} -> {link} does not point into skills-vendor/"
+
+    if not _submodule_checked_out():
+        pytest.skip("skills-vendor/gregoryfoster-skills is not checked out")
+    assert hook.resolve().is_file(), f"{hook} dangles: {link}"
