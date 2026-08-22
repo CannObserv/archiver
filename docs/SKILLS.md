@@ -171,6 +171,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 | `orchestrating-issue-backlog` | backlog grooming, issue triage |
 | `using-superpowers` | meta - when to invoke superpowers skills |
 | `socraticode` (codebase MCP) | see **Code Exploration Policy** in `AGENTS.md` |
+| `init-socraticode` | install/re-index SocratiCode; owns its two SessionStart hooks |
 
 
 ## SessionStart Hooks
@@ -198,13 +199,28 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 > passes `--merge`, which git documents as overriding that setting (verified
 > empirically; a pathspec alone does not override it either).
 
-`.claude/settings.json` wires two `SessionStart` hooks (see `.claude/hooks/`).
+`.claude/settings.json` wires three `SessionStart` hooks (see `.claude/hooks/`).
 Both halves are load-bearing: a script sitting in `.claude/hooks/` that
 `settings.json` does not name never runs, and looks identical to one that
 works. `tests/scripts/test_claude_hooks_registered.py` asserts the two halves
 agree, so that state fails a test instead of going unnoticed (archiver#163).
 
 - `socraticode-reminder.sh` - prints the deferred-tool prefetch query for SocratiCode MCP tools.
+- `socraticode-health.sh` - **symlink** into
+  `skills-vendor/gregoryfoster-skills/skills/init-socraticode/scripts/`
+  (archiver#184). Once-per-day infra check: graph edge yield, `codebase_health`,
+  a failed last operation, and - the reason it was wired here - whether every
+  artifact declared in `.socraticodecontextartifacts.json` is actually indexed.
+  Adding an artifact to that manifest does not index it, and nothing else
+  notices: `codebase_context_search` answers from indexed artifacts only, with
+  no error and no warning for the missing one, while `codebase_status` stays
+  green. Installed by `init-socraticode` via `managing-skills`'
+  `scripts/install-hook.sh`, never by hand. It **reports; it never repairs** - a
+  SessionStart hook that kicked off a two-hour re-index would be worse than the
+  drift it found. Silent when clean, which is why a copy is unacceptable here:
+  a frozen copy that has stopped detecting anything looks exactly like a healthy
+  install ([gregoryfoster/skills#179](https://github.com/gregoryfoster/skills/issues/179)).
+  Log: `.git/socraticode-health.log`.
 - `skills-submodule-update.sh` - **symlink** into
   `skills-vendor/gregoryfoster-skills/skills/managing-skills/scripts/` (archiver#126),
   so upstream fixes arrive with the normal submodule refresh. Never re-copy it -

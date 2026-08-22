@@ -232,11 +232,12 @@ Cross-project search to the sister `watcher` and `notifier` indexes requires a p
 
 ## SessionStart Hooks
 
-`.claude/settings.json` wires the SocratiCode prefetch reminder and the
-once-per-day `skills-vendor/` refresh. Both halves of a hook are load-bearing: a
-script in `.claude/hooks/` that `settings.json` does not name never runs and
-looks identical to one that works - `tests/scripts/test_claude_hooks_registered.py`
-fails on the missing half. Never re-copy the `skills-submodule-update.sh`
+`.claude/settings.json` wires the SocratiCode prefetch reminder, the
+once-per-day SocratiCode health check, and the once-per-day `skills-vendor/`
+refresh. Both halves of a hook are load-bearing: a script in `.claude/hooks/`
+that `settings.json` does not name never runs and looks identical to one that
+works - `tests/scripts/test_claude_hooks_registered.py` fails on the missing
+half. Never re-copy the `skills-submodule-update.sh`
 symlink, never turn the committed `.skills/doctor.sh` into one, and never
 un-wire the hook to hold a submodule - use `.skills/skills-pin`. Why each, plus
 the hook's gates and log paths: [docs/SKILLS.md](docs/SKILLS.md).

@@ -1,14 +1,14 @@
 """Every hook script in ``.claude/hooks/`` must be wired into ``.claude/settings.json``.
 
-archiver#163: ``skills-submodule-update.sh`` sat in ``.claude/hooks/`` — tracked,
-resolving, executable — for twelve days while nothing ran it, because its
+archiver#163: ``skills-submodule-update.sh`` sat in ``.claude/hooks/`` - tracked,
+resolving, executable - for twelve days while nothing ran it, because its
 ``settings.json`` entry had been removed (archiver#131's cohort hold) and never
 restored. Claude Code runs what ``settings.json`` names, so the half that was
 missing was the half that would have run: an ``ls`` of ``.claude/hooks/`` shows a
 hook that is right there and does nothing.
 
 That is the *partial install* failure mode, and it is invisible from either side
-alone. This module closes it by asserting the two halves agree — a script present
+alone. This module closes it by asserting the two halves agree - a script present
 but unregistered fails here, which is the signal that was absent for twelve days.
 
 Deliberately one-directional. A registered command naming no local script is
@@ -20,6 +20,7 @@ and the parity that matters is *which* hook, not how it is spelled.
 """
 
 import json
+import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -54,7 +55,7 @@ def test_every_hook_script_is_registered() -> None:
     assert not unwired, (
         f"hook scripts present but not registered in .claude/settings.json: {unwired}. "
         "A hook Claude Code never runs is indistinguishable from one that works "
-        "(archiver#163) — either wire it up or delete the script."
+        "(archiver#163) - either wire it up or delete the script."
     )
 
 
@@ -64,4 +65,40 @@ def test_skills_refresh_hook_is_wired() -> None:
         "the skills auto-refresh hook is not registered; without it this repo's "
         "vendored skills freeze at whatever commit was last bumped by hand "
         "(archiver#163)"
+    )
+
+
+def test_socraticode_health_hook_is_wired() -> None:
+    """archiver#184: the daily SocratiCode health check must actually be invoked.
+
+    A declared-but-unindexed context artifact produces no error and no warning -
+    ``codebase_context_search`` simply answers without it while ``codebase_status``
+    stays green. The once-per-day health hook is the only thing that reports the
+    gap, so an unwired one leaves the failure mode wide open.
+    """
+    assert any("socraticode-health.sh" in cmd for cmd in _registered_commands()), (
+        "the SocratiCode daily health hook is not registered; without it a "
+        "declared-but-unindexed context artifact goes unreported indefinitely "
+        "(archiver#184)"
+    )
+
+
+def test_socraticode_health_hook_is_a_symlink_into_the_vendor() -> None:
+    """It is silent when clean, so a frozen copy looks exactly like a healthy one.
+
+    Every other hook betrays a stale copy eventually by printing something dated.
+    This one's success output is nothing at all, which is also what a copy that
+    has stopped detecting anything prints (gregoryfoster/skills#179). Symlinked
+    into ``skills-vendor/``, it tracks upstream on the normal submodule refresh
+    and ``.skills/doctor.sh`` can see it break; copied, neither holds.
+    """
+    hook = HOOKS_DIR / "socraticode-health.sh"
+    assert hook.is_symlink(), (
+        f"{hook} is not a symlink into skills-vendor/ - a copy freezes at install "
+        "day and this hook is silent when clean, so the drift is undetectable"
+    )
+    target = hook.resolve()
+    assert target.is_file(), f"{hook} dangles: {os.readlink(hook)}"
+    assert (REPO_ROOT / "skills-vendor") in target.parents, (
+        f"{hook} resolves to {target}, outside skills-vendor/"
     )
