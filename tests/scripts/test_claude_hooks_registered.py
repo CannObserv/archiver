@@ -102,3 +102,25 @@ def test_socraticode_health_hook_is_a_symlink_into_the_vendor() -> None:
     assert (REPO_ROOT / "skills-vendor") in target.parents, (
         f"{hook} resolves to {target}, outside skills-vendor/"
     )
+
+
+def test_socraticode_reminder_hook_is_a_symlink_into_the_vendor() -> None:
+    """It carries no per-project state, which is the argument for the symlink.
+
+    Until gregoryfoster/skills#186 this hook had no vendored source at all - it
+    was rendered from prose, so every consumer's copy was whatever the installing
+    agent typed that day. This repo's was one of those. Linked into
+    ``skills-vendor/``, an upstream edit to the prefetch query now arrives on the
+    normal submodule refresh instead of waiting for someone to notice.
+    """
+    hook = HOOKS_DIR / "socraticode-reminder.sh"
+    assert hook.is_symlink(), (
+        f"{hook} is a copy, not a symlink into skills-vendor/ - it freezes at the "
+        "day it was typed, and the prefetch query it prints has to stay in step "
+        "with the skill's own template"
+    )
+    target = hook.resolve()
+    assert target.is_file(), f"{hook} dangles: {os.readlink(hook)}"
+    assert (REPO_ROOT / "skills-vendor") in target.parents, (
+        f"{hook} resolves to {target}, outside skills-vendor/"
+    )

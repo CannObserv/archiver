@@ -205,7 +205,18 @@ Both halves are load-bearing: a script sitting in `.claude/hooks/` that
 works. `tests/scripts/test_claude_hooks_registered.py` asserts the two halves
 agree, so that state fails a test instead of going unnoticed (archiver#163).
 
-- `socraticode-reminder.sh` - prints the deferred-tool prefetch query for SocratiCode MCP tools.
+- `socraticode-reminder.sh` - prints the deferred-tool prefetch query for
+  SocratiCode MCP tools. **Symlink** into
+  `skills-vendor/gregoryfoster-skills/skills/init-socraticode/scripts/`
+  (archiver#184). It was a hand-typed copy from 2026-05-07 until then: before
+  [gregoryfoster/skills#186](https://github.com/gregoryfoster/skills/issues/186)
+  the hook had no vendored source at all, so every consumer's copy was whatever
+  the installing agent typed that day. The query it prints has to stay identical
+  to the skill's own template, and it carries no per-project state - which is
+  precisely the argument for linking rather than copying. Same installer, same
+  two artifacts; its dedupe markers (`socraticode-prefetch` canonical,
+  `socraticode-reminder` legacy) are distinct from the health hook's so one
+  hook's strip cannot evict the other's entry from the array they share.
 - `socraticode-health.sh` - **symlink** into
   `skills-vendor/gregoryfoster-skills/skills/init-socraticode/scripts/`
   (archiver#184). Once-per-day infra check: graph edge yield, `codebase_health`,
