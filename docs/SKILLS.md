@@ -30,7 +30,7 @@ To add a new external skill repo: follow the `managing-skills` skill.
 
 `.skills/doctor.sh` diagnoses and self-heals dangling `skills/` symlinks (the
 uninitialized-submodule state). It is **committed** so it exists before any
-session runs — fresh worktrees, shallow CI clones, first checkouts (archiver#126).
+session runs - fresh worktrees, shallow CI clones, first checkouts (archiver#126).
 It is a real file copy, not a symlink: a symlinked doctor would itself be
 unreachable in exactly the failure mode it repairs. It re-syncs itself from
 `skills-vendor/gregoryfoster-skills/skills/managing-skills/scripts/doctor.sh` on
@@ -52,7 +52,7 @@ For the trigger list of all available skills, see the **Agent Skills** table in 
 | `gregoryfoster/skills` | `skills-vendor/gregoryfoster-skills/` | Cross-project skills authored for Cannabis Observer |
 | `obra/superpowers` | `skills-vendor/obra-superpowers/` | Upstream community skills |
 
-Description-driven skills (`systematic-debugging`, `verification-before-completion`, `test-driven-development`) activate from their description field rather than an explicit trigger phrase — they fire on any bug/test failure, before any completion claim, and before writing implementation code respectively.
+Description-driven skills (`systematic-debugging`, `verification-before-completion`, `test-driven-development`) activate from their description field rather than an explicit trigger phrase - they fire on any bug/test failure, before any completion claim, and before writing implementation code respectively.
 
 ## Local Overrides
 
@@ -60,11 +60,11 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 
 | Skill | Override reason |
 |---|---|
-| `shipping-work-python-fastapi` | Thin override — sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor |
+| `shipping-work-python-fastapi` | Thin override - sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor |
 | `brainstorming` | Project conventions (docs/plans/ path, commit format); invokes using-git-worktrees after design approval; FastAPI stack context; proactive-suggestion mode |
 | `using-git-worktrees` | Archiver-specific dev port (8021) and env file (`/etc/archiver/.env`); auto-starts uvicorn on 8021; systemd `archiver.service` on 8020 |
 
-`reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) — no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
+`reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) - no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
 
 ## SocratiCode (Codebase Search)
 
@@ -76,10 +76,10 @@ This project is indexed with SocratiCode. Always use its MCP tools to explore th
 
 1. **Start most explorations with `codebase_search`.** Hybrid semantic + keyword (vector + BM25, RRF-fused) in a single call. Broad queries for orientation ("how is auth handled"), precise queries for symbol lookup. **Use grep instead** when you already know the exact identifier, error string, or regex pattern.
 2. **Follow the graph before following imports.** Use `codebase_graph_query` to see what a file imports and what depends on it before opening it. Check dependents before modifying or deleting.
-3. **Use Impact Analysis BEFORE refactoring/renaming/deleting.** Symbol-level call graph (`codebase_impact`, `codebase_flow`, `codebase_symbol`, `codebase_symbols`) goes deeper than the file graph — it knows which functions call which.
+3. **Use Impact Analysis BEFORE refactoring/renaming/deleting.** Symbol-level call graph (`codebase_impact`, `codebase_flow`, `codebase_symbol`, `codebase_symbols`) goes deeper than the file graph - it knows which functions call which.
 4. **Read files only after narrowing via search.** Never read a file just to find out if it's relevant.
 5. **Use `codebase_graph_circular`** when debugging unexpected behavior or import-related errors.
-6. **Check `codebase_status`** if search returns no results — the project may not be indexed yet.
+6. **Check `codebase_status`** if search returns no results - the project may not be indexed yet.
 7. **Leverage context artifacts** for non-code knowledge (DB schemas, API specs, infra configs). Run `codebase_context` early; use `codebase_context_search` for specific schemas/endpoints.
 
 ### When to use each tool
@@ -103,7 +103,7 @@ This project is indexed with SocratiCode. Always use its MCP tools to explore th
 | Discover what project knowledge (schemas, specs, configs) is available | `codebase_context` |
 | Find database tables, API endpoints, infra configs | `codebase_context_search` |
 
-### Quick reference — the archiver-specific tool map
+### Quick reference - the archiver-specific tool map
 
 Condensed from the table above, in the form the policy file carried until the
 2026-08-11 curation. `AGENTS.md` keeps only the negative rule and points here.
@@ -130,7 +130,7 @@ Prefetch query (run via `ToolSearch` once per session if the SessionStart remind
 
 ### Linked Projects
 
-Cross-project search to the sister repos is enabled via `SOCRATICODE_LINKED_PROJECTS=/home/exedev/watcher,/home/exedev/notifier` in `.claude/settings.local.json` (gitignored — per-instance config, not a project commitment). **Paths are comma-separated** (not colon-separated PATH-style — the plugin splits on `,` only; a colon-joined value is parsed as a single literal path and silently resolves to nothing). Values may be relative (resolved from the project root) or absolute; absolute is recommended since the MCP server's CWD isn't guaranteed across hosts. Pass `includeLinked: true` on `codebase_search` to fan out across all indexes; results carry a `[archiver]` / `[watcher]` / `[notifier]` label.
+Cross-project search to the sister repos is enabled via `SOCRATICODE_LINKED_PROJECTS=/home/exedev/watcher,/home/exedev/notifier` in `.claude/settings.local.json` (gitignored - per-instance config, not a project commitment). **Paths are comma-separated** (not colon-separated PATH-style - the plugin splits on `,` only; a colon-joined value is parsed as a single literal path and silently resolves to nothing). Values may be relative (resolved from the project root) or absolute; absolute is recommended since the MCP server's CWD isn't guaranteed across hosts. Pass `includeLinked: true` on `codebase_search` to fan out across all indexes; results carry a `[archiver]` / `[watcher]` / `[notifier]` label.
 
 Watcher is archiver's primary consumer (via the `archiver-client` SDK installed as a path dependency in watcher). When changing public schemas or the API contract, search the linked watcher index for callers before merging.
 
@@ -139,9 +139,9 @@ Upstream reference: [giancarloerra/socraticode#agent-instructions](https://githu
 ## Authoring New Skills
 
 Follow the `writing-skills` TDD cycle:
-1. **RED** — run pressure scenarios without the skill; document where the agent fails
-2. **GREEN** — write a minimal SKILL.md addressing those failures
-3. **REFACTOR** — find new rationalizations, close loopholes, re-test
+1. **RED** - run pressure scenarios without the skill; document where the agent fails
+2. **GREEN** - write a minimal SKILL.md addressing those failures
+3. **REFACTOR** - find new rationalizations, close loopholes, re-test
 
 New project-specific skills go in `skills/<name>/` with a `.claude/skills/<name>` symlink to `../../skills/<name>`. Cross-project skills belong in `gregoryfoster/skills`.
 
@@ -169,7 +169,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 | `requesting-code-review` / `receiving-code-review` | CR handoff between agents |
 | `managing-skills` | add skill repo, manage external skills |
 | `orchestrating-issue-backlog` | backlog grooming, issue triage |
-| `using-superpowers` | meta — when to invoke superpowers skills |
+| `using-superpowers` | meta - when to invoke superpowers skills |
 | `socraticode` (codebase MCP) | see **Code Exploration Policy** in `AGENTS.md` |
 
 
@@ -187,7 +187,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 > hold, the hold had nothing left to protect and the entry was restored on
 > 2026-08-19.
 >
-> Should a future hold be needed, do **not** un-wire the hook again — that also
+> Should a future hold be needed, do **not** un-wire the hook again - that also
 > stops the `obra-superpowers` refresh and the `.skills/doctor.sh` self-heal, and
 > it fails silently, which is exactly how twelve days passed unnoticed. Use the
 > per-submodule pin instead
@@ -204,26 +204,26 @@ Both halves are load-bearing: a script sitting in `.claude/hooks/` that
 works. `tests/scripts/test_claude_hooks_registered.py` asserts the two halves
 agree, so that state fails a test instead of going unnoticed (archiver#163).
 
-- `socraticode-reminder.sh` — prints the deferred-tool prefetch query for SocratiCode MCP tools.
-- `skills-submodule-update.sh` — **symlink** into
+- `socraticode-reminder.sh` - prints the deferred-tool prefetch query for SocratiCode MCP tools.
+- `skills-submodule-update.sh` - **symlink** into
   `skills-vendor/gregoryfoster-skills/skills/managing-skills/scripts/` (archiver#126),
-  so upstream fixes arrive with the normal submodule refresh. Never re-copy it —
+  so upstream fixes arrive with the normal submodule refresh. Never re-copy it -
   a copy freezes at the version it was taken from, which is how this repo ran a
   hook predating the doctor for months. Once-per-day refresh scoped to
   `skills-vendor/`. Lock file: `.git/skills-update.lock` (holds the UTC
   `YYYYMMDD` stamp). Log: `.git/skills-update.log` (auto-rotates at 64 KiB →
   last 200 lines). **Auto-commits only on `main`**, staging exactly
-  `skills-vendor/` and `.skills/doctor.sh` — never `.skills/` wholesale, which
+  `skills-vendor/` and `.skills/doctor.sh` - never `.skills/` wholesale, which
   would absorb operator config. The commit message names what changed
   (`chore: update skills submodules`, `chore: refresh .skills/doctor.sh`, or
-  both). On a feature branch it stops at the branch gate — before the fetch and
-  before stamping the lock — so only the `.skills/doctor.sh` self-heal above it
+  both). On a feature branch it stops at the branch gate - before the fetch and
+  before stamping the lock - so only the `.skills/doctor.sh` self-heal above it
   runs there. Network failures are logged and don't block session start.
   Descended from watcher's hook
   (CannObserv/watcher#153 → CannObserv/archiver#8).
 
 **`.skills/doctor.sh` is committed** (archiver#126). It is a real file copy, not
-a symlink — deliberately, since a symlink would dangle in exactly the
+a symlink - deliberately, since a symlink would dangle in exactly the
 uninitialized-submodule state the doctor exists to repair. Committing it is what
 makes it present in a fresh `git worktree add`, a shallow CI clone, and a new
 contributor's first checkout, where the Phase 1 preflight

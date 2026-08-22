@@ -1,12 +1,12 @@
-# archiver — Agent Guidelines
+# archiver - Agent Guidelines
 
 Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrifice grammar for density. Lead with the answer or action.
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK — **not** by Watcher, whose edge is bus-only in both directions (archiver#142 / watcher#254). Produces `info.changes`, `info.registry`, and `content.replicate` (archiver#169) via an internal outbox publisher, and consumes three streams — `content.revisions` (archiver#139), `info.watch-status` (archiver#151), and `content.artifacts` (archiver#170). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher, whose edge is bus-only in both directions (archiver#142 / watcher#254). Produces `info.changes`, `info.registry`, and `content.replicate` (archiver#169) via an internal outbox publisher, and consumes three streams - `content.revisions` (archiver#139), `info.watch-status` (archiver#151), and `content.artifacts` (archiver#170). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
-**Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one — a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
+**Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one - a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
 
 ## Development Methodology
 
@@ -28,7 +28,7 @@ Reproducibility, the upgrade path, and the CI/deploy resolution: [docs/DEPLOYMEN
 
 ## Code Exploration Policy
 
-SocratiCode is indexed on this repo (`.socraticodecontextartifacts.json` present). Its MCP tools are **deferred** — schemas load only after a `ToolSearch` prefetch. The SessionStart hook prints the prefetch query; run it before exploring.
+SocratiCode is indexed on this repo (`.socraticodecontextartifacts.json` present). Its MCP tools are **deferred** - schemas load only after a `ToolSearch` prefetch. The SessionStart hook prints the prefetch query; run it before exploring.
 
 **Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search.
 
@@ -41,9 +41,9 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
 
 - `src/api/` is the HTTP contract, `src/dashboard/` the HTMX admin UI, `src/core/`
   the domain. The dashboard **clamps** paginated `limit`/`offset` where the API
-  **422s** — deliberate, see [docs/SCREENS.md](docs/SCREENS.md).
+  **422s** - deliberate, see [docs/SCREENS.md](docs/SCREENS.md).
 - `alembic/` is scoped to the `information` schema *inside* the archiver database.
-- `clients/python/` is the one vendored SDK — regenerated from a committed
+- `clients/python/` is the one vendored SDK - regenerated from a committed
   OpenAPI snapshot, gated by the CI `client-drift` job; never hand-edit
   `generated/`. It was two until archiver#142 retired the Watcher client along
   with every outbound HTTP call to Watcher.
@@ -60,7 +60,7 @@ Wiring detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **No cross-repo mirror discipline (CannObserv/watcher#159, #236).** Content
 acquisition is co-core's (above) and the change-bus contracts + driver are too
-(see [docs/BUS.md](docs/BUS.md)). `src/core/logging.py` is service-local — Watcher
+(see [docs/BUS.md](docs/BUS.md)). `src/core/logging.py` is service-local - Watcher
 keeps its own copy; there is no parity requirement and no sibling sync. Don't
 reintroduce a mirror obligation for anything under `src/`.
 
@@ -71,7 +71,7 @@ reintroduce a mirror obligation for anything under `src/`.
 | Archiver (live) | 8020 | `systemctl` (`archiver.service`) |
 | Archiver (dev) | 8021 | `bash scripts/dev_server.sh` (never hand-rolled uvicorn) |
 
-The exe.dev proxy forwards 3000–9999. Dev server reachable at `https://watcher.exe.xyz:8021/` (the host is shared with the watcher VM).
+The exe.dev proxy forwards 3000-9999. Dev server reachable at `https://watcher.exe.xyz:8021/` (the host is shared with the watcher VM).
 
 ## Server Lifecycle
 
@@ -79,14 +79,14 @@ The exe.dev proxy forwards 3000–9999. Dev server reachable at `https://watcher
 
 After committing to `main`: `sudo systemctl restart archiver`. After DB model changes: `uv run alembic upgrade head` then restart. Logs: `sudo journalctl -u archiver -f`.
 
-Dev server (port 8021) — **always** via the launch script:
+Dev server (port 8021) - **always** via the launch script:
 
 ```bash
 bash scripts/dev_server.sh
 ```
 
-Anything that writes — curl against the dashboard, SDK scripts, manual
-verification — must target 8021, never 8020.
+Anything that writes - curl against the dashboard, SDK scripts, manual
+verification - must target 8021, never 8020.
 
 Why the script exists, its knobs, and the 2026-07-18 production-write incident:
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -95,8 +95,8 @@ Why the script exists, its knobs, and the 2026-07-18 production-write incident:
 
 Two env files load in order (later overrides earlier):
 
-1. `/etc/archiver/.env` — production secrets (`ARCHIVER_DATABASE_URL`). Persistent, managed manually on the VM.
-2. `.env` (repo root, git-ignored) — dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit.
+1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`). Persistent, managed manually on the VM.
+2. `.env` (repo root, git-ignored) - dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit.
 
 ```bash
 set -a
@@ -105,20 +105,20 @@ set -a
 set +a
 ```
 
-Source exactly that way — `export $(cat … | xargs)` silently corrupts values.
+Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
 
 **Four variables carry safety rules; the rest are reference
 ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).**
 
-- `TEST_DATABASE_URL` — **must not equal** `ARCHIVER_DATABASE_URL` or
+- `TEST_DATABASE_URL` - **must not equal** `ARCHIVER_DATABASE_URL` or
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
   `_test`.
-- `ARCHIVER_ALLOW_PRODUCTION_DB` — only `deploy/archiver.service` sets it. **Never
-  put it in an env file** — that re-opens the hole for every process that sources
+- `ARCHIVER_ALLOW_PRODUCTION_DB` - only `deploy/archiver.service` sets it. **Never
+  put it in an env file** - that re-opens the hole for every process that sources
   them.
-- `ARCHIVER_BUS_CONSUMER` — same rule, same reason; gates joining the
+- `ARCHIVER_BUS_CONSUMER` - same rule, same reason; gates joining the
   `archiver.revisions` consumer group.
-- `ARCHIVER_DEV_REDIS_URL` — unset means the dev server is bus-dormant; prod's
+- `ARCHIVER_DEV_REDIS_URL` - unset means the dev server is bus-dormant; prod's
   `ARCHIVER_REDIS_URL` is never inherited.
 
 ## Common Commands
@@ -162,7 +162,7 @@ Rules holding across all of it:
 Types: feat, fix, refactor, docs, test, chore.
 
 **Changelog:** Update `CHANGELOG.md` at the repo root when a change
-touches a **contract-visible path** — and only then. The trigger is
+touches a **contract-visible path** - and only then. The trigger is
 path-based, not intent-based; CI and the pre-push guard both enforce it
 with the same regex:
 
@@ -173,7 +173,7 @@ with the same regex:
 What the regex covers and what it deliberately does not:
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 
-**Dashboard living docs:** update the doc a change touches in the same commit —
+**Dashboard living docs:** update the doc a change touches in the same commit -
 PAGES.md (templates, routes), COMPONENTS.md (dashboard JS), UI.md (shared
 patterns), SCREENS.md (detail screens), STYLE.md (styling). Failing to is a CR blocker; per-trigger detail in
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
@@ -185,7 +185,7 @@ logger = get_logger(__name__)
 ```
 Entry points only: call `configure_logging()` once.
 
-`ExecStartPre` steps in `deploy/archiver.service` write **plain text**, not JSON —
+`ExecStartPre` steps in `deploy/archiver.service` write **plain text**, not JSON -
 a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.md)).
 
 **Date & Time:** All UTC. ISO 8601: `YYYY-MM-DDTHH:MM:SS.ffffffZ` (timestamps), `YYYY-MM-DD` (dates).
@@ -207,47 +207,47 @@ a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.m
 
 ## Vocabulary
 
-Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim — never rename casually. The current vocabulary:
+Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim - never rename casually. The current vocabulary:
 
-- `InfoItem` (`info_items`) — semantic anchor + `rep_fields`, `watch_spec`, `watch_active`
-- `InfoSource` (`info_sources`) — physical layer; URL + `source_specs`
-- `SourceRevision` (`source_revisions`) — content-addressed snapshot
-- `InfoItemSource` (`info_item_sources`) — item↔source binding; one active primary
-- `RepSpec` (`rep_specs`) — replication spec; `document` frozen once assigned
-- `InfoItemRepSpec` (`info_item_rep_specs`) — effective-dated assignment + `public_url`
-- `ChangesOutboxRow` (`changes_outbox`) — pending bus event awaiting publication
-- `RevokedInfoItem` (`revoked_info_items`) — deleted InfoItem's identity + final generation; feeds the snapshot's tombstone republish
-- `WatchStatus` (`watch_status`) — local LWW cache of `info.watch-status`; what the watched-item panel renders from. Reported by Watcher, never locally verified
-- `ReplicationCommand` (`replication_commands`) — one `content.replicate` occasion: the MUST-2 mapping, the reaper's queue, and where a *skipped* replication is recorded rather than lost
-- `BusTailCursor` (`bus_tail_cursors`) — resume point per groupless tail, so a restart is a delta not a `0-0` replay
+- `InfoItem` (`info_items`) - semantic anchor + `rep_fields`, `watch_spec`, `watch_active`
+- `InfoSource` (`info_sources`) - physical layer; URL + `source_specs`
+- `SourceRevision` (`source_revisions`) - content-addressed snapshot
+- `InfoItemSource` (`info_item_sources`) - item↔source binding; one active primary
+- `RepSpec` (`rep_specs`) - replication spec; `document` frozen once assigned
+- `InfoItemRepSpec` (`info_item_rep_specs`) - effective-dated assignment + `public_url`
+- `ChangesOutboxRow` (`changes_outbox`) - pending bus event awaiting publication
+- `RevokedInfoItem` (`revoked_info_items`) - deleted InfoItem's identity + final generation; feeds the snapshot's tombstone republish
+- `WatchStatus` (`watch_status`) - local LWW cache of `info.watch-status`; what the watched-item panel renders from. Reported by Watcher, never locally verified
+- `ReplicationCommand` (`replication_commands`) - one `content.replicate` occasion: the MUST-2 mapping, the reaper's queue, and where a *skipped* replication is recorded rather than lost
+- `BusTailCursor` (`bus_tail_cursors`) - resume point per groupless tail, so a restart is a delta not a `0-0` replay
 
 Per-entity contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The
-Phase 1–3a `InfoSpec` model is retired — no new `info_spec*` references.
+Phase 1-3a `InfoSpec` model is retired - no new `info_spec*` references.
 
 ## Agent Skills
 
 Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code). Local overrides in `skills/` shadow vendor submodules in `skills-vendor/`.
 
-Cross-project search to the sister `watcher` and `notifier` indexes requires a per-instance `.claude/settings.local.json` (gitignored) — see "Linked Projects" in [docs/SKILLS.md](docs/SKILLS.md).
+Cross-project search to the sister `watcher` and `notifier` indexes requires a per-instance `.claude/settings.local.json` (gitignored) - see "Linked Projects" in [docs/SKILLS.md](docs/SKILLS.md).
 
 ## SessionStart Hooks
 
 `.claude/settings.json` wires the SocratiCode prefetch reminder and the
 once-per-day `skills-vendor/` refresh. Both halves of a hook are load-bearing: a
 script in `.claude/hooks/` that `settings.json` does not name never runs and
-looks identical to one that works — `tests/scripts/test_claude_hooks_registered.py`
+looks identical to one that works - `tests/scripts/test_claude_hooks_registered.py`
 fails on the missing half. Never re-copy the `skills-submodule-update.sh`
 symlink, never turn the committed `.skills/doctor.sh` into one, and never
-un-wire the hook to hold a submodule — use `.skills/skills-pin`. Why each, plus
+un-wire the hook to hold a submodule - use `.skills/skills-pin`. Why each, plus
 the hook's gates and log paths: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## Detail Docs
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — full repository layout tree and the co-core acquisition wiring
-- [docs/API.md](docs/API.md) — every HTTP route, its SDK wrapper, and pagination
-- [docs/BUS.md](docs/BUS.md) — the outbox producer, the three published streams, and the three consumed
-- [docs/SCHEMA.md](docs/SCHEMA.md) — per-table contracts and invariants for the five registry tables
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — wheelhouse reproducibility, dev-server internals, full env-var reference
-- [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — changelog trigger, journald logging contract, error-envelope examples
-- [docs/SKILLS.md](docs/SKILLS.md) — skill inventory, trigger table, SessionStart hook mechanics
-- The dashboard docs — [docs/UI.md](docs/UI.md) URL map, auth, HTMX, and the detail-screen doc it indexes; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory; [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) the InfoItem hub screen — its five sections, partials, swap targets; [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - full repository layout tree and the co-core acquisition wiring
+- [docs/API.md](docs/API.md) - every HTTP route, its SDK wrapper, and pagination
+- [docs/BUS.md](docs/BUS.md) - the outbox producer, the three published streams, and the three consumed
+- [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants for the five registry tables
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse reproducibility, dev-server internals, full env-var reference
+- [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald logging contract, error-envelope examples
+- [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, trigger table, SessionStart hook mechanics
+- The dashboard docs - [docs/UI.md](docs/UI.md) URL map, auth, HTMX, and the detail-screen doc it indexes; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory; [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) the InfoItem hub screen - its five sections, partials, swap targets; [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility
