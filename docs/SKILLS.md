@@ -44,7 +44,7 @@ bash .skills/doctor.sh --check-only # report only; makes no changes
 
 ## Skill Sources
 
-For the trigger list of all available skills, see the **Agent Skills** table in `AGENTS.md`. Each project skill is sourced from one of:
+The trigger list of all available skills is **Skill Trigger Inventory** below. Each project skill is sourced from one of:
 
 | Source | Path | Notes |
 |---|---|---|

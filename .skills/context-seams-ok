@@ -8,28 +8,50 @@ docs/BUS.md :: Change-bus consumer — `content.revisions` (archiver#139)
 docs/BUS.md :: Change-bus consumer — `content.artifacts` (archiver#170)
 docs/BUS.md :: Change-bus tail — `info.watch-status` (archiver#151)
 
-# archiver#178 curation: the Alpine catalogue index moved from STYLE.md to
-# COMPONENTS.md. These pointers name what STYLE.md still holds - tokens,
-# component classes, the JSON data island pattern, dark-mode theming - none of
-# which moved, so each still tells the truth.
-docs/ARCHITECTURE.md :: COMPONENTS.md + STYLE.md
-docs/COMPONENTS.md :: the index into them; `docs/STYLE.md` carries the CSS classes they toggle.
-docs/COMPONENTS.md :: the reason it exists is `docs/STYLE.md` § **JSON data island pattern**
-docs/CONVENTIONS.md :: required when the change introduces or alters *styling*
-docs/INFO_ITEM_DETAIL.md :: Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
-docs/INFO_ITEM_DETAIL.md :: **Every outcome is a 200, and every outcome flashes**
-
 # Predates this run and is unrelated to it: a retirement note whose issue
 # numbers are the record, not a pointer at moved content.
 docs/DEPLOYMENT.md :: retired (archiver#150
 
-# Rewritten in this run to name COMPONENTS.md as the catalogue for non-Alpine
-# modules; the tail still points flash.js and dark-mode.js at the docs that
-# carry their patterns, and neither pattern moved.
-docs/CONVENTIONS.md :: ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
+# archiver#185 curation. Fifteen docs carry a back-reference naming what
+# AGENTS.md still holds - the auth rule, the never-rename rule, the safety-rule
+# split, the Code Exploration Policy, the living-doc enforcement banners, the
+# Detail Docs index. This run moved nothing out of the policy file (it deleted
+# three restatements of a rule stated canonically there and one duplicated
+# command), so every one of them still tells the truth.
+docs/API.md :: `AGENTS.md` carries only the auth rule and a pointer here
+docs/ARCHITECTURE.md :: Repository layout and the content-acquisition data flow
+docs/ARCHITECTURE.md :: in [AGENTS.md](../AGENTS.md); the `docs/` entry in the tree below mirrors it
+docs/ARCHITECTURE.md :: Indexed by the Detail Docs section of AGENTS.md
+docs/ARCHITECTURE.md :: mirror discipline") refer to sections of [AGENTS.md](../AGENTS.md)
+docs/COMPONENTS.md :: **AGENTS.md enforcement:** update this file in the same commit as any change
+docs/CONVENTIONS.md :: The reasoning and worked examples behind the rules stated in `AGENTS.md`
+docs/DEPLOYMENT.md :: `AGENTS.md` keeps the safety rules; the reference lives here
+docs/PAGES.md :: **AGENTS.md enforcement:** update this file in the same commit as any Jinja2
+docs/PAGES.md :: SDK, and AGENTS.md's no-outbound-HTTP rule left nothing to ping
+docs/SCHEMA.md :: see the never-rename rule in `AGENTS.md`
+docs/SKILLS.md :: `AGENTS.md` keeps only the negative rule and points here
+docs/SKILLS.md :: see **Code Exploration Policy** in `AGENTS.md`
+docs/STYLE.md :: **AGENTS.md enforcement:** This file must be updated in the same commit
+docs/UI.md :: **AGENTS.md enforcement:** a Jinja2 template change, a new or changed
 
-# archiver#181 curation: SCREENS.md split out of UI.md, so its own two
-# back-pointers at UI.md are the split describing itself. Nothing they point at
-# moved - UI.md still holds the shared mechanics they name.
-docs/SCREENS.md :: Split out of [UI.md](UI.md) when that file passed its context
-docs/SCREENS.md :: Sibling docs: [UI.md](UI.md) shared mechanics
+# Same run, source side. The heading rename widened the sweep to tracked source;
+# every hit names the policy file generically - the write guard and the refresh
+# hook that measure it, the SocratiCode manifest that indexes it, and six
+# comments citing a convention it still states. Two historical notes say
+# "CLAUDE.md used to ...", which is a record rather than a pointer. None refers
+# to the renamed heading, and this run moved nothing out of the file.
+.claude/hooks/context-budget-guard.sh :: the next fortnight of edits puts it back
+.claude/hooks/context-budget-guard.sh :: the policy file: AGENTS.md or CLAUDE.md at the repo root
+.claude/hooks/context-budget-guard.sh :: CLAUDE.md is followed to its target, which is the cohort norm
+.claude/hooks/context-budget-guard.sh :: AGENTS.md|CLAUDE.md) KIND="policy"
+.claude/hooks/skills-submodule-update.sh :: The remedy is log-and-skip, not the exit-2 of AGENTS.md's gate
+.socraticodecontextartifacts.json :: "path": "./AGENTS.md"
+pyproject.toml :: PLC0415 enforces the AGENTS.md "no inline module imports" convention
+scripts/dev_server.sh :: CLAUDE.md used to document a raw uvicorn recipe for the dev server
+skills/shipping-work-python-fastapi/scripts/doc-check.sh :: or structure is referenced from project docs
+skills/shipping-work-python-fastapi/scripts/doc-check.sh :: "AGENTS.md"
+src/core/db_safety.py :: Suffixes that mark a database as disposable
+tests/api/test_lifespan_bus_wiring.py :: safety control (`AGENTS.md`, "Four variables carry safety rules")
+tests/core/test_db_safety.py :: it matches the convention AGENTS.md already documents
+tests/scripts/test_dev_server.py :: The dev server (port 8021) previously had no launch script
+skills/shipping-work-python-fastapi/scripts/doc-check.sh :: architecture boundaries, conventions, vocabulary, the Detail Docs index

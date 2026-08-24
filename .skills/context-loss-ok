@@ -53,3 +53,25 @@ docs/STYLE.md :: rename :: ### HTMX inline form error pattern
 # Same change: the pointer named docs/STYLE.md for a section this run moved to
 # docs/UI.md, so it is retargeted in place rather than relocated.
 docs/COMPONENTS.md :: retarget :: the reason it exists is `docs/STYLE.md` § **JSON data island pattern**
+
+# archiver#185 curation: the "no outbound HTTP call to Watcher" rule was stated
+# three times. Project Overview P2 is the canonical one - it carries the rule,
+# archiver#142, and the reason (the #137 decoupling epic) - so the two weaker
+# restatements go. P1 kept the cross-repo ref P2 lacks; the Architecture bullet
+# kept every clause that is about `clients/python/` rather than about Watcher.
+AGENTS.md :: duplicate :: Central registry + authoring service for the Cannabis Observer information layer.
+AGENTS.md :: duplicate :: `generated/`. It was two until archiver#142 retired the Watcher client along
+AGENTS.md :: duplicate :: with every outbound HTTP call to Watcher.
+
+# Same run: the Common Commands wheelhouse pair was character-identical to the
+# block under Environment & Tooling, which its own comment already points at.
+# The sync_wheelhouse line still matches there verbatim; this one differs only
+# by that block's trailing comment naming the credential.
+AGENTS.md :: duplicate :: set -a; . /etc/archiver/.env; set +a
+
+# Same run, Phase 6.5: `## Content-acquisition via co-core (archiver#72 Phase 1)`
+# carried an issue number into a permanent anchor slug - the class 3b seam
+# check-seams.sh flags - and archiver#72 closed 2026-08-06, so "Phase 1" labelled
+# a finished epic. Nothing anchors the old slug (docs/ARCHITECTURE.md mentions
+# the topic in prose, not as a link).
+AGENTS.md :: rename :: ## Content-acquisition via co-core (archiver#72 Phase 1)
