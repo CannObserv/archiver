@@ -103,6 +103,27 @@ present, and no push to gate. **Delete them from `/etc/archiver/.env`**: a stale
 credential that nothing reads is still a credential on disk, and a leftover
 `ARCHIVER_WATCHER_PUSH_ENABLED=0` reads as a live switch to whoever finds it next.
 
+## Adding a new outbound env var
+
+Any variable that *addresses an external resource* - a `*_URL`, `*_API_KEY`,
+`*_TOKEN`, `*_DSN` - must be registered when it is added, not later:
+
+1. Add it to `_OUTBOUND_SERVICE_ENV_VARS` in `tests/conftest.py`, so a suite run
+   that sourced `/etc/archiver/.env` cannot inherit the live resource.
+2. If a test process may legitimately hold it, add it to
+   `_OUTBOUND_ENV_ALLOWLIST` in `tests/outbound_env_audit.py` **with the reason**
+   - naming the other mechanism that contains it, so the exemption can be
+   re-checked when that mechanism changes.
+
+`test_every_outbound_env_var_in_src_is_accounted_for` turns forgetting this into
+a test failure. It exists because the older guard could only iterate the list it
+was given, and so was blind to a variable that never made the list - which is
+precisely how the same hole re-opened in a sibling service
+(CannObserv/watcher#277: a notifier client read `NOTIFIER_BASE_URL`/
+`NOTIFIER_API_KEY`, the conftest scrub never gained them, and a prod-sourced
+pytest run dispatched to production silently). Archiver's #157 was that shape
+under an earlier name.
+
 ## Sourcing env files — why not `export $(cat … | xargs)`
 
 > Use `set -a; . <file>; set +a` (POSIX-portable source via `.`) rather than `export $(cat <file> | xargs)`. The xargs form silently breaks for values containing spaces, quotes, newlines, or embedded `=` — and produces hard-to-diagnose failures later when those env vars are read.
