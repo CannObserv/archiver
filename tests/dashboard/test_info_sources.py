@@ -494,6 +494,20 @@ async def test_update_specs_nonhtmx_error_preserves_submitted_text(client, sessi
 # ---------------------------------------------------------------------------
 
 
+def _source_specs_card(html: str) -> str:
+    """The Source Specification card, bounded at the `</form>` that ends it.
+
+    Bounded on a marker that is *in* the card rather than a run of closing
+    divs: the first cut looked for `"</div>\\n</div>"`, which the rendered
+    whitespace never produces, so the fallback took the whole rest of the page
+    and the assertion below silently ranged over "Bound Information Items" and
+    "Revision History" too (CR round 1, finding 3).
+    """
+    start = html.index('id="source-specs-card"')
+    end = html.index("</form>", start) + len("</form>")
+    return html[start:end]
+
+
 def _header_block(html: str) -> str:
     """The `.entity-card__header` div of the page's first entity card.
 
@@ -632,6 +646,10 @@ async def test_source_specs_edit_actions_are_not_inline_hidden(client, session):
     r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
     assert r.status_code == 200
 
-    card = r.text[r.text.index('id="source-specs-card"') :]
-    card = card[: card.index("</div>\n</div>")] if "</div>\n</div>" in card else card
+    card = _source_specs_card(r.text)
+    # Non-vacuity, and a guard against the slice silently widening again: the
+    # region must hold both halves this rule governs and stop at the card.
+    assert 'class="entity-card__actions"' in card and 'id="source-specs-edit"' in card
+    assert "Revision History" not in card
+
     assert "display:none" not in card
