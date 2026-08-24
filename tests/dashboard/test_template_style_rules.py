@@ -289,3 +289,33 @@ def test_the_wrapper_owns_the_spacing_below_a_table() -> None:
     assert not offenders, "inline margin-bottom trapped inside a scroll wrapper:\n  " + "\n  ".join(
         offenders
     )
+
+
+# ---------------------------------------------------------------------------
+# The entity-card header's content column can shrink (archiver#185)
+#
+# The same class of defect as `.main-content` above, one level down: a flex item
+# defaults to `min-width: auto` and will not go below its content's min-content
+# width. The header had one child until #185 gave it an action slot, so nothing
+# competed for the width and the floor never showed. It does now - and the
+# InfoSource title is a URL in `<code>`, whose min-content width is the whole
+# URL.
+# ---------------------------------------------------------------------------
+
+
+def test_the_header_content_column_can_shrink_below_its_contents() -> None:
+    """Otherwise a long title pushes the action slot out of the card.
+
+    Both halves are load-bearing: `min-width: 0` lets the flex item shrink, and
+    a wrap opportunity inside the title lets its content follow. Without the
+    second the box narrows and the URL simply overflows it.
+    """
+    css = _CSS.read_text()
+
+    assert "min-width: 0" in _rule(".entity-card__header > :first-child", css), (
+        "the title column must shrink, or the action slot beside it is pushed out"
+    )
+    title = _rule(".entity-card__title", css)
+    assert "overflow-wrap: anywhere" in title, (
+        "a URL has no soft wrap opportunity; without one the narrowed box overflows"
+    )

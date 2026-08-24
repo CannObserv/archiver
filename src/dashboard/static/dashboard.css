@@ -698,11 +698,27 @@ p:last-child { margin-bottom: 0; }
   gap: var(--space-4);
   margin-bottom: var(--space-4);
 }
+/* The header's content column must be allowed to shrink. It is a flex item, so
+   it defaults to `min-width: auto` and will not narrow below its content's
+   min-content width - the same floor that made `.main-content` widen the whole
+   page in #181. Invisible until #185 gave the header a second child: with one
+   child there was nothing to push. The InfoSource title is a URL in `<code>`,
+   whose min-content width is the entire URL, so without this the action slot
+   beside it is shoved out of the card. */
+.entity-card__header > :first-child { min-width: 0; }
 .entity-card__title {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   margin: 0;
+  /* `anywhere` rather than `break-word`: only this value's break opportunities
+     count toward the min-content size, which is what lets the rule above
+     actually take effect instead of narrowing a box its content overflows. */
+  overflow-wrap: anywhere;
 }
+/* A card header naming a *section* rather than the page carries an `<h2>` (the
+   Source Specification editor, #185). The header owns the gap below itself, so
+   the heading's own margins must not add to it. */
+.entity-card__header > h2 { margin: 0; }
 /* Eyebrow: a small uppercase kicker label above an entity-card title (e.g. the
    entity kind). Non-interactive - distinct from a breadcrumb. */
 .eyebrow {

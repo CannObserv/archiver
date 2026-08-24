@@ -13,11 +13,30 @@
         <h1 class="entity-card__title" id="info-source-heading" tabindex="-1">
           <code class="text-sm">{{ src.url }}</code>
         </h1>
-        <p style="margin:var(--space-1) 0 0;">{{ open_button(src.url) }}</p>
-        <p class="entity-card__id text-sm text-muted" style="margin-top:var(--space-2);">
+        <p class="entity-card__id text-sm text-muted" style="margin:var(--space-1) 0 var(--space-2);">
           {{ copyable(src.info_source_id) }}
         </p>
+        {# Domain pill, matching the InfoItem hub (#185). InfoSource carries
+           `domain_name` on the row, so this costs no query - and it is the
+           entity the attribution belongs to. The column is nullable, and an
+           unattributed source gets a state of its own: rendering nothing reads
+           as "no domain" and as "the panel forgot" identically. #}
+        <p style="margin:0;">
+          {% if src.domain_name %}
+          <a href="/dashboard/domains/{{ src.domain_name }}" class="badge badge--primary">{{ src.domain_name }}</a>
+          {% else %}
+          <span class="badge badge--muted">No domain</span>
+          {% endif %}
+        </p>
       </div>
+      {# Open is an action, so it goes in the header's right-hand slot rather
+         than a block row under the title, where one button cost a full button's
+         height (the waste #181 took out of the Watcher panel). No absolute
+         positioning needed to get there: this header is already a flex row, so
+         a second child lands top right at zero vertical cost. What #181 does
+         carry over is the shrink hazard - see `.entity-card__header` in the
+         stylesheet. #}
+      <div class="entity-card__actions">{{ open_button(src.url) }}</div>
     </div>
 
     <div class="detail-grid">
@@ -31,7 +50,7 @@
   {# Source Specification editor (Edit-toggle; HTMX in-place swap; extracted partial) #}
   {% include "info_sources/_source_specs_card.html" %}
 
-  {# Other Sources at This URL — multiple InfoSources may share a URL (#8) #}
+  {# Other Sources at This URL - multiple InfoSources may share a URL (#8) #}
   {% if siblings %}
   <div style="margin-top:var(--space-3);">
     <h2>Other Sources at This URL ({{ siblings | length }}{% if siblings_has_more %}+{% endif %})</h2>

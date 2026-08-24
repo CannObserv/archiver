@@ -25,6 +25,23 @@ The screens themselves are inventoried in [PAGES.md](PAGES.md).
    ULID (see `copyable`). The `id`+`tabindex="-1"` make it a focus target for
    post-swap focus moves (see HTMX mutations).
 
+**Header actions.** A single-purpose control belonging to the whole card -
+"Open", "Edit" - goes in an `.entity-card__actions` slot as the header's
+**second child**, never a block row of its own under the title: the header is a
+flex row, so the slot costs no vertical space, where a row costs a full button's
+height (#185, generalising what #181 did for the Watcher panel by other means).
+A card whose header names a *section* rather than the page puts an `<h2>` in the
+title position; a control that renders outside its own `<form>` needs
+`form="…"` or it is inert with JS off.
+
+Two children, though, is where a flex item's `min-width: auto` starts to bite:
+the title column will not shrink below its content, so a long value pushes the
+slot out of the card. `.entity-card__header > :first-child` carries
+`min-width: 0` and `.entity-card__title` an `overflow-wrap` for it - both, since
+shrinking a box whose content cannot wrap only moves the overflow. Same defect
+class as `.main-content` in #181, one level down; the tripwire is in
+`test_template_style_rules.py`.
+
 **Detail grid.** `.detail-grid` with `.detail-grid__item` → `.detail-grid__label`
 + `.detail-grid__value` children (never bare `<dl><dt><dd>` - those misalign
 against the CSS grid). Long single-line values (fingerprints, URLs) go on a
@@ -164,6 +181,16 @@ and the operator's submitted text echoed into the textarea so the edit is not
 discarded. The route branches on the `HX-Request` header, not on the target:
 non-HTMX requests fall back to a 303 on success and a full-page 422 re-render -
 text still preserved - on failure, so the editor works without JS.
+
+Three details both editor cards share. The card's **heading names the control**,
+so the editor carries no visible `<label>` - one appearing only on Edit moves the
+layout on every flip - and an `aria-label` on the textarea keeps it named for
+assistive tech. The **canonical stored value rides in a
+`<script type="application/json">` data island** read by the component's
+`init()`, never an HTML attribute: `tojson` emits `"` and would break out of a
+double-quoted one (the `sortableChips` convention, #100). That is what Cancel
+resets the textarea from, with no server call. And **no `x-cloak`** - both halves
+render without JS, per the FOUC trade above.
 
 Gate the focus-move script on `swapped` (see **HTMX mutations**) and pass
 `swapped=False` on that non-HTMX path. The card partial and the section's other

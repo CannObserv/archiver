@@ -482,3 +482,156 @@ async def test_update_specs_nonhtmx_error_preserves_submitted_text(client, sessi
     )
     assert r.status_code == 422
     assert "still-bad-json{" in r.text
+
+
+# ---------------------------------------------------------------------------
+# Detail header + editor-card action slots (archiver#185)
+#
+# The screen predates the header treatment #176 and #181 gave the InfoItem hub:
+# single-purpose buttons sat in block rows of their own, each costing a full
+# button's height, and the entity that actually owns `domain_name` did not
+# render it.
+# ---------------------------------------------------------------------------
+
+
+def _header_block(html: str) -> str:
+    """The `.entity-card__header` div of the page's first entity card.
+
+    Sliced to the next `.detail-grid`, which is the header's sibling - brace
+    matching would need a real parser, and every detail header is followed by
+    one.
+    """
+    start = html.index('<div class="entity-card__header">')
+    return html[start : html.index('<div class="detail-grid">', start)]
+
+
+@pytest.mark.asyncio
+async def test_detail_open_button_sits_in_the_header_action_slot(client, session):
+    """Open is an action in the header's right-hand slot, not a row of its own.
+
+    In its own `<p>` between the title and the ULID it cost a full button's
+    height for one control - the waste archiver#181 took out of the Watcher
+    panel. `.entity-card__header` is already a flex row, so the slot lands the
+    button top-right at zero vertical cost.
+    """
+    src = _make_source("https://example.com/open-in-header")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+
+    header = _header_block(r.text)
+    slot = header.index('class="entity-card__actions"')
+    assert ">Open ↗</a>" in header[slot:], "Open must render inside the header action slot"
+    # The slot is the header's *second* child, so the title block stays first.
+    assert header.index('id="info-source-heading"') < slot
+
+
+@pytest.mark.asyncio
+async def test_detail_shows_domain_pill_under_the_ulid(client, session):
+    """The domain renders as a linked pill below the copyable ULID.
+
+    Same treatment the InfoItem hub gives its primary source's domain, on the
+    entity that actually carries the column - `info_sources.domain_name`, so no
+    extra query.
+    """
+    src = InfoSource(
+        url="https://pill.example.com/page",
+        source_specs=[_spec()],
+        domain_name="pill.example.com",
+    )
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+
+    header = _header_block(r.text)
+    pill = '<a href="/dashboard/domains/pill.example.com" class="badge badge--primary">'
+    assert pill in header
+    assert header.index('class="entity-card__id') < header.index(pill), (
+        "the pill belongs below the ULID"
+    )
+
+
+@pytest.mark.asyncio
+async def test_detail_unattributed_domain_renders_its_own_state(client, session):
+    """`domain_name` is nullable, and a null is a state rather than an absence.
+
+    Rendering nothing would read as "this source has no domain" and as "this
+    panel forgot to say" identically.
+    """
+    src = _make_source("https://example.com/no-domain")
+    src.domain_name = None
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+
+    header = _header_block(r.text)
+    assert '<span class="badge badge--muted">No domain</span>' in header
+    assert 'class="badge badge--primary"' not in header
+
+
+@pytest.mark.asyncio
+async def test_source_specs_actions_sit_in_the_card_header(client, session):
+    """Edit / Cancel / Save move beside the `<h2>`, reclaiming two block rows.
+
+    They sat in right-aligned divs below the `<pre>` and below the textarea.
+    The heading row already exists, so hosting them there costs nothing.
+    """
+    src = _make_source("https://example.com/spec-header-actions")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+
+    card = r.text[r.text.index('id="source-specs-card"') :]
+    header = card[card.index('<div class="entity-card__header">') : card.index("</h2>") + 40]
+    assert 'id="source-specs-heading"' in header
+
+    slot = card.index('class="entity-card__actions"')
+    body = card.index('<pre class="code-block"')
+    assert slot < body, "the actions belong in the header, above the card body"
+    for label in (">Edit</button>", ">Cancel</button>", ">Save</button>"):
+        assert label in card[slot:body], f"{label} must live in the header action slot"
+
+
+@pytest.mark.asyncio
+async def test_source_specs_save_submits_the_form_from_outside_it(client, session):
+    """Save is in the header now, so it needs an explicit `form` association.
+
+    Without it the button is inert without JS, which would strand the
+    `POST -> 303` fallback the card exists to keep working.
+    """
+    src = _make_source("https://example.com/spec-form-attr")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'id="source-specs-form"' in r.text
+    assert 'form="source-specs-form"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_source_specs_edit_actions_are_not_inline_hidden(client, session):
+    """The FOUC trade: this card has a no-JS save path, so nothing may hide it.
+
+    SCREENS.md § Row-level view/edit - inline `display:none` on the edit half is
+    for editors with no no-JS path to strand. Here Save posts normally without
+    Alpine, so both halves must render for a frame.
+    """
+    src = _make_source("https://example.com/spec-no-cloak")
+    session.add(src)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-sources/{src.info_source_id}", headers=_HEADERS)
+    assert r.status_code == 200
+
+    card = r.text[r.text.index('id="source-specs-card"') :]
+    card = card[: card.index("</div>\n</div>")] if "</div>\n</div>" in card else card
+    assert "display:none" not in card
