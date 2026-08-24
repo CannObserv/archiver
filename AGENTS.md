@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrif
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher, whose edge is bus-only in both directions (archiver#142 / watcher#254). Produces `info.changes`, `info.registry`, and `content.replicate` (archiver#169) via an internal outbox publisher, and consumes three streams - `content.revisions` (archiver#139), `info.watch-status` (archiver#151), and `content.artifacts` (archiver#170). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus one Item↔X join table (`info_item_sources`). Dashboard adds two more: `app_users` (upserted from proxy headers) and `api_keys` (hashed key store). Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, and `content.replicate` (archiver#169) via an internal outbox publisher, and consumes three streams - `content.revisions` (archiver#139), `info.watch-status` (archiver#151), and `content.artifacts` (archiver#170). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 **Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one - a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
 
@@ -45,14 +45,13 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
 - `alembic/` is scoped to the `information` schema *inside* the archiver database.
 - `clients/python/` is the one vendored SDK - regenerated from a committed
   OpenAPI snapshot, gated by the CI `client-drift` job; never hand-edit
-  `generated/`. It was two until archiver#142 retired the Watcher client along
-  with every outbound HTTP call to Watcher.
+  `generated/`.
 - `src/core/db_safety.py` is mirrored by `scripts/dev_server.sh`, kept in step by
   `tests/scripts/test_db_guard_parity.py`.
 - `tests/` mirrors `src/`; `tests/deploy/` asserts installed systemd artifacts
   match `deploy/` (file-parity only).
 
-## Content-acquisition via co-core (archiver#72 Phase 1)
+## Content-acquisition via co-core
 
 Fetch, extract, and the content fingerprint come from **co-core**; the former
 `src/core/{fetchers,extractors,simhash,extraction_defaults}` mirror is deleted.
@@ -125,8 +124,6 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
 
 ```bash
 # Populate the cannobserv wheelhouse before installing (see Environment & Tooling):
-set -a; . /etc/archiver/.env; set +a
-uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 uv sync                                      # install deps (resolves co-core from ./.wheelhouse)
 uv run pytest                                # tests
 uv run ruff check .                          # lint (also ruff format .)
