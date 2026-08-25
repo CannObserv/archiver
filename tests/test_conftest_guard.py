@@ -177,7 +177,12 @@ def test_no_env_read_escapes_static_resolution():
     assert not unresolvable, (
         f"environment read(s) whose variable name cannot be resolved statically: "
         f"{unresolvable}. test_every_outbound_env_var_is_accounted_for cannot "
-        f"classify these, so an outbound var hidden behind one is unguarded (#157)."
+        f"classify these, so an outbound var hidden behind one is unguarded (#157). "
+        f"Either spell the read as a string literal or a module-level constant, or "
+        f"- if the dynamic form is genuinely needed - teach _env_names_from in "
+        f"tests/outbound_env_audit.py to resolve it. Do not weaken this assertion: "
+        f"an unresolvable read passes the registry guard by being invisible to it, "
+        f"not by being safe."
     )
 
 

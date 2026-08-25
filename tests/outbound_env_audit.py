@@ -1,4 +1,4 @@
-"""Derive the outbound env-var surface from ``src/`` by static analysis.
+"""Derive the outbound env-var surface from SCANNED_ROOTS by static analysis.
 
 Why this exists (archiver#157, and CannObserv/watcher#277 as the recurrence).
 
@@ -19,14 +19,17 @@ route, but the registry can drift again the moment archiver grows its next
 outbound integration.
 
 So this module inverts the direction of the check. Rather than trusting a
-hand-kept list to be complete, it reads ``src/`` and reports every environment
-variable the application actually consults. The caller then asserts that each
-resource-addressing one is either scrubbed or explicitly exempted with a
-reason. Forgetting the scrub becomes a test failure instead of a silent hole.
+hand-kept list to be complete, it reads every tree that executes inside the
+pytest process - see :data:`SCANNED_ROOTS`, currently ``src/`` and ``alembic/`` -
+and reports every environment variable actually consulted there. The caller then
+asserts that each resource-addressing one is either scrubbed or explicitly
+exempted with a reason. Forgetting the scrub becomes a test failure instead of a
+silent hole.
 """
 
 import ast
 from collections.abc import Iterator
+from functools import cache
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).parent.parent
@@ -160,11 +163,29 @@ def _is_environ_attribute(node: ast.expr) -> bool:
     return isinstance(node, ast.Name) and node.id == "environ"
 
 
+@cache
+def _parse_trees_cached(root: Path) -> tuple[tuple[Path, ast.Module], ...]:
+    """Parse every Python source under ``root``, once per root per process.
+
+    Both public entry points walk the same trees, and each is called once per
+    root, so an uncached parse re-read and re-parsed 150 files four times a suite
+    run; caching halves that to one parse per root (measured 110 ms cold, 0.003 ms
+    on the hit). The cache is keyed on the root path and never invalidated,
+    which is safe here because the scanned trees are repository sources that do
+    not change mid-process - but it does mean a caller that writes a file and
+    re-scans the *same* directory within one process sees the earlier parse.
+    Tests that build a tree per case use a fresh ``tmp_path``, so none of them
+    can hit that.
+    """
+    return tuple(
+        (path, ast.parse(path.read_text(), filename=str(path)))
+        for path in sorted(root.rglob("*.py"))
+    )
+
+
 def _parse_trees(root: Path) -> dict[Path, ast.Module]:
-    """Parse every Python source under ``root``."""
-    return {
-        path: ast.parse(path.read_text(), filename=str(path)) for path in sorted(root.rglob("*.py"))
-    }
+    """Every parsed source under ``root``, as a fresh mapping over cached trees."""
+    return dict(_parse_trees_cached(root))
 
 
 def _env_read_arguments(trees: dict[Path, ast.Module]) -> Iterator[tuple[Path, ast.expr]]:
