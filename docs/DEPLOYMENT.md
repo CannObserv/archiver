@@ -113,16 +113,24 @@ Any variable that *addresses an external resource* - a `*_URL`, `*_API_KEY`,
 2. If a test process may legitimately hold it, add it to
    `_OUTBOUND_ENV_ALLOWLIST` in `tests/outbound_env_audit.py` **with the reason**
    - naming the other mechanism that contains it, so the exemption can be
-   re-checked when that mechanism changes.
+   re-checked when that mechanism changes. An empty reason is rejected.
+3. Spell the read as a string literal or a module-level constant. A computed
+   name (`os.environ.get(f"{prefix}_URL")`) cannot be resolved statically, so
+   `test_no_env_read_escapes_static_resolution` fails rather than let it pass by
+   being invisible to the registry check.
 
-`test_every_outbound_env_var_in_src_is_accounted_for` turns forgetting this into
-a test failure. It exists because the older guard could only iterate the list it
-was given, and so was blind to a variable that never made the list - which is
-precisely how the same hole re-opened in a sibling service
-(CannObserv/watcher#277: a notifier client read `NOTIFIER_BASE_URL`/
-`NOTIFIER_API_KEY`, the conftest scrub never gained them, and a prod-sourced
-pytest run dispatched to production silently). Archiver's #157 was that shape
-under an earlier name.
+`test_every_outbound_env_var_is_accounted_for` turns forgetting step 1 or 2 into
+a test failure. It scans `src/` **and** `alembic/` - `tests/conftest.py` runs
+`alembic upgrade head` in-process at session setup, so `alembic/env.py` reads the
+environment under pytest exactly as the application does. `scripts/` is out of
+scope: those run by hand or in CI, never inside the test process.
+
+The guard exists because its predecessor could only iterate the list it was
+given, and so was blind to a variable that never made the list. That is precisely
+how the same hole re-opened in a sibling service (CannObserv/watcher#277: a
+notifier client read `NOTIFIER_BASE_URL`/`NOTIFIER_API_KEY`, the conftest scrub
+never gained them, and a prod-sourced pytest run dispatched to production
+silently). Archiver's #157 was that shape under an earlier name.
 
 ## Sourcing env files — why not `export $(cat … | xargs)`
 

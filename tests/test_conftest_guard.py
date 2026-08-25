@@ -1,15 +1,16 @@
 """Unit tests for the conftest production-URL safety guard."""
 
 import os
-from pathlib import Path
 
 import pytest
 
 from tests.conftest import _OUTBOUND_SERVICE_ENV_VARS, _check_test_url_safety
 from tests.outbound_env_audit import (
     _OUTBOUND_ENV_ALLOWLIST,
+    SCANNED_ROOTS,
     env_names_read_under,
     outbound_shaped,
+    unresolvable_env_reads_under,
 )
 
 
@@ -137,28 +138,119 @@ def test_outbound_shaped_classifies_by_name_suffix():
     assert not outbound_shaped("BUILD_ID")
 
 
-def test_every_outbound_env_var_in_src_is_accounted_for():
+def test_every_outbound_env_var_is_accounted_for():
     """Fitness function: no outbound-addressing env var may go unregistered.
 
-    Every resource-addressing variable src/ reads must be either scrubbed by
-    conftest or carry an explicit written reason for being exempt. Adding one
-    and forgetting the scrub is the failure this turns red (#157, and the same
-    class as CannObserv/watcher#277).
+    Every resource-addressing variable read inside the pytest process must be
+    either scrubbed by conftest or carry an explicit written reason for being
+    exempt. Adding one and forgetting the scrub is the failure this turns red
+    (#157, and the same class as CannObserv/watcher#277).
 
     To fix a failure here: add the variable to _OUTBOUND_SERVICE_ENV_VARS in
     tests/conftest.py, or - if a test process genuinely may hold it - to
     _OUTBOUND_ENV_ALLOWLIST with the reason it is safe.
     """
-    src_root = Path(__file__).parent.parent / "src"
     unaccounted = {
         name
-        for name in env_names_read_under(src_root)
+        for root in SCANNED_ROOTS
+        for name in env_names_read_under(root)
         if outbound_shaped(name)
         and name not in _OUTBOUND_SERVICE_ENV_VARS
         and name not in _OUTBOUND_ENV_ALLOWLIST
     }
     assert not unaccounted, (
-        f"outbound-addressing env var(s) read by src/ but neither scrubbed nor "
+        f"outbound-addressing env var(s) read in-process but neither scrubbed nor "
         f"allowlisted: {sorted(unaccounted)}. A test process that inherits one "
         f"from /etc/archiver/.env reaches the real resource (#157)."
     )
+
+
+def test_no_env_read_escapes_static_resolution():
+    """Every in-process environment read must resolve to a nameable variable.
+
+    The registry guard above can only classify names it can resolve. A computed
+    argument resolves to none, so it would pass that guard by being invisible to
+    it rather than by being safe - the same fail-open shape the guard exists to
+    remove. Keep reads spelled as a literal or a module-level constant.
+    """
+    unresolvable = [site for root in SCANNED_ROOTS for site in unresolvable_env_reads_under(root)]
+    assert not unresolvable, (
+        f"environment read(s) whose variable name cannot be resolved statically: "
+        f"{unresolvable}. test_every_outbound_env_var_is_accounted_for cannot "
+        f"classify these, so an outbound var hidden behind one is unguarded (#157). "
+        f"Either spell the read as a string literal or a module-level constant, or "
+        f"- if the dynamic form is genuinely needed - teach _env_names_from in "
+        f"tests/outbound_env_audit.py to resolve it. Do not weaken this assertion: "
+        f"an unresolvable read passes the registry guard by being invisible to it, "
+        f"not by being safe."
+    )
+
+
+def test_scanner_reports_every_value_a_colliding_constant_name_takes(tmp_path):
+    """A constant name defined twice must yield BOTH variables, not the last one.
+
+    CR round 1, finding 1. The first implementation kept one flat name -> literal
+    map, so two modules defining the same constant collided and the later file
+    won: the earlier module's read resolved to the wrong variable and the real
+    one was never recorded - a hole, in the guard whose whole job is not to have
+    one. Over-reporting is the only safe direction here; a spurious registry
+    entry is visible and cheap, a swallowed read is neither.
+    """
+    (tmp_path / "a_defs.py").write_text(
+        "import os\nGATE = 'NOTIFIER_API_KEY'\nx = os.environ.get(GATE)\n"
+    )
+    (tmp_path / "z_defs.py").write_text("import os\nGATE = 'BUILD_ID'\ny = os.environ.get(GATE)\n")
+    names = env_names_read_under(tmp_path)
+    assert {"NOTIFIER_API_KEY", "BUILD_ID"} <= names
+
+
+def test_unresolvable_env_read_is_reported(tmp_path):
+    """A computed env-var name is reported, not silently dropped.
+
+    CR round 1, finding 3. os.environ.get(f'{p}_API_KEY') resolves to no literal,
+    and returning nothing made an unscannable read indistinguishable from no read
+    at all. The guard cannot classify what it cannot name, so it says so instead.
+    """
+    (tmp_path / "m.py").write_text(
+        "import os\np = 'NOTIFIER'\nx = os.environ.get(f'{p}_API_KEY')\n"
+    )
+    reports = unresolvable_env_reads_under(tmp_path)
+    assert len(reports) == 1
+    assert "m.py:3" in reports[0]
+
+
+def test_resolvable_reads_are_not_reported_as_unresolvable(tmp_path):
+    """The literal and constant-mediated spellings stay silent."""
+    (tmp_path / "m.py").write_text(
+        "import os\nGATE = 'ALPHA_URL'\na = os.environ.get('BETA_URL')\nb = os.environ.get(GATE)\n"
+    )
+    assert unresolvable_env_reads_under(tmp_path) == []
+
+
+def test_scanned_roots_cover_what_executes_in_the_test_process():
+    """alembic/ is in scope because conftest runs it in-process.
+
+    CR round 1, finding 2. tests/conftest.py runs alembic_command.upgrade in an
+    executor thread, so alembic/env.py reads the environment inside the test
+    process exactly as src/ does. Scanning only src/ left a file that genuinely
+    runs under pytest outside the guard.
+    """
+    names = {p.name for p in SCANNED_ROOTS}
+    assert names == {"src", "alembic"}
+    for root in SCANNED_ROOTS:
+        assert root.is_dir(), f"{root} does not exist - the scan would silently cover nothing"
+
+
+def test_every_allowlist_entry_states_a_reason():
+    """An exemption without a written reason is not re-checkable.
+
+    CR round 1, finding 4. Only key membership was ever consulted, so an entry
+    added with an empty string satisfied the 'with the reason' contract that
+    docs/DEPLOYMENT.md and the failure message both advertise.
+    """
+    for name, reason in _OUTBOUND_ENV_ALLOWLIST.items():
+        assert reason and reason.strip(), (
+            f"{name} is allowlisted with no stated reason - name the mechanism "
+            f"that contains it, so the exemption can be re-checked when that "
+            f"mechanism changes"
+        )
