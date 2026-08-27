@@ -33,10 +33,11 @@ The health row is **Archiver + Redis + Outbox** since archiver#112 (Archiver + R
 | `badge--muted` "not configured" | `ARCHIVER_REDIS_URL` unset |
 
 **GET `/dashboard/health/outbox`** - HTMX partial over
-`src/core/changes/outbox_stats.py` (archiver#112). DB-only (renders even
-bus-dormant): danger "N dead-lettered" if any poison row, warning "backlog" if
-the oldest live unpublished row exceeds 300s, else success "ok"; `title` always
-carries `depth=N oldest=Ns dead_lettered=N`.
+`src/core/changes/outbox_stats.py` (archiver#112). Muted "not draining" when no
+Redis client exists (publisher dormant - dev's default - so a stale backlog is
+not ill health); otherwise danger "N dead-lettered" if any poison row, warning
+"backlog" if the oldest live unpublished row exceeds 300s, else success "ok";
+`title` carries `depth=N oldest=Ns dead_lettered=N` in the drain states.
 
 **`…/health/watcher` retired with archiver#142** - it pinged Watcher over the
 SDK, and AGENTS.md's no-outbound-HTTP rule left nothing to ping. The successor

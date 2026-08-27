@@ -68,14 +68,20 @@ async def dashboard_health_redis(
 async def dashboard_health_outbox(
     user: AppUser = Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
+    redis: "RedisAsync | None" = Depends(get_redis_client),
 ) -> HTMLResponse:
     """HTMX partial - outbox publisher health badge (archiver#112).
 
+    muted "not draining": no Redis client, so the publisher is not running -
+    rows cannot drain and a stale backlog is the configured-off state, not ill
+    health (the dev server is bus-dormant by design; CR round 1, finding 1).
     danger: any dead-lettered (poison) row - needs an operator.
     warning: oldest live unpublished row older than the backlog threshold -
     the drain is not keeping up or Redis has been down a while.
-    success otherwise; the title carries the raw numbers in every state.
+    success otherwise; the title carries the raw numbers in every drain state.
     """
+    if redis is None:
+        return HTMLResponse('<span class="badge badge--muted">not draining</span>')
     try:
         stats = await collect_outbox_stats(session)
     except Exception as exc:
