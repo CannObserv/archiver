@@ -6,6 +6,8 @@ Systemd units for the Archiver VM.
 |---|---|---|
 | `archiver.service` | service | The live API on port 8020 (see CLAUDE.md → Server Lifecycle). Its `ExecStartPre` mirrors the cannobserv wheelhouse (see below) and asserts the Redis ≥7.0 floor when the bus is active. |
 | `redis-server.dropin.conf` | service drop-in | Archiver-owned tuning for the shared Redis change-bus broker (#109). Layers on the stock `redis-server.service`; see below. |
+| `archiver-bus-health.service` | service (oneshot) | One WARN-only bus-health tick: broker memory/streams/groups/DLQs, outbox stats, disk (#130). Never blocks anything; see *Bus-health timer* below. |
+| `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
 
 ## cannobserv wheelhouse (archiver#72/#75)
 
@@ -301,9 +303,15 @@ exactly when the publisher is down. Per tick it probes:
 
 - `used_memory` vs `maxmemory` (WARN at 75% - before the `noeviction` cap
   starts refusing `XADD` instance-wide), and `maxmemory 0` (inert ceiling);
-- `XLEN` per stream vs the inventory above (LWW streams: 55k = producer cap +
-  margin, so a breach means the trim contract broke; fact streams: 110k over
-  the 100k operator-side `XTRIM` cap);
+- `XLEN` per stream, each threshold derived as **that stream's own retention
+  cap + 10%** - so a breach means the retention mechanism broke, not that
+  traffic grew. Three caps apply and they are not interchangeable: 110k for
+  fact streams on the operator-side `XTRIM` (`ARCHIVER_REDIS_STREAM_MAXLEN`),
+  55k for `info.registry` (capped on publish instead, `ARCHIVER_REGISTRY_STREAM_MAXLEN`),
+  55k for the two LWW streams (Watcher's producer-side `maxlen`). The
+  thresholds are computed from those constants, not copied. `content.replicate`
+  is the exception: never trimmed by design, so its breach message says
+  "volume milestone", not "broken cap";
 - last-entry age for the groupless streams (15 min for the two `*/5` LWW
   streams; 2h for `info.registry`'s hourly snapshot, skipped while the stream
   is empty - the corpus-size guard);

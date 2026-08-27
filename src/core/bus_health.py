@@ -18,9 +18,9 @@ The checks, per tick:
 - ``used_memory`` vs ``maxmemory`` fraction - warns *before* the ``noeviction``
   cap starts refusing ``XADD`` instance-wide, so the alert precedes the
   publisher's retry-WARNING flood rather than accompanying it.
-- ``XLEN`` per stream vs the ``deploy/README.md`` inventory thresholds. For the
-  producer-capped LWW streams the threshold is cap + margin: a breach means the
-  trim contract broke (watcher#265), not that traffic grew.
+- ``XLEN`` per stream, each threshold derived as that stream's own retention
+  cap + margin, so a breach means the retention mechanism broke rather than
+  that traffic grew. Three different caps apply here - see the constants below.
 - last-entry age via ``XINFO STREAM`` for the permanently-groupless streams,
   which are invisible to any ``XPENDING``-based check (archiver#128).
 - ``XPENDING`` on the archiver-owned consumer groups, warning only on two
@@ -74,7 +74,9 @@ from src.core.changes.outbox_stats import (
     OutboxStats,
     collect_outbox_stats,
 )
-from src.core.database import get_database_url, get_session_factory
+from src.core.changes.publisher import DEFAULT_STREAM_MAXLEN
+from src.core.changes.registry_snapshot import DEFAULT_REGISTRY_STREAM_MAXLEN
+from src.core.database import get_database_url, get_engine, get_session_factory
 from src.core.db_safety import ALLOW_PRODUCTION_DB_ENV, assert_production_db_allowed
 from src.core.logging import configure_logging, get_logger
 
@@ -94,6 +96,11 @@ DISK_WARN_USED_FRACTION = 0.90
 DISK_WARN_MIN_FREE_BYTES = 2 * 1024**3
 DISK_PATH = "/"
 
+# Well inside systemd's default TimeoutStartSec (90s) even if every probe in
+# the tick hits its ceiling, so a hung broker is reported rather than fatal.
+SOCKET_CONNECT_TIMEOUT_SECONDS = 5.0
+SOCKET_TIMEOUT_SECONDS = 10.0
+
 # Both LWW streams republish their full set on `*/5 * * * *` (watcher#264/#265),
 # so 3x the period of silence means the producer is down, not slow.
 LWW_WARN_LAST_ENTRY_AGE_SECONDS = 900.0
@@ -102,12 +109,32 @@ LWW_WARN_LAST_ENTRY_AGE_SECONDS = 900.0
 # An empty stream skips the age check entirely - the corpus-size guard (#147).
 REGISTRY_WARN_LAST_ENTRY_AGE_SECONDS = 7200.0
 
-# Producer-enforced maxlen on the LWW streams is 50_000 (watcher#265); the
-# operator-side XTRIM cap on outbox-published fact streams is 100_000
-# (ARCHIVER_REDIS_STREAM_MAXLEN). Thresholds sit above the cap so a warning
-# means the retention mechanism itself broke, not that traffic grew.
-LWW_WARN_LENGTH = 55_000
-FACT_WARN_LENGTH = 110_000
+# Every length threshold is its stream's retention cap plus this margin, so a
+# warning means the retention mechanism itself broke rather than that traffic
+# grew. Derived from the cap constants rather than written as literals: a change
+# to either default moves the threshold with it instead of leaving a stale
+# number here (CR round 1, finding 1).
+WARN_LENGTH_MARGIN = 0.10
+
+
+def with_margin(cap: int) -> int:
+    """The WARN threshold for a stream capped at ``cap`` entries."""
+    return int(cap * (1 + WARN_LENGTH_MARGIN))
+
+
+# Three different caps apply on this broker, and they are not interchangeable:
+# - fact streams the outbox publishes ride the operator-side periodic XTRIM
+#   (ARCHIVER_REDIS_STREAM_MAXLEN);
+# - info.registry is excluded from that loop and capped on every publish
+#   instead, because its retention floor is a consumer boot contract (#141);
+# - the LWW streams are capped by their producer, Watcher (watcher#265). No
+#   constant to import across the repo boundary, so the default is mirrored
+#   here and named in deploy/README.md.
+LWW_PRODUCER_MAXLEN = 50_000
+
+FACT_WARN_LENGTH = with_margin(DEFAULT_STREAM_MAXLEN)
+REGISTRY_WARN_LENGTH = with_margin(DEFAULT_REGISTRY_STREAM_MAXLEN)
+LWW_WARN_LENGTH = with_margin(LWW_PRODUCER_MAXLEN)
 
 
 @dataclass(frozen=True)
@@ -128,13 +155,18 @@ class StreamCheck:
     warn_length: int | None = None
     warn_last_entry_age_seconds: float | None = None
     pending_group: str | None = None
+    # Carved out of the drain loop's trim set: capping a command stream would
+    # delete commands the consumer group has not delivered and orphan the PEL
+    # entries naming them. Growth is therefore expected, and a breach is a
+    # volume milestone rather than a broken cap (CR round 1, finding 5).
+    never_trimmed: bool = False
 
 
 STREAM_CHECKS: tuple[StreamCheck, ...] = (
     StreamCheck(INFO_CHANGES, warn_length=FACT_WARN_LENGTH),
     StreamCheck(
         INFO_REGISTRY,
-        warn_length=FACT_WARN_LENGTH,
+        warn_length=REGISTRY_WARN_LENGTH,
         warn_last_entry_age_seconds=REGISTRY_WARN_LAST_ENTRY_AGE_SECONDS,
     ),
     StreamCheck(CONTENT_FETCH, warn_length=FACT_WARN_LENGTH),
@@ -148,7 +180,7 @@ STREAM_CHECKS: tuple[StreamCheck, ...] = (
         warn_length=FACT_WARN_LENGTH,
         pending_group=ARTIFACTS_GROUP,
     ),
-    StreamCheck(CONTENT_REPLICATE, warn_length=FACT_WARN_LENGTH),
+    StreamCheck(CONTENT_REPLICATE, warn_length=FACT_WARN_LENGTH, never_trimmed=True),
     StreamCheck(
         CONTENT_FETCH_POLICY,
         warn_length=LWW_WARN_LENGTH,
@@ -212,12 +244,18 @@ def evaluate_stream(
 ) -> list[Finding]:
     findings: list[Finding] = []
     if check.warn_length is not None and length > check.warn_length:
+        diagnosis = (
+            "this stream is never trimmed by design (capping it would orphan "
+            "undelivered commands), so this is a volume milestone - size the "
+            "broker for it rather than looking for a broken cap"
+            if check.never_trimmed
+            else "the retention cap for this stream is not being applied"
+        )
         findings.append(
             Finding(
                 check="stream-length",
                 subject=check.topic,
-                message=f"XLEN {length} exceeds {check.warn_length} - "
-                "the retention cap for this stream is not being applied",
+                message=f"XLEN {length} exceeds {check.warn_length} - {diagnosis}",
             )
         )
     if check.warn_last_entry_age_seconds is not None and length > 0 and last_entry_ms is not None:
@@ -245,8 +283,8 @@ def evaluate_pending(check: StreamCheck, *, pending_now: int, pending_prev: int)
                 check="pending",
                 subject=f"{check.topic}/{check.pending_group}",
                 message=f"XPENDING {pending_now} for two consecutive ticks "
-                f"(was {pending_prev}) - consumer wedged or DB down; "
-                "revisions are accruing unrecorded",
+                f"(was {pending_prev}) - consumer wedged or DB down; messages "
+                "are accruing unconsumed while the stream keeps accepting them",
             )
         ]
     return []
@@ -351,10 +389,17 @@ async def _collect_memory(client: Redis) -> list[Finding]:
 
 
 async def _collect_dlqs(client: Redis) -> list[Finding]:
+    """Scan is filtered to stream keys, and each XLEN is guarded anyway: a stray
+    non-stream ``*.dlq`` key must not raise WRONGTYPE out of this function,
+    where it would be reported as "broker unreachable" and discard every other
+    finding on the tick (CR round 1, finding 7)."""
     findings: list[Finding] = []
-    async for key in client.scan_iter(match="*.dlq"):
+    async for key in client.scan_iter(match="*.dlq", _type="stream"):
         topic = key.decode() if isinstance(key, bytes) else key
-        depth = await client.xlen(topic)
+        try:
+            depth = await client.xlen(topic)
+        except ResponseError:
+            continue
         if depth > 0:
             findings.append(
                 Finding(
@@ -486,7 +531,17 @@ def main(argv: list[str] | None = None) -> int:
     assert_production_db_allowed(database_url, allow_flag=os.environ.get(ALLOW_PRODUCTION_DB_ENV))
 
     async def _run() -> None:
-        client = Redis.from_url(redis_url)
+        # Bounded sockets: a hung (rather than refusing) broker would otherwise
+        # block until systemd's TimeoutStartSec kills the unit, turning the
+        # WARN-only "broker unreachable" finding into a failed unit in exactly
+        # the degraded state this probe exists to report (CR round 1, finding
+        # 3). The timeouts surface as RedisTimeoutError, which the collector
+        # already renders as that finding.
+        client = Redis.from_url(
+            redis_url,
+            socket_connect_timeout=SOCKET_CONNECT_TIMEOUT_SECONDS,
+            socket_timeout=SOCKET_TIMEOUT_SECONDS,
+        )
         try:
             await run_once(
                 client,
@@ -494,7 +549,12 @@ def main(argv: list[str] | None = None) -> int:
                 state_path=args.state_file,
             )
         finally:
+            # Both pools go down inside the loop that created them; an asyncpg
+            # pool reclaimed during loop teardown emits "Event loop is closed"
+            # noise into the journald stream this unit keeps clean (CR round 1,
+            # finding 6).
             await client.aclose()
+            await get_engine().dispose()
 
     asyncio.run(_run())
     return 0
