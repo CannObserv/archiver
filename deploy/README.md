@@ -202,6 +202,42 @@ Worked example, the #162 drain (2026-08-19): 110 entries, every one a
 `XTRIM content.fetch.dlq MINID 1786635782730-0` removed exactly those 110 and
 left the key at depth 0.
 
+### Orphaned consumer registrations, one time only (archiver#156)
+
+Archiver's group consumers used to name themselves `{hostname}:{pid}`, so every
+restart that received a message left a registration behind and nothing reaped it.
+Seven had accumulated on `archiver.revisions` by 2026-08-27, six of them dead.
+The consumers are now named for their group (`archiver-revisions-1`,
+`archiver-artifacts-1`), stable across restarts, so **this cannot recur** - which
+is why the cleanup is a one-time procedure here rather than a startup reaper.
+
+Order matters: **deploy, restart, then reap.** Reaping before the restart leaves
+the running process's own registration behind, and reaping it while it is live is
+pointless churn.
+
+```bash
+redis-cli XINFO CONSUMERS content.revisions archiver.revisions   # confirm pending 0 on each
+for c in $(redis-cli XINFO CONSUMERS content.revisions archiver.revisions \
+             | grep -A1 '^name$' | grep '^watcher:'); do
+  redis-cli XGROUP DELCONSUMER content.revisions archiver.revisions "$c"   # -> 0 = no PEL lost
+done
+redis-cli XINFO CONSUMERS content.revisions archiver.revisions   # -> empty, or archiver-revisions-1
+```
+
+⚠️ **`XGROUP DELCONSUMER` destroys that consumer's pending entries**, and returns
+how many it destroyed. A non-zero return means a message was just lost, not
+cleaned up. Re-read `pending` before every reap; never reap a consumer with a
+non-zero PEL - that is a stranded message needing `XAUTOCLAIM`, not an orphan.
+
+**Do not verify by looking for `archiver-revisions-1`.** Registration happens on
+*delivery*: an `XREADGROUP` that returns zero entries does not register the
+consumer, so on a quiet stream the new name is correctly absent and appears when
+traffic next arrives. Verify from the journal instead:
+
+```bash
+sudo journalctl -u archiver -n 200 | grep 'Bus consumer starting'
+```
+
 ⚠️ The `info.changes` health row is the one to fix first. It names a primitive
 that does not exist: nothing exposes outbox depth — no route, no dashboard panel,
 no metric — so an operator reading this table would conclude the stream is
