@@ -1,6 +1,6 @@
 """Tests for /dashboard/ home page (Epic 7 + #49 redesign)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,6 +8,7 @@ import pytest
 from src.api.deps import get_redis_client
 from src.api.main import app
 from src.core.models import (
+    ChangesOutboxRow,
     InfoItem,
     InfoItemSource,
     InfoSource,
@@ -186,3 +187,80 @@ async def test_home_domain_overview_appears_when_domains_exist(client, session):
     assert r.status_code == 200
     assert "overview.example.com" in r.text
     assert "Domains" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_outbox_ok_when_empty(client, session):
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--success" in r.text
+    assert "ok" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_outbox_warns_on_stale_backlog(client, session):
+    """A live unpublished row older than the warn threshold renders a warning
+    badge - the drain is not keeping up (or Redis is down)."""
+    session.add(
+        ChangesOutboxRow(
+            topic="info.changes",
+            payload={"event_type": "irrelevant"},
+            created_at=datetime.now(UTC) - timedelta(hours=1),
+        )
+    )
+    await session.flush()
+
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--warning" in r.text
+    assert "backlog" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_outbox_fresh_backlog_is_ok(client, session):
+    """A young unpublished row is normal operation, not a warning."""
+    session.add(
+        ChangesOutboxRow(
+            topic="info.changes",
+            payload={"event_type": "irrelevant"},
+            created_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--success" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_outbox_danger_on_dead_lettered(client, session):
+    """Any dead-lettered row is an operator signal - danger badge with the count."""
+    session.add(
+        ChangesOutboxRow(
+            topic="info.changes",
+            payload={"event_type": "poison"},
+            created_at=datetime.now(UTC),
+            dead_lettered_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "1 dead-lettered" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_outbox_unauthenticated_redirects(client):
+    r = await client.get("/dashboard/health/outbox", follow_redirects=False)
+    assert r.status_code == 307
+
+
+@pytest.mark.asyncio
+async def test_home_shows_outbox_health_slot(client):
+    """The home health strip carries the outbox badge loader."""
+    r = await client.get("/dashboard/", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "/dashboard/health/outbox" in r.text

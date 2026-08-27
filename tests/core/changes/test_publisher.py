@@ -1,4 +1,4 @@
-"""Tests for src/core/changes/publisher — outbox drain → co-core bus driver.
+"""Tests for src/core/changes/publisher - outbox drain → co-core bus driver.
 
 The drain loop reconstructs each stored outbox payload into its typed co-core
 model and publishes it through ``AsyncBusPublisher`` (a ``BusPublish`` XADD),
@@ -62,7 +62,7 @@ async def session_factory(test_engine):
 
     Unlike the shared ``session`` fixture (which wraps everything in a
     SAVEPOINT), this factory creates independent sessions so that
-    ``drain_once`` can open and commit its own session — matching production
+    ``drain_once`` can open and commit its own session - matching production
     behaviour.
     """
     return async_sessionmaker(bind=test_engine, expire_on_commit=False)
@@ -91,7 +91,7 @@ _OCCURRED_AT = "2026-07-28T12:00:00+00:00"
 
 # The ``info_source_id`` every content-contract fixture carries. Required across
 # all three of them since cannobserv#300, and it is half of the
-# ``source_revision_observed`` idempotency key — so, like _OCCURRED_AT, one
+# ``source_revision_observed`` idempotency key - so, like _OCCURRED_AT, one
 # constant rather than a literal per fixture free to drift from the key it feeds.
 _INFO_SOURCE_ID = "01JQ0000000000000000000001"
 
@@ -195,7 +195,7 @@ async def test_primary_changed_key_is_composite(session_factory, publisher, fake
     """info_item_primary_changed derives the composite idempotency key.
 
     (The old hand-rolled publisher keyed every event on ``source_revision_id``,
-    yielding an empty key for this type — co-core's ``idempotency_key`` fixes it.)
+    yielding an empty key for this type - co-core's ``idempotency_key`` fixes it.)
     """
     await _insert_row(
         session_factory,
@@ -249,13 +249,13 @@ async def test_drain_batch_limit(session_factory, publisher, fake_redis):
 
 
 # ---------------------------------------------------------------------------
-# Operator-side stream retention (XTRIM) — archiver#109
+# Operator-side stream retention (XTRIM) - archiver#109
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_drain_once_returns_published_not_attempted(session_factory, publisher, fake_redis):
-    """drain_once returns rows *published*, not attempted — so the loop can pace
+    """drain_once returns rows *published*, not attempted - so the loop can pace
     on forward progress and not busy-wait on an all-failing batch (CR #10).
 
     One valid row + one poison row (unknown event_type). Only the valid one
@@ -401,7 +401,7 @@ async def test_run_no_recovery_log_without_failures(session_factory, publisher, 
     ],
 )
 def test_resolve_stream_maxlen(raw, expected):
-    """A malformed knob must degrade to the default, never raise — a bad value
+    """A malformed knob must degrade to the default, never raise - a bad value
     must not reach main.lifespan's broad guard and disable the whole publisher."""
     assert resolve_stream_maxlen(raw) == expected
 
@@ -601,7 +601,7 @@ async def test_unknown_event_type_row_stays_unpublished(session_factory, publish
 
 
 # ---------------------------------------------------------------------------
-# Dead-lettering poison rows — archiver#107
+# Dead-lettering poison rows - archiver#107
 # ---------------------------------------------------------------------------
 
 
@@ -628,7 +628,7 @@ async def test_unknown_event_type_dead_lettered_and_not_reselected(
     session_factory, publisher, fake_redis
 ):
     """An unknown event_type is a permanent failure → dead-lettered on the first
-    drain, then never selected again (no infinite retry / log-spam) — archiver#107."""
+    drain, then never selected again (no infinite retry / log-spam) - archiver#107."""
     bad = await _insert_row(session_factory, payload={"event_type": "who_knows"})
 
     n1 = await drain_once(session_factory=session_factory, publisher=publisher)
@@ -641,18 +641,18 @@ async def test_unknown_event_type_dead_lettered_and_not_reselected(
     assert row.publish_attempts == 1
     assert "who_knows" in row.last_error
 
-    # Second drain must NOT re-attempt it — the row is no longer selected.
+    # Second drain must NOT re-attempt it - the row is no longer selected.
     n2 = await drain_once(session_factory=session_factory, publisher=publisher)
     assert n2 == 0
     async with session_factory() as s:
         row2 = await s.get(ChangesOutboxRow, bad.id)
-    assert row2.publish_attempts == 1  # unchanged — not re-selected
+    assert row2.publish_attempts == 1  # unchanged - not re-selected
 
 
 @pytest.mark.asyncio
 async def test_corrupt_legacy_payload_dead_lettered(session_factory, publisher, fake_redis):
     """A known event_type with an unvalidatable (pre-bindings) payload is
-    dead-lettered immediately — reproduces the archiver#109 prod poison rows."""
+    dead-lettered immediately - reproduces the archiver#109 prod poison rows."""
     poison = await _insert_row(session_factory, payload=_legacy_captured_event("rev-legacy-1"))
 
     n = await drain_once(session_factory=session_factory, publisher=publisher)
@@ -673,7 +673,7 @@ async def test_corrupt_legacy_payload_dead_lettered(session_factory, publisher, 
 async def test_build_phase_last_error_names_co_core_anomaly(session_factory, publisher, fake_redis):
     """archiver#108: build-phase reconstruction now goes through co-core's shared
     ``payload_from_dict``, so a poison row's ``last_error`` records a
-    ``BusMessageAnomaly`` subclass — not the old bare ``ValueError``. Locks in the
+    ``BusMessageAnomaly`` subclass - not the old bare ``ValueError``. Locks in the
     error-type contract (CR round 1, finding 8) so downstream ``last_error``
     grepping expects the co-core type."""
     unknown = await _insert_row(session_factory, payload={"event_type": "who_knows"})
@@ -696,7 +696,7 @@ async def test_build_phase_last_error_carries_the_underlying_cause(
     """``last_error`` must carry co-core's *remedy* text, not just the wrapper.
 
     ``payload_from_dict`` raises a ``BusMessageAnomaly`` whose own message names
-    only the event_type — the sentence saying which field is wrong and how to fix
+    only the event_type - the sentence saying which field is wrong and how to fix
     it lives on the chained ``__cause__`` (a pydantic ``ValidationError``). A bare
     ``repr(exc)`` is 123 characters of "has a malformed payload" and discards it.
 
@@ -732,7 +732,7 @@ async def test_build_phase_last_error_carries_the_underlying_cause(
 
 @pytest.mark.asyncio
 async def test_transient_failure_not_dead_lettered(session_factory):
-    """A transient publish failure (Redis down) must NOT dead-letter — the row
+    """A transient publish failure (Redis down) must NOT dead-letter - the row
     stays live and is retried next drain (only deterministic poison is retired)."""
     row = await _insert_row(session_factory, payload=_captured_event("rev-x"))
 
@@ -777,11 +777,11 @@ async def test_attempt_ceiling_dead_letters_non_transient_failure(session_factor
 
 @pytest.mark.asyncio
 async def test_transient_failure_exempt_from_ceiling(session_factory):
-    """A *transient* failure (Redis down) is NEVER dead-lettered by the ceiling —
+    """A *transient* failure (Redis down) is NEVER dead-lettered by the ceiling -
     even past MAX_PUBLISH_ATTEMPTS it keeps retrying, so a long-but-genuine outage
     cannot silently drop a valid event (CR #2, the data-loss-cliff guard)."""
     row = await _insert_row(session_factory, payload=_captured_event("rev-outage"))
-    # Pre-age it ABOVE the ceiling — a non-transient error here would dead-letter.
+    # Pre-age it ABOVE the ceiling - a non-transient error here would dead-letter.
     async with session_factory() as s:
         r = await s.get(ChangesOutboxRow, row.id)
         r.publish_attempts = MAX_PUBLISH_ATTEMPTS
@@ -805,8 +805,8 @@ async def test_broker_oom_is_transient_and_exempt_from_ceiling(session_factory):
     """A broker OOM (``maxmemory`` reached under ``noeviction``) is TRANSIENT.
 
     archiver#128: the drop-in now sets an explicit ``maxmemory``, so memory
-    pressure surfaces as ``OOM command not allowed`` — a ``ResponseError``
-    subclass — instead of the kernel OOM-killing the broker. That is an outage
+    pressure surfaces as ``OOM command not allowed`` - a ``ResponseError``
+    subclass - instead of the kernel OOM-killing the broker. That is an outage
     the operator resolves, not poison in the row: the event is valid and must
     survive until the broker has room. Classifying it with ``WRONGTYPE`` would
     dead-letter valid ``info.changes`` events during a memory incident caused by
@@ -837,7 +837,7 @@ async def test_broker_oom_is_transient_and_exempt_from_ceiling(session_factory):
 
 @pytest.mark.asyncio
 async def test_dead_letter_logs_error_with_reason(session_factory, publisher, monkeypatch):
-    """Dead-lettering emits an ERROR log carrying the reason — the only operator
+    """Dead-lettering emits an ERROR log carrying the reason - the only operator
     signal a poison row was retired until the Phase 3 dashboard surfaces it (CR #4)."""
     error_reasons: list[str | None] = []
     monkeypatch.setattr(
@@ -864,14 +864,14 @@ async def test_dead_letter_logs_error_with_reason(session_factory, publisher, mo
 
 
 # ---------------------------------------------------------------------------
-# The widened ChangeEventPayload union — archiver#138, widened again by #139
+# The widened ChangeEventPayload union - archiver#138, widened again by #139
 # ---------------------------------------------------------------------------
 #
 # The co-core 0.7 line grew the union from four members to six: ContentFetchCommand
 # gained ``command_id`` (cannobserv#266), BlobAvailableEvent gained the correlation
 # + enrichment fields (#266/#271), and FetchFailedEvent (#270) / FetchPolicyState
 # (#285) are new. co-core 0.8 makes it seven, adding SourceRevisionObservedEvent
-# (cannobserv#301) — the fact Archiver *consumes* under #139, listed here because
+# (cannobserv#301) - the fact Archiver *consumes* under #139, listed here because
 # membership of the union is what the publisher dispatches on, not direction.
 #
 # 0.8 also made ``info_source_id`` required across all three content contracts
@@ -880,18 +880,18 @@ async def test_dead_letter_logs_error_with_reason(session_factory, publisher, mo
 # InfoSources sharing a URL. The fixtures below carry both.
 #
 # Archiver produces only the two ``info.changes`` types, but the publisher
-# dispatches through co-core's single ``_PAYLOAD_BY_EVENT_TYPE`` table — so the
+# dispatches through co-core's single ``_PAYLOAD_BY_EVENT_TYPE`` table - so the
 # drain loop is a viable transport for any of the seven, and the
 # unknown-``event_type`` dead-letter branch (archiver#107) must still fire only for
 # an event type outside the *widened* union. These lock both halves in.
 
 
-# Payload fields typed as tz-aware datetimes across the union — compared as
+# Payload fields typed as tz-aware datetimes across the union - compared as
 # instants rather than strings in the round-trip assertion below, because co-core
 # spells them two ways in one message (cannobserv#305): the hoisted envelope field
 # and the idempotency key use ``isoformat()`` (``+00:00``) while the embedded
-# payload JSON uses pydantic's default (``Z``). Harmless for Archiver — nothing
-# here string-matches a payload timestamp — so this stays a test-side accommodation
+# payload JSON uses pydantic's default (``Z``). Harmless for Archiver - nothing
+# here string-matches a payload timestamp - so this stays a test-side accommodation
 # rather than a workaround in ``publisher.py``. Drop it if #305 lands.
 _DATETIME_PAYLOAD_FIELDS = frozenset(
     {"occurred_at", "fetched_at", "captured_at", "blob_expires_at"}
@@ -901,7 +901,7 @@ _DATETIME_PAYLOAD_FIELDS = frozenset(
 def _parse_instant(raw: str) -> datetime:
     """Parse an ISO-8601 instant, accepting either the ``Z`` or ``+00:00`` spelling.
 
-    The suffix is stripped anchored, not replaced globally — a bare ``replace("Z",
+    The suffix is stripped anchored, not replaced globally - a bare ``replace("Z",
     …)`` reads as "strip the suffix" but would rewrite a ``Z`` anywhere in the
     string (CR round 1, finding 4).
     """
@@ -923,7 +923,7 @@ def _content_fetch_command(command_id: str = "cmd-1") -> dict:
 
 
 def _blob_available_event(content_fingerprint: str = "sha256:" + "b" * 64) -> dict:
-    """A full ``blob_available`` payload — #266 correlation, #271 enrichment, #300 key."""
+    """A full ``blob_available`` payload - #266 correlation, #271 enrichment, #300 key."""
     return {
         "schema_version": 1,
         "event_type": "blob_available",
@@ -968,7 +968,7 @@ def _source_revision_observed_event(
     """A full ``source_revision_observed`` payload (cannobserv#301).
 
     The fact Archiver consumes under #139. ``extracted_fingerprint`` is sha256 of
-    the text extracted under ``source_specs`` — never the blob's raw-byte
+    the text extracted under ``source_specs`` - never the blob's raw-byte
     ``content_fingerprint``, which is why the field names differ.
     """
     return {
@@ -991,7 +991,7 @@ def _source_revision_observed_event(
 def _registry_announcement_state(info_item_id: str = "item-r") -> dict:
     """A full ``registry_announcement`` config/state payload (cannobserv#302, #324).
 
-    ``watch_spec`` is required on a *live* announcement as of co-core v0.9.3 —
+    ``watch_spec`` is required on a *live* announcement as of co-core v0.9.3 -
     it joined ``info_source_id`` / ``url`` / ``source_specs`` in the
     required-unless-revoked set. ``{"schema_version": 1}`` with no ``interval``
     is the delegation spelling ("consumer applies its own default"), which is
@@ -1050,7 +1050,7 @@ def _fetch_policy_state(host: str = "example.test") -> dict:
 def _content_replicate_command(command_id: str = "cmd-r") -> dict:
     """A full ``content_replicate`` command payload (cannobserv#303).
 
-    What archiver#169 writes to the outbox. ``destination`` is *rendered* — the
+    What archiver#169 writes to the outbox. ``destination`` is *rendered* - the
     RepSpec's path_template never travels (the issuer contract's T3).
     """
     return {
@@ -1071,7 +1071,7 @@ def _content_replicate_command(command_id: str = "cmd-r") -> dict:
 
 
 def _replication_complete_event(command_id: str = "cmd-rc") -> dict:
-    """A full ``replication_complete`` payload — the fact archiver#170 consumes."""
+    """A full ``replication_complete`` payload - the fact archiver#170 consumes."""
     return {
         "schema_version": 1,
         "event_type": "replication_complete",
@@ -1119,7 +1119,7 @@ _UNION_CASES = [
     ),
     (_fetch_failed_event("cmd-f"), "fetch_failed", f"cmd-f:{_OCCURRED_AT}"),
     (_fetch_policy_state("policy.test"), "fetch_policy", f"policy.test:{_OCCURRED_AT}"),
-    # Slot-shaped key, mirroring uq_source_revisions_source_fingerprint — the one
+    # Slot-shaped key, mirroring uq_source_revisions_source_fingerprint - the one
     # documented exception to the union's occurrence-per-key invariant (#301).
     (
         _source_revision_observed_event("sha256:" + "d" * 64),
@@ -1127,7 +1127,7 @@ _UNION_CASES = [
         f"{_INFO_SOURCE_ID}:{'sha256:' + 'd' * 64}",
     ),
     # Both config/state streams key on info_item_id:occurred_at, following
-    # fetch_policy — an *occurrence*; the LWW slot is the info_item_id field.
+    # fetch_policy - an *occurrence*; the LWW slot is the info_item_id field.
     (
         _registry_announcement_state("item-r"),
         "registry_announcement",
@@ -1137,7 +1137,7 @@ _UNION_CASES = [
     # The replicate trio (cannobserv#303). The command keys on command_id alone,
     # exactly as content_fetch does; both outcome facts key on
     # command_id:occurred_at, because one command legitimately emits more than
-    # one — T4's no-op row re-emits a success for an artifact already written.
+    # one - T4's no-op row re-emits a success for an artifact already written.
     (_content_replicate_command("cmd-r"), "content_replicate", "cmd-r"),
     (
         _replication_complete_event("cmd-rc"),
@@ -1155,7 +1155,7 @@ def test_union_cases_cover_every_co_core_payload_type():
     seventh (cannobserv#301 and #303 are open and both propose new payloads), the
     suite still passes, and the coverage claim quietly becomes six-of-seven with no
     signal. Reaching for the private ``_PAYLOAD_BY_EVENT_TYPE`` is the deliberate
-    trade — it is the table ``payload_from_dict`` actually dispatches on, so
+    trade - it is the table ``payload_from_dict`` actually dispatches on, so
     anything else here would be a second list free to drift from it.
     """
     assert {event_type for _, event_type, _ in _UNION_CASES} == set(_PAYLOAD_BY_EVENT_TYPE)
@@ -1191,7 +1191,7 @@ async def test_drain_round_trips_every_union_member(
     assert fields[b"occurred_at"] == _OCCURRED_AT.encode()
 
     # The JSON payload round-trips every field the outbox row stored. Datetime
-    # fields are compared as *instants*, not strings — see the cannobserv#305 note
+    # fields are compared as *instants*, not strings - see the cannobserv#305 note
     # on _DATETIME_PAYLOAD_FIELDS above. Only the instant is contractual.
     parsed = json.loads(fields[b"payload"])
     for field, value in payload.items():
@@ -1206,7 +1206,7 @@ async def test_unknown_event_type_still_dead_lettered_after_union_widened(
     session_factory, publisher
 ):
     """The archiver#107 dead-letter branch still fires for a type outside the
-    *widened* union — the six new/changed members did not turn poison into a
+    *widened* union - the six new/changed members did not turn poison into a
     publishable row."""
     bad = await _insert_row(session_factory, payload={"event_type": "content_fetched"})
 
@@ -1221,9 +1221,9 @@ async def test_unknown_event_type_still_dead_lettered_after_union_widened(
 @pytest.mark.asyncio
 async def test_naive_occurred_at_dead_lettered(session_factory, publisher, fake_redis):
     """``OccurredAt`` (cannobserv#273) rejects a naive datetime fail-loud, so a row
-    carrying one is build-phase poison — dead-lettered, never published with an
+    carrying one is build-phase poison - dead-lettered, never published with an
     ambiguous timestamp."""
-    # The same stamp with the offset stripped — derived, so it stays the naive
+    # The same stamp with the offset stripped - derived, so it stays the naive
     # spelling of _OCCURRED_AT rather than a second literal free to drift from it.
     naive = {
         **_content_fetch_command("cmd-naive"),
@@ -1246,7 +1246,7 @@ async def test_registry_topic_publish_carries_its_own_maxlen(session_factory, fa
 
     co-core's stream taxonomy: a config/state stream's retention is a consumer
     contract carried by BusPublish.maxlen, because consumers boot by replaying
-    from 0-0 — out-of-band operator trimming sized for the fact stream would
+    from 0-0 - out-of-band operator trimming sized for the fact stream would
     silently violate the "at least one full snapshot plus deltas" floor.
     """
     captured: list = []
@@ -1277,7 +1277,7 @@ async def test_registry_topic_publish_carries_its_own_maxlen(session_factory, fa
 
 @pytest.mark.asyncio
 async def test_run_never_trims_excluded_topics(session_factory, publisher, fake_redis, monkeypatch):
-    """The trim loop applies one global MAXLEN to every seen topic — sized for
+    """The trim loop applies one global MAXLEN to every seen topic - sized for
     info.changes. A replay-from-0-0 stream subjected to it silently loses its
     convergence floor, so info.registry must be excluded even after its deltas
     put it in seen_topics."""
@@ -1317,3 +1317,106 @@ async def test_run_never_trims_excluded_topics(session_factory, publisher, fake_
 
     assert ("info.changes", 100) in trim_calls
     assert all(topic != "info.registry" for topic, _ in trim_calls)
+
+
+# ---------------------------------------------------------------------------
+# Periodic outbox stats log (archiver#112)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_emits_stats_on_cadence(session_factory, publisher, monkeypatch):
+    """With a stats interval configured, the loop emits the periodic stats line
+    (first iteration immediately, then on cadence)."""
+    stats_calls: list[object] = []
+
+    async def _fake_stats(factory):
+        stats_calls.append(factory)
+
+    monkeypatch.setattr(publisher_mod, "log_outbox_stats", _fake_stats)
+
+    stop = asyncio.Event()
+
+    async def _drain(**_kwargs):
+        stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+        stats_interval=0.0,
+    )
+
+    assert stats_calls == [session_factory]
+
+
+@pytest.mark.asyncio
+async def test_run_stats_disabled_with_none_interval(session_factory, publisher, monkeypatch):
+    """stats_interval=None disables the periodic line entirely."""
+    stats_calls: list[object] = []
+
+    async def _fake_stats(factory):
+        stats_calls.append(factory)
+
+    monkeypatch.setattr(publisher_mod, "log_outbox_stats", _fake_stats)
+
+    stop = asyncio.Event()
+
+    async def _drain(**_kwargs):
+        stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+        stats_interval=None,
+    )
+
+    assert stats_calls == []
+
+
+@pytest.mark.asyncio
+async def test_run_stats_respects_interval_between_iterations(
+    session_factory, publisher, monkeypatch
+):
+    """A long interval emits once (the immediate first line), not per-iteration."""
+    stats_calls: list[object] = []
+
+    async def _fake_stats(factory):
+        stats_calls.append(factory)
+
+    monkeypatch.setattr(publisher_mod, "log_outbox_stats", _fake_stats)
+
+    stop = asyncio.Event()
+    iterations = 0
+
+    async def _drain(**_kwargs):
+        nonlocal iterations
+        iterations += 1
+        if iterations >= 3:
+            stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+        stats_interval=3600.0,
+    )
+
+    assert iterations == 3
+    assert len(stats_calls) == 1

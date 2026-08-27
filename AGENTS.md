@@ -148,6 +148,10 @@ Rules holding across all of it:
   max 500. Over-max is a 422, not a clamp.
 - Bus payloads carry `schema_version: int`. Bump only on *incompatible* reshapes;
   additive fields are not a bump, and consumers must tolerate them.
+- Producer-side outbox monitoring (depth / oldest age / dead-lettered count,
+  archiver#112) lives on the dashboard badge and a periodic journald line - not
+  on `/health`, which stays unauthenticated and DB-free. See
+  [docs/BUS.md](docs/BUS.md).
 
 ## Conventions
 
