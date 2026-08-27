@@ -1,4 +1,4 @@
-"""Dashboard home — CTA, health strip, Recent Activity, domain overview."""
+"""Dashboard home - CTA, health strip, Recent Activity, domain overview."""
 
 import os
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session, get_redis_client
+from src.core.changes.outbox_stats import BACKLOG_WARN_AGE_SECONDS, collect_outbox_stats
 from src.core.logging import get_logger
 from src.core.models import (
     AppUser,
@@ -40,7 +41,7 @@ _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templ
 async def dashboard_health_partial(
     user: AppUser = Depends(get_dashboard_user),
 ) -> HTMLResponse:
-    """HTMX partial — Archiver health badge."""
+    """HTMX partial - Archiver health badge."""
     return HTMLResponse('<span class="badge badge--success">ok</span>')
 
 
@@ -49,7 +50,7 @@ async def dashboard_health_redis(
     user: AppUser = Depends(get_dashboard_user),
     redis: "RedisAsync | None" = Depends(get_redis_client),
 ) -> HTMLResponse:
-    """HTMX partial — Redis health badge."""
+    """HTMX partial - Redis health badge."""
     if redis is None:
         return HTMLResponse('<span class="badge badge--muted">not configured</span>')
     try:
@@ -61,6 +62,43 @@ async def dashboard_health_redis(
         return HTMLResponse(
             f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
         )
+
+
+@router.get("/health/outbox", response_class=HTMLResponse)
+async def dashboard_health_outbox(
+    user: AppUser = Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX partial - outbox publisher health badge (archiver#112).
+
+    danger: any dead-lettered (poison) row - needs an operator.
+    warning: oldest live unpublished row older than the backlog threshold -
+    the drain is not keeping up or Redis has been down a while.
+    success otherwise; the title carries the raw numbers in every state.
+    """
+    try:
+        stats = await collect_outbox_stats(session)
+    except Exception as exc:
+        reason = str(exc)
+        logger.warning("Outbox health check failed", extra={"error": reason})
+        return HTMLResponse(
+            f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
+        )
+
+    age = stats.oldest_unpublished_age_seconds
+    parts = [f"depth={stats.unpublished_count}"]
+    if age is not None:
+        parts.append(f"oldest={int(age)}s")
+    parts.append(f"dead_lettered={stats.dead_lettered_count}")
+    detail = html_escape(" ".join(parts))
+    if stats.dead_lettered_count:
+        return HTMLResponse(
+            f'<span class="badge badge--danger" title="{detail}">'
+            f"{stats.dead_lettered_count} dead-lettered</span>"
+        )
+    if age is not None and age > BACKLOG_WARN_AGE_SECONDS:
+        return HTMLResponse(f'<span class="badge badge--warning" title="{detail}">backlog</span>')
+    return HTMLResponse(f'<span class="badge badge--success" title="{detail}">ok</span>')
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -135,7 +173,7 @@ async def dashboard_index(
                     if item:
                         items_by_source_id[binding.info_source_id] = item
 
-    # Domain overview — top 10 by InfoSource count
+    # Domain overview - top 10 by InfoSource count
     domain_overview = await _get_domain_overview(session)
 
     redis_configured = bool(os.environ.get("ARCHIVER_REDIS_URL", "").strip())

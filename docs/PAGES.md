@@ -20,7 +20,7 @@ repeat it.
 
 **GET `/dashboard/`** - summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each linking to its list page. Service health indicator loads via `hx-get="/dashboard/health" hx-trigger="load"` - non-blocking, showing a "checking…" badge until HTMX fires. Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`; columns Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at as `%Y-%m-%d %H:%M`).
 
-The health row is **Archiver + Redis only** since archiver#142 - the absence of a Watcher badge is deliberate, not an omission.
+The health row is **Archiver + Redis + Outbox** since archiver#112 (Archiver + Redis only between archiver#142 and #112 - the absence of a Watcher badge is deliberate, not an omission).
 
 **GET `/dashboard/health`** - HTMX partial. Returns `<span class="badge badge--success">ok</span>`.
 
@@ -31,6 +31,12 @@ The health row is **Archiver + Redis only** since archiver#142 - the absence of 
 | `badge--success` "ok" | ping succeeded |
 | `badge--danger` "error" | network/connect failure; `title` contains the exception message |
 | `badge--muted` "not configured" | `ARCHIVER_REDIS_URL` unset |
+
+**GET `/dashboard/health/outbox`** - HTMX partial over
+`src/core/changes/outbox_stats.py` (archiver#112). DB-only (renders even
+bus-dormant): danger "N dead-lettered" if any poison row, warning "backlog" if
+the oldest live unpublished row exceeds 300s, else success "ok"; `title` always
+carries `depth=N oldest=Ns dead_lettered=N`.
 
 **`…/health/watcher` retired with archiver#142** - it pinged Watcher over the
 SDK, and AGENTS.md's no-outbound-HTTP rule left nothing to ping. The successor
