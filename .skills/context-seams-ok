@@ -1,4 +1,4 @@
-# Judged seam acknowledgements — see check-seams.sh --help.
+# Judged seam acknowledgements - see check-seams.sh --help.
 # One entry per judged line.
 
 # The three bus headings moved verbatim out of API.md. Their issue numbers were

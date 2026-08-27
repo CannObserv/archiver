@@ -292,7 +292,7 @@ session that may be the thing that failed. `_error.html` shares
 `_theme_boot.html` with it instead, so the operator's colour scheme survives.
 Status-specific behaviour, the `HX-Trigger: showFlash` a partial failure
 carries, and the client listener that makes any of it visible:
-[UI.md](UI.md) § Failures are surfaced, not swallowed.
+§ **Failures are surfaced, not swallowed** above.
 
 Replaces `_404.html`, which covered one status and appeared only on a hard load.
 
