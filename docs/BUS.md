@@ -125,7 +125,8 @@ epic's role boundary stays unqualified: no read-only exception carved into it.
 It reads `source_revision_observed` facts
 (`co_core.pure.models.changes.SourceRevisionObservedEvent`, cannobserv#301) from
 `content.revisions` under the group **`archiver.revisions`**, one group per
-consuming service as the fact-stream posture requires.
+consuming service as the fact-stream posture requires, as the single consumer
+**`archiver-revisions-1`**.
 `src/core/changes/consumer.py` holds the loop; it runs under the FastAPI
 lifespan and is dormant unless **both** `ARCHIVER_REDIS_URL` and
 `ARCHIVER_BUS_CONSUMER=1` are set.
@@ -190,9 +191,9 @@ backfill; retiring it is a separate call from retiring Watcher's *use* of it
 
 The return leg of `content.replicate`, and what finally gives
 `info_item_rep_specs.public_url` an automated writer. Group
-**`archiver.artifacts`**, same `ARCHIVER_BUS_CONSUMER` gate as
-`content.revisions` — joining a group removes messages from it, so a stray
-process must not. Both outcomes share the stream by design: an issuer wants one
+**`archiver.artifacts`**, consumer **`archiver-artifacts-1`**, same
+`ARCHIVER_BUS_CONSUMER` gate as `content.revisions` — joining a group removes
+messages from it, so a stray process must not. Both outcomes share the stream by design: an issuer wants one
 group seeing success and failure, because "did this command close?" is one
 question.
 
@@ -229,6 +230,42 @@ is closed, and a provider 5xx retries unbounded while publishing nothing. A time
 `ARCHIVER_REPLICATION_REAP_HORIZON` (default 6h) as `abandoned`. It runs on a
 clock rather than off an arrival because it detects an *absence*, and it **never
 re-issues** — a second artifact in a permanent store has no way back.
+
+## Consumer names are a monitoring contract (archiver#156)
+
+Both group consumers name themselves from their group -
+`resolve_consumer_name("archiver.revisions")` -> **`archiver-revisions-1`**,
+`archiver.artifacts` -> **`archiver-artifacts-1`**. The name is broker-visible in
+`XINFO CONSUMERS`, so it is as fixed as the group name and derived in one place
+(`src/core/changes/group_consumer.py`) rather than written out per stream.
+
+It is **stable across restarts on purpose**. The previous `{hostname}:{pid}`
+spelling minted a new registration on every restart and nothing ever called
+`XGROUP DELCONSUMER`, so orphans accumulated without bound - seven on the
+production broker by 2026-08-27, six dead. A stable name makes a restart *reuse*
+its registration, which is why there is no shutdown cleanup hook (a `SIGKILL`
+would skip one) and no startup reaper (with the name stable, the orphan set is
+permanently empty; the one-time cleanup of the pre-fix orphans is a runbook step
+in `deploy/README.md`).
+
+Two facts that make this stream of registrations confusing to inspect, both
+measured rather than assumed:
+
+- **Registration happens on delivery, not on read.** An `XREADGROUP` returning
+  zero entries does not register the consumer, and neither does an `XAUTOCLAIM`
+  that claims nothing. So a healthy consumer on a quiet stream is **absent** from
+  `XINFO CONSUMERS` - `archiver.artifacts` correctly reported 0 consumers for
+  over a week on an empty stream. Absence is not evidence of a wedged consumer;
+  the journal's `Bus consumer starting` line is.
+- **`systemctl show archiver -p MainPID` is the `uv` wrapper**, not the uvicorn
+  child that joins the group. Matching a registration against `MainPID` looked
+  like a miss while the consumer was healthy. The stable name removes the
+  question; the `-1` slot is not a pid.
+
+The `-1` is a slot. `deploy/archiver.service` runs uvicorn with no `--workers`,
+so there is exactly one member per group. Adding members assigns `-2` upward and
+**must first raise `quarantine_undecodable`'s `min_idle_time`** above the
+expected per-message processing time - see that docstring.
 
 ## Change-bus tail — `info.watch-status` (archiver#151)
 

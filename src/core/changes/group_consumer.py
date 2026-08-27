@@ -24,8 +24,6 @@ same failure mode the no-cross-repo-mirror rule exists to prevent.
 from __future__ import annotations
 
 import asyncio
-import os
-import socket
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -86,14 +84,34 @@ def consumer_enabled(raw: str | None) -> bool:
     return (raw or "").strip().lower() in _TRUTHY
 
 
-def resolve_consumer_name() -> str:
-    """Name this reader within the group — ``{hostname}:{pid}``.
+def resolve_consumer_name(group: str) -> str:
+    """Name this reader within the group - the group name, dashed, plus a slot.
 
-    One process per host today (``deploy/archiver.service`` runs uvicorn with no
-    ``--workers``), but a group member must be uniquely named for ``XAUTOCLAIM``
-    to distinguish a dead consumer's pending entries from a live one's.
+    ``archiver.revisions`` -> ``archiver-revisions-1``. **Stable across restarts
+    on purpose** (archiver#156). The previous ``{hostname}:{pid}`` spelling minted
+    a fresh registration on every restart that received a message and nothing ever
+    called ``XGROUP DELCONSUMER``, so orphans accumulated without bound - seven on
+    the production broker by 2026-08-27, six of them dead. A stable name makes a
+    restart *reuse* its registration, so the leak cannot recur rather than needing
+    to be periodically swept, and it needs no shutdown hook that a ``SIGKILL``
+    would skip anyway.
+
+    It also fixes a misattribution: this VM's hostname is literally ``watcher``
+    (it is shared with the Watcher service), so Archiver's own consumers read as
+    Watcher's in ``XINFO`` output on a broker all three services share.
+    ``archiver-revisions-1`` matches Watcher's own ``watcher-1`` convention on
+    ``content.blobs``.
+
+    Derived from the group rather than written out per caller so the next group
+    consumer inherits the convention instead of copying a literal.
+
+    The ``-1`` is a slot, not decoration: ``deploy/archiver.service`` runs uvicorn
+    with no ``--workers``, so there is exactly one member and the pid carried no
+    information a log line does not. A multi-consumer deployment assigns ``-2``
+    upward - and must first raise ``quarantine_undecodable``'s ``min_idle_time``,
+    for the reason recorded in that docstring.
     """
-    return f"{socket.gethostname()}:{os.getpid()}"
+    return f"{group.replace('.', '-')}-1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +122,11 @@ class GroupConsumer:
     group, and the raw ``XAUTOCLAIM`` in ``quarantine_undecodable`` needs all
     three. Bundling them rather than reaching into the driver's internals — they
     always travel together anyway.
+
+    ``name`` must be unique across concurrent *members* of the group, so
+    ``XAUTOCLAIM`` can tell a dead member's pending entries from a live one's. It
+    is deliberately **not** unique across restarts of the same member - see
+    ``resolve_consumer_name``.
     """
 
     bus: AsyncBusConsumer
@@ -117,7 +140,7 @@ def build_group_consumer(
     client: Redis, *, topic: str, group: str, consumer_name: str | None = None
 ) -> GroupConsumer:
     """Build a group reader for ``topic``."""
-    name = consumer_name or resolve_consumer_name()
+    name = consumer_name or resolve_consumer_name(group)
     return GroupConsumer(
         bus=AsyncBusConsumer(client, topic=topic, group=group, consumer=name),
         name=name,
@@ -302,9 +325,15 @@ async def reclaim_stale(
 ) -> int:
     """Process entries a dead consumer left pending. Returns how many were settled.
 
-    Without this, a crash between read and ack parks the message in that
-    consumer's PEL permanently — the process that owned it never comes back under
-    the same name (the name carries its pid).
+    Without this, a crash between read and ack parks the message in a PEL that
+    nothing else reads: ``XREADGROUP`` with ``>`` only ever delivers entries no
+    member has seen, so a pending one is invisible to every subsequent read.
+
+    Since archiver#156 the name is stable across restarts, so the usual case is a
+    consumer reclaiming **its own** pre-restart entry - ``XAUTOCLAIM`` scans the
+    whole group PEL regardless of owner, the claimant included, so that needs no
+    special handling. ``min_idle_ms`` is what keeps it from racing a live
+    member's in-flight message.
     """
     try:
         messages = await consumer.bus.claim_stale(min_idle_ms=min_idle_ms, count=CLAIM_COUNT)
@@ -364,7 +393,15 @@ async def run(
     stop_event = stop_event or asyncio.Event()
     logger.info(
         "Bus consumer starting",
-        extra={"group": consumer.group, "topic": consumer.topic},
+        # The consumer name, not just the group: registration happens on delivery,
+        # so a healthy consumer on a quiet stream is absent from XINFO CONSUMERS
+        # and this line is the only place a deploy can be verified from
+        # (deploy/README.md, archiver#156).
+        extra={
+            "group": consumer.group,
+            "topic": consumer.topic,
+            "consumer": consumer.name,
+        },
     )
 
     iteration = 0
