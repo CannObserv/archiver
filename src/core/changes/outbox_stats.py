@@ -56,13 +56,17 @@ async def collect_outbox_stats(
     session: AsyncSession, *, now: datetime | None = None
 ) -> OutboxStats:
     """Compute the three stats with indexed queries; ``now`` overrides the clock
-    for tests. Age is clamped to zero so app/DB clock skew cannot go negative."""
-    unpublished_count = (
-        await session.execute(select(func.count()).select_from(ChangesOutboxRow).where(*_LIVE))
-    ).scalar_one()
-    oldest_created_at = (
-        await session.execute(select(func.min(ChangesOutboxRow.created_at)).where(*_LIVE))
-    ).scalar_one()
+    for tests. Age is clamped to zero so app/DB clock skew cannot go negative.
+
+    Count and min share one statement (CR round 1, finding 2): one scan of the
+    live partial index instead of two, and the pair is a single consistent
+    snapshot - a row published mid-call cannot skew depth against age.
+    """
+    unpublished_count, oldest_created_at = (
+        await session.execute(
+            select(func.count(), func.min(ChangesOutboxRow.created_at)).where(*_LIVE)
+        )
+    ).one()
     dead_lettered_count = (
         await session.execute(
             select(func.count())

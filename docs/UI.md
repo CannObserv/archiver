@@ -274,6 +274,28 @@ var data = el ? JSON.parse(el.textContent || "[]") : [];
 
 Notes: `tojson` escapes `<` → `<`, so `</script>` inside JSON values cannot close the tag early. Browsers do not execute `<script type="application/json">`. Alpine and HTMX ignore it. Apply this pattern to any Alpine component that needs a non-trivial server-rendered data structure at startup.
 
+## Error pages
+
+Rendered by the exception handlers in `src/dashboard/errors.py` on any
+`/dashboard` path; [PAGES.md](PAGES.md) keeps the pointer entry.
+
+- `_error.html` - standalone document (`<!doctype html>`, its own stylesheet
+  link), returned when the request carries no `HX-Request` header: a hard load,
+  a reload, a typed URL.
+- `_error_body.html` - the `<main class="error-page">` block alone, returned to
+  an htmx request because the swap lands inside the existing `<body>`.
+  `_error.html` includes it, so the two cannot drift.
+
+Both render from `heading`, `message`, and an optional `incident_id` only -
+deliberately **not** extending `base.html`, which needs `user` from a database
+session that may be the thing that failed. `_error.html` shares
+`_theme_boot.html` with it instead, so the operator's colour scheme survives.
+Status-specific behaviour, the `HX-Trigger: showFlash` a partial failure
+carries, and the client listener that makes any of it visible:
+§ **Failures are surfaced, not swallowed** above.
+
+Replaces `_404.html`, which covered one status and appeared only on a hard load.
+
 ## Detail Screen Conventions
 
 Moved to **[SCREENS.md](SCREENS.md)** - header anatomy, detail

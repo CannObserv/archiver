@@ -189,8 +189,19 @@ async def test_home_domain_overview_appears_when_domains_exist(client, session):
     assert "Domains" in r.text
 
 
+def _configure_bus():
+    """Simulate a configured bus (publisher running) for the outbox badge.
+
+    The badge's drain-state vocabulary (ok / backlog / dead-lettered) only
+    means anything while something drains; with no Redis client the route
+    renders the dormant state instead (CR round 1, finding 1).
+    """
+    app.dependency_overrides[get_redis_client] = lambda: MagicMock()
+
+
 @pytest.mark.asyncio
 async def test_health_outbox_ok_when_empty(client, session):
+    _configure_bus()
     r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
     assert r.status_code == 200
     assert "badge--success" in r.text
@@ -198,9 +209,32 @@ async def test_health_outbox_ok_when_empty(client, session):
 
 
 @pytest.mark.asyncio
+async def test_health_outbox_dormant_when_bus_unconfigured(client, session):
+    """No Redis client = publisher not running: rows cannot drain, so a stale
+    backlog is the configured-off state, not ill health - muted, no warning
+    (the dev server is bus-dormant by design)."""
+    app.dependency_overrides[get_redis_client] = lambda: None
+    session.add(
+        ChangesOutboxRow(
+            topic="info.changes",
+            payload={"event_type": "irrelevant"},
+            created_at=datetime.now(UTC) - timedelta(hours=1),
+        )
+    )
+    await session.flush()
+
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--muted" in r.text
+    assert "not draining" in r.text
+    assert "badge--warning" not in r.text
+
+
+@pytest.mark.asyncio
 async def test_health_outbox_warns_on_stale_backlog(client, session):
     """A live unpublished row older than the warn threshold renders a warning
     badge - the drain is not keeping up (or Redis is down)."""
+    _configure_bus()
     session.add(
         ChangesOutboxRow(
             topic="info.changes",
@@ -219,6 +253,7 @@ async def test_health_outbox_warns_on_stale_backlog(client, session):
 @pytest.mark.asyncio
 async def test_health_outbox_fresh_backlog_is_ok(client, session):
     """A young unpublished row is normal operation, not a warning."""
+    _configure_bus()
     session.add(
         ChangesOutboxRow(
             topic="info.changes",
@@ -236,6 +271,7 @@ async def test_health_outbox_fresh_backlog_is_ok(client, session):
 @pytest.mark.asyncio
 async def test_health_outbox_danger_on_dead_lettered(client, session):
     """Any dead-lettered row is an operator signal - danger badge with the count."""
+    _configure_bus()
     session.add(
         ChangesOutboxRow(
             topic="info.changes",

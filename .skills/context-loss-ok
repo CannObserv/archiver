@@ -75,3 +75,9 @@ AGENTS.md :: duplicate :: set -a; . /etc/archiver/.env; set +a
 # a finished epic. Nothing anchors the old slug (docs/ARCHITECTURE.md mentions
 # the topic in prose, not as a link).
 AGENTS.md :: rename :: ## Content-acquisition via co-core (archiver#72 Phase 1)
+
+# The Error-pages body moved from docs/PAGES.md to docs/UI.md (archiver#112 CR
+# round 2, finding 6). Its closing pointer named UI.md as an external doc; inside
+# UI.md that self-link read as pointing elsewhere, so it was retargeted to the
+# intra-doc section reference.
+docs/UI.md :: retarget :: [UI.md](UI.md) § Failures are surfaced, not swallowed.

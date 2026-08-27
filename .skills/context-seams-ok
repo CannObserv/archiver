@@ -1,12 +1,12 @@
-# Judged seam acknowledgements — see check-seams.sh --help.
+# Judged seam acknowledgements - see check-seams.sh --help.
 # One entry per judged line.
 
 # The three bus headings moved verbatim out of API.md. Their issue numbers were
 # already in the slug before the move; renaming them now would rewrite relocated
 # content for no reader benefit, and nothing links to those anchors.
-docs/BUS.md :: Change-bus consumer — `content.revisions` (archiver#139)
-docs/BUS.md :: Change-bus consumer — `content.artifacts` (archiver#170)
-docs/BUS.md :: Change-bus tail — `info.watch-status` (archiver#151)
+docs/BUS.md :: Change-bus consumer - `content.revisions` (archiver#139)
+docs/BUS.md :: Change-bus consumer - `content.artifacts` (archiver#170)
+docs/BUS.md :: Change-bus tail - `info.watch-status` (archiver#151)
 
 # Predates this run and is unrelated to it: a retirement note whose issue
 # numbers are the record, not a pointer at moved content.
@@ -66,3 +66,32 @@ src/core/db_safety.py :: Suffixes that mark a database as disposable
 tests/api/test_lifespan_bus_wiring.py :: safety control (`AGENTS.md`, "Four variables carry safety rules")
 tests/core/test_db_safety.py :: it matches the convention AGENTS.md already documents
 tests/scripts/test_dev_server.py :: The dev server (port 8021) previously had no launch script
+
+# archiver#156 added a fourth provenance-slug bus heading, same judgement as the
+# three above: the issue number was in the slug from birth, nothing links the anchor.
+docs/BUS.md :: Consumer names are a monitoring contract (archiver#156)
+
+# 2026-08-27 PAGES.md curation (archiver#112 branch): action-route rationale moved
+# to INFO_ITEM_DETAIL.md § Action-route contracts, Error pages body moved to UI.md.
+# Every back-reference below says PAGES.md keeps the inventory/pointer line - which
+# this run preserved - or links PAGES.md as the route inventory, which it remains.
+docs/ARCHITECTURE.md :: UI.md + SCREENS.md + PAGES.md +
+docs/BUS.md :: Surfaced twice: the dashboard badge (`/dashboard/health/outbox`, PAGES.md) and
+docs/COMPONENTS.md :: Where each component is used is in [PAGES.md](PAGES.md); the HTMX patterns they
+docs/COMPONENTS.md :: Multi-step Information Item registration wizard. Manages step navigation and form state across the 4-step URL
+docs/CONVENTIONS.md :: - `docs/PAGES.md` - required for any change to a Jinja2 template in
+docs/CONVENTIONS.md :: action-route contracts that moved there in archiver#176. PAGES.md keeps the
+docs/CONVENTIONS.md :: convention updates PAGES.md alone.
+docs/CONVENTIONS.md :: A template change that composes only existing CSS classes needs PAGES.md alone.
+docs/INFO_ITEM_DETAIL.md :: templates, and their swap targets.** Split out of [PAGES.md](PAGES.md) when that
+docs/INFO_ITEM_DETAIL.md :: it, and nobody working on Domains or RepSpecs needs to load it. PAGES.md keeps
+docs/INFO_ITEM_DETAIL.md :: Moved here from [PAGES.md](PAGES.md), which keeps the inventory line for each of
+docs/INFO_ITEM_DETAIL.md :: that announce and let Watcher converge; the route entries in [PAGES.md](PAGES.md) name only what each adds.
+docs/INFO_ITEM_DETAIL.md :: **Every outcome is a 200, and every outcome flashes** via `HX-Trigger: showFlash`
+docs/SCREENS.md :: Sibling docs: [UI.md](UI.md) shared mechanics - [PAGES.md](PAGES.md)
+docs/SCREENS.md :: The screens themselves are inventoried in [PAGES.md](PAGES.md).
+docs/SCREENS.md :: [PAGES.md](PAGES.md)) - three rules hold, and they generalise to every such
+docs/UI.md :: - [PAGES.md](PAGES.md) - the per-page route inventory: what each screen renders
+docs/UI.md :: > in the same commit - usually PAGES.md or COMPONENTS.md, and this file when it
+docs/UI.md :: The gate is universal, so the route entries in [PAGES.md](PAGES.md) do not repeat
+docs/UI.md :: `/dashboard` path; [PAGES.md](PAGES.md) keeps the pointer entry.

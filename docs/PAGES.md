@@ -33,10 +33,11 @@ The health row is **Archiver + Redis + Outbox** since archiver#112 (Archiver + R
 | `badge--muted` "not configured" | `ARCHIVER_REDIS_URL` unset |
 
 **GET `/dashboard/health/outbox`** - HTMX partial over
-`src/core/changes/outbox_stats.py` (archiver#112). DB-only (renders even
-bus-dormant): danger "N dead-lettered" if any poison row, warning "backlog" if
-the oldest live unpublished row exceeds 300s, else success "ok"; `title` always
-carries `depth=N oldest=Ns dead_lettered=N`.
+`src/core/changes/outbox_stats.py` (archiver#112). Muted "not draining" when no
+Redis client exists (publisher dormant - dev's default - so a stale backlog is
+not ill health); otherwise danger "N dead-lettered" if any poison row, warning
+"backlog" if the oldest live unpublished row exceeds 300s, else success "ok";
+`title` carries `depth=N oldest=Ns dead_lettered=N` in the drain states.
 
 **`…/health/watcher` retired with archiver#142** - it pinged Watcher over the
 SDK, and AGENTS.md's no-outbound-HTTP rule left nothing to ping. The successor
@@ -62,7 +63,22 @@ Templates: `domains/list.html`, `domains/detail.html`, `domains/_notes_partial.h
 
 4-step flow (#49): URL → Selector → Metadata → Review & Submit. Full spec:
 `docs/plans/2026-06-04-dashboard-ux-redesign-design.md`. State lives in the
-`registerWizard` component ([COMPONENTS.md](COMPONENTS.md)).
+`registerWizard` component ([COMPONENTS.md](COMPONENTS.md)). Its routes:
+
+**GET `/dashboard/register`** - renders the wizard (step 1: URL input).
+
+**GET `/dashboard/register/url-check?url=`** - HTMX partial: domain badge +
+Case A/B/C card for the URL; empty body when `url` is blank.
+
+**GET `/dashboard/register/suggest-specs?url=`** - HTMX partial: top-5 selector
+suggestions from the URL's domain.
+
+**POST `/dashboard/register/preview`** - HTMX partial: attempts a preview
+extraction for `url` + `source_specs`.
+
+**POST `/dashboard/register`** - the submit. Form fields `url`, `source_specs`,
+`name`, `description`, `cadence`, `watch_active`. Atomic create-source →
+create-item → bind, 303 to detail; 422 re-renders the wizard.
 
 **Rolling step-summary bar**: `#wizard-summary` (`role="group"`,
 `aria-label="Completed steps"`), rendered between the step-indicator badges and
@@ -132,9 +148,9 @@ The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-items/{id}/watcher-section`** - the section 3 partial (its anatomy is in [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md)), same local render. Loaded on page init via `hx-trigger="load"` and re-fetched on the `watcherUpdated` body event. The section's `<h2>` is a plain heading - the Watcher deeplink it used to carry retired with archiver#142.
 
-**POST `/dashboard/info-items/{id}/toggle-watch-active`** - pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. The re-render still shows applied state, so the button flips only once Watcher reports back on `info.watch-status` - the lag window is the announcement round-trip and stays visible as generation drift. The affordance is gated on `has_active_source` - as the cadence editor is, and as the panel's own state now is (archiver#142): mutating policy on an item that cannot announce live would emit a *tombstone* and burn a generation, reading as drift for an item where nothing is wrong. A failed local write rolls back, flashes "the change was not saved", and renders `degraded` **from the path id** - reading through the rolled-back ORM object would emit IO from the template and raise `MissingGreenlet`.
+**POST `/dashboard/info-items/{id}/toggle-watch-active`** - pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. Gating, applied-state lag, and the failure path: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
 
-**POST `/dashboard/info-items/{id}/watch-cadence`** - replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Whole-document replacement, never a merge - a merge would make "delegate" unreachable once an interval had been set, the same reasoning the API's `PUT /watch-spec` gives. Validated against `src/dashboard/cadence.py`'s offered vocabulary, which is deliberately narrower than the schema's `^[0-9]+[smhd]$`; a hand-posted value outside it re-renders with a flash and writes nothing (the API route is the escape hatch for the full grammar).
+**POST `/dashboard/info-items/{id}/watch-cadence`** - replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Replace-vs-merge reasoning and the vocabulary gate: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
 
 **POST `/dashboard/info-items/{id}/swap-primary-source`** - inline primary-source swap: creates a new InfoSource (form fields: `url`, `source_specs` JSON array), deactivates the old active binding, binds the new source, and announces the whole swap as one `info.registry` frame. 204 + `HX-Redirect` to detail on success; 422 with a `<div id="swap-error">` fragment on validation error. Template: `info_items/_swap_primary.html`.
 
@@ -148,9 +164,11 @@ The entries below stay the inventory line for each route.
 
 **DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** - HTMX delete; sets `deactivated_at = now()`, idempotent (skipped if already deactivated). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`), which updates the table/empty-state and moves focus to the section heading.
 
-**POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** - issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading - the swap destroys the clicked button, exactly as the Deactivate beside it does. Guarded twice: `hx-confirm` because the target is a permanent store, `hx-disabled-elt="this"` because htmx does not deduplicate concurrent requests from an element.
+**POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** - issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading - the swap destroys the clicked button, exactly as the Deactivate beside it does. Double guard: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
 
 **PATCH `/dashboard/info-items/{id}/rep-fields`** - inline save for `rep_fields` JSONB (form field: `rep_fields` JSON string). Returns a flash fragment into `#rep-fields-flash`.
+
+**GET `/dashboard/info-items/{id}/suggest-rep-fields`** - HTMX partial: domain-scoped `rep_fields` key suggestions as `sortableChips` ([COMPONENTS.md](COMPONENTS.md)).
 
 
 ## Information Sources (`/dashboard/info-sources/`)
@@ -219,20 +237,4 @@ Partial template: `settings/_api_key_row.html` - reusable `<tr x-data="apiKeyRow
 
 Rendered by the exception handlers in `src/dashboard/errors.py`, not by a route,
 so they appear under no URL above - any `/dashboard` path can produce them.
-
-- `_error.html` - standalone document (`<!doctype html>`, its own stylesheet
-  link), returned when the request carries no `HX-Request` header: a hard load,
-  a reload, a typed URL.
-- `_error_body.html` - the `<main class="error-page">` block alone, returned to
-  an htmx request because the swap lands inside the existing `<body>`.
-  `_error.html` includes it, so the two cannot drift.
-
-Both render from `heading`, `message`, and an optional `incident_id` only -
-deliberately **not** extending `base.html`, which needs `user` from a database
-session that may be the thing that failed. `_error.html` shares
-`_theme_boot.html` with it instead, so the operator's colour scheme survives.
-Status-specific behaviour, the `HX-Trigger: showFlash` a partial failure
-carries, and the client listener that makes any of it visible:
-[UI.md](UI.md) § Failures are surfaced, not swallowed.
-
-Replaces `_404.html`, which covered one status and appeared only on a hard load.
+Templates and the rendering contract: [UI.md](UI.md) § **Error pages**.
