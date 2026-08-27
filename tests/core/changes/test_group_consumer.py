@@ -15,6 +15,7 @@ the group name is, and it is pinned here against silent drift.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import patch
 
@@ -122,3 +123,33 @@ async def test_restart_reuses_its_registration(fake_redis):
 
     names = await _consumer_names(fake_redis, CONTENT_REVISIONS, revisions_consumer.CONSUMER_GROUP)
     assert names == ["archiver-revisions-1"]
+
+
+@pytest.mark.asyncio
+async def test_startup_log_names_the_consumer(fake_redis):
+    """The name must reach the journal, because ``XINFO`` may legitimately not show it.
+
+    Registration happens on *delivery*, so a healthy consumer on a quiet stream is
+    absent from ``XINFO CONSUMERS`` - the trap that made this issue take three
+    rounds to close. ``deploy/README.md`` therefore directs an operator to verify
+    a deploy from this line instead, which only works if the line carries the name.
+
+    Asserted against the logger rather than ``caplog``: another test in the suite
+    calls ``configure_logging()``, and the handler it installs stops propagation,
+    so ``caplog`` captures this record when the module runs alone and not when the
+    whole suite does.
+    """
+    stop_event = asyncio.Event()
+    stop_event.set()
+    c = revisions_consumer.build_consumer(fake_redis)
+
+    with patch.object(group_consumer.logger, "info") as info:
+        await group_consumer.run(consumer=c, handle=_never_called, stop_event=stop_event)
+
+    starting = [call for call in info.call_args_list if call.args[0] == "Bus consumer starting"]
+    assert len(starting) == 1
+    assert starting[0].kwargs["extra"]["consumer"] == "archiver-revisions-1"
+
+
+async def _never_called(_message) -> bool:  # pragma: no cover - the loop exits first
+    raise AssertionError("stop_event was set; no message should be handled")

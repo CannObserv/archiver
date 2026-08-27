@@ -392,7 +392,15 @@ async def run(
     stop_event = stop_event or asyncio.Event()
     logger.info(
         "Bus consumer starting",
-        extra={"group": consumer.group, "topic": consumer.topic},
+        # The consumer name, not just the group: registration happens on delivery,
+        # so a healthy consumer on a quiet stream is absent from XINFO CONSUMERS
+        # and this line is the only place a deploy can be verified from
+        # (deploy/README.md, archiver#156).
+        extra={
+            "group": consumer.group,
+            "topic": consumer.topic,
+            "consumer": consumer.name,
+        },
     )
 
     iteration = 0
