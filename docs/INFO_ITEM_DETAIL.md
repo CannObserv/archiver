@@ -111,10 +111,16 @@ push to retry, no remote id to go stale, and no provisioning gesture to repeat.
 The two survivors are *local* writes
 that announce and let Watcher converge; the route entries in [PAGES.md](PAGES.md) name only what each adds.
 
+**`toggle-watch-active`.** The re-render still shows applied state, so the button flips only once Watcher reports back on `info.watch-status` - the lag window is the announcement round-trip and stays visible as generation drift. The affordance is gated on `has_active_source` - as the cadence editor is, and as the panel's own state now is (archiver#142): mutating policy on an item that cannot announce live would emit a *tombstone* and burn a generation, reading as drift for an item where nothing is wrong. A failed local write rolls back, flashes "the change was not saved", and renders `degraded` **from the path id** - reading through the rolled-back ORM object would emit IO from the template and raise `MissingGreenlet`.
+
+**`watch-cadence`.** Whole-document replacement, never a merge - a merge would make "delegate" unreachable once an interval had been set, the same reasoning the API's `PUT /watch-spec` gives. Validated against `src/dashboard/cadence.py`'s offered vocabulary, which is deliberately narrower than the schema's `^[0-9]+[smhd]$`; a hand-posted value outside it re-renders with a flash and writes nothing (the API route is the escape hatch for the full grammar).
+
 ### Replication actions
 
 **Every outcome is a 200, and every outcome flashes** via `HX-Trigger: showFlash` - issued at `success` naming the rendered destination, a recorded `skipped` row at `warning` naming its reason (it also renders as state in the Replication column), and a refusal the service will not record - `not_active`, `no_active_source`, `no_revision`, `assignment_unreachable` - at `error`. Refusals are 200s rather than 422s because htmx discards a 4xx body (see UI.md § **Inline validation errors** and the STYLE.md rule it points at). The outcome→flash translation is `src/dashboard/replication_actions.py`, shared with the RepSpec-scoped twin (PAGES.md § **Replication Specifications**).
 
 It exists because a new assignment on *stable* content otherwise never replicates - issuance is triggered by a new revision, and a stable InfoItem may never produce one.
+
+The issue buttons carry the same protection in both scoped tables. Guarded twice: `hx-confirm` because the target is a permanent store, `hx-disabled-elt="this"` because htmx does not deduplicate concurrent requests from an element.
 
 *(The former `PATCH .../public-url` is **retired**. `public_url` acquired an automated writer in archiver#170, so an inline edit was a field whose value the next occasion silently clobbered.)*
