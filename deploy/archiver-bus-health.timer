@@ -1,0 +1,14 @@
+[Unit]
+Description=Periodic archiver bus health probe (archiver#130)
+
+[Timer]
+# 10-minute cadence: the two-tick XPENDING rule then detects a wedged consumer
+# within 20 minutes, and the #112 in-loop stats line (300s) stays the faster
+# signal while the publisher is alive - this timer is the one that keeps
+# reporting when it is not.
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

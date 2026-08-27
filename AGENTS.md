@@ -112,11 +112,11 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
 - `TEST_DATABASE_URL` - **must not equal** `ARCHIVER_DATABASE_URL` or
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
   `_test`.
-- `ARCHIVER_ALLOW_PRODUCTION_DB` - only `deploy/archiver.service` sets it. **Never
-  put it in an env file** - that re-opens the hole for every process that sources
-  them.
-- `ARCHIVER_BUS_CONSUMER` - same rule, same reason; gates joining the
-  `archiver.revisions` consumer group.
+- `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
+  (`archiver.service`; bus-health probe, #130). **Never in an env file** - it
+  reopens the hole for every sourcing process.
+- `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
+  only `archiver.service` holds it.
 - `ARCHIVER_DEV_REDIS_URL` - unset means the dev server is bus-dormant; prod's
   `ARCHIVER_REDIS_URL` is never inherited.
 
@@ -148,10 +148,9 @@ Rules holding across all of it:
   max 500. Over-max is a 422, not a clamp.
 - Bus payloads carry `schema_version: int`. Bump only on *incompatible* reshapes;
   additive fields are not a bump, and consumers must tolerate them.
-- Producer-side outbox monitoring (depth / oldest age / dead-lettered count,
-  archiver#112) lives on the dashboard badge and a periodic journald line - not
-  on `/health`, which stays unauthenticated and DB-free. See
-  [docs/BUS.md](docs/BUS.md).
+- Bus monitoring: outbox stats (archiver#112) on the dashboard badge + a
+  periodic journald line; broker-side, the `archiver-bus-health` timer (#130).
+  Never on `/health` (unauthenticated, DB-free). See [docs/BUS.md](docs/BUS.md).
 
 ## Conventions
 

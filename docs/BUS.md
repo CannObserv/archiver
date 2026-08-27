@@ -45,6 +45,16 @@ stays visible past its one-time dead-letter ERROR. Deliberately **not** on
 `/health`: that route is unauthenticated and DB-free (pure liveness), and these
 numbers are neither.
 
+**Broker-side observability (archiver#130)** - the `archiver-bus-health`
+systemd timer runs `src/core/bus_health.py` every 10 minutes: memory headroom,
+per-stream `XLEN` and last-entry age, two-tick `XPENDING` on the
+archiver-owned groups, `*.dlq` depths, disk, and the #112 outbox query
+re-run from outside the publisher process (the drain-loop stats line above
+stops exactly when the publisher does). WARN-only journald lines from logger
+`src.core.bus_health`; full check list and thresholds in `deploy/README.md`.
+`bus_health` is also the shared probe module the archiver#147 dashboard panel
+renders from.
+
 **`info.registry` - the registry announcement channel (archiver#141).** A second
 producer surface, *config/state* kind rather than fact: per-InfoItem LWW state,
 keyed by the `info_item_id` payload field and ordered by a monotonic
