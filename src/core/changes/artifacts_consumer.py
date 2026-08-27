@@ -60,7 +60,6 @@ CONSUMER_GROUP = "archiver.artifacts"
 
 # Re-exported so this stream has one import site, matching ``consumer.py``.
 consumer_enabled = group_consumer.consumer_enabled
-resolve_consumer_name = group_consumer.resolve_consumer_name
 ArtifactsConsumer = group_consumer.GroupConsumer
 
 

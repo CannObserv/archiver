@@ -212,22 +212,41 @@ The consumers are now named for their group (`archiver-revisions-1`,
 is why the cleanup is a one-time procedure here rather than a startup reaper.
 
 Order matters: **deploy, restart, then reap.** Reaping before the restart leaves
-the running process's own registration behind, and reaping it while it is live is
-pointless churn.
+the running process's own registration behind.
+
+⚠️ **`XGROUP DELCONSUMER` destroys that consumer's pending entries.** Never reap
+a consumer with a non-zero PEL - that is a stranded message needing `XAUTOCLAIM`,
+not an orphan. The loop below therefore re-reads `pending` per consumer and skips
+any that is non-zero, rather than trusting a check the operator ran beforehand;
+`XGROUP DELCONSUMER` returns how many entries it destroyed, and by the time you
+can read that number they are already gone.
+
+It also skips the **current** consumer by name rather than matching the old
+`{hostname}:{pid}` shape. A `watcher:` filter would be specific to this VM's
+hostname and would silently match nothing anywhere else, which reads identical to
+"already clean".
 
 ```bash
-redis-cli XINFO CONSUMERS content.revisions archiver.revisions   # confirm pending 0 on each
-for c in $(redis-cli XINFO CONSUMERS content.revisions archiver.revisions \
-             | grep -A1 '^name$' | grep '^watcher:'); do
-  redis-cli XGROUP DELCONSUMER content.revisions archiver.revisions "$c"   # -> 0 = no PEL lost
-done
-redis-cli XINFO CONSUMERS content.revisions archiver.revisions   # -> empty, or archiver-revisions-1
+reap_orphans() {   # stream group live-consumer-name
+  redis-cli XINFO CONSUMERS "$1" "$2" \
+    | awk '/^name$/{getline n} /^pending$/{getline p; print n, p}' \
+    | while read -r name pending; do
+        if   [ "$name" = "$3" ];  then echo "keep $name (current consumer)"
+        elif [ "$pending" != 0 ]; then echo "SKIP $name - pending=$pending, stranded not orphan"
+        else redis-cli XGROUP DELCONSUMER "$1" "$2" "$name" >/dev/null && echo "reaped $name"
+        fi
+      done
+}
+
+reap_orphans content.revisions archiver.revisions archiver-revisions-1
+reap_orphans content.artifacts archiver.artifacts archiver-artifacts-1
 ```
 
-⚠️ **`XGROUP DELCONSUMER` destroys that consumer's pending entries**, and returns
-how many it destroyed. A non-zero return means a message was just lost, not
-cleaned up. Re-read `pending` before every reap; never reap a consumer with a
-non-zero PEL - that is a stranded message needing `XAUTOCLAIM`, not an orphan.
+`archiver.artifacts` carried 0 registrations as of 2026-08-27 - its stream has
+never delivered an entry, and registration happens on delivery - so that second
+call is expected to print nothing. It is in the procedure anyway because the
+group used the same pre-fix naming and would have leaked identically once
+replication traffic started.
 
 **Do not verify by looking for `archiver-revisions-1`.** Registration happens on
 *delivery*: an `XREADGROUP` that returns zero entries does not register the

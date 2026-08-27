@@ -64,7 +64,6 @@ CONSUMER_GROUP = "archiver.revisions"
 # Re-exported so callers and tests keep one import site for this stream's
 # consumer, and so the gate's docstring stays where the gate is enforced.
 consumer_enabled = group_consumer.consumer_enabled
-resolve_consumer_name = group_consumer.resolve_consumer_name
 RevisionsConsumer = group_consumer.GroupConsumer
 
 READ_COUNT = group_consumer.READ_COUNT

@@ -105,10 +105,16 @@ async def test_build_consumer_defaults_to_the_derived_name(fake_redis, build, gr
 async def test_restart_reuses_its_registration(fake_redis):
     """The regression this issue exists to prevent: one process, one registration.
 
-    Each ``build_consumer`` under a fresh pid stands in for a service restart.
-    With the pid in the name this left one orphan per restart, forever; with the
-    name derived from the group the second process re-attaches to the first's
-    registration.
+    Each loop pass stands in for a service restart that received a message. With
+    the pid in the name this left one orphan per pass, forever; with the name
+    derived from the group each pass re-attaches to the first's registration.
+
+    The ``os.getpid`` patch is inert against the current implementation, which
+    reads neither pid nor hostname - it is here so that *reintroducing* a
+    process-derived name fails this test rather than passing it. Without the
+    patch it would pass either way, because the pid does not change within one
+    test process, which is exactly why this case could not live in
+    ``test_consumer``.
     """
 
     async def _settle(_message) -> bool:

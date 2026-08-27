@@ -96,10 +96,11 @@ def resolve_consumer_name(group: str) -> str:
     to be periodically swept, and it needs no shutdown hook that a ``SIGKILL``
     would skip anyway.
 
-    It also fixes a misattribution: the VM's hostname is ``watcher`` (shared host,
-    per AGENTS.md), so Archiver's own consumers read as Watcher's in ``XINFO``
-    output on a broker all three services share. ``archiver-revisions-1`` matches
-    Watcher's own ``watcher-1`` convention on ``content.blobs``.
+    It also fixes a misattribution: this VM's hostname is literally ``watcher``
+    (it is shared with the Watcher service), so Archiver's own consumers read as
+    Watcher's in ``XINFO`` output on a broker all three services share.
+    ``archiver-revisions-1`` matches Watcher's own ``watcher-1`` convention on
+    ``content.blobs``.
 
     Derived from the group rather than written out per caller so the next group
     consumer inherits the convention instead of copying a literal.
