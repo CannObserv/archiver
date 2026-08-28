@@ -10,6 +10,9 @@ from fakeredis import aioredis as fakeredis_aio
 
 from src.api.deps import get_redis_client
 from src.api.main import app
+from src.core.bus_health import STREAM_CHECKS
+from src.core.changes.artifacts_consumer import CONSUMER_GROUP as ARTIFACTS_GROUP
+from src.core.changes.consumer import CONSUMER_GROUP as REVISIONS_GROUP
 from src.core.models import (
     ChangesOutboxRow,
     InfoItem,
@@ -18,6 +21,7 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.models.domain import Domain
+from src.dashboard.routes import index as index_routes
 
 _HEADERS = {"X-ExeDev-UserID": "ext-home", "X-ExeDev-Email": "home@example.com"}
 
@@ -344,11 +348,13 @@ def _consumers(monkeypatch, redis, *, revisions, artifacts, gate="1"):
     app.dependency_overrides[get_redis_client] = lambda: redis
 
 
+_GROUPS = ((CONTENT_REVISIONS, REVISIONS_GROUP), (CONTENT_ARTIFACTS, ARTIFACTS_GROUP))
+
+
 async def _provision_groups(redis):
     """What a healthy consumer startup leaves on the broker."""
-    for topic, group in ((CONTENT_REVISIONS, "archiver.revisions"),):
+    for topic, group in _GROUPS:
         await redis.xgroup_create(topic, group, id="0", mkstream=True)
-    await redis.xgroup_create(CONTENT_ARTIFACTS, "archiver.artifacts", id="0", mkstream=True)
 
 
 @pytest.mark.asyncio
@@ -429,7 +435,7 @@ async def test_health_consumers_danger_on_a_nonempty_dlq(client, monkeypatch, fa
 async def test_health_consumers_warns_on_group_lag(client, monkeypatch, fake_redis):
     await _provision_groups(fake_redis)
     await fake_redis.xadd(CONTENT_REVISIONS, {"k": "v"})
-    await fake_redis.xreadgroup("archiver.revisions", "c1", {CONTENT_REVISIONS: ">"}, count=10)
+    await fake_redis.xreadgroup(REVISIONS_GROUP, "c1", {CONTENT_REVISIONS: ">"}, count=10)
     _consumers(monkeypatch, fake_redis, revisions=_live_task(), artifacts=_live_task())
 
     r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
@@ -504,3 +510,95 @@ async def test_home_redis_badge_always_loads_live(client, monkeypatch):
     r = await client.get("/dashboard/", headers=_HEADERS)
     assert r.status_code == 200
     assert "/dashboard/health/redis" in r.text
+
+
+# --- CR round 1 on #147 ---
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_bounds_a_hung_broker(client, monkeypatch):
+    """Finding 1. The lifespan client carries no socket timeout - it cannot,
+    since the group consumers issue a blocking XREADGROUP on it - so a broker
+    that hangs rather than refuses would block this handler forever and the
+    "lag unknown" state would never be reached. The bound lives at the call
+    site instead."""
+
+    class HungRedis:
+        def __getattr__(self, name):
+            async def _hang(*a, **kw):
+                await asyncio.sleep(30)
+
+            return _hang
+
+    monkeypatch.setattr(index_routes, "LAG_PROBE_TIMEOUT_SECONDS", 0.05)
+    _consumers(monkeypatch, HungRedis(), revisions=_live_task(), artifacts=_live_task())
+
+    r = await asyncio.wait_for(
+        client.get("/dashboard/health/consumers", headers=_HEADERS), timeout=5
+    )
+    assert r.status_code == 200
+    assert "badge--warning" in r.text
+    assert "lag unknown" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_does_not_mask_a_programming_error(client, monkeypatch, fake_redis):
+    """Finding 2. A bug inside the probe must not render as "lag unknown" - that
+    reads as a broker condition and sends the operator to the wrong system."""
+
+    async def _boom(_client):
+        raise TypeError("probe bug, not a broker state")
+
+    monkeypatch.setattr(index_routes, "collect_group_lag", _boom)
+    _consumers(monkeypatch, fake_redis, revisions=_live_task(), artifacts=_live_task())
+
+    with pytest.raises(TypeError):
+        await client.get("/dashboard/health/consumers", headers=_HEADERS)
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_init_failure_is_not_not_configured(client, monkeypatch):
+    """Finding 3. main.py nulls app.state.redis_client when publisher init
+    *raises* with ARCHIVER_REDIS_URL set. Reporting that as "not configured" is
+    the configuration-as-state conflation #147 exists to remove, surviving in a
+    rarer branch."""
+    monkeypatch.setenv("ARCHIVER_REDIS_URL", "redis://localhost:6379/0")
+    _consumers(monkeypatch, None, revisions=None, artifacts=None, gate="1")
+
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "init failed" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_redis_init_failure_is_not_not_configured(client, monkeypatch):
+    """Finding 3, the same gap on the pre-existing Redis badge."""
+    monkeypatch.setenv("ARCHIVER_REDIS_URL", "redis://localhost:6379/0")
+    app.dependency_overrides[get_redis_client] = lambda: None
+
+    r = await client.get("/dashboard/health/redis", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "init failed" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_redis_unconfigured_stays_muted(client, monkeypatch):
+    """The other side of finding 3: no URL really is not configured."""
+    monkeypatch.delenv("ARCHIVER_REDIS_URL", raising=False)
+    app.dependency_overrides[get_redis_client] = lambda: None
+
+    r = await client.get("/dashboard/health/redis", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--muted" in r.text
+    assert "not configured" in r.text
+
+
+def test_consumer_badge_covers_every_archiver_owned_group():
+    """Finding 4. The ladder's DLQ and pending checks iterate the lag list,
+    sourced from STREAM_CHECKS, while the title is built from _CONSUMERS. Let
+    those sets drift and the badge reports a state its title cannot explain."""
+    assert {topic for _name, _attr, topic in index_routes._CONSUMERS} == {
+        check.topic for check in STREAM_CHECKS if check.pending_group is not None
+    }

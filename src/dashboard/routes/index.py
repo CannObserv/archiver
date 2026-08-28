@@ -4,6 +4,7 @@ import asyncio
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +13,7 @@ from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, CONTENT_REVISIO
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +42,11 @@ router = APIRouter(prefix="/dashboard")
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
+# Well under any sane HTMX badge wait. A tick that cannot answer inside it
+# has nothing useful to report, and the operator gets "lag unknown" plus a
+# live Redis badge beside it rather than a spinner that never resolves.
+LAG_PROBE_TIMEOUT_SECONDS = 5.0
+
 
 @router.get("/health", response_class=HTMLResponse)
 async def dashboard_health_partial(
@@ -49,6 +56,35 @@ async def dashboard_health_partial(
     return HTMLResponse('<span class="badge badge--success">ok</span>')
 
 
+def _badge(variant: str, text: str, *, detail: str = "") -> HTMLResponse:
+    """One badge span. ``detail`` must already be HTML-escaped."""
+    title = f' title="{detail}"' if detail else ""
+    return HTMLResponse(f'<span class="badge badge--{variant}"{title}>{text}</span>')
+
+
+def _no_client_badge() -> HTMLResponse:
+    """The badge for ``app.state.redis_client is None``, split by *why*.
+
+    The lifespan nulls the client both when ``ARCHIVER_REDIS_URL`` is unset (the
+    dev server's bus-dormant default) and when publisher init *raised* with the
+    URL set (``src/api/main.py``). Rendering the second as "not configured" is
+    the configuration-as-state conflation archiver#147 exists to remove,
+    surviving in a rarer branch - a broken production bus wearing the dev
+    server's vocabulary. The URL is read here as configuration, which is all it
+    is asked to answer (CR round 1, finding 3).
+    """
+    if os.environ.get("ARCHIVER_REDIS_URL", "").strip():
+        return _badge(
+            "danger",
+            "init failed",
+            detail=html_escape(
+                "ARCHIVER_REDIS_URL is set but no client exists - bus init raised "
+                "at startup; see the lifespan's logged exception"
+            ),
+        )
+    return _badge("muted", "not configured")
+
+
 @router.get("/health/redis", response_class=HTMLResponse)
 async def dashboard_health_redis(
     user: AppUser = Depends(get_dashboard_user),
@@ -56,7 +92,7 @@ async def dashboard_health_redis(
 ) -> HTMLResponse:
     """HTMX partial - Redis health badge."""
     if redis is None:
-        return HTMLResponse('<span class="badge badge--muted">not configured</span>')
+        return _no_client_badge()
     try:
         await redis.ping()
         return HTMLResponse('<span class="badge badge--success">ok</span>')
@@ -121,13 +157,21 @@ _CONSUMERS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def _badge(variant: str, text: str, *, detail: str = "") -> HTMLResponse:
-    """One badge span. ``detail`` must already be HTML-escaped."""
-    title = f' title="{detail}"' if detail else ""
-    return HTMLResponse(f'<span class="badge badge--{variant}"{title}>{text}</span>')
+class TaskStatus(StrEnum):
+    """What a consumer task handle says about the loop behind it.
+
+    Split from the human-readable reason so the ladder below branches on the
+    enum and the ``title`` carries the prose. They were one string until CR
+    round 1 finding 6: reworded text silently rerouted the badge, because the
+    message *was* the control flow.
+    """
+
+    NOT_STARTED = "not started"
+    RUNNING = "running"
+    STOPPED = "stopped"
 
 
-def _task_state(task: "asyncio.Task | None") -> str:
+def _task_state(task: "asyncio.Task | None") -> tuple[TaskStatus, str]:
     """Liveness of one consumer task, straight off ``app.state``.
 
     No broker round-trip: the handle is already there, and it is the only
@@ -135,16 +179,17 @@ def _task_state(task: "asyncio.Task | None") -> str:
     the pair an environment variable cannot tell apart (archiver#147).
     """
     if task is None:
-        return "not started"
+        return TaskStatus.NOT_STARTED, "not started"
     if not task.done():
-        return "running"
+        return TaskStatus.RUNNING, "running"
     try:
         exc = task.exception()
     except asyncio.CancelledError:
         # Task.exception() *raises* on a cancelled task rather than returning.
         # Shutdown cancels these, so this is a normal path, not an error one.
-        return "stopped (cancelled)"
-    return f"stopped ({exc!r})" if exc is not None else "stopped (clean exit)"
+        return TaskStatus.STOPPED, "stopped (cancelled)"
+    reason = f"stopped ({exc!r})" if exc is not None else "stopped (clean exit)"
+    return TaskStatus.STOPPED, reason
 
 
 @router.get("/health/consumers", response_class=HTMLResponse)
@@ -166,7 +211,7 @@ async def dashboard_health_consumers(
     dashboard and journald never disagree about what a lagging group is.
     """
     if redis is None:
-        return _badge("muted", "not configured")
+        return _no_client_badge()
     if not consumer_enabled(os.environ.get("ARCHIVER_BUS_CONSUMER")):
         # The one state that *is* configuration, reported as configuration: the
         # gate is what makes the dev server bus-dormant by design, so off is
@@ -181,19 +226,33 @@ async def dashboard_health_consumers(
     lags: dict[str, GroupLag] = {}
     lag_error: str | None = None
     try:
-        lags = {lag.topic: lag for lag in await collect_group_lag(redis)}
-    except Exception as exc:
+        # The bound lives here, not on the client: this borrows the lifespan's
+        # long-lived Redis client, which carries no socket timeout and cannot -
+        # the group consumers issue a blocking XREADGROUP on it, and a socket
+        # timeout under that block would break them. Unbounded, a broker that
+        # hangs rather than refuses would block this handler forever and the
+        # "lag unknown" state below would never be reached, which is the state
+        # written for exactly that broker (CR round 1, finding 1).
+        async with asyncio.timeout(LAG_PROBE_TIMEOUT_SECONDS):
+            lags = {lag.topic: lag for lag in await collect_group_lag(redis)}
+    except (RedisError, ConnectionError, OSError, TimeoutError) as exc:
+        # The same tuple bus_health's own collector narrows to, plus the
+        # timeout above. Deliberately not `except Exception`: a TypeError out
+        # of the probe is a bug here, and rendering it as "lag unknown" reads
+        # as a broker condition and sends the operator to the wrong system
+        # (CR round 1, finding 2).
         lag_error = str(exc) or repr(exc)
         logger.warning("Consumer lag probe failed", extra={"error": lag_error})
 
     parts = []
     for name, _attr, topic in _CONSUMERS:
         lag = lags.get(topic)
+        _status, reason = states[name]
         if lag is None:
-            parts.append(f"{name}={states[name]} pending=? dlq=?")
+            parts.append(f"{name}={reason} pending=? dlq=?")
         else:
             pending = "group missing" if lag.pending is None else lag.pending
-            parts.append(f"{name}={states[name]} pending={pending} dlq={lag.dlq_depth}")
+            parts.append(f"{name}={reason} pending={pending} dlq={lag.dlq_depth}")
     if lag_error:
         parts.append(f"lag probe failed: {lag_error}")
     detail = html_escape("; ".join(parts))
@@ -201,9 +260,10 @@ async def dashboard_health_consumers(
     # Liveness first: a stopped consumer is the cause, and any lag reading is
     # its symptom. Ordering the other way would report the symptom and bury
     # the thing an operator has to act on.
-    if any(state == "not started" for state in states.values()):
+    statuses = {status for status, _reason in states.values()}
+    if TaskStatus.NOT_STARTED in statuses:
         return _badge("danger", "not started", detail=detail)
-    if any(state.startswith("stopped") for state in states.values()):
+    if TaskStatus.STOPPED in statuses:
         return _badge("danger", "stopped", detail=detail)
     if lag_error:
         # The consumers are demonstrably alive, but the depths are unknown -

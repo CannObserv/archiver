@@ -30,8 +30,16 @@ loader, reporting configuration as if it were state (#147).
 **GET `/dashboard/health`** - returns `<span class="badge badge--success">ok</span>`.
 
 **GET `/dashboard/health/redis`** - `redis.ping()`. Success "ok"; danger
-"error" with the exception message in `title`; muted "not configured" when no
-client exists, which returns before any logging (the other two log a warning).
+"error" with the exception message in `title`; the no-client branch below,
+which returns before any logging (the other two log a warning).
+
+**The no-client branch** (`_no_client_badge`, shared by the Redis and Consumers
+badges) splits `app.state.redis_client is None` by *why*: muted "not
+configured" when `ARCHIVER_REDIS_URL` is unset (the dev server's bus-dormant
+default), danger "init failed" when it is set and bus init raised at startup.
+One branch reported both until CR round 1 finding 3 - a broken production bus
+wearing the dev server's vocabulary is the same configuration-as-state
+conflation #147 exists to remove.
 
 **GET `/dashboard/health/outbox`** - over `src/core/changes/outbox_stats.py`
 (archiver#112). Muted "not draining" when no Redis client exists (publisher
@@ -43,13 +51,22 @@ live unpublished row exceeds 300s, else success "ok"; `title` carries
 **GET `/dashboard/health/consumers`** - over
 `src/core/bus_health.collect_group_lag` (archiver#147). Liveness from
 `app.state.{revisions,artifacts}_consumer_task`, no broker call; depths from
-the same probe module the #130 timer uses. Ladder, first match wins - muted
-"not configured" (no client) / muted "gated off" (`ARCHIVER_BUS_CONSUMER`
-unset, the dev default) / danger "not started" / danger "stopped" / warning
-"lag unknown" (probe raised) / danger "N dead-lettered" / warning "group
+the same probe module the #130 timer uses. Ladder, first match wins - the
+no-client branch above / muted "gated off" (`ARCHIVER_BUS_CONSUMER` unset, the
+dev default) / danger "not started" / danger "stopped" / warning "lag unknown"
+(probe raised or timed out) / danger "N dead-lettered" / warning "group
 missing" (absent group, not a healthy zero) / warning "lagging" / success
 "running". Liveness outranks lag: a stopped consumer is the cause, its lag the
 symptom. `title` carries `<name>=<state> pending=N dlq=N` per consumer.
+
+The probe is bounded by `LAG_PROBE_TIMEOUT_SECONDS` (5s) at the call site
+rather than by a socket timeout on the client: the badge borrows the lifespan's
+Redis client, and the group consumers issue a blocking `XREADGROUP` on it, so a
+socket timeout under that block would break them. Unbounded, a broker that
+hangs rather than refuses never reaches "lag unknown" at all (CR round 1,
+finding 1). Only `RedisError`/`ConnectionError`/`OSError`/`TimeoutError` become
+that badge - a `TypeError` out of the probe is a bug here and is left to 500
+rather than dressed up as a broker condition (finding 2).
 
 **`…/health/watcher` retired with archiver#142** - it pinged Watcher over the
 SDK, and the no-outbound-HTTP rule left nothing to ping. Its successor signal
