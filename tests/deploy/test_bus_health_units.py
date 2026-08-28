@@ -49,6 +49,19 @@ def test_service_never_joins_a_consumer_group() -> None:
     assert "Environment=ARCHIVER_BUS_CONSUMER" not in REPO_SERVICE.read_text()
 
 
+def test_service_bounds_its_own_runtime() -> None:
+    """CR round 2, finding 10. The per-call socket timeouts bound each Redis
+    command, but ~25 commands each hitting their ceiling could in theory
+    outlast systemd's default TimeoutStartSec (90s) - the pathological case
+    the socket bounds were added to rule out. An explicit, shorter bound keeps
+    a wedged probe visibly killed rather than hanging: a tick that cannot
+    finish inside it has nothing useful left to report anyway."""
+    text = REPO_SERVICE.read_text()
+    assert "TimeoutStartSec=" in text
+    (line,) = [ln for ln in text.splitlines() if ln.startswith("TimeoutStartSec=")]
+    assert int(line.split("=", 1)[1].rstrip("s")) < 90
+
+
 def test_timer_ticks_periodically() -> None:
     text = REPO_TIMER.read_text()
     assert "OnUnitActiveSec=" in text

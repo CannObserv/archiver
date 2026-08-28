@@ -32,4 +32,11 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # (/var/lib/archiver-bus-health, owned by User= automatically).
 StateDirectory=archiver-bus-health
 
+# Hard backstop under systemd's 90s default. src/core/bus_health.py bounds each
+# Redis call (5s connect / 10s read), but ~25 calls per tick could in theory
+# accumulate past the default against a uniformly slow broker. A healthy tick
+# takes well under a second; one that cannot finish in 60s has nothing useful
+# left to report, and being visibly killed beats hanging the unit.
+TimeoutStartSec=60
+
 ExecStart=/usr/local/bin/uv run python -m src.core.bus_health --state-file ${STATE_DIRECTORY}/state.json
