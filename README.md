@@ -37,8 +37,10 @@ and serves on 8021.
 `ARCHIVER_DATABASE_URL` pointed at production — on 2026-07-18 that wrote a
 `verify79.example.com` Domain, two InfoSources, and an AppUser into the live
 registry. The application now also refuses to serve a production database
-unless `ARCHIVER_ALLOW_PRODUCTION_DB=1` is set, which only
-`deploy/archiver.service` does.
+unless `ARCHIVER_ALLOW_PRODUCTION_DB=1` is set, which only units in `deploy/`
+do - `archiver.service`, and the read-only `archiver-bus-health.service` probe
+(#130). Never an env file: those are sourced by every process that loads them,
+which is the hole the guard closes.
 
 Production listens on **port 8020** under `archiver.service`. The dev server uses 8021 to leave 8020 alone for systemd.
 
