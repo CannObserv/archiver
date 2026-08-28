@@ -62,6 +62,7 @@ from co_core.pure.adapters.bus.streams import (
     INFO_CHANGES,
     INFO_REGISTRY,
     INFO_WATCH_STATUS,
+    dlq_name,
 )
 from redis.asyncio import Redis
 from redis.exceptions import RedisError, ResponseError
@@ -145,6 +146,21 @@ class Finding:
     check: str
     subject: str
     message: str
+
+
+@dataclass(frozen=True)
+class GroupLag:
+    """Live depths for one archiver-owned consumer group (archiver#147).
+
+    ``pending is None`` means the group does not exist on the broker - the
+    consumer never provisioned itself. Kept distinct from ``0`` because they
+    look identical to an operator and mean opposite things.
+    """
+
+    topic: str
+    group: str
+    pending: int | None
+    dlq_depth: int
 
 
 @dataclass(frozen=True)
@@ -410,6 +426,48 @@ async def _collect_dlqs(client: Redis) -> list[Finding]:
                 )
             )
     return findings
+
+
+async def collect_group_lag(client: Redis) -> list[GroupLag]:
+    """Live lag for the archiver-owned groups, for the #147 dashboard panel.
+
+    Narrower than a probe tick on purpose: a page load pays two ``XPENDING``
+    and two ``XLEN`` calls rather than the whole ~25-command inventory sweep.
+
+    Two contracts differ from the timer's collector, both because the caller is
+    a request handler rather than a WARN-only log line:
+
+    - a broker error **propagates**. The timer folds an outage into a finding
+      because a journald line is its only output; the panel has to badge
+      "could not measure" differently from "measured zero", which is the whole
+      complaint in #147.
+    - the two-tick pending rule is deliberately absent. It debounces a periodic
+      alarm; an operator reading a dashboard is looking at one instant and can
+      refresh, so a raw depth is the honest number to show.
+    """
+    lags: list[GroupLag] = []
+    for check in STREAM_CHECKS:
+        if check.pending_group is None:
+            continue
+        try:
+            summary = await client.xpending(check.topic, check.pending_group)
+        except (ResponseError, IndexError):
+            # NOGROUP from real Redis, IndexError from fakeredis - see
+            # _collect_stream. Distinct from 0: nothing provisioned the group.
+            pending = None
+        else:
+            pending = int(summary["pending"])
+        lags.append(
+            GroupLag(
+                topic=check.topic,
+                group=check.pending_group,
+                pending=pending,
+                # XLEN on a missing key is 0, which is the right answer: a DLQ
+                # is created by its first quarantine, so absent means empty.
+                dlq_depth=await client.xlen(dlq_name(check.topic)),
+            )
+        )
+    return lags
 
 
 async def collect_broker_findings(

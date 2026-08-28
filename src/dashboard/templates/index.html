@@ -26,7 +26,8 @@
         <span class="badge">checking…</span>
       </span>
     </span>
-    {% if redis_configured %}
+    {# Every badge is a live route: a template branch on ARCHIVER_REDIS_URL
+       reported configuration as if it were state (archiver#147). #}
     <span>
       <span class="text-sm text-muted">Redis</span>&nbsp;
       <span id="health-redis"
@@ -36,16 +37,19 @@
         <span class="badge">checking…</span>
       </span>
     </span>
-    {% else %}
-    <span>
-      <span class="text-sm text-muted">Redis</span>&nbsp;
-      <span class="badge badge--muted">not configured</span>
-    </span>
-    {% endif %}
     <span>
       <span class="text-sm text-muted">Outbox</span>&nbsp;
       <span id="health-outbox"
             hx-get="/dashboard/health/outbox"
+            hx-trigger="load"
+            hx-swap="innerHTML">
+        <span class="badge">checking…</span>
+      </span>
+    </span>
+    <span>
+      <span class="text-sm text-muted">Consumers</span>&nbsp;
+      <span id="health-consumers"
+            hx-get="/dashboard/health/consumers"
             hx-trigger="load"
             hx-swap="innerHTML">
         <span class="badge">checking…</span>

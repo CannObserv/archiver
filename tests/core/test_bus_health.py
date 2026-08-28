@@ -21,6 +21,7 @@ from co_core.pure.adapters.bus.streams import (
     CONTENT_REVISIONS,
     INFO_CHANGES,
     INFO_REGISTRY,
+    dlq_name,
 )
 from fakeredis import aioredis as fakeredis_aio
 
@@ -40,6 +41,7 @@ from src.core.bus_health import (
     save_state,
     with_margin,
 )
+from src.core.changes.consumer import CONSUMER_GROUP as REVISIONS_GROUP
 from src.core.changes.outbox_stats import OutboxStats
 from src.core.changes.publisher import DEFAULT_STREAM_MAXLEN
 from src.core.changes.registry_snapshot import DEFAULT_REGISTRY_STREAM_MAXLEN
@@ -305,6 +307,68 @@ async def test_collect_unreachable_broker_is_a_finding() -> None:
     findings, pending = await collect_broker_findings(DownRedis(), previous_pending={"x": 1})
     assert [f.check for f in findings] == ["broker"]
     assert pending == {"x": 1}  # state preserved so the grace tick is not reset
+
+
+# --- group lag for the dashboard panel (archiver#147) ---
+
+
+def _lag_for(lags: list[bus_health.GroupLag], topic: str) -> bus_health.GroupLag:
+    (lag,) = [item for item in lags if item.topic == topic]
+    return lag
+
+
+async def test_group_lag_covers_exactly_the_archiver_owned_groups(fake_redis) -> None:
+    """The panel answers for the groups Archiver runs consumers for, and only
+    those - the same set STREAM_CHECKS names. A downstream service's group lag
+    is its own alerting problem (see the module docstring)."""
+    lags = await bus_health.collect_group_lag(fake_redis)
+    assert {(lag.topic, lag.group) for lag in lags} == {
+        (check.topic, check.pending_group)
+        for check in STREAM_CHECKS
+        if check.pending_group is not None
+    }
+
+
+async def test_group_lag_reports_pending_and_dlq_depth(fake_redis) -> None:
+    """Both numbers issue #147 asks the panel for: XPENDING on the group and
+    XLEN on its DLQ."""
+    await fake_redis.xadd(CONTENT_REVISIONS, {"k": "v"})
+    await fake_redis.xgroup_create(CONTENT_REVISIONS, REVISIONS_GROUP, id="0")
+    await fake_redis.xreadgroup(
+        REVISIONS_GROUP, "c1", {CONTENT_REVISIONS: ">"}, count=10
+    )  # delivered, unacked -> pending=1
+    await fake_redis.xadd(dlq_name(CONTENT_REVISIONS), {"k": "v"})
+
+    lag = _lag_for(await bus_health.collect_group_lag(fake_redis), CONTENT_REVISIONS)
+
+    assert lag.pending == 1
+    assert lag.dlq_depth == 1
+
+
+async def test_group_lag_distinguishes_a_missing_group_from_zero(fake_redis) -> None:
+    """``pending is None`` means the consumer never provisioned its group. The
+    panel must not render that as a healthy zero - it is the silent state #147
+    exists to stop showing green."""
+    lag = _lag_for(await bus_health.collect_group_lag(fake_redis), CONTENT_REVISIONS)
+
+    assert lag.pending is None
+    assert lag.dlq_depth == 0
+
+
+async def test_group_lag_propagates_an_unreachable_broker() -> None:
+    """Unlike the timer's collector, this one does not turn an outage into a
+    finding: the caller is a request handler that must distinguish "measured
+    zero" from "could not measure" and badge them differently."""
+
+    class DownRedis:
+        def __getattr__(self, name):
+            async def _raise(*a, **kw):
+                raise ConnectionError("refused")
+
+            return _raise
+
+    with pytest.raises(ConnectionError):
+        await bus_health.collect_group_lag(DownRedis())
 
 
 async def test_collect_tolerates_a_non_stream_dlq_key(fake_redis) -> None:

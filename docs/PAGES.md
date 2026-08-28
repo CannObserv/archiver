@@ -18,38 +18,50 @@ repeat it.
 
 ## Home (`/dashboard/`)
 
-**GET `/dashboard/`** - summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each linking to its list page. Service health indicator loads via `hx-get="/dashboard/health" hx-trigger="load"` - non-blocking, showing a "checking…" badge until HTMX fires. Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`; columns Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at as `%Y-%m-%d %H:%M`).
+**GET `/dashboard/`** - summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each linking to its list page. Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`; columns Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at as `%Y-%m-%d %H:%M`).
 
-The health row is **Archiver + Redis + Outbox** since archiver#112 (Archiver + Redis only between archiver#142 and #112 - the absence of a Watcher badge is deliberate, not an omission).
+The health row is **Archiver + Redis + Outbox + Consumers** since archiver#147
+(the absence of a Watcher badge is deliberate, not an omission). Each badge is
+its own `hx-trigger="load"` partial - non-blocking, "checking…" until HTMX
+fires. **Every badge is a live route:** the template used to branch on
+`ARCHIVER_REDIS_URL` to render a static "not configured" span instead of the
+loader, reporting configuration as if it were state (#147).
 
-**GET `/dashboard/health`** - HTMX partial. Returns `<span class="badge badge--success">ok</span>`.
+**GET `/dashboard/health`** - returns `<span class="badge badge--success">ok</span>`.
 
-**GET `/dashboard/health/redis`** - HTMX partial calling `redis.ping()`. Logs a warning on `degraded` and `error`; `not configured` returns before any logging:
+**GET `/dashboard/health/redis`** - `redis.ping()`. Success "ok"; danger
+"error" with the exception message in `title`; muted "not configured" when no
+client exists, which returns before any logging (the other two log a warning).
 
-| Badge | `…/health/redis` |
-|---|---|
-| `badge--success` "ok" | ping succeeded |
-| `badge--danger` "error" | network/connect failure; `title` contains the exception message |
-| `badge--muted` "not configured" | `ARCHIVER_REDIS_URL` unset |
+**GET `/dashboard/health/outbox`** - over `src/core/changes/outbox_stats.py`
+(archiver#112). Muted "not draining" when no Redis client exists (publisher
+dormant - dev's default - so a stale backlog is not ill health); otherwise
+danger "N dead-lettered" if any poison row, warning "backlog" if the oldest
+live unpublished row exceeds 300s, else success "ok"; `title` carries
+`depth=N oldest=Ns dead_lettered=N` in the drain states.
 
-**GET `/dashboard/health/outbox`** - HTMX partial over
-`src/core/changes/outbox_stats.py` (archiver#112). Muted "not draining" when no
-Redis client exists (publisher dormant - dev's default - so a stale backlog is
-not ill health); otherwise danger "N dead-lettered" if any poison row, warning
-"backlog" if the oldest live unpublished row exceeds 300s, else success "ok";
-`title` carries `depth=N oldest=Ns dead_lettered=N` in the drain states.
+**GET `/dashboard/health/consumers`** - over
+`src/core/bus_health.collect_group_lag` (archiver#147). Liveness from
+`app.state.{revisions,artifacts}_consumer_task`, no broker call; depths from
+the same probe module the #130 timer uses. Ladder, first match wins - muted
+"not configured" (no client) / muted "gated off" (`ARCHIVER_BUS_CONSUMER`
+unset, the dev default) / danger "not started" / danger "stopped" / warning
+"lag unknown" (probe raised) / danger "N dead-lettered" / warning "group
+missing" (absent group, not a healthy zero) / warning "lagging" / success
+"running". Liveness outranks lag: a stopped consumer is the cause, its lag the
+symptom. `title` carries `<name>=<state> pending=N dlq=N` per consumer.
 
 **`…/health/watcher` retired with archiver#142** - it pinged Watcher over the
-SDK, and AGENTS.md's no-outbound-HTTP rule left nothing to ping. The successor
-signal is the announced-vs-applied generation drift on the InfoItem detail panel:
-it measures whether Watcher is *acting on what we published*, which is the
-question the badge was a proxy for.
+SDK, and the no-outbound-HTTP rule left nothing to ping. Its successor signal
+is the announced-vs-applied generation drift on the InfoItem detail panel,
+which measures whether Watcher is *acting on what we published* - the question
+the badge was a proxy for.
 
 ## Domain pages (`/dashboard/domains/`)
 
 **GET `/dashboard/domains/`** - paginated list. Columns: Domain (linked to detail), Sources (count), Status badge, Created. Filter bar: `?is_active=true|false|` (all). Source counts come from a GROUP BY query.
 
-**GET `/dashboard/domains/{name}`** - detail. `.entity-card` header (SCREENS.md § **Header**, `#domain-heading`, #82): eyebrow "Domain", the copyable domain name, `open_button` on `https://{name}` - `Domain` stores a hostname, not a URL (#176). `.detail-grid`: Status badge, created_at UTC → the **notes row, inside the panel**, read-only with an inline Edit toggle (`domainNotes`, COMPONENTS.md). Then two related-collection tables - **Information Items** (bound to this domain's sources by an active `info_item_sources` row) and **Information Sources**, source URLs carrying `open_button`. Both headings count from a route `COUNT` (#82), both keep their own `limit+1` `has_more` probe, and they page independently on `limit`/`offset` and `item_limit`/`item_offset` (#176) - see SCREENS.md §§ **Related-collection tables** and **Two paginated tables on one screen get two windows**. Each carries two empty states: an overshot offset renders "No sources on this page" / "No items on this page" with a link back to that table's first page, a genuinely empty collection "No Information Sources registered for this domain yet" / "No Information Items bound to this domain yet". **Archive** lives in a `.danger-zone` block at the bottom, shown only while the domain is active (`.btn--danger` + static confirm). **Restore** is recovery, not destruction, so it sits in the header Status field inline next to the "archived" badge (`.btn--secondary`); once archived the danger zone is hidden entirely. Both stay full-page POST→303 by design - see the *allowed variant* note under SCREENS.md § **HTMX mutations**.
+**GET `/dashboard/domains/{name}`** - detail. `.entity-card` header (SCREENS.md § **Header**, `#domain-heading`, #82): eyebrow "Domain", the copyable name, `open_button` on `https://{name}` - `Domain` stores a hostname, not a URL (#176). `.detail-grid`: Status badge, created_at UTC → the **notes row, inside the panel**, read-only with an inline Edit toggle (`domainNotes`, COMPONENTS.md). Then two related-collection tables - **Information Items** (bound to this domain's sources by an active `info_item_sources` row) and **Information Sources**, source URLs carrying `open_button`. Both headings count from a route `COUNT` (#82), both keep their own `limit+1` `has_more` probe, and they page independently on `limit`/`offset` and `item_limit`/`item_offset` (#176) - SCREENS.md §§ **Related-collection tables**, **Two paginated tables on one screen get two windows**. Each has two empty states: an overshot offset gives "No sources/items on this page" plus a link back to that table's first page, an empty collection "No Information Sources registered for this domain yet" / "No Information Items bound to this domain yet". **Archive** is a `.danger-zone` block at the bottom, shown only while active (`.btn--danger` + static confirm). **Restore** is recovery, not destruction, so it sits inline in the header Status field beside the "archived" badge (`.btn--secondary`), and the danger zone is then hidden entirely. Both stay full-page POST→303 by design - the *allowed variant* note under SCREENS.md § **HTMX mutations**.
 
 **POST `/dashboard/domains/{name}/notes`** - saves notes. HTMX: swaps `#notes-section` with `domains/_notes_partial.html` in read-only mode, `swapped=True` (focus move) plus a `showFlash` toast. Non-HTMX: 303 to detail, so the form's no-JS fallback lands (SCREENS.md § **HTMX mutations**).
 
@@ -182,7 +194,7 @@ The entries below stay the inventory line for each route.
 **GET `/dashboard/info-sources/{id}`** - detail page. Sections:
 
 - Header: `.entity-card` (SCREENS.md § **Header**, `#info-source-heading`, #79) - eyebrow "Information Source", the `url` in `<code>`, copyable `info_source_id`, then the **domain pill**: `domain_name` as a `.badge--primary` linking `/dashboard/domains/{name}`, or a `.badge--muted` "No domain" where the column is null - a state of its own, not an absence (#185). `open_button` is the header's action slot. `.detail-grid` (created_at UTC).
-- Source Specification editor - the `info_sources/_source_specs_card.html` partial, extracted so the update-specs action can swap it in place (root `#source-specs-card`, heading `#source-specs-heading`, titled "Source Specification"). The `sourceSpecsCard(startEditing)` component (`main.js`; not in the COMPONENTS.md catalogue - it exists only for this card) gates it: **view mode** (`x-show="!editing"`) shows the current `source_specs` array in `<pre class="code-block">`; edit mode reveals the textarea form (`x-show="editing"`). All three buttons share one `.entity-card__actions` slot in the card's `.entity-card__header` (#185): **Edit** (`x-show="!editing"`), **Cancel** (`btn--secondary`, for border parity with the `apiKeyRow` Cancel; `@click="cancel()"` resets the textarea to the stored specs and returns to view mode with no server call) and **Save**, which submits the `POST .../source-specs` replace via `form="source-specs-form"` - it renders outside the `<form>`, so without that association it is inert with JS off. The card opens in edit mode when `specs_error` is set (`sourceSpecsCard(true)`) so the error and the operator's submitted text stay visible. The URL is immutable.
+- Source Specification editor - the `info_sources/_source_specs_card.html` partial, extracted so the update-specs action can swap it in place (root `#source-specs-card`, heading `#source-specs-heading`, titled "Source Specification"). `sourceSpecsCard(startEditing)` (`main.js`; not in the COMPONENTS.md catalogue - it exists only for this card) gates it: **view mode** (`x-show="!editing"`) renders `source_specs` in `<pre class="code-block">`, edit mode the textarea form. All three buttons share one `.entity-card__actions` slot in the `.entity-card__header` (#185): **Edit** (`x-show="!editing"`); **Cancel** (`btn--secondary`, for border parity with the `apiKeyRow` Cancel - `@click="cancel()"` restores the stored specs and returns to view mode with no server call); **Save**, which submits the `POST .../source-specs` replace via `form="source-specs-form"` - it renders outside the `<form>`, so without that association it is inert with JS off. `specs_error` opens the card in edit mode (`sourceSpecsCard(true)`) so the error and the submitted text stay visible. The URL is immutable.
 - Other Sources at This URL - shown only when other InfoSources share this `url` (the model allows several sources per URL, #79 #8); count in the heading, capped at 50 via a `limit+1` probe and rendered "50+" beyond that, each linked by `info_source_id` with its created date UTC.
 - Bound Information Items - table of active `info_item_sources` bindings (count in heading; item name link, bound date UTC).
 - Revision History - last 50 `source_revisions` ordered by `captured_at desc` (count in heading; fingerprint truncated, captured date UTC, cache status pill).
@@ -193,7 +205,7 @@ The entries below stay the inventory line for each route.
 
 **GET `/dashboard/source-revisions/`** - paginated list ordered by `captured_at desc`. Optional `info_source_id` filter (ULID). Columns: truncated fingerprint (link to detail), source URL (link to InfoSource detail), captured date, cache status pill (`.status-pill--cached` / `.status-pill--expired` / `.status-pill--missing`).
 
-**GET `/dashboard/source-revisions/{id}`** - detail page, and the reference implementation of the SCREENS.md conventions. The header lives in `source_revisions/_detail_card.html`, extracted so clear-cache can swap it in place (root `#revision-card`): `.eyebrow` "Information Source Revision" above an `<h1>` whose title is the copyable `source_revision_id`. `.detail-grid` carries the copyable full fingerprint and the Information Source, both on `.detail-grid__item--full` rows so long values extend horizontally; the Information Source value holds the internal source-detail link plus an `open_button` to the target URL. Then captured_at (UTC), size (if set), media type (if set), and cache status. The Cache value shows a status pill plus the `content_cache_uri` - with an `open_button` when `http(s)`, otherwise copyable - and an expiry line. "View all revisions for this source →" deeplinks the list as `?info_source_id=`. A danger-zone clear-cache form shows only when `content_cache_uri` is set.
+**GET `/dashboard/source-revisions/{id}`** - detail page, and the reference implementation of the SCREENS.md conventions. The header lives in `source_revisions/_detail_card.html`, extracted so clear-cache can swap it in place (root `#revision-card`): `.eyebrow` "Information Source Revision" above an `<h1>` titled with the copyable `source_revision_id`. `.detail-grid` carries the copyable full fingerprint and the Information Source on `.detail-grid__item--full` rows so long values extend horizontally; the Information Source value holds the internal source-detail link plus an `open_button` to the target URL. Then captured_at (UTC), size and media type (each if set), and cache status - a status pill plus the `content_cache_uri` (`open_button` when `http(s)`, otherwise copyable) and an expiry line. "View all revisions for this source →" deeplinks the list as `?info_source_id=`. A danger-zone clear-cache form shows only when `content_cache_uri` is set.
 
 **POST `/dashboard/source-revisions/{id}/clear-cache`** - sets `content_cache_uri = NULL` and `content_cache_expires_at = NULL`. HTMX requests (`hx-post`, `hx-target="#revision-card"`, `hx-confirm`) get the re-rendered `_detail_card.html` swapped in place plus an `HX-Trigger: showFlash` success toast; non-HTMX requests fall back to a 303 to detail. No request body required.
 
@@ -208,7 +220,7 @@ The entries below stay the inventory line for each route.
 **GET `/dashboard/rep-specs/{id}`** - detail page.
 
 - Header: `.entity-card` (SCREENS.md § **Header**, `#rep-spec-heading`, #80) - eyebrow "Replication Specification", name, copyable `rep_spec_id`, `.detail-grid` (provider badge, created_at UTC, plus **Updated** UTC *only when* `updated_at` is non-null - a null means "never edited", and rendering `created_at` there would blur that distinction, #83).
-- Document card - the `rep_specs/_document_card.html` partial, extracted so the update-document action can swap it in place (root `#rep-spec-document-card`, heading `#rep-spec-document-heading`). Shows the stored document JSON in `<pre class="code-block">`, then **conditionally** an edit form: the textarea renders only while the RepSpec is a *draft*, meaning zero `info_item_rep_specs` rows, active **or** deactivated. That count comes from `assignment_count()`, deliberately not `_load_active_assignments`, because a deactivated assignment still means a replication run happened under that document. A non-draft renders an `.alert--info` "frozen" notice with the assignment count instead of the form (#83; clone + migrate is #95).
+- Document card - the `rep_specs/_document_card.html` partial, extracted so the update-document action can swap it in place (root `#rep-spec-document-card`, heading `#rep-spec-document-heading`). Shows the stored document JSON in `<pre class="code-block">`, then **conditionally** an edit form: the textarea renders only while the RepSpec is a *draft* - zero `info_item_rep_specs` rows, active **or** deactivated. That count comes from `assignment_count()`, deliberately not `_load_active_assignments`: a deactivated assignment still means a replication run happened under that document. A non-draft gets an `.alert--info` "frozen" notice with the count instead of the form (#83; clone + migrate is #95).
 - Active assignments - `rep_specs/_assignments.html` (wrapper `#rep-spec-assignments`): count in heading; item name link, activated_at UTC, **Replication** (the `replication_state` macro over the latest `replication_commands` row for that assignment), read-only `public_url` with an `open_button`, and **Replicate now** + **Deactivate** actions. Deactivate is `hx-delete` to the RepSpec-scoped route below, targeting `#rep-spec-assignments` (`outerHTML`) so the row set, count, and empty-state re-render together. Assignments are manageable from either the RepSpec or the InfoItem screen (#80).
 
 **POST `/dashboard/rep-specs/{id}/document`** - replaces the `document` on a **draft** RepSpec (form field: `document`, a JSON object string). An **editor card** (SCREENS.md § **Editor cards**) against `#rep-spec-document-card`, error key `doc_error` - the same shape as the InfoSource source-specs editor. Whole-document replace, not merge (#83). Rejections: JSON parse failure, schema/sub-schema validation, an attempted `provider` change (immutable), and `RepSpecNotDraftError` - the last re-checked server-side, because a rendered editor goes stale if the spec acquires an assignment mid-edit.

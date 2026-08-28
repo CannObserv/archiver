@@ -1,9 +1,12 @@
 """Tests for /dashboard/ home page (Epic 7 + #49 redesign)."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, CONTENT_REVISIONS
+from fakeredis import aioredis as fakeredis_aio
 
 from src.api.deps import get_redis_client
 from src.api.main import app
@@ -300,3 +303,204 @@ async def test_home_shows_outbox_health_slot(client):
     r = await client.get("/dashboard/", headers=_HEADERS)
     assert r.status_code == 200
     assert "/dashboard/health/outbox" in r.text
+
+
+# --- consumer liveness + group lag (archiver#147) ---
+#
+# The badge #147 exists for. Before it, one env-var boolean covered three
+# states an operator cannot otherwise tell apart: gated off, gated on but dead,
+# and healthy. Each of the first two gets its own test here, because "green
+# while revisions are silently piling up" is the exact failure being closed.
+
+
+@pytest.fixture
+async def fake_redis():
+    r = fakeredis_aio.FakeRedis()
+    yield r
+    await r.aclose()
+
+
+def _live_task():
+    task = MagicMock()
+    task.done.return_value = False
+    return task
+
+
+def _dead_task(exc=RuntimeError("consumer crashed")):
+    task = MagicMock()
+    task.done.return_value = True
+    task.exception.return_value = exc
+    return task
+
+
+def _consumers(monkeypatch, redis, *, revisions, artifacts, gate="1"):
+    """Put the app in the state a given lifespan branch leaves behind."""
+    if gate is None:
+        monkeypatch.delenv("ARCHIVER_BUS_CONSUMER", raising=False)
+    else:
+        monkeypatch.setenv("ARCHIVER_BUS_CONSUMER", gate)
+    monkeypatch.setattr(app.state, "revisions_consumer_task", revisions, raising=False)
+    monkeypatch.setattr(app.state, "artifacts_consumer_task", artifacts, raising=False)
+    app.dependency_overrides[get_redis_client] = lambda: redis
+
+
+async def _provision_groups(redis):
+    """What a healthy consumer startup leaves on the broker."""
+    for topic, group in ((CONTENT_REVISIONS, "archiver.revisions"),):
+        await redis.xgroup_create(topic, group, id="0", mkstream=True)
+    await redis.xgroup_create(CONTENT_ARTIFACTS, "archiver.artifacts", id="0", mkstream=True)
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_not_configured_without_a_broker(client, monkeypatch):
+    _consumers(monkeypatch, None, revisions=None, artifacts=None, gate=None)
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--muted" in r.text
+    assert "not configured" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_muted_when_gated_off(client, monkeypatch, fake_redis):
+    """State 1 of the issue: a broker is configured but ARCHIVER_BUS_CONSUMER is
+    unset, so no consumer is running *by design* (the dev server's default).
+    Deliberately off is muted, not a warning - the same vocabulary the outbox
+    badge uses for a dormant publisher."""
+    _consumers(monkeypatch, fake_redis, revisions=None, artifacts=None, gate=None)
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--muted" in r.text
+    assert "gated off" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_danger_when_never_started(client, monkeypatch, fake_redis):
+    """Gated on but no task handle: the lifespan's init raised and logged, and
+    nothing has consumed since. Previously indistinguishable from healthy."""
+    _consumers(monkeypatch, fake_redis, revisions=None, artifacts=_live_task())
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "not started" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_danger_when_a_task_has_exited(client, monkeypatch, fake_redis):
+    """State 2 of the issue, the one that silently loses ground: the loop exited
+    while content.revisions keeps growing. The exit reason rides the title."""
+    _consumers(monkeypatch, fake_redis, revisions=_dead_task(), artifacts=_live_task())
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "stopped" in r.text
+    assert "consumer crashed" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_tolerates_a_cancelled_task(client, monkeypatch, fake_redis):
+    """``Task.exception()`` *raises* on a cancelled task rather than returning.
+    Shutdown cancels these tasks, so the badge must render the stop, not a 500."""
+    cancelled = MagicMock()
+    cancelled.done.return_value = True
+    cancelled.exception.side_effect = asyncio.CancelledError()
+    _consumers(monkeypatch, fake_redis, revisions=cancelled, artifacts=_live_task())
+
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "stopped" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_danger_on_a_nonempty_dlq(client, monkeypatch, fake_redis):
+    """Every DLQ entry is a frame the registry decided it could never use, so it
+    is operator-actionable even while both consumers run normally."""
+    await _provision_groups(fake_redis)
+    await fake_redis.xadd("content.revisions.dlq", {"k": "v"})
+    _consumers(monkeypatch, fake_redis, revisions=_live_task(), artifacts=_live_task())
+
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "1 dead-lettered" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_warns_on_group_lag(client, monkeypatch, fake_redis):
+    await _provision_groups(fake_redis)
+    await fake_redis.xadd(CONTENT_REVISIONS, {"k": "v"})
+    await fake_redis.xreadgroup("archiver.revisions", "c1", {CONTENT_REVISIONS: ">"}, count=10)
+    _consumers(monkeypatch, fake_redis, revisions=_live_task(), artifacts=_live_task())
+
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--warning" in r.text
+    assert "lagging" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_warns_when_a_group_is_missing(client, monkeypatch, fake_redis):
+    """A live task whose group does not exist consumed nothing and never will;
+    rendering the absent group as a healthy pending=0 is the bug, not a nicety."""
+    _consumers(monkeypatch, fake_redis, revisions=_live_task(), artifacts=_live_task())
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--warning" in r.text
+    assert "group missing" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_warns_when_the_broker_cannot_be_probed(client, monkeypatch):
+    """Liveness comes from app.state and stays true, but the lag numbers are
+    unavailable - which must not read as measured zeroes."""
+
+    class DownRedis:
+        def __getattr__(self, name):
+            async def _raise(*a, **kw):
+                raise ConnectionError("refused")
+
+            return _raise
+
+    _consumers(monkeypatch, DownRedis(), revisions=_live_task(), artifacts=_live_task())
+
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--warning" in r.text
+    assert "lag unknown" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_ok_when_running_and_drained(client, monkeypatch, fake_redis):
+    await _provision_groups(fake_redis)
+    _consumers(monkeypatch, fake_redis, revisions=_live_task(), artifacts=_live_task())
+
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--success" in r.text
+    assert "running" in r.text
+    assert "pending=0" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_unauthenticated_redirects(client):
+    r = await client.get("/dashboard/health/consumers", follow_redirects=False)
+    assert r.status_code == 307
+
+
+@pytest.mark.asyncio
+async def test_home_shows_consumer_health_slot(client):
+    r = await client.get("/dashboard/", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "/dashboard/health/consumers" in r.text
+
+
+@pytest.mark.asyncio
+async def test_home_redis_badge_always_loads_live(client, monkeypatch):
+    """The strip no longer branches on ``ARCHIVER_REDIS_URL`` to decide what to
+    render - reporting configuration as if it were state is the whole of #147.
+    Every badge is now a live route, and "not configured" is that route's
+    answer rather than a template-side guess."""
+    monkeypatch.delenv("ARCHIVER_REDIS_URL", raising=False)
+    r = await client.get("/dashboard/", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "/dashboard/health/redis" in r.text

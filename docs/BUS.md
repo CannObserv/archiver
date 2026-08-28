@@ -53,7 +53,13 @@ re-run from outside the publisher process (the drain-loop stats line above
 stops exactly when the publisher does). WARN-only journald lines from logger
 `src.core.bus_health`; full check list and thresholds in `deploy/README.md`.
 `bus_health` is also the shared probe module the archiver#147 dashboard panel
-renders from.
+renders from: `collect_group_lag()` is the per-request half, narrowed to the
+archiver-owned groups' `XPENDING` and `*.dlq` depths so a page load costs four
+commands rather than the timer's full inventory sweep. Two contracts differ
+there, both because the caller is a request handler: a broker error propagates
+(the panel must badge "could not measure" apart from "measured zero"), and the
+two-tick pending rule is absent (it debounces a periodic alarm; a dashboard
+shows one instant and the operator can refresh).
 
 **`info.registry` - the registry announcement channel (archiver#141).** A second
 producer surface, *config/state* kind rather than fact: per-InfoItem LWW state,
