@@ -81,3 +81,15 @@ AGENTS.md :: rename :: ## Content-acquisition via co-core (archiver#72 Phase 1)
 # UI.md that self-link read as pointing elsewhere, so it was retargeted to the
 # intra-doc section reference.
 docs/UI.md :: retarget :: [UI.md](UI.md) § Failures are surfaced, not swallowed.
+
+# archiver#147 CR finding 7. The Conventions section carried four separate
+# trailing pointers at docs/CONVENTIONS.md; they are one pointer at the section
+# head now, which names every target the four named between them (regex scope,
+# PLC0415 exemptions, the journald contract, the error envelope's kind
+# vocabulary). Each line below is that consolidation, not a dropped fact - the
+# information moved up the section rather than out of the surface.
+AGENTS.md :: retarget :: What the regex covers and what it deliberately does not:
+AGENTS.md :: retarget :: patterns), SCREENS.md (detail screens), STYLE.md (styling). Failing to is a CR blocker; per-trigger detail in
+AGENTS.md :: retarget :: a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.md)).
+AGENTS.md :: retarget :: (archiver#97). Scope and exemptions: [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
+AGENTS.md :: retarget :: `except X as e:`. Shape, worked examples, and the `kind` vocabulary:

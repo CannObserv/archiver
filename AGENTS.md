@@ -154,6 +154,11 @@ Rules holding across all of it:
 
 ## Conventions
 
+Per-rule detail throughout this section - what the changelog regex covers and
+deliberately does not, the `PLC0415` scope and exemptions, the journald
+contract, and the error envelope's worked examples and `kind` vocabulary:
+[docs/CONVENTIONS.md](docs/CONVENTIONS.md).
+
 **Commit Messages:**
 ```
 #<number> [type]: <description>      # with issue
@@ -170,13 +175,11 @@ with the same regex:
 ^(alembic/versions/|src/api/routes/|src/api/schemas/|clients/python/)
 ```
 
-What the regex covers and what it deliberately does not:
-[docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 
 **Dashboard living docs:** update the doc a change touches in the same commit -
 PAGES.md (templates, routes), COMPONENTS.md (dashboard JS), UI.md (shared
-patterns), SCREENS.md (detail screens), STYLE.md (styling). Failing to is a CR blocker; per-trigger detail in
-[docs/CONVENTIONS.md](docs/CONVENTIONS.md).
+patterns), SCREENS.md (detail screens), STYLE.md (styling). Failing to is a CR
+blocker.
 
 **Logging:**
 ```python
@@ -186,13 +189,13 @@ logger = get_logger(__name__)
 Entry points only: call `configure_logging()` once.
 
 `ExecStartPre` steps in `deploy/archiver.service` write **plain text**, not JSON -
-a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.md)).
+a journald consumer must tolerate that.
 
 **Date & Time:** All UTC. ISO 8601: `YYYY-MM-DDTHH:MM:SS.ffffffZ` (timestamps), `YYYY-MM-DD` (dates).
 
 **General:**
 - No inline module imports; all at file top. Ruff `PLC0415` enforces this in CI
-  (archiver#97). Scope and exemptions: [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
+  (archiver#97).
 - Docstrings for public modules, classes, functions
 - Test structure mirrors source (`src/foo.py` → `tests/test_foo.py`)
 - Explicit imports only
@@ -202,8 +205,7 @@ a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.m
 **Error envelope:** Every non-2xx **API** response uses one shape
 (`ErrorEnvelope`, `src/api/errors.py`); `/dashboard` renders HTML instead. Routes raise via `raise_envelope(...)` or `raise_422(...)`,
 **never `HTTPException` directly**; always pass `source_exc=e` from inside
-`except X as e:`. Shape, worked examples, and the `kind` vocabulary:
-[docs/CONVENTIONS.md](docs/CONVENTIONS.md).
+`except X as e:`.
 
 ## Vocabulary
 
