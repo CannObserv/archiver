@@ -95,3 +95,10 @@ docs/UI.md :: - [PAGES.md](PAGES.md) - the per-page route inventory: what each s
 docs/UI.md :: > in the same commit - usually PAGES.md or COMPONENTS.md, and this file when it
 docs/UI.md :: The gate is universal, so the route entries in [PAGES.md](PAGES.md) do not repeat
 docs/UI.md :: `/dashboard` path; [PAGES.md](PAGES.md) keeps the pointer entry.
+
+# archiver#147 curation run. REGISTER.md's own header pointer back at PAGES.md,
+# the same shape already acknowledged for INFO_ITEM_DETAIL.md:4. It points at
+# content that did NOT move - the register route entries stayed in PAGES.md,
+# and only the wizard's chip/control anatomy came here. Saying so is the split's
+# navigability, not a stale reference.
+docs/REGISTER.md :: Needed only when working on that screen; [PAGES.md](PAGES.md) § **Registration
