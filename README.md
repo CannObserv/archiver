@@ -76,4 +76,6 @@ Set `ARCHIVER_REDIS_URL=redis://localhost:6379/0` to enable the outbox publisher
 
 Broker health (memory, stream lengths and ages, consumer-group pending, DLQ depths, outbox backlog, disk) is watched by the `archiver-bus-health` timer every 10 minutes, WARN-only to journald - `sudo journalctl -u archiver-bus-health -f`. See [deploy/README.md](deploy/README.md).
 
+The dashboard's **Consumers** badge (archiver#147) renders the same probe module per request: consumer-task liveness plus `XPENDING` and DLQ depth for the archiver-owned groups. It distinguishes gated-off from gated-on-but-dead, which a `ARCHIVER_REDIS_URL` boolean could not - see [docs/PAGES.md](docs/PAGES.md).
+
 The `content.revisions` consumer needs `ARCHIVER_BUS_CONSUMER=1` **as well**, and only `deploy/archiver.service` sets it. Publishing from a stray process is merely noisy; consuming *removes* messages from the `archiver.revisions` group, so a Redis URL alone is not authority to join it. Never put that variable in an env file - see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The `info.watch-status` tail is **not** behind that gate and needs only the Redis URL: it is groupless, so it removes nothing from any pending list and a stray tail is harmless.
