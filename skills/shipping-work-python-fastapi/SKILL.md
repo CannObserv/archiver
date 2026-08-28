@@ -4,9 +4,10 @@ description: "For the archiver service (Python/FastAPI on uv + ruff + pytest): f
 compatibility: Designed for the archiver service. Sources `/etc/archiver/.env` and `$PROJECT_ROOT/.env` before pre-ship pytest; otherwise delegates to the upstream shipping-work-python-fastapi variant.
 metadata:
   author: gregoryfoster
-  version: "1.2-archiver"
+  version: "1.4"
   triggers: ship it, push GH, close GH, wrap up
   overrides: gregoryfoster-skills/shipping-work-python-fastapi
+  synced-from: "gregoryfoster-skills 1.4 (bc0b907)"
   override-reason: "Sources /etc/archiver/.env and $PROJECT_ROOT/.env before delegating to upstream pre-ship; fixes broken `export $(cat … | xargs)` env-loading pattern via `set -a; . <file>; set +a`."
 ---
 
@@ -47,41 +48,59 @@ Determine which GitHub issue(s) to close (priority order):
 ### Step 1 — Run pre-ship checks
 
 ```bash
-bash skills/shipping-work-python-fastapi/scripts/pre-ship.sh
+N=shipping-work-python-fastapi S=pre-ship.sh SD=
+{ [ ! -x .skills/doctor.sh ] || bash .skills/doctor.sh; } || exit 1
+for d in scripts ".claude/skills/$N/scripts" "$HOME/.claude/skills/$N/scripts"; do
+  [ -f "$d/$S" ] && { SD="$d"; break; }
+done
+echo "SKILL_SCRIPTS=${SD:?not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/}"
+bash "${SD:?not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/}/$S"
 ```
+
+The first line is a preflight: when `.skills/doctor.sh` is present, it heals any dangling vendor symlinks (or reports an actionable error); when absent, the group is a no-op. `|| exit 1` skips `pre-ship.sh` if the doctor reports unrecoverable state so the original "No such file or directory" noise doesn't drown out the doctor's message. The loop then resolves the script against the skill directory rather than the cwd — a bare `scripts/` path resolves relative to the project root, where the script does not exist ([#63](https://github.com/gregoryfoster/skills/issues/63)). A project-local `scripts/` copy still wins if one exists; `${SD:?…}` fails loudly with the searched paths when no candidate resolves. Resolution runs *after* the doctor so a freshly healed symlink chain is visible to it.
+
+Step 1 prints `SKILL_SCRIPTS=<path>`. In every later step `<SKILL_SCRIPTS>` is a **placeholder** for that literal path — substitute the value printed here (same convention as `init-project-fastapi` Phase 0). Each Bash invocation runs in a fresh shell, so the shell variable itself is not inherited.
 
 ```
 NO CONTINUATION IF CHECKS FAIL
 ```
 
-The archiver wrapper sources `/etc/archiver/.env` (system secrets) and `$PROJECT_ROOT/.env` (repo-local overrides) before delegating to the upstream variant's pre-ship.sh. The upstream script handles lint (`ruff check`), the per-SHA stamp (auto-derived as `archiver-tests-clean-<sha>`), and pytest with `-m "not integration"` (skips `tests/integration/` flows; CI runs them separately).
+The archiver wrapper (`skills/shipping-work-python-fastapi/scripts/pre-ship.sh`, the one
+non-symlinked script here) sources `/etc/archiver/.env` (system secrets) and
+`$PROJECT_ROOT/.env` (repo-local overrides) before delegating to the upstream variant's
+pre-ship.sh. The upstream script handles lint (`ruff check`), the per-SHA stamp
+(auto-derived as `archiver-tests-clean-<sha>`), and pytest with `-m "not integration"`
+(skips `tests/integration/` flows; CI runs them separately).
 
 If checks fail: stop, report the failure, fix before proceeding. Do not push failing code under any circumstances.
 
 ### Step 1.5 — Documentation spot-check
 
 ```bash
-bash skills/shipping-work-python-fastapi/scripts/doc-check.sh
+bash "<SKILL_SCRIPTS>/doc-check.sh"
 ```
 
-Lists files changed on this branch vs the upstream default branch and flags any that match the project's `SENSITIVE_PATHS` array (AGENTS.md, README.md, pyproject.toml, uv.lock, schema.sql, route/model/core dirs, `.env.example`). When sensitive paths change, the matching doc sections may need updates too.
+`doc-check.sh` lists files changed on this branch vs the upstream default branch and flags any that match the project's `SENSITIVE_PATHS` array (AGENTS.md, README.md, CHANGELOG.md, pyproject.toml, uv.lock, schema.sql, `alembic/versions/`, `deploy/`, route/model/core dirs, `.env.example`). When sensitive paths change, the matching doc sections may need updates too.
 
 If the script exits 1: review the listed files, decide whether each requires a doc update, and either commit the docs now or note them as deliberate skips. If the script exits 2: an infra/tooling problem prevented the doc check from running — investigate the underlying error rather than proceeding.
 
 ### Step 2 — Ensure a clean working tree
 
 ```bash
-bash skills/shipping-work-python-fastapi/scripts/check-status.sh
+bash "<SKILL_SCRIPTS>/check-status.sh"
 ```
 
-If uncommitted changes exist, commit them using **archiver's bracket-less convention** (note: upstream variant inlines `[type]` brackets as a default — archiver does not):
+If uncommitted changes exist, commit them using **archiver's bracket-less convention**
+(note: the upstream variant inlines `[type]` brackets as a default — archiver does not):
 
 ```
 #<number> <type>: <description>       # with GH issue
 <type>: <description>                 # without GH issue
 ```
 
-Common `<type>` values: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`. Multi-issue: `#19, #20 <type>: <description>`. Scope parens are tolerated (`#24 feat(events): ...`) but bare types are preferred.
+Common `<type>` values: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`. Multi-issue:
+`#19, #20 <type>: <description>`. Scope parens are tolerated (`#24 feat(events): ...`)
+but bare types are preferred.
 
 ### Step 2.5 — Worktree-aware merge (if applicable)
 
@@ -101,7 +120,7 @@ If Step 2.5 did not apply (single checkout) and you're on a feature branch, merg
 ### Step 4 — Push
 
 ```bash
-bash skills/shipping-work-python-fastapi/scripts/push.sh
+bash "<SKILL_SCRIPTS>/push.sh"
 ```
 
 Confirm push succeeded before proceeding.
@@ -111,7 +130,7 @@ Confirm push succeeded before proceeding.
 For each issue in scope:
 
 ```bash
-bash skills/shipping-work-python-fastapi/scripts/comment-issue.sh <number> "<summary>"
+bash "<SKILL_SCRIPTS>/comment-issue.sh" <number> "<summary>"
 ```
 
 Comment must include:
@@ -129,7 +148,7 @@ Before closing any issue, verify the original requirements against what was impl
 </HARD-GATE>
 
 ```bash
-bash skills/shipping-work-python-fastapi/scripts/close-issue.sh <number>
+bash "<SKILL_SCRIPTS>/close-issue.sh" <number>
 ```
 
 ### Step 7 — Report
@@ -163,3 +182,7 @@ If nothing applies, omit this step entirely.
 - AGENTS.md is authoritative for commit conventions — read it before committing if unsure
 - The archiver wrapper sources `/etc/archiver/.env` and `$PROJECT_ROOT/.env` with `set -a; . <file>; set +a` (NOT the broken `export $(cat | xargs)` pattern that fails on whitespace/quotes/`=`)
 - The upstream `pre-ship.sh` auto-derives its per-SHA stamp prefix from `$(basename "$(git rev-parse --show-toplevel)")` → `archiver-tests-clean-<sha>` — no hardcoded literal in the wrapper
+
+**Self-budget:** held to a **6,000-token ratchet (estimate and exact)** by
+`tests/structural/test_skill_self_budget.py` — both readings must clear it, so
+no choice of measurement can loosen it.
