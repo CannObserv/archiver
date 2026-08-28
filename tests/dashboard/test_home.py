@@ -602,3 +602,58 @@ def test_consumer_badge_covers_every_archiver_owned_group():
     assert {topic for _name, _attr, topic in index_routes._CONSUMERS} == {
         check.topic for check in STREAM_CHECKS if check.pending_group is not None
     }
+
+
+# --- CR round 2 on #147 ---
+
+
+@pytest.mark.asyncio
+async def test_health_outbox_init_failure_is_not_dormant(client, session, monkeypatch):
+    """Finding 10. The outbox badge collapsed both no-client causes into muted
+    "not draining". Publisher-init-raised is exactly when a stale backlog *is*
+    ill health, which is the opposite of what muted tells the operator."""
+    monkeypatch.setenv("ARCHIVER_REDIS_URL", "redis://localhost:6379/0")
+    app.dependency_overrides[get_redis_client] = lambda: None
+
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--danger" in r.text
+    assert "init failed" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_outbox_dormant_stays_muted_without_a_url(client, session, monkeypatch):
+    """The other side of finding 10: no URL is the dev server's bus-dormant
+    default, and a stale backlog there is the configured-off state."""
+    monkeypatch.delenv("ARCHIVER_REDIS_URL", raising=False)
+    app.dependency_overrides[get_redis_client] = lambda: None
+
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert r.status_code == 200
+    assert "badge--muted" in r.text
+    assert "not draining" in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_timeout_title_names_the_bound(client, monkeypatch):
+    """Finding 11. str(TimeoutError()) is empty, so the title fell back to
+    repr() and read "TimeoutError()" - no duration, no cause. A wedged broker
+    and a refused connection render the same badge, so the title is the only
+    place they can be told apart."""
+
+    class HungRedis:
+        def __getattr__(self, name):
+            async def _hang(*a, **kw):
+                await asyncio.sleep(30)
+
+            return _hang
+
+    monkeypatch.setattr(index_routes, "LAG_PROBE_TIMEOUT_SECONDS", 0.05)
+    _consumers(monkeypatch, HungRedis(), revisions=_live_task(), artifacts=_live_task())
+
+    r = await asyncio.wait_for(
+        client.get("/dashboard/health/consumers", headers=_HEADERS), timeout=5
+    )
+    assert "lag unknown" in r.text
+    assert "exceeded 0.05s" in r.text
+    assert "TimeoutError()" not in r.text

@@ -62,6 +62,12 @@ def _badge(variant: str, text: str, *, detail: str = "") -> HTMLResponse:
     return HTMLResponse(f'<span class="badge badge--{variant}"{title}>{text}</span>')
 
 
+_INIT_FAILED_DETAIL = (
+    "ARCHIVER_REDIS_URL is set but no client exists - bus init raised "
+    "at startup; see the lifespan's logged exception"
+)
+
+
 def _no_client_badge() -> HTMLResponse:
     """The badge for ``app.state.redis_client is None``, split by *why*.
 
@@ -77,10 +83,7 @@ def _no_client_badge() -> HTMLResponse:
         return _badge(
             "danger",
             "init failed",
-            detail=html_escape(
-                "ARCHIVER_REDIS_URL is set but no client exists - bus init raised "
-                "at startup; see the lifespan's logged exception"
-            ),
+            detail=html_escape(_INIT_FAILED_DETAIL),
         )
     return _badge("muted", "not configured")
 
@@ -112,16 +115,25 @@ async def dashboard_health_outbox(
 ) -> HTMLResponse:
     """HTMX partial - outbox publisher health badge (archiver#112).
 
-    muted "not draining": no Redis client, so the publisher is not running -
-    rows cannot drain and a stale backlog is the configured-off state, not ill
-    health (the dev server is bus-dormant by design; CR round 1, finding 1).
+    muted "not draining": no Redis client *and* no ARCHIVER_REDIS_URL, so the
+    publisher is not running - rows cannot drain and a stale backlog is the
+    configured-off state, not ill health (the dev server is bus-dormant by
+    design; #112 CR round 1, finding 1). danger "not draining (init failed)"
+    when the URL *is* set: bus init raised, which is exactly when a stale
+    backlog is ill health rather than dormancy (#147 CR round 2, finding 10).
     danger: any dead-lettered (poison) row - needs an operator.
     warning: oldest live unpublished row older than the backlog threshold -
     the drain is not keeping up or Redis has been down a while.
     success otherwise; the title carries the raw numbers in every drain state.
     """
     if redis is None:
-        return HTMLResponse('<span class="badge badge--muted">not draining</span>')
+        if os.environ.get("ARCHIVER_REDIS_URL", "").strip():
+            return _badge(
+                "danger",
+                "not draining (init failed)",
+                detail=html_escape(_INIT_FAILED_DETAIL),
+            )
+        return _badge("muted", "not draining")
     try:
         stats = await collect_outbox_stats(session)
     except Exception as exc:
@@ -157,7 +169,7 @@ _CONSUMERS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-class TaskStatus(StrEnum):
+class _TaskStatus(StrEnum):
     """What a consumer task handle says about the loop behind it.
 
     Split from the human-readable reason so the ladder below branches on the
@@ -171,7 +183,7 @@ class TaskStatus(StrEnum):
     STOPPED = "stopped"
 
 
-def _task_state(task: "asyncio.Task | None") -> tuple[TaskStatus, str]:
+def _task_state(task: "asyncio.Task | None") -> tuple[_TaskStatus, str]:
     """Liveness of one consumer task, straight off ``app.state``.
 
     No broker round-trip: the handle is already there, and it is the only
@@ -179,17 +191,17 @@ def _task_state(task: "asyncio.Task | None") -> tuple[TaskStatus, str]:
     the pair an environment variable cannot tell apart (archiver#147).
     """
     if task is None:
-        return TaskStatus.NOT_STARTED, "not started"
+        return _TaskStatus.NOT_STARTED, "not started"
     if not task.done():
-        return TaskStatus.RUNNING, "running"
+        return _TaskStatus.RUNNING, "running"
     try:
         exc = task.exception()
     except asyncio.CancelledError:
         # Task.exception() *raises* on a cancelled task rather than returning.
         # Shutdown cancels these, so this is a normal path, not an error one.
-        return TaskStatus.STOPPED, "stopped (cancelled)"
+        return _TaskStatus.STOPPED, "stopped (cancelled)"
     reason = f"stopped ({exc!r})" if exc is not None else "stopped (clean exit)"
-    return TaskStatus.STOPPED, reason
+    return _TaskStatus.STOPPED, reason
 
 
 @router.get("/health/consumers", response_class=HTMLResponse)
@@ -235,12 +247,21 @@ async def dashboard_health_consumers(
         # written for exactly that broker (CR round 1, finding 1).
         async with asyncio.timeout(LAG_PROBE_TIMEOUT_SECONDS):
             lags = {lag.topic: lag for lag in await collect_group_lag(redis)}
-    except (RedisError, ConnectionError, OSError, TimeoutError) as exc:
-        # The same tuple bus_health's own collector narrows to, plus the
-        # timeout above. Deliberately not `except Exception`: a TypeError out
-        # of the probe is a bug here, and rendering it as "lag unknown" reads
-        # as a broker condition and sends the operator to the wrong system
-        # (CR round 1, finding 2).
+    except TimeoutError:
+        # str(TimeoutError()) is empty, so a generic handler falls through to
+        # repr() and the title reads "TimeoutError()" - no duration, no cause.
+        # A wedged broker and a refused connection render the same badge, so
+        # the title is the only place they can be told apart (CR round 2,
+        # finding 11).
+        lag_error = f"probe exceeded {LAG_PROBE_TIMEOUT_SECONDS}s"
+        logger.warning("Consumer lag probe timed out", extra={"error": lag_error})
+    except (RedisError, OSError) as exc:
+        # The same tuple bus_health's own collector narrows to. Deliberately
+        # not `except Exception`: a TypeError out of the probe is a bug here,
+        # and rendering it as "lag unknown" reads as a broker condition and
+        # sends the operator to the wrong system (CR round 1, finding 2).
+        # builtins.ConnectionError is an OSError subclass, so naming it too
+        # only implied a distinction that does not exist (round 2, finding 12).
         lag_error = str(exc) or repr(exc)
         logger.warning("Consumer lag probe failed", extra={"error": lag_error})
 
@@ -261,9 +282,9 @@ async def dashboard_health_consumers(
     # its symptom. Ordering the other way would report the symptom and bury
     # the thing an operator has to act on.
     statuses = {status for status, _reason in states.values()}
-    if TaskStatus.NOT_STARTED in statuses:
+    if _TaskStatus.NOT_STARTED in statuses:
         return _badge("danger", "not started", detail=detail)
-    if TaskStatus.STOPPED in statuses:
+    if _TaskStatus.STOPPED in statuses:
         return _badge("danger", "stopped", detail=detail)
     if lag_error:
         # The consumers are demonstrably alive, but the depths are unknown -

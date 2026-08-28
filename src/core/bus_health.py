@@ -484,7 +484,7 @@ async def collect_broker_findings(
             findings.extend(stream_findings)
             pending.update(stream_pending)
         findings.extend(await _collect_dlqs(client))
-    except (RedisError, ConnectionError, OSError) as e:
+    except (RedisError, OSError) as e:  # ConnectionError is an OSError subclass
         return (
             [
                 Finding(
