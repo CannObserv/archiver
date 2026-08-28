@@ -20,16 +20,6 @@ docs/UI.md :: retarget :: patterns, and the conventions every detail screen foll
 docs/UI.md :: retarget :: The other two parts of this reference, under the same living-doc rule:
 docs/UI.md :: retarget :: **The dashboard's shared mechanics: URL map, proxy-header auth, HTMX swap
 
-# Same change, policy-file side: the Detail Docs index described docs/UI.md as
-# carrying the detail-screen conventions, which it now indexes instead.
-AGENTS.md :: retarget :: URL map, auth, HTMX, detail-screen conventions
-
-# Same change, source side: two policy-file lines pointed at docs/UI.md for
-# conventions that moved to docs/SCREENS.md in this run - the clamp rule
-# and the dashboard living-docs list, which now names the new doc as a target.
-AGENTS.md :: retarget :: deliberate, see [docs/UI.md](docs/UI.md).
-AGENTS.md :: retarget :: patterns), STYLE.md (styling). Failing to is a CR blocker
-
 # archiver#181 CR round 2, finding 9: three PAGES.md detail entries re-derived
 # the canonical `.entity-card` header anatomy - eyebrow, the `<h1
 # class="entity-card__title" id="…" tabindex="-1">`, the focus-target reason -
@@ -53,28 +43,6 @@ docs/STYLE.md :: rename :: ### HTMX inline form error pattern
 # Same change: the pointer named docs/STYLE.md for a section this run moved to
 # docs/UI.md, so it is retargeted in place rather than relocated.
 docs/COMPONENTS.md :: retarget :: the reason it exists is `docs/STYLE.md` § **JSON data island pattern**
-
-# archiver#185 curation: the "no outbound HTTP call to Watcher" rule was stated
-# three times. Project Overview P2 is the canonical one - it carries the rule,
-# archiver#142, and the reason (the #137 decoupling epic) - so the two weaker
-# restatements go. P1 kept the cross-repo ref P2 lacks; the Architecture bullet
-# kept every clause that is about `clients/python/` rather than about Watcher.
-AGENTS.md :: duplicate :: Central registry + authoring service for the Cannabis Observer information layer.
-AGENTS.md :: duplicate :: `generated/`. It was two until archiver#142 retired the Watcher client along
-AGENTS.md :: duplicate :: with every outbound HTTP call to Watcher.
-
-# Same run: the Common Commands wheelhouse pair was character-identical to the
-# block under Environment & Tooling, which its own comment already points at.
-# The sync_wheelhouse line still matches there verbatim; this one differs only
-# by that block's trailing comment naming the credential.
-AGENTS.md :: duplicate :: set -a; . /etc/archiver/.env; set +a
-
-# Same run, Phase 6.5: `## Content-acquisition via co-core (archiver#72 Phase 1)`
-# carried an issue number into a permanent anchor slug - the class 3b seam
-# check-seams.sh flags - and archiver#72 closed 2026-08-06, so "Phase 1" labelled
-# a finished epic. Nothing anchors the old slug (docs/ARCHITECTURE.md mentions
-# the topic in prose, not as a link).
-AGENTS.md :: rename :: ## Content-acquisition via co-core (archiver#72 Phase 1)
 
 # The Error-pages body moved from docs/PAGES.md to docs/UI.md (archiver#112 CR
 # round 2, finding 6). Its closing pointer named UI.md as an external doc; inside
