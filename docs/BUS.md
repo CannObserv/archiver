@@ -45,6 +45,29 @@ stays visible past its one-time dead-letter ERROR. Deliberately **not** on
 `/health`: that route is unauthenticated and DB-free (pure liveness), and these
 numbers are neither.
 
+**Published-row retention (archiver#189)** - `src/core/changes/outbox_prune.py`
+deletes rows whose `published_at` is older than `ARCHIVER_OUTBOX_RETENTION_DAYS`
+(default 30), in bounded batches, on the drain loop's own cadence
+(`PRUNE_INTERVAL_SECONDS`, 3600s; first iteration immediately). Once a row is
+published the outbox's delivery guarantee is discharged and the row is only
+forensic - `bus_message_id` correlating it to a stream entry - and the window is
+sized against that: `info.changes` is itself capped, so a much longer retention
+correlates to entries that have been trimmed away.
+
+Two states are never pruned. **Live** rows are the drain's own queue, where an
+ancient row is the backlog the #112 stats exist to surface, not garbage.
+**Dead-lettered** rows are the archiver#107 post-mortem record and the #112
+danger signal; they are also, by that exemption, the one set on this table with
+no retention at all. `ix_changes_outbox_published` (partial, `published_at IS
+NOT NULL`) backs the pass - both other partial indexes exclude published rows.
+
+It rides the drain loop rather than a systemd timer deliberately: a timer would
+need `ARCHIVER_ALLOW_PRODUCTION_DB`, and a third sanctioned holder of a
+write-capable production-DB opt-in is too high a price for deleting delivered
+rows. There is no coverage hole - a published row can only exist if the drain
+ran. One INFO line ("Outbox pruned") per pass that actually deleted something;
+silence is the healthy steady state.
+
 **Broker-side observability (archiver#130)** - the `archiver-bus-health`
 systemd timer runs `src/core/bus_health.py` every 10 minutes: memory headroom,
 per-stream `XLEN` and last-entry age, two-tick `XPENDING` on the

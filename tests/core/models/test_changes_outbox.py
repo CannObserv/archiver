@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from src.core.models import ChangesOutboxRow
 
@@ -56,3 +56,22 @@ async def test_unpublished_query_excludes_published(session):
     assert len(rows) == 2
     assert rows[0].id == a.id
     assert rows[1].id == c.id
+
+
+@pytest.mark.asyncio
+async def test_published_partial_index_backs_the_pruner(session):
+    """The archiver#189 retention pass selects on ``published_at < cutoff``.
+    Without a partial index over ``published_at IS NOT NULL`` that degrades to a
+    seq scan of exactly the rows the pruner exists to bound - and the two
+    pre-existing partial indexes both exclude published rows, so neither helps."""
+    result = await session.execute(
+        text(
+            "SELECT indexname, indexdef FROM pg_indexes "
+            "WHERE schemaname = 'information' AND tablename = 'changes_outbox'"
+        )
+    )
+    indexes = {row[0]: row[1] for row in result.all()}
+    assert "ix_changes_outbox_published" in indexes, "missing index ix_changes_outbox_published"
+    definition = indexes["ix_changes_outbox_published"].lower()
+    assert "published_at" in definition
+    assert "where (published_at is not null)" in definition

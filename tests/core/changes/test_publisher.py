@@ -1420,3 +1420,112 @@ async def test_run_stats_respects_interval_between_iterations(
 
     assert iterations == 3
     assert len(stats_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Periodic outbox prune (archiver#189)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_prunes_on_cadence(session_factory, publisher, monkeypatch):
+    """With a retention window configured, the loop runs the retention pass
+    (first iteration immediately, then on cadence) - the third periodic
+    side-job riding the drain, after the XTRIM and the stats line."""
+    prune_calls: list[tuple[object, int | None]] = []
+
+    async def _fake_prune(factory, *, retention_days):
+        prune_calls.append((factory, retention_days))
+
+    monkeypatch.setattr(publisher_mod, "prune_outbox", _fake_prune)
+
+    stop = asyncio.Event()
+
+    async def _drain(**_kwargs):
+        stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+        stats_interval=None,
+        retention_days=30,
+        prune_interval=0.0,
+    )
+
+    assert prune_calls == [(session_factory, 30)]
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_prune_without_retention(session_factory, publisher, monkeypatch):
+    """retention_days=None (the disabled knob, and the default) prunes nothing."""
+    prune_calls: list[object] = []
+
+    async def _fake_prune(factory, *, retention_days):
+        prune_calls.append(factory)
+
+    monkeypatch.setattr(publisher_mod, "prune_outbox", _fake_prune)
+
+    stop = asyncio.Event()
+
+    async def _drain(**_kwargs):
+        stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+        stats_interval=None,
+    )
+
+    assert prune_calls == []
+
+
+@pytest.mark.asyncio
+async def test_run_prune_respects_interval_between_iterations(
+    session_factory, publisher, monkeypatch
+):
+    """A long interval prunes once (the immediate first pass), not per-iteration -
+    the pass is housekeeping, not part of the drain's hot path."""
+    prune_calls: list[object] = []
+
+    async def _fake_prune(factory, *, retention_days):
+        prune_calls.append(factory)
+
+    monkeypatch.setattr(publisher_mod, "prune_outbox", _fake_prune)
+
+    stop = asyncio.Event()
+    iterations = 0
+
+    async def _drain(**_kwargs):
+        nonlocal iterations
+        iterations += 1
+        if iterations >= 3:
+            stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+        stats_interval=None,
+        retention_days=30,
+        prune_interval=3600.0,
+    )
+
+    assert iterations == 3
+    assert len(prune_calls) == 1

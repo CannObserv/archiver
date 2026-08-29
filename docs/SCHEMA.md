@@ -67,8 +67,8 @@ see the never-rename rule in `AGENTS.md`.
 
   `announced_at TIMESTAMPTZ NULL` (archiver#151) — when the generation last bumped, stamped in
   the same atomic UPDATE. The drift detector's clock: "applied lags announced by 40m" needs to
-  know when the announced generation went out, and `changes_outbox.published_at` is prunable
-  under the #141 retention split, so the fact lives here. `NULL` until the first bump (including
+  know when the announced generation went out, and `changes_outbox.published_at` is pruned on a
+  retention window (archiver#189), so the fact lives here. `NULL` until the first bump (including
   rows that predate the column); the panel then shows drift without an age.
 
   **Deletion — use `DELETE /info-items/{id}`, never psql** (archiver#141). An InfoItem's exit
@@ -229,6 +229,14 @@ see the never-rename rule in `AGENTS.md`.
     written for *every* active assignment whenever a revision arrives with no blob, so counting
     them would let one such revision silently suppress the URL of a replication still in flight.
 - **`ChangesOutboxRow`** (`changes_outbox`) — pending change-bus event awaiting publication.
+  - **Published rows are pruned** (archiver#189): the drain loop deletes rows whose `published_at`
+    predates `ARCHIVER_OUTBOX_RETENTION_DAYS` (default 30). Once published, the outbox's delivery
+    guarantee is discharged and the row is only forensic. Nothing in the service reads one - which
+    is why `info_items.announced_at` exists rather than deriving the announce time from
+    `published_at`.
+  - **Live and dead-lettered rows are never pruned.** A live row is the drain's queue; a
+    dead-lettered row is the archiver#107 post-mortem record, and therefore the only set on this
+    table that still grows without bound. See [BUS.md](BUS.md).
 - **`WatchStatus`** (`watch_status`) — local LWW cache of `info.watch-status`, one row per
   InfoItem (archiver#151). What the watched-item panel renders from, with zero SDK calls. Every
   value is **reported by Watcher, not locally verified**, and coalesced (timestamps under-report

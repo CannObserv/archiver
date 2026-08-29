@@ -18,6 +18,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.16.5 (2026-08-29)
+
+[service] **`changes_outbox` retention: published rows are pruned** (archiver#189). One migration; no HTTP API surface change; no SDK change.
+
+`ix_changes_outbox_published` - a partial index over `published_at IS NOT NULL` - backs a new retention pass in `src/core/changes/outbox_prune.py`: published rows older than `ARCHIVER_OUTBOX_RETENTION_DAYS` (default 30, `<=0` disables, invalid falls back) are deleted in bounded batches on the drain loop's own hourly cadence. Both pre-existing partial indexes on the table exclude published rows, so without this one the prune would seq-scan exactly the set it exists to bound. The table previously grew monotonically: once published, the outbox's delivery guarantee is discharged and the row is only forensic (`bus_message_id` correlation), and the #112 stats deliberately count only live and dead-lettered rows, so a multi-GB table of delivered events looked perfectly healthy.
+
+Live rows (the drain's own queue - an ancient one is a backlog, not garbage) and dead-lettered rows (the archiver#107 post-mortem record) are never pruned. The pass rides the publisher rather than a systemd timer: a timer would need `ARCHIVER_ALLOW_PRODUCTION_DB`, and a third sanctioned holder of a write-capable production-DB opt-in is too high a price for deleting delivered rows - with no coverage hole, since a published row can only exist if the drain ran.
+
 ## v4.16.4 (2026-08-27)
 
 [service] **Producer-side outbox observability** (archiver#112). One migration; no HTTP API surface change; no SDK change.

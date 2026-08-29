@@ -58,12 +58,23 @@ class ChangesOutboxRow(Base):
             postgresql_where=text("published_at IS NULL AND dead_lettered_at IS NULL"),
         ),
         # Tiny partial index (poison rows only) backing the dead_lettered_count
-        # observability query (archiver#112) - the table has no pruner, so a
-        # bare COUNT over it degrades to an ever-slower seq scan.
+        # observability query (archiver#112). Dead-lettered rows are exempt from
+        # the archiver#189 pruner by design - they are the post-mortem record -
+        # so this set is the one that still has no retention, and a bare COUNT
+        # over the table would degrade to an ever-slower seq scan.
         Index(
             "ix_changes_outbox_dead_lettered",
             "dead_lettered_at",
             postgresql_where=text("dead_lettered_at IS NOT NULL"),
+        ),
+        # The retention pass's index (archiver#189): it selects published rows
+        # older than the window, and both indexes above deliberately exclude
+        # published rows, so without this the prune seq-scans exactly the set it
+        # exists to bound. Partial, so it costs nothing for the live queue.
+        Index(
+            "ix_changes_outbox_published",
+            "published_at",
+            postgresql_where=text("published_at IS NOT NULL"),
         ),
         {"schema": "information"},
     )

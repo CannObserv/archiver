@@ -78,11 +78,18 @@ src/core/                      Domain logic
                                event_type, so repr() alone drops the remedy —
                                and that string is the whole diagnostic a
                                dead-lettered row or a quarantined message leaves
-                               (#141). registry_snapshot.py is the info.registry
+                               (#141). outbox_prune.py is the published-row
+                               retention pass (archiver#189) - it rides the
+                               drain loop rather than a systemd timer, because a
+                               timer would need a third holder of
+                               ARCHIVER_ALLOW_PRODUCTION_DB; live and
+                               dead-lettered rows are never pruned.
+                               registry_snapshot.py is the info.registry
                                full-set republish timer — direct publish,
-                               bypassing the outbox (no pruner exists), no
-                               retry (the next period is the repair), reading
-                               generations without bumping (#141). The event
+                               bypassing the outbox (no transactional obligation
+                               to carry), no retry (the next period is the
+                               repair), reading generations without bumping
+                               (#141). The event
                                payload models live in co-core since #106, not
                                here. watch_status_consumer.py tails
                                info.watch-status groupless (AsyncBusTailReader,

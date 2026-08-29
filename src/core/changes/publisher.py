@@ -42,6 +42,7 @@ from src.core.changes.backoff import (
     error_backoff_seconds,
 )
 from src.core.changes.diagnostics import error_text
+from src.core.changes.outbox_prune import prune_outbox
 from src.core.changes.outbox_stats import log_outbox_stats
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow
@@ -136,6 +137,17 @@ DEFAULT_STREAM_MAXLEN = 100_000
 # incident, high enough to be noise-free when healthy. The first line is emitted
 # on the loop's first iteration so a restart re-states the backlog immediately.
 STATS_LOG_INTERVAL_SECONDS = 300.0
+
+# Cadence of the published-row retention pass (archiver#189). The third periodic
+# side-job on this loop, and deliberately the slowest: a published row's only
+# residual value is forensic, so nothing is served by deleting it promptly. The
+# pass rides here rather than a systemd timer because a timer would need
+# ARCHIVER_ALLOW_PRODUCTION_DB, and a third sanctioned holder of a write-capable
+# production-DB opt-in is too high a price for deleting delivered rows. There is
+# no coverage hole: a published row can only exist if this loop ran. Like the
+# stats line, the first pass fires immediately, so a restart is not a way to
+# skip retention forever.
+PRUNE_INTERVAL_SECONDS = 3600.0
 
 # Whole-batch failure backoff (CR #13). When drain_once itself raises (DB down,
 # session-factory failure - distinct from a per-row publish failure it swallows),
@@ -366,6 +378,8 @@ async def run(
     no_trim_topics: frozenset[str] = frozenset(),
     topic_maxlen: Mapping[str, int] | None = None,
     stats_interval: float | None = STATS_LOG_INTERVAL_SECONDS,
+    retention_days: int | None = None,
+    prune_interval: float = PRUNE_INTERVAL_SECONDS,
 ) -> None:
     """Loop forever (until ``stop_event`` is set), draining the outbox.
 
@@ -389,12 +403,18 @@ async def run(
     disables) the loop emits the periodic "Outbox stats" line via
     ``log_outbox_stats`` - producer-side observability (archiver#112). Failures
     inside it are swallowed there, so the cadence can never break the drain.
+
+    Every ``prune_interval`` seconds (first iteration immediately) it runs the
+    published-row retention pass via ``prune_outbox`` - archiver#189. Left at the
+    default ``retention_days=None`` (the dormant or disabled-knob case) nothing
+    is pruned. Failures are swallowed there too, on the same reasoning.
     """
     stop_event = stop_event or asyncio.Event()
     seen_topics: set[str] = set()
     iteration = 0
     consecutive_failures = 0
     last_stats_log: float | None = None
+    last_prune: float | None = None
     while not stop_event.is_set():
         try:
             published = await drain_once(
@@ -433,6 +453,12 @@ async def run(
         ):
             await log_outbox_stats(session_factory)
             last_stats_log = time.monotonic()
+
+        if retention_days is not None and (
+            last_prune is None or time.monotonic() - last_prune >= prune_interval
+        ):
+            await prune_outbox(session_factory, retention_days=retention_days)
+            last_prune = time.monotonic()
 
         if (
             redis_client is not None

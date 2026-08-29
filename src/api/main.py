@@ -24,6 +24,7 @@ from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
 from src.core.changes import (
     artifacts_consumer,
+    outbox_prune,
     registry_snapshot,
     replication_reaper,
     watch_status_consumer,
@@ -146,6 +147,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 os.environ.get("ARCHIVER_REGISTRY_STREAM_MAXLEN")
             )
             registry_topic = registry_snapshot.INFO_REGISTRY_TOPIC
+            # Published-row retention (archiver#189), resolved with the same
+            # defensiveness as the trim cap: a malformed window degrades to the
+            # default rather than taking the publisher down with it.
+            retention_days = outbox_prune.resolve_retention_days(
+                os.environ.get("ARCHIVER_OUTBOX_RETENTION_DAYS")
+            )
             pub_task = asyncio.create_task(
                 outbox_publisher.run(
                     session_factory=session_factory,
@@ -161,6 +168,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     # consumer's progress, not the producer's cap.
                     no_trim_topics=frozenset({registry_topic, CONTENT_REPLICATE}),
                     topic_maxlen={registry_topic: registry_maxlen},
+                    retention_days=retention_days,
                 )
             )
             pub_task.add_done_callback(_bus_task_exit_logger("outbox_publisher", stop_event))

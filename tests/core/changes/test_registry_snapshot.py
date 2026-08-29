@@ -1,10 +1,11 @@
 """The periodic full-set republish on ``info.registry`` (archiver#141).
 
-Snapshots bypass the outbox, deliberately: there is no pruner on
-``changes_outbox``, so a periodic full republish through it grows the table
-without bound and taxes the drain's ``published_at IS NULL`` scan. The snapshot
-carries no transactional obligation — it is an idempotent LWW read of current
-DB state, and the next period corrects a lost one. The durability consequence
+Snapshots bypass the outbox, deliberately: a full republish every period would
+put a whole key set through the drain on a timer, churning the table and the
+live partial index (bounded since archiver#189's retention pass, but churn all
+the same). The snapshot carries no transactional obligation - it is an
+idempotent LWW read of current DB state, and the next period corrects a lost
+one. The durability consequence
 is real and stated: **this path has no retry**. A snapshot lost to a broker
 outage is corrected by the next period, not by a re-attempt.
 

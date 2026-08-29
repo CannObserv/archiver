@@ -96,7 +96,7 @@ async def _bump_generation(session: AsyncSession, info_item_id: ULID) -> int | N
     ``announced_at`` rides the same UPDATE (archiver#151): it is the drift
     detector's clock — "applied lags announced by 40m" needs to know when the
     announced generation went out, and ``changes_outbox.published_at`` is
-    prunable under the retention split, so the stamp lives on the item.
+    pruned on a retention window (archiver#189), so the stamp lives on the item.
     """
     return (
         await session.execute(

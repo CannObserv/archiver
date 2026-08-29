@@ -64,7 +64,7 @@ class InfoItem(Base, TimestampMixin):
 
     The drift detector's clock: "announced gen 9 · applied gen 7 — drift, 40m"
     needs to know *when* gen 9 went out, and ``changes_outbox.published_at`` is
-    prunable under the #141 retention split, so the fact lives here. ``NULL``
+    pruned on a retention window (archiver#189), so the fact lives here. ``NULL``
     until the first bump; snapshots republish without touching it.
     """
 

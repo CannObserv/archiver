@@ -3,11 +3,17 @@
 Deltas ride the transactional outbox; this task republishes the **entire key
 set** directly, on a timer, so a consumer converges regardless of stream
 trimming — cold start, replay after an outage, or a key whose delta was
-dead-lettered. It deliberately bypasses the outbox: there is no pruner on
-``changes_outbox``, so a periodic full republish through it would grow the
-table without bound and tax the drain's ``published_at IS NULL`` scan; and the
-snapshot carries no transactional obligation, being an idempotent LWW read of
-current state.
+dead-lettered. It deliberately bypasses the outbox: a full republish every
+period would put a whole key set through the drain on a timer, churning the
+table and the live partial index for events that carry no transactional
+obligation - the snapshot is an idempotent LWW read of current state, not a
+delta bound to a mutation's commit.
+
+Note the reason this is *not*: unbounded growth. ``changes_outbox`` now has a
+retention pass (``outbox_prune.py``, archiver#189), so the row count is bounded
+either way. That removes one argument for bypassing the outbox and none of the
+others - a snapshot still has nothing to be transactional about, and routing it
+through the outbox would still be churn for churn's sake.
 
 **Durability, stated because the deploy table carries the column:** this path
 has **no retry**. The outbox drain retries a delta indefinitely; a snapshot

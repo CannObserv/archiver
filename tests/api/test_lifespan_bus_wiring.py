@@ -25,6 +25,7 @@ from co_core.pure.adapters.bus.streams import CONTENT_REPLICATE
 from fakeredis import aioredis as fakeredis_aio
 
 from src.api.main import app, lifespan
+from src.core.changes.outbox_prune import DEFAULT_RETENTION_DAYS
 
 FAKE_REDIS_URL = "redis://localhost:6379/15"
 
@@ -257,3 +258,41 @@ async def test_reaper_stays_gated_on_the_consumer_flag(bus_env, test_engine):
     """Two sweepers would race to close the same commands."""
     async with lifespan(app):
         assert app.state.replication_reaper_task is None
+
+
+@pytest.mark.asyncio
+async def test_publisher_carries_the_resolved_retention_window(
+    bus_env, fake_redis_from_url, test_engine
+):
+    """The archiver#189 pruner rides the drain loop, so the knob has to reach
+    ``publisher.run``. Unset means the default window, not disabled - an
+    unbounded outbox is the failure mode this exists to close."""
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    bus_env.delenv("ARCHIVER_OUTBOX_RETENTION_DAYS", raising=False)
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+
+    with patch("src.core.changes.publisher.run", side_effect=_capture):
+        async with lifespan(app):
+            pass
+
+    assert captured["retention_days"] == DEFAULT_RETENTION_DAYS
+
+
+@pytest.mark.asyncio
+async def test_retention_knob_can_disable_the_pruner(bus_env, fake_redis_from_url, test_engine):
+    """An operator holding rows for a forensic window keeps the publisher."""
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    bus_env.setenv("ARCHIVER_OUTBOX_RETENTION_DAYS", "0")
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+
+    with patch("src.core.changes.publisher.run", side_effect=_capture):
+        async with lifespan(app):
+            pass
+
+    assert captured["retention_days"] is None
