@@ -60,11 +60,29 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 
 | Skill | Override reason |
 |---|---|
-| `shipping-work-python-fastapi` | Thin override - sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor |
+| `shipping-work-python-fastapi` | Thin override - sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor. Step 1.5 documents archiver's `.skills/doc-sensitive-paths` (below) |
 | `brainstorming` | Project conventions (docs/plans/ path, commit format); invokes using-git-worktrees after design approval; FastAPI stack context; proactive-suggestion mode |
 | `using-git-worktrees` | Archiver-specific dev port (8021) and env file (`/etc/archiver/.env`); auto-starts uvicorn on 8021; systemd `archiver.service` on 8020 |
 
 `reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) - no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
+
+### Sensitive paths (`doc-check.sh`)
+
+`.skills/doc-sensitive-paths` is archiver's list for the `shipping-work-python-fastapi`
+Step 1.5 doc spot-check. Committing it **replaces** the skill's built-in defaults
+wholesale (one path per line, `#`-comments ignored) rather than extending them, which
+is the supported alternative to forking `doc-check.sh` (gregoryfoster/skills#252,
+archiver#190). Entries match whole path *segments* at any depth, so `pyproject.toml`
+covers `clients/python/pyproject.toml`; the old start-anchored matcher did not, and a
+list that matched nothing printed the same green as a doc-neutral branch.
+
+Archiver's list drops three upstream defaults that match nothing here - `schema.sql`,
+`src/models/`, `.env.example` - and every verdict that consulted the list names it, so
+a `built-in defaults` line means the file went missing (a bare `No changes vs <ref>.`
+never reached the list at all). `tests/scripts/test_doc_sensitive_paths.py` fails on
+any entry that stops matching a tracked file, on any changelog-trigger path the list
+stops covering (regex read from `scripts/check_changelog_lib.sh`, the gate itself), and
+on any entry carrying a glob metacharacter, which bash `case` would expand.
 
 ## SocratiCode (Codebase Search)
 

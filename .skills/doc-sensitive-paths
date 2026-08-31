@@ -1,0 +1,35 @@
+# doc-check.sh sensitive paths for archiver (archiver#190).
+#
+# Replaces the shipping-work-python-fastapi defaults wholesale - one path per
+# line, `#`-comments and blank lines ignored. Entries match whole path
+# SEGMENTS at any depth, so `pyproject.toml` covers clients/python/'s too.
+#
+# Dropped from the upstream defaults because they match nothing in this tree:
+# schema.sql (Alembic owns the schema), src/models/ (models live in src/core/),
+# .env.example (env vars are documented in docs/DEPLOYMENT.md, never templated).
+# tests/scripts/test_doc_sensitive_paths.py fails on any entry that goes dead.
+
+# Agent + human orientation docs; CLAUDE.md is a symlink to AGENTS.md.
+AGENTS.md
+CLAUDE.md
+README.md
+CHANGELOG.md
+
+# Dependency surface - docs/DEPLOYMENT.md carries the wheelhouse and resolution story.
+pyproject.toml
+uv.lock
+
+# The changelog trigger's four paths (AGENTS.md, "Changelog"), plus the domain
+# and dashboard trees whose living docs are a CR blocker. `src/` rather than
+# src/api/ + src/core/ + src/dashboard/: those three are the whole tree today,
+# so enumerating them buys nothing and would leave a future package unwatched -
+# the same silent miss the segment-matching fix was about.
+alembic/versions/
+src/
+clients/python/
+
+# Deploy + operator surface. Both entries over-match into the test tree:
+# `deploy/` also catches tests/deploy/ (which asserts file parity with deploy/)
+# and `scripts/` also catches tests/scripts/. Both land on the same docs anyway.
+deploy/
+scripts/

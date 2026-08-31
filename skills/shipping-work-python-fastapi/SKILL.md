@@ -7,19 +7,19 @@ metadata:
   version: "1.4"
   triggers: ship it, push GH, close GH, wrap up
   overrides: gregoryfoster-skills/shipping-work-python-fastapi
-  synced-from: "gregoryfoster-skills 1.4 (bc0b907)"
+  synced-from: "gregoryfoster-skills 1.4 (662de71)"
   override-reason: "Sources /etc/archiver/.env and $PROJECT_ROOT/.env before delegating to upstream pre-ship; fixes broken `export $(cat … | xargs)` env-loading pattern via `set -a; . <file>; set +a`."
 ---
 
-# Shipping Work — Python/FastAPI — archiver
+# Shipping Work - Python/FastAPI - archiver
 
 Finalizes work: pre-ship checks, clean commit, push, GitHub issue comments, and closure. Tuned for the archiver service.
 
 ## The Iron Law
 
 ```
-NO PUSH WITHOUT PASSING PRE-SHIP CHECKS — VERIFIED IN THIS SESSION
-NO ISSUE CLOSURE WITHOUT FULL IMPLEMENTATION — VERIFIED AGAINST ORIGINAL REQUIREMENTS
+NO PUSH WITHOUT PASSING PRE-SHIP CHECKS - VERIFIED IN THIS SESSION
+NO ISSUE CLOSURE WITHOUT FULL IMPLEMENTATION - VERIFIED AGAINST ORIGINAL REQUIREMENTS
 ```
 
 ## Rationalization prevention
@@ -34,18 +34,18 @@ NO ISSUE CLOSURE WITHOUT FULL IMPLEMENTATION — VERIFIED AGAINST ORIGINAL REQUI
 
 ## Parameterized invocation
 
-Trigger phrases may include scope inline — e.g., `wrap up #19 #20`, `ship it #14`. Apply the appended issue numbers as the explicit scope (step 1 of Scope detection); skip the conversation-context fallback.
+Trigger phrases may include scope inline - e.g., `wrap up #19 #20`, `ship it #14`. Apply the appended issue numbers as the explicit scope (step 1 of Scope detection); skip the conversation-context fallback.
 
 ## Scope detection
 
 Determine which GitHub issue(s) to close (priority order):
-1. **Explicit scope** — user specifies issue number(s)
-2. **Conversation context** — issues referenced in recent commit messages or discussion
-3. **Ask** — if ambiguous, confirm before closing anything
+1. **Explicit scope** - user specifies issue number(s)
+2. **Conversation context** - issues referenced in recent commit messages or discussion
+3. **Ask** - if ambiguous, confirm before closing anything
 
 ## Procedure
 
-### Step 1 — Run pre-ship checks
+### Step 1 - Run pre-ship checks
 
 ```bash
 N=shipping-work-python-fastapi S=pre-ship.sh SD=
@@ -57,9 +57,9 @@ echo "SKILL_SCRIPTS=${SD:?not found in scripts/, .claude/skills/$N/scripts/, or 
 bash "${SD:?not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/}/$S"
 ```
 
-The first line is a preflight: when `.skills/doctor.sh` is present, it heals any dangling vendor symlinks (or reports an actionable error); when absent, the group is a no-op. `|| exit 1` skips `pre-ship.sh` if the doctor reports unrecoverable state so the original "No such file or directory" noise doesn't drown out the doctor's message. The loop then resolves the script against the skill directory rather than the cwd — a bare `scripts/` path resolves relative to the project root, where the script does not exist ([#63](https://github.com/gregoryfoster/skills/issues/63)). A project-local `scripts/` copy still wins if one exists; `${SD:?…}` fails loudly with the searched paths when no candidate resolves. Resolution runs *after* the doctor so a freshly healed symlink chain is visible to it.
+The first line is a preflight: when `.skills/doctor.sh` is present, it heals any dangling vendor symlinks (or reports an actionable error); when absent, the group is a no-op. `|| exit 1` skips `pre-ship.sh` if the doctor reports unrecoverable state so the original "No such file or directory" noise doesn't drown out the doctor's message. The loop then resolves the script against the skill directory rather than the cwd - a bare `scripts/` path resolves relative to the project root, where the script does not exist ([#63](https://github.com/gregoryfoster/skills/issues/63)). A project-local `scripts/` copy still wins if one exists; `${SD:?…}` fails loudly with the searched paths when no candidate resolves. Resolution runs *after* the doctor so a freshly healed symlink chain is visible to it.
 
-Step 1 prints `SKILL_SCRIPTS=<path>`. In every later step `<SKILL_SCRIPTS>` is a **placeholder** for that literal path — substitute the value printed here (same convention as `init-project-fastapi` Phase 0). Each Bash invocation runs in a fresh shell, so the shell variable itself is not inherited.
+Step 1 prints `SKILL_SCRIPTS=<path>`. In every later step `<SKILL_SCRIPTS>` is a **placeholder** for that literal path - substitute the value printed here (same convention as `init-project-fastapi` Phase 0). Each Bash invocation runs in a fresh shell, so the shell variable itself is not inherited.
 
 ```
 NO CONTINUATION IF CHECKS FAIL
@@ -74,24 +74,45 @@ pre-ship.sh. The upstream script handles lint (`ruff check`), the per-SHA stamp
 
 If checks fail: stop, report the failure, fix before proceeding. Do not push failing code under any circumstances.
 
-### Step 1.5 — Documentation spot-check
+### Step 1.5 - Documentation spot-check
 
 ```bash
 bash "<SKILL_SCRIPTS>/doc-check.sh"
 ```
 
-`doc-check.sh` lists files changed on this branch vs the upstream default branch and flags any that match the project's `SENSITIVE_PATHS` array (AGENTS.md, README.md, CHANGELOG.md, pyproject.toml, uv.lock, schema.sql, `alembic/versions/`, `deploy/`, route/model/core dirs, `.env.example`). When sensitive paths change, the matching doc sections may need updates too.
+`doc-check.sh` lists files changed on this branch vs the upstream default branch
+and flags any that match the project's sensitive-path list. Entries match path
+*segments*, so `pyproject.toml` covers `clients/python/pyproject.toml` as well as
+the root one. When sensitive paths change, the matching doc sections may need
+updates too.
 
-If the script exits 1: review the listed files, decide whether each requires a doc update, and either commit the docs now or note them as deliberate skips. If the script exits 2: an infra/tooling problem prevented the doc check from running — investigate the underlying error rather than proceeding.
+**Archiver commits its own list at `.skills/doc-sensitive-paths`** (one path per
+line, `#`-comments ignored), which replaces the upstream defaults wholesale
+rather than extending them - the defaults' `schema.sql`, `src/models/` and
+`.env.example` match nothing in this tree. Every verdict that consulted the list
+names it; if it says `built-in defaults`, the file is missing and the gate is
+watching the wrong paths (a bare `No changes vs <ref>.` never reached the list at
+all). `tests/scripts/test_doc_sensitive_paths.py` fails on any entry that no
+longer matches a tracked file, so edit `.skills/doc-sensitive-paths` and let the
+test confirm the result.
 
-### Step 2 — Ensure a clean working tree
+If the script exits 1: review the listed files, decide whether each requires a
+doc update, and either commit the docs now or note them as deliberate skips. If
+the script exits 2: an infra/tooling problem prevented the doc check from
+running - investigate the underlying error rather than proceeding. One exit-2
+case is worth naming: when no entry in the list matches any tracked file, it says
+so instead of passing, because a list that cannot hit anything would otherwise
+print the same clean green as a genuinely doc-neutral branch. Fix the list; do
+not wave the step through.
+
+### Step 2 - Ensure a clean working tree
 
 ```bash
 bash "<SKILL_SCRIPTS>/check-status.sh"
 ```
 
 If uncommitted changes exist, commit them using **archiver's bracket-less convention**
-(note: the upstream variant inlines `[type]` brackets as a default — archiver does not):
+(note: the upstream variant inlines `[type]` brackets as a default - archiver does not):
 
 ```
 #<number> <type>: <description>       # with GH issue
@@ -102,7 +123,7 @@ Common `<type>` values: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`. Mult
 `#19, #20 <type>: <description>`. Scope parens are tolerated (`#24 feat(events): ...`)
 but bare types are preferred.
 
-### Step 2.5 — Worktree-aware merge (if applicable)
+### Step 2.5 - Worktree-aware merge (if applicable)
 
 If this checkout is a worktree (test: `git rev-parse --show-toplevel` differs from the main checkout, listed first in `git worktree list`):
 
@@ -112,12 +133,12 @@ If this checkout is a worktree (test: `git rev-parse --show-toplevel` differs fr
 
 If this is a single (non-worktree) checkout, skip this step.
 
-### Step 3 — Ensure on main
+### Step 3 - Ensure on main
 
-If Step 2.5 applied, the merge already happened — you're on `main` in the main checkout; continue.
+If Step 2.5 applied, the merge already happened - you're on `main` in the main checkout; continue.
 If Step 2.5 did not apply (single checkout) and you're on a feature branch, merge to `main` first.
 
-### Step 4 — Push
+### Step 4 - Push
 
 ```bash
 bash "<SKILL_SCRIPTS>/push.sh"
@@ -125,7 +146,7 @@ bash "<SKILL_SCRIPTS>/push.sh"
 
 Confirm push succeeded before proceeding.
 
-### Step 5 — Comment on GitHub issues
+### Step 5 - Comment on GitHub issues
 
 For each issue in scope:
 
@@ -134,24 +155,24 @@ bash "<SKILL_SCRIPTS>/comment-issue.sh" <number> "<summary>"
 ```
 
 Comment must include:
-- What was implemented (2–4 bullets)
+- What was implemented (2-4 bullets)
 - Key commit SHAs or commit range
 - Any follow-up items or known limitations
 
-### Step 6 — Close GitHub issues
+### Step 6 - Close GitHub issues
 
 <HARD-GATE>
 Before closing any issue, verify the original requirements against what was implemented:
 1. Re-read the issue body
 2. Confirm each stated requirement is addressed in commits
-3. If any requirement is missing: do NOT close — ask the user whether to descope or continue
+3. If any requirement is missing: do NOT close - ask the user whether to descope or continue
 </HARD-GATE>
 
 ```bash
 bash "<SKILL_SCRIPTS>/close-issue.sh" <number>
 ```
 
-### Step 7 — Report
+### Step 7 - Report
 
 Present a summary table:
 
@@ -159,7 +180,7 @@ Present a summary table:
 |---|---|---|---|
 | #19 | ... | ✅ Closed | Summary posted |
 
-### Step 8 — Next-steps notification
+### Step 8 - Next-steps notification
 
 After the summary table, review commits and changes shipped to identify any post-deploy work the user may need to perform. Common categories for archiver:
 
@@ -172,17 +193,17 @@ After the summary table, review commits and changes shipped to identify any post
 | Dev-server cleanup | Worktree shutdown | `fuser -k 8021/tcp` for the dev port |
 | Changelog | feat/fix changes on `main` | Ensure `CHANGELOG.md` carries the entry; CI's changelog job enforces |
 
-Present only the items that apply. Be specific — name the file, command, or path. Then **offer to execute** any item within your capabilities. Ask once — don't nag.
+Present only the items that apply. Be specific - name the file, command, or path. Then **offer to execute** any item within your capabilities. Ask once - don't nag.
 
 If nothing applies, omit this step entirely.
 
 ## Notes
 
 - If `gh` CLI hits errors (e.g., Projects API changes), use `--json` flag workarounds as needed
-- AGENTS.md is authoritative for commit conventions — read it before committing if unsure
+- AGENTS.md is authoritative for commit conventions - read it before committing if unsure
 - The archiver wrapper sources `/etc/archiver/.env` and `$PROJECT_ROOT/.env` with `set -a; . <file>; set +a` (NOT the broken `export $(cat | xargs)` pattern that fails on whitespace/quotes/`=`)
-- The upstream `pre-ship.sh` auto-derives its per-SHA stamp prefix from `$(basename "$(git rev-parse --show-toplevel)")` → `archiver-tests-clean-<sha>` — no hardcoded literal in the wrapper
+- The upstream `pre-ship.sh` auto-derives its per-SHA stamp prefix from `$(basename "$(git rev-parse --show-toplevel)")` → `archiver-tests-clean-<sha>` - no hardcoded literal in the wrapper
 
 **Self-budget:** held to a **6,000-token ratchet (estimate and exact)** by
-`tests/structural/test_skill_self_budget.py` — both readings must clear it, so
+`tests/structural/test_skill_self_budget.py` - both readings must clear it, so
 no choice of measurement can loosen it.
