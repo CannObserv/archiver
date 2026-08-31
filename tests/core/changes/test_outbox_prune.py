@@ -206,6 +206,25 @@ async def test_prune_is_bounded_per_invocation(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_a_pass_with_no_budget_reports_no_ceiling(session_factory):
+    """``capped`` means "stopped because rows remained", so a pass that never ran
+    a batch has not hit a ceiling - it has learned nothing. The degenerate bound
+    must not report the opposite of the truth."""
+    await _insert_row(
+        session_factory,
+        created_at=_NOW - timedelta(days=40),
+        published_at=_NOW - timedelta(days=40),
+    )
+    async with session_factory() as session:
+        outcome = await prune_published_rows(
+            session, retention_days=30, now=_NOW, batch_size=2, max_batches=0
+        )
+
+    assert outcome == PruneOutcome(deleted=0, capped=False)
+    assert await _row_count(session_factory) == 1
+
+
+@pytest.mark.asyncio
 async def test_prune_stops_early_when_batch_is_short(session_factory):
     """A short batch means the queue is drained; no further round trips."""
     await _insert_row(
@@ -222,19 +241,23 @@ async def test_prune_stops_early_when_batch_is_short(session_factory):
     assert await _row_count(session_factory) == 0
 
 
-# Worst-case rows/hour this service is expected to write to the outbox, an order
-# of magnitude above anything observed: every watched item changing every hour,
-# each change fanning out to a registry announcement and a replication command.
-# The pass runs hourly, so its ceiling must clear this - the assertion below asks
-# for a full DAY of it, i.e. 24x headroom, so the bound is a real margin rather
-# than a restatement of the constants.
-_WORST_CASE_ROWS_PER_HOUR = 108 * 3
+# Worst-case rows/hour this service is expected to write to the outbox: a round
+# number an order of magnitude above anything observed (prod wrote ~0.5 rows/DAY
+# over its first quarter), sized so it stays generous as the corpus grows rather
+# than tracking any current count. The pass runs hourly, so its ceiling must
+# clear this several times over, so a pruner that misses passes (restarts, a
+# broker outage holding the loop in backoff) still catches up instead of falling
+# permanently behind.
+_WORST_CASE_ROWS_PER_HOUR = 500
+_CATCH_UP_HOURS = 12
 
 
-def test_prune_ceiling_clears_a_day_of_worst_case_accrual():
+def test_prune_ceiling_outruns_worst_case_accrual():
     """The per-pass ceiling has to outrun accrual, or the backlog grows despite
     the pruner. Stated against an accrual estimate, not against itself."""
-    assert DEFAULT_PRUNE_BATCH_SIZE * MAX_PRUNE_BATCHES >= _WORST_CASE_ROWS_PER_HOUR * 24
+    assert (
+        DEFAULT_PRUNE_BATCH_SIZE * MAX_PRUNE_BATCHES >= _WORST_CASE_ROWS_PER_HOUR * _CATCH_UP_HOURS
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +281,25 @@ async def test_prune_outbox_deletes_and_logs(session_factory, monkeypatch):
 
     assert await _row_count(session_factory) == 0
     assert infos == [{"deleted": 1, "retention_days": 30, "capped": False}]
+
+
+@pytest.mark.asyncio
+async def test_prune_outbox_logs_a_capped_pass(session_factory, monkeypatch):
+    """``capped`` is plumbed from the outcome rather than recomputed at the call
+    site, so the True case needs its own coverage of the log field."""
+    infos: list[dict] = []
+    monkeypatch.setattr(
+        outbox_prune_mod.logger, "info", lambda *a, **k: infos.append(k.get("extra", {}))
+    )
+
+    async def _capped(session, **kwargs):
+        return PruneOutcome(deleted=10_000, capped=True)
+
+    monkeypatch.setattr(outbox_prune_mod, "prune_published_rows", _capped)
+
+    await prune_outbox(session_factory, retention_days=30, now=_NOW)
+
+    assert infos == [{"deleted": 10_000, "retention_days": 30, "capped": True}]
 
 
 @pytest.mark.asyncio
@@ -316,7 +358,9 @@ async def test_partial_failure_carries_the_committed_count(session_factory, monk
                 session, retention_days=30, now=_NOW, batch_size=2, max_batches=10
             )
 
-    assert excinfo.value.outcome == PruneOutcome(deleted=4, capped=False)
+    # The count alone: whether the pass would have capped is unknowable once it
+    # was interrupted, so the error does not carry a fabricated flag.
+    assert excinfo.value.deleted == 4
     assert isinstance(excinfo.value.__cause__, RuntimeError)
     assert await _row_count(session_factory) == 2
 
@@ -329,7 +373,7 @@ async def test_prune_outbox_logs_the_partial_count_on_failure(session_factory, m
     )
 
     async def _boom(session, **kwargs):
-        raise OutboxPruneError(PruneOutcome(deleted=7, capped=False))
+        raise OutboxPruneError(deleted=7)
 
     monkeypatch.setattr(outbox_prune_mod, "prune_published_rows", _boom)
 

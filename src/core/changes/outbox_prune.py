@@ -86,11 +86,15 @@ class OutboxPruneError(Exception):
     Batches commit as they go, so a mid-pass failure leaves rows genuinely
     deleted. Without this the count dies with the exception and journald
     under-reports the one pass an operator most wants an accurate account of.
+
+    Deliberately carries the count alone rather than a ``PruneOutcome``: an
+    interrupted pass never learned whether it would have capped, and a flag
+    invented on the error path is a wrong value waiting for its first reader.
     """
 
-    def __init__(self, outcome: PruneOutcome) -> None:
-        super().__init__(f"outbox prune failed after {outcome.deleted} rows")
-        self.outcome = outcome
+    def __init__(self, *, deleted: int) -> None:
+        super().__init__(f"outbox prune failed after {deleted} rows")
+        self.deleted = deleted
 
 
 def resolve_retention_days(raw: str | None) -> int | None:
@@ -166,22 +170,27 @@ async def prune_published_rows(
     The window boundary is a strict ``<``: a row published exactly at the cutoff
     survives this pass and goes on the next one.
 
-    Raises ``OutboxPruneError`` carrying the batches already committed when one
-    fails - the rows are gone either way, so the count has to outlive the error.
+    Raises ``OutboxPruneError`` carrying the rows already committed when a batch
+    fails - they are gone either way, so the count has to outlive the error.
     """
     reference = now if now is not None else datetime.now(UTC)
     cutoff = reference - timedelta(days=retention_days)
     deleted = 0
-    capped = True
+    full_batches = 0
     for _ in range(max_batches):
         try:
             rowcount = await prune_batch(session, cutoff=cutoff, batch_size=batch_size)
         except Exception as e:
-            raise OutboxPruneError(PruneOutcome(deleted=deleted, capped=False)) from e
+            raise OutboxPruneError(deleted=deleted) from e
         deleted += rowcount
         if rowcount < batch_size:
-            capped = False
             break
+        full_batches += 1
+    # Capped means the budget ran out with rows still to go. The ``max_batches``
+    # guard keeps a pass that was never given a batch to run from claiming a
+    # ceiling it never reached - it stopped for lack of budget, but it also never
+    # learned whether anything was left.
+    capped = max_batches > 0 and full_batches == max_batches
     return PruneOutcome(deleted=deleted, capped=capped)
 
 
@@ -206,7 +215,7 @@ async def prune_outbox(
         async with session_factory() as session:
             outcome = await prune_published_rows(session, retention_days=retention_days, now=now)
     except OutboxPruneError as e:
-        logger.warning("Outbox prune failed", extra={"deleted": e.outcome.deleted}, exc_info=True)
+        logger.warning("Outbox prune failed", extra={"deleted": e.deleted}, exc_info=True)
         return
     except Exception:
         # Never reached the first batch (the session itself failed to open, or

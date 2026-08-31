@@ -367,13 +367,14 @@ config/state stream's retention is a consumer contract. `info.changes` is a fact
 stream nothing replays, so its cap is housekeeping and belongs on the operator's
 cadence.
 
-**Retention, table side (archiver#189).** The same drain loop deletes **published**
-`changes_outbox` rows older than `ARCHIVER_OUTBOX_RETENTION_DAYS` (default 30;
-`<=0` disables) every hour, in bounded batches - the publisher is a process
-issuing DELETEs against the production table, so it is stated here and not only
-in the env reference. Never pruned at any setting: **live** rows (the drain's own
-queue, where an old row is the backlog `dead_lettered_count`'s neighbours exist
-to surface) and **dead-lettered** rows (the archiver#107 post-mortem record, and
+**Retention, table side (archiver#189).** The same drain loop deletes
+**published** `changes_outbox` rows older than `ARCHIVER_OUTBOX_RETENTION_DAYS`
+(default 30; `<=0` disables) every hour, and once immediately on start, in
+bounded batches - the publisher is a process issuing DELETEs against the
+production table, so it is stated here and not only in the env reference. Never
+pruned at any setting: **live** rows (the drain's own queue, where an old row is
+the backlog `unpublished_count` / `oldest_unpublished_age_seconds` exist to
+surface) and **dead-lettered** rows (the archiver#107 post-mortem record, and
 therefore the one set on this table with no retention at all). Watch it with
 `journalctl -u archiver | grep 'Outbox prune'` - an "Outbox pruned" INFO line per
 pass that deleted something, a WARNING carrying the partial count if a pass
