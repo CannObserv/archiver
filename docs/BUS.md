@@ -64,9 +64,18 @@ NOT NULL`) backs the pass - both other partial indexes exclude published rows.
 It rides the drain loop rather than a systemd timer deliberately: a timer would
 need `ARCHIVER_ALLOW_PRODUCTION_DB`, and a third sanctioned holder of a
 write-capable production-DB opt-in is too high a price for deleting delivered
-rows. There is no coverage hole - a published row can only exist if the drain
-ran. One INFO line ("Outbox pruned") per pass that actually deleted something;
-silence is the healthy steady state.
+rows. A deployment that has never had `ARCHIVER_REDIS_URL` set accrues nothing to
+prune, since a published row can only exist if the drain has run - but retention
+still needs the drain running **now**. Unsetting `ARCHIVER_REDIS_URL` on an
+instance that has been live freezes the table with whatever published backlog it
+holds: it stops growing and stops shrinking, and nothing reports that. Narrow
+(bus-dormant is a local-dev mode), and stated because "no coverage hole" would
+be the stronger claim than the siting earns.
+
+One INFO line ("Outbox pruned": `deleted`, `retention_days`, `capped`) per pass
+that actually deleted something; silence is the healthy steady state. A failed
+pass logs WARNING with the rows it had already committed - batches commit as
+they go, so a mid-pass failure still deleted something real.
 
 **Broker-side observability (archiver#130)** - the `archiver-bus-health`
 systemd timer runs `src/core/bus_health.py` every 10 minutes: memory headroom,

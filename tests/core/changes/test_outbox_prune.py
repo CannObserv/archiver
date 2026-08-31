@@ -19,6 +19,8 @@ from src.core.changes.outbox_prune import (
     DEFAULT_PRUNE_BATCH_SIZE,
     DEFAULT_RETENTION_DAYS,
     MAX_PRUNE_BATCHES,
+    OutboxPruneError,
+    PruneOutcome,
     prune_outbox,
     prune_published_rows,
     resolve_retention_days,
@@ -114,9 +116,9 @@ async def test_prunes_published_rows_older_than_cutoff(session_factory):
         published_at=_NOW - timedelta(days=40),
     )
     async with session_factory() as session:
-        deleted = await prune_published_rows(session, retention_days=30, now=_NOW)
+        outcome = await prune_published_rows(session, retention_days=30, now=_NOW)
 
-    assert deleted == 1
+    assert outcome == PruneOutcome(deleted=1, capped=False)
     async with session_factory() as session:
         remaining = (await session.execute(select(ChangesOutboxRow.id))).scalars().all()
     assert old.id not in remaining
@@ -131,9 +133,23 @@ async def test_keeps_published_rows_inside_the_window(session_factory):
         published_at=_NOW - timedelta(days=3),
     )
     async with session_factory() as session:
-        deleted = await prune_published_rows(session, retention_days=30, now=_NOW)
+        outcome = await prune_published_rows(session, retention_days=30, now=_NOW)
 
-    assert deleted == 0
+    assert outcome == PruneOutcome(deleted=0, capped=False)
+    assert await _row_count(session_factory) == 1
+
+
+@pytest.mark.asyncio
+async def test_keeps_a_row_published_exactly_at_the_cutoff(session_factory):
+    """The predicate is a strict ``<``, so the boundary row survives. Pinned
+    because ``<`` against ``<=`` is the classic off-by-one in a retention window
+    and the boundary is the only place the choice is observable."""
+    cutoff = _NOW - timedelta(days=30)
+    await _insert_row(session_factory, created_at=cutoff, published_at=cutoff)
+    async with session_factory() as session:
+        outcome = await prune_published_rows(session, retention_days=30, now=_NOW)
+
+    assert outcome.deleted == 0
     assert await _row_count(session_factory) == 1
 
 
@@ -143,9 +159,9 @@ async def test_never_prunes_live_rows(session_factory):
     unpublished row is exactly the backlog the #112 stats exist to surface."""
     await _insert_row(session_factory, created_at=_NOW - timedelta(days=400))
     async with session_factory() as session:
-        deleted = await prune_published_rows(session, retention_days=30, now=_NOW)
+        outcome = await prune_published_rows(session, retention_days=30, now=_NOW)
 
-    assert deleted == 0
+    assert outcome == PruneOutcome(deleted=0, capped=False)
     assert await _row_count(session_factory) == 1
 
 
@@ -162,9 +178,9 @@ async def test_never_prunes_dead_lettered_rows(session_factory):
         dead_lettered_at=_NOW - timedelta(days=400),
     )
     async with session_factory() as session:
-        deleted = await prune_published_rows(session, retention_days=30, now=_NOW)
+        outcome = await prune_published_rows(session, retention_days=30, now=_NOW)
 
-    assert deleted == 0
+    assert outcome == PruneOutcome(deleted=0, capped=False)
     assert await _row_count(session_factory) == 1
 
 
@@ -179,11 +195,13 @@ async def test_prune_is_bounded_per_invocation(session_factory):
             published_at=_NOW - timedelta(days=40),
         )
     async with session_factory() as session:
-        deleted = await prune_published_rows(
+        outcome = await prune_published_rows(
             session, retention_days=30, now=_NOW, batch_size=2, max_batches=2
         )
 
-    assert deleted == 4
+    # capped is derived from the loop that ran, not from the module constants -
+    # a caller passing its own bounds gets a flag about *its* pass.
+    assert outcome == PruneOutcome(deleted=4, capped=True)
     assert await _row_count(session_factory) == 1
 
 
@@ -196,18 +214,27 @@ async def test_prune_stops_early_when_batch_is_short(session_factory):
         published_at=_NOW - timedelta(days=40),
     )
     async with session_factory() as session:
-        deleted = await prune_published_rows(
+        outcome = await prune_published_rows(
             session, retention_days=30, now=_NOW, batch_size=100, max_batches=10
         )
 
-    assert deleted == 1
+    assert outcome == PruneOutcome(deleted=1, capped=False)
     assert await _row_count(session_factory) == 0
 
 
-def test_prune_bounds_are_sane():
-    """The per-invocation ceiling has to dwarf any plausible accrual between
-    ticks, or the backlog outruns the pruner."""
-    assert DEFAULT_PRUNE_BATCH_SIZE * MAX_PRUNE_BATCHES >= 10_000
+# Worst-case rows/hour this service is expected to write to the outbox, an order
+# of magnitude above anything observed: every watched item changing every hour,
+# each change fanning out to a registry announcement and a replication command.
+# The pass runs hourly, so its ceiling must clear this - the assertion below asks
+# for a full DAY of it, i.e. 24x headroom, so the bound is a real margin rather
+# than a restatement of the constants.
+_WORST_CASE_ROWS_PER_HOUR = 108 * 3
+
+
+def test_prune_ceiling_clears_a_day_of_worst_case_accrual():
+    """The per-pass ceiling has to outrun accrual, or the backlog grows despite
+    the pruner. Stated against an accrual estimate, not against itself."""
+    assert DEFAULT_PRUNE_BATCH_SIZE * MAX_PRUNE_BATCHES >= _WORST_CASE_ROWS_PER_HOUR * 24
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +288,57 @@ async def test_prune_outbox_disabled_by_none_retention(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_partial_failure_carries_the_committed_count(session_factory, monkeypatch):
+    """Batches commit as they go, so a mid-pass failure leaves rows genuinely
+    deleted. The count must survive the exception or journald under-reports the
+    one pass an operator most wants an accurate account of."""
+    for _ in range(6):
+        await _insert_row(
+            session_factory,
+            created_at=_NOW - timedelta(days=40),
+            published_at=_NOW - timedelta(days=40),
+        )
+    calls = 0
+    real_prune_batch = outbox_prune_mod.prune_batch
+
+    async def _fail_on_third(session, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise RuntimeError("connection reset")
+        return await real_prune_batch(session, **kwargs)
+
+    monkeypatch.setattr(outbox_prune_mod, "prune_batch", _fail_on_third)
+
+    async with session_factory() as session:
+        with pytest.raises(OutboxPruneError) as excinfo:
+            await prune_published_rows(
+                session, retention_days=30, now=_NOW, batch_size=2, max_batches=10
+            )
+
+    assert excinfo.value.outcome == PruneOutcome(deleted=4, capped=False)
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    assert await _row_count(session_factory) == 2
+
+
+@pytest.mark.asyncio
+async def test_prune_outbox_logs_the_partial_count_on_failure(session_factory, monkeypatch):
+    warnings: list[dict] = []
+    monkeypatch.setattr(
+        outbox_prune_mod.logger, "warning", lambda *a, **k: warnings.append(k.get("extra", {}))
+    )
+
+    async def _boom(session, **kwargs):
+        raise OutboxPruneError(PruneOutcome(deleted=7, capped=False))
+
+    monkeypatch.setattr(outbox_prune_mod, "prune_published_rows", _boom)
+
+    await prune_outbox(session_factory, retention_days=30, now=_NOW)
+
+    assert warnings == [{"deleted": 7}]
+
+
+@pytest.mark.asyncio
 async def test_prune_outbox_swallows_failures(monkeypatch):
     """Pure housekeeping riding the drain loop: a failure here can never be
     allowed to take down the publisher."""
@@ -275,3 +353,20 @@ async def test_prune_outbox_swallows_failures(monkeypatch):
     await prune_outbox(_exploding_factory, retention_days=30, now=_NOW)
 
     assert warnings == ["Outbox prune failed"]
+
+
+@pytest.mark.asyncio
+async def test_prune_outbox_reports_zero_when_the_session_never_opened(monkeypatch):
+    """A failure before the first batch deleted nothing; say so explicitly rather
+    than leaving the count absent."""
+    extras: list[dict] = []
+    monkeypatch.setattr(
+        outbox_prune_mod.logger, "warning", lambda *a, **k: extras.append(k.get("extra", {}))
+    )
+
+    def _exploding_factory():
+        raise RuntimeError("database is on fire")
+
+    await prune_outbox(_exploding_factory, retention_days=30, now=_NOW)
+
+    assert extras == [{"deleted": 0}]

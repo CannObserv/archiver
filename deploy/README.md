@@ -357,10 +357,27 @@ default 50k, sized from key count × sets retained - never from the
 default 3600s; operator republish-now: `POST
 /api/v1/tools/republish-registry-announcements`.
 
-**Retention.** With no consumer yet, entries accumulate on `info.changes`. The
-Archiver outbox publisher caps the stream operator-side via a periodic
-`XTRIM ... MAXLEN ~ N` (co-core exposes no XADD trim arg); `N` is
-`ARCHIVER_REDIS_STREAM_MAXLEN` (default 100000).
+**Retention, stream side.** With no consumer yet, entries accumulate on
+`info.changes`. The Archiver outbox publisher caps the stream operator-side via
+a periodic `XTRIM ... MAXLEN ~ N`; `N` is `ARCHIVER_REDIS_STREAM_MAXLEN`
+(default 100000). Operator-side rather than co-core's XADD-time trim is a
+**choice, not an absence** - `BusPublish` has carried `maxlen`/`approximate`
+since cannobserv#285 (archiver#138), and `info.registry` uses it, because a
+config/state stream's retention is a consumer contract. `info.changes` is a fact
+stream nothing replays, so its cap is housekeeping and belongs on the operator's
+cadence.
+
+**Retention, table side (archiver#189).** The same drain loop deletes **published**
+`changes_outbox` rows older than `ARCHIVER_OUTBOX_RETENTION_DAYS` (default 30;
+`<=0` disables) every hour, in bounded batches - the publisher is a process
+issuing DELETEs against the production table, so it is stated here and not only
+in the env reference. Never pruned at any setting: **live** rows (the drain's own
+queue, where an old row is the backlog `dead_lettered_count`'s neighbours exist
+to surface) and **dead-lettered** rows (the archiver#107 post-mortem record, and
+therefore the one set on this table with no retention at all). Watch it with
+`journalctl -u archiver | grep 'Outbox prune'` - an "Outbox pruned" INFO line per
+pass that deleted something, a WARNING carrying the partial count if a pass
+failed partway.
 
 **Activation.** Set `ARCHIVER_REDIS_URL=redis://localhost:6379/0` in
 `/etc/archiver/.env` and restart `archiver`; the outbox publisher starts and

@@ -23,13 +23,21 @@ Two states are never prunable:
 periodic XTRIM and the stats line - not on a systemd timer. A timer would need
 ``ARCHIVER_ALLOW_PRODUCTION_DB``, and a third sanctioned holder of a
 write-capable production-DB opt-in is a real cost to weigh against deleting
-delivered rows. Riding the drain loop has no coverage hole either: a published
-row can only exist if the publisher ran, so a bus-dormant deployment has
-nothing to prune.
+delivered rows.
+
+**What that siting does and does not cover.** A published row can only exist if
+the drain has run, so a deployment that has never had ``ARCHIVER_REDIS_URL`` set
+accrues nothing to prune. It does *not* follow that retention is unconditional:
+pruning needs the drain running **now**. Unsetting ``ARCHIVER_REDIS_URL`` on an
+instance that has been live freezes retention with whatever published backlog
+already exists - the table stops growing and stops shrinking, and nothing reports
+that. Bus-dormant is a local-dev mode, so the residual case is narrow, but it is
+a real one and not a hole this siting closes.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
@@ -58,6 +66,33 @@ DEFAULT_PRUNE_BATCH_SIZE = 1_000
 MAX_PRUNE_BATCHES = 10
 
 
+@dataclass(frozen=True)
+class PruneOutcome:
+    """What one retention pass did.
+
+    ``capped`` means the pass exhausted its batch ceiling with every batch full,
+    so rows past the window remain and the next tick picks them up. It is derived
+    from the loop that actually ran, never recomputed from the module constants -
+    a caller passing its own bounds gets a flag about *its* pass.
+    """
+
+    deleted: int
+    capped: bool
+
+
+class OutboxPruneError(Exception):
+    """A pass that failed partway, carrying what it had already committed.
+
+    Batches commit as they go, so a mid-pass failure leaves rows genuinely
+    deleted. Without this the count dies with the exception and journald
+    under-reports the one pass an operator most wants an accurate account of.
+    """
+
+    def __init__(self, outcome: PruneOutcome) -> None:
+        super().__init__(f"outbox prune failed after {outcome.deleted} rows")
+        self.outcome = outcome
+
+
 def resolve_retention_days(raw: str | None) -> int | None:
     """Parse the ``ARCHIVER_OUTBOX_RETENTION_DAYS`` knob into a retention window.
 
@@ -81,6 +116,38 @@ def resolve_retention_days(raw: str | None) -> int | None:
     return value if value > 0 else None
 
 
+async def prune_batch(session: AsyncSession, *, cutoff: datetime, batch_size: int) -> int:
+    """Delete one bounded batch of published rows past ``cutoff``; commit it.
+
+    The ``id IN (SELECT ... LIMIT n)`` shape is what makes the batch bounded; the
+    inner select rides ``ix_changes_outbox_published``, the partial index over
+    ``published_at IS NOT NULL`` added with this pruner. Without it the prune
+    degrades to a seq scan of exactly the rows it exists to bound.
+
+    ``dead_lettered_at IS NULL`` is redundant against a publisher that only ever
+    dead-letters an unpublished row. It is stated anyway so the archiver#107
+    exemption is a property of this query rather than an emergent consequence of
+    another module.
+    """
+    doomed = (
+        select(ChangesOutboxRow.id)
+        .where(
+            ChangesOutboxRow.published_at.is_not(None),
+            ChangesOutboxRow.published_at < cutoff,
+            ChangesOutboxRow.dead_lettered_at.is_(None),
+        )
+        .order_by(ChangesOutboxRow.published_at)
+        .limit(batch_size)
+    )
+    result = await session.execute(
+        delete(ChangesOutboxRow)
+        .where(ChangesOutboxRow.id.in_(doomed))
+        .execution_options(synchronize_session=False)
+    )
+    await session.commit()
+    return result.rowcount
+
+
 async def prune_published_rows(
     session: AsyncSession,
     *,
@@ -88,43 +155,34 @@ async def prune_published_rows(
     now: datetime | None = None,
     batch_size: int = DEFAULT_PRUNE_BATCH_SIZE,
     max_batches: int = MAX_PRUNE_BATCHES,
-) -> int:
-    """Delete published rows older than the window; return how many went.
+) -> PruneOutcome:
+    """Delete published rows older than the window; report what went.
 
     Batched and capped (see the constants). Each batch commits on its own, so a
     long first prune is a sequence of short transactions rather than one held
     lock. A short batch means the queue is drained and the loop stops early.
     ``now`` overrides the clock for tests.
 
-    The ``id IN (SELECT ... LIMIT n)`` shape is what makes the batch bounded;
-    the inner select rides ``ix_changes_outbox_published``, the partial index
-    over ``published_at IS NOT NULL`` added with this pruner. Without it the
-    prune degrades to a seq scan of exactly the rows it exists to bound.
+    The window boundary is a strict ``<``: a row published exactly at the cutoff
+    survives this pass and goes on the next one.
+
+    Raises ``OutboxPruneError`` carrying the batches already committed when one
+    fails - the rows are gone either way, so the count has to outlive the error.
     """
     reference = now if now is not None else datetime.now(UTC)
     cutoff = reference - timedelta(days=retention_days)
     deleted = 0
+    capped = True
     for _ in range(max_batches):
-        doomed = (
-            select(ChangesOutboxRow.id)
-            .where(
-                ChangesOutboxRow.published_at.is_not(None),
-                ChangesOutboxRow.published_at < cutoff,
-                ChangesOutboxRow.dead_lettered_at.is_(None),
-            )
-            .order_by(ChangesOutboxRow.published_at)
-            .limit(batch_size)
-        )
-        result = await session.execute(
-            delete(ChangesOutboxRow)
-            .where(ChangesOutboxRow.id.in_(doomed))
-            .execution_options(synchronize_session=False)
-        )
-        await session.commit()
-        deleted += result.rowcount
-        if result.rowcount < batch_size:
+        try:
+            rowcount = await prune_batch(session, cutoff=cutoff, batch_size=batch_size)
+        except Exception as e:
+            raise OutboxPruneError(PruneOutcome(deleted=deleted, capped=False)) from e
+        deleted += rowcount
+        if rowcount < batch_size:
+            capped = False
             break
-    return deleted
+    return PruneOutcome(deleted=deleted, capped=capped)
 
 
 async def prune_outbox(
@@ -139,26 +197,33 @@ async def prune_outbox(
     actually deleted something - the healthy steady state is nothing to prune,
     and a line every tick for zero rows is noise that would bury the one that
     matters. Pure housekeeping: any failure is logged and swallowed so it can
-    never take down the drain loop it rides in.
+    never take down the drain loop it rides in, and the warning carries the rows
+    the failed pass had already committed.
     """
     if retention_days is None:
         return
     try:
         async with session_factory() as session:
-            deleted = await prune_published_rows(session, retention_days=retention_days, now=now)
+            outcome = await prune_published_rows(session, retention_days=retention_days, now=now)
+    except OutboxPruneError as e:
+        logger.warning("Outbox prune failed", extra={"deleted": e.outcome.deleted}, exc_info=True)
+        return
     except Exception:
-        logger.warning("Outbox prune failed", exc_info=True)
+        # Never reached the first batch (the session itself failed to open, or
+        # the clock/knob math raised): nothing was deleted, and saying so beats
+        # an absent count that reads as unknown.
+        logger.warning("Outbox prune failed", extra={"deleted": 0}, exc_info=True)
         return
 
-    if deleted:
+    if outcome.deleted:
         logger.info(
             "Outbox pruned",
             extra={
-                "deleted": deleted,
+                "deleted": outcome.deleted,
                 "retention_days": retention_days,
                 # A pass that hit its ceiling has more to do; the next tick picks
                 # it up. Visible so a persistently capped prune (a backlog the
                 # cadence cannot outrun) is diagnosable from journald alone.
-                "capped": deleted >= DEFAULT_PRUNE_BATCH_SIZE * MAX_PRUNE_BATCHES,
+                "capped": outcome.capped,
             },
         )

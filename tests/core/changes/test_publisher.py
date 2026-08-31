@@ -1529,3 +1529,37 @@ async def test_run_prune_respects_interval_between_iterations(
 
     assert iterations == 3
     assert len(prune_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_survives_a_failing_prune(publisher, monkeypatch):
+    """The prune call sits outside the try/except guarding drain_once, so the
+    loop's survival rests entirely on prune_outbox's own swallow. Exercised
+    through the real prune (not a stub) so the composition is what is tested."""
+    stop = asyncio.Event()
+    iterations = 0
+
+    async def _drain(**_kwargs):
+        nonlocal iterations
+        iterations += 1
+        if iterations >= 3:
+            stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+
+    def _exploding_factory():
+        raise RuntimeError("database is on fire")
+
+    await publisher_mod.run(
+        session_factory=_exploding_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        active_interval=0.001,
+        stop_event=stop,
+        stats_interval=None,
+        retention_days=30,
+        prune_interval=0.0,
+    )
+
+    assert iterations == 3
