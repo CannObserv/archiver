@@ -11,19 +11,18 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from co_core.pure.adapters.bus.streams import (
     CONTENT_ARTIFACTS,
-    CONTENT_BLOBS,
-    CONTENT_FETCH,
     CONTENT_FETCH_POLICY,
     CONTENT_REPLICATE,
     CONTENT_REVISIONS,
     INFO_CHANGES,
     INFO_REGISTRY,
-    INFO_WATCH_STATUS,
+    StreamKind,
     dlq_name,
     stream_kind,
 )
@@ -558,41 +557,67 @@ def test_stream_check_allows_a_pending_group_on_a_fact_stream() -> None:
 
 
 def test_stream_check_allows_a_pending_group_on_a_command_stream() -> None:
-    """``command`` is the third kind, and it takes exactly one group."""
-    check = StreamCheck(CONTENT_REPLICATE, warn_length=10, pending_group="replicator.replicate")
-    assert check.pending_group == "replicator.replicate"
+    """``command`` is the third kind, and it takes exactly one group.
+
+    Non-conventional name for the same reason as the fact-stream case above: a
+    guard keyed on the group's *spelling* rather than the stream's *kind* would
+    pass an ``archiver.``- or ``replicator.``-prefixed name either way.
+    """
+    check = StreamCheck(CONTENT_REPLICATE, warn_length=10, pending_group="also-not-a-convention")
+    assert check.pending_group == "also-not-a-convention"
 
 
-@pytest.mark.parametrize(
-    "topic",
-    [
-        INFO_CHANGES,
-        CONTENT_BLOBS,
-        CONTENT_FETCH,
-        CONTENT_REVISIONS,
-        CONTENT_ARTIFACTS,
-        CONTENT_REPLICATE,
-        CONTENT_FETCH_POLICY,
-        INFO_REGISTRY,
-        INFO_WATCH_STATUS,
-    ],
-)
-def test_every_canonical_stream_constant_is_classifiable(topic: str) -> None:
+@pytest.mark.parametrize("topic", [c.topic for c in STREAM_CHECKS])
+def test_every_probed_topic_is_classifiable(topic: str) -> None:
     """``StreamCheck``'s guard fails *open* on a ``ValueError`` from ``stream_kind``.
 
     That swallow is unavoidable - co-core publishes no public set of canonical
-    topics to test membership against - so its safety rests on ``ValueError``
-    meaning "not canonical" and nothing else. If a future co-core stopped
-    classifying a constant archiver uses, the guard would quietly stop guarding
-    that stream and no other test would notice. This is the tripwire.
+    topics to test membership against (``_STREAM_KINDS`` is private) - so its
+    safety rests on ``ValueError`` meaning "not canonical" and nothing else. If
+    a future co-core stopped classifying a topic archiver probes, the guard
+    would quietly stop guarding that stream and no other test would notice.
+    This is the tripwire.
+
+    The domain is ``STREAM_CHECKS`` rather than a hand-listed set of co-core
+    constants, because that is exactly where the guard runs. A hand list cannot
+    notice a stream being added, and would assert about ``content.blobs``,
+    which archiver is forbidden to probe at all.
+
+    The kinds come from ``get_args(StreamKind)`` rather than a copied tuple, so
+    co-core legitimately adding a fourth kind does not fail this test for the
+    wrong reason.
     """
-    assert stream_kind(topic) in ("command", "fact", "config_state")
+    assert stream_kind(topic) in get_args(StreamKind)
 
 
-@pytest.mark.parametrize("check", STREAM_CHECKS, ids=lambda c: c.topic)
-def test_no_config_state_check_carries_a_group(check: StreamCheck) -> None:
-    """The live inventory obeys the rule the constructor now enforces."""
-    if stream_kind(check.topic) == "config_state":
-        assert check.pending_group is None, (
-            f"{check.topic} is a config/state stream and must not have a consumer group"
-        )
+@pytest.mark.parametrize(
+    "check",
+    [c for c in STREAM_CHECKS if stream_kind(c.topic) == "config_state"],
+    ids=lambda c: c.topic,
+)
+def test_every_config_state_check_probes_last_entry_age(check: StreamCheck) -> None:
+    """A groupless stream's only liveness signal is the age of its last entry.
+
+    Replaces an earlier assertion that no config/state check carries a
+    ``pending_group``. That became **unfalsifiable** once ``__post_init__``
+    started raising on exactly that: ``STREAM_CHECKS`` is built at import, so a
+    violation makes the module fail to import and this file fail at
+    *collection* - the test could never go red, only vanish.
+
+    This is the invariant the constructor does *not* enforce, and it is the one
+    with teeth (archiver#128). A config/state stream has no consumer group, so
+    it is invisible to every ``XPENDING``-based check; without an age threshold
+    a producer that stopped publishing would look identical to one that is
+    merely quiet. Adding a config/state stream to the inventory without
+    ``warn_last_entry_age_seconds`` therefore buys a probe that cannot detect
+    the failure it exists for.
+
+    Known limit: parametrising over ``STREAM_CHECKS`` means this cannot catch a
+    config/state stream dropped from the inventory entirely - that case has no
+    entry to iterate. Detecting it would need a hand-maintained list of
+    canonical topics, which is the coupling
+    ``test_every_probed_topic_is_classifiable`` deliberately removed.
+    """
+    assert check.warn_last_entry_age_seconds is not None, (
+        f"{check.topic} is groupless, so last-entry age is its only liveness probe"
+    )
