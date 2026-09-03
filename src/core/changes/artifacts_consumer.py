@@ -35,7 +35,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS
+from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, group_name
 from co_core.pure.models.changes import ReplicationCompleteEvent, ReplicationFailedEvent
 from co_core_aio.bus import BusMessage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -56,7 +56,13 @@ logger = get_logger(__name__)
 
 # One group per consuming service — the broadcast posture for a fact stream, and
 # a wire contract with the broker's monitoring (``XPENDING`` lag lives under it).
-CONSUMER_GROUP = "archiver.artifacts"
+# Derived, not spelled: co-core's ``<service>.<stream-suffix>`` convention went
+# 0/5 across the cluster while it lived only as a docstring beside a free-string
+# ``group`` parameter (cannobserv#384). Since co-core >=0.13.1 it is an
+# importable helper, so deriving makes drift impossible rather than merely
+# discouraged. Evaluates to the string already on the broker, so this is a
+# no-op at runtime.
+CONSUMER_GROUP = group_name(CONTENT_ARTIFACTS, "archiver")
 
 # Re-exported so this stream has one import site, matching ``consumer.py``.
 consumer_enabled = group_consumer.consumer_enabled

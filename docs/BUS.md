@@ -192,6 +192,19 @@ consuming service as the fact-stream posture requires, as the single consumer
 lifespan and is dormant unless **both** `ARCHIVER_REDIS_URL` and
 `ARCHIVER_BUS_CONSUMER=1` are set.
 
+**Both group names are derived, not spelled.** `CONSUMER_GROUP` in
+`consumer.py` and `artifacts_consumer.py` is
+`group_name(<topic>, "archiver")`, from
+`co_core.pure.adapters.bus.streams` (co-core >= 0.13.1). The cluster convention
+is `<service>.<stream-suffix>[-<purpose>]`; it went 0/5 across the cluster while
+it existed only as a docstring beside a free-string `group` parameter, which is
+what cannobserv#384 fixed by making it an importable helper. Deriving evaluates
+to the same `archiver.revisions` / `archiver.artifacts` already on the broker -
+a runtime no-op - but makes a non-conforming literal impossible rather than
+merely discouraged. `StreamCheck` in `src/core/bus_health.py` enforces the other
+half of the same taxonomy: `stream_kind` refuses a `pending_group` on a
+config/state stream, where a group would accumulate a PEL nothing drains.
+
 Watcher observes; the registry decides. Per message:
 
 1. `info_source_id` is resolved against the registry. Unknown → **ack and drop**

@@ -34,7 +34,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS
+from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS, group_name
 from co_core.pure.models.changes import SourceRevisionObservedEvent
 from co_core_aio.bus import BusMessage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -59,7 +59,13 @@ logger = get_logger(__name__)
 # One group per consuming service — the broadcast posture for a fact stream. The
 # name is the wire contract with the broker's monitoring (``XPENDING`` lag lives
 # under it), so it is as fixed as the stream name.
-CONSUMER_GROUP = "archiver.revisions"
+# Derived, not spelled: co-core's ``<service>.<stream-suffix>`` convention went
+# 0/5 across the cluster while it lived only as a docstring beside a free-string
+# ``group`` parameter (cannobserv#384). Since co-core >=0.13.1 it is an
+# importable helper, so deriving makes drift impossible rather than merely
+# discouraged. Evaluates to the string already on the broker, so this is a
+# no-op at runtime.
+CONSUMER_GROUP = group_name(CONTENT_REVISIONS, "archiver")
 
 # Re-exported so callers and tests keep one import site for this stream's
 # consumer, and so the gate's docstring stays where the gate is enforced.

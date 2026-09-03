@@ -29,7 +29,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from co_core.pure.adapters.bus.envelope import to_wire
-from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS
+from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS, group_name
 from co_core.pure.extract import spec_fingerprint
 from co_core.pure.models.changes import SourceRevisionObservedEvent
 from co_core_aio.bus import AsyncBusConsumer
@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.changes import consumer as revisions_consumer
+from src.core.changes.consumer import CONSUMER_GROUP
 from src.core.models import ChangesOutboxRow, InfoSource, SourceRevision
 
 FP_OBSERVED = "sha256:" + "a" * 64
@@ -549,3 +550,19 @@ async def test_superseded_spec_still_records_the_revision(session_factory, fake_
     assert await _pending_count(fake_redis) == 0
     # Not poison: a superseded spec says nothing about the frame's validity.
     assert await fake_redis.xlen(f"{CONTENT_REVISIONS}.dlq") == 0
+
+
+def test_consumer_group_conforms_to_the_cluster_convention() -> None:
+    """The group name is derived, not spelled (cannobserv#384).
+
+    co-core's ``<service>.<stream-suffix>`` convention went 0/5 across the
+    cluster while it existed only as a docstring beside a free-string ``group``
+    parameter. Since >=0.13.1 it is an importable helper, so archiver derives
+    rather than restates - the drift this guards against is a literal edited to
+    something that still *looks* conventional.
+
+    ``archiver.revisions`` is what the broker already carries, so this is a
+    no-op at runtime and needs no rename in CannObserv/broker#1 Phase 3.
+    """
+    assert CONSUMER_GROUP == group_name(CONTENT_REVISIONS, "archiver")
+    assert CONSUMER_GROUP == "archiver.revisions"

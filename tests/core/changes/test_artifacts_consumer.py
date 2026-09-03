@@ -24,7 +24,7 @@ from unittest.mock import patch
 
 import pytest
 from co_core.pure.adapters.bus.envelope import to_wire
-from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS
+from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, group_name
 from co_core.pure.models.changes import (
     ReplicationCompleteEvent,
     ReplicationFailedEvent,
@@ -35,6 +35,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.changes import artifacts_consumer
+from src.core.changes.artifacts_consumer import CONSUMER_GROUP
 from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
@@ -326,3 +327,19 @@ async def test_undecodable_frame_is_quarantined(fake_redis, session_factory):
     assert settled == 0
     dlq_len = await fake_redis.xlen(f"{CONTENT_ARTIFACTS}.dlq")
     assert dlq_len == 1
+
+
+def test_consumer_group_conforms_to_the_cluster_convention() -> None:
+    """The group name is derived, not spelled (cannobserv#384).
+
+    co-core's ``<service>.<stream-suffix>`` convention went 0/5 across the
+    cluster while it existed only as a docstring beside a free-string ``group``
+    parameter. Since >=0.13.1 it is an importable helper, so archiver derives
+    rather than restates - the drift this guards against is a literal edited to
+    something that still *looks* conventional.
+
+    ``archiver.artifacts`` is what the broker already carries, so this is a
+    no-op at runtime and needs no rename in CannObserv/broker#1 Phase 3.
+    """
+    assert CONSUMER_GROUP == group_name(CONTENT_ARTIFACTS, "archiver")
+    assert CONSUMER_GROUP == "archiver.artifacts"

@@ -63,6 +63,7 @@ from co_core.pure.adapters.bus.streams import (
     INFO_REGISTRY,
     INFO_WATCH_STATUS,
     dlq_name,
+    stream_kind,
 )
 from redis.asyncio import Redis
 from redis.exceptions import RedisError, ResponseError
@@ -176,6 +177,40 @@ class StreamCheck:
     # entries naming them. Growth is therefore expected, and a breach is a
     # volume milestone rather than a broken cap (CR round 1, finding 5).
     never_trimmed: bool = False
+
+    def __post_init__(self) -> None:
+        """Refuse a ``pending_group`` on a config/state stream.
+
+        A group on a config/state stream accumulates a PEL nothing drains:
+        every worker needs every message, so no reader acks on behalf of the
+        others. co-core has always stated the rule; since >=0.13.1 the taxonomy
+        is machine-readable via ``stream_kind``, so the rule can be enforced
+        here rather than resting on whoever edits ``STREAM_CHECKS`` next
+        knowing it (cannobserv#384).
+
+        Deliberately a hard ``ValueError`` at import time rather than a probe
+        finding: this is a statement about the stream's *kind*, which cannot
+        become true at runtime, so there is nothing an operator could act on
+        and no reason to let the process start.
+
+        A topic ``stream_kind`` cannot classify - a synthetic name in a test, a
+        derived ``<topic>.dlq`` - is left alone rather than rejected. The guard
+        exists to catch a *known* config/state stream being given a group, and
+        it has no opinion about a name outside the taxonomy. That mirrors
+        co-core's own choice to leave ``dlq_name`` unguarded while
+        ``group_name`` raises.
+        """
+        if self.pending_group is None:
+            return
+        try:
+            kind = stream_kind(self.topic)
+        except ValueError:
+            return
+        if kind == "config_state":
+            raise ValueError(
+                f"{self.topic} is a config_state stream and must not carry a "
+                f"consumer group (got {self.pending_group!r})"
+            )
 
 
 STREAM_CHECKS: tuple[StreamCheck, ...] = (

@@ -22,6 +22,7 @@ from co_core.pure.adapters.bus.streams import (
     INFO_CHANGES,
     INFO_REGISTRY,
     dlq_name,
+    stream_kind,
 )
 from fakeredis import aioredis as fakeredis_aio
 
@@ -520,3 +521,37 @@ async def test_run_once_persists_state(fake_redis, tmp_path) -> None:
         disk_usage=_healthy_disk,
     )
     assert json.loads(state_path.read_text()) == {}
+
+
+# --- stream-kind invariants (cannobserv#384, co-core >=0.13.1) --------------
+#
+# ``pending_group`` was a hand-kept field whose correctness rested on the
+# author knowing the three-kind taxonomy. ``stream_kind`` makes that taxonomy
+# machine-readable, so the rule "a config/state stream never carries a group"
+# stops being a comment and becomes a constructor guard.
+
+
+def test_stream_check_rejects_a_pending_group_on_a_config_state_stream() -> None:
+    """A config/state stream must never carry a consumer group.
+
+    A group there accumulates a PEL nothing drains: every worker needs every
+    message, so nobody acks on behalf of the others. co-core states the rule;
+    this makes STREAM_CHECKS unable to express a violation of it.
+    """
+    with pytest.raises(ValueError, match="config_state"):
+        StreamCheck(INFO_REGISTRY, warn_length=10, pending_group="archiver.registry")
+
+
+def test_stream_check_allows_a_pending_group_on_a_fact_stream() -> None:
+    """The guard must not overreach: fact streams are exactly where groups live."""
+    check = StreamCheck(CONTENT_REVISIONS, warn_length=10, pending_group="archiver.revisions")
+    assert check.pending_group == "archiver.revisions"
+
+
+@pytest.mark.parametrize("check", STREAM_CHECKS, ids=lambda c: c.topic)
+def test_no_config_state_check_carries_a_group(check: StreamCheck) -> None:
+    """The live inventory obeys the rule the constructor now enforces."""
+    if stream_kind(check.topic) == "config_state":
+        assert check.pending_group is None, (
+            f"{check.topic} is a config/state stream and must not have a consumer group"
+        )
