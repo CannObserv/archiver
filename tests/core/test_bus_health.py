@@ -16,11 +16,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from co_core.pure.adapters.bus.streams import (
     CONTENT_ARTIFACTS,
+    CONTENT_BLOBS,
+    CONTENT_FETCH,
     CONTENT_FETCH_POLICY,
     CONTENT_REPLICATE,
     CONTENT_REVISIONS,
     INFO_CHANGES,
     INFO_REGISTRY,
+    INFO_WATCH_STATUS,
     dlq_name,
     stream_kind,
 )
@@ -543,9 +546,47 @@ def test_stream_check_rejects_a_pending_group_on_a_config_state_stream() -> None
 
 
 def test_stream_check_allows_a_pending_group_on_a_fact_stream() -> None:
-    """The guard must not overreach: fact streams are exactly where groups live."""
-    check = StreamCheck(CONTENT_REVISIONS, warn_length=10, pending_group="archiver.revisions")
-    assert check.pending_group == "archiver.revisions"
+    """The guard must not overreach: fact streams are exactly where groups live.
+
+    The group name is deliberately *not* a conventional one. The guard keys on
+    the topic's kind and must have no opinion about the group's spelling -
+    asserting with ``archiver.revisions`` would leave both behaviours
+    consistent with a pass.
+    """
+    check = StreamCheck(CONTENT_REVISIONS, warn_length=10, pending_group="not-a-convention")
+    assert check.pending_group == "not-a-convention"
+
+
+def test_stream_check_allows_a_pending_group_on_a_command_stream() -> None:
+    """``command`` is the third kind, and it takes exactly one group."""
+    check = StreamCheck(CONTENT_REPLICATE, warn_length=10, pending_group="replicator.replicate")
+    assert check.pending_group == "replicator.replicate"
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [
+        INFO_CHANGES,
+        CONTENT_BLOBS,
+        CONTENT_FETCH,
+        CONTENT_REVISIONS,
+        CONTENT_ARTIFACTS,
+        CONTENT_REPLICATE,
+        CONTENT_FETCH_POLICY,
+        INFO_REGISTRY,
+        INFO_WATCH_STATUS,
+    ],
+)
+def test_every_canonical_stream_constant_is_classifiable(topic: str) -> None:
+    """``StreamCheck``'s guard fails *open* on a ``ValueError`` from ``stream_kind``.
+
+    That swallow is unavoidable - co-core publishes no public set of canonical
+    topics to test membership against - so its safety rests on ``ValueError``
+    meaning "not canonical" and nothing else. If a future co-core stopped
+    classifying a constant archiver uses, the guard would quietly stop guarding
+    that stream and no other test would notice. This is the tripwire.
+    """
+    assert stream_kind(topic) in ("command", "fact", "config_state")
 
 
 @pytest.mark.parametrize("check", STREAM_CHECKS, ids=lambda c: c.topic)

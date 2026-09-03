@@ -196,9 +196,15 @@ class StreamCheck:
         A topic ``stream_kind`` cannot classify - a synthetic name in a test, a
         derived ``<topic>.dlq`` - is left alone rather than rejected. The guard
         exists to catch a *known* config/state stream being given a group, and
-        it has no opinion about a name outside the taxonomy. That mirrors
-        co-core's own choice to leave ``dlq_name`` unguarded while
-        ``group_name`` raises.
+        it has no opinion about a name outside the taxonomy.
+
+        ``stream_kind`` signals "not canonical" by raising ``ValueError``, and
+        co-core publishes no public set of canonical topics to test membership
+        against (``_STREAM_KINDS`` is private), so the check has to run through
+        the exception. That makes this guard **fail open** if co-core ever
+        raises ``ValueError`` here for a reason other than an unknown topic;
+        ``test_every_canonical_stream_constant_is_classifiable`` turns that into
+        a caught test failure rather than a silently disabled guard.
         """
         if self.pending_group is None:
             return

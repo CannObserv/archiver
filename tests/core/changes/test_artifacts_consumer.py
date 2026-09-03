@@ -335,11 +335,20 @@ def test_consumer_group_conforms_to_the_cluster_convention() -> None:
     co-core's ``<service>.<stream-suffix>`` convention went 0/5 across the
     cluster while it existed only as a docstring beside a free-string ``group``
     parameter. Since >=0.13.1 it is an importable helper, so archiver derives
-    rather than restates - the drift this guards against is a literal edited to
-    something that still *looks* conventional.
+    rather than restates. ``archiver.artifacts`` is what the broker already
+    carries, so this is a no-op at runtime and needs no rename in
+    CannObserv/broker#1 Phase 3.
 
-    ``archiver.artifacts`` is what the broker already carries, so this is a
-    no-op at runtime and needs no rename in CannObserv/broker#1 Phase 3.
+    **The literal assertion below is the load-bearing half, and it guards
+    upstream.** Deriving moved a wire contract's value out of this repo: a
+    future co-core that changed ``group_name``'s derivation would rename
+    archiver's consumer group on a plain ``uv sync``, with no diff here to
+    review. ``ensure_group`` creates at ``0`` rather than ``$``
+    (``group_consumer.py``) and every handler is idempotent, so the damage is a
+    full replay plus an orphaned group on the broker rather than skipped
+    messages - but nothing else in the repo would catch it. Do not "simplify"
+    this test by dropping the comparison against the literal; the comparison
+    against ``group_name`` is the tautological half.
     """
     assert CONSUMER_GROUP == group_name(CONTENT_ARTIFACTS, "archiver")
     assert CONSUMER_GROUP == "archiver.artifacts"
