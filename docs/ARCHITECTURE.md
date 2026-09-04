@@ -97,6 +97,24 @@ src/core/                      Domain logic
                                resumes from bus_tail_cursors, no DLQ, and
                                deliberately no ARCHIVER_BUS_CONSUMER gate: a
                                tail removes nothing from a group PEL.
+                               bus_client.py builds the one Redis client all six
+                               loops share, with an explicit connection policy
+                               (archiver#193) - never a bare from_url, which was
+                               safe only while the broker was on loopback. Its
+                               socket_timeout has a FLOOR, not a ceiling:
+                               redis-py does not extend it for a blocking
+                               command, so a value at or below a loop's BLOCK
+                               raises on every idle read. It also carries the
+                               startup reachability probe, because from_url is
+                               lazy and nothing else would notice a broker that
+                               is configured but down. read_windows.py holds the
+                               blocking-read windows those consumers use, split
+                               out as a LEAF so bus_client can derive its timeout
+                               without importing the consumer modules - that
+                               inversion put client construction downstream of
+                               the loops consuming its client, and would become
+                               an import cycle the moment a consumer built its
+                               own client.
   services/                    Registry write paths shared by the HTTP surface
                                and the bus consumers. A service owns one
                                mutation end to end — domain validation, the
