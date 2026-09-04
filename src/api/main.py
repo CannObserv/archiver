@@ -24,6 +24,7 @@ from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
 from src.core.changes import (
     artifacts_consumer,
+    bus_client,
     outbox_prune,
     registry_snapshot,
     replication_reaper,
@@ -116,6 +117,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # --- Optional outbox publisher ---
     redis_url = os.environ.get("ARCHIVER_REDIS_URL")
     redis_client: RedisAsync | None = None
+    client_to_close: RedisAsync | None = None
+    # The client to close at shutdown, tracked separately from the one the bus
+    # tasks use (CR finding 7). The ``except`` below sets ``redis_client = None``
+    # to signal "no publisher", and the close in ``finally`` used to key off that
+    # same name - so a failure partway through init leaked the client. Harmless
+    # while ``from_url`` was lazy and nothing had connected; the reachability
+    # PING now means something has.
     stop_event: asyncio.Event | None = None
     pub_task: asyncio.Task | None = None
     consumer_task: asyncio.Task | None = None
@@ -124,10 +132,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     reaper_stop_event: asyncio.Event | None = None
     snapshot_task: asyncio.Task | None = None
     watch_status_task: asyncio.Task | None = None
+    reachability_task: asyncio.Task | None = None
 
     if redis_url:
         try:
-            redis_client = RedisAsync.from_url(redis_url)
+            # Explicit connection policy (archiver#193 Phase 1). The bare
+            # ``from_url`` this replaces was safe only because the broker was on
+            # loopback; see src/core/changes/bus_client.py for why the timeout
+            # floor is the longest blocking read rather than a nerve-setting.
+            redis_client = bus_client.build_bus_client(redis_url)
+            client_to_close = redis_client
+            # Say once, at ERROR, whether the configured broker actually
+            # answers. ``from_url`` is lazy, so nothing below would otherwise
+            # notice an unreachable broker: the publisher would be scheduled, the
+            # first failure would land inside a loop that correctly treats it as
+            # transient, and a misconfiguration would be indistinguishable from
+            # an idle cluster. Detached because the worst case is
+            # ``bus_client.WORST_CASE_CONNECT_SECONDS`` of waiting, and the
+            # dashboard must not be unavailable because the bus is.
+            #
+            # Alone among the bus tasks it takes no ``_bus_task_exit_logger``
+            # (CR finding 8). That callback reports a loop that *exited* when it
+            # should still be running; this one is a single PING that is
+            # supposed to finish, and it cannot raise - so the callback would
+            # have nothing to say and its presence would imply otherwise.
+            reachability_task = asyncio.create_task(
+                bus_client.probe_bus_reachable(redis_client, redis_url)
+            )
+            # Published like its six siblings (CR round 3, finding 18). Not
+            # decoration: without a handle, the only way to observe the probe
+            # from outside is to yield the loop and hope it ran, which holds
+            # today only because the test double's ``ping`` raises without
+            # suspending. A fake that awaits anything first turns that into a
+            # flake rather than a failure. An awaitable handle is deterministic.
+            app.state.bus_reachability_task = reachability_task
             session_factory = async_sessionmaker(bind=get_engine(), expire_on_commit=False)
             stop_event = asyncio.Event()
             # Operator-side stream cap (archiver#109): with no consumer yet,
@@ -206,6 +244,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.publisher_stop_event = None
             app.state.registry_snapshot_task = None
             app.state.registry_snapshot_trigger = None
+            # The task keeps running to its ERROR line - a broker that is down
+            # is exactly what an operator needs told, and init failing for some
+            # *other* reason does not make that less true. Only the handle is
+            # disowned, to match every other one on this path.
+            app.state.bus_reachability_task = None
 
         # --- Optional content.revisions consumer (archiver#139) ---
         # Gated separately from the publisher and started in its own try, so a
@@ -314,6 +357,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.registry_snapshot_trigger = None
         app.state.watch_status_task = None
         app.state.artifacts_consumer_task = None
+        app.state.bus_reachability_task = None
         logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumers disabled")
 
     # --- Replication reaper (archiver#170, MUST-6) ---
@@ -366,6 +410,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             watch_status_task,
             artifacts_task,
             reaper_task,
+            reachability_task,
         ):
             if task is None:
                 continue
@@ -374,8 +419,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
-        if redis_client is not None:
-            await redis_client.aclose()
+        if client_to_close is not None:
+            await client_to_close.aclose()
         # Then close the fetch driver
         await app.state.fetch_driver.aclose()
 

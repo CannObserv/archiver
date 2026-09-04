@@ -22,7 +22,13 @@ from co_core.pure.adapters.bus.exceptions import (
 )
 from co_core_aio.bus import AsyncBusPublisher
 from fakeredis import aioredis as fakeredis_aio
-from redis.exceptions import OutOfMemoryError, ResponseError
+from redis.exceptions import (
+    AuthenticationError,
+    NoPermissionError,
+    OutOfMemoryError,
+    ResponseError,
+)
+from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -833,6 +839,71 @@ async def test_broker_oom_is_transient_and_exempt_from_ceiling(session_factory):
     assert refreshed.dead_lettered_at is None  # transient → exempt, still live
     assert refreshed.published_at is None
     assert refreshed.publish_attempts == MAX_PUBLISH_ATTEMPTS + 1  # keeps climbing
+
+
+@pytest.mark.asyncio
+async def test_broker_noperm_is_transient_and_exempt_from_ceiling(session_factory):
+    """A Redis ACL denial (``NOPERM``) is TRANSIENT, not poison.
+
+    CannObserv/broker#1 D3 puts per-service ACL users in front of the relocated
+    broker, replacing the loopback boundary the current broker relies on. The
+    failure mode that introduces is a *misconfigured rule*, not a bad event: the
+    row is valid and will publish unchanged the moment an operator widens the
+    ACL. Same shape as the ``OutOfMemoryError`` case above, and the same reason
+    for the exemption - classifying it as poison would dead-letter good
+    ``info.changes`` events for the duration of someone else's config mistake.
+
+    ``NoPermissionError`` is a ``ResponseError`` subclass (not a
+    ``ConnectionError``), so it is *not* covered incidentally by the connection
+    entries and has to be named. Contrast ``AuthenticationError`` - a wrong
+    password - which subclasses ``ConnectionError`` and is therefore already
+    transient without a tuple entry of its own.
+    """
+    row = await _insert_row(session_factory, payload=_captured_event("rev-noperm"))
+    # Pre-age it ABOVE the ceiling: a non-transient error here would dead-letter.
+    async with session_factory() as s:
+        r = await s.get(ChangesOutboxRow, row.id)
+        r.publish_attempts = MAX_PUBLISH_ATTEMPTS
+        await s.commit()
+
+    broken = AsyncMock()
+    broken.xadd = AsyncMock(
+        side_effect=NoPermissionError(
+            "NOPERM User archiver has no permissions to access one of the keys used as arguments"
+        )
+    )
+    broken_publisher = AsyncBusPublisher(broken)
+
+    n = await drain_once(session_factory=session_factory, publisher=broken_publisher)
+    assert n == 0
+
+    async with session_factory() as s:
+        refreshed = await s.get(ChangesOutboxRow, row.id)
+    assert refreshed.dead_lettered_at is None  # transient -> exempt, still live
+    assert refreshed.published_at is None
+    assert refreshed.publish_attempts == MAX_PUBLISH_ATTEMPTS + 1  # keeps climbing
+
+
+def test_authentication_error_is_transient_without_its_own_entry() -> None:
+    """A wrong ``requirepass`` is already covered - assert *why*, not just that.
+
+    ``AuthenticationError`` subclasses ``ConnectionError``, which the tuple
+    already carries, so it needs no entry. That is load-bearing for the broker
+    move (CannObserv/broker#1 D3 adds a credential where there was none) and it
+    is invisible at the tuple's call site, so it is pinned here: if redis-py ever
+    re-parents it under ``ResponseError`` the way ``OutOfMemoryError`` sits, a
+    bad password would start dead-lettering valid events and nothing else in
+    this suite would notice.
+
+    Note the alias. redis-py's ``ConnectionError`` does **not** derive from the
+    builtin of the same name, so writing this against a bare ``ConnectionError``
+    asserts the opposite of what it reads as and fails. The publisher's tuple
+    carries both spellings for that reason.
+    """
+    assert not issubclass(RedisConnectionError, ConnectionError)  # the alias is load-bearing
+    assert issubclass(AuthenticationError, RedisConnectionError)
+    assert issubclass(NoPermissionError, ResponseError)
+    assert not issubclass(NoPermissionError, RedisConnectionError)
 
 
 @pytest.mark.asyncio

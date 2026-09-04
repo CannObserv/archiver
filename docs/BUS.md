@@ -6,6 +6,27 @@ the three streams it publishes - `info.changes`, `info.registry`,
 `content.artifacts`, `info.watch-status`. HTTP routes and their SDK wrappers
 live in [API.md](API.md); this file is the wire side of the same surface.
 
+## The shared client's connection policy (archiver#193)
+
+All six bus loops share one client from `src/core/changes/bus_client.py`, never a
+bare `from_url` - safe only on loopback. That module holds the reasoning; three
+facts that surprise:
+
+- **`socket_timeout` has a floor.** redis-py does not extend it for a blocking
+  command, so a value at or below a loop's `BLOCK` raises on every *idle* read.
+  It derives from `read_windows.LONGEST_READ_BLOCK_MS` - a leaf module, so the
+  client stays upstream of the loops - whose claim a test audits by discovery.
+- **`socket_connect_timeout` bounds one attempt, not the call**:
+  `(retries + 1) x socket_connect_timeout`. Both clients take **zero** retries -
+  a redis-py retry re-sends the command, so one on `XADD` publishes a duplicate
+  the outbox cannot see. The loops own retry; the client has no opinion.
+- **`from_url` is lazy**, so an unreachable broker raises nothing at startup.
+  `probe_bus_reachable` PINGs once and logs at ERROR, detached, password
+  redacted - a down broker must not read as an idle one.
+
+Consumer loops need no transient/poison classification of their own; what they do
+on a dropped connection is pinned by `tests/core/changes/test_bus_reconnect.py`.
+
 ## Producing - the outbox, the envelope, and the three published streams
 
 **Change-bus producer (co-core bus, archiver#106):** Writes rows to

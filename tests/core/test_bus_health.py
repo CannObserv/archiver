@@ -10,6 +10,8 @@ their own coverage because the timer is stateless without them.
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 from types import SimpleNamespace
 from typing import get_args
 from unittest.mock import AsyncMock, MagicMock
@@ -620,4 +622,102 @@ def test_every_config_state_check_probes_last_entry_age(check: StreamCheck) -> N
     """
     assert check.warn_last_entry_age_seconds is not None, (
         f"{check.topic} is groupless, so last-entry age is its only liveness probe"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The probe's own connection bounds against a REMOTE broker
+# (archiver#193 Phase 1 item 4)
+# ---------------------------------------------------------------------------
+#
+# The probe already set bounded sockets, which is why the epic lists this as
+# "confirm", not "fix". What confirming turned up is that the bound is not the
+# one the constants read as, and that the difference is invisible at the call
+# site.
+
+
+class _StopProbe(Exception):
+    """Sentinel: stop ``main`` once the client kwargs have been captured."""
+
+
+def test_probe_client_is_built_with_the_documented_bounds(monkeypatch) -> None:
+    """``main`` must apply both timeouts - the WARN-only contract depends on it.
+
+    Without them a *hung* broker (as opposed to a refusing one) blocks until
+    systemd's ``TimeoutStartSec`` kills the unit, converting the "broker
+    unreachable" finding this probe exists to report into a failed unit that
+    reports nothing.
+
+    Replaces the module's ``Redis`` name rather than setting ``from_url`` on the
+    class (CR finding 9): patching an attribute of the shared ``redis`` class
+    mutates it for every importer, which is the same over-broad reach that let
+    the lifespan fixture keep passing against a stale target.
+    """
+    captured: dict[str, object] = {}
+
+    class _FakeRedis:
+        @staticmethod
+        def from_url(url, **kwargs):
+            captured.update(kwargs)
+            raise _StopProbe
+
+    monkeypatch.setenv("ARCHIVER_REDIS_URL", "redis://broker:6379/0")
+    monkeypatch.setattr(bus_health, "Redis", _FakeRedis)
+    monkeypatch.setattr(bus_health, "get_database_url", lambda: "postgresql://x/archiver_test")
+    monkeypatch.setattr(bus_health, "assert_production_db_allowed", lambda *a, **k: None)
+    monkeypatch.setattr(bus_health, "configure_logging", lambda: None)
+
+    with pytest.raises(_StopProbe):
+        bus_health.main(["--state-file", "/dev/null"])
+
+    assert captured["socket_connect_timeout"] == bus_health.SOCKET_CONNECT_TIMEOUT_SECONDS
+    assert captured["socket_timeout"] == bus_health.SOCKET_TIMEOUT_SECONDS
+
+
+def test_probe_takes_no_retry_so_its_stated_per_call_bound_is_the_real_one() -> None:
+    """A retry policy here would silently double every bound in the unit file.
+
+    Measured on redis-py 7.4.1 against a black-holed address:
+    ``socket_connect_timeout`` bounds a single *attempt*, not the call, so the
+    wait is ``(retries + 1) x socket_connect_timeout`` - 5.01 s at retries=0,
+    10.03 s at retries=1. redis-py's default is 0 retries (its stock ``Retry``
+    object is configured for zero, which reads as a policy and behaves as none),
+    and ``deploy/archiver-bus-health.service`` reasons explicitly from "5s
+    connect / 10s read" per call when sizing ``TimeoutStartSec=60`` against ~25
+    calls per tick.
+
+    So the probe *relies* on that default. Adding a retry - a reasonable-looking
+    change once the broker is across a relay (CannObserv/broker#1) - would halve
+    the effective headroom without touching either number the unit cites.
+    Contrast ``src/core/changes/bus_client.py``, which takes a retry deliberately
+    because its loops re-read anyway and nothing there is racing a oneshot
+    timeout.
+    """
+    client = bus_health.Redis.from_url(
+        "redis://localhost:6379/14",
+        socket_connect_timeout=bus_health.SOCKET_CONNECT_TIMEOUT_SECONDS,
+        socket_timeout=bus_health.SOCKET_TIMEOUT_SECONDS,
+    )
+    assert client.connection_pool.make_connection().retry._retries == 0
+
+
+def test_unit_backstop_exceeds_a_single_call_worst_case() -> None:
+    """Pin the unit's ``TimeoutStartSec`` against the module's own bounds.
+
+    The unit's comment does this arithmetic in prose across a file boundary no
+    test spanned. It is a weak assertion on purpose - the exact call count per
+    tick is not worth pinning - but it catches the case that would actually bite:
+    someone raising a timeout in this module past the backstop in that unit, so
+    every tick against a slow broker is killed before it reports.
+    """
+    unit = (
+        Path(__file__).resolve().parents[2] / "deploy" / "archiver-bus-health.service"
+    ).read_text()
+    match = re.search(r"^TimeoutStartSec=(\d+)$", unit, re.MULTILINE)
+    assert match, "the unit lost its TimeoutStartSec backstop"
+    backstop = int(match.group(1))
+    worst_call = bus_health.SOCKET_CONNECT_TIMEOUT_SECONDS + bus_health.SOCKET_TIMEOUT_SECONDS
+    assert worst_call < backstop, (
+        f"a single Redis call can take {worst_call}s against a backstop of {backstop}s; "
+        "the unit would be killed before the probe could report anything"
     )

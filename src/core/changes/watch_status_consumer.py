@@ -43,6 +43,7 @@ from co_core_aio.bus import AsyncBusTailReader, BusMessage
 from sqlalchemy.exc import DataError, IntegrityError, NotSupportedError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.core.changes import read_windows
 from src.core.changes.backoff import (
     ERROR_BACKOFF_BASE_SECONDS,
     ERROR_LOG_EVERY,
@@ -67,7 +68,7 @@ logger = get_logger(__name__)
 # recovery then needs the drain-then-seek sequence its docstring prescribes.
 # At count=1 the frame that raised is unambiguous and seek is safe immediately.
 READ_COUNT = 1
-READ_BLOCK_MS = 5_000
+READ_BLOCK_MS = read_windows.WATCH_STATUS_READ_BLOCK_MS
 
 # Failures redelivery cannot resolve: the frame decoded, but the registry can
 # never write it — a value outside a column's domain, a constraint it violates,

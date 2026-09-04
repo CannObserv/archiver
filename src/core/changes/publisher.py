@@ -31,6 +31,7 @@ from co_core.pure.adapters.bus.envelope import payload_from_dict, to_wire
 from co_core_aio.bus import AsyncBusPublisher
 from redis.exceptions import BusyLoadingError
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import NoPermissionError as RedisNoPermissionError
 from redis.exceptions import OutOfMemoryError as RedisOutOfMemoryError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import select
@@ -75,6 +76,17 @@ IDLE_INTERVAL_SECONDS = 1.0
 # memory incident, which is exactly the loss the ceiling exemption exists to
 # prevent.
 #
+# ``NoPermissionError`` (NOPERM) is listed transient for the same reason as
+# ``OutOfMemoryError`` above, ahead of the broker's relocation to an
+# authenticated node (CannObserv/broker#1 D3, which puts per-service ACL users
+# in front of it). An ACL that denies a stream is an operator's config mistake,
+# not a defect in the row: the event is valid and publishes unchanged the moment
+# the rule is widened. Also a ``ResponseError`` subclass, so like OOM it is not
+# covered incidentally by the connection entries. Note what does *not* need an
+# entry: ``AuthenticationError`` - a wrong ``requirepass`` - subclasses
+# redis-py's ``ConnectionError`` and is already transient (pinned by a test,
+# since it is invisible here).
+#
 # NOTE (co-core coupling, CR #10): this gate assumes
 # ``AsyncBusPublisher.execute`` propagates the underlying redis exception types
 # *unwrapped* (the current co-core-aio behavior - a raw redis ConnectionError from
@@ -88,6 +100,7 @@ _TRANSIENT_PUBLISH_ERRORS: tuple[type[BaseException], ...] = (
     RedisTimeoutError,
     BusyLoadingError,
     RedisOutOfMemoryError,
+    RedisNoPermissionError,
 )
 
 # Attempt ceiling for NON-transient publish failures - a pure defense-in-depth

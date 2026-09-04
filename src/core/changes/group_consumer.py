@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 from co_core.pure.adapters.bus.exceptions import BusMessageAnomaly
 from co_core_aio.bus import AsyncBusConsumer, BusMessage, from_wire
 
+from src.core.changes import read_windows
 from src.core.changes.backoff import (
     ERROR_BACKOFF_BASE_SECONDS,
     ERROR_LOG_EVERY,
@@ -49,7 +50,7 @@ logger = get_logger(__name__)
 # are returned; at one per read, the frame that raised is unambiguous. Production
 # volume is a handful of WatchedItems, so batching buys nothing worth that.
 READ_COUNT = 1
-READ_BLOCK_MS = 5_000
+READ_BLOCK_MS = read_windows.GROUP_READ_BLOCK_MS
 
 # Reclaim entries a consumer took and never acked (it died mid-message). Long
 # enough that it never races a live consumer's in-flight message.
