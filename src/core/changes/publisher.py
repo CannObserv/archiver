@@ -78,11 +78,12 @@ IDLE_INTERVAL_SECONDS = 1.0
 # **THE SEAM THAT SPANS TWO REPOSITORIES (archiver#193 R5).** That cap lives in
 # ``CannObserv/broker:deploy/redis.conf.broker``, which moved out of this repo
 # with the broker it tunes (archiver#193 D6) and was reconciled with the node
-# under broker#1 Phase 5 (archiver#196). It was a systemd drop-in overriding
-# ``ExecStart`` while this repo tuned the broker; on the dedicated node the
-# tuning is appended to ``redis.conf``, because ``requirepass`` cannot ride an
-# ``ExecStart`` argument without landing in ``argv`` and journald. Only the
-# filename moved - the decision is unchanged. The cap and this entry are one
+# under broker#1 Phase 5 (archiver#196). The cap rode a systemd drop-in
+# overriding ``ExecStart`` while this repo tuned the broker; on the dedicated
+# node it is appended to ``redis.conf`` instead, because ``requirepass`` cannot
+# ride an ``ExecStart`` argument without landing in ``argv`` and journald.
+# ``redis.conf.broker`` is not a drop-in. Only the filename moved - the
+# decision is unchanged. The cap and this entry are one
 # decision: without the cap ``noeviction`` never refuses a write and the broker
 # is OOM-killed instead of erroring, making this classification pointless;
 # without this entry the cap is lossy. **Do not change either alone.** No test
