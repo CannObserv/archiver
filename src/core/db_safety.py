@@ -13,14 +13,27 @@ patches: a hand-rolled uvicorn, or a stale recipe copied out of an old plan
 doc, still reaches production. The guard lives in the application, so it holds
 no matter how the process was started.
 
+**Archiver's own VM did not retire this guard (archiver#193 D11), and it is
+worth being explicit about why.** What #193 stopped sharing is the *host with
+other services* - watcher and notifier are gone from this box. What it did not
+change is the arrangement this guard exists for: **the dev server and the live
+service still run on one machine, against one Postgres instance.** That is the
+whole precondition for the 2026-07-18 incident, and it is unchanged. A
+dedicated VM in fact tightens the case rather than loosening it, because
+``archiver_dev`` now exists (D5) - before it did, a dev server fell back to
+``TEST_DATABASE_URL`` and the only two outcomes were "races the suite" or
+"reaches production".
+
 The rule is a *positive* assertion, not a comparison against known production
 URLs. Comparing URL strings is defeated by cosmetic differences — the same
 database is reachable as ``postgresql://…/archiver`` and
 ``postgresql+asyncpg://…/archiver``, via ``localhost`` or ``127.0.0.1``. The
 database *name* is the boundary that actually holds: it must carry a ``_test``
 or ``_dev`` suffix, or the caller must opt in explicitly via
-``ARCHIVER_ALLOW_PRODUCTION_DB=1`` — which only ``deploy/archiver.service``
-does.
+``ARCHIVER_ALLOW_PRODUCTION_DB=1`` — which only units under ``deploy/`` do:
+``archiver.service`` and ``archiver-bus-health.service`` (a read-only
+``changes_outbox`` query), and nothing else. Never an ``EnvironmentFile``,
+which is sourced by every process that loads it.
 """
 
 from urllib.parse import urlsplit

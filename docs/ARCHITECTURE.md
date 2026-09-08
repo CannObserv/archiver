@@ -219,6 +219,9 @@ docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                UI.md + SCREENS.md + PAGES.md +
                                INFO_ITEM_DETAIL.md + COMPONENTS.md + STYLE.md
                                (see "Dashboard living docs").
+                               reference/ holds host-shaped facts that are not
+                               about the code: tailscale.md (this node, the
+                               ACL, why there is no tailnet-only bind).
                                Indexed by the Detail Docs section of AGENTS.md.
                                Archival subtrees: plans/ + research/
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)

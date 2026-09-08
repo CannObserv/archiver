@@ -24,6 +24,13 @@ facts that surprise:
   `probe_bus_reachable` PINGs once and logs at ERROR, detached, password
   redacted - a down broker must not read as an idle one.
 
+**Why any of this is needed:** the broker stopped being `localhost` at #193 and
+is now a tailnet peer, so a partition is a thing that will actually happen
+rather than a thing the code merely tolerates. It still degrades rather than
+loses - the outbox is the durable buffer. The URL, the measured path, and the
+`default:` username that is load-bearing for `redis-cli` (archiver#195):
+[reference/tailscale.md](reference/tailscale.md).
+
 Consumer loops need no transient/poison classification of their own; what they do
 on a dropped connection is pinned by `tests/core/changes/test_bus_reconnect.py`.
 

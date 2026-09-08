@@ -14,7 +14,7 @@ TDD required. Red → Green → Refactor. No production code without a failing t
 
 ## Environment & Tooling
 
-Python ≥3.12, uv, pytest, ruff. Postgres on the local VM (shared instance with watcher and notifier; archiver owns its own database).
+Python ≥3.12, uv, pytest, ruff. **Postgres 16 on archiver's own VM** - a dedicated instance since #193 D5, not the one shared with watcher and notifier. Three databases: `archiver`, `archiver_dev`, `archiver_test`. `archiver_dev` is new with the VM: `scripts/dev_server.sh` had always honoured `ARCHIVER_DEV_DATABASE_URL` and always fallen back to the test DB, so a dev server and a test run used to share one database and race each other.
 
 **`co-core` + `co-core-aio` resolve from a local wheelhouse** (`./.wheelhouse`,
 gitignored), not PyPI. Populate it before `uv sync`/`uv run` or resolution fails:
@@ -57,6 +57,14 @@ Fetch, extract, and the content fingerprint come from **co-core**; the former
 `src/core/{fetchers,extractors,simhash,extraction_defaults}` mirror is deleted.
 Wiring detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+**The broker is not operated from this repo (#193 D6).** Its tuning, its
+health probe, and the cluster stream inventory live in
+[CannObserv/broker](https://github.com/CannObserv/broker); archiver is a
+client. One seam survives that split and has no test spanning it: the drop-in's
+`--maxmemory` cap and `OutOfMemoryError` being transient in
+`_TRANSIENT_PUBLISH_ERRORS` are **one decision**, and each repo names the other
+in a comment (R5).
+
 **No cross-repo mirror discipline (CannObserv/watcher#159, #236).** Content
 acquisition is co-core's (above) and the change-bus contracts + driver are too
 (see [docs/BUS.md](docs/BUS.md)). `src/core/logging.py` is service-local - Watcher
@@ -74,6 +82,13 @@ The exe.dev proxy forwards 3000-9999 and maps the bare hostname to 8000, so the 
 `https://co-registrar.exe.xyz/` with no port suffix; the dev server is
 `https://co-registrar.exe.xyz:8001/`. Archiver has its own VM (archiver#193) - the host is no
 longer shared with watcher, and the broker is on a third node (CannObserv/broker#1).
+
+**The broker is now a network hop.** Archiver reaches it over the tailnet as
+`redis://default:<password>@broker:6379/0` - 1 ms direct, same region. This
+host is `co-registrar` to exe.dev and `archiver` to MagicDNS, and both names
+answer on port 8000, so **an HTTP 200 on a short name proves nothing about the
+tailnet**. Node identity, the ACL, the bind decision, and the MagicDNS failure
+that took down three services: [docs/reference/tailscale.md](docs/reference/tailscale.md).
 
 ## Server Lifecycle
 
@@ -121,7 +136,13 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.
 - `ARCHIVER_DEV_REDIS_URL` - unset means the dev server is bus-dormant; prod's
-  `ARCHIVER_REDIS_URL` is never inherited.
+  `ARCHIVER_REDIS_URL` is never inherited. A remote broker makes this stricter,
+  not looser: a scratch bus is now a scratch *database on a shared remote
+  broker*.
+
+`ARCHIVER_DEV_DATABASE_URL` (repo `.env`) carries no safety rule of its own -
+`db_safety.py` enforces the `_dev`/`_test` suffix either way - but set it, or
+the dev server falls back to `TEST_DATABASE_URL` and races the suite (#193 D5).
 
 ## Common Commands
 
@@ -260,4 +281,5 @@ the hook's gates and log paths: [docs/SKILLS.md](docs/SKILLS.md).
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse reproducibility, dev-server internals, full env-var reference
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald logging contract, error-envelope examples
 - [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, trigger table, SessionStart hook mechanics
+- [docs/reference/tailscale.md](docs/reference/tailscale.md) - this node on the tailnet: the ACL, why there is no tailnet-only bind, and the two-names-one-host trap
 - The dashboard docs - [docs/UI.md](docs/UI.md) URL map, auth, HTMX, and the detail-screen doc it indexes; [docs/PAGES.md](docs/PAGES.md) per-page/route inventory; [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) the InfoItem hub screen - its five sections, partials, swap targets; [docs/COMPONENTS.md](docs/COMPONENTS.md) Alpine catalogue; [docs/STYLE.md](docs/STYLE.md) theming, tokens, component classes, accessibility

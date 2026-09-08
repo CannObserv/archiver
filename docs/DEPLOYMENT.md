@@ -2,6 +2,8 @@
 
 Wheelhouse reproducibility, dev-server internals, and the full environment
 variable reference. `AGENTS.md` keeps the safety rules; the reference lives here.
+The host's place on the tailnet - node identity, the ACL, why there is no
+tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
 
 ## cannobserv substrate
 
@@ -50,10 +52,15 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 | `ARCHIVER_DEV_SKIP_MIGRATE=1` | Skip the alembic upgrade |
 
 > pytest teardown runs `DROP SCHEMA information CASCADE` against
-> `TEST_DATABASE_URL`. Running the suite while a dev server points at the same
-> database wipes dev data mid-session — survivable, and strictly better than
-> writing to production. Set `ARCHIVER_DEV_DATABASE_URL` to a dedicated
-> database (e.g. `archiver_dev`) if that becomes annoying.
+> `TEST_DATABASE_URL`. A dev server pointed at the same database therefore
+> loses its data mid-suite — survivable, and strictly better than writing to
+> production, which is the failure the fallback was chosen to avoid.
+>
+> **`archiver_dev` now exists and `ARCHIVER_DEV_DATABASE_URL` is set** (#193
+> D5), so the fallback is no longer the normal case on this host. The knob had
+> always been honoured; there was simply never a database for it to name, so
+> every dev server and every test run shared one and raced. Provisioning a
+> dedicated VM was the moment to close that rather than port it.
 
 ## One-time data imports
 
@@ -78,7 +85,7 @@ made those columns authoritative (archiver#158), and the teardown followed.
 - `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
 - `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name **must** end in `_test` (e.g. `archiver_test`) — `scripts/dev_server.sh` enforces the suffix, and `conftest.py` asserts non-equality at collection time and fails fast if violated.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` — *optional*. `1` permits the process to serve a database whose name lacks a `_test`/`_dev` suffix. **Only `deploy/archiver.service` sets it.** Without it `src/core/db_safety.py` refuses to start at lifespan, so a hand-rolled `uvicorn` cannot reach the production registry no matter which env files it sourced (2026-07-18 incident). Never set this in `/etc/archiver/.env` or `.env` — putting it in an env file would re-open the hole for every process that sources them.
-- `ARCHIVER_DEV_DATABASE_URL` — *optional*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Use when pytest's `DROP SCHEMA` teardown wiping your dev data mid-session becomes annoying. Name must end in `_test`/`_dev`.
+- `ARCHIVER_DEV_DATABASE_URL` — *optional in code, set in practice*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Points at `archiver_dev` on this host (#193 D5). Leaving it unset falls back to the test database, where pytest's `DROP SCHEMA` teardown wipes dev data mid-session. Name must end in `_test`/`_dev`.
 - `ARCHIVER_DEV_PORT` — *optional*. Dev server port, default `8001`. `8000` is refused (systemd's). See **Server Lifecycle**.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis). **Archiver no longer operates the broker** — archiver#193 D6 moved it to a neutral node and its operational code to [CannObserv/broker](https://github.com/CannObserv/broker); the cluster stream inventory is that repo's `docs/STREAMS.md`. The connection string is the only switch — write it as `redis://default:<password>@broker:6379/0`, with `default:` explicit: the empty-username form authenticates for redis-py and fails for `redis-cli`, so the service comes up green while `scripts/check_redis_floor.sh` goes silently blind on the floor (archiver#195). `archiver.service` declares **no** `redis-server` ordering — it was removed, not loosened, when the broker left the host (CannObserv/broker#1 Phase 3) — and an `ExecStartPre` (`scripts/check_redis_floor.sh`) asserts the ≥7.0 server floor when the bus is active, plus a warn-only check that the live `maxmemory` is non-zero.
 
