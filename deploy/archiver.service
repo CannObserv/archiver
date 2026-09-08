@@ -1,11 +1,18 @@
 [Unit]
 Description=Archiver service — Cannabis Observer information registry
-After=network.target postgresql.service redis-server.service
-# Soft dependency (Wants, not Requires/BindsTo): Archiver is the change-bus
-# producer, but the outbox tolerates broker downtime within its retry window, so
-# a down or absent Redis must not stop Archiver from starting — it just degrades
-# the publisher. After= orders us behind redis-server when it is present (#109).
-Wants=redis-server.service
+After=network.target postgresql.service
+# The redis-server ordering is GONE, not loosened (CannObserv/broker#1 Phase 3).
+# The broker no longer runs on this host: it moved to a neutral node reached
+# over the tailnet, so there is no local unit to order behind and `Wants=` would
+# name a service that will never exist here.
+#
+# The reasoning it replaces is still true and still load-bearing, so it is
+# restated rather than dropped: Archiver is the change-bus producer, and the
+# outbox tolerates broker downtime within its retry window. A broker that is
+# down, unreachable, or slow must never stop Archiver from starting — it
+# degrades the publisher and nothing else (#109). What changes is only that the
+# dependency is now a network hop with an explicit connection policy
+# (src/core/changes/bus_client.py, archiver#193) instead of a local unit.
 
 [Service]
 Type=simple
