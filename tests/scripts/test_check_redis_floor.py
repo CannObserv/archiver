@@ -32,6 +32,8 @@ def _stub_redis_cli(
     tls: bool = True,
     sleep: float = 0,
     maxmemory: str | None = "536870912",
+    stderr: str = "",
+    exit_code: int = 0,
 ) -> Path:
     """Write a fake `redis-cli` to a bin dir; return the dir for PATH.
 
@@ -51,6 +53,11 @@ def _stub_redis_cli(
     maxmemory_lines = (
         f'  echo "maxmemory"\n  echo "{maxmemory}"' if maxmemory is not None else "  true"
     )
+    fail_lines = (
+        # %b, not %s: a multi-line `stderr` arrives here as a repr with an
+        # escaped newline, and only %b expands it back into two lines.
+        f'  printf "%b\\n" {stderr!r} >&2\n  exit {exit_code}\n' if stderr or exit_code else ""
+    )
     (binder / "redis-cli").write_text(
         "#!/usr/bin/env bash\n"
         'if [[ "$1" == "--help" ]]; then\n'
@@ -58,6 +65,7 @@ def _stub_redis_cli(
         "  exit 0\n"
         "fi\n"
         f"{sleep_line}"
+        f"{fail_lines}"
         'case "$*" in\n'
         "  *'CONFIG GET maxmemory'*)\n"
         f"{maxmemory_lines}\n"
@@ -159,7 +167,7 @@ def test_redis_cli_absent_is_soft() -> None:
     # absence via a dedicated dir holding only the needed coreutils symlinks.
     with tempfile.TemporaryDirectory() as d:
         bindir = Path(d)
-        for tool in ("bash", "sed", "tr", "grep", "env"):
+        for tool in ("bash", "sed", "tr", "grep", "env", "mktemp", "timeout"):
             src = shutil.which(tool)
             if src:
                 (bindir / tool).symlink_to(src)
@@ -222,8 +230,148 @@ def test_dormant_bus_does_not_probe_maxmemory(tmp_path: Path) -> None:
     assert "maxmemory" not in result.stderr
 
 
-@pytest.mark.parametrize("tool", ["bash", "sed", "tr"])
+@pytest.mark.parametrize("tool", ["bash", "sed", "tr", "mktemp"])
 def test_required_tools_exist(tool: str) -> None:
     """Guard against the stub-PATH tests silently passing because a tool the
     script relies on is missing from the environment."""
     assert shutil.which(tool) is not None
+
+
+# --- auth failure vs unreachability (archiver#195) --------------------------
+#
+# Before this, `redis_probe` sent stderr to /dev/null and judged only stdout, so
+# every no-output failure printed the same line: "could not read redis_version
+# (broker unreachable?)". During CannObserv/broker#1's cutover that line was on
+# every start of two services for days, describing an authentication problem
+# while naming a network one - and it was believed, because the broker really
+# had been briefly unreachable for an unrelated DNS reason.
+
+_WRONGPASS = "AUTH failed: WRONGPASS invalid username-password pair or user is disabled."
+_NOAUTH = "NOAUTH Authentication required."
+_REFUSED = "Could not connect to Redis at broker:6379: Connection refused"
+
+
+@pytest.mark.parametrize("message", [_WRONGPASS, _NOAUTH], ids=["wrongpass", "noauth"])
+def test_auth_failure_is_reported_as_authentication(tmp_path: Path, message: str) -> None:
+    """The operator must be sent to the credential, not to the network."""
+    bindir = _stub_redis_cli(tmp_path, version=None, stderr=message, exit_code=1)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://:pw@broker:6379/0"})
+
+    assert result.returncode == 0
+    assert "authenticate" in result.stderr.lower()
+    assert "unreachable" not in result.stderr.lower()
+
+
+def test_auth_failure_names_the_empty_username_trap(tmp_path: Path) -> None:
+    """The single most likely cause, and the one that costs the most time.
+
+    `redis://:pw@host` authenticates for redis-py and fails for redis-cli: the
+    latter sends a two-argument ``AUTH "" pw`` against a user that does not
+    exist. So the service starts green while this probe cannot connect at all.
+    Naming it in the message turns a post-cutover finding into a five-second
+    one.
+    """
+    bindir = _stub_redis_cli(tmp_path, version=None, stderr=_WRONGPASS, exit_code=1)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://:pw@broker:6379/0"})
+
+    assert "default:" in result.stderr
+
+
+def test_auth_failure_says_the_floor_is_unverified(tmp_path: Path) -> None:
+    """Silence about the floor is what made this survive.
+
+    A probe that cannot read the version has not *passed* the >=7.0 check, it
+    has skipped it. Saying so is the difference between a guard that is known
+    to be off and one that is assumed to be on.
+    """
+    bindir = _stub_redis_cli(tmp_path, version=None, stderr=_WRONGPASS, exit_code=1)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://:pw@broker:6379/0"})
+
+    assert "unverified" in result.stderr.lower()
+
+
+def test_auth_failure_does_not_block_the_start(tmp_path: Path) -> None:
+    """Deliberately NOT blocking, against #195's own suggestion.
+
+    The reasoning that suggestion rests on - "a probe that cannot authenticate
+    is evidence the service cannot either" - is exactly what this bug
+    disproves. `redis://:pw@host` fails for redis-cli and **succeeds for
+    redis-py**, so the probe's verdict is not the service's. Blocking on it
+    would have converted this latent trap into a total outage of both archiver
+    and replicator at the cutover, for a URL that worked.
+
+    Blocking stays reserved for the one case where the shell client and the
+    application client cannot disagree: a version string that was read, and is
+    below 7.0.
+    """
+    bindir = _stub_redis_cli(tmp_path, version=None, stderr=_WRONGPASS, exit_code=1)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://:pw@broker:6379/0"})
+
+    assert result.returncode == 0
+
+
+def test_unreachable_broker_is_still_reported_as_unreachable(tmp_path: Path) -> None:
+    """The other half of the distinction: a real connection failure must not
+    start blaming the credential."""
+    bindir = _stub_redis_cli(tmp_path, version=None, stderr=_REFUSED, exit_code=1)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://default:pw@broker:6379/0"})
+
+    assert result.returncode == 0
+    assert "unreachable" in result.stderr.lower()
+    assert "authenticate" not in result.stderr.lower()
+
+
+def test_silent_failure_claims_neither_cause(tmp_path: Path) -> None:
+    """A timeout kill leaves no stderr at all. With nothing to classify, the
+    message must not guess - naming a cause it cannot know is how the original
+    line misled for days."""
+    bindir = _stub_redis_cli(tmp_path, version=None, stderr="", exit_code=1)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://default:pw@broker:6379/0"})
+
+    assert result.returncode == 0
+    assert "could not reach or authenticate" in result.stderr.lower()
+
+
+def test_auth_failure_skips_the_cap_probe(tmp_path: Path) -> None:
+    """A second probe against a broker that just refused authentication can
+    only produce a second misleading line."""
+    bindir = _stub_redis_cli(tmp_path, version=None, stderr=_WRONGPASS, exit_code=1)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://:pw@broker:6379/0"})
+
+    assert "maxmemory" not in result.stderr.lower()
+    assert "maxmemory" not in result.stdout.lower()
+
+
+_CLI_PASSWORD_WARNING = (
+    "Warning: Using a password with '-a' or '-u' option on the command line "
+    "interface may not be safe."
+)
+
+
+def test_broker_quote_excludes_the_cli_s_own_warning(tmp_path: Path) -> None:
+    """redis-cli prints that advisory on every `-u` call, so quoting it back
+    under "broker said:" buries the real error and blames the server for the
+    client's warning. Observed live against the authenticated broker."""
+    bindir = _stub_redis_cli(
+        tmp_path,
+        version=None,
+        stderr=f"{_CLI_PASSWORD_WARNING}\n{_WRONGPASS}",
+        exit_code=1,
+    )
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://:pw@broker:6379/0"})
+
+    assert "may not be safe" not in result.stderr
+    assert "WRONGPASS" in result.stderr
+
+
+def test_the_cli_warning_alone_does_not_read_as_an_auth_failure(tmp_path: Path) -> None:
+    """The filter has to run BEFORE classification, not just before printing.
+
+    That advisory contains none of the auth tokens, so it classifies as
+    `unknown` either way - but a future pattern that matched it would silently
+    turn every timed-out probe into a confident wrong diagnosis. Pin the order.
+    """
+    bindir = _stub_redis_cli(tmp_path, version=None, stderr=_CLI_PASSWORD_WARNING, exit_code=1)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://default:pw@broker:6379/0"})
+
+    assert "could not reach or authenticate" in result.stderr.lower()
