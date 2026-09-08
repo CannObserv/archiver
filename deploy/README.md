@@ -49,9 +49,22 @@ Identity Federation; see `.github/workflows/ci.yml`.)
 
 Archiver **publishes** `info.changes`, `info.registry` and `content.replicate`,
 **consumes** `content.revisions`, `content.artifacts` and `info.watch-status`,
-and drains every `*.dlq` on the broker (#162). It no longer *operates* the
-broker: archiver#193 D6 moved that role, its tuning, and the cluster stream
-inventory to CannObserv/broker.
+and triages the DLQs of the two streams it consumes - `content.revisions.dlq`
+and `content.artifacts.dlq`. It no longer *operates* the broker: archiver#193
+D6 moved that role, its tuning, and the cluster stream inventory to
+CannObserv/broker.
+
+**Not every `*.dlq` on the broker (#162 is superseded).** broker#1 Phase 5
+split that role, and the cluster-wide claim was a corollary of operating the
+instance that lost its premise with the move: **broker** detects any
+non-resting `*.dlq`, captures the entries durably on first sight, and names the
+owner; **the stream's own consumer** triages and trims. `content.fetch.dlq` and
+`content.replicate.dlq` are replicator's, not archiver's. Triage is a judgment
+about payloads, so it belongs with whoever can read them - archiver#162's 110
+entries were replicator's writes, of watcher's commands. The old role would
+also need instance-wide `SCAN` plus a grant on every other service's queues
+under D3's per-service ACL users, which is a hole through the one model whose
+payoff is that archiver cannot name `content.blobs`.
 
 `ARCHIVER_REDIS_URL` is the only switch - unset means bus-dormant, and the
 connection string is all that changes to point at a different broker.
