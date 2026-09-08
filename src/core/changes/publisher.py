@@ -384,13 +384,12 @@ async def trim_stream(client: Redis, topic: str, maxlen: int) -> None:
 
     Producer-side retention (archiver#109): with no consumer yet, entries
     accumulate on ``info.changes``, so Archiver - which produces the stream and
-    is the only party that can size it - bounds it itself. (Archiver no longer
-    *operates* the broker, which this docstring used to give as the reason;
-    CannObserv/broker#1 Phase 3, archiver#196.) ``XTRIM`` here is deliberate,
-    not incidental - see ``TRIM_INTERVAL_ITERATIONS``. ``approximate=True``
-    (Redis ``MAXLEN ~``) trims whole macro-nodes - cheap, may leave slightly
-    more than ``maxlen``. Best-effort: a failing trim is logged and swallowed
-    so it never breaks the drain loop.
+    is the only party that can size it - bounds it itself. Why the producer and
+    not the operator, and why periodic rather than at publish:
+    ``TRIM_INTERVAL_ITERATIONS``. ``approximate=True`` (Redis ``MAXLEN ~``)
+    trims whole macro-nodes - cheap, may leave slightly more than ``maxlen``.
+    Best-effort: a failing trim is logged and swallowed so it never breaks the
+    drain loop.
     """
     try:
         await client.xtrim(topic, maxlen=maxlen, approximate=True)
