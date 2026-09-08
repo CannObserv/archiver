@@ -99,7 +99,10 @@ address tailscaled has to assign first. Loopback `curl` keeps working from the
 first second of boot.
 
 The broker node *does* carry that race, and solves it there. See
-`CannObserv/broker:deploy/redis-server.dropin.conf`.
+`CannObserv/broker:deploy/redis-server.service.d/broker.conf` and its
+`wait-for-tailnet-addr.sh` - the drop-in slot on that node carries unit
+ordering and nothing else, the tuning having moved to
+`deploy/redis.conf.broker` (broker#1 Phase 5, archiver#196).
 
 ## Reaching the broker
 

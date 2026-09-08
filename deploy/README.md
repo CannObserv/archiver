@@ -11,7 +11,10 @@ Systemd units for the Archiver VM.
 **The broker is not deployed from this repo.** `redis-server.dropin.conf`, the
 drop-in parity test, and the broker-side half of the health probe moved to
 [CannObserv/broker](https://github.com/CannObserv/broker) under archiver#193 D6,
-when the broker stopped sharing a host with archiver. What lived here had begun
+when the broker stopped sharing a host with archiver. The drop-in did not
+survive the move under that name: on the dedicated node the tuning is appended
+to `redis.conf`, so it is now `deploy/redis.conf.broker` there (broker#1 Phase
+5, archiver#196), and the drop-in slot carries unit ordering only. What lived here had begun
 measuring archiver's disk and archiver's systemd. The cluster stream inventory
 went with them, to `CannObserv/broker:docs/STREAMS.md`.
 
@@ -83,7 +86,7 @@ stale-low, so it warns early rather than going quiet.
 on the shared broker stalls publishing without dead-lettering valid events.
 That is only correct because the broker runs `noeviction` with an explicit
 `maxmemory` cap, which lives in
-`CannObserv/broker:deploy/redis-server.dropin.conf`.
+`CannObserv/broker:deploy/redis.conf.broker`.
 
 **The cap and that classification are one decision - do not change either
 alone (archiver#193 R5).** No test spans the two repositories; each side names

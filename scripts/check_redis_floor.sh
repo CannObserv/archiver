@@ -186,10 +186,10 @@ if [ "${maxmemory}" = "0" ]; then
   echo "check_redis_floor: WARNING — broker maxmemory is 0 (uncapped)" >&2
   echo "check_redis_floor: maxmemory-policy noeviction is INERT without a cap: no write is ever" >&2
   echo "check_redis_floor: refused, so an untrimmed stream grows until the kernel OOM-kills" >&2
-  echo "check_redis_floor: redis-server instead of erroring. The cap belongs to the ExecStart in" >&2
-  echo "check_redis_floor: CannObserv/broker deploy/redis-server.dropin.conf (authoritative); apply live" >&2
-  echo "check_redis_floor: without a restart via: redis-cli CONFIG SET maxmemory <value from" >&2
-  echo "check_redis_floor: ExecStart> — CONFIG SET takes the same unit suffixes, so copy it verbatim" >&2
+  echo "check_redis_floor: redis-server instead of erroring. The cap is the maxmemory directive in" >&2
+  echo "check_redis_floor: CannObserv/broker deploy/redis.conf.broker (authoritative); apply live" >&2
+  echo "check_redis_floor: without a restart via: redis-cli CONFIG SET maxmemory <value from that" >&2
+  echo "check_redis_floor: file> — CONFIG SET takes the same unit suffixes, so copy it verbatim" >&2
   exit 0
 fi
 

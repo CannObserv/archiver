@@ -76,13 +76,18 @@ IDLE_INTERVAL_SECONDS = 1.0
 # ceiling exemption exists to prevent.
 #
 # **THE SEAM THAT SPANS TWO REPOSITORIES (archiver#193 R5).** That cap lives in
-# ``CannObserv/broker:deploy/redis-server.dropin.conf``, which moved out of this
-# repo with the broker it tunes (archiver#193 D6). The cap and this entry are
-# one decision: without the cap ``noeviction`` never refuses a write and the
-# broker is OOM-killed instead of erroring, making this classification
-# pointless; without this entry the cap is lossy. **Do not change either
-# alone.** No test spans the two repositories, so the drop-in's own comment
-# names this tuple in return and that pair of pointers is the whole mechanism.
+# ``CannObserv/broker:deploy/redis.conf.broker``, which moved out of this repo
+# with the broker it tunes (archiver#193 D6) and was reconciled with the node
+# under broker#1 Phase 5 (archiver#196). It was a systemd drop-in overriding
+# ``ExecStart`` while this repo tuned the broker; on the dedicated node the
+# tuning is appended to ``redis.conf``, because ``requirepass`` cannot ride an
+# ``ExecStart`` argument without landing in ``argv`` and journald. Only the
+# filename moved - the decision is unchanged. The cap and this entry are one
+# decision: without the cap ``noeviction`` never refuses a write and the broker
+# is OOM-killed instead of erroring, making this classification pointless;
+# without this entry the cap is lossy. **Do not change either alone.** No test
+# spans the two repositories, so that config file's own comment names this
+# tuple in return and that pair of pointers is the whole mechanism.
 #
 # ``NoPermissionError`` (NOPERM) is listed transient for the same reason as
 # ``OutOfMemoryError`` above, ahead of the broker's relocation to an
@@ -134,7 +139,10 @@ CHANGE_STREAM_TOPIC = "info.changes"
 
 # Trim the stream every N drain-loop iterations when a cap is configured. With
 # the loop's sub-second/idle cadence this bounds growth without an XTRIM every
-# tick. Archiver operates the broker (archiver#109), so capping is its job.
+# tick. Capping ``info.changes`` is Archiver's job because Archiver is its
+# *producer* and nothing else can size it. Until CannObserv/broker#1 Phase 3
+# the reason given here was that Archiver *operated* the broker (archiver#109);
+# the broker moved to a neutral node, the assignment did not (archiver#196).
 #
 # Periodic XTRIM is a CHOICE, not an absence (archiver#138 - the co-core 0.7 bump
 # falsified the note that used to sit here). ``BusPublish`` does carry ``maxlen`` /
@@ -151,6 +159,12 @@ TRIM_INTERVAL_ITERATIONS = 20
 
 # Default approximate cap on info.changes when ARCHIVER_REDIS_STREAM_MAXLEN is
 # unset. See resolve_stream_maxlen for the parse contract.
+#
+# MIRRORED ACROSS THE REPO BOUNDARY (archiver#196). CannObserv/broker's
+# ``src/broker/bus_health.py`` carries this number as ``FACT_PRODUCER_MAXLEN``,
+# naming this constant as the source of truth - it cannot import it. Raising it
+# here without raising it there leaves broker's WARN threshold stale-*low*,
+# which fires early rather than going quiet; the safe direction, but fix it.
 DEFAULT_STREAM_MAXLEN = 100_000
 
 # Cadence of the periodic "Outbox stats" line (archiver#112): depth, oldest-row
@@ -364,11 +378,15 @@ async def drain_once(
 async def trim_stream(client: Redis, topic: str, maxlen: int) -> None:
     """Cap ``topic`` to roughly ``maxlen`` entries via an approximate ``XTRIM``.
 
-    Operator-side retention (archiver#109): with no consumer yet, entries
-    accumulate on ``info.changes``, so Archiver (the broker operator) bounds the
-    stream itself. ``approximate=True`` (Redis ``MAXLEN ~``) trims whole
-    macro-nodes - cheap, may leave slightly more than ``maxlen``. Best-effort:
-    a failing trim is logged and swallowed so it never breaks the drain loop.
+    Producer-side retention (archiver#109): with no consumer yet, entries
+    accumulate on ``info.changes``, so Archiver - which produces the stream and
+    is the only party that can size it - bounds it itself. (Archiver no longer
+    *operates* the broker, which this docstring used to give as the reason;
+    CannObserv/broker#1 Phase 3, archiver#196.) ``XTRIM`` here is deliberate,
+    not incidental - see ``TRIM_INTERVAL_ITERATIONS``. ``approximate=True``
+    (Redis ``MAXLEN ~``) trims whole macro-nodes - cheap, may leave slightly
+    more than ``maxlen``. Best-effort: a failing trim is logged and swallowed
+    so it never breaks the drain loop.
     """
     try:
         await client.xtrim(topic, maxlen=maxlen, approximate=True)
