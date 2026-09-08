@@ -187,10 +187,10 @@ After the summary table, review commits and changes shipped to identify any post
 | Category | Trigger | Example action |
 |---|---|---|
 | DB migration | New file under `alembic/versions/` | `uv run alembic upgrade head && sudo systemctl restart archiver` |
-| Service restart | Code change touched a non-reload path | `sudo systemctl restart archiver` (port 8020) |
+| Service restart | Code change touched a non-reload path | `sudo systemctl restart archiver` (port 8000) |
 | Integration tests | New `@pytest.mark.integration` tests | `uv run pytest -m integration` on a real env (or wait for CI) |
 | Env var / secret | New config key | Add to `/etc/archiver/.env` and `sudo systemctl restart archiver` |
-| Dev-server cleanup | Worktree shutdown | `fuser -k 8021/tcp` for the dev port |
+| Dev-server cleanup | Worktree shutdown | `fuser -k 8001/tcp` for the dev port |
 | Changelog | feat/fix changes on `main` | Ensure `CHANGELOG.md` carries the entry; CI's changelog job enforces |
 
 Present only the items that apply. Be specific - name the file, command, or path. Then **offer to execute** any item within your capabilities. Ask once - don't nag.

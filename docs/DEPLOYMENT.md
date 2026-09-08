@@ -28,15 +28,15 @@ via co-core".
 
 **Never hand-roll the uvicorn invocation.** The recipe this replaced sourced
 `/etc/archiver/.env` and then ran uvicorn directly, which left
-`ARCHIVER_DATABASE_URL` pointing at **production** — the dev server on 8021 and
-the live service on 8020 shared one database. On 2026-07-18 a dashboard
+`ARCHIVER_DATABASE_URL` pointing at **production** — the dev server on 8001 and
+the live service on 8000 shared one database. On 2026-07-18 a dashboard
 verification run drove the dev server and wrote a `verify79.example.com`
 Domain, two InfoSources, and an AppUser into the production registry.
 
 `scripts/dev_server.sh` resolves the dev database from
 `ARCHIVER_DEV_DATABASE_URL`, else `TEST_DATABASE_URL`; refuses to start if that
 resolution equals `ARCHIVER_DATABASE_URL` or `DATABASE_URL`; clears the
-`DATABASE_URL` fallback; refuses port 8020; and runs `alembic upgrade head`
+`DATABASE_URL` fallback; refuses port 8000; and runs `alembic upgrade head`
 against the dev database before serving. This mirrors `_check_test_url_safety`
 in `tests/conftest.py`, which guards pytest but not a hand-run server.
 
@@ -46,7 +46,7 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 |---|---|
 | `ARCHIVER_DEV_DATABASE_URL` | Persistent dev DB; wins over `TEST_DATABASE_URL` |
 | `ARCHIVER_DEV_REDIS_URL` | Dev change-bus broker. Unset → dev runs bus-dormant (prod's `ARCHIVER_REDIS_URL` is never inherited); refused if equal to prod's |
-| `ARCHIVER_DEV_PORT` | Default 8021; 8020 is refused |
+| `ARCHIVER_DEV_PORT` | Default 8001; 8000 is refused |
 | `ARCHIVER_DEV_SKIP_MIGRATE=1` | Skip the alembic upgrade |
 
 > pytest teardown runs `DROP SCHEMA information CASCADE` against
@@ -79,7 +79,7 @@ made those columns authoritative (archiver#158), and the teardown followed.
 - `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name **must** end in `_test` (e.g. `archiver_test`) — `scripts/dev_server.sh` enforces the suffix, and `conftest.py` asserts non-equality at collection time and fails fast if violated.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` — *optional*. `1` permits the process to serve a database whose name lacks a `_test`/`_dev` suffix. **Only `deploy/archiver.service` sets it.** Without it `src/core/db_safety.py` refuses to start at lifespan, so a hand-rolled `uvicorn` cannot reach the production registry no matter which env files it sourced (2026-07-18 incident). Never set this in `/etc/archiver/.env` or `.env` — putting it in an env file would re-open the hole for every process that sources them.
 - `ARCHIVER_DEV_DATABASE_URL` — *optional*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Use when pytest's `DROP SCHEMA` teardown wiping your dev data mid-session becomes annoying. Name must end in `_test`/`_dev`.
-- `ARCHIVER_DEV_PORT` — *optional*. Dev server port, default `8021`. `8020` is refused (systemd's). See **Server Lifecycle**.
+- `ARCHIVER_DEV_PORT` — *optional*. Dev server port, default `8001`. `8000` is refused (systemd's). See **Server Lifecycle**.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis). **Archiver operates the local `redis-server` broker** (archiver#109 — it is the change-bus producer + cluster control-plane); see `deploy/redis-server.dropin.conf`, `deploy/README.md`, and the design note `docs/plans/2026-07-29-redis-bus-ownership-design.md`. The connection string is the only switch — `rediss://user:pass@host:port/db` moves to a managed provider with no code change (`RedisAsync.from_url` handles TLS + auth). `archiver.service` orders after `redis-server` (`Wants=`/`After=`, soft — the outbox tolerates broker downtime) and an `ExecStartPre` (`scripts/check_redis_floor.sh`) asserts the ≥7.0 server floor when the bus is active, plus a warn-only check that the live `maxmemory` is non-zero.
 
   **Lockstep invariant (archiver#128) — spans `deploy/` and `src/`.** The drop-in's `--maxmemory` cap and `OutOfMemoryError` being listed in `_TRANSIENT_PUBLISH_ERRORS` (`src/core/changes/publisher.py`) are **one decision; never change either alone.** `maxmemory-policy noeviction` with the default `maxmemory 0` is inert — nothing is ever refused, so an untrimmed stream is OOM-killed rather than erroring. The cap restores bounded, instance-wide `OOM command not allowed` errors; the transient classification is what stops those from dead-lettering valid `info.changes` events (`OutOfMemoryError` is a `ResponseError` subclass, so the default "possibly-permanent" branch would otherwise catch it). Removing the cap makes the classification pointless; removing the classification makes the cap lossy. The blast radius is instance-wide — **every** producer on the shared broker is refused, and only Archiver's is known to retry.

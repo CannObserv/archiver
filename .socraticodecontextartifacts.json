@@ -3,7 +3,7 @@
     {
       "name": "agents-guide",
       "path": "./AGENTS.md",
-      "description": "Authoritative project guide for agents and contributors. Project overview (canonical InfoItem + InfoSource + SourceRevision + RepSpec registry, Phase 4 / Archiver v2), full src/ and repo layout, code exploration policy, the cannobserv co-core substrate and wheelhouse workflow, content-acquisition via co-core (no cross-repo mirror discipline), env vars (ARCHIVER_DATABASE_URL, TEST_DATABASE_URL, ARCHIVER_ALLOW_PRODUCTION_DB, ARCHIVER_REDIS_URL and the redis knobs, WATCHER_BASE_URL/WATCHER_API_KEY, ARCHIVER_PUBLIC_BASE_URL), server lifecycle (port 8020=systemd, 8021=scripts/dev_server.sh), the authoring-tool and assignment endpoint tables with their archiver-client SDK wrappers, the info.changes change-bus producer contract and event versioning convention, error-envelope conventions, commit/changelog conventions, and the data-model vocabulary."
+      "description": "Authoritative project guide for agents and contributors. Project overview (canonical InfoItem + InfoSource + SourceRevision + RepSpec registry, Phase 4 / Archiver v2), full src/ and repo layout, code exploration policy, the cannobserv co-core substrate and wheelhouse workflow, content-acquisition via co-core (no cross-repo mirror discipline), env vars (ARCHIVER_DATABASE_URL, TEST_DATABASE_URL, ARCHIVER_ALLOW_PRODUCTION_DB, ARCHIVER_REDIS_URL and the redis knobs, WATCHER_BASE_URL/WATCHER_API_KEY, ARCHIVER_PUBLIC_BASE_URL), server lifecycle (port 8000=systemd, 8001=scripts/dev_server.sh), the authoring-tool and assignment endpoint tables with their archiver-client SDK wrappers, the info.changes change-bus producer contract and event versioning convention, error-envelope conventions, commit/changelog conventions, and the data-model vocabulary."
     },
     {
       "name": "readme",
@@ -33,7 +33,7 @@
     {
       "name": "systemd-unit",
       "path": "./deploy/archiver.service",
-      "description": "Production systemd service unit for the Archiver API. Defines how the live service on port 8020 is launched, restarted, and which env files it loads (/etc/archiver/.env). Sets ARCHIVER_ALLOW_PRODUCTION_DB=1 - the only place that does. ExecStartPre steps sync the co-core wheelhouse and run scripts/check_redis_floor.sh; ordering is soft (Wants=/After=) on redis-server, the change-bus broker Archiver operates."
+      "description": "Production systemd service unit for the Archiver API. Defines how the live service on port 8000 is launched, restarted, and which env files it loads (/etc/archiver/.env). Sets ARCHIVER_ALLOW_PRODUCTION_DB=1 - the only place that does. ExecStartPre steps sync the co-core wheelhouse and run scripts/check_redis_floor.sh; ordering is soft (Wants=/After=) on redis-server, the change-bus broker Archiver operates."
     }
   ]
 }

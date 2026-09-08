@@ -2,8 +2,8 @@
 
 Background (archiver, 2026-07-18 incident): the documented dev-server recipe
 sourced ``/etc/archiver/.env`` and ran uvicorn directly, leaving
-``ARCHIVER_DATABASE_URL`` pointed at production. The dev server on 8021 and the
-live service on 8020 shared one database, and a dashboard verification run
+``ARCHIVER_DATABASE_URL`` pointed at production. The dev server on 8001 and the
+live service on 8000 shared one database, and a dashboard verification run
 wrote a ``verify79.example.com`` Domain, two InfoSources, and an AppUser into
 the production registry.
 

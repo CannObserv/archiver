@@ -67,25 +67,28 @@ reintroduce a mirror obligation for anything under `src/`.
 
 | Service | Port | Managed by |
 |---|---|---|
-| Archiver (live) | 8020 | `systemctl` (`archiver.service`) |
-| Archiver (dev) | 8021 | `bash scripts/dev_server.sh` (never hand-rolled uvicorn) |
+| Archiver (live) | 8000 | `systemctl` (`archiver.service`) |
+| Archiver (dev) | 8001 | `bash scripts/dev_server.sh` (never hand-rolled uvicorn) |
 
-The exe.dev proxy forwards 3000-9999. Dev server reachable at `https://watcher.exe.xyz:8021/` (the host is shared with the watcher VM).
+The exe.dev proxy forwards 3000-9999 and maps the bare hostname to 8000, so the dashboard is
+`https://co-registrar.exe.xyz/` with no port suffix; the dev server is
+`https://co-registrar.exe.xyz:8001/`. Archiver has its own VM (archiver#193) - the host is no
+longer shared with watcher, and the broker is on a third node (CannObserv/broker#1).
 
 ## Server Lifecycle
 
-**Port 8020 belongs to systemd. Never start uvicorn manually on 8020.**
+**Port 8000 belongs to systemd. Never start uvicorn manually on 8000.**
 
 After committing to `main`: `sudo systemctl restart archiver`. After DB model changes: `uv run alembic upgrade head` then restart. Logs: `sudo journalctl -u archiver -f`.
 
-Dev server (port 8021) - **always** via the launch script:
+Dev server (port 8001) - **always** via the launch script:
 
 ```bash
 bash scripts/dev_server.sh
 ```
 
 Anything that writes - curl against the dashboard, SDK scripts, manual
-verification - must target 8021, never 8020.
+verification - must target 8001, never 8000.
 
 Why the script exists, its knobs, and the 2026-07-18 production-write incident:
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

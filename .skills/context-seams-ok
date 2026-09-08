@@ -65,7 +65,7 @@ skills/shipping-work-python-fastapi/scripts/doc-check.sh :: "AGENTS.md"
 src/core/db_safety.py :: Suffixes that mark a database as disposable
 tests/api/test_lifespan_bus_wiring.py :: safety control (`AGENTS.md`, "Four variables carry safety rules")
 tests/core/test_db_safety.py :: it matches the convention AGENTS.md already documents
-tests/scripts/test_dev_server.py :: The dev server (port 8021) previously had no launch script
+tests/scripts/test_dev_server.py :: The dev server (port 8001) previously had no launch script
 
 # archiver#156 added a fourth provenance-slug bus heading, same judgement as the
 # three above: the issue number was in the slug from birth, nothing links the anchor.

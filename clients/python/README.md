@@ -32,7 +32,7 @@ service relocates off-VM the SDK publishes to a real index.)
 ```python
 from archiver_client import ArchiverClient
 
-async with ArchiverClient(base_url="http://localhost:8020", api_key="...") as client:
+async with ArchiverClient(base_url="http://localhost:8000", api_key="...") as client:
     # Atomically create an InfoItem with a root InfoSource
     item = await client.create_info_item(
         name="WSLCB board meeting agenda 2026-04-15",

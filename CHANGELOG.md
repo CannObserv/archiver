@@ -18,6 +18,26 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.16.6 (2026-09-08)
+
+`[both]` **Ports rebased 8020/8001 -> 8000/8001 and the public base URL moved
+hosts.** Archiver now runs on its own VM (`co-registrar`) rather than sharing
+watcher's, so 8020 - which existed only to dodge watcher's 8000 on a shared box -
+has no reason to persist. exe.dev's proxy maps the bare hostname to 8000, so the
+dashboard is `https://co-registrar.exe.xyz/` with no port suffix; the dev server
+moves to 8001.
+
+Contract-visible only through `clients/python/README.md`, whose example base URL
+changed. **No SDK code, types, or methods changed**, so `archiver-client` is not
+bumped - a caller passing an explicit `base_url` is unaffected, and any caller
+relying on the documented default should read the new host from the README.
+
+Note for anyone reading the 2026-07-18 dev-server incident in
+`src/core/db_safety.py` or `scripts/dev_server.sh`: those narratives no longer
+name ports. The incident happened on the old 8020/8021 pair, and rewriting the
+numbers to the new ones would have made the record false while the ports were
+never the point - dev and prod sharing one database was.
+
 ## v4.16.5 (2026-08-29)
 
 [service] **`changes_outbox` retention: published rows are pruned** (archiver#189). One migration; no HTTP API surface change; no SDK change.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Launch the Archiver dev server (port 8021) against a NON-PRODUCTION database.
+# Launch the Archiver dev server (port 8001) against a NON-PRODUCTION database.
 #
 # Why this script exists (archiver, 2026-07-18 incident):
 #
 #   CLAUDE.md used to document a raw uvicorn recipe for the dev server that
 #   began by sourcing /etc/archiver/.env. That file sets ARCHIVER_DATABASE_URL
-#   to *production*, so the dev server on 8021 and the systemd service on 8020
-#   shared one database. A dashboard verification run drove the dev server and
+#   to *production*, so the dev server and the systemd service shared one
+#   database. A dashboard verification run drove the dev server and
 #   wrote a verify79.example.com Domain, two InfoSources, and an AppUser into
 #   the production registry. Nothing in the loop was wrong except the recipe:
 #   the leak was the documented procedure working as written.
@@ -27,7 +27,7 @@
 #
 # Env knobs:
 #   ARCHIVER_DEV_DATABASE_URL             persistent dev DB; wins over TEST_DATABASE_URL
-#   ARCHIVER_DEV_PORT                     default 8021 (8020 is systemd's, refused)
+#   ARCHIVER_DEV_PORT                     default 8001 (8000 is systemd's, refused)
 #   ARCHIVER_DEV_SKIP_MIGRATE=1           skip the alembic upgrade
 #   ARCHIVER_DEV_SERVER_DRY_RUN=1         print resolution, do not exec uvicorn
 #   ARCHIVER_DEV_SERVER_SKIP_ENV_FILES=1  skip sourcing env files (tests)
@@ -44,13 +44,13 @@ if [[ "${ARCHIVER_DEV_SERVER_SKIP_ENV_FILES:-}" != "1" ]]; then
   set +a
 fi
 
-PORT="${ARCHIVER_DEV_PORT:-8021}"
+PORT="${ARCHIVER_DEV_PORT:-8001}"
 
-# Port 8020 belongs to systemd (archiver.service). Binding it from here either
+# Port 8000 belongs to systemd (archiver.service). Binding it from here either
 # fails on a port clash or, worse, shadows the live service.
-if [[ "$PORT" == "8020" ]]; then
-  echo "dev_server: refusing to bind port 8020 — that port belongs to systemd" >&2
-  echo "  (archiver.service). Use the default 8021, or set ARCHIVER_DEV_PORT." >&2
+if [[ "$PORT" == "8000" ]]; then
+  echo "dev_server: refusing to bind port 8000 — that port belongs to systemd" >&2
+  echo "  (archiver.service). Use the default 8001, or set ARCHIVER_DEV_PORT." >&2
   exit 1
 fi
 
@@ -104,7 +104,7 @@ case "$DEV_DB_NAME" in
     echo "dev_server: refusing to start against database '${DEV_DB_NAME:-<unparseable>}'." >&2
     echo "  The dev database name must end in '_test' or '_dev'; anything else" >&2
     echo "  is treated as production (see archiver 2026-07-18 incident, where" >&2
-    echo "  a dev server on 8021 wrote into the production registry)." >&2
+    echo "  a dev server wrote into the production registry)." >&2
     echo "  Point TEST_DATABASE_URL or ARCHIVER_DEV_DATABASE_URL at a" >&2
     echo "  dedicated database, e.g. archiver_test." >&2
     exit 1

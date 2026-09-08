@@ -1,6 +1,6 @@
 """Tests for ``scripts/dev_server.sh``.
 
-The dev server (port 8021) previously had no launch script — CLAUDE.md
+The dev server (port 8001) previously had no launch script — CLAUDE.md
 documented a raw ``uvicorn`` recipe that sourced ``/etc/archiver/.env`` and
 therefore inherited ``ARCHIVER_DATABASE_URL`` pointing at **production**. A
 dashboard verification run on 2026-07-18 drove that dev server and wrote a
@@ -106,10 +106,10 @@ def test_clears_inherited_database_url_fallback() -> None:
 
 
 def test_refuses_to_bind_the_production_port() -> None:
-    """Port 8020 belongs to systemd; a dev launch there is always a mistake."""
-    result = run({"TEST_DATABASE_URL": TEST_URL, "ARCHIVER_DEV_PORT": "8020"})
+    """Port 8000 belongs to systemd; a dev launch there is always a mistake."""
+    result = run({"TEST_DATABASE_URL": TEST_URL, "ARCHIVER_DEV_PORT": "8000"})
     assert result.returncode != 0
-    assert "8020" in result.stderr
+    assert "8000" in result.stderr
 
 
 def test_refuses_production_database_name_despite_differing_url_string() -> None:

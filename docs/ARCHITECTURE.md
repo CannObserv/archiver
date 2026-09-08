@@ -202,7 +202,7 @@ scripts/                       sync_wheelhouse.py (mirror co-core wheels from th
                                ≥7.0 broker floor + warn-only live-maxmemory check,
                                each probe bounded by ARCHIVER_REDIS_FLOOR_TIMEOUT) +
                                dev_server.sh (ONLY sanctioned way to start the
-                               8021 dev server; refuses to resolve onto the
+                               8001 dev server; refuses to resolve onto the
                                production DB — see "Server Lifecycle")
 deploy/                        README.md (install instructions) + systemd units:
                                archiver.service +

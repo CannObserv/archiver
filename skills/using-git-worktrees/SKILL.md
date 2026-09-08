@@ -5,7 +5,7 @@ metadata:
   author: gregoryfoster
   version: "1.0"
   overrides: gregoryfoster-skills/using-git-worktrees
-  override-reason: "Archiver-specific operations — dev server auto-starts on port 8021 (8020 belongs to systemd archiver.service), and worktree setup sources /etc/archiver/.env + .env via `set -a; . <file>; set +a` (not the broken `export $(cat | xargs)` pattern)."
+  override-reason: "Archiver-specific operations — dev server auto-starts on port 8001 (8000 belongs to systemd archiver.service), and worktree setup sources /etc/archiver/.env + .env via `set -a; . <file>; set +a` (not the broken `export $(cat | xargs)` pattern)."
 ---
 
 # Using Git Worktrees
@@ -137,21 +137,21 @@ uv run pytest --no-cov
 
 ### 5. Start Dev Server
 
-**Port 8021 belongs to worktrees.** Never serve main on 8021. When no worktree is
-active, 8021 should not be running.
+**Port 8001 belongs to worktrees.** Never serve main on 8001. When no worktree is
+active, 8001 should not be running.
 
 ```bash
-# Kill any existing process on 8021 (stale worktree, accidental main, etc.)
-lsof -ti :8021 | xargs -r kill -9 2>/dev/null
+# Kill any existing process on 8001 (stale worktree, accidental main, etc.)
+lsof -ti :8001 | xargs -r kill -9 2>/dev/null
 
 # Start the dev server from the worktree via the launch script. It sources the
 # env files, resolves a NON-PRODUCTION database, refuses to start if that
-# database name lacks a _test/_dev suffix, migrates it, then serves on 8021.
+# database name lacks a _test/_dev suffix, migrates it, then serves on 8001.
 bash scripts/dev_server.sh &
 
 # Verify port is bound
 sleep 2
-ss -tlnp | grep 8021
+ss -tlnp | grep 8001
 ```
 
 **Never hand-roll the `uvicorn` invocation here.** The recipe this replaced
@@ -165,7 +165,7 @@ A fresh worktree has no `.env` (it is gitignored), so `TEST_DATABASE_URL` is
 unset there and the script exits with a clear message rather than falling back
 to production. Copy or symlink `.env` into the worktree before starting.
 
-Accessible at `https://watcher.exe.xyz:8021/` via the exe.dev proxy.
+Accessible at `https://co-registrar.exe.xyz:8001/` via the exe.dev proxy.
 
 This step runs automatically — no user prompt. The result is included in the
 report (next step). If the server fails to bind, report the error and ask the user.
@@ -175,7 +175,7 @@ report (next step). If the server fails to bind, report the error and ask the us
 ```
 Worktree ready at <full-path>
 Tests passing (<N> tests, 0 failures)
-Dev server running on port 8021 (https://watcher.exe.xyz:8021/)
+Dev server running on port 8001 (https://co-registrar.exe.xyz:8001/)
 Ready to implement <feature-name>
 ```
 
@@ -189,7 +189,7 @@ Ready to implement <feature-name>
 | Neither exists | Check CLAUDE.md, then ask user |
 | Directory not ignored | Add to .gitignore + commit |
 | Tests fail during baseline | Report failures + ask |
-| Dev server on 8021 from wrong worktree | Automatically killed and restarted |
+| Dev server on 8001 from wrong worktree | Automatically killed and restarted |
 
 ## Common Mistakes
 
@@ -213,15 +213,15 @@ Ready to implement <feature-name>
 - **Problem:** Tests fail with `RuntimeError: TEST_DATABASE_URL not set`
 - **Fix:** Copy `.env` from main worktree during setup (Step 3)
 
-### Starting dev server on port 8020
+### Starting dev server on port 8000
 
 - **Problem:** Conflicts with the systemd service running the live site (`archiver.service`)
-- **Fix:** Always use `--port 8021` in worktrees (and in dev generally)
+- **Fix:** Always use `--port 8001` in worktrees (and in dev generally)
 
 ### Running dev server from main
 
-- **Problem:** Port 8021 belongs to worktrees; serving main breaks operational separation
-- **Fix:** Only start 8021 from a worktree directory. Stop 8021 when worktree is torn down.
+- **Problem:** Port 8001 belongs to worktrees; serving main breaks operational separation
+- **Fix:** Only start 8001 from a worktree directory. Stop 8001 when worktree is torn down.
 
 ## Integration
 

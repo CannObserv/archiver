@@ -30,7 +30,7 @@ bash scripts/dev_server.sh
 sources the env files, resolves a **non-production** database
 (`ARCHIVER_DEV_DATABASE_URL`, else `TEST_DATABASE_URL`), refuses to start
 unless that database name ends in `_test`/`_dev`, runs `alembic upgrade head`,
-and serves on 8021.
+and serves on 8001.
 
 **Never hand-roll the `uvicorn` invocation.** The recipe this replaced sourced
 `/etc/archiver/.env` and ran uvicorn directly, which left
@@ -42,7 +42,7 @@ do - `archiver.service`, and the read-only `archiver-bus-health.service` probe
 (#130). Never an env file: those are sourced by every process that loads them,
 which is the hole the guard closes.
 
-Production listens on **port 8020** under `archiver.service`. The dev server uses 8021 to leave 8020 alone for systemd.
+Production listens on **port 8000** under `archiver.service`. The dev server uses 8001 to leave 8000 alone for systemd.
 
 ## Tests
 

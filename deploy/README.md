@@ -4,7 +4,7 @@ Systemd units for the Archiver VM.
 
 | Unit / file | Type | Purpose |
 |---|---|---|
-| `archiver.service` | service | The live API on port 8020 (see CLAUDE.md → Server Lifecycle). Its `ExecStartPre` mirrors the cannobserv wheelhouse (see below) and asserts the Redis ≥7.0 floor when the bus is active. |
+| `archiver.service` | service | The live API on port 8000 (see CLAUDE.md → Server Lifecycle). Its `ExecStartPre` mirrors the cannobserv wheelhouse (see below) and asserts the Redis ≥7.0 floor when the bus is active. |
 | `redis-server.dropin.conf` | service drop-in | Archiver-owned tuning for the shared Redis change-bus broker (#109). Layers on the stock `redis-server.service`; see below. |
 | `archiver-bus-health.service` | service (oneshot) | One WARN-only bus-health tick: broker memory/streams/groups/DLQs, outbox stats, disk (#130). Never blocks anything; see *Bus-health timer* below. |
 | `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
@@ -146,7 +146,7 @@ broker:
   the DB half of that lesson cost, and #162 is what a DLQ full of test residue
   costs to clean up.
 - **The "Replicate now" button (archiver#171) writes for real.** It is an
-  operator action on the live dashboard - port 8020 - and it enqueues a genuine
+  operator action on the live dashboard - port 8000 - and it enqueues a genuine
   command against the item's latest revision. It is `hx-confirm`-guarded for
   that reason. There is no dry-run.
 
