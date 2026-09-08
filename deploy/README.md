@@ -8,15 +8,18 @@ Systemd units for the Archiver VM.
 | `archiver-bus-health.service` | service (oneshot) | One WARN-only tick of the **outbox** probe: depth, oldest-unpublished age, dead-lettered count (#130, reduced by #193). Never blocks anything; see *Outbox health timer* below. |
 | `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
 
-**The broker is not deployed from this repo.** `redis-server.dropin.conf`, the
-drop-in parity test, and the broker-side half of the health probe moved to
+**The broker is not deployed from this repo.** The broker's tuning (now
+`CannObserv/broker:deploy/redis.conf.broker`), its parity test, and the
+broker-side half of the health probe moved to
 [CannObserv/broker](https://github.com/CannObserv/broker) under archiver#193 D6,
-when the broker stopped sharing a host with archiver. The drop-in did not
-survive the move under that name: on the dedicated node the tuning is appended
-to `redis.conf`, so it is now `deploy/redis.conf.broker` there (broker#1 Phase
-5, archiver#196), and the drop-in slot carries unit ordering only. What lived here had begun
+when the broker stopped sharing a host with archiver. What lived here had begun
 measuring archiver's disk and archiver's systemd. The cluster stream inventory
 went with them, to `CannObserv/broker:docs/STREAMS.md`.
+
+It left here as `redis-server.dropin.conf` and did not survive the move under
+that name: on the dedicated node the tuning is appended to `redis.conf`
+(broker#1 Phase 5, archiver#196), and the drop-in slot carries unit ordering
+only.
 
 ## cannobserv wheelhouse (archiver#72/#75)
 
