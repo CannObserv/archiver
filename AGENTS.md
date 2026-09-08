@@ -60,8 +60,8 @@ Wiring detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 **The broker is not operated from this repo (#193 D6).** Its tuning, its
 health probe, and the cluster stream inventory live in
 [CannObserv/broker](https://github.com/CannObserv/broker); archiver is a
-client. One seam survives that split and has no test spanning it: the drop-in's
-`--maxmemory` cap and `OutOfMemoryError` being transient in
+client. One seam survives that split and has no test spanning it: the broker
+config's `maxmemory` cap and `OutOfMemoryError` being transient in
 `_TRANSIENT_PUBLISH_ERRORS` are **one decision**, and each repo names the other
 in a comment (R5).
 
