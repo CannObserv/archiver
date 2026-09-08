@@ -1,8 +1,8 @@
 [Unit]
-Description=Archiver bus health probe - broker + outbox + disk, WARN-only (archiver#130)
-# Deliberately NOT bound to archiver.service or redis-server.service: the probe
-# exists precisely to report while either of them is down. An unreachable
-# broker or database is a finding it logs, never a dependency failure.
+Description=Archiver outbox health probe - WARN-only (archiver#130, reduced by #193)
+# Deliberately NOT bound to archiver.service: the probe exists precisely to
+# report while it is down. An unreachable database is a finding it logs, never
+# a dependency failure.
 After=network.target
 
 [Service]
@@ -24,19 +24,30 @@ EnvironmentFile=-/home/exedev/archiver/.env
 # archiver.service are the only two sanctioned holders.
 Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 
-# ARCHIVER_BUS_CONSUMER is deliberately absent: XPENDING is read-only group
-# introspection. Joining the archiver.revisions group from here would silently
-# swallow revisions (archiver#139).
+# ARCHIVER_BUS_CONSUMER is deliberately absent, and now doubly so: this probe
+# opens no Redis connection at all (archiver#193 Phase 3). Joining the
+# archiver.revisions group from here would silently swallow revisions (#139).
 
-# Carries the two-tick XPENDING state between oneshot runs
-# (/var/lib/archiver-bus-health, owned by User= automatically).
-StateDirectory=archiver-bus-health
+# Reduced to the outbox half by archiver#193 Phase 3. The broker-side checks
+# - memory, per-stream XLEN, last-entry age, the two-tick XPENDING rule, the
+# DLQ sweep, disk - moved to CannObserv/broker's broker-bus-health.timer,
+# which runs on the broker's own node. Run from here they had begun measuring
+# archiver's disk and calling it the broker's AOF headroom (archiver#193 D6).
+#
+# The two-tick rule was the only thing that needed state between oneshot runs,
+# so StateDirectory= and --state-file went with it. Nothing here is stateful.
+#
+# Reduced rather than retired in favour of the #147 dashboard panel: the
+# reason this unit exists survives the split intact - the publisher's own
+# outbox stats line rides the drain loop and vanishes exactly when the
+# publisher is down, and a journald line fires whether or not an operator is
+# looking at a page.
 
-# Hard backstop under systemd's 90s default. src/core/bus_health.py bounds each
-# Redis call (5s connect / 10s read), but ~25 calls per tick could in theory
-# accumulate past the default against a uniformly slow broker. A healthy tick
-# takes well under a second; one that cannot finish in 60s has nothing useful
-# left to report, and being visibly killed beats hanging the unit.
+# Hard backstop under systemd's 90s default. The tick is now a single database
+# query, and asyncpg's connect carries no default timeout, so a Postgres that
+# hangs rather than refuses would otherwise hold this unit open indefinitely.
+# A tick that cannot finish in 60s has nothing useful left to report, and being
+# visibly killed beats hanging the unit.
 TimeoutStartSec=60
 
-ExecStart=/usr/local/bin/uv run python -m src.core.bus_health --state-file ${STATE_DIRECTORY}/state.json
+ExecStart=/usr/local/bin/uv run python -m src.core.bus_health

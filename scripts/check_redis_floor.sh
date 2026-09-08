@@ -13,13 +13,14 @@
 #    default `maxmemory 0` is inert: no ceiling means no write ever gets refused,
 #    so the bounded degradation the drop-in documents never engages and an
 #    untrimmed stream grows until the kernel OOM-kills redis-server. This is the
-#    only check that reads the *running* value — the file-parity test
-#    (tests/deploy/test_installed_redis_dropin_matches_repo.py) compares the
-#    drop-in on disk and cannot see a broker reconfigured via `CONFIG SET`, which
-#    is how the cap is applied without a restart. It warns rather than blocks
-#    because an uncapped broker does not break the producer; refusing to start the
-#    API over a broker tuning value would turn tuning drift into an outage. #130's
-#    periodic health check is where this becomes an alert.
+#    only check *this repo* has that reads the running value: the drop-in and its
+#    file-parity test moved to CannObserv/broker with the broker (archiver#193
+#    D6), and a file-parity test cannot see a broker reconfigured via `CONFIG
+#    SET` anyway, which is how the cap is applied without a restart. It warns
+#    rather than blocks because an uncapped broker does not break the producer;
+#    refusing to start the API over a broker tuning value would turn tuning drift
+#    into an outage. That repo's bus-health probe is where this becomes an alert,
+#    every tick, from the broker's own node.
 #
 # The name says "floor" for both — it is the set of minimum broker conditions
 # archiver asserts at start. Renaming would mean re-pointing the ExecStartPre and
@@ -121,7 +122,7 @@ if [ "${maxmemory}" = "0" ]; then
   echo "check_redis_floor: maxmemory-policy noeviction is INERT without a cap: no write is ever" >&2
   echo "check_redis_floor: refused, so an untrimmed stream grows until the kernel OOM-kills" >&2
   echo "check_redis_floor: redis-server instead of erroring. The cap belongs to the ExecStart in" >&2
-  echo "check_redis_floor: deploy/redis-server.dropin.conf (the authoritative value); apply it live" >&2
+  echo "check_redis_floor: CannObserv/broker deploy/redis-server.dropin.conf (authoritative); apply live" >&2
   echo "check_redis_floor: without a restart via: redis-cli CONFIG SET maxmemory <value from" >&2
   echo "check_redis_floor: ExecStart> — CONFIG SET takes the same unit suffixes, so copy it verbatim" >&2
   exit 0

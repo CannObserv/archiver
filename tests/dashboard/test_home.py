@@ -10,7 +10,7 @@ from fakeredis import aioredis as fakeredis_aio
 
 from src.api.deps import get_redis_client
 from src.api.main import app
-from src.core.bus_health import STREAM_CHECKS
+from src.core.bus_health import OWNED_GROUPS
 from src.core.changes.artifacts_consumer import CONSUMER_GROUP as ARTIFACTS_GROUP
 from src.core.changes.consumer import CONSUMER_GROUP as REVISIONS_GROUP
 from src.core.models import (
@@ -597,10 +597,10 @@ async def test_health_redis_unconfigured_stays_muted(client, monkeypatch):
 
 def test_consumer_badge_covers_every_archiver_owned_group():
     """Finding 4. The ladder's DLQ and pending checks iterate the lag list,
-    sourced from STREAM_CHECKS, while the title is built from _CONSUMERS. Let
+    sourced from OWNED_GROUPS, while the title is built from _CONSUMERS. Let
     those sets drift and the badge reports a state its title cannot explain."""
     assert {topic for _name, _attr, topic in index_routes._CONSUMERS} == {
-        check.topic for check in STREAM_CHECKS if check.pending_group is not None
+        owned.topic for owned in OWNED_GROUPS
     }
 
 

@@ -219,8 +219,11 @@ async def dashboard_health_consumers(
     badge state here rather than sharing the healthy one.
 
     Liveness comes from ``app.state`` (no broker call); the depths come from
-    ``src.core.bus_health``, the same probe module the #130 timer uses, so the
-    dashboard and journald never disagree about what a lagging group is.
+    ``src.core.bus_health.collect_group_lag``, which reads the same
+    ``OWNED_GROUPS`` list the rest of archiver's bus surface does. The broker's
+    own alerting lives in CannObserv/broker now (archiver#193 D6) and debounces
+    across two ticks; this panel deliberately shows one instant, because an
+    operator can refresh.
     """
     if redis is None:
         return _no_client_badge()
@@ -257,7 +260,7 @@ async def dashboard_health_consumers(
         logger.warning("Consumer lag probe timed out", extra={"error": lag_error})
     except (RedisError, OSError) as exc:
         # The same tuple bus_health's own collector narrows to. Deliberately
-        # not `except Exception`: a TypeError out of the probe is a bug here,
+        # not `except Exception`: a TypeError out of the collector is a bug here,
         # and rendering it as "lag unknown" reads as a broker condition and
         # sends the operator to the wrong system (CR round 1, finding 2).
         # builtins.ConnectionError is an OSError subclass, so naming it too

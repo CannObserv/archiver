@@ -98,21 +98,29 @@ that actually deleted something; silence is the healthy steady state. A failed
 pass logs WARNING with the rows it had already committed - batches commit as
 they go, so a mid-pass failure still deleted something real.
 
-**Broker-side observability (archiver#130)** - the `archiver-bus-health`
-systemd timer runs `src/core/bus_health.py` every 10 minutes: memory headroom,
-per-stream `XLEN` and last-entry age, two-tick `XPENDING` on the
-archiver-owned groups, `*.dlq` depths, disk, and the #112 outbox query
-re-run from outside the publisher process (the drain-loop stats line above
-stops exactly when the publisher does). WARN-only journald lines from logger
-`src.core.bus_health`; full check list and thresholds in `deploy/README.md`.
-`bus_health` is also the shared probe module the archiver#147 dashboard panel
-renders from: `collect_group_lag()` is the per-request half, narrowed to the
-archiver-owned groups' `XPENDING` and `*.dlq` depths so a page load costs four
-commands rather than the timer's full inventory sweep. Two contracts differ
-there, both because the caller is a request handler: a broker error propagates
-(the panel must badge "could not measure" apart from "measured zero"), and the
-two-tick pending rule is absent (it debounces a periodic alarm; a dashboard
-shows one instant and the operator can refresh).
+**Outbox observability (archiver#130, reduced by #193)** - the
+`archiver-bus-health` systemd timer runs `src/core/bus_health.py` every 10
+minutes and re-runs the #112 outbox query from outside the publisher process.
+That is the whole tick: the drain-loop stats line above stops exactly when the
+publisher does, which is the state most worth reporting, and a journald line
+fires whether or not an operator is looking at the dashboard. WARN-only lines
+from logger `src.core.bus_health`.
+
+**Broker-side observability moved out of this repo (archiver#193 D6).** Memory
+headroom, per-stream `XLEN` and last-entry age, the two-tick `XPENDING` rule,
+the `*.dlq` sweep and disk are `broker-bus-health.timer` in
+[CannObserv/broker](https://github.com/CannObserv/broker), running on the
+broker's own node. Every one of them measures the broker's host; run from here
+they had begun reporting archiver's disk. Check list, thresholds and the
+cluster stream inventory live in that repo's `docs/STREAMS.md`.
+
+`bus_health` still backs the archiver#147 dashboard panel: `collect_group_lag()`
+reads the archiver-owned groups' `XPENDING` and `*.dlq` depths, four commands
+per page load. Two contracts differ from the broker's timer, both because the
+caller is a request handler: a broker error propagates (the panel must badge
+"could not measure" apart from "measured zero"), and the two-tick pending rule
+is absent (it debounces a periodic alarm; a dashboard shows one instant and the
+operator can refresh).
 
 **`info.registry` - the registry announcement channel (archiver#141).** A second
 producer surface, *config/state* kind rather than fact: per-InfoItem LWW state,
@@ -223,9 +231,12 @@ it existed only as a docstring beside a free-string `group` parameter, which is
 what cannobserv#384 fixed by making it an importable helper. Deriving evaluates
 to the same `archiver.revisions` / `archiver.artifacts` already on the broker -
 a runtime no-op - but makes a non-conforming literal impossible rather than
-merely discouraged. `StreamCheck` in `src/core/bus_health.py` enforces the other
-half of the same taxonomy: `stream_kind` refuses a `pending_group` on a
-config/state stream, where a group would accumulate a PEL nothing drains.
+merely discouraged. `OwnedGroup` in `src/core/bus_health.py` enforces the other
+half of the same taxonomy: `stream_kind` refuses a config/state stream, where a
+group would accumulate a PEL nothing drains. Stronger than the `StreamCheck`
+guard it replaced in #193 - that one carried an optional `pending_group` and so
+ran only on the rows that had one; every `OwnedGroup` names a group by
+construction.
 
 Watcher observes; the registry decides. Per message:
 

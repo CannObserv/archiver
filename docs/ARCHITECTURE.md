@@ -179,9 +179,11 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                test_db_guard_parity.py, which keeps dev_server.sh in step
                                with db_safety.py);
                                tests/deploy/ asserts the installed systemd artifacts match
-                               deploy/ — archiver.service and the redis-server drop-in
-                               (each skips when absent, so CI passes). File-parity only:
-                               the LIVE broker config is checked by check_redis_floor.sh
+                               deploy/ — archiver.service and the bus-health pair
+                               (each skips when absent, so CI passes). The redis-server
+                               drop-in and its parity test left with the broker
+                               (archiver#193 D6 → CannObserv/broker); the LIVE broker
+                               config is still checked here by check_redis_floor.sh
 scripts/                       sync_wheelhouse.py (mirror co-core wheels from the private
                                GCS index into ./.wheelhouse; run before uv sync, and in the
                                archiver.service ExecStartPre) +
@@ -206,8 +208,11 @@ scripts/                       sync_wheelhouse.py (mirror co-core wheels from th
                                production DB — see "Server Lifecycle")
 deploy/                        README.md (install instructions) + systemd units:
                                archiver.service +
-                               redis-server.dropin.conf (the broker cap Archiver
-                               owns — see the archiver#128 lockstep invariant)
+                               archiver-bus-health.service/.timer (the OUTBOX probe;
+                               the broker-side half is CannObserv/broker's since
+                               archiver#193 D6). The #128 OOM lockstep now spans two
+                               repos: the cap is in CannObserv/broker's drop-in,
+                               the transient classification in publisher.py
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                BUS.md, SCHEMA.md, DEPLOYMENT.md, CONVENTIONS.md,
                                SKILLS.md, plus the dashboard living docs

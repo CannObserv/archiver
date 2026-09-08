@@ -810,9 +810,12 @@ async def test_transient_failure_exempt_from_ceiling(session_factory):
 async def test_broker_oom_is_transient_and_exempt_from_ceiling(session_factory):
     """A broker OOM (``maxmemory`` reached under ``noeviction``) is TRANSIENT.
 
-    archiver#128: the drop-in now sets an explicit ``maxmemory``, so memory
-    pressure surfaces as ``OOM command not allowed`` - a ``ResponseError``
-    subclass - instead of the kernel OOM-killing the broker. That is an outage
+    archiver#128: the broker's drop-in sets an explicit ``maxmemory``, so
+    memory pressure surfaces as ``OOM command not allowed`` - a
+    ``ResponseError`` subclass - instead of the kernel OOM-killing the broker.
+    That drop-in is in CannObserv/broker since archiver#193 D6, which is what
+    makes this classification half of a two-repository lockstep (R5) rather
+    than a same-repo invariant a test could span. That is an outage
     the operator resolves, not poison in the row: the event is valid and must
     survive until the broker has room. Classifying it with ``WRONGTYPE`` would
     dead-letter valid ``info.changes`` events during a memory incident caused by

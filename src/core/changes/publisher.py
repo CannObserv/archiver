@@ -67,14 +67,22 @@ IDLE_INTERVAL_SECONDS = 1.0
 #
 # ``OutOfMemoryError`` is the odd one out - it is a ``ResponseError`` subclass, so
 # the "everything else is possibly-permanent" rule above would otherwise catch it.
-# It is listed transient deliberately (archiver#128): Archiver operates a *shared*
-# broker under ``maxmemory-policy noeviction`` with an explicit ``maxmemory`` cap
-# (``deploy/redis-server.dropin.conf``), so an unrelated stream filling the
-# instance surfaces here as ``OOM command not allowed`` on a perfectly valid
-# event. That is an operator-resolvable outage, not poison - treating it as
-# permanent would dead-letter good ``info.changes`` events during someone else's
-# memory incident, which is exactly the loss the ceiling exemption exists to
-# prevent.
+# It is listed transient deliberately (archiver#128): the shared broker runs
+# under ``maxmemory-policy noeviction`` with an explicit ``maxmemory`` cap, so an
+# unrelated stream filling the instance surfaces here as ``OOM command not
+# allowed`` on a perfectly valid event. That is an operator-resolvable outage,
+# not poison - treating it as permanent would dead-letter good ``info.changes``
+# events during someone else's memory incident, which is exactly the loss the
+# ceiling exemption exists to prevent.
+#
+# **THE SEAM THAT SPANS TWO REPOSITORIES (archiver#193 R5).** That cap lives in
+# ``CannObserv/broker:deploy/redis-server.dropin.conf``, which moved out of this
+# repo with the broker it tunes (archiver#193 D6). The cap and this entry are
+# one decision: without the cap ``noeviction`` never refuses a write and the
+# broker is OOM-killed instead of erroring, making this classification
+# pointless; without this entry the cap is lossy. **Do not change either
+# alone.** No test spans the two repositories, so the drop-in's own comment
+# names this tuple in return and that pair of pointers is the whole mechanism.
 #
 # ``NoPermissionError`` (NOPERM) is listed transient for the same reason as
 # ``OutOfMemoryError`` above, ahead of the broker's relocation to an

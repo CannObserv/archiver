@@ -176,11 +176,11 @@ def test_redis_cli_absent_is_soft() -> None:
 def test_uncapped_broker_warns_but_does_not_block(tmp_path: Path) -> None:
     """`maxmemory 0` makes noeviction inert — warn loudly, never block.
 
-    archiver#128, CR finding 1. The file-level parity test
-    (tests/deploy/test_installed_redis_dropin_matches_repo.py) compares the
-    drop-in on disk against the repo; it cannot see a broker whose *running*
-    config was changed by `CONFIG SET`, which is exactly how the cap was applied.
-    This is the check that observes the live value.
+    archiver#128, CR finding 1. The file-level parity test moved to
+    CannObserv/broker with the drop-in it compares (archiver#193 D6), and it
+    could never see a broker whose *running* config was changed by `CONFIG SET`
+    in any case - which is exactly how the cap is applied. This is the check
+    that observes the live value, and it stays with each client.
 
     Warn-only, unlike the version floor: an uncapped broker does not break the
     producer, so refusing to start the API over it would turn a tuning drift into

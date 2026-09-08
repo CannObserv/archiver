@@ -53,7 +53,8 @@ health. Otherwise danger "N dead-lettered" if any poison row, warning
 **GET `/dashboard/health/consumers`** - over
 `src/core/bus_health.collect_group_lag` (archiver#147). Liveness from
 `app.state.{revisions,artifacts}_consumer_task`, no broker call; depths from
-the same probe module the #130 timer uses. Ladder, first match wins - the
+`OWNED_GROUPS`, the same list archiver's own bus surface reads (broker-side
+alerting is CannObserv/broker's since #193). Ladder, first match wins - the
 no-client branch above / muted "gated off" (`ARCHIVER_BUS_CONSUMER` unset, the
 dev default) / danger "not started" / danger "stopped" / warning "lag unknown"
 (probe raised or timed out) / danger "N dead-lettered" / warning "group

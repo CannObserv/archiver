@@ -32,11 +32,34 @@ def test_service_is_a_oneshot_probe() -> None:
     assert "src.core.bus_health" in text
 
 
+def test_service_probes_only_the_outbox() -> None:
+    """archiver#193 Phase 3 reduced this unit to archiver's half of the old
+    combined probe. The broker-side checks moved to CannObserv/broker with the
+    host they measure (D6), and with them the two things this unit needed to
+    run them: a ``--state-file`` for the two-tick XPENDING rule, and a
+    ``StateDirectory`` to hold it. Either reappearing means the reduction was
+    partially reverted - which would leave the unit measuring archiver's disk
+    and calling it the broker's AOF headroom, the exact drift D6 exists to
+    stop.
+
+    Keyed on the directives rather than the substrings, for the same reason as
+    the consumer-group test below: the comment block names both precisely to
+    say they are gone, and a substring test would forbid saying so.
+    """
+    lines = REPO_SERVICE.read_text().splitlines()
+    (execstart,) = [ln for ln in lines if ln.startswith("ExecStart=")]
+    assert "--state-file" not in execstart
+    assert not [ln for ln in lines if ln.startswith("StateDirectory=")]
+
+
 def test_service_declares_the_production_opt_in() -> None:
     """The probe reads ``changes_outbox`` from the production database, so it
     needs the same unit-scoped opt-in as ``archiver.service`` - in the unit,
     never in an env file, or the hole reopens for every process that sources
-    them."""
+    them.
+
+    Since archiver#193 Phase 3 that database read is the *whole* of this unit's
+    blast radius, so this is the only guard on it."""
     text = REPO_SERVICE.read_text()
     assert "Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1" in text
 
@@ -50,12 +73,12 @@ def test_service_never_joins_a_consumer_group() -> None:
 
 
 def test_service_bounds_its_own_runtime() -> None:
-    """CR round 2, finding 10. The per-call socket timeouts bound each Redis
-    command, but ~25 commands each hitting their ceiling could in theory
-    outlast systemd's default TimeoutStartSec (90s) - the pathological case
-    the socket bounds were added to rule out. An explicit, shorter bound keeps
-    a wedged probe visibly killed rather than hanging: a tick that cannot
-    finish inside it has nothing useful left to report anyway."""
+    """Originally sized against ~25 bounded Redis calls per tick (CR round 2,
+    finding 10). Those calls are gone, but the backstop is not decoration: the
+    tick is now a single database query, and asyncpg's connect has no default
+    timeout, so a Postgres that hangs rather than refuses would hold the unit
+    open indefinitely. A tick that cannot finish inside the bound has nothing
+    useful left to report, and being visibly killed beats hanging."""
     text = REPO_SERVICE.read_text()
     assert "TimeoutStartSec=" in text
     (line,) = [ln for ln in text.splitlines() if ln.startswith("TimeoutStartSec=")]

@@ -116,7 +116,7 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
   `_test`.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
-  (`archiver.service`; bus-health probe, #130). **Never in an env file** - it
+  (`archiver.service`; the outbox probe, #130). **Never in an env file** - it
   reopens the hole for every sourcing process.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.
@@ -152,8 +152,12 @@ Rules holding across all of it:
 - Bus payloads carry `schema_version: int`. Bump only on *incompatible* reshapes;
   additive fields are not a bump, and consumers must tolerate them.
 - Bus monitoring: outbox stats (archiver#112) on the dashboard badge + a
-  periodic journald line; broker-side, the `archiver-bus-health` timer (#130).
-  Never on `/health` (unauthenticated, DB-free). See [docs/BUS.md](docs/BUS.md).
+  periodic journald line; the `archiver-bus-health` timer (#130) re-runs the
+  same query from outside the publisher process, which is the only surface
+  that keeps reporting when the publisher is down. **Broker-side monitoring is
+  not this repo's** - memory, `XLEN`, last-entry age, `XPENDING`, DLQ depth and
+  disk are CannObserv/broker's, on the broker's own node (#193 D6). Never on
+  `/health` (unauthenticated, DB-free). See [docs/BUS.md](docs/BUS.md).
 
 ## Conventions
 
