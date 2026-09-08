@@ -118,9 +118,28 @@ Two things about that URL that are not cosmetic:
   node registration, but the name survives a re-registration and the address
   does not.
 
-Path quality, measured: **1 ms, direct** (not DERP-relayed) from this node to
-`broker`, both being in the same region. Cross-region and relayed the same hop
-measured 36-40 ms during the migration. `tailscale status` names the path:
+Path quality, measured from this node (archiver#193 step 31):
+
+| | n | min | p50 | max |
+|---|---|---|---|---|
+| **Cold** - fresh TCP + `AUTH` + `PING` | 6 | 5.19 ms | **6.35 ms** | 10.90 ms |
+| Warm `PING` on an open connection | 30 | 0.53 ms | **0.58 ms** | 2.89 ms |
+| Warm `XADD` (publish round trip) | 20 | 0.53 ms | **0.59 ms** | 0.89 ms |
+
+`tailscale ping` reports 1 ms, direct. **The cold path costs about 11x the warm
+one**, which is the ratio worth carrying, but the absolute number is small
+because the hop is same-region and direct: notifier#43's equivalent cold start
+was **85 ms** over a DERP relay, and this hop measured 36-40 ms when it was
+cross-region and relayed during the migration.
+
+**What this does not measure.** "Cold" here is a fresh *connection* over an
+already-warm tailnet path. A genuinely cold *path* - the peer idle long enough
+that the direct route is torn down and traffic falls back to DERP while it is
+rebuilt - would be worse and was not reproduced. It is unlikely in steady state
+because the live consumers keep the path continuously exercised, but that is a
+reason it is hard to measure, not evidence it cannot happen.
+
+`tailscale status` names the path:
 
 ```
 100.97.91.19  broker  tagged-devices  linux  active; direct 16.145.19.221:13218
@@ -128,6 +147,26 @@ measured 36-40 ms during the migration. `tailscale status` names the path:
 
 `direct` is the word to look for. `relay "xxx"` there means DERP, and a
 consumer loop waking from idle pays that on its cold path.
+
+## Identity survives a reboot - verified, not assumed
+
+notifier#43 called this the only check that actually proves a tagged node's
+identity is durable. Done on this host 2026-09-08, comparing before and after:
+
+| | before | after |
+|---|---|---|
+| Node ID | `nWBVfy2NUY11CNTRL` | **same** |
+| Tailnet IPs | `100.109.138.101`, `fd7a:115c:a1e0::5a30:8a66` | **same** |
+| Tags | `tag:archiver` | **same** |
+| `archiver.service` | active, `NRestarts=0` | active, `NRestarts=0` |
+| Path to `broker` | direct | **direct** - not relayed |
+
+Back in about ten seconds. All four units (`archiver`, `postgresql`,
+`tailscaled`, `archiver-bus-health.timer`) came up enabled, `/health` answered
+200, row counts were identical, both group consumers reattached, and the
+`info.watch-status` tail resumed **from its `bus_tail_cursors` row**
+(`start_id: 1788903300828-0`) rather than replaying from `0-0` - the behaviour
+`docs/BUS.md` describes, observed rather than inferred.
 
 ## Joining or re-joining this host
 
