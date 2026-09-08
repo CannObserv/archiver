@@ -77,6 +77,14 @@ cases: a trimmed stream, a dead-lettered delta, a cold-starting consumer."""
 DEFAULT_REGISTRY_STREAM_MAXLEN = 50_000
 """Approximate cap carried on every info.registry publish.
 
+Mirrored across the repo boundary (archiver#196), exactly as
+``DEFAULT_STREAM_MAXLEN`` in ``publisher.py`` is: CannObserv/broker's
+``src/broker/bus_health.py`` carries this number as ``REGISTRY_PRODUCER_MAXLEN``
+and names this constant as the source of truth, unable to import it. Raising it
+here and not there leaves that probe's WARN threshold stale-*low* - it fires
+early rather than going quiet, the safe direction, but fix it. Index: that
+repo's ``docs/STREAMS.md``, "Mirrored constants".
+
 Derived from key count x sets retained, never from the fact stream's number:
 at O(10^3) items on the 1-hour period that is ~24k entries/day, so 50k covers
 roughly two days of full sets plus deltas — comfortably above the "one full
