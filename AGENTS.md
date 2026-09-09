@@ -48,7 +48,8 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
   `generated/`.
 - `src/core/db_safety.py` is mirrored by `scripts/dev_server.sh`, kept in step by
   `tests/scripts/test_db_guard_parity.py`.
-- `tests/` mirrors `src/`; `tests/deploy/` asserts installed systemd artifacts match `deploy/`.
+- `tests/` mirrors `src/`; `tests/deploy/` asserts installed systemd artifacts
+  match `deploy/` (file-parity only).
 
 ## Content-acquisition via co-core
 
