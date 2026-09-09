@@ -171,7 +171,8 @@ Rules holding across all of it:
 
 ## Conventions
 
-The reasoning and worked examples behind every rule below:
+Reasoning and worked examples for the changelog trigger, the journald contract,
+the error envelope, the living-docs rule and `PLC0415`'s scope:
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 
 **Commit Messages:**
