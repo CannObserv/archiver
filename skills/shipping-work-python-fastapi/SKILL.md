@@ -203,7 +203,3 @@ If nothing applies, omit this step entirely.
 - AGENTS.md is authoritative for commit conventions - read it before committing if unsure
 - The archiver wrapper sources `/etc/archiver/.env` and `$PROJECT_ROOT/.env` with `set -a; . <file>; set +a` (NOT the broken `export $(cat | xargs)` pattern that fails on whitespace/quotes/`=`)
 - The upstream `pre-ship.sh` auto-derives its per-SHA stamp prefix from `$(basename "$(git rev-parse --show-toplevel)")` → `archiver-tests-clean-<sha>` - no hardcoded literal in the wrapper
-
-**Self-budget:** held to a **6,000-token ratchet (estimate and exact)** by
-`tests/structural/test_skill_self_budget.py` - both readings must clear it, so
-no choice of measurement can loosen it.
