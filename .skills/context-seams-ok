@@ -102,3 +102,10 @@ docs/UI.md :: `/dashboard` path; [PAGES.md](PAGES.md) keeps the pointer entry.
 # and only the wizard's chip/control anatomy came here. Saying so is the split's
 # navigability, not a stale reference.
 docs/REGISTER.md :: Needed only when working on that screen; [PAGES.md](PAGES.md) § **Registration
+
+# 2026-09-09 AGENTS.md curation. Same judgement as the four BUS.md provenance
+# headings already acknowledged above: the issue number was in the slug from
+# birth, nothing links the anchor (grepped), and this run moved nothing into
+# BUS.md - the sweep's own note confirms nothing left the policy file. Renaming
+# would rewrite settled content for no reader benefit.
+docs/BUS.md :: The shared client's connection policy (archiver#193)
