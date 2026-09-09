@@ -7,4 +7,5 @@
 # is already in docs/DEPLOYMENT.md's env-var reference for this same variable
 # ("Name must end in `_test`/`_dev`"), and AGENTS.md's Architecture section
 # still names the module as `src/core/db_safety.py`.
-AGENTS.md :: duplicate :: db_safety.py
+# (pruned 2026-09-09 round 2: the atom is present again at this base,
+#  so the round-1 warrant is spent - prove-no-loss.sh reported it matched nothing)
