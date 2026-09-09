@@ -5,6 +5,7 @@ metadata:
   author: gregoryfoster
   version: "1.0"
   overrides: gregoryfoster-skills/using-git-worktrees
+  omits-required: "skill-scripts: this override ships no scripts/ directory and calls none of the vendor's five scripts - worktree-root resolution is inline under Directory Selection Process, and creation is a direct git worktree add. The resolver block would find resolve-worktree-root.sh at none of its three candidate paths and abort on its own not-found guard, so pasting it back would arm a step that cannot run."
   override-reason: "Archiver-specific operations — dev server auto-starts on port 8001 (8000 belongs to systemd archiver.service), and worktree setup sources /etc/archiver/.env + .env via `set -a; . <file>; set +a` (not the broken `export $(cat | xargs)` pattern)."
 ---
 
