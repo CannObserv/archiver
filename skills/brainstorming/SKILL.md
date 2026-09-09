@@ -4,7 +4,6 @@ description: Explores user intent, requirements, and design before any implement
 compatibility: Designed for Claude. Requires git and gh CLI. Python project using FastAPI, Pydantic, uv, ruff, pytest.
 metadata:
   author: gregoryfoster
-  version: "1.1"
   triggers: brainstorm, design this, let's design
   overrides: obra-superpowers/brainstorming
   synced-from: "obra-superpowers v6.3.0 (b36e0829c6d0140e93cfef2ca599b1b07d4a7797)"
