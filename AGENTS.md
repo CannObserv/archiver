@@ -165,7 +165,7 @@ Rules holding across all of it:
 - Bus payloads carry `schema_version: int`. Bump only on *incompatible* reshapes;
   additive fields are not a bump, and consumers must tolerate them.
 - Bus monitoring: outbox stats (archiver#112) on the dashboard badge + a
-  journald line; the `archiver-bus-health` timer (#130) re-runs the query from
+  periodic journald line; the `archiver-bus-health` timer (#130) re-runs the query from
   outside the publisher process, the only surface still reporting when the
   publisher is down. **Broker-side monitoring is not this repo's** - it is
   CannObserv/broker's, on the broker's node (#193 D6). Never on `/health`
