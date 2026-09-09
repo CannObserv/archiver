@@ -23,8 +23,10 @@ approval.
 <HARD-GATE>
 Do NOT write any code, create any files (other than the design doc), or take
 any implementation action until you have told the user what you intend and they
-have approved it. This applies to EVERY task on EVERY path below — the ceremony
-scales with the task; the approval gate never does.
+have approved it. This applies to EVERY task this skill applies to (see **Scope
+detection**), on EVERY path below — the ceremony scales with the task; the
+approval gate never does. A task Scope detection exempts is one this skill never
+gated; it is not one this gate released.
 </HARD-GATE>
 
 ## Scope detection
