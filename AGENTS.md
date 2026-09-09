@@ -232,7 +232,7 @@ What each one is, plus its contracts and invariants:
 
 ## Agent Skills
 
-Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow vendor submodules in `skills-vendor/`. Cross-project search to `watcher`/`notifier` needs a per-instance `.claude/settings.local.json` (gitignored) - [docs/SKILLS.md](docs/SKILLS.md).
+Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow vendor submodules in `skills-vendor/`. Cross-project search to `watcher`/`notifier` needs a per-instance `.claude/settings.local.json` (gitignored) - see "Linked Projects" in [docs/SKILLS.md](docs/SKILLS.md).
 
 ## SessionStart Hooks
 
