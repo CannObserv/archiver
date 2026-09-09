@@ -76,8 +76,9 @@ reintroduce a mirror obligation for anything under `src/`.
 | Archiver (live) | 8000 | `systemctl` (`archiver.service`) |
 | Archiver (dev) | 8001 | `bash scripts/dev_server.sh` (never hand-rolled uvicorn) |
 
-The exe.dev proxy maps the bare hostname to 8000: dashboard
-`https://co-registrar.exe.xyz/`, dev server `https://co-registrar.exe.xyz:8001/`.
+The exe.dev proxy forwards 3000-9999 and maps the bare hostname to 8000:
+dashboard `https://co-registrar.exe.xyz/`, dev server
+`https://co-registrar.exe.xyz:8001/`.
 Archiver has its own VM (archiver#193); the broker is on a third node
 (CannObserv/broker#1).
 
