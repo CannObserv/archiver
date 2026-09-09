@@ -1,0 +1,22 @@
+
+# 2026-09-09 AGENTS.md curation. Each count below is followed by the things it
+# counts, in the same sentence or the list immediately under it, so an editor
+# adding a sixth table or a fifth safety variable cannot miss the number - the
+# section is the check.
+AGENTS.md :: enumerated :: Owns five registry tables
+AGENTS.md :: enumerated :: Three databases:
+AGENTS.md :: enumerated :: This host answers to two names
+AGENTS.md :: enumerated :: Two env files load in order
+AGENTS.md :: enumerated :: **Four variables carry safety rules
+AGENTS.md :: enumerated :: `.claude/settings.json` wires three hooks:
+AGENTS.md :: enumerated :: All three scripts are symlinks
+
+# Not a count of anything current: the number of services a past MagicDNS
+# failure took down is a historical fact, fixed by the event it describes.
+AGENTS.md :: stable :: the MagicDNS failure that took down three services
+
+# Same run. This line was 378 chars of accreted per-doc clauses; it is now five
+# links and one clause naming UI.md as the index to the other four. Over the
+# bound on link syntax alone - splitting it into five index entries would cost
+# more tokens than it saves and bury the grouping that makes it readable.
+AGENTS.md :: pointer :: The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics

@@ -1,0 +1,10 @@
+
+# 2026-09-09 AGENTS.md curation. The ARCHIVER_DEV_DATABASE_URL paragraph in
+# Environment Files was tightened away; its operative instruction moved up into
+# Environment & Tooling ("set it or dev_server.sh falls back to the test DB and
+# races the suite"). The bare `db_safety.py` atom went with the prose, but the
+# claim it carried - that the guard enforces the _dev/_test suffix either way -
+# is already in docs/DEPLOYMENT.md's env-var reference for this same variable
+# ("Name must end in `_test`/`_dev`"), and AGENTS.md's Architecture section
+# still names the module as `src/core/db_safety.py`.
+AGENTS.md :: duplicate :: db_safety.py
