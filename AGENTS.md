@@ -189,8 +189,8 @@ contract, and the error envelope's worked examples and `kind` vocabulary:
 
 **Commit Messages:**
 ```
-#<number> [type]: <description>      # with issue
-[type]: <description>                # without issue
+#<number> <type>: <description>      # with issue
+<type>: <description>                # without issue
 ```
 Types: feat, fix, refactor, docs, test, chore.
 
