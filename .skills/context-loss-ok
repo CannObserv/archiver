@@ -57,11 +57,6 @@ docs/UI.md :: retarget :: [UI.md](UI.md) § Failures are surfaced, not swallowed
 # vocabulary). `duplicate` is the warrant: the surviving head pointer carries
 # the destination and every target the four named, so the content is elsewhere
 # in the surface rather than dropped.
-AGENTS.md :: duplicate :: What the regex covers and what it deliberately does not:
-AGENTS.md :: duplicate :: patterns), SCREENS.md (detail screens), STYLE.md (styling). Failing to is a CR blocker; per-trigger detail in
-AGENTS.md :: duplicate :: a journald consumer must tolerate that ([docs/CONVENTIONS.md](docs/CONVENTIONS.md)).
-AGENTS.md :: duplicate :: (archiver#97). Scope and exemptions: [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
-AGENTS.md :: duplicate :: `except X as e:`. Shape, worked examples, and the `kind` vocabulary:
 
 # 2026-09-09 AGENTS.md curation (6831 -> ~6280 exact tokens). Every entry below
 # is a class-C tightening: the section was rewritten in place with the same
@@ -75,74 +70,10 @@ AGENTS.md :: duplicate :: `except X as e:`. Shape, worked examples, and the `kin
 # verbatim move would have appended near-duplicates beside better text.
 AGENTS.md :: tighten :: Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`,
 AGENTS.md :: tighten :: Python ≥3.12, uv, pytest, ruff. **Postgres 16 on archiver's own VM** - a dedicated instance since #193 D5, not the one shared with watcher and notifier. Three d
-AGENTS.md :: tighten :: SocratiCode is indexed on this repo (`.socraticodecontextartifacts.json` present). Its MCP tools are **deferred** - schemas load only after a `ToolSearch` prefe
-AGENTS.md :: tighten :: `src/core/{fetchers,extractors,simhash,extraction_defaults}` mirror is deleted.
-AGENTS.md :: tighten :: Wiring detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-AGENTS.md :: tighten :: The exe.dev proxy forwards 3000-9999 and maps the bare hostname to 8000, so the dashboard is
-AGENTS.md :: tighten :: `https://co-registrar.exe.xyz/` with no port suffix; the dev server is
-AGENTS.md :: tighten :: `https://co-registrar.exe.xyz:8001/`. Archiver has its own VM (archiver#193) - the host is no
-AGENTS.md :: tighten :: longer shared with watcher, and the broker is on a third node (CannObserv/broker#1).
 AGENTS.md :: tighten :: `redis://default:<password>@broker:6379/0` - 1 ms direct, same region. This
-AGENTS.md :: tighten :: host is `co-registrar` to exe.dev and `archiver` to MagicDNS, and both names
-AGENTS.md :: tighten :: answer on port 8000, so **an HTTP 200 on a short name proves nothing about the
-AGENTS.md :: tighten :: tailnet**. Node identity, the ACL, the bind decision, and the MagicDNS failure
-AGENTS.md :: tighten :: that took down three services: [docs/reference/tailscale.md](docs/reference/tailscale.md).
 AGENTS.md :: tighten :: verification - must target 8001, never 8000.
-AGENTS.md :: tighten :: Why the script exists, its knobs, and the 2026-07-18 production-write incident:
-AGENTS.md :: tighten :: 1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`). Persistent, managed manually on the VM.
-AGENTS.md :: tighten :: `ARCHIVER_REDIS_URL` is never inherited. A remote broker makes this stricter,
-AGENTS.md :: tighten :: not looser: a scratch bus is now a scratch *database on a shared remote
-AGENTS.md :: tighten :: broker*.
-AGENTS.md :: tighten :: `ARCHIVER_DEV_DATABASE_URL` (repo `.env`) carries no safety rule of its own -
-AGENTS.md :: tighten :: `db_safety.py` enforces the `_dev`/`_test` suffix either way - but set it, or
-AGENTS.md :: tighten :: the dev server falls back to `TEST_DATABASE_URL` and races the suite (#193 D5).
-AGENTS.md :: tighten :: same query from outside the publisher process, which is the only surface
-AGENTS.md :: tighten :: that keeps reporting when the publisher is down. **Broker-side monitoring is
-AGENTS.md :: tighten :: not this repo's** - memory, `XLEN`, last-entry age, `XPENDING`, DLQ depth and
-AGENTS.md :: tighten :: disk are CannObserv/broker's, on the broker's own node (#193 D6). Never on
-AGENTS.md :: tighten :: `/health` (unauthenticated, DB-free). See [docs/BUS.md](docs/BUS.md).
-AGENTS.md :: tighten :: **Changelog:** Update `CHANGELOG.md` at the repo root when a change
-AGENTS.md :: tighten :: touches a **contract-visible path** - and only then. The trigger is
-AGENTS.md :: tighten :: path-based, not intent-based; CI and the pre-push guard both enforce it
-AGENTS.md :: tighten :: with the same regex:
-AGENTS.md :: tighten :: Entry points only: call `configure_logging()` once.
-AGENTS.md :: tighten :: `ExecStartPre` steps in `deploy/archiver.service` write **plain text**, not JSON -
-AGENTS.md :: tighten :: a journald consumer must tolerate that.
 AGENTS.md :: tighten :: - Docstrings for public modules, classes, functions
-AGENTS.md :: tighten :: - Test structure mirrors source (`src/foo.py` → `tests/test_foo.py`)
 AGENTS.md :: tighten :: - Explicit imports only
-AGENTS.md :: tighten :: - Small, focused functions
-AGENTS.md :: tighten :: (`ErrorEnvelope`, `src/api/errors.py`); `/dashboard` renders HTML instead. Routes raise via `raise_envelope(...)` or `raise_422(...)`,
-AGENTS.md :: tighten :: **never `HTTPException` directly**; always pass `source_exc=e` from inside
-AGENTS.md :: tighten :: `except X as e:`.
-AGENTS.md :: tighten :: Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim - never rename casually. The current vocabulary:
-AGENTS.md :: tighten :: - `InfoItem` (`info_items`) - semantic anchor + `rep_fields`, `watch_spec`, `watch_active`
-AGENTS.md :: tighten :: - `InfoSource` (`info_sources`) - physical layer; URL + `source_specs`
-AGENTS.md :: tighten :: - `SourceRevision` (`source_revisions`) - content-addressed snapshot
-AGENTS.md :: tighten :: - `InfoItemSource` (`info_item_sources`) - item↔source binding; one active primary
-AGENTS.md :: tighten :: - `RepSpec` (`rep_specs`) - replication spec; `document` frozen once assigned
-AGENTS.md :: tighten :: - `InfoItemRepSpec` (`info_item_rep_specs`) - effective-dated assignment + `public_url`
-AGENTS.md :: tighten :: - `ChangesOutboxRow` (`changes_outbox`) - pending bus event awaiting publication
-AGENTS.md :: tighten :: - `RevokedInfoItem` (`revoked_info_items`) - deleted InfoItem's identity + final generation; feeds the snapshot's tombstone republish
-AGENTS.md :: tighten :: - `WatchStatus` (`watch_status`) - local LWW cache of `info.watch-status`; what the watched-item panel renders from. Reported by Watcher, never locally verified
-AGENTS.md :: tighten :: - `ReplicationCommand` (`replication_commands`) - one `content.replicate` occasion: the MUST-2 mapping, the reaper's queue, and where a *skipped* replication is
-AGENTS.md :: tighten :: - `BusTailCursor` (`bus_tail_cursors`) - resume point per groupless tail, so a restart is a delta not a `0-0` replay
-AGENTS.md :: tighten :: Per-entity contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The
-AGENTS.md :: tighten :: Phase 1-3a `InfoSpec` model is retired - no new `info_spec*` references.
-AGENTS.md :: tighten :: Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code). Local overrides in `skills/` shadow vendor submodules in `skills-vendor/`.
-AGENTS.md :: tighten :: Cross-project search to the sister `watcher` and `notifier` indexes requires a per-instance `.claude/settings.local.json` (gitignored) - see "Linked Projects" i
-AGENTS.md :: tighten :: `.claude/settings.json` wires the SocratiCode prefetch reminder, the
-AGENTS.md :: tighten :: once-per-day SocratiCode health check, and the once-per-day `skills-vendor/`
-AGENTS.md :: tighten :: refresh. Both halves of a hook are load-bearing: a script in `.claude/hooks/`
-AGENTS.md :: tighten :: that `settings.json` does not name never runs and looks identical to one that
-AGENTS.md :: tighten :: works - `tests/scripts/test_claude_hooks_registered.py` fails on the missing
-AGENTS.md :: tighten :: half. All three SessionStart hook scripts are symlinks into `skills-vendor/`:
-AGENTS.md :: tighten :: never re-copy one, never turn the committed `.skills/doctor.sh` into one, and
-AGENTS.md :: tighten :: never un-wire a hook to hold a submodule - use `.skills/skills-pin`. Why each, plus
-AGENTS.md :: tighten :: the hook's gates and log paths: [docs/SKILLS.md](docs/SKILLS.md).
-AGENTS.md :: tighten :: - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - full repository layout tree and the co-core acquisition wiring
-AGENTS.md :: tighten :: - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants for the five registry tables
-AGENTS.md :: tighten :: - The dashboard docs - [docs/UI.md](docs/UI.md) URL map, auth, HTMX, and the detail-screen doc it indexes; [docs/PAGES.md](docs/PAGES.md) per-page/route invento
 
 # 2026-09-09 AGENTS.md curation, ROUND 2 (6270 -> 5999 exact tokens; under the
 # 6000 budget round 1 could not reach). Class C again, plus three demotions
@@ -157,16 +88,12 @@ AGENTS.md :: tighten :: - The dashboard docs - [docs/UI.md](docs/UI.md) URL map,
 AGENTS.md :: tighten :: Be terse. Prefer fragments over full sentences. Skip filler and preamble. Sacrifice grammar for density. Lead with the answer or action.
 AGENTS.md :: tighten :: TDD required. Red → Green → Refactor. No production code without a failing test first.
 AGENTS.md :: tighten :: SocratiCode is configured here (`.socraticodecontextartifacts.json` present); the index itself is per-host, and the SessionStart health hook reports whether it 
-AGENTS.md :: tighten :: - `tests/` mirrors `src/`; `tests/deploy/` asserts installed systemd artifacts
-AGENTS.md :: tighten :: match `deploy/` (file-parity only).
 AGENTS.md :: tighten :: **The broker is not operated from this repo (#193 D6).** Its tuning, its
 AGENTS.md :: tighten :: health probe, and the cluster stream inventory live in
 AGENTS.md :: tighten :: [CannObserv/broker](https://github.com/CannObserv/broker); archiver is a
 AGENTS.md :: tighten :: client. One seam survives that split and has no test spanning it: the broker
 AGENTS.md :: tighten :: config's `maxmemory` cap and `OutOfMemoryError` being transient in
-AGENTS.md :: tighten :: The exe.dev proxy forwards 3000-9999 and maps the bare hostname to 8000: the
 AGENTS.md :: tighten :: dashboard is `https://co-registrar.exe.xyz/`, the dev server
-AGENTS.md :: tighten :: `https://co-registrar.exe.xyz:8001/`. Archiver has its own VM (archiver#193);
 AGENTS.md :: tighten :: the broker is on a third node (CannObserv/broker#1).
 AGENTS.md :: tighten :: **The broker is now a network hop.** Archiver reaches it over the tailnet as
 AGENTS.md :: tighten :: answers to two names, `co-registrar` and `archiver`, both on port 8000, so **an
@@ -194,13 +121,8 @@ AGENTS.md :: tighten :: contract, and the error envelope's worked examples and `
 AGENTS.md :: tighten :: path** - and only then. Path-based, not intent-based; CI and the pre-push guard
 AGENTS.md :: tighten :: **Dashboard living docs:** update the doc a change touches in the same commit -
 AGENTS.md :: tighten :: PAGES.md (templates, routes), COMPONENTS.md (dashboard JS), UI.md (shared
-AGENTS.md :: tighten :: patterns), SCREENS.md (detail screens), STYLE.md (styling). Failing to is a CR
 AGENTS.md :: tighten :: blocker.
-AGENTS.md :: tighten :: `deploy/archiver.service` write **plain text**, not JSON - a journald consumer
-AGENTS.md :: tighten :: must tolerate that.
 AGENTS.md :: tighten :: **Date & Time:** All UTC. ISO 8601: `YYYY-MM-DDTHH:MM:SS.ffffffZ` (timestamps), `YYYY-MM-DD` (dates).
-AGENTS.md :: tighten :: Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim - never rename casually. The current vocabulary, model ↔ table:
-AGENTS.md :: tighten :: Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); local overrides in `skills/` shadow vendor submodules in `skills-vendor/`. Cross-
 AGENTS.md :: tighten :: hold a submodule - use `.skills/skills-pin`. Each hook, its gates and its log
 AGENTS.md :: tighten :: paths: [docs/SKILLS.md](docs/SKILLS.md).
 AGENTS.md :: tighten :: - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - repository layout tree; co-core acquisition wiring
@@ -210,3 +132,12 @@ AGENTS.md :: tighten :: - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse 
 AGENTS.md :: tighten :: - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald logging contract, error-envelope examples
 AGENTS.md :: tighten :: - [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, trigger table, SessionStart hook mechanics
 AGENTS.md :: tighten :: - [docs/reference/tailscale.md](docs/reference/tailscale.md) - this node on the tailnet: the ACL, why there is no tailnet-only bind, and the two-names-one-host 
+
+# Re-added after the CR 8-14 fixes: the over-broad prune above removed these
+# five alongside the 73 the tool reported spent. Each is still a class-C
+# rewrite whose claims carried across (claims_dropped: 0).
+AGENTS.md :: tighten :: The exe.dev proxy forwards 3000-9999 and maps the bare hostname to 8000: the
+AGENTS.md :: tighten :: `https://co-registrar.exe.xyz:8001/`. Archiver has its own VM (archiver#193);
+AGENTS.md :: tighten :: patterns), SCREENS.md (detail screens), STYLE.md (styling). Failing to is a CR
+AGENTS.md :: tighten :: Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim - never rename casually. The current vocabulary, model ↔ table:
+AGENTS.md :: tighten :: Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); local overrides in `skills/` shadow vendor submodules in `skills-vendor/`. Cross-
