@@ -8,7 +8,7 @@ metadata:
   triggers: brainstorm, design this, let's design
   overrides: obra-superpowers/brainstorming
   synced-from: "obra-superpowers v6.3.0 (b36e0829c6d0140e93cfef2ca599b1b07d4a7797)"
-  override-reason: "Project-specific conventions: docs/plans/ path, #<n> type: desc commit convention, writing-plans is optional not mandatory; invokes using-git-worktrees after design approval for any multi-step implementation; opens a GH issue as part of handoff; FastAPI stack context. Keeps a Scope detection gate upstream has no equivalent for, and ships no visual companion."
+  override-reason: "Project-specific conventions: docs/plans/ path, #<n> type: desc commit convention, writing-plans is optional not mandatory; invokes using-git-worktrees for any multi-step implementation on either the bounded or the architectural path; opens a GH issue as part of handoff; FastAPI stack context. Keeps a Scope detection gate upstream has no equivalent for, and ships no visual companion."
 ---
 
 # Brainstorming Ideas Into Designs — archiver
@@ -69,7 +69,8 @@ design here rather than write a design doc" — so the user can override it.
   clarifying questions that matter, present a short design IN CHAT (a few
   sentences to a few short paragraphs), and STOP. Implementation starts only
   after the user says yes to that design — a bounded task's approval is as hard
-  a gate as an architectural one. No design doc, no worktree, no plan document.
+  a gate as an architectural one. No design doc, no plan document; a worktree
+  only if the work is genuinely multi-step (see **Worktrees**).
 - **Architectural** — new subsystems, changes that restructure how components
   fit together, or anything altering a contract another service depends on (a
   bus payload, a route, an SDK surface). Follow the full process: questions,
@@ -119,7 +120,8 @@ and complete them in order.
 2. **Ask clarifying questions** — one at a time, the ones that matter
 3. **Present short design in chat** — approach, files touched, testing
 4. **Get approval** — STOP and wait for an explicit yes; presenting the design and starting in the same breath is skipping the gate
-5. **Implement** — proceed with the normal development workflow (TDD applies); no design doc, no plan document
+5. **Set up a worktree** — only if the work is multi-step; see **Worktrees**
+6. **Implement** — proceed with the normal development workflow (TDD applies); no design doc, no plan document
 
 **Architectural:**
 
@@ -129,7 +131,7 @@ and complete them in order.
 4. **Present design** — in sections scaled to complexity; get approval after each section
 5. **Write design doc** — save to `docs/plans/YYYY-MM-DD-<topic>-design.md` and commit
 6. **Open a GH issue** — and report the number
-7. **Set up worktree** — invoke `using-git-worktrees` for any multi-step implementation
+7. **Set up a worktree** — see **Worktrees**
 8. **Hand off** — move to implementation, or invoke `writing-plans` if a formal plan is needed
 
 **Terminal states are path-bound.** Architectural: hand off to implementation, or
@@ -200,17 +202,21 @@ Report the issue number to the user (e.g. "Opened #42").
 #<n> docs: add design doc for <topic>
 ```
 
-**Set up a worktree (multi-step implementation):**
-
-- Invoke `using-git-worktrees` to create an isolated workspace on a feature branch
-- Use `.worktrees/` as the local directory (verify it is gitignored first)
-- Skip for single-commit or directed fixes where isolation adds no value
-
 **Hand off:**
 
 - For small changes: proceed directly to implementation
 - For multi-step work: invoke `writing-plans` to create a task-by-task plan (optional — not required)
 - Do NOT invoke any other skill without asking
+
+## Worktrees
+
+Path-independent: bounded and architectural work both reach this, because
+"multi-step" is a property of the work, not of the path it was classified on.
+The guard below is the only filter — do not add a second one per path.
+
+- Invoke `using-git-worktrees` to create an isolated workspace on a feature branch
+- Use `.worktrees/` as the local directory (verify it is gitignored first)
+- Skip for single-commit or directed fixes where isolation adds no value
 
 ## Proactive suggestion
 
