@@ -199,8 +199,9 @@ same commit; failing to is a CR blocker. Which doc each change requires:
 from src.core.logging import get_logger
 logger = get_logger(__name__)
 ```
-Entry points only: call `configure_logging()` once. `ExecStartPre` steps write
-**plain text**, not JSON - a journald consumer must tolerate that.
+Entry points only: call `configure_logging()` once. `ExecStartPre` steps in
+`deploy/archiver.service` write **plain text**, not JSON - a journald consumer
+must tolerate that.
 
 **Date & Time:** UTC only. ISO 8601: `YYYY-MM-DDTHH:MM:SS.ffffffZ` (timestamps), `YYYY-MM-DD` (dates).
 
