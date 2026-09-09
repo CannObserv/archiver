@@ -195,10 +195,11 @@ and MUST-7 *inverts* into a scheduling obligation on this side.
 - **Never `XTRIM`med by Archiver.** Capping a command stream deletes commands the
   consumer group has not delivered and orphans the PEL entries naming them, so
   the topic is carved out of the drain loop's trim set.
-- **Outcomes are not yet consumed.** `content.artifacts` carries
-  `replication_complete` / `replication_failed`; nothing reads it until
-  archiver#170, so `public_url` still has no automated writer and no reaper
-  exists for a command that closes without a fact.
+- **Outcomes come back on `content.artifacts`** (archiver#170, landed):
+  `replication_complete` / `replication_failed` are consumed by the
+  `archiver.artifacts` group, which is what writes `public_url`. The silent
+  case - a command that closes without either fact - is the reaper's, on its
+  own timer. Both are documented under the consumer section below.
 
 `source_revision_captured` schema_version is now **2** - `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 
