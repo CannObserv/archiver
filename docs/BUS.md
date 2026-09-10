@@ -255,7 +255,9 @@ Watcher observes; the registry decides. Per message:
    `src.core.services.source_revision.record_revision` - the same call
    `POST /source-revisions` makes. The existing `INSERT … ON CONFLICT …` on
    `(info_source_id, content_fingerprint)` makes at-least-once redelivery a
-   no-op.
+   no-op for the revision's identity; the `spec_*` verdict and the blob
+   reference are still refreshed from the newer observation (the field table
+   below).
 3. On a genuinely new row, the `changes_outbox` row is written **in the same
    transaction**, so `source_revision_captured` reaches `info.changes` with
    semantics unchanged for existing subscribers. The event is Archiver's own
@@ -270,8 +272,8 @@ Field mapping, and the two traps in it:
 | `extracted_fingerprint` | `content_fingerprint` | **Never** cross-match with `BlobAvailableEvent.content_fingerprint` - that is Replicator's sha256 of the *raw bytes*, this is sha256 of the text extracted under `source_specs`. Different inputs, different services; a cross-match fails silently as "no revision for this blob" |
 | `content_size_bytes` / `content_media_type` | same | measure the **extracted** content |
 | `source_media_type` | `source_media_type` | what the **origin** served; inherits `BlobAvailableEvent.media_type`'s normalization |
-| `blob_uri` | `content_cache_uri` | **a cache, not durable storage** - a VM-local `file://` on Replicator's host. Durable bytes are RepSpec replication's job |
-| `blob_expires_at` | `content_cache_expires_at` | `None` records *absence*; never substitute a TTL guessed from Replicator's policy |
+| `blob_uri` | `content_cache_uri` | **a cache, not durable storage** - Replicator's temp store (`gs://co-gcs-blobs` since 2026-08-20; earlier rows carry a VM-local `file://`). Durable bytes are RepSpec replication's job. Refreshed on a re-observation together with the horizon below (archiver#201) |
+| `blob_expires_at` | `content_cache_expires_at` | `None` records *absence*; never substitute a TTL guessed from Replicator's policy. **Forward-only on re-observation** (archiver#201): Replicator's TTL runs from last reference, so an unchanged fingerprint legitimately re-arrives with a later horizon and the row takes it; an older, equal or unknown one leaves the stored pair alone |
 | `spec_fingerprint` | `spec_fingerprint` | recorded **and compared** - see below |
 | `command_id` | `command_id` | correlation back to the fetch |
 | *(absent)* | `source_revision_id` | **Archiver allocates.** A service that does not own the registry does not mint registry ids |

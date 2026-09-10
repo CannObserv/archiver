@@ -147,9 +147,20 @@ see the never-rename rule in `AGENTS.md`.
     every at-least-once redelivery.
   - `command_id` — correlation back to the `content.fetch` command behind the bytes.
   `content_cache_uri` / `content_cache_expires_at` are a **cache, not durable storage** — on the bus
-  path a VM-local `file://` blob on Replicator's host, on a TTL clock the registry does not own. A
-  `NULL` expiry records that the horizon is unknown; it is never a guessed TTL. Durable bytes are
-  what RepSpec replication is for.
+  path Replicator's temp-store blob (`gs://co-gcs-blobs` since 2026-08-20; rows from before the
+  flip carry the VM-local `file://` form), on a TTL clock the registry does not own. A `NULL`
+  expiry records that the horizon is unknown; it is never a guessed TTL. Durable bytes are what
+  RepSpec replication is for.
+  **Both describe the most recent observation of the pair, like the `spec_*` columns**
+  (archiver#201). Replicator's TTL runs from the blob's *last reference*, so a full re-fetch of
+  unchanged bytes re-announces a later horizon; a row that kept the first one would refuse
+  (`blob_expired_locally`) a replication the consumer would serve — for a stable item, forever,
+  since no later revision arrives to correct it. So a re-observation refreshes the two together
+  under a forward-only horizon: an older or equal `blob_expires_at` is ignored, an absent
+  reference never erases a stored one, and an unknown horizon never replaces a known one. No
+  event is emitted — the identity is unchanged. The producer half is Watcher's (re-announcing an
+  unchanged fingerprint whose horizon moved; linked from #201); until it lands this branch only
+  sees at-least-once redeliveries.
 - **`InfoItemSource`** (`info_item_sources`) — operator-declared item↔source binding. No `role`
   column — every binding is a primary binding. Two distinct states:
   - **Current primary** — the one active row (`deactivated_at IS NULL`). Enforced one-per-InfoItem

@@ -575,3 +575,26 @@ def test_consumer_group_conforms_to_the_cluster_convention() -> None:
     """
     assert CONSUMER_GROUP == group_name(CONTENT_REVISIONS, "archiver")
     assert CONSUMER_GROUP == "archiver.revisions"
+
+
+@pytest.mark.asyncio
+async def test_a_reobservation_with_a_later_horizon_refreshes_the_row(
+    session_factory, fake_redis, info_source
+):
+    """A fresher blob horizon reaches the stored row through the bus path - the
+    same idempotent no-op for the revision itself, and no second event."""
+    later = datetime(2027, 1, 1, 12, 0, tzinfo=UTC)
+    await fake_redis.xadd(CONTENT_REVISIONS, _observed(info_source.info_source_id))
+    await fake_redis.xadd(
+        CONTENT_REVISIONS, _observed(info_source.info_source_id, blob_expires_at=later)
+    )
+    consumer = await _bus_consumer(fake_redis)
+
+    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    async with session_factory() as s:
+        row = (await s.execute(select(SourceRevision))).scalar_one()
+    assert row.content_cache_expires_at == later
+    assert await _row_count(session_factory, ChangesOutboxRow) == 1
+    assert await _pending_count(fake_redis) == 0
