@@ -272,3 +272,127 @@ def test_colliding_destinations_refused_with_both_assignments_named():
         assert_distinct_destinations({"assignment-a": "same/key", "assignment-b": "same/key"})
     assert "assignment-a" in str(exc.value)
     assert "assignment-b" in str(exc.value)
+
+
+# --- the occasion keys added for the canonical organizations/ layout (archiver#205) ---
+
+
+def test_year_and_segments_render_in_the_storage_framework_forms():
+    """``_DateProps`` spellings, byte for byte: ``%Y``, ``%Y_%m_%d``, ``%Y_%m_%d-%H_%M_%S``."""
+    rendered = render_destination(
+        "{source_revision.year}/{source_revision.date_segment}/"
+        "{source_revision.datetime_time_segment}/{source_revision.id}",
+        rep_fields={},
+        occasion=_occasion(captured_at=datetime(2026, 8, 17, 14, 30, 5, tzinfo=UTC)),
+    )
+    assert rendered == "2026/2026_08_17/2026_08_17-14_30_05/01JZZZZZZZZZZZZZZZZZZZZZZZ"
+
+
+def test_segments_render_in_utc_whatever_zone_the_row_carries():
+    rendered = render_destination(
+        "{source_revision.datetime_time_segment}/{source_revision.id}",
+        rep_fields={},
+        occasion=_occasion(
+            captured_at=datetime(2026, 8, 17, 16, 30, 5, tzinfo=timezone(timedelta(hours=2)))
+        ),
+    )
+    assert rendered.startswith("2026_08_17-14_30_05/")
+
+
+@pytest.mark.parametrize(
+    ("media_type", "ext"),
+    [
+        ("text/html", "html"),
+        ("text/html; charset=utf-8", "html"),
+        ("TEXT/HTML", "html"),
+        ("application/pdf", "pdf"),
+        ("application/json", "json"),
+        ("text/plain", "txt"),
+        ("text/csv", "csv"),
+        ("image/png", "png"),
+        ("application/octet-stream", "bin"),
+        ("application/x-nobody-registered-this", "bin"),
+        (None, "bin"),
+    ],
+)
+def test_ext_derives_from_the_source_media_type(media_type, ext):
+    """What the origin served decides the extension; unknown is ``bin``, never a guess."""
+    rendered = render_destination(
+        "{source_revision.id}.{source_revision.ext}",
+        rep_fields={},
+        occasion=_occasion(source_media_type=media_type),
+    )
+    assert rendered == f"01JZZZZZZZZZZZZZZZZZZZZZZZ.{ext}"
+
+
+# --- bag slugs derive at render time with the shared normalizer (archiver#206) ---
+
+
+def test_bag_slugs_derive_at_render_time_with_the_shared_normalizer():
+    """``org.title_slug`` comes from ``org.title`` via co-core's ``normalize_string``,
+    so a segment archiver renders matches the one the storage framework renders."""
+    rendered = render_destination(
+        "{org.title_slug}/{info_item.name_slug}/{source_revision.id}",
+        rep_fields={
+            "org": {"title": "WSLCB - Meeting Schedule"},
+            "info_item": {"name": "Café Résumé"},
+        },
+        occasion=_occasion(),
+    )
+    assert rendered == "wslcb-meeting_schedule/cafe_resume/01JZZZZZZZZZZZZZZZZZZZZZZZ"
+
+
+def test_a_stored_slug_is_an_explicit_override():
+    rendered = render_destination(
+        "{org.title_slug}/{source_revision.id}",
+        rep_fields={"org": {"title": "Anything At All", "title_slug": "custom"}},
+        occasion=_occasion(),
+    )
+    assert rendered == "custom/01JZZZZZZZZZZZZZZZZZZZZZZZ"
+
+
+def test_a_raw_placeholder_still_refuses_rather_than_rewrites():
+    """Resolution adds ``_slug`` companions; it never slugifies a raw placeholder."""
+    with pytest.raises(InvalidFieldValueError):
+        render_destination(
+            "{org.title}/{source_revision.id}",
+            rep_fields={"org": {"title": "WA LCB"}},
+            occasion=_occasion(),
+        )
+
+
+def test_probe_resolves_slugs_the_same_way():
+    probe_destination(
+        {"path_template": "{org.title_slug}/{source_revision.id}"},
+        {"org": {"title": "Washington State LCB"}},
+    )
+
+
+# --- the golden rendering the epic was approved on (archiver#207) ---
+
+CANONICAL_LAYOUT = (
+    "organizations/{org.title_slug}/infoitems/{info_item.name_slug}/{source_revision.year}/"
+    "{source_revision.datetime_time_segment}-{info_item.name_slug}-{source_revision.id}"
+    ".{source_revision.ext}"
+)
+
+
+def test_the_canonical_layout_renders_the_approved_key():
+    rendered = render_destination(
+        CANONICAL_LAYOUT,
+        rep_fields={
+            "org": {"title": "Washington State Liquor and Cannabis Board", "acronym": "WSLCB"},
+            "info_item": {"name": "Public Hearings and Outreach"},
+        },
+        occasion=RenderOccasion(
+            source_revision_id="01M23RDZKZS6FSPP1YZFBEQB2R",
+            content_fingerprint=FINGERPRINT,
+            captured_at=datetime(2026, 9, 9, 18, 54, 2, tzinfo=UTC),
+            source_media_type="text/html",
+        ),
+    )
+    assert rendered == (
+        "organizations/washington_state_liquor_and_cannabis_board/infoitems/"
+        "public_hearings_and_outreach/2026/"
+        "2026_09_09-18_54_02-public_hearings_and_outreach-01M23RDZKZS6FSPP1YZFBEQB2R.html"
+    )

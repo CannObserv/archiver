@@ -6,6 +6,13 @@ see the never-rename rule in `AGENTS.md`.
 ## Entities
 
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
+  The bag holds **raw** values (`{"org": {"title": "…", "acronym": "…"}, "info_item": {"name": "…"}}`);
+  every string field's `<key>_slug` companion, plus `acronym_or_title(_slug)` when both are
+  present, is derived with co-core's `normalize_string` — the same function the storage
+  framework's `*Vars` use, so a segment archiver renders matches the sibling directories the CLI
+  writes (archiver#206). Derivation runs where the bag is consumed (`render_destination`,
+  `assign_rep_spec`'s `required_fields` check, `POST /tools/validate-rep-fields`) and never
+  rewrites the stored bag; a stored `_slug` key is an explicit override and is never replaced.
   `watcher_item_id` — **dropped** (archiver#142). It held *Watcher's* primary key on an *Archiver*
   row, which is the coupling artifact the decoupling epic set out to remove. Announcements key on
   Archiver's own `info_item_id` and Watcher reconciles against that, so nothing allocates a
@@ -182,9 +189,17 @@ see the never-rename rule in `AGENTS.md`.
   - Placeholders are `{namespace.key}`. A bag placeholder must appear in `required_fields` —
     the list is hand-maintained, not derived, so the two are checked against each other before
     the document can freeze.
-  - `source_revision.*` (`id`, `date`, `fingerprint`, `captured_at`) is the **occasion**
-    namespace: supplied per replication by `src.core.replication.destination.RenderOccasion`,
-    and therefore **rejected** in `required_fields` — no `rep_fields` bag can hold it.
+  - `source_revision.*` is the **occasion** namespace: supplied per replication by
+    `src.core.replication.destination.RenderOccasion`, and therefore **rejected** in
+    `required_fields` — no `rep_fields` bag can hold it. Eight keys: `id` (the revision ULID),
+    `fingerprint` (sha256 hex, prefix dropped), `date` (`YYYY-MM-DD`), `captured_at`
+    (`YYYYMMDDTHHMMSSZ`), and — added in archiver#205 so a template copied from the storage
+    framework's `defaults.toml` renders byte-identically — `year` (`%Y`), `date_segment`
+    (`%Y_%m_%d`), `datetime_time_segment` (`%Y_%m_%d-%H_%M_%S`), all in UTC, and `ext`, derived
+    from `source_revisions.source_media_type` with parameters stripped (`html`, `pdf`, …; `bin`
+    when unknown or `application/octet-stream`). The canonical layout is the framework's
+    `infoitem_revision` location (cannobserv#406, epic #207):
+    `organizations/{org.title_slug}/infoitems/{info_item.name_slug}/{source_revision.year}/{source_revision.datetime_time_segment}-{info_item.name_slug}-{source_revision.id}.{source_revision.ext}`.
   - The template must carry `{source_revision.id}` or `{source_revision.fingerprint}` (the
     issuer contract's R2). `date` is not a discriminator: two revisions captured the same day
     would render one destination, which returns as `destination_conflict` — a conflict token

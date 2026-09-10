@@ -27,6 +27,7 @@ and this keeps it from mattering if one exists anyway.
 
 from __future__ import annotations
 
+import mimetypes
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ from src.core.replication.template import (
     MalformedTemplateError,
     parse_placeholders,
 )
+from src.core.tools.resolve_rep_fields import resolve_rep_fields
 
 # A stand-in occasion for the assignment-time pre-flight: segment-safe by
 # construction, so anything it fails on is the bag's or the template's doing.
@@ -55,6 +57,52 @@ _SEGMENT_SAFE = re.compile(r"\A[A-Za-z0-9._-]+\Z")
 _REFUSED_SEGMENTS = frozenset({"", ".", ".."})
 
 _DRIVE_QUALIFIER = re.compile(r"\A[A-Za-z]:")
+
+# ``source_revision.ext`` (archiver#205): the extension the origin's media type
+# implies, so one RepSpec serves HTML pages and PDFs alike and the citable URL
+# reads as what it is. Spelled out for the types the registry actually sees
+# rather than left to ``mimetypes`` alone, whose answer for a given type can
+# differ between hosts (``text/plain`` has historically come back as ``.ksh``
+# on some tables). Anything unregistered — and ``application/octet-stream``,
+# which is what the issuer substitutes when the origin sent no header — is
+# ``bin``: an honest "bytes", never a guess.
+_EXTENSIONS: dict[str, str] = {
+    "text/html": "html",
+    "application/xhtml+xml": "html",
+    "application/pdf": "pdf",
+    "text/plain": "txt",
+    "text/csv": "csv",
+    "application/json": "json",
+    "application/xml": "xml",
+    "text/xml": "xml",
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "application/octet-stream": "bin",
+}
+_FALLBACK_EXTENSION = "bin"
+_EXTENSION_SAFE = re.compile(r"\A[a-z0-9]+\Z")
+
+
+def extension_for(media_type: str | None) -> str:
+    """The path extension for a media type — parameters stripped, lower-cased.
+
+    The explicit table wins; ``mimetypes`` is consulted for a registered type
+    the table does not name, and only an all-alphanumeric answer is accepted
+    (the rendered value is a path segment, and the same charset rule applies to
+    it as to every other occasion value). Everything else is ``bin``.
+    """
+    if not media_type:
+        return _FALLBACK_EXTENSION
+    essence = media_type.split(";", 1)[0].strip().lower()
+    if essence in _EXTENSIONS:
+        return _EXTENSIONS[essence]
+    guessed = mimetypes.guess_extension(essence, strict=True)
+    if guessed:
+        candidate = guessed.lstrip(".").lower()
+        if _EXTENSION_SAFE.match(candidate):
+            return candidate
+    return _FALLBACK_EXTENSION
 
 
 class DestinationRenderError(ReplicationRenderError):
@@ -141,6 +189,10 @@ class RenderOccasion:
     source_revision_id: str
     content_fingerprint: str
     captured_at: datetime
+    # What the origin served (``source_revisions.source_media_type``); ``None``
+    # when unknown, which renders ``ext`` as ``bin``. Optional so the
+    # assignment-time probe, which has no revision yet, can render.
+    source_media_type: str | None = None
 
     def values(self) -> dict[str, str]:
         """The ``source_revision.*`` vocabulary, rendered path-safe.
@@ -150,6 +202,13 @@ class RenderOccasion:
         into three providers' name rules. ``captured_at`` uses the *basic* ISO
         form for the same reason the prefix is dropped; the extended form the
         repo writes elsewhere carries colons.
+
+        ``year``, ``date_segment`` and ``datetime_time_segment`` (archiver#205)
+        are the storage framework's ``_DateProps`` spellings — ``%Y``,
+        ``%Y_%m_%d``, ``%Y_%m_%d-%H_%M_%S`` — rendered in UTC like everything
+        else here, and ``ext`` is :func:`extension_for` over the origin's media
+        type. Together they let the framework's ``infoitem_revision`` location
+        be copied into a RepSpec verbatim and render the same key it would.
 
         Every value is checked against the same segment charset the bag half
         pays (CR #2): the occasion is caller-supplied too, and a guard covering
@@ -174,6 +233,10 @@ class RenderOccasion:
             "date": captured.date().isoformat(),
             "fingerprint": digest,
             "captured_at": captured.strftime("%Y%m%dT%H%M%SZ"),
+            "year": captured.strftime("%Y"),
+            "date_segment": captured.strftime("%Y_%m_%d"),
+            "datetime_time_segment": captured.strftime("%Y_%m_%d-%H_%M_%S"),
+            "ext": extension_for(self.source_media_type),
         }
         for key, value in values.items():
             if not _SEGMENT_SAFE.match(value) or value in _REFUSED_SEGMENTS:
@@ -188,6 +251,14 @@ def render_destination(
 ) -> str:
     """Resolve ``template`` into the provider-relative path the command carries.
 
+    The bag is read through ``resolve_rep_fields`` first (archiver#206): every
+    string field's ``<key>_slug`` companion derives with co-core's
+    ``normalize_string`` — the one slugger the storage framework's ``*Vars`` use,
+    so ``{org.title_slug}`` here is the directory the CLI writes beside — and a
+    stored ``_slug`` key is left alone as an explicit override. Resolution never
+    touches a raw placeholder: ``{org.title}`` still renders the value as
+    entered and is refused, not rewritten, when it cannot be a segment.
+
     Raises:
         MalformedTemplateError: the template is not parseable. Unreachable for a
             document that passed ``validate_path_template``, which is why this
@@ -198,6 +269,7 @@ def render_destination(
         UnsafeDestinationError: the rendered path would be refused downstream.
     """
     occasion_values = occasion.values()
+    bag = resolve_rep_fields(dict(rep_fields))
     rendered = template
     for namespace, key in parse_placeholders(template):
         if namespace == OCCASION_NAMESPACE:
@@ -207,7 +279,7 @@ def render_destination(
                     f"{OCCASION_NAMESPACE}.{key} is not a value the renderer supplies"
                 )
         else:
-            value = _bag_value(rep_fields, namespace, key)
+            value = _bag_value(bag, namespace, key)
         rendered = rendered.replace(f"{{{namespace}.{key}}}", value)
 
     _assert_safe(rendered)

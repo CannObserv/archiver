@@ -295,6 +295,7 @@ def _issue_targets(
         source_revision_id=str(revision.source_revision_id),
         content_fingerprint=revision.content_fingerprint,
         captured_at=revision.captured_at,
+        source_media_type=revision.source_media_type,
     )
 
     rendered: dict[str, str] = {}

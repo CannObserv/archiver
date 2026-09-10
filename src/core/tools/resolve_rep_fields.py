@@ -1,14 +1,30 @@
-"""resolve_rep_fields — domain bag normalization for InfoItem.rep_fields."""
+"""resolve_rep_fields — domain bag normalization for InfoItem.rep_fields.
 
-import re
+The derived ``_slug`` companions are what ``path_template`` placeholders such as
+``{org.title_slug}`` render from, and those segments sit beside directories the
+CLI writes through the storage framework's ``*Vars``. One slugger cluster-wide
+(archiver#206): co-core's ``normalize_string``, the function those ``*Vars``
+call — "WSLCB - Meeting Schedule" is ``wslcb-meeting_schedule`` on both sides,
+and diacritics fold instead of vanishing.
 
-_SLUG_NON_WORD = re.compile(r"[^a-z0-9]+")
+Consumed where the bag is read, never persisted: ``render_destination``,
+``assign_rep_spec``'s ``required_fields`` check and ``POST /tools/validate-rep-fields``
+all resolve the stored bag on the way in, so operators enter raw values and a
+stored ``_slug`` key stays an explicit override.
+"""
+
+from co_core.pure.util.text import normalize_string
 
 
 def slugify(value: str) -> str:
-    """Lowercase, replace runs of non-alphanumerics with `_`, trim leading/trailing `_`."""
-    s = _SLUG_NON_WORD.sub("_", value.lower()).strip("_")
-    return re.sub(r"_+", "_", s)
+    """The path-segment form of a display value: co-core's ``normalize_string``.
+
+    Lower-cased, diacritics folded, runs of non-alphanumerics to ``_``, a
+    spaced dash (``" - "``) kept as ``-``, leading and trailing separators
+    trimmed. Delegated rather than reimplemented so it cannot drift from the
+    storage framework's derivation.
+    """
+    return normalize_string(value)
 
 
 def resolve_rep_fields(bag: dict) -> dict:

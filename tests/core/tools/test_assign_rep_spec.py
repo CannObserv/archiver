@@ -200,3 +200,41 @@ async def test_assignment_allowed_when_the_bag_renders(session):
 async def test_unrenderable_error_is_an_assignment_error(session):
     """Callers that catch the family keep catching it."""
     assert issubclass(RepFieldsUnrenderableError, AssignmentError)
+
+
+# ---------------------------------------------------------------------------
+# archiver#206: required _slug keys resolve from their raw field at assignment
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_required_slug_is_satisfied_by_its_raw_field(session):
+    """Operators enter raw values; the slug derives with the shared normalizer."""
+    item = _make_item(rep_fields={"org": {"title": "Washington State LCB"}})
+    spec = _make_spec(
+        required_fields=["org.title_slug"],
+        path_template="archive/{org.title_slug}/{source_revision.id}.html",
+    )
+    session.add(item)
+    session.add(spec)
+    await session.flush()
+
+    assignment = await assign_rep_spec(
+        session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id
+    )
+    assert assignment.deactivated_at is None
+
+
+@pytest.mark.asyncio
+async def test_a_raw_value_that_slugs_to_nothing_is_refused_at_assignment(session):
+    item = _make_item(rep_fields={"org": {"title": "!!!"}})
+    spec = _make_spec(
+        required_fields=["org.title_slug"],
+        path_template="archive/{org.title_slug}/{source_revision.id}.html",
+    )
+    session.add(item)
+    session.add(spec)
+    await session.flush()
+
+    with pytest.raises(AssignmentError):
+        await assign_rep_spec(session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id)

@@ -77,10 +77,42 @@ def test_malformed_template_error_is_a_replication_render_error():
 # --- the occasion namespace ---
 
 
-def test_occasion_namespace_keys_are_the_declared_four():
-    """The occasion vocabulary is closed — a renderer supplies exactly these."""
+def test_occasion_namespace_keys_are_the_declared_eight():
+    """The occasion vocabulary is closed — a renderer supplies exactly these.
+
+    The four added in archiver#205 (``year``, ``date_segment``,
+    ``datetime_time_segment``, ``ext``) mirror the storage framework's
+    ``_DateProps`` names so a template copied from its ``defaults.toml`` renders
+    identically here.
+    """
     assert OCCASION_NAMESPACE == "source_revision"
-    assert OCCASION_KEYS == frozenset({"id", "date", "fingerprint", "captured_at"})
+    assert OCCASION_KEYS == frozenset(
+        {
+            "id",
+            "date",
+            "fingerprint",
+            "captured_at",
+            "year",
+            "date_segment",
+            "datetime_time_segment",
+            "ext",
+        }
+    )
+
+
+CANONICAL_LAYOUT = (
+    "organizations/{org.title_slug}/infoitems/{info_item.name_slug}/{source_revision.year}/"
+    "{source_revision.datetime_time_segment}-{info_item.name_slug}-{source_revision.id}"
+    ".{source_revision.ext}"
+)
+
+
+def test_the_canonical_layout_validates():
+    """The storage framework's ``infoitem_revision`` location, verbatim (#207)."""
+    errors = validate_path_template(
+        CANONICAL_LAYOUT, required_fields=["org.title_slug", "info_item.name_slug"]
+    )
+    assert errors == []
 
 
 def test_unknown_occasion_key_rejected():

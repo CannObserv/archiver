@@ -43,7 +43,24 @@ OCCASION_NAMESPACE = "source_revision"
 # Adding a key here without teaching the renderer to resolve it would let a
 # template validate and then fail to render, which is the drift this module's
 # single-parser rule exists to prevent.
-OCCASION_KEYS = frozenset({"id", "date", "fingerprint", "captured_at"})
+#
+# ``year``, ``date_segment``, ``datetime_time_segment`` and ``ext`` (archiver#205)
+# are spelled and formatted exactly as the storage framework's ``_DateProps`` /
+# ``FileVars`` render them, so a template copied verbatim from its
+# ``defaults.toml`` (the canonical ``organizations/…/infoitems/`` layout, epic
+# #207) renders the same key on both sides.
+OCCASION_KEYS = frozenset(
+    {
+        "id",
+        "date",
+        "fingerprint",
+        "captured_at",
+        "year",
+        "date_segment",
+        "datetime_time_segment",
+        "ext",
+    }
+)
 
 # The subset that makes a rendered path distinct per occasion (R2). ``date`` is
 # deliberately absent — it is the collision case, not a discriminator.
