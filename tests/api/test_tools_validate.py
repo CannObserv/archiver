@@ -154,6 +154,31 @@ async def test_validate_rep_fields_with_required_fields_present(client):
 
 
 @pytest.mark.asyncio
+async def test_validate_rep_fields_raw_value_satisfies_a_required_slug(client):
+    """archiver#206: operators enter raw values; the slug derives on the way in."""
+    r = await client.post(
+        "/api/v1/tools/validate-rep-fields",
+        json={"bag": {"org": {"title": "WA LCB"}}, "required_fields": ["org.title_slug"]},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.json()["valid"] is True
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_fields_unusable_raw_value_does_not_satisfy_a_required_slug(client):
+    """CR 1: a raw value that normalizes to nothing derives no companion, so the
+    required field is genuinely missing rather than present-and-empty."""
+    r = await client.post(
+        "/api/v1/tools/validate-rep-fields",
+        json={"bag": {"org": {"title": "!!!"}}, "required_fields": ["org.title_slug"]},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.json()["valid"] is False
+
+
+@pytest.mark.asyncio
 async def test_validate_rep_fields_missing_required_field_returns_errors(client):
     response = await client.post(
         "/api/v1/tools/validate-rep-fields",
