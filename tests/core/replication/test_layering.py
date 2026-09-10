@@ -18,22 +18,49 @@ from pathlib import Path
 
 import pytest
 
-_REPLICATION = Path(__file__).resolve().parents[3] / "src" / "core" / "replication"
+_ROOT = Path(__file__).resolve().parents[3]
+_REPLICATION = _ROOT / "src" / "core" / "replication"
 
 # The layer above: authoring operations that routes call. They compose the
 # domain, so they may import downward; the reverse is what this file refuses.
 FORBIDDEN_PREFIX = "src.core.tools"
 
 
+def _package_of(path: Path) -> str:
+    """The dotted package a module at *path* lives in, e.g. ``src.core.replication``."""
+    return ".".join(path.resolve().parent.relative_to(_ROOT).parts)
+
+
+def _resolved_relative(path: Path, node: ast.ImportFrom) -> str:
+    """The absolute module name a relative ``ImportFrom`` denotes (CR 9).
+
+    ``level`` counts the leading dots: one means this package, two the parent,
+    and so on. ``node.module`` is only the tail, so the name a relative import
+    actually reaches has to be rebuilt from the importing file's own location.
+    Dropping these is what let ``from ..tools.assign_rep_spec import …`` name
+    the forbidden layer and read as no import at all.
+    """
+    parts = _package_of(path).split(".")
+    base = parts[: len(parts) - (node.level - 1)]
+    return ".".join([*base, node.module] if node.module else base)
+
+
 def _imported_modules(path: Path) -> set[str]:
-    """Every module name this file imports, however it spells the import."""
+    """Every module name this file imports, however it spells the import.
+
+    Relative imports are resolved to their absolute names, so the set answers
+    "what does this module reach" rather than "what did the author type".
+    """
     tree = ast.parse(path.read_text(), filename=str(path))
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            names.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                names.add(_resolved_relative(path, node))
+            elif node.module:
+                names.add(node.module)
     return names
 
 
@@ -66,3 +93,20 @@ def test_the_guard_fires_on_a_planted_import(tmp_path):
     planted = tmp_path / "planted.py"
     planted.write_text("from src.core.tools.assign_rep_spec import assign_rep_spec\n")
     assert FORBIDDEN_PREFIX + ".assign_rep_spec" in _imported_modules(planted)
+
+
+def test_the_guard_fires_on_a_planted_relative_import():
+    """The same cycle, spelled relatively (CR 9).
+
+    ``from ..tools.assign_rep_spec import …`` inside ``src/core/replication/``
+    resolves to the identical module and re-creates the identical cycle. The
+    scan dropped it, because a relative ``ImportFrom`` carries ``level > 0`` and
+    a ``module`` that is only the tail of the name. Planted against a real path
+    inside the scanned package, since resolving the leading dots needs one.
+    """
+    planted = _REPLICATION / "planted_relative.py"
+    planted.write_text("from ..tools.assign_rep_spec import assign_rep_spec\n")
+    try:
+        assert FORBIDDEN_PREFIX + ".assign_rep_spec" in _imported_modules(planted)
+    finally:
+        planted.unlink()
