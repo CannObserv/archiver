@@ -34,13 +34,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import unquote
 
+from src.core.rep_fields import resolve_rep_fields
 from src.core.replication.errors import ReplicationRenderError
 from src.core.replication.template import (
     OCCASION_NAMESPACE,
     MalformedTemplateError,
     parse_placeholders,
 )
-from src.core.tools.resolve_rep_fields import resolve_rep_fields
 
 # A stand-in occasion for the assignment-time pre-flight: segment-safe by
 # construction, so anything it fails on is the bag's or the template's doing.

@@ -138,9 +138,18 @@ src/core/                      Domain logic
                                Its own module so the API schema and the bus
                                consumer can share the rule without either
                                dragging in the ORM.
+  rep_fields.py                The derived half of an InfoItem's rep_fields bag:
+                               <key>_slug companions via co-core's
+                               normalize_string, the one slugger the cluster
+                               shares (archiver#206). A leaf beside
+                               fingerprints.py rather than a tools/ helper —
+                               replication and the validator both consume it,
+                               and from under tools/ that inverted the layering.
+                               An empty derivation is omitted, never written as
+                               "": present-and-empty satisfies a presence check
+                               for a value that can never be a path segment.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
-                               update_rep_spec, resolve_rep_fields,
-                               preview_extraction, etc.)
+                               update_rep_spec, preview_extraction, etc.)
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
                                own copy and there is NO parity requirement; see

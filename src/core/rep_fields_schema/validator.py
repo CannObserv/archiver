@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from jsonschema import Draft202012Validator
 
-from src.core.tools.resolve_rep_fields import resolve_rep_fields
+from src.core.rep_fields import resolve_rep_fields
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "v1.json"
 

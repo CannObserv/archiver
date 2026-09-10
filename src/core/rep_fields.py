@@ -1,4 +1,13 @@
-"""resolve_rep_fields — domain bag normalization for InfoItem.rep_fields.
+"""rep_fields normalization — the derived half of an InfoItem's domain bag.
+
+**A leaf module, deliberately** (CR 2). It lived under ``src/core/tools/``, the
+authoring layer routes call, and archiver#206 gave it two consumers in the
+domain below that layer: ``src.core.replication.destination`` and
+``src.core.rep_fields_schema.validator``. That made ``replication`` import
+``tools`` while ``tools.assign_rep_spec`` imports ``replication`` — a cycle
+held open only by ``src/core/tools/__init__.py`` happening to be empty, and one
+no inline import could break, since ruff ``PLC0415`` bans those. Sited here it
+imports nothing but co-core, so no consumer can be upstream of it.
 
 The derived ``_slug`` companions are what ``path_template`` placeholders such as
 ``{org.title_slug}`` render from, and those segments sit beside directories the

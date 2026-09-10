@@ -1,8 +1,8 @@
-"""Tests for resolve_rep_fields slug normalization tool."""
+"""Tests for rep_fields slug normalization (``src.core.rep_fields``)."""
 
 from co_core.pure.util.text import normalize_string
 
-from src.core.tools.resolve_rep_fields import resolve_rep_fields, slugify
+from src.core.rep_fields import resolve_rep_fields, slugify
 
 # ---------------------------------------------------------------------------
 # slugify corner cases
