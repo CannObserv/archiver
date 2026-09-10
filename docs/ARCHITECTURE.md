@@ -46,7 +46,12 @@ src/core/                      Domain logic
                                destination.py renders, refuses (segment charset,
                                T3 path guards, naive datetimes), pre-flights a
                                fan-out set for colliding paths, and probes
-                               renderability at assignment time. errors.py is the
+                               renderability at assignment time. It also supplies
+                               the occasion values themselves — the framework's
+                               date forms and the extension implied by the
+                               origin's media type — and resolves the bag's
+                               _slug companions through rep_fields.py on the way
+                               in (archiver#205, #206). errors.py is the
                                single base both raise under, so archiver#169 can
                                record a skip by catching one class. Archiver
                                renders because the issuer contract's T3 says so
