@@ -48,8 +48,12 @@ def validate_rep_fields_against_spec(
     """
     ok, errors = validate_rep_fields(bag)
     # A separate name, not a rebind: every error below reports a path, and a
-    # reader has to be able to tell which bag it is a path into.
-    resolved = resolve_rep_fields(bag) if isinstance(bag, dict) else bag
+    # reader has to be able to tell which bag it is a path into. Unconditional:
+    # an `isinstance(bag, dict)` guard here bought nothing, because the loop
+    # below calls `.get` either way — a list reached it and raised
+    # AttributeError one line later, which is the failure the guard read as
+    # prevented. The annotation is the contract (CR 12).
+    resolved = resolve_rep_fields(bag)
     for path in required_fields:
         ns, _, key = path.partition(".")
         if not ns or not key:

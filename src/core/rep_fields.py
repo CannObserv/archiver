@@ -32,6 +32,12 @@ def slugify(value: str) -> str:
     spaced dash (``" - "``) kept as ``-``, leading and trailing separators
     trimmed. Delegated rather than reimplemented so it cannot drift from the
     storage framework's derivation.
+
+    The case that surprises: an **unspaced** dash becomes ``_``, so ``wa-lcb``
+    yields ``wa_lcb``. A value that already looks like a slug is still
+    rewritten, and only the spaced form survives as a dash — which is why
+    ``"WSLCB - Meeting Schedule"`` is ``wslcb-meeting_schedule`` and not
+    ``wslcb_meeting_schedule``.
     """
     return normalize_string(value)
 
@@ -39,7 +45,8 @@ def slugify(value: str) -> str:
 def resolve_rep_fields(bag: dict) -> dict:
     """Enrich a raw bag with `_slug` companions for string fields and acronym/title derivations.
 
-    - For each namespace, every string field gets a `<key>_slug` companion.
+    - For each namespace, every string field gets a `<key>_slug` companion,
+      unless the derivation comes out empty (see the last bullet).
     - If a namespace contains both `acronym` and `title`, derive `acronym_or_title`
       and `acronym_or_title_slug` (preferring acronym when present).
     - Idempotent: existing `_slug` keys are preserved (never overwritten).
