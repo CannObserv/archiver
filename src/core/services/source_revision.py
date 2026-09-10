@@ -112,9 +112,12 @@ class RevisionFacts:
     those a producer may not hold.
 
     ``content_cache_uri`` / ``content_cache_expires_at`` are **not durable
-    storage**: on the bus path they carry Replicator's VM-local ``file://``
-    blob and its expiry horizon, which is a cache with a TTL clock the registry
-    does not control. Durable bytes are what RepSpec replication is for.
+    storage**: on the bus path they carry Replicator's temp-store blob
+    (``gs://co-gcs-blobs`` since 2026-08-20; a VM-local ``file://`` before) and
+    its expiry horizon, which is a cache with a TTL clock the registry does not
+    control — it runs from the blob's *last reference*, so a re-observation may
+    carry a later horizon for the same bytes (archiver#201). Durable bytes are
+    what RepSpec replication is for.
     """
 
     info_source_id: ULID
@@ -258,8 +261,60 @@ async def record_revision(
         await issue_for_revision(session, row)
     else:
         _refresh_spec_comparison(row, facts, comparison)
+        _refresh_cache_reference(row, facts)
 
     return row, inserted
+
+
+def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
+    """Carry a re-observation's blob reference onto an existing row (archiver#201).
+
+    The idempotent no-op returns the row the *first* observation wrote, and its
+    cache columns describe the blob as it stood then. Replicator's TTL runs from
+    the blob's **last reference** (the fetch issuer contract's MUST-7), so every
+    full re-fetch of unchanged bytes re-announces a later ``blob_expires_at`` —
+    and a row that keeps the first horizon reports the blob expired while it is
+    still there. ``_blob_skip_reason`` then refuses a replication the consumer
+    would have served, and for a *stable* item nothing corrects it: no later
+    revision ever arrives to carry the fresher horizon. The 2026-08-20 backend
+    flip is the same defect from the other side — a row keeps a dead ``file://``
+    URI after a re-observation offered the ``gs://`` one.
+
+    Same shape as ``_refresh_spec_comparison``: the most recent observation
+    wins, the two columns move as a unit (a URI without its horizon is a
+    reference to bytes that may already be gone), and no outbox event is written
+    because the revision's identity is unchanged. Two guards keep at-least-once
+    delivery from regressing it:
+
+    - **An absent reference never erases a stored one.** The HTTP path carries
+      no blob, and a fact without one has nothing newer to say.
+    - **The horizon only moves forward.** A redelivered *older* observation
+      carries an earlier ``blob_expires_at`` and is ignored; an equal one is the
+      same emission and a no-op. An unknown incoming horizon cannot be ordered
+      against a known one and is ignored too — ``None`` records absence, never
+      a guess (docs/BUS.md) — while a known one does replace an unknown.
+
+    Mutates ``row`` in the caller's session; the caller's commit persists it.
+    """
+    if facts.content_cache_uri is None:
+        return
+    stored_at = row.content_cache_expires_at
+    offered_at = facts.content_cache_expires_at
+    if row.content_cache_uri is not None:
+        if offered_at is None:
+            return
+        if stored_at is not None and offered_at <= stored_at:
+            return
+    logger.info(
+        "Refreshed revision blob reference from a re-observation",
+        extra={
+            "source_revision_id": str(row.source_revision_id),
+            "content_cache_expires_at": offered_at.isoformat() if offered_at else None,
+            "previous_expires_at": stored_at.isoformat() if stored_at else None,
+        },
+    )
+    row.content_cache_uri = facts.content_cache_uri
+    row.content_cache_expires_at = offered_at
 
 
 def _refresh_spec_comparison(

@@ -441,3 +441,110 @@ async def test_unchanged_redelivery_does_not_relog_the_flag(session, info_source
 
     assert first_log.warning.call_count == 1
     assert second_log.warning.call_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Blob reference refresh on re-observation
+#
+# Replicator's blob TTL runs from the blob's *last reference*, so a full
+# re-fetch of unchanged bytes re-announces a later ``blob_expires_at``. The row
+# kept the first observation's horizon, and a stable item read as unreplicable
+# (``blob_expired_locally``) after seven days while its blob was still there -
+# with no later revision ever arriving to correct it.
+# ---------------------------------------------------------------------------
+
+BLOB_URI = "gs://co-gcs-blobs/blobs/" + "a" * 64 + ".bin"
+BLOB_URI_LEGACY = "file:///var/lib/replicator/blobs/aa/aa/" + "a" * 64 + ".bin"
+HORIZON = datetime(2026, 8, 16, 12, 0, tzinfo=UTC)
+LATER_HORIZON = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
+
+
+def _cached(info_source_id: ULID, uri: str | None, expires_at: datetime | None) -> RevisionFacts:
+    return _facts(info_source_id, content_cache_uri=uri, content_cache_expires_at=expires_at)
+
+
+@pytest.mark.asyncio
+async def test_reobservation_with_a_later_horizon_refreshes_the_blob_reference(
+    session, info_source
+):
+    """The row describes the most recent observation's blob, not the first's -
+    URI and horizon together, since the 2026-08-20 backend flip moved the URI."""
+    await record_revision(session, _cached(info_source.info_source_id, BLOB_URI_LEGACY, HORIZON))
+
+    row, inserted = await record_revision(
+        session, _cached(info_source.info_source_id, BLOB_URI, LATER_HORIZON)
+    )
+
+    assert inserted is False
+    assert row.content_cache_uri == BLOB_URI
+    assert row.content_cache_expires_at == LATER_HORIZON
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("redelivered_horizon", [HORIZON, LATER_HORIZON])
+async def test_the_horizon_only_moves_forward(session, info_source, redelivered_horizon):
+    """A redelivered older observation is ignored; an equal one is the same emission."""
+    await record_revision(session, _cached(info_source.info_source_id, BLOB_URI, LATER_HORIZON))
+
+    row, _ = await record_revision(
+        session, _cached(info_source.info_source_id, BLOB_URI_LEGACY, redelivered_horizon)
+    )
+
+    assert row.content_cache_uri == BLOB_URI
+    assert row.content_cache_expires_at == LATER_HORIZON
+
+
+@pytest.mark.asyncio
+async def test_an_absent_reference_never_erases_a_stored_one(session, info_source):
+    """The HTTP path carries no blob; a re-POST must not blank what the bus knew."""
+    await record_revision(session, _cached(info_source.info_source_id, BLOB_URI, HORIZON))
+
+    row, _ = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert row.content_cache_uri == BLOB_URI
+    assert row.content_cache_expires_at == HORIZON
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_horizon_never_replaces_a_known_one(session, info_source):
+    """``None`` records absence, never a guess - it cannot be ordered against a date."""
+    await record_revision(session, _cached(info_source.info_source_id, BLOB_URI_LEGACY, HORIZON))
+
+    row, _ = await record_revision(session, _cached(info_source.info_source_id, BLOB_URI, None))
+
+    assert row.content_cache_uri == BLOB_URI_LEGACY
+    assert row.content_cache_expires_at == HORIZON
+
+
+@pytest.mark.asyncio
+async def test_a_known_horizon_replaces_an_unknown_one(session, info_source):
+    await record_revision(session, _cached(info_source.info_source_id, BLOB_URI_LEGACY, None))
+
+    row, _ = await record_revision(session, _cached(info_source.info_source_id, BLOB_URI, HORIZON))
+
+    assert row.content_cache_uri == BLOB_URI
+    assert row.content_cache_expires_at == HORIZON
+
+
+@pytest.mark.asyncio
+async def test_a_row_recorded_without_a_blob_takes_the_first_reference_offered(
+    session, info_source
+):
+    """A revision authored over HTTP and later observed on the bus gains a reference."""
+    await record_revision(session, _facts(info_source.info_source_id))
+
+    row, _ = await record_revision(session, _cached(info_source.info_source_id, BLOB_URI, HORIZON))
+
+    assert row.content_cache_uri == BLOB_URI
+    assert row.content_cache_expires_at == HORIZON
+
+
+@pytest.mark.asyncio
+async def test_blob_refresh_emits_no_event_and_issues_no_replication(session, info_source):
+    """The revision's identity is unchanged: no outbox row, and no second occasion."""
+    with patch("src.core.services.source_revision.issue_for_revision") as issue:
+        await record_revision(session, _cached(info_source.info_source_id, BLOB_URI, HORIZON))
+        await record_revision(session, _cached(info_source.info_source_id, BLOB_URI, LATER_HORIZON))
+
+    assert issue.await_count == 1
+    assert await _outbox_count(session) == 1
