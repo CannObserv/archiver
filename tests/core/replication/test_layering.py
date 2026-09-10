@@ -1,4 +1,4 @@
-"""``src/core/replication/`` may not import the authoring layer above it (CR 2).
+"""``src/core/replication/`` may not import any layer that imports it (CR 2, 11).
 
 archiver#206 gave the renderer a second consumer of the rep_fields derivation
 and reached for it where it then lived, under ``src/core/tools/``. That made
@@ -21,9 +21,25 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[3]
 _REPLICATION = _ROOT / "src" / "core" / "replication"
 
-# The layer above: authoring operations that routes call. They compose the
-# domain, so they may import downward; the reverse is what this file refuses.
+_SRC = _ROOT / "src"
+_PACKAGE = "src.core.replication"
+
+# The exemplar the planted-import tests below spell out. The set this file
+# actually enforces is *derived* (CR 11): naming one layer caught one of the
+# five that import replication, and the invariant was never about that name.
 FORBIDDEN_PREFIX = "src.core.tools"
+
+# Floor for the derivation. A scan that silently matched nothing would forbid
+# nothing and pass every assertion, so the derived set has to contain at least
+# the layers known to import replication today.
+KNOWN_CONSUMER_PACKAGES = frozenset(
+    {
+        "src.api.routes",
+        "src.core.services",
+        "src.core.tools",
+        "src.core.rep_spec_schema",
+    }
+)
 
 
 def _package_of(path: Path) -> str:
@@ -91,18 +107,54 @@ def test_the_scan_reaches_into_a_subpackage(tmp_path):
         nested.parent.rmdir()
 
 
+def _reaches(name: str, target: str) -> bool:
+    """Whether an imported *name* is *target* or something inside it."""
+    return name == target or name.startswith(target + ".")
+
+
+def _consumer_packages() -> frozenset[str]:
+    """Every package outside replication that imports it (CR 11).
+
+    Derived rather than listed, so a new consumer layer is forbidden from being
+    imported back the moment it appears, without anyone remembering to edit a
+    tuple here. Read by AST rather than by grep: ``src/core/rep_fields.py``
+    names ``src.core.replication.destination`` in its module docstring and
+    imports nothing of the sort, and a text scan calls that a consumer.
+
+    A package that *contains* replication is skipped. ``src.core`` importing it
+    would be a real inversion, but forbidding that prefix would forbid
+    ``src.core.replication`` itself and fail every module on its own siblings.
+    """
+    packages: set[str] = set()
+    for path in _SRC.rglob("*.py"):
+        if path.resolve().is_relative_to(_REPLICATION.resolve()):
+            continue
+        if not any(_reaches(name, _PACKAGE) for name in _imported_modules(path)):
+            continue
+        package = _package_of(path)
+        if _reaches(_PACKAGE, package):
+            continue
+        packages.add(package)
+    return frozenset(packages)
+
+
+def test_the_derived_consumer_set_covers_the_known_layers():
+    """A derivation that matched nothing would forbid nothing, silently."""
+    assert _consumer_packages() >= KNOWN_CONSUMER_PACKAGES
+
+
 @pytest.mark.parametrize("module", _modules(), ids=lambda p: p.name)
-def test_replication_does_not_import_the_authoring_layer(module):
+def test_replication_does_not_import_a_layer_that_imports_it(module):
+    consumers = _consumer_packages()
     offenders = {
         name
         for name in _imported_modules(module)
-        if name == FORBIDDEN_PREFIX or name.startswith(FORBIDDEN_PREFIX + ".")
+        if any(_reaches(name, package) for package in consumers)
     }
     assert not offenders, (
-        f"{module.name} imports {sorted(offenders)}; src/core/tools/ sits above "
-        "replication and imports it back (tools.assign_rep_spec -> "
-        "replication.destination). Put the shared code in a leaf module such as "
-        "src/core/rep_fields.py instead."
+        f"{module.name} imports {sorted(offenders)}, which sits above replication "
+        "and imports it back — a cycle. Put the shared code in a leaf module such "
+        "as src/core/rep_fields.py instead."
     )
 
 
