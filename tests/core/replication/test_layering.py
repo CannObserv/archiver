@@ -65,12 +65,30 @@ def _imported_modules(path: Path) -> set[str]:
 
 
 def _modules() -> list[Path]:
-    return sorted(p for p in _REPLICATION.glob("*.py") if p.name != "__init__.py")
+    """Every module in the package, at any depth (CR 10).
+
+    ``rglob`` rather than ``glob``: the package is flat today, and a
+    top-level-only scan would leave the first subpackage anyone adds unchecked
+    while the floor assertion below kept passing on the three files it names.
+    """
+    return sorted(p for p in _REPLICATION.rglob("*.py") if p.name != "__init__.py")
 
 
 def test_the_scan_sees_the_modules_it_claims_to():
     """A glob that matched nothing would pass every assertion below."""
     assert {p.name for p in _modules()} >= {"destination.py", "template.py", "errors.py"}
+
+
+def test_the_scan_reaches_into_a_subpackage(tmp_path):
+    """The floor above names three flat files, so only this notices a missed depth."""
+    nested = _REPLICATION / "_scan_probe" / "deep.py"
+    nested.parent.mkdir()
+    nested.write_text("x = 1\n")
+    try:
+        assert nested.resolve() in {p.resolve() for p in _modules()}
+    finally:
+        nested.unlink()
+        nested.parent.rmdir()
 
 
 @pytest.mark.parametrize("module", _modules(), ids=lambda p: p.name)
