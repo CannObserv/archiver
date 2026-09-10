@@ -35,6 +35,7 @@ from src.api.schemas.tools import (
     ValidateWatchSpecResponse,
 )
 from src.api.serializers import info_item_to_out
+from src.core.rep_fields import resolve_rep_fields
 from src.core.rep_fields_schema.validator import (
     validate_rep_fields,
     validate_rep_fields_against_spec,
@@ -49,7 +50,6 @@ from src.core.tools.preview_extraction import (
     preview_extraction,
 )
 from src.core.tools.propose_selectors import propose_selectors
-from src.core.tools.resolve_rep_fields import resolve_rep_fields
 from src.core.watch_spec_schema.validator import validate_watch_spec
 
 router = APIRouter(prefix="/tools", tags=["tools"])

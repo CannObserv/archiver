@@ -28,7 +28,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 |---|---|---|
 | `validate_source_spec` | `POST /tools/validate-source-spec` | `validate_source_spec(doc)` |
 | `validate_rep_spec` | `POST /tools/validate-rep-spec` | `validate_rep_spec(doc)` |
-| `validate_rep_fields` | `POST /tools/validate-rep-fields` | `validate_rep_fields(bag, required_fields=None)` |
+| `validate_rep_fields` | `POST /tools/validate-rep-fields` | `validate_rep_fields(bag, required_fields=None)` — a required `<key>_slug` is satisfied by its raw field (archiver#206); a raw value that normalizes to nothing derives no companion and stays missing |
 | `validate_watch_spec` | `POST /tools/validate-watch-spec` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Republish registry announcements | `POST /tools/republish-registry-announcements` | generated only (no hand-written wrapper — operator control, 202; 409 when the bus is dormant) |
 | `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |

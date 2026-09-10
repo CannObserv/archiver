@@ -46,7 +46,12 @@ src/core/                      Domain logic
                                destination.py renders, refuses (segment charset,
                                T3 path guards, naive datetimes), pre-flights a
                                fan-out set for colliding paths, and probes
-                               renderability at assignment time. errors.py is the
+                               renderability at assignment time. It also supplies
+                               the occasion values themselves — the framework's
+                               date forms and the extension implied by the
+                               origin's media type — and resolves the bag's
+                               _slug companions through rep_fields.py on the way
+                               in (archiver#205, #206). errors.py is the
                                single base both raise under, so archiver#169 can
                                record a skip by catching one class. Archiver
                                renders because the issuer contract's T3 says so
@@ -138,9 +143,18 @@ src/core/                      Domain logic
                                Its own module so the API schema and the bus
                                consumer can share the rule without either
                                dragging in the ORM.
+  rep_fields.py                The derived half of an InfoItem's rep_fields bag:
+                               <key>_slug companions via co-core's
+                               normalize_string, the one slugger the cluster
+                               shares (archiver#206). A leaf beside
+                               fingerprints.py rather than a tools/ helper —
+                               replication and the validator both consume it,
+                               and from under tools/ that inverted the layering.
+                               An empty derivation is omitted, never written as
+                               "": present-and-empty satisfies a presence check
+                               for a value that can never be a path segment.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
-                               update_rep_spec, resolve_rep_fields,
-                               preview_extraction, etc.)
+                               update_rep_spec, preview_extraction, etc.)
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
                                own copy and there is NO parity requirement; see

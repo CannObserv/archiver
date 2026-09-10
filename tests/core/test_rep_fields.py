@@ -1,8 +1,8 @@
-"""Tests for resolve_rep_fields slug normalization tool."""
+"""Tests for rep_fields slug normalization (``src.core.rep_fields``)."""
 
 from co_core.pure.util.text import normalize_string
 
-from src.core.tools.resolve_rep_fields import resolve_rep_fields, slugify
+from src.core.rep_fields import resolve_rep_fields, slugify
 
 # ---------------------------------------------------------------------------
 # slugify corner cases
@@ -124,3 +124,33 @@ class TestResolveRepFields:
         bag = {"meta": "some_string_value"}
         result = resolve_rep_fields(bag)
         assert result["meta"] == "some_string_value"
+
+
+# ---------------------------------------------------------------------------
+# CR 1: a raw value that normalizes to nothing derives no companion
+#
+# The storage framework's rule (cannobserv docs/STORAGE_VARS.md S2): a slug
+# property returns None on empty raw input, never "". Writing "" here made the
+# key *present*, so validate_rep_fields_against_spec reported a bag valid that
+# can never render.
+# ---------------------------------------------------------------------------
+
+
+class TestEmptySlugsAreAbsent:
+    def test_a_value_that_slugs_to_nothing_derives_no_companion(self):
+        result = resolve_rep_fields({"org": {"title": "!!!"}})
+        assert result["org"]["title"] == "!!!"
+        assert "title_slug" not in result["org"]
+
+    def test_acronym_or_title_slug_is_absent_when_it_would_be_empty(self):
+        result = resolve_rep_fields({"org": {"acronym": "!!!", "title": "???"}})
+        assert result["org"]["acronym_or_title"] == "!!!"
+        assert "acronym_or_title_slug" not in result["org"]
+
+    def test_an_empty_raw_string_still_derives_nothing(self):
+        result = resolve_rep_fields({"org": {"title": ""}})
+        assert "title_slug" not in result["org"]
+
+    def test_a_usable_value_still_derives(self):
+        result = resolve_rep_fields({"org": {"title": "WA LCB"}})
+        assert result["org"]["title_slug"] == "wa_lcb"

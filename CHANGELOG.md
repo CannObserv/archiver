@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.16.7 (2026-09-10)
+
+[service] **`POST /tools/validate-rep-fields` resolves the bag before checking `required_fields`** (archiver#206, corrected by this review's CR 1). No route signature, schema, or SDK code change; `validate_rep_fields(bag, required_fields=None)` observes the new answer without changing shape.
+
+A required `<key>_slug` entry is now satisfied by its raw field: a bag of `{"org": {"title": "WA LCB"}}` satisfies `required_fields: ["org.title_slug"]`, because that is how `render_destination` reads it. Operators enter raw values and the companions derive with co-core's `normalize_string` - the one slugger the cluster shares, so a `{org.title_slug}` segment archiver renders matches the sibling directories the CLI writes through `cannobserv.storage`. A stored `_slug` key is never overwritten and stays an explicit override. `POST /info-items` takes the same path through `validate_rep_fields_against_spec`.
+
+**A raw value that normalizes to nothing derives no companion.** The first cut wrote `""`, which made the key *present*: the endpoint reported valid for a bag that can never render, where before the change it correctly reported the field missing. The storage framework states the rule the other way round for exactly this reason - a slug derivation yields nothing rather than an empty string - and absent is the answer a caller can act on. Renderability was never in question either way: an empty segment is refused at render time and at assignment, which is where `probe_destination` already caught it.
+
+This entry exists because the review that found the empty-slug regression also moved the derivation out of `src/core/tools/` into the leaf `src/core/rep_fields.py`, which touched an import line in `src/api/routes/tools.py` and tripped the path-based trigger. The behaviour above shipped in #208 with no entry, correctly under the path rule and unhelpfully for anyone reading this file.
+
 ## v4.16.6 (2026-09-08)
 
 `[both]` **Ports rebased 8020/8001 -> 8000/8001 and the public base URL moved

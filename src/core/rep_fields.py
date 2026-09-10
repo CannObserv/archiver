@@ -1,4 +1,13 @@
-"""resolve_rep_fields — domain bag normalization for InfoItem.rep_fields.
+"""rep_fields normalization — the derived half of an InfoItem's domain bag.
+
+**A leaf module, deliberately** (CR 2). It lived under ``src/core/tools/``, the
+authoring layer routes call, and archiver#206 gave it two consumers in the
+domain below that layer: ``src.core.replication.destination`` and
+``src.core.rep_fields_schema.validator``. That made ``replication`` import
+``tools`` while ``tools.assign_rep_spec`` imports ``replication`` — a cycle
+held open only by ``src/core/tools/__init__.py`` happening to be empty, and one
+no inline import could break, since ruff ``PLC0415`` bans those. Sited here it
+imports nothing but co-core, so no consumer can be upstream of it.
 
 The derived ``_slug`` companions are what ``path_template`` placeholders such as
 ``{org.title_slug}`` render from, and those segments sit beside directories the
@@ -35,6 +44,14 @@ def resolve_rep_fields(bag: dict) -> dict:
       and `acronym_or_title_slug` (preferring acronym when present).
     - Idempotent: existing `_slug` keys are preserved (never overwritten).
     - Unknown namespaces and non-string values are passed through unchanged.
+    - **A companion that would be empty is not written** (CR 1). The storage
+      framework's rule is that a slug derivation yields `None` on empty raw
+      input, never `""` (cannobserv docs/STORAGE_VARS.md S2), and the reason is
+      exactly what a present-but-empty key costs here: it satisfies the
+      presence check in `validate_rep_fields_against_spec` for a value that can
+      never be a path segment, so an unusable bag validates and then fails at
+      render time. Absent is the honest answer, and it is the one the caller
+      can act on.
     """
     out: dict = {}
     for ns, fields in bag.items():
@@ -42,13 +59,18 @@ def resolve_rep_fields(bag: dict) -> dict:
             ns_out = dict(fields)
             for key, val in list(fields.items()):
                 if isinstance(val, str) and not key.endswith("_slug"):
-                    slug_key = f"{key}_slug"
-                    ns_out.setdefault(slug_key, slugify(val))
+                    slug = slugify(val)
+                    if slug:
+                        ns_out.setdefault(f"{key}_slug", slug)
             if "acronym" in fields and "title" in fields:
                 aot = fields.get("acronym") or fields.get("title")
                 if isinstance(aot, str) and aot:
                     ns_out.setdefault("acronym_or_title", aot)
-                    ns_out.setdefault("acronym_or_title_slug", slugify(aot))
+                    # The raw composite stands on its own; only the derived half
+                    # is withheld when it would be empty.
+                    aot_slug = slugify(aot)
+                    if aot_slug:
+                        ns_out.setdefault("acronym_or_title_slug", aot_slug)
             out[ns] = ns_out
         else:
             out[ns] = fields

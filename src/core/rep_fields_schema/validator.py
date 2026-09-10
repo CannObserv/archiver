@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from jsonschema import Draft202012Validator
 
-from src.core.tools.resolve_rep_fields import resolve_rep_fields
+from src.core.rep_fields import resolve_rep_fields
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "v1.json"
 
@@ -47,7 +47,9 @@ def validate_rep_fields_against_spec(
     bag as stored — the derived keys are strings and cannot fail it.
     """
     ok, errors = validate_rep_fields(bag)
-    bag = resolve_rep_fields(bag) if isinstance(bag, dict) else bag
+    # A separate name, not a rebind: every error below reports a path, and a
+    # reader has to be able to tell which bag it is a path into.
+    resolved = resolve_rep_fields(bag) if isinstance(bag, dict) else bag
     for path in required_fields:
         ns, _, key = path.partition(".")
         if not ns or not key:
@@ -59,7 +61,7 @@ def validate_rep_fields_against_spec(
             )
             ok = False
             continue
-        ns_dict = bag.get(ns)
+        ns_dict = resolved.get(ns)
         if not isinstance(ns_dict, dict) or key not in ns_dict or ns_dict.get(key) is None:
             errors.append(
                 {
