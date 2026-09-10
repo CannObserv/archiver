@@ -198,9 +198,9 @@ The entries below stay the inventory line for each route.
 
 **GET `/dashboard/rep-specs/`** - paginated list. Optional `provider` filter (enum: `gcs` / `gdrive` / `ia`). Columns: name (link to detail), provider badge, created_at.
 
-**GET `/dashboard/rep-specs/new`** - create form. Provider `<select>`, name text input, document JSON textarea (the `repSpecEditor` component, validate-on-blur). Returns 200 with an errors dict on validation failure.
+**GET `/dashboard/rep-specs/new`** - create form. Provider `<select>` - `gdrive` and `ia` are rendered **disabled, not hidden**, each with its reason inline, because Replicator writes for `gcs` only (CannObserv/replicator#29); `_UNWRITABLE_PROVIDERS` in `src/dashboard/routes/rep_specs.py` is the one place to lift when a writer lands, and the sub-schema question is #153 - name text input, document JSON textarea (the `repSpecEditor` component, validate-on-blur). Returns 200 with an errors dict on validation failure.
 
-**POST `/dashboard/rep-specs/new`** - form fields: `provider`, `name`, `document` (JSON string). Calls `create_rep_spec`. 303 to detail on success; re-renders the form with errors on missing provider, missing name, invalid JSON, or `InvalidRepSpecError`.
+**POST `/dashboard/rep-specs/new`** - form fields: `provider`, `name`, `document` (JSON string). Calls `create_rep_spec`. 303 to detail on success; re-renders the form with errors on missing provider, an unwritable provider (`gdrive`, `ia` - refused server-side too, so a direct POST cannot bypass the disabled option; a template-only gate is the #167 defect class), missing name, invalid JSON, or `InvalidRepSpecError`. The API's `POST /rep-specs` is unchanged: the contract still accepts the envelope's full enum.
 
 **GET `/dashboard/rep-specs/{id}`** - detail page.
 
