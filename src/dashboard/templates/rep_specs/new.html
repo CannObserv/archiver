@@ -16,13 +16,18 @@
           Provider <span aria-hidden="true">*</span>
         </label>
         <select id="spec-provider" name="provider" class="form-select"
-                x-model="provider" required>
+                x-model="provider" required aria-describedby="provider-hint">
           <option value="">— Select provider —</option>
           {% for p in providers %}
           <option value="{{ p }}"
-            {% if selected_provider == p %}selected{% endif %}>{{ p }}</option>
+            {% if selected_provider == p %}selected{% endif %}
+            {% if p in unwritable %}disabled{% endif %}>{{ p }}{% if p in unwritable %} ({{ unwritable[p] }}){% endif %}</option>
           {% endfor %}
         </select>
+        <p class="text-sm text-muted" id="provider-hint">
+          Only <code>gcs</code> can be authored for now: Replicator writes to Google Cloud Storage
+          only. The other providers stay listed, disabled, so the vocabulary stays visible.
+        </p>
         {% if errors.provider %}
         <p class="alert alert--error">{{ errors.provider }}</p>
         {% endif %}

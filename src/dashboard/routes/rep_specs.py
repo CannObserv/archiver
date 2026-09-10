@@ -40,6 +40,22 @@ _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templ
 
 _PROVIDERS = ("gcs", "gdrive", "ia")
 
+# Providers the envelope schema names but Replicator cannot write yet. Its
+# replicate loop refuses them ``provider_disabled`` - no conditional-create
+# writer exists (CannObserv/replicator#29; ``KNOWN_PROVIDERS = ("gcs",)`` in its
+# ``src/worker/aliases.py``) - so a RepSpec authored against one would freeze on
+# assignment (#83) and then fail every occasion with a fact this service cannot
+# repair. The create form keeps the options visible but disabled, and the route
+# refuses them server-side so a direct POST cannot bypass the template (a
+# template-only gate is the #167 defect class). Lifting an entry here is the
+# whole change when a writer lands; the sub-schema question is #153. The API's
+# ``POST /rep-specs`` is deliberately untouched: the contract still accepts the
+# envelope's full enum.
+_UNWRITABLE_PROVIDERS: dict[str, str] = {
+    "gdrive": "Replicator has no Google Drive writer yet",
+    "ia": "Replicator has no Internet Archive writer yet",
+}
+
 
 async def _resolve_spec(spec_id: str, session: AsyncSession) -> RepSpec:
     """Fetch RepSpec by ULID string or raise 404."""
@@ -167,7 +183,13 @@ async def new_rep_spec_form(
     return _templates.TemplateResponse(
         request,
         "rep_specs/new.html",
-        {"user": user, "errors": {}, "document_raw": "", "providers": _PROVIDERS},
+        {
+            "user": user,
+            "errors": {},
+            "document_raw": "",
+            "providers": _PROVIDERS,
+            "unwritable": _UNWRITABLE_PROVIDERS,
+        },
     )
 
 
@@ -191,6 +213,7 @@ async def create_rep_spec_view(
                 "errors": errors,
                 "document_raw": document,
                 "providers": _PROVIDERS,
+                "unwritable": _UNWRITABLE_PROVIDERS,
                 "selected_provider": provider,
                 "name_value": name,
             },
@@ -198,6 +221,15 @@ async def create_rep_spec_view(
 
     if not provider:
         return _rerender({"provider": "Please select a provider."})
+    if provider in _UNWRITABLE_PROVIDERS:
+        return _rerender(
+            {
+                "provider": (
+                    f"Cannot author a {provider} specification yet: "
+                    f"{_UNWRITABLE_PROVIDERS[provider]}. Only gcs can be authored for now."
+                )
+            }
+        )
     if not name.strip():
         return _rerender({"name": "Name is required."})
 

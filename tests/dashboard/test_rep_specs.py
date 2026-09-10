@@ -1,9 +1,11 @@
 """Tests for /dashboard/rep-specs/ routes."""
 
 import json
+import re
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import func, select
 from ulid import ULID
 
 from src.core.models import (
@@ -960,3 +962,53 @@ async def test_rep_spec_replicate_refuses_without_a_revision(client, session):
 
     assert r.status_code == 200
     assert "not been captured yet" in read_flash(r)["showFlash"]["body"]
+
+
+# ---------------------------------------------------------------------------
+# Unwritable providers are disabled, not hidden (gdrive, ia)
+#
+# Replicator writes for gcs only (CannObserv/replicator#29): a spec authored
+# against the other two freezes on assignment (#83) and then fails every
+# occasion with a fact this service cannot repair. The enum stays visible so
+# the vocabulary does; the gate is server-side as well, because a
+# template-only gate is the #167 defect class.
+# ---------------------------------------------------------------------------
+
+
+def _option_tag(html: str, provider: str) -> str:
+    match = re.search(rf'<option value="{provider}"[^>]*>', html)
+    assert match is not None, f"no <option> for {provider}"
+    return match.group(0)
+
+
+@pytest.mark.asyncio
+async def test_new_form_lists_unwritable_providers_disabled(client):
+    r = await client.get(_NEW_URL, headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "disabled" not in _option_tag(r.text, "gcs")
+    for provider in ("gdrive", "ia"):
+        assert "disabled" in _option_tag(r.text, provider)
+    assert "writer" in r.text  # the reason is shown beside the option, not implied
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["gdrive", "ia"])
+async def test_create_refuses_an_unwritable_provider_server_side(client, session, provider):
+    """A direct POST cannot bypass the disabled option."""
+    r = await client.post(
+        _NEW_URL,
+        data={
+            "provider": provider,
+            "name": "Not Yet",
+            "document": json.dumps({**_GCS_DOC, "provider": provider}),
+        },
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 200
+    assert "writer" in r.text
+    assert "Not Yet" in r.text  # name round-trips into the re-rendered form
+    count = (await session.execute(select(func.count()).select_from(RepSpec))).scalar_one()
+    assert count == 0
