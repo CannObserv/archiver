@@ -352,9 +352,15 @@ def assert_distinct_destinations(rendered: Mapping[str, str]) -> None:
         raise DestinationCollisionError(destination, keys)
 
 
-def _bag_value(rep_fields: Mapping[str, object], namespace: str, key: str) -> str:
-    """Resolve one ``rep_fields`` entry into a path segment."""
-    namespace_bag = rep_fields.get(namespace)
+def _bag_value(bag: Mapping[str, object], namespace: str, key: str) -> str:
+    """Resolve one bag entry into a path segment.
+
+    ``bag`` is the **resolved** bag, not the InfoItem's stored one: the caller
+    has already run ``resolve_rep_fields`` over it, so a ``_slug`` key is
+    present here whether it was stored or derived. Naming it ``rep_fields``
+    erased that distinction one frame below the only place it is made.
+    """
+    namespace_bag = bag.get(namespace)
     if not isinstance(namespace_bag, Mapping):
         raise MissingFieldError(namespace, key)
     if key not in namespace_bag or namespace_bag[key] is None:
