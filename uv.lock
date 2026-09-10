@@ -58,7 +58,7 @@ wheels = [
 
 [[package]]
 name = "archiver"
-version = "4.16.6"
+version = "4.16.7"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -255,7 +255,6 @@ dependencies = [
     { name = "dateparser" },
     { name = "pydantic" },
 ]
-sdist = { path = "co_core-0.13.2.tar.gz" }
 wheels = [
     { path = "co_core-0.13.2-py3-none-any.whl" },
 ]
@@ -277,7 +276,6 @@ dependencies = [
     { name = "co-core" },
     { name = "httpx" },
 ]
-sdist = { path = "co_core_aio-0.13.2.tar.gz" }
 wheels = [
     { path = "co_core_aio-0.13.2-py3-none-any.whl" },
 ]
