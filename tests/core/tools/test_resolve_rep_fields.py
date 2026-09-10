@@ -1,5 +1,7 @@
 """Tests for resolve_rep_fields slug normalization tool."""
 
+from co_core.pure.util.text import normalize_string
+
 from src.core.tools.resolve_rep_fields import resolve_rep_fields, slugify
 
 # ---------------------------------------------------------------------------
@@ -22,6 +24,20 @@ class TestSlugify:
 
     def test_already_slug(self):
         assert slugify("ALREADY_SLUG") == "already_slug"
+
+    # archiver#206: one slugger cluster-wide. The storage framework's *Vars
+    # derive every _slug with co-core's normalize_string; a path segment built
+    # here has to match the sibling directories built there.
+
+    def test_dash_separated_title_keeps_the_dash(self):
+        assert slugify("WSLCB - Meeting Schedule") == "wslcb-meeting_schedule"
+
+    def test_diacritics_fold(self):
+        assert slugify("Café Résumé") == "cafe_resume"
+
+    def test_is_the_shared_normalizer(self):
+        for raw in ("WA Governor - Bill Actions", "Hello, World!", "Café", "x/y"):
+            assert slugify(raw) == normalize_string(raw)
 
 
 # ---------------------------------------------------------------------------

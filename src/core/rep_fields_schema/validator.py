@@ -7,6 +7,8 @@ from typing import TypedDict
 
 from jsonschema import Draft202012Validator
 
+from src.core.tools.resolve_rep_fields import resolve_rep_fields
+
 SCHEMA_PATH = Path(__file__).resolve().parent / "v1.json"
 
 
@@ -37,8 +39,15 @@ def validate_rep_fields_against_spec(
     bag: dict, required_fields: list[str]
 ) -> tuple[bool, list[ValidationError]]:
     """Run shape validation, then check that every '<ns>.<key>' in
-    required_fields resolves to a non-null value in bag."""
+    required_fields resolves to a non-null value in bag.
+
+    Presence is checked on the *resolved* bag (archiver#206): a required
+    ``org.title_slug`` is satisfied by a stored ``org.title``, because that is
+    how ``render_destination`` will read it. Shape validation still runs on the
+    bag as stored — the derived keys are strings and cannot fail it.
+    """
     ok, errors = validate_rep_fields(bag)
+    bag = resolve_rep_fields(bag) if isinstance(bag, dict) else bag
     for path in required_fields:
         ns, _, key = path.partition(".")
         if not ns or not key:
