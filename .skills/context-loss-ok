@@ -74,8 +74,9 @@ docs/BUS.md :: disproven :: Archiver's first consumer role, and one of exactly t
 #   Vocabulary - the 11-pair model<->table map: docs/SCHEMA.md § Entities lists
 #     every pair as **Model** (table). The never-rename rule and the InfoSpec
 #     prohibition stay.
-#   Bus monitoring - "broker-side is not this repo's" is Content-acquisition's
-#     "The broker is not operated from this repo (#193 D6)", in this same file.
+#   Bus monitoring - rewritten rule-first; "broker-side monitoring is
+#     CannObserv/broker's (#193 D6)" stays in the bullet (CR 5 restored it: the
+#     monitoring task is where that failure recurs).
 #   Infrastructure - "own VM" is Environment & Tooling's; the third node is the
 #     network-hop paragraph and docs/reference/tailscale.md.
 #   Content-acquisition - the deleted-mirror history: docs/ARCHITECTURE.md.
