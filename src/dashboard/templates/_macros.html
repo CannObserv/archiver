@@ -68,3 +68,19 @@
 </div>
 {%- endif -%}
 {%- endmacro %}
+
+{# One wording for a state both screens can be in (CR 16). The InfoItem hub and
+   the RepSpec detail render the same section from the same `live_poll`
+   decision, so they must describe "open, no longer watching" identically - two
+   copies drift, and the copy without the reasoning beside it drifts first.
+
+   Said at all because the alternatives are worse: a badge that looks settled
+   when it is not, or a forgotten tab asking every two seconds until the reaper
+   closes the row six hours later. Replicator has neither refused nor finished,
+   and a transient retry publishes no fact, so there is genuinely nothing to
+   show but this. #}
+{% macro replication_stalled_notice() -%}
+<p class="text-muted text-sm" role="status" style="margin-top:var(--space-2);">
+  A replication is still open. Live updates have stopped — reload to check again.
+</p>
+{%- endmacro %}

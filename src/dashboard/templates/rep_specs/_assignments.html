@@ -3,14 +3,17 @@
    and empty-state re-render in one HTMX swap (#80). Self-imports the macros.
    `public_url` is read-only here as it is on the InfoItem hub — #170 gave the
    column an automated writer, so the useful thing to show beside it is which
-   occasion wrote it (archiver#171). #}
-{% from "_macros.html" import open_button, replication_state %}
+   occasion wrote it (archiver#171).
+
+   Requires `spec`, `assignments`, `items_by_id`, `latest_commands`, `poll` and
+   `poll_interval_seconds` — all of them, from every render site (CR 13/14). #}
+{% from "_macros.html" import open_button, replication_state, replication_stalled_notice %}
 {#- Re-reads itself while a command is open (#212), exactly as the InfoItem
    hub's section does: issuance is synchronous, closure arrives on
    `content.artifacts` a bus round trip later, so the swap that starts a
    replication is always too early to show its outcome. -#}
 <div id="rep-spec-assignments" style="margin-top:var(--space-3);"
-     {% if poll is defined and poll.active %}hx-get="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments"
+     {% if poll.active %}hx-get="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments"
      hx-trigger="every {{ poll_interval_seconds }}s"
      hx-swap="outerHTML"{% endif %}>
   <h2 id="rep-spec-assignments-heading" tabindex="-1">Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
@@ -83,11 +86,7 @@
   <p class="text-muted">No active assignments.</p>
   {% endif %}
 
-  {% if poll is defined and poll.stalled %}
-  <p class="text-muted text-sm" role="status" style="margin-top:var(--space-2);">
-    A replication is still open. Live updates have stopped — reload to check again.
-  </p>
-  {% endif %}
+  {% if poll.stalled %}{{ replication_stalled_notice() }}{% endif %}
 
   {% if swapped %}
   {# After the deactivate swap, focus the section heading so keyboard users aren't

@@ -2,14 +2,19 @@
    returned by DELETE /dashboard/info-items/{id}/rep-spec-assignments/{aid} so a
    deactivate re-renders the table + empty-state in one swap and can move focus
    (#81). A row-level "Replicate now" still swaps the individual row. Requires
-   `item_id`, `irs_rows`, `rep_specs_by_id`, `latest_commands` in context. #}
+   `item_id`, `irs_rows`, `rep_specs_by_id`, `latest_commands`, `poll` and
+   `poll_interval_seconds` in context — all of them, from every render site.
+   `poll` was once read through `is defined`, and the one caller that omitted it
+   rendered a section that silently never polled: the defect #212 exists to fix,
+   reintroduced by the guard meant to be defensive (CR 13/14). #}
 {#- The section re-reads itself while a command is open (#212). Issuance is
    synchronous but closure arrives on `content.artifacts` a bus round trip
    later, so the swap that starts a replication is always too early to show its
    outcome. The attributes come off the same `latest_commands` the badges do, so
    the swap that lands a terminal state is the swap that stops the polling. -#}
+{% from "_macros.html" import replication_stalled_notice %}
 <div id="ii-rep-spec-assignments"
-     {% if poll is defined and poll.active %}hx-get="/dashboard/info-items/{{ item_id }}/rep-spec-assignments"
+     {% if poll.active %}hx-get="/dashboard/info-items/{{ item_id }}/rep-spec-assignments"
      hx-trigger="every {{ poll_interval_seconds }}s"
      hx-swap="outerHTML"{% endif %}>
   <h3 id="ii-rep-spec-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Replication Specs</h3>
@@ -39,15 +44,7 @@
   <p class="text-muted" style="margin-bottom:var(--space-3);">No active Replication Spec assignments.</p>
   {% endif %}
 
-  {% if poll is defined and poll.stalled %}
-  {# Open past the window: Replicator has neither refused nor finished, and a
-     transient retry publishes no fact. Saying so beats a badge that looks
-     settled or a tab that asks every two seconds until the reaper's six-hour
-     horizon closes the row. #}
-  <p class="text-muted text-sm" role="status" style="margin-top:var(--space-2);">
-    A replication is still open. Live updates have stopped — reload to check again.
-  </p>
-  {% endif %}
+  {% if poll.stalled %}{{ replication_stalled_notice() }}{% endif %}
 
   {% if swapped %}
   {# After the deactivate swap, focus the section heading so keyboard users aren't

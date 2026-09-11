@@ -1113,3 +1113,15 @@ async def test_the_twin_stops_polling_past_the_window_and_says_so(client, sessio
     assert r.status_code == 200
     assert "hx-trigger=" not in r.text
     assert "still open" in r.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_the_twin_poll_fragment_is_never_served_from_a_cache(client, session):
+    """CR 15, the twin's half."""
+    spec = await _spec_with_open_command(
+        session, name="Twin Cache", state="requested", issued_at=datetime.now(UTC)
+    )
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments", headers=_HEADERS)
+
+    assert r.headers["cache-control"] == "no-store"

@@ -24,6 +24,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from ulid import ULID
+
 from src.core.models import ReplicationCommand
 from src.core.services.replication_issuance import (
     STATE_REQUESTED,
@@ -58,7 +60,7 @@ class LivePoll:
 
 
 def live_poll(
-    latest_commands: Mapping[object, ReplicationCommand],
+    latest_commands: Mapping[ULID, ReplicationCommand],
     *,
     now: datetime | None = None,
 ) -> LivePoll:

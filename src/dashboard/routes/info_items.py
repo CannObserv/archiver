@@ -400,10 +400,9 @@ async def detail_info_item(
                 list(src.source_specs) if src.source_specs else []
             )
 
-    # Active rep_spec assignments + RepSpec rows
-    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
-        item.info_item_id, session
-    )
+    # Active rep_spec assignments + RepSpec rows, plus whether the section
+    # should keep re-reading itself (CR 12).
+    assignments_ctx = await _rep_spec_assignments_context(item.info_item_id, session)
 
     # Revision history (last 50). Sourced from source_revisions captured across
     # ALL of the item's InfoSource bindings — active primary plus previous
@@ -457,9 +456,7 @@ async def detail_info_item(
             "iis_rows": iis_rows,
             "sources_by_id": sources_by_id,
             "spec_summary_by_source_id": spec_summary_by_source_id,
-            "irs_rows": irs_rows,
-            "rep_specs_by_id": rep_specs_by_id,
-            "latest_commands": latest_commands,
+            **assignments_ctx,
             "revisions": revisions,
             "rev_sources_by_id": rev_sources_by_id,
             "now": datetime.now(UTC),
@@ -681,6 +678,29 @@ async def assign_rep_spec_route(
 
 # ---------------------------------------------------------------------------
 # DELETE /{item_id}/rep-spec-assignments/{aid}
+async def _rep_spec_assignments_context(item_id: ULID, session: AsyncSession) -> dict:
+    """The Replication Specs section's context, including whether to keep asking.
+
+    One builder for every render site - the detail page as well as the three
+    swaps (CR 12). Wired only to the swaps, the detail page rendered the section
+    without ``poll`` at all, so a reload while a command was in flight produced
+    an inert section: archiver#212's defect surviving on the most ordinary path
+    to this screen. The RepSpec twin routed all four of its sites from the
+    start, so the two screens disagreed.
+    """
+    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
+        item_id, session
+    )
+    return {
+        "item_id": item_id,
+        "irs_rows": irs_rows,
+        "rep_specs_by_id": rep_specs_by_id,
+        "latest_commands": latest_commands,
+        "poll": live_poll(latest_commands),
+        "poll_interval_seconds": POLL_INTERVAL_SECONDS,
+    }
+
+
 async def _render_rep_spec_assignments(
     request: Request,
     *,
@@ -704,23 +724,12 @@ async def _render_rep_spec_assignments(
     them a second time for the flash header would let the message describe a
     different read than the table beside it.
     """
-    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
-        item_id, session
-    )
+    context = await _rep_spec_assignments_context(item_id, session)
     return _templates.TemplateResponse(
         request,
         "info_items/_rep_spec_assignments.html",
-        {
-            "user": user,
-            "item_id": item_id,
-            "irs_rows": irs_rows,
-            "rep_specs_by_id": rep_specs_by_id,
-            "latest_commands": latest_commands,
-            "swapped": swapped,
-            "poll": live_poll(latest_commands),
-            "poll_interval_seconds": POLL_INTERVAL_SECONDS,
-        },
-    ), latest_commands
+        {"user": user, **context, "swapped": swapped},
+    ), context["latest_commands"]
 
 
 # ---------------------------------------------------------------------------
@@ -750,6 +759,11 @@ async def rep_spec_assignments_section(
     response, _ = await _render_rep_spec_assignments(
         request, user=user, item_id=item.info_item_id, session=session, swapped=False
     )
+    # A fragment fetched every two seconds is the one response here that must
+    # never come from a cache: a stale body would freeze the section on a state
+    # that reads as authoritative, which is the defect #212 exists to fix
+    # wearing a different hat (CR 15).
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
