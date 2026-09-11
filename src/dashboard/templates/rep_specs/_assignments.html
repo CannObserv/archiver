@@ -7,7 +7,7 @@
 
    Requires `spec`, `assignments`, `items_by_id`, `latest_commands`, `poll` and
    `poll_interval_seconds` — all of them, from every render site (CR 13/14). #}
-{% from "_macros.html" import open_button, replication_state %}
+{% from "_macros.html" import open_button, replication_state, replication_stalled_notice %}
 {#- Re-reads itself while a command is open (#212), exactly as the InfoItem
    hub's section does: issuance is synchronous, closure arrives on
    `content.artifacts` a bus round trip later, so the swap that starts a
@@ -86,11 +86,7 @@
   <p class="text-muted">No active assignments.</p>
   {% endif %}
 
-  {% if poll.stalled %}
-  <p class="text-muted text-sm" role="status" style="margin-top:var(--space-2);">
-    A replication is still open. Live updates have stopped — reload to check again.
-  </p>
-  {% endif %}
+  {% if poll.stalled %}{{ replication_stalled_notice() }}{% endif %}
 
   {% if swapped %}
   {# After the deactivate swap, focus the section heading so keyboard users aren't
