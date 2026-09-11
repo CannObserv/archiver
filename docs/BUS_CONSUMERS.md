@@ -3,8 +3,8 @@
 **The streams Archiver takes off the bus - `content.revisions`,
 `content.artifacts`, `info.watch-status` - and the naming contract its group
 consumers follow.** Split out of [BUS.md](BUS.md), which keeps the producing
-half: the outbox, the published streams, and the shared client every loop here
-connects through.
+half: the outbox, the published streams, and the shared client every consumer
+loop here connects through.
 
 ## Change-bus consumer - `content.revisions` (archiver#139)
 
@@ -104,6 +104,9 @@ The return leg of `content.replicate`, and what finally gives
 messages from it, so a stray process must not. Both outcomes share the stream by design: an issuer wants one
 group seeing success and failure, because "did this command close?" is one
 question.
+
+The MUST-, T- and R- numbers below are clauses of Replicator's issuer contract,
+which [BUS.md](BUS.md) § **`content.replicate`** introduces.
 
 `replication_complete` → `public_url` onto the assignment row and the command
 closed. `replication_failed` → `reason` / `terminal` / `attempts` / `detail`

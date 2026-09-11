@@ -120,8 +120,9 @@ docs/API.md :: contracts Archiver produces and consumes are in [BUS.md](BUS.md) 
 docs/API.md :: The deletion is announced as a tombstone on `info.registry` ([BUS.md](BUS.md))
 docs/ARCHITECTURE.md :: BUS.md, BUS_CONSUMERS.md, SCHEMA.md, DEPLOYMENT.md,
 docs/BUS_CONSUMERS.md :: consumers follow.** Split out of [BUS.md](BUS.md), which keeps the producing
+docs/BUS_CONSUMERS.md :: which [BUS.md](BUS.md) § **`content.replicate`** introduces.
 docs/DEPLOYMENT.md :: `ARCHIVER_OUTBOX_RETENTION_DAYS` — *optional*. Days a **published** `changes_outbox` row
 docs/HEALTH_ROW.md :: [BUS.md](BUS.md)'s; this file is how the dashboard reports them.
 docs/HEALTH_ROW.md :: [PAGES.md](PAGES.md) § **Home** stays the inventory line for its routes
 docs/SCHEMA.md :: table that still grows without bound. See [BUS.md](BUS.md).
-docs/CONVENTIONS.md :: controls. PAGES.md keeps the inventory line for those routes, so a behaviour
+docs/CONVENTIONS.md :: Step 3 controls. PAGES.md keeps the

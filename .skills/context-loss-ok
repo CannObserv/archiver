@@ -45,12 +45,17 @@ docs/UI.md :: retarget :: [UI.md](UI.md) § Failures are surfaced, not swallowed
 # - and PAGES.md's Home health-row block moved verbatim to docs/HEALTH_ROW.md.
 # Each `retarget` line below names what this change moved: the index entries
 # gain the two new docs, the provenance pointer names both bus docs, and BUS.md's
-# two in-file pointers now aim at the files that hold their targets.
+# two in-file pointers now aim at the files that hold their targets, and its
+# opening describes the producing half it keeps (fresh-eyes review finding).
 AGENTS.md :: retarget :: Central registry + authoring service for the Cannabis Observer information layer.
 AGENTS.md :: retarget :: - [docs/BUS.md](docs/BUS.md) - the outbox producer; the three streams published and the three consumed
 AGENTS.md :: retarget :: - The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest:
 docs/BUS.md :: retarget :: Surfaced twice: the dashboard badge (`/dashboard/health/outbox`, PAGES.md) and
 docs/BUS.md :: retarget :: own timer. Both are documented under the consumer section below.
+docs/BUS.md :: retarget :: Everything Archiver puts on or takes off the Redis bus: the outbox producer and
+docs/BUS.md :: retarget :: `content.replicate` - and the three it consumes - `content.revisions`,
+docs/BUS.md :: retarget :: `content.artifacts`, `info.watch-status`. HTTP routes and their SDK wrappers
+docs/BUS.md :: retarget :: live in [API.md](API.md); this file is the wire side of the same surface.
 
 # Same run, Phase 5 step 1, fixed in place before the move: "one of exactly two"
 # consumer roles predates archiver#170. `src/core/changes/artifacts_consumer.py`

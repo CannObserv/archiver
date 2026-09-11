@@ -100,9 +100,9 @@ applicable doc is a CR blocker.
   action-route contracts that moved there in archiver#176. PAGES.md keeps the
   inventory line for those routes, so a behaviour change updates both.
 - `docs/HEALTH_ROW.md` and `docs/REGISTER.md` - required when the change alters
-  a health-row badge's states, or the register wizard's summary bar or Step 3
-  controls. PAGES.md keeps the inventory line for those routes, so a behaviour
-  change updates both.
+  the health row (a badge added or removed, its states, or the lag-probe bound),
+  or the register wizard's summary bar or Step 3 controls. PAGES.md keeps the
+  inventory line for those routes, so a behaviour change updates both.
 - `docs/UI.md` - required when the change alters a *shared* mechanic rather
   than one screen: the URL map, the auth gate, or an HTMX swap pattern.
   `docs/SCREENS.md` for a detail-screen convention. A change that merely follows an existing

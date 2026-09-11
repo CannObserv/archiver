@@ -1,14 +1,12 @@
 # archiver - change-bus contracts
 
-Everything Archiver puts on or takes off the Redis bus: the outbox producer and
+Everything Archiver puts on the Redis bus: the outbox producer and
 the three streams it publishes - `info.changes`, `info.registry`,
-`content.replicate` - and the three it consumes - `content.revisions`,
-`content.artifacts`, `info.watch-status`. HTTP routes and their SDK wrappers
-live in [API.md](API.md); this file is the wire side of the same surface.
-
-The consuming half - those consumed streams, and the naming contract their group
-consumers follow - is [BUS_CONSUMERS.md](BUS_CONSUMERS.md). The shared client
-below serves both halves.
+`content.replicate`. What it takes off - `content.revisions`,
+`content.artifacts`, `info.watch-status` - and the naming contract its group
+consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
+below serves both. HTTP routes and their SDK wrappers live in [API.md](API.md);
+these two files are the wire side of the same surface.
 
 ## The shared client's connection policy (archiver#193)
 
