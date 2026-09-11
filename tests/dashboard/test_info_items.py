@@ -1461,3 +1461,20 @@ async def test_the_full_detail_page_does_not_poll_with_nothing_open(client, sess
 
     assert r.status_code == 200
     assert 'hx-trigger="every 2s"' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_poll_fragment_is_never_served_from_a_cache(client, session):
+    """CR 15. A fragment fetched every two seconds is the one response here that
+    must not come from a cache: a stale body would freeze the section on a state
+    that looks authoritative, which is indistinguishable from the bug #212 fixes.
+    GET is the cacheable method, so the header goes on the GET."""
+    item, _assignment, _revision = await _assigned(
+        session, name="Poll Cache", url="https://example.com/poll-cache"
+    )
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    assert r.headers["cache-control"] == "no-store"

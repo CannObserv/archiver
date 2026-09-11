@@ -759,6 +759,11 @@ async def rep_spec_assignments_section(
     response, _ = await _render_rep_spec_assignments(
         request, user=user, item_id=item.info_item_id, session=session, swapped=False
     )
+    # A fragment fetched every two seconds is the one response here that must
+    # never come from a cache: a stale body would freeze the section on a state
+    # that reads as authoritative, which is the defect #212 exists to fix
+    # wearing a different hat (CR 15).
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 

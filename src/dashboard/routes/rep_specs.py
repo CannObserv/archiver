@@ -469,7 +469,7 @@ async def assignments_section(
     the focus script belongs to a swap the operator caused, not to a tick.
     """
     spec = await _resolve_spec(spec_id, session)
-    return _templates.TemplateResponse(
+    response = _templates.TemplateResponse(
         request,
         "rep_specs/_assignments.html",
         {
@@ -479,6 +479,9 @@ async def assignments_section(
             "swapped": False,
         },
     )
+    # Polled every two seconds; a cached body would freeze the section (CR 15).
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ---------------------------------------------------------------------------
