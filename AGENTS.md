@@ -28,7 +28,7 @@ Reproducibility, the upgrade path, and the CI/deploy resolution: [docs/DEPLOYMEN
 
 ## Code Exploration Policy
 
-SocratiCode is configured here (`.socraticodecontextartifacts.json`), indexed per host. Its MCP tools are **deferred**: run the `ToolSearch` prefetch the SessionStart hook prints before exploring.
+SocratiCode is configured here (`.socraticodecontextartifacts.json`), indexed per host. Its MCP tools are **deferred**: before exploring, run the `ToolSearch` prefetch the SessionStart hook prints.
 
 **Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search.
 
