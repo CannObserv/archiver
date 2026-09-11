@@ -337,6 +337,37 @@ def test_ext_derives_from_the_source_media_type(media_type, ext):
     assert rendered == f"01JZZZZZZZZZZZZZZZZZZZZZZZ.{ext}"
 
 
+# Everything the delegation is checked over: the table's own entries, the forms
+# that exercise parameter-stripping and case-folding, the types that used to
+# resolve through ``mimetypes``, and the three that must answer ``bin``.
+_MEDIA_TYPES_CHECKED = (
+    "text/html",
+    "text/html; charset=utf-8",
+    "TEXT/HTML",
+    "application/xhtml+xml",
+    "application/pdf",
+    "application/json",
+    "application/xml",
+    "text/xml",
+    "text/plain",
+    "text/csv",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "application/octet-stream",
+    "audio/mpeg",
+    "video/mp4",
+    "image/webp",
+    "application/zip",
+    "image/svg+xml",
+    "application/msword",
+    "text/markdown",
+    "application/x-nobody-registered-this",
+    "",
+    None,
+)
+
+
 def test_extension_for_is_co_cores_table_and_not_a_second_copy():
     """``extension_for`` delegates and adds nothing (archiver#210).
 
@@ -352,28 +383,24 @@ def test_extension_for_is_co_cores_table_and_not_a_second_copy():
     too, so any local adjustment would be a key archiver writes and the
     framework cannot find.
     """
-    for media_type in (
-        "text/html",
-        "text/html; charset=utf-8",
-        "TEXT/HTML",
-        "application/pdf",
-        "application/json",
-        "text/plain",
-        "text/csv",
-        "image/png",
-        "application/octet-stream",
-        "audio/mpeg",
-        "video/mp4",
-        "image/webp",
-        "application/zip",
-        "image/svg+xml",
-        "application/msword",
-        "text/markdown",
-        "application/x-nobody-registered-this",
-        "",
-        None,
-    ):
+    for media_type in _MEDIA_TYPES_CHECKED:
         assert extension_for(media_type) == extension_for_media_type(media_type), media_type
+
+
+def test_every_extension_co_core_yields_is_a_usable_path_segment():
+    """The charset claim in ``extension_for``'s docstring, pinned (archiver#210 CR 2).
+
+    ``_EXTENSION_SAFE`` used to enforce this locally and was deleted with the
+    table, so the property is now a fact about another repository's data that
+    this one depends on. ``RenderOccasion.values`` re-checks every occasion
+    value, so an unsafe answer raises rather than writing a malformed key — but
+    it would raise at replication time, pointing at a table this repo does not
+    own. Checking it here names the owner before a command is ever issued.
+    """
+    for media_type in _MEDIA_TYPES_CHECKED:
+        ext = extension_for(media_type)
+        assert destination._SEGMENT_SAFE.match(ext), (media_type, ext)
+        assert ext not in destination._REFUSED_SEGMENTS, (media_type, ext)
 
 
 def test_no_local_extension_table_survives():
