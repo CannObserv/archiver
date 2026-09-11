@@ -6,7 +6,6 @@ the async alternative is a ``ReplicationFailedEvent`` on a service that cannot
 fix it.
 """
 
-import ast
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -29,7 +28,7 @@ from src.core.replication.destination import (
     render_destination,
 )
 from src.core.replication.errors import ReplicationRenderError
-from tests.core.replication.test_layering import _imported_modules
+from tests.core.replication._import_scan import assigned_names, imported_modules
 
 FINGERPRINT = "sha256:" + "ab" * 32
 
@@ -405,18 +404,6 @@ def test_every_extension_co_core_yields_is_a_usable_path_segment():
         assert ext not in destination._REFUSED_SEGMENTS, (media_type, ext)
 
 
-def _assigned_names(path: Path) -> set[str]:
-    """Every name this module binds by assignment, at any nesting depth."""
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names.add(node.target.id)
-    return names
-
-
 def test_no_local_extension_table_survives():
     """The delegation removed the table, the fallback and the ``mimetypes`` import.
 
@@ -433,8 +420,8 @@ def test_no_local_extension_table_survives():
     honest, so the detector is proven elsewhere rather than trusted here.
     """
     module = Path(destination.__file__)
-    assert "mimetypes" not in _imported_modules(module)
-    assert "_EXTENSIONS" not in _assigned_names(module)
+    assert "mimetypes" not in imported_modules(module)
+    assert "_EXTENSIONS" not in assigned_names(module)
     assert not hasattr(destination, "_EXTENSIONS")
 
 
@@ -447,7 +434,7 @@ def test_the_mimetypes_guard_fires_on_each_spelling(tmp_path):
     ):
         planted = tmp_path / "planted.py"
         planted.write_text(source)
-        assert "mimetypes" in _imported_modules(planted), source
+        assert "mimetypes" in imported_modules(planted), source
 
 
 # --- bag slugs derive at render time with the shared normalizer (archiver#206) ---
