@@ -27,12 +27,13 @@ and this keeps it from mattering if one exists anyway.
 
 from __future__ import annotations
 
-import mimetypes
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import unquote
+
+from co_core.pure.util.files import extension_for_media_type
 
 from src.core.rep_fields import resolve_rep_fields
 from src.core.replication.errors import ReplicationRenderError
@@ -60,49 +61,33 @@ _DRIVE_QUALIFIER = re.compile(r"\A[A-Za-z]:")
 
 # ``source_revision.ext`` (archiver#205): the extension the origin's media type
 # implies, so one RepSpec serves HTML pages and PDFs alike and the citable URL
-# reads as what it is. Spelled out for the types the registry actually sees
-# rather than left to ``mimetypes`` alone, whose answer for a given type can
-# differ between hosts (``text/plain`` has historically come back as ``.ksh``
-# on some tables). Anything unregistered — and ``application/octet-stream``,
-# which is what the issuer substitutes when the origin sent no header — is
-# ``bin``: an honest "bytes", never a guess.
-_EXTENSIONS: dict[str, str] = {
-    "text/html": "html",
-    "application/xhtml+xml": "html",
-    "application/pdf": "pdf",
-    "text/plain": "txt",
-    "text/csv": "csv",
-    "application/json": "json",
-    "application/xml": "xml",
-    "text/xml": "xml",
-    "image/png": "png",
-    "image/jpeg": "jpg",
-    "image/gif": "gif",
-    "application/octet-stream": "bin",
-}
-_FALLBACK_EXTENSION = "bin"
-_EXTENSION_SAFE = re.compile(r"\A[a-z0-9]+\Z")
+# reads as what it is.
+#
+# The table itself is co-core's (archiver#210). It used to be spelled out here,
+# with ``mimetypes`` consulted for anything it did not name — and that fallback
+# is precisely what split the key. The storage framework renders this same
+# placeholder through ``extension_for_media_type``, and co-core cannot call
+# ``mimetypes`` (import-linter forbids it there), so every type ``mimetypes``
+# knew and the table did not rendered one extension here and ``bin`` there.
+# ``image/webp`` was worse than split: it resolved only on a host whose mime
+# files happened to list it, making a permanent, citable key a property of the
+# VM that wrote it. One table cluster-wide is the same posture #206 took for the
+# slugger — a new extension is now one entry in co-core, not one per repo.
 
 
 def extension_for(media_type: str | None) -> str:
-    """The path extension for a media type — parameters stripped, lower-cased.
+    """The path extension for a media type — co-core's table, verbatim.
 
-    The explicit table wins; ``mimetypes`` is consulted for a registered type
-    the table does not name, and only an all-alphanumeric answer is accepted
-    (the rendered value is a path segment, and the same charset rule applies to
-    it as to every other occasion value). Everything else is ``bin``.
+    Delegates rather than wraps: ``extension_for_media_type`` already strips
+    parameters, lower-cases the essence, and answers ``bin`` for ``None``, the
+    empty string, ``application/octet-stream`` and anything unrecognised. A
+    local re-check of those cases would be a second implementation of the
+    agreement this indirection exists to guarantee.
+
+    Every value it yields is lower-case alphanumeric, so the occasion's
+    ``_SEGMENT_SAFE`` guard still holds over the result.
     """
-    if not media_type:
-        return _FALLBACK_EXTENSION
-    essence = media_type.split(";", 1)[0].strip().lower()
-    if essence in _EXTENSIONS:
-        return _EXTENSIONS[essence]
-    guessed = mimetypes.guess_extension(essence, strict=True)
-    if guessed:
-        candidate = guessed.lstrip(".").lower()
-        if _EXTENSION_SAFE.match(candidate):
-            return candidate
-    return _FALLBACK_EXTENSION
+    return extension_for_media_type(media_type)
 
 
 class DestinationRenderError(ReplicationRenderError):

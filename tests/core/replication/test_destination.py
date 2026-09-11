@@ -7,9 +7,12 @@ fix it.
 """
 
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
+from co_core.pure.util.files import extension_for_media_type
 
+from src.core.replication import destination
 from src.core.replication.destination import (
     DestinationCollisionError,
     DestinationRenderError,
@@ -19,6 +22,7 @@ from src.core.replication.destination import (
     RenderOccasion,
     UnsafeDestinationError,
     assert_distinct_destinations,
+    extension_for,
     find_collisions,
     probe_destination,
     render_destination,
@@ -313,6 +317,14 @@ def test_segments_render_in_utc_whatever_zone_the_row_carries():
         ("application/octet-stream", "bin"),
         ("application/x-nobody-registered-this", "bin"),
         (None, "bin"),
+        # Off the shared table (archiver#210). Each of these resolved through
+        # ``mimetypes`` before the delegation - ``mp3``, ``mp4``, ``webp`` - and
+        # ``image/webp`` resolved only on a host whose mime files list it. The
+        # key is permanent and citable, so it may depend on neither.
+        ("audio/mpeg", "bin"),
+        ("video/mp4", "bin"),
+        ("image/webp", "bin"),
+        ("text/markdown", "bin"),
     ],
 )
 def test_ext_derives_from_the_source_media_type(media_type, ext):
@@ -323,6 +335,53 @@ def test_ext_derives_from_the_source_media_type(media_type, ext):
         occasion=_occasion(source_media_type=media_type),
     )
     assert rendered == f"01JZZZZZZZZZZZZZZZZZZZZZZZ.{ext}"
+
+
+def test_extension_for_is_co_cores_table_and_not_a_second_copy():
+    """The cluster keeps one media-type table, as it keeps one slugger (archiver#210).
+
+    Asserting *agreement* rather than a list of expected values is the point: a
+    snapshot passes while the two tables drift apart entry by entry, which is
+    exactly the failure this issue was filed for. The storage framework renders
+    ``{source_revision.ext}`` from ``extension_for_media_type``, so anything this
+    function answers differently is a key archiver writes and the framework
+    cannot find.
+    """
+    for media_type in (
+        "text/html",
+        "text/html; charset=utf-8",
+        "TEXT/HTML",
+        "application/pdf",
+        "application/json",
+        "text/plain",
+        "text/csv",
+        "image/png",
+        "application/octet-stream",
+        "audio/mpeg",
+        "video/mp4",
+        "image/webp",
+        "application/zip",
+        "image/svg+xml",
+        "application/msword",
+        "text/markdown",
+        "application/x-nobody-registered-this",
+        "",
+        None,
+    ):
+        assert extension_for(media_type) == extension_for_media_type(media_type), media_type
+
+
+def test_no_local_extension_table_survives():
+    """The delegation removed the table, the fallback and the ``mimetypes`` import.
+
+    A structural assertion because the behavioural ones above cannot see a table
+    that is still present but shadowed - and a resurrected local table would
+    re-open the split silently, on whichever media types someone added to it.
+    """
+    source = Path(destination.__file__).read_text(encoding="utf-8")
+    assert "import mimetypes" not in source
+    assert "_EXTENSIONS" not in source
+    assert not hasattr(destination, "_EXTENSIONS")
 
 
 # --- bag slugs derive at render time with the shared normalizer (archiver#206) ---
