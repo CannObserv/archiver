@@ -9,7 +9,7 @@
    outcome. The attributes come off the same `latest_commands` the badges do, so
    the swap that lands a terminal state is the swap that stops the polling. -#}
 <div id="ii-rep-spec-assignments"
-     {% if poll is defined and poll.active %}hx-get="/dashboard/info-items/{{ item_id }}/rep-spec-assignments"
+     {% if poll.active %}hx-get="/dashboard/info-items/{{ item_id }}/rep-spec-assignments"
      hx-trigger="every {{ poll_interval_seconds }}s"
      hx-swap="outerHTML"{% endif %}>
   <h3 id="ii-rep-spec-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Replication Specs</h3>
@@ -39,7 +39,7 @@
   <p class="text-muted" style="margin-bottom:var(--space-3);">No active Replication Spec assignments.</p>
   {% endif %}
 
-  {% if poll is defined and poll.stalled %}
+  {% if poll.stalled %}
   {# Open past the window: Replicator has neither refused nor finished, and a
      transient retry publishes no fact. Saying so beats a badge that looks
      settled or a tab that asks every two seconds until the reaper's six-hour
