@@ -1290,3 +1290,129 @@ async def test_suggest_rep_fields_returns_domain_keys(client, session):
     # Both keys from the peer item should appear in the JSON data island
     assert "canonical_url" in r.text
     assert "headline" in r.text
+
+
+# ---------------------------------------------------------------------------
+# GET /{item_id}/rep-spec-assignments  (archiver#212)
+# ---------------------------------------------------------------------------
+#
+# Issuance and closure are separated by a bus round trip: the POST swap renders
+# at ~50ms and the writeback lands the terminal state ~800ms later, so the
+# section the operator was left looking at said `requested` until they refreshed
+# by hand. This is the second render.
+
+
+@pytest.mark.asyncio
+async def test_the_assignments_section_is_served_as_a_standalone_fragment(client, session):
+    item, _assignment, _revision = await _assigned(
+        session, name="Poll Fragment", url="https://example.com/poll-fragment"
+    )
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    assert r.status_code == 200
+    assert 'id="ii-rep-spec-assignments"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_poll_render_never_moves_focus(client, session):
+    """``swapped`` is what runs the focus script. A poll firing every two
+    seconds would drag a keyboard user back to the heading on each tick, which
+    is worse than the stale value it fixes (archiver#171 CR #37)."""
+    item, _assignment, _revision = await _assigned(
+        session, name="Poll Focus", url="https://example.com/poll-focus"
+    )
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    # Asserted before the absence check below, which a 404 would satisfy too.
+    assert r.status_code == 200
+    assert 'getElementById("ii-rep-spec-heading")' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_section_polls_while_a_command_is_open(client, session):
+    item, assignment, revision = await _assigned(
+        session, name="Poll Open", url="https://example.com/poll-open"
+    )
+    session.add(_command_for(assignment, revision, state="requested", issued_at=datetime.now(UTC)))
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    assert f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments" in r.text
+    assert 'hx-trigger="every 2s"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_swap_that_lands_a_terminal_state_is_the_one_that_stops_polling(client, session):
+    """Self-terminating by construction: the attributes are rendered from the
+    same rows the badge is, so no tick has to decide to be the last one."""
+    item, assignment, revision = await _assigned(
+        session, name="Poll Done", url="https://example.com/poll-done"
+    )
+    session.add(
+        _command_for(
+            assignment,
+            revision,
+            state="complete",
+            issued_at=datetime.now(UTC),
+            closed_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    assert "hx-trigger=" not in r.text
+    assert "complete" in r.text
+
+
+@pytest.mark.asyncio
+async def test_polling_stops_when_an_open_command_outruns_the_window(client, session):
+    """The reaper's horizon is six hours; polling to it would leave an idle tab
+    asking every two seconds all afternoon."""
+    item, assignment, revision = await _assigned(
+        session, name="Poll Stalled", url="https://example.com/poll-stalled"
+    )
+    session.add(
+        _command_for(
+            assignment,
+            revision,
+            state="requested",
+            issued_at=datetime(2026, 5, 3, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    assert "hx-trigger=" not in r.text
+    assert "still open" in r.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_hands_back_a_section_that_polls(client, session):
+    """The POST's own render starts the wait, so the operator never has to act
+    twice to see the outcome."""
+    item, assignment, _revision = await _assigned(
+        session, name="Poll After Post", url="https://example.com/poll-after-post"
+    )
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert 'hx-trigger="every 2s"' in r.text
