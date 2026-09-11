@@ -10,7 +10,11 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from co_core.pure.util.files import extension_for_media_type
+from co_core.pure.util.files import (
+    _FALLBACK_MEDIA_EXTENSION,
+    _MEDIA_TYPE_EXTENSIONS,
+    extension_for_media_type,
+)
 
 from src.core.replication import destination
 from src.core.replication.destination import (
@@ -388,20 +392,39 @@ def test_extension_for_is_co_cores_table_and_not_a_second_copy():
         assert extension_for(media_type) == extension_for_media_type(media_type), media_type
 
 
-def test_every_extension_co_core_yields_is_a_usable_path_segment():
-    """The charset claim in ``extension_for``'s docstring, pinned (archiver#210 CR 2).
+def _assert_usable_segment(ext: str, context: object) -> None:
+    assert destination._SEGMENT_SAFE.match(ext), (context, ext)
+    assert ext not in destination._REFUSED_SEGMENTS, (context, ext)
+
+
+def test_every_entry_in_co_cores_table_is_a_usable_path_segment():
+    """The charset claim in ``extension_for``'s docstring, pinned at its source (CR 8).
 
     ``_EXTENSION_SAFE`` used to enforce this locally and was deleted with the
     table, so the property is now a fact about another repository's data that
-    this one depends on. ``RenderOccasion.values`` re-checks every occasion
-    value, so an unsafe answer raises rather than writing a malformed key — but
-    it would raise at replication time, pointing at a table this repo does not
-    own. Checking it here names the owner before a command is ever issued.
+    this one depends on. Iterating the table itself rather than a list of media
+    types is the difference between pinning it and sampling it: the sampled form
+    covered 24 inputs and would have said nothing about a thirteenth entry added
+    upstream — the same overclaim CR 2 was raised to remove, one layer up.
+
+    Reads a private of co-core's deliberately. If it is ever renamed this fails
+    at collection, loudly, which is the right outcome: the alternative is a
+    guard that quietly stops guarding.
+    """
+    for media_type, ext in _MEDIA_TYPE_EXTENSIONS.items():
+        _assert_usable_segment(ext, media_type)
+    _assert_usable_segment(_FALLBACK_MEDIA_EXTENSION, "fallback")
+
+
+def test_every_extension_co_core_yields_is_a_usable_path_segment():
+    """The same property through the public surface, for the inputs we render.
+
+    Kept beside the table-wide check so the guarantee survives the private above
+    disappearing, and because these exercise what the table alone cannot:
+    parameter-stripping, case-folding, ``None`` and the unregistered fallback.
     """
     for media_type in _MEDIA_TYPES_CHECKED:
-        ext = extension_for(media_type)
-        assert destination._SEGMENT_SAFE.match(ext), (media_type, ext)
-        assert ext not in destination._REFUSED_SEGMENTS, (media_type, ext)
+        _assert_usable_segment(extension_for(media_type), media_type)
 
 
 def test_no_local_extension_table_survives():
