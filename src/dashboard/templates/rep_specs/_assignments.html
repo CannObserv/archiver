@@ -5,7 +5,14 @@
    column an automated writer, so the useful thing to show beside it is which
    occasion wrote it (archiver#171). #}
 {% from "_macros.html" import open_button, replication_state %}
-<div id="rep-spec-assignments" style="margin-top:var(--space-3);">
+{#- Re-reads itself while a command is open (#212), exactly as the InfoItem
+   hub's section does: issuance is synchronous, closure arrives on
+   `content.artifacts` a bus round trip later, so the swap that starts a
+   replication is always too early to show its outcome. -#}
+<div id="rep-spec-assignments" style="margin-top:var(--space-3);"
+     {% if poll is defined and poll.active %}hx-get="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments"
+     hx-trigger="every {{ poll_interval_seconds }}s"
+     hx-swap="outerHTML"{% endif %}>
   <h2 id="rep-spec-assignments-heading" tabindex="-1">Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
   {% if assignments %}
   <div class="table-scroll" tabindex="0" role="region" aria-label="Active assignments">
@@ -74,6 +81,12 @@
   </div>
   {% else %}
   <p class="text-muted">No active assignments.</p>
+  {% endif %}
+
+  {% if poll is defined and poll.stalled %}
+  <p class="text-muted text-sm" role="status" style="margin-top:var(--space-2);">
+    A replication is still open. Live updates have stopped — reload to check again.
+  </p>
   {% endif %}
 
   {% if swapped %}

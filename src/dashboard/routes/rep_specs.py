@@ -32,7 +32,11 @@ from src.core.tools.update_rep_spec import (
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
-from src.dashboard.replication_actions import outcome_flash_header
+from src.dashboard.replication_actions import (
+    POLL_INTERVAL_SECONDS,
+    live_poll,
+    outcome_flash_header,
+)
 
 router = APIRouter(prefix="/dashboard/rep-specs")
 
@@ -101,6 +105,25 @@ async def _load_active_assignments(
         items_by_id = {i.info_item_id: i for i in item_rows}
     latest_commands = await latest_commands_by_assignment(session, [a.id for a in assignment_rows])
     return assignment_rows, items_by_id, latest_commands
+
+
+async def _assignments_context(spec: RepSpec, session: AsyncSession) -> dict:
+    """The assignments section's context, including whether it should keep asking.
+
+    One builder for all four render sites - the detail page, its 422 re-render,
+    the deactivate swap and the Replicate now swap (archiver#212). The polling
+    attributes derive from the same ``latest_commands`` the badges do, so a
+    section can never show a terminal badge while still asking for updates, and
+    the full page starts watching an already-open command on load.
+    """
+    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
+    return {
+        "assignments": assignment_rows,
+        "items_by_id": items_by_id,
+        "latest_commands": latest_commands,
+        "poll": live_poll(latest_commands),
+        "poll_interval_seconds": POLL_INTERVAL_SECONDS,
+    }
 
 
 async def _document_card_context(
@@ -263,7 +286,7 @@ async def detail_rep_spec(
 ) -> HTMLResponse:
     """Detail: provider, name, document (editable while draft), active assignments."""
     spec = await _resolve_spec(spec_id, session)
-    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
+    assignments_ctx = await _assignments_context(spec, session)
 
     return _templates.TemplateResponse(
         request,
@@ -271,9 +294,7 @@ async def detail_rep_spec(
         {
             "user": user,
             "spec": spec,
-            "assignments": assignment_rows,
-            "items_by_id": items_by_id,
-            "latest_commands": latest_commands,
+            **assignments_ctx,
             **await _document_card_context(spec, session),
         },
     )
@@ -320,17 +341,13 @@ async def update_rep_spec_document_view(
         if is_htmx:
             # 200 so htmx swaps the card; the inline error stays visible.
             return _templates.TemplateResponse(request, "rep_specs/_document_card.html", ctx)
-        assignment_rows, items_by_id, latest_commands = await _load_active_assignments(
-            spec, session
-        )
+        assignments_ctx = await _assignments_context(spec, session)
         return _templates.TemplateResponse(
             request,
             "rep_specs/detail.html",
             {
                 "user": user,
-                "assignments": assignment_rows,
-                "items_by_id": items_by_id,
-                "latest_commands": latest_commands,
+                **assignments_ctx,
                 **ctx,
             },
             status_code=422,
@@ -417,23 +434,51 @@ async def replicate_assignment_now(
     else:
         await session.commit()
 
-    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
+    assignments_ctx = await _assignments_context(spec, session)
     response = _templates.TemplateResponse(
         request,
         "rep_specs/_assignments.html",
         {
             "user": user,
             "spec": spec,
-            "assignments": assignment_rows,
-            "items_by_id": items_by_id,
-            "latest_commands": latest_commands,
+            **assignments_ctx,
             "swapped": True,
         },
     )
     response.headers["HX-Trigger"] = outcome_flash_header(
-        refusal=refusal, issued=issued, latest=latest_commands.get(assignment.id)
+        refusal=refusal, issued=issued, latest=assignments_ctx["latest_commands"].get(assignment.id)
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# GET /{spec_id}/assignments  (archiver#212)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{spec_id}/assignments", response_class=HTMLResponse)
+async def assignments_section(
+    spec_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX partial: this spec's Active Assignments, re-read.
+
+    The InfoItem hub's twin. ``swapped=False`` for the same reason it is there:
+    the focus script belongs to a swap the operator caused, not to a tick.
+    """
+    spec = await _resolve_spec(spec_id, session)
+    return _templates.TemplateResponse(
+        request,
+        "rep_specs/_assignments.html",
+        {
+            "user": user,
+            "spec": spec,
+            **await _assignments_context(spec, session),
+            "swapped": False,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -472,16 +517,14 @@ async def deactivate_assignment(
         await session.flush()
         await session.commit()
 
-    assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
+    assignments_ctx = await _assignments_context(spec, session)
     return _templates.TemplateResponse(
         request,
         "rep_specs/_assignments.html",
         {
             "user": user,
             "spec": spec,
-            "assignments": assignment_rows,
-            "items_by_id": items_by_id,
-            "latest_commands": latest_commands,
+            **assignments_ctx,
             "swapped": True,
         },
     )

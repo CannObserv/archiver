@@ -1025,7 +1025,8 @@ async def test_create_refuses_an_unwritable_provider_server_side(client, session
 async def _spec_with_open_command(session, *, name: str, state: str, issued_at: datetime):
     spec = _make_rep_spec(name)
     item = InfoItem(name=f"{name} Item")
-    source = InfoSource(url=f"https://example.com/{name.lower().replace(' ', '-')}")
+    slug = name.lower().replace(" ", "-")
+    source = InfoSource(url=f"https://example.com/{slug}", source_specs=[])
     session.add_all([spec, item, source])
     await session.flush()
     session.add(
@@ -1047,7 +1048,7 @@ async def _spec_with_open_command(session, *, name: str, state: str, issued_at: 
     await session.flush()
     session.add(
         ReplicationCommand(
-            command_id=f"cmd-{name.lower().replace(' ', '-')}",
+            command_id=f"cmd-{slug}",
             info_item_rep_spec_id=assignment.id,
             source_revision_id=revision.source_revision_id,
             info_source_id=source.info_source_id,
