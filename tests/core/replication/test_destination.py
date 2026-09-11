@@ -6,6 +6,7 @@ the async alternative is a ``ReplicationFailedEvent`` on a service that cannot
 fix it.
 """
 
+import ast
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from src.core.replication.destination import (
     render_destination,
 )
 from src.core.replication.errors import ReplicationRenderError
+from tests.core.replication.test_layering import _imported_modules
 
 FINGERPRINT = "sha256:" + "ab" * 32
 
@@ -403,17 +405,49 @@ def test_every_extension_co_core_yields_is_a_usable_path_segment():
         assert ext not in destination._REFUSED_SEGMENTS, (media_type, ext)
 
 
+def _assigned_names(path: Path) -> set[str]:
+    """Every name this module binds by assignment, at any nesting depth."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
 def test_no_local_extension_table_survives():
     """The delegation removed the table, the fallback and the ``mimetypes`` import.
 
     A structural assertion because the behavioural ones above cannot see a table
     that is still present but shadowed - and a resurrected local table would
     re-open the split silently, on whichever media types someone added to it.
+
+    Parsed rather than grepped (CR 3). ``"import mimetypes" not in source``
+    read past ``from mimetypes import guess_extension`` and
+    ``import mimetypes as mt`` — the two spellings most likely to appear if the
+    fallback comes back — and tripped on any prose containing the phrase, which
+    this module's own comment block already runs close to. ``_imported_modules``
+    is the layering guard's scanner, which its own planted-import tests keep
+    honest, so the detector is proven elsewhere rather than trusted here.
     """
-    source = Path(destination.__file__).read_text(encoding="utf-8")
-    assert "import mimetypes" not in source
-    assert "_EXTENSIONS" not in source
+    module = Path(destination.__file__)
+    assert "mimetypes" not in _imported_modules(module)
+    assert "_EXTENSIONS" not in _assigned_names(module)
     assert not hasattr(destination, "_EXTENSIONS")
+
+
+def test_the_mimetypes_guard_fires_on_each_spelling(tmp_path):
+    """The three forms the substring check could not all see."""
+    for source in (
+        "import mimetypes\n",
+        "import mimetypes as mt\n",
+        "from mimetypes import guess_extension\n",
+    ):
+        planted = tmp_path / "planted.py"
+        planted.write_text(source)
+        assert "mimetypes" in _imported_modules(planted), source
 
 
 # --- bag slugs derive at render time with the shared normalizer (archiver#206) ---
