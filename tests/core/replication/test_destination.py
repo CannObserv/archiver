@@ -338,14 +338,19 @@ def test_ext_derives_from_the_source_media_type(media_type, ext):
 
 
 def test_extension_for_is_co_cores_table_and_not_a_second_copy():
-    """The cluster keeps one media-type table, as it keeps one slugger (archiver#210).
+    """``extension_for`` delegates and adds nothing (archiver#210).
 
-    Asserting *agreement* rather than a list of expected values is the point: a
-    snapshot passes while the two tables drift apart entry by entry, which is
-    exactly the failure this issue was filed for. The storage framework renders
-    ``{source_revision.ext}`` from ``extension_for_media_type``, so anything this
-    function answers differently is a key archiver writes and the framework
-    cannot find.
+    Not a cross-table agreement check: after the delegation there is one table,
+    so the equality below holds by construction and can only break if a local
+    branch, override or normalisation step is reintroduced ahead of the call.
+    That is the regression this guards, and it is the whole of it — the drift
+    the issue was filed about is prevented by there being nothing left here to
+    drift, not by this assertion.
+
+    The cluster keeps one media-type table as it keeps one slugger: the storage
+    framework renders ``{source_revision.ext}`` from ``extension_for_media_type``
+    too, so any local adjustment would be a key archiver writes and the
+    framework cannot find.
     """
     for media_type in (
         "text/html",
