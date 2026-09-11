@@ -1372,6 +1372,7 @@ async def test_the_swap_that_lands_a_terminal_state_is_the_one_that_stops_pollin
         f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
     )
 
+    assert r.status_code == 200
     assert "hx-trigger=" not in r.text
     assert "complete" in r.text
 
@@ -1397,6 +1398,7 @@ async def test_polling_stops_when_an_open_command_outruns_the_window(client, ses
         f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
     )
 
+    assert r.status_code == 200
     assert "hx-trigger=" not in r.text
     assert "still open" in r.text.lower()
 

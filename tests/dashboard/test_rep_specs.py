@@ -1012,3 +1012,103 @@ async def test_create_refuses_an_unwritable_provider_server_side(client, session
     assert "Not Yet" in r.text  # name round-trips into the re-rendered form
     count = (await session.execute(select(func.count()).select_from(RepSpec))).scalar_one()
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# GET /{spec_id}/assignments  (archiver#212)
+# ---------------------------------------------------------------------------
+#
+# The InfoItem hub's twin. Same gap, same fix: the POST swap renders before the
+# writeback closes the command, so the section showed `requested` until reload.
+
+
+async def _spec_with_open_command(session, *, name: str, state: str, issued_at: datetime):
+    spec = _make_rep_spec(name)
+    item = InfoItem(name=f"{name} Item")
+    source = InfoSource(url=f"https://example.com/{name.lower().replace(' ', '-')}")
+    session.add_all([spec, item, source])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    assignment = InfoItemRepSpec(
+        info_item_id=item.info_item_id,
+        rep_spec_id=spec.rep_spec_id,
+        activated_at=datetime(2026, 4, 1, tzinfo=UTC),
+    )
+    revision = SourceRevision(
+        info_source_id=source.info_source_id,
+        content_fingerprint="sha256:" + "c" * 64,
+        captured_at=datetime(2026, 4, 2, tzinfo=UTC),
+        content_cache_uri="file:///blobs/c.bin",
+        source_media_type="text/html",
+    )
+    session.add_all([assignment, revision])
+    await session.flush()
+    session.add(
+        ReplicationCommand(
+            command_id=f"cmd-{name.lower().replace(' ', '-')}",
+            info_item_rep_spec_id=assignment.id,
+            source_revision_id=revision.source_revision_id,
+            info_source_id=source.info_source_id,
+            provider="gcs",
+            credentials_alias="default",
+            media_type="text/html",
+            state=state,
+            issued_at=issued_at,
+        )
+    )
+    await session.flush()
+    return spec
+
+
+@pytest.mark.asyncio
+async def test_the_twin_section_is_served_as_a_standalone_fragment(client, session):
+    spec = await _spec_with_open_command(
+        session, name="Twin Fragment", state="requested", issued_at=datetime.now(UTC)
+    )
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert 'id="rep-spec-assignments"' in r.text
+    # A poll must not drag focus to the heading every two seconds.
+    assert 'getElementById("rep-spec-assignments-heading")' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_twin_polls_while_a_command_is_open(client, session):
+    spec = await _spec_with_open_command(
+        session, name="Twin Open", state="requested", issued_at=datetime.now(UTC)
+    )
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments", headers=_HEADERS)
+
+    assert f'hx-get="/dashboard/rep-specs/{spec.rep_spec_id}/assignments"' in r.text
+    assert 'hx-trigger="every 2s"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_twin_stops_polling_once_the_command_is_terminal(client, session):
+    spec = await _spec_with_open_command(
+        session, name="Twin Done", state="complete", issued_at=datetime.now(UTC)
+    )
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments", headers=_HEADERS)
+
+    # Before the absence check, which a 404 would satisfy too.
+    assert r.status_code == 200
+    assert "hx-trigger=" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_twin_stops_polling_past_the_window_and_says_so(client, session):
+    spec = await _spec_with_open_command(
+        session, name="Twin Stalled", state="requested", issued_at=datetime(2026, 4, 3, tzinfo=UTC)
+    )
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "hx-trigger=" not in r.text
+    assert "still open" in r.text.lower()
