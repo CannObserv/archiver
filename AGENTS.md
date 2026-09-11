@@ -259,4 +259,4 @@ hold a submodule - use `.skills/skills-pin`. Each hook and its logs:
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald contract, error envelope, living-docs rule, `PLC0415` scope
 - [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, overrides, trigger table, SessionStart hook mechanics
 - [docs/reference/tailscale.md](docs/reference/tailscale.md) - this node on the tailnet: the ACL, the bind decision, the two-names-one-host trap
-- The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest: [docs/PAGES.md](docs/PAGES.md), [docs/SCREENS.md](docs/SCREENS.md), [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md), [docs/COMPONENTS.md](docs/COMPONENTS.md), [docs/STYLE.md](docs/STYLE.md)
+- The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest: [docs/PAGES.md](docs/PAGES.md), [docs/SCREENS.md](docs/SCREENS.md), [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md), [docs/REGISTER.md](docs/REGISTER.md), [docs/COMPONENTS.md](docs/COMPONENTS.md), [docs/STYLE.md](docs/STYLE.md)

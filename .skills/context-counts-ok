@@ -15,8 +15,10 @@ AGENTS.md :: enumerated :: All three scripts are symlinks
 # failure took down is a historical fact, fixed by the event it describes.
 AGENTS.md :: stable :: the MagicDNS failure that took down three services
 
-# Same run. This line was 378 chars of accreted per-doc clauses; it is now five
-# links and one clause naming UI.md as the index to the other four. Over the
-# bound on link syntax alone - splitting it into five index entries would cost
-# more tokens than it saves and bury the grouping that makes it readable.
+# Same run. This line was 378 chars of accreted per-doc clauses; it is now one
+# link per dashboard doc and one clause naming UI.md as the index to the rest.
+# Over the bound on link syntax alone - splitting it into an index entry per doc
+# would cost more tokens than it saves and bury the grouping that makes it
+# readable. archiver#213 added REGISTER.md to the list rather than a line of its
+# own: a routing probe reached it 22/24 there, against 0/24 through PAGES.md.
 AGENTS.md :: pointer :: The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics
