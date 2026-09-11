@@ -47,6 +47,8 @@ Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
    - *Rep Fields* - `x-data="repFieldsEditor()"` wrapper; HTMX-loaded `sortableChips` suggestions (`hx-trigger="load"`); `<textarea name="rep_fields">` with `PATCH /dashboard/info-items/{id}/rep-fields` inline save; flash target `#rep-fields-flash`.
    - *Replication Specs* - `info_items/_rep_spec_assignments.html` (wrapper `#ii-rep-spec-assignments`, heading `#ii-rep-spec-heading`): `data-table` of active `info_item_rep_specs` assignments plus an assign form (`filter-card`, `rep_spec_id` field). Rows (`_rep_spec_row.html`) carry six columns - Spec, Provider, Activated, **Replication**, Public URL, Actions. **Both** row actions - deactivate and **Replicate now** (confirm- and `hx-disabled-elt`-guarded) - re-render the whole section (table + empty state) and focus the heading, because each destroys the button that was clicked.
 
+     **The section re-reads itself while a command is open** (archiver#212). A replication is issued synchronously but *closed* by the `content.artifacts` writeback a bus round trip later - about 800ms in the observed runs - so the swap the POST returns is necessarily too early to show the outcome, and before this the operator had to reload the page to see `complete` or a refusal. `GET /dashboard/info-items/{id}/rep-spec-assignments` returns the same partial, and the wrapper carries `hx-get` + `hx-trigger="every 2s"` + `hx-swap="outerHTML"` **only while some latest command is `requested`**. Because those attributes render from the same `latest_commands` the badges do, the swap that lands a terminal state is the swap that stops the polling - no tick decides to be the last one. Bounded at two minutes (`POLL_WINDOW`): `requested` is not bounded by the round trip, the reaper closes an unanswered command after six hours, and a forgotten tab must not ask every two seconds until then. Past the window the section renders a `role="status"` line saying a replication is still open and stops. The poll renders with `swapped=False` - the focus script belongs to a swap the operator caused, and firing it every two seconds would drag a keyboard user back to the heading repeatedly.
+
      **Replication** renders the `replication_state` macro over the latest `replication_commands` row for that assignment: the state badge, the producer's `reason` for a failure or Archiver's local one for a skip (`detail` on the `title`), the `command_id`, and when it closed. Skips are shown for the reason they are persisted at all - a refusal that lives only in a log line renders as "not replicated yet" forever, indistinguishable from one still in flight.
 
      `public_url` is **read-only** (archiver#171). #170 gave the column an automated writer, so the inline edit was a field whose value the next occasion silently clobbered; the provenance beside it is what the author actually needed.
@@ -59,6 +61,7 @@ Partial templates under `info_items/`:
 
 | Template | Swap target (`outerHTML`) | States |
 |---|---|---|
+| `_rep_spec_assignments.html` | `#ii-rep-spec-assignments` | idle / polling (`poll.active`) / stalled (`poll.stalled`) |
 | `_rep_spec_row.html` | - (included only; both its actions swap `#ii-rep-spec-assignments`) | via `replication_state`: none, `requested`, `complete`, `failed`, `abandoned`, `skipped` |
 | `_swap_primary.html` | `#swap-panel` | - |
 | `_watcher_status.html` | `#watcher-status-strip` | `not_watching`, `no_status`, `degraded`, `watching` |
@@ -67,7 +70,11 @@ Partial templates under `info_items/`:
 
 Each root element carries its own `id`, so it survives the swap that replaces it;
 `_watcher_section.html`'s root additionally carries `hx-trigger="watcherUpdated
-from:body"` for the event-driven auto-refresh. Both Watcher partials take the
+from:body"` for the event-driven auto-refresh, and
+`_rep_spec_assignments.html`'s carries a self-replacing `hx-get` while a
+replication command is open (archiver#212 - polled rather than event-driven
+because the fact arrives on the bus in the server process, which holds no
+connection to the browser). Both Watcher partials take the
 context keys `state`, `item_id`, `watch` (the `build_watch_context` dict -
 health, ages, cadence, next-due, drift), `has_active_source`, and
 `error_message` (degraded only), and both render the badges and toggle
