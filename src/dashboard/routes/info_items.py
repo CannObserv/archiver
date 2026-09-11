@@ -68,7 +68,11 @@ from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
-from src.dashboard.replication_actions import outcome_flash_header
+from src.dashboard.replication_actions import (
+    POLL_INTERVAL_SECONDS,
+    live_poll,
+    outcome_flash_header,
+)
 from src.dashboard.watch_panel import build_watch_context
 
 router = APIRouter(prefix="/dashboard/info-items")
@@ -677,6 +681,78 @@ async def assign_rep_spec_route(
 
 # ---------------------------------------------------------------------------
 # DELETE /{item_id}/rep-spec-assignments/{aid}
+async def _render_rep_spec_assignments(
+    request: Request,
+    *,
+    user,
+    item_id: ULID,
+    session: AsyncSession,
+    swapped: bool,
+) -> tuple[HTMLResponse, dict[ULID, ReplicationCommand]]:
+    """Render the assignments section from the rows as they stand right now.
+
+    One renderer for all three callers - the deactivate swap, the Replicate now
+    swap and the poll - because the polling attributes are derived from the same
+    ``latest_commands`` the badges are (archiver#212). Rendered anywhere else,
+    a section could show a terminal badge while still asking for updates, or
+    stop asking while a command was open.
+
+    ``swapped`` stays the caller's to decide: it runs the focus script, which
+    belongs to a swap the operator caused and not to a tick of the clock.
+
+    Returns the rendered response and the commands it was rendered from. Reading
+    them a second time for the flash header would let the message describe a
+    different read than the table beside it.
+    """
+    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
+        item_id, session
+    )
+    return _templates.TemplateResponse(
+        request,
+        "info_items/_rep_spec_assignments.html",
+        {
+            "user": user,
+            "item_id": item_id,
+            "irs_rows": irs_rows,
+            "rep_specs_by_id": rep_specs_by_id,
+            "latest_commands": latest_commands,
+            "swapped": swapped,
+            "poll": live_poll(latest_commands),
+            "poll_interval_seconds": POLL_INTERVAL_SECONDS,
+        },
+    ), latest_commands
+
+
+# ---------------------------------------------------------------------------
+# GET /{item_id}/rep-spec-assignments  (archiver#212)
+# ---------------------------------------------------------------------------
+#
+# The second render. A replication is issued synchronously but closed by the
+# ``content.artifacts`` writeback a bus round trip later, so the swap the POST
+# returns is necessarily too early to show the outcome - it renders while the
+# command is still ``requested``, and nothing re-rendered when the fact landed.
+
+
+@router.get("/{item_id}/rep-spec-assignments", response_class=HTMLResponse)
+async def rep_spec_assignments_section(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX partial: the Replication Specs section, re-read.
+
+    Polled while a command is open rather than pushed, because the fact arrives
+    on the bus in the *server* process and the dashboard holds no connection to
+    the browser. ``swapped=False``: a poll must not move focus.
+    """
+    item = await _resolve_item(item_id, session)
+    response, _ = await _render_rep_spec_assignments(
+        request, user=user, item_id=item.info_item_id, session=session, swapped=False
+    )
+    return response
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -709,21 +785,10 @@ async def deactivate_rep_spec_assignment(
         await session.flush()
         await session.commit()
 
-    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
-        item_ulid, session
+    response, _ = await _render_rep_spec_assignments(
+        request, user=user, item_id=item_ulid, session=session, swapped=True
     )
-    return _templates.TemplateResponse(
-        request,
-        "info_items/_rep_spec_assignments.html",
-        {
-            "user": user,
-            "item_id": item_ulid,
-            "irs_rows": irs_rows,
-            "rep_specs_by_id": rep_specs_by_id,
-            "latest_commands": latest_commands,
-            "swapped": True,
-        },
-    )
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -782,20 +847,8 @@ async def replicate_assignment_now(
     else:
         await session.commit()
 
-    irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
-        item_ulid, session
-    )
-    response = _templates.TemplateResponse(
-        request,
-        "info_items/_rep_spec_assignments.html",
-        {
-            "user": user,
-            "item_id": item_ulid,
-            "irs_rows": irs_rows,
-            "rep_specs_by_id": rep_specs_by_id,
-            "latest_commands": latest_commands,
-            "swapped": True,
-        },
+    response, latest_commands = await _render_rep_spec_assignments(
+        request, user=user, item_id=item_ulid, session=session, swapped=True
     )
     response.headers["HX-Trigger"] = outcome_flash_header(
         refusal=refusal, issued=issued, latest=latest_commands.get(assignment.id)
