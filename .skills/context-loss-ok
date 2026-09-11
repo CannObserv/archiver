@@ -38,3 +38,21 @@ docs/COMPONENTS.md :: retarget :: the reason it exists is `docs/STYLE.md` § **J
 # UI.md that self-link read as pointing elsewhere, so it was retargeted to the
 # intra-doc section reference.
 docs/UI.md :: retarget :: [UI.md](UI.md) § Failures are surfaced, not swallowed.
+
+# 2026-09-11 per-doc curation: docs/BUS.md (10714) and docs/PAGES.md (10257)
+# were over the 10000 per-doc budget. BUS.md split on its own produce/consume
+# line - its four consumer-side sections moved verbatim to docs/BUS_CONSUMERS.md
+# - and PAGES.md's Home health-row block moved verbatim to docs/HEALTH_ROW.md.
+# Each `retarget` line below names what this change moved: the index entries
+# gain the two new docs, the provenance pointer names both bus docs, and BUS.md's
+# two in-file pointers now aim at the files that hold their targets.
+AGENTS.md :: retarget :: Central registry + authoring service for the Cannabis Observer information layer.
+AGENTS.md :: retarget :: - [docs/BUS.md](docs/BUS.md) - the outbox producer; the three streams published and the three consumed
+AGENTS.md :: retarget :: - The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest:
+docs/BUS.md :: retarget :: Surfaced twice: the dashboard badge (`/dashboard/health/outbox`, PAGES.md) and
+docs/BUS.md :: retarget :: own timer. Both are documented under the consumer section below.
+
+# Same run, Phase 5 step 1, fixed in place before the move: "one of exactly two"
+# consumer roles predates archiver#170. `src/core/changes/artifacts_consumer.py`
+# exists and src/api/main.py starts it as `artifacts_consumer_task` - three roles.
+docs/BUS.md :: disproven :: Archiver's first consumer role, and one of exactly two - the other is the

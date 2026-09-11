@@ -230,10 +230,11 @@ deploy/                        README.md (install instructions) + systemd units:
                                repos: the cap is in CannObserv/broker's drop-in,
                                the transient classification in publisher.py
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
-                               BUS.md, SCHEMA.md, DEPLOYMENT.md, CONVENTIONS.md,
-                               SKILLS.md, plus the dashboard living docs
+                               BUS.md, BUS_CONSUMERS.md, SCHEMA.md, DEPLOYMENT.md,
+                               CONVENTIONS.md, SKILLS.md, plus the dashboard living docs
                                UI.md + SCREENS.md + PAGES.md +
-                               INFO_ITEM_DETAIL.md + COMPONENTS.md + STYLE.md
+                               INFO_ITEM_DETAIL.md + REGISTER.md + HEALTH_ROW.md +
+                               COMPONENTS.md + STYLE.md
                                (see "Dashboard living docs").
                                reference/ holds host-shaped facts that are not
                                about the code: tailscale.md (this node, the

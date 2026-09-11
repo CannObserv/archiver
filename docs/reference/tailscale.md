@@ -169,7 +169,7 @@ Back in about ten seconds. All four units (`archiver`, `postgresql`,
 200, row counts were identical, both group consumers reattached, and the
 `info.watch-status` tail resumed **from its `bus_tail_cursors` row**
 (`start_id: 1788903300828-0`) rather than replaying from `0-0` - the behaviour
-`docs/BUS.md` describes, observed rather than inferred.
+`docs/BUS_CONSUMERS.md` describes, observed rather than inferred.
 
 ## Joining or re-joining this host
 
