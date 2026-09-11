@@ -237,10 +237,9 @@ lifespan and is dormant unless **both** `ARCHIVER_REDIS_URL` and
 The cluster convention is `<service>.<stream-suffix>[-<purpose>]`; it went 0/5
 across the cluster while it existed only as a docstring beside a free-string
 `group` parameter, which is what cannobserv#384 fixed by making it an importable
-helper. Deriving evaluates
-to the same `archiver.revisions` / `archiver.artifacts` already on the broker -
-a runtime no-op - but makes a non-conforming literal impossible rather than
-merely discouraged. `OwnedGroup` in `src/core/bus_health.py` enforces the other
+helper. Deriving evaluates to the same `archiver.revisions` /
+`archiver.artifacts` already on the broker - a runtime no-op - but makes a
+non-conforming literal impossible rather than merely discouraged. `OwnedGroup` in `src/core/bus_health.py` enforces the other
 half of the same taxonomy: `stream_kind` refuses a config/state stream, where a
 group would accumulate a PEL nothing drains. Stronger than the `StreamCheck`
 guard it replaced in #193 - that one carried an optional `pending_group` and so
