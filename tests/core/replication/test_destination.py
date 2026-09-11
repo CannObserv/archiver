@@ -6,12 +6,15 @@ the async alternative is a ``ReplicationFailedEvent`` on a service that cannot
 fix it.
 """
 
-import ast
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from co_core.pure.util.files import extension_for_media_type
+from co_core.pure.util.files import (
+    _FALLBACK_MEDIA_EXTENSION,
+    _MEDIA_TYPE_EXTENSIONS,
+    extension_for_media_type,
+)
 
 from src.core.replication import destination
 from src.core.replication.destination import (
@@ -29,7 +32,7 @@ from src.core.replication.destination import (
     render_destination,
 )
 from src.core.replication.errors import ReplicationRenderError
-from tests.core.replication.test_layering import _imported_modules
+from tests.core.replication._import_scan import assigned_names, imported_modules
 
 FINGERPRINT = "sha256:" + "ab" * 32
 
@@ -370,6 +373,11 @@ _MEDIA_TYPES_CHECKED = (
 )
 
 
+def _assert_usable_segment(ext: str, context: object) -> None:
+    assert destination._SEGMENT_SAFE.match(ext), (context, ext)
+    assert ext not in destination._REFUSED_SEGMENTS, (context, ext)
+
+
 def test_extension_for_is_co_cores_table_and_not_a_second_copy():
     """``extension_for`` delegates and adds nothing (archiver#210).
 
@@ -389,32 +397,34 @@ def test_extension_for_is_co_cores_table_and_not_a_second_copy():
         assert extension_for(media_type) == extension_for_media_type(media_type), media_type
 
 
-def test_every_extension_co_core_yields_is_a_usable_path_segment():
-    """The charset claim in ``extension_for``'s docstring, pinned (archiver#210 CR 2).
+def test_every_entry_in_co_cores_table_is_a_usable_path_segment():
+    """The charset claim in ``extension_for``'s docstring, pinned at its source (CR 8).
 
     ``_EXTENSION_SAFE`` used to enforce this locally and was deleted with the
     table, so the property is now a fact about another repository's data that
-    this one depends on. ``RenderOccasion.values`` re-checks every occasion
-    value, so an unsafe answer raises rather than writing a malformed key — but
-    it would raise at replication time, pointing at a table this repo does not
-    own. Checking it here names the owner before a command is ever issued.
+    this one depends on. Iterating the table itself rather than a list of media
+    types is the difference between pinning it and sampling it: the sampled form
+    covered 24 inputs and would have said nothing about a thirteenth entry added
+    upstream — the same overclaim CR 2 was raised to remove, one layer up.
+
+    Reads a private of co-core's deliberately. If it is ever renamed this fails
+    at collection, loudly, which is the right outcome: the alternative is a
+    guard that quietly stops guarding.
+    """
+    for media_type, ext in _MEDIA_TYPE_EXTENSIONS.items():
+        _assert_usable_segment(ext, media_type)
+    _assert_usable_segment(_FALLBACK_MEDIA_EXTENSION, "fallback")
+
+
+def test_every_extension_co_core_yields_is_a_usable_path_segment():
+    """The same property through the public surface, for the inputs we render.
+
+    Kept beside the table-wide check so the guarantee survives the private above
+    disappearing, and because these exercise what the table alone cannot:
+    parameter-stripping, case-folding, ``None`` and the unregistered fallback.
     """
     for media_type in _MEDIA_TYPES_CHECKED:
-        ext = extension_for(media_type)
-        assert destination._SEGMENT_SAFE.match(ext), (media_type, ext)
-        assert ext not in destination._REFUSED_SEGMENTS, (media_type, ext)
-
-
-def _assigned_names(path: Path) -> set[str]:
-    """Every name this module binds by assignment, at any nesting depth."""
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names.add(node.target.id)
-    return names
+        _assert_usable_segment(extension_for(media_type), media_type)
 
 
 def test_no_local_extension_table_survives():
@@ -424,17 +434,12 @@ def test_no_local_extension_table_survives():
     that is still present but shadowed - and a resurrected local table would
     re-open the split silently, on whichever media types someone added to it.
 
-    Parsed rather than grepped (CR 3). ``"import mimetypes" not in source``
-    read past ``from mimetypes import guess_extension`` and
-    ``import mimetypes as mt`` — the two spellings most likely to appear if the
-    fallback comes back — and tripped on any prose containing the phrase, which
-    this module's own comment block already runs close to. ``_imported_modules``
-    is the layering guard's scanner, which its own planted-import tests keep
-    honest, so the detector is proven elsewhere rather than trusted here.
+    Scanned rather than grepped (CR 3): why parsing is the only honest way to
+    ask this is in ``_import_scan``, with the scanner.
     """
     module = Path(destination.__file__)
-    assert "mimetypes" not in _imported_modules(module)
-    assert "_EXTENSIONS" not in _assigned_names(module)
+    assert "mimetypes" not in imported_modules(module)
+    assert "_EXTENSIONS" not in assigned_names(module)
     assert not hasattr(destination, "_EXTENSIONS")
 
 
@@ -447,7 +452,7 @@ def test_the_mimetypes_guard_fires_on_each_spelling(tmp_path):
     ):
         planted = tmp_path / "planted.py"
         planted.write_text(source)
-        assert "mimetypes" in _imported_modules(planted), source
+        assert "mimetypes" in imported_modules(planted), source
 
 
 # --- bag slugs derive at render time with the shared normalizer (archiver#206) ---

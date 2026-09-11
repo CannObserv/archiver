@@ -13,12 +13,13 @@ package proves nothing while ``__init__.py`` stays empty. The dependency
 *direction* is the invariant, and it is readable statically.
 """
 
-import ast
 from pathlib import Path
 
 import pytest
 
-_ROOT = Path(__file__).resolve().parents[3]
+from tests.core.replication._import_scan import ROOT, imported_modules, package_of
+
+_ROOT = ROOT
 _REPLICATION = _ROOT / "src" / "core" / "replication"
 
 _SRC = _ROOT / "src"
@@ -40,44 +41,6 @@ KNOWN_CONSUMER_PACKAGES = frozenset(
         "src.core.rep_spec_schema",
     }
 )
-
-
-def _package_of(path: Path) -> str:
-    """The dotted package a module at *path* lives in, e.g. ``src.core.replication``."""
-    return ".".join(path.resolve().parent.relative_to(_ROOT).parts)
-
-
-def _resolved_relative(path: Path, node: ast.ImportFrom) -> str:
-    """The absolute module name a relative ``ImportFrom`` denotes (CR 9).
-
-    ``level`` counts the leading dots: one means this package, two the parent,
-    and so on. ``node.module`` is only the tail, so the name a relative import
-    actually reaches has to be rebuilt from the importing file's own location.
-    Dropping these is what let ``from ..tools.assign_rep_spec import …`` name
-    the forbidden layer and read as no import at all.
-    """
-    parts = _package_of(path).split(".")
-    base = parts[: len(parts) - (node.level - 1)]
-    return ".".join([*base, node.module] if node.module else base)
-
-
-def _imported_modules(path: Path) -> set[str]:
-    """Every module name this file imports, however it spells the import.
-
-    Relative imports are resolved to their absolute names, so the set answers
-    "what does this module reach" rather than "what did the author type".
-    """
-    tree = ast.parse(path.read_text(), filename=str(path))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                names.add(_resolved_relative(path, node))
-            elif node.module:
-                names.add(node.module)
-    return names
 
 
 def _modules() -> list[Path]:
@@ -129,9 +92,9 @@ def _consumer_packages() -> frozenset[str]:
     for path in _SRC.rglob("*.py"):
         if path.resolve().is_relative_to(_REPLICATION.resolve()):
             continue
-        if not any(_reaches(name, _PACKAGE) for name in _imported_modules(path)):
+        if not any(_reaches(name, _PACKAGE) for name in imported_modules(path)):
             continue
-        package = _package_of(path)
+        package = package_of(path)
         if _reaches(_PACKAGE, package):
             continue
         packages.add(package)
@@ -148,7 +111,7 @@ def test_replication_does_not_import_a_layer_that_imports_it(module):
     consumers = _consumer_packages()
     offenders = {
         name
-        for name in _imported_modules(module)
+        for name in imported_modules(module)
         if any(_reaches(name, package) for package in consumers)
     }
     assert not offenders, (
@@ -162,7 +125,7 @@ def test_the_guard_fires_on_a_planted_import(tmp_path):
     """Without this, a scan that stopped parsing would pass silently."""
     planted = tmp_path / "planted.py"
     planted.write_text("from src.core.tools.assign_rep_spec import assign_rep_spec\n")
-    assert FORBIDDEN_PREFIX + ".assign_rep_spec" in _imported_modules(planted)
+    assert FORBIDDEN_PREFIX + ".assign_rep_spec" in imported_modules(planted)
 
 
 def test_the_guard_fires_on_a_planted_relative_import():
@@ -177,6 +140,6 @@ def test_the_guard_fires_on_a_planted_relative_import():
     planted = _REPLICATION / "planted_relative.py"
     planted.write_text("from ..tools.assign_rep_spec import assign_rep_spec\n")
     try:
-        assert FORBIDDEN_PREFIX + ".assign_rep_spec" in _imported_modules(planted)
+        assert FORBIDDEN_PREFIX + ".assign_rep_spec" in imported_modules(planted)
     finally:
         planted.unlink()
