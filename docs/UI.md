@@ -10,6 +10,10 @@ The other parts of this reference, under the same living-doc rule:
 - [PAGES.md](PAGES.md) - the per-page route inventory: what each screen renders
   and the routes behind it.
 - [COMPONENTS.md](COMPONENTS.md) - the Alpine.js component catalogue.
+- [STYLE.md](STYLE.md) - design tokens and component classes.
+- [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), [REGISTER.md](REGISTER.md),
+  [HEALTH_ROW.md](HEALTH_ROW.md) - one screen's internals each: the InfoItem
+  hub, the register wizard, the home screen's health row.
 
 > **AGENTS.md enforcement:** a Jinja2 template change, a new or changed
 > dashboard route, or a new Alpine.js component must update the doc it touches

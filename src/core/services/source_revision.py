@@ -292,7 +292,8 @@ def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
       carries an earlier ``blob_expires_at`` and is ignored; an equal one is the
       same emission and a no-op. An unknown incoming horizon cannot be ordered
       against a known one and is ignored too — ``None`` records absence, never
-      a guess (docs/BUS.md) — while a known one does replace an unknown.
+      a guess (archiver docs/BUS_CONSUMERS.md) — while a known one does
+      replace an unknown.
 
     Mutates ``row`` in the caller's session; the caller's commit persists it.
     """

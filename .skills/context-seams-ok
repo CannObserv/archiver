@@ -1,12 +1,13 @@
 # Judged seam acknowledgements - see check-seams.sh --help.
 # One entry per judged line.
 
-# The three bus headings moved verbatim out of API.md. Their issue numbers were
-# already in the slug before the move; renaming them now would rewrite relocated
-# content for no reader benefit, and nothing links to those anchors.
-docs/BUS.md :: Change-bus consumer - `content.revisions` (archiver#139)
-docs/BUS.md :: Change-bus consumer - `content.artifacts` (archiver#170)
-docs/BUS.md :: Change-bus tail - `info.watch-status` (archiver#151)
+# The three bus headings moved verbatim out of API.md, and on 2026-09-11 again
+# out of BUS.md into BUS_CONSUMERS.md. Their issue numbers were already in the
+# slug before either move; renaming them now would rewrite relocated content for
+# no reader benefit, and nothing links to those anchors (grepped at each move).
+docs/BUS_CONSUMERS.md :: Change-bus consumer - `content.revisions` (archiver#139)
+docs/BUS_CONSUMERS.md :: Change-bus consumer - `content.artifacts` (archiver#170)
+docs/BUS_CONSUMERS.md :: Change-bus tail - `info.watch-status` (archiver#151)
 
 # Predates this run and is unrelated to it: a retirement note whose issue
 # numbers are the record, not a pointer at moved content.
@@ -39,7 +40,6 @@ docs/COMPONENTS.md :: **AGENTS.md enforcement:** update this file in the same co
 docs/CONVENTIONS.md :: The reasoning and worked examples behind the rules stated in `AGENTS.md`
 docs/DEPLOYMENT.md :: `AGENTS.md` keeps the safety rules; the reference lives here
 docs/PAGES.md :: **AGENTS.md enforcement:** update this file in the same commit as any Jinja2
-docs/PAGES.md :: SDK, and AGENTS.md's no-outbound-HTTP rule left nothing to ping
 docs/SCHEMA.md :: see the never-rename rule in `AGENTS.md`
 docs/SKILLS.md :: `AGENTS.md` keeps only the negative rule and points here
 docs/SKILLS.md :: see **Code Exploration Policy** in `AGENTS.md`
@@ -69,14 +69,14 @@ tests/scripts/test_dev_server.py :: The dev server (port 8001) previously had no
 
 # archiver#156 added a fourth provenance-slug bus heading, same judgement as the
 # three above: the issue number was in the slug from birth, nothing links the anchor.
-docs/BUS.md :: Consumer names are a monitoring contract (archiver#156)
+# It moved with them into BUS_CONSUMERS.md.
+docs/BUS_CONSUMERS.md :: Consumer names are a monitoring contract (archiver#156)
 
 # 2026-08-27 PAGES.md curation (archiver#112 branch): action-route rationale moved
 # to INFO_ITEM_DETAIL.md § Action-route contracts, Error pages body moved to UI.md.
 # Every back-reference below says PAGES.md keeps the inventory/pointer line - which
 # this run preserved - or links PAGES.md as the route inventory, which it remains.
 docs/ARCHITECTURE.md :: UI.md + SCREENS.md + PAGES.md +
-docs/BUS.md :: Surfaced twice: the dashboard badge (`/dashboard/health/outbox`, PAGES.md) and
 docs/COMPONENTS.md :: Where each component is used is in [PAGES.md](PAGES.md); the HTMX patterns they
 docs/COMPONENTS.md :: Multi-step Information Item registration wizard. Manages step navigation and form state across the 4-step URL
 docs/CONVENTIONS.md :: - `docs/PAGES.md` - required for any change to a Jinja2 template in
@@ -109,3 +109,22 @@ docs/REGISTER.md :: Needed only when working on that screen; [PAGES.md](PAGES.md
 # BUS.md - the sweep's own note confirms nothing left the policy file. Renaming
 # would rewrite settled content for no reader benefit.
 docs/BUS.md :: The shared client's connection policy (archiver#193)
+
+# 2026-09-11 per-doc curation: BUS.md's consumer half split out to
+# BUS_CONSUMERS.md, PAGES.md's Home health row to HEALTH_ROW.md. Each hit below
+# takes one of three legitimate shapes. It names BUS.md or PAGES.md for content
+# that did NOT move: the info.registry tombstone, outbox retention and growth,
+# the outbox numbers and lag probe the badges render, content.replicate's
+# contract, the register routes' inventory lines. It names both halves of the
+# split (API.md, ARCHITECTURE.md's tree). Or it is a new doc's own header saying
+# where its sibling half lives.
+docs/API.md :: contracts Archiver produces and consumes are in [BUS.md](BUS.md) and
+docs/API.md :: The deletion is announced as a tombstone on `info.registry` ([BUS.md](BUS.md))
+docs/ARCHITECTURE.md :: BUS.md, BUS_CONSUMERS.md, SCHEMA.md, DEPLOYMENT.md,
+docs/BUS_CONSUMERS.md :: consumers follow.** Split out of [BUS.md](BUS.md), which keeps the producing
+docs/BUS_CONSUMERS.md :: which [BUS.md](BUS.md) § **`content.replicate`** introduces.
+docs/DEPLOYMENT.md :: `ARCHIVER_OUTBOX_RETENTION_DAYS` — *optional*. Days a **published** `changes_outbox` row
+docs/HEALTH_ROW.md :: [BUS.md](BUS.md)'s; this file is how the dashboard reports them.
+docs/HEALTH_ROW.md :: [PAGES.md](PAGES.md) § **Home** stays the inventory line for its routes
+docs/SCHEMA.md :: table that still grows without bound. See [BUS.md](BUS.md).
+docs/CONVENTIONS.md :: Step 3 controls. PAGES.md keeps only

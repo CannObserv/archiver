@@ -2,7 +2,8 @@
 
 Every HTTP route and its SDK wrapper. The route inventory changes with each SDK
 release; `AGENTS.md` carries only the auth rule and a pointer here. The bus
-contracts Archiver produces and consumes are in [BUS.md](BUS.md).
+contracts Archiver produces and consumes are in [BUS.md](BUS.md) and
+[BUS_CONSUMERS.md](BUS_CONSUMERS.md).
 
 ## Authoring tools + assignment endpoints (v2)
 

@@ -10,7 +10,7 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - repository layout and the co-core acquisition wiring
 - [docs/API.md](docs/API.md) - every HTTP route and its SDK wrapper
-- [docs/BUS.md](docs/BUS.md) - the change-bus contracts, produced and consumed
+- [docs/BUS.md](docs/BUS.md) / [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the change-bus contracts, produced and consumed
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev server, environment variables
 - [docs/UI.md](docs/UI.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) - dashboard patterns, page inventory, the InfoItem hub screen, Alpine components, and styling
@@ -76,6 +76,6 @@ Set `ARCHIVER_REDIS_URL=redis://default:<password>@broker:6379/0` to enable the 
 
 Outbox health (depth, oldest-unpublished age, dead-lettered count) is watched by the `archiver-bus-health` timer every 10 minutes, WARN-only to journald - `sudo journalctl -u archiver-bus-health -f`. It runs the same query as the dashboard badge but from **outside** the publisher process, which is the only surface that keeps reporting when the publisher is down. **Broker-side health** - memory, stream lengths and ages, consumer-group pending, DLQ depths, disk - is not this repo's: archiver#193 D6 moved it to [CannObserv/broker](https://github.com/CannObserv/broker), on the broker's own node. See [deploy/README.md](deploy/README.md).
 
-The dashboard's **Consumers** badge (archiver#147) reads the same `OWNED_GROUPS` list per request: consumer-task liveness plus `XPENDING` and DLQ depth for the archiver-owned groups. It distinguishes gated-off from gated-on-but-dead, which a `ARCHIVER_REDIS_URL` boolean could not - see [docs/PAGES.md](docs/PAGES.md).
+The dashboard's **Consumers** badge (archiver#147) reads the same `OWNED_GROUPS` list per request: consumer-task liveness plus `XPENDING` and DLQ depth for the archiver-owned groups. It distinguishes gated-off from gated-on-but-dead, which a `ARCHIVER_REDIS_URL` boolean could not - see [docs/HEALTH_ROW.md](docs/HEALTH_ROW.md).
 
 The `content.revisions` consumer needs `ARCHIVER_BUS_CONSUMER=1` **as well**, and only `deploy/archiver.service` sets it. Publishing from a stray process is merely noisy; consuming *removes* messages from the `archiver.revisions` group, so a Redis URL alone is not authority to join it. Never put that variable in an env file - see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The `info.watch-status` tail is **not** behind that gate and needs only the Redis URL: it is groupless, so it removes nothing from any pending list and a stray tail is harmless.
