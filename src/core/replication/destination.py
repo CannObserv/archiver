@@ -84,8 +84,13 @@ def extension_for(media_type: str | None) -> str:
     local re-check of those cases would be a second implementation of the
     agreement this indirection exists to guarantee.
 
-    Every value it yields is lower-case alphanumeric, so the occasion's
-    ``_SEGMENT_SAFE`` guard still holds over the result.
+    The values co-core yields are lower-case alphanumeric today, which
+    ``tests.core.replication.test_destination`` pins rather than assumes: the
+    local ``_EXTENSION_SAFE`` check went with the table, so this is now a
+    property of another repository's data. Nothing here depends on it for
+    safety — ``RenderOccasion.values`` re-checks every occasion value against
+    ``_SEGMENT_SAFE``, so an unusable answer raises ``InvalidOccasionError``
+    instead of reaching a destination.
     """
     return extension_for_media_type(media_type)
 
