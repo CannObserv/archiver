@@ -125,4 +125,4 @@ docs/DEPLOYMENT.md :: `ARCHIVER_OUTBOX_RETENTION_DAYS` — *optional*. Days a **
 docs/HEALTH_ROW.md :: [BUS.md](BUS.md)'s; this file is how the dashboard reports them.
 docs/HEALTH_ROW.md :: [PAGES.md](PAGES.md) § **Home** stays the inventory line for its routes
 docs/SCHEMA.md :: table that still grows without bound. See [BUS.md](BUS.md).
-docs/CONVENTIONS.md :: Step 3 controls. PAGES.md keeps the
+docs/CONVENTIONS.md :: Step 3 controls. PAGES.md keeps only
