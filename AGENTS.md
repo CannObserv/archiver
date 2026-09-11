@@ -14,7 +14,7 @@ TDD required: Red → Green → Refactor. No production code without a failing t
 
 ## Environment & Tooling
 
-Python ≥3.12, uv, pytest, ruff. **Postgres 16 on archiver's own VM** - dedicated since #193 D5, not the instance shared with watcher and notifier. Three databases: `archiver`, `archiver_dev`, `archiver_test`. Set `ARCHIVER_DEV_DATABASE_URL` or `scripts/dev_server.sh` falls back to the test DB and races the suite.
+Python ≥3.12, uv, pytest, ruff. **Postgres 16 on archiver's own VM** (#193 D5), not shared with watcher or notifier. Three databases: `archiver`, `archiver_dev`, `archiver_test`. Set `ARCHIVER_DEV_DATABASE_URL` or `scripts/dev_server.sh` falls back to the test DB and races the suite.
 
 **`co-core` + `co-core-aio` resolve from a local wheelhouse** (`./.wheelhouse`,
 gitignored), not PyPI. Populate it before `uv sync`/`uv run` or resolution fails:
@@ -28,7 +28,7 @@ Reproducibility, the upgrade path, and the CI/deploy resolution: [docs/DEPLOYMEN
 
 ## Code Exploration Policy
 
-SocratiCode is configured here (`.socraticodecontextartifacts.json`); the index is per-host, and the SessionStart health hook reports whether it is built. Its MCP tools are **deferred** - schemas load only after a `ToolSearch` prefetch, and the SessionStart hook prints the query. Run it before exploring.
+SocratiCode is configured here (`.socraticodecontextartifacts.json`), indexed per host. Its MCP tools are **deferred**: run the `ToolSearch` prefetch the SessionStart hook prints before exploring.
 
 **Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search.
 
@@ -53,8 +53,7 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
 
 ## Content-acquisition via co-core
 
-Fetch, extract, and the content fingerprint come from **co-core**; the former
-`src/core/{fetchers,extractors,simhash,extraction_defaults}` mirror is deleted. Wiring: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Fetch, extract, and the content fingerprint come from **co-core**. Wiring: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **The broker is not operated from this repo (#193 D6).** Its tuning, health
 probe, and stream inventory live in
@@ -80,8 +79,6 @@ reintroduce a mirror obligation for anything under `src/`.
 The exe.dev proxy forwards 3000-9999 and maps the bare hostname to 8000:
 dashboard `https://co-registrar.exe.xyz/`, dev server
 `https://co-registrar.exe.xyz:8001/`.
-Archiver has its own VM (archiver#193); the broker is on a third node
-(CannObserv/broker#1).
 
 **The broker is a network hop.** Archiver reaches it over the tailnet as
 `redis://default:<password>@broker:6379/0`. This host answers to two names,
@@ -164,12 +161,10 @@ Rules holding across all of it:
   max 500. Over-max is a 422, not a clamp.
 - Bus payloads carry `schema_version: int`. Bump only on *incompatible* reshapes;
   additive fields are not a bump, and consumers must tolerate them.
-- Bus monitoring: outbox stats (archiver#112) on the dashboard badge + a
-  periodic journald line; the `archiver-bus-health` timer (#130) re-runs the query from
-  outside the publisher process, the only surface still reporting when the
-  publisher is down. **Broker-side monitoring is not this repo's** - it is
-  CannObserv/broker's, on the broker's node (#193 D6). Never on `/health`
-  (unauthenticated, DB-free). See [docs/BUS.md](docs/BUS.md).
+- Bus monitoring is never on `/health` (unauthenticated, DB-free). Outbox stats
+  (archiver#112) reach the dashboard badge and journald; the `archiver-bus-health`
+  timer (#130) re-runs them from outside the publisher, the one surface that
+  survives a down publisher. See [docs/BUS.md](docs/BUS.md).
 
 ## Conventions
 
@@ -220,34 +215,19 @@ directly**; pass `source_exc=e` from inside `except X as e:`.
 
 ## Vocabulary
 
-Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim - never rename casually. Model ↔ table:
-
-`InfoItem` ↔ `info_items` · `InfoSource` ↔ `info_sources` · `SourceRevision` ↔
-`source_revisions` · `InfoItemSource` ↔ `info_item_sources` · `RepSpec` ↔
-`rep_specs` · `InfoItemRepSpec` ↔ `info_item_rep_specs` · `ChangesOutboxRow` ↔
-`changes_outbox` · `RevokedInfoItem` ↔ `revoked_info_items` · `WatchStatus` ↔
-`watch_status` · `ReplicationCommand` ↔ `replication_commands` ·
-`BusTailCursor` ↔ `bus_tail_cursors`
-
-What each one is, plus its contracts and invariants:
-[docs/SCHEMA.md](docs/SCHEMA.md) - it documents every one of them. The Phase
-1-3a `InfoSpec` model is retired - no new `info_spec*` references.
+Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim - never rename casually. Every model, its table, and its contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The Phase 1-3a `InfoSpec` model is retired - no new `info_spec*` references.
 
 ## Agent Skills
 
-Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow vendor submodules in `skills-vendor/`. Cross-project search to `watcher`/`notifier` needs a per-instance `.claude/settings.local.json` (gitignored) - see "Linked Projects" in [docs/SKILLS.md](docs/SKILLS.md).
+Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers, and cross-project search to `watcher`/`notifier`: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## SessionStart Hooks
 
-`.claude/settings.json` wires three hooks: the SocratiCode prefetch reminder,
-the once-per-day SocratiCode health check, and the once-per-day `skills-vendor/`
-refresh. Both halves are load-bearing - a script `settings.json` does not name
-never runs and looks identical to one that works
-(`tests/scripts/test_claude_hooks_registered.py` fails on the missing half).
-All three scripts are symlinks into `skills-vendor/`: never re-copy one, never
-turn the committed `.skills/doctor.sh` into one, and never un-wire a hook to
-hold a submodule - use `.skills/skills-pin`. Each hook and its logs:
-[docs/SKILLS.md](docs/SKILLS.md).
+Wired in `.claude/settings.json`; each script is a symlink into `skills-vendor/`.
+Never re-copy one, never symlink the committed `.skills/doctor.sh`, and never
+un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
+`tests/scripts/test_claude_hooks_registered.py` fails when a script and
+`settings.json` disagree. Each hook and its logs: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## Detail Docs
 

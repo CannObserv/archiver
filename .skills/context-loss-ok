@@ -62,3 +62,54 @@ docs/BUS.md :: retarget :: live in [API.md](API.md); this file is the wire side 
 # consumer roles predates archiver#170. `src/core/changes/artifacts_consumer.py`
 # exists and src/api/main.py starts it as `artifacts_consumer_task` - three roles.
 docs/BUS.md :: disproven :: Archiver's first consumer role, and one of exactly two - the other is the
+
+# 2026-09-11 AGENTS.md curation (6234 -> 5688 exact). Every entry below is a
+# class-C rewrite in place, or class-B material whose destination already owned
+# it in more depth - so a verbatim move would have appended near-duplicates, the
+# 2026-09-09 round-2 precedent. --claims confirms every atom carried across
+# (0 dropped). Where each dropped prose claim lives now:
+#   SessionStart Hooks - the hook list and the "both halves" why:
+#     docs/SKILLS.md § SessionStart Hooks. The four rules and the test stay.
+#   Agent Skills - Linked Projects / .claude/settings.local.json: docs/SKILLS.md.
+#   Vocabulary - the 11-pair model<->table map: docs/SCHEMA.md § Entities lists
+#     every pair as **Model** (table). The never-rename rule and the InfoSpec
+#     prohibition stay.
+#   Bus monitoring - "broker-side is not this repo's" is Content-acquisition's
+#     "The broker is not operated from this repo (#193 D6)", in this same file.
+#   Infrastructure - "own VM" is Environment & Tooling's; the third node is the
+#     network-hop paragraph and docs/reference/tailscale.md.
+#   Content-acquisition - the deleted-mirror history: docs/ARCHITECTURE.md.
+#   Code Exploration - the health hook's report: docs/SKILLS.md.
+#   Environment & Tooling - "dedicated since" -> present tense, same claims.
+AGENTS.md :: tighten :: Python ≥3.12, uv, pytest, ruff. **Postgres 16 on archiver's own VM** - dedicated since #193 D5, not the instance shared with watcher and notifier. Three databas
+AGENTS.md :: tighten :: SocratiCode is configured here (`.socraticodecontextartifacts.json`); the index is per-host, and the SessionStart health hook reports whether it is built. Its M
+AGENTS.md :: tighten :: Fetch, extract, and the content fingerprint come from **co-core**; the former
+AGENTS.md :: tighten :: `src/core/{fetchers,extractors,simhash,extraction_defaults}` mirror is deleted. Wiring: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+AGENTS.md :: tighten :: Archiver has its own VM (archiver#193); the broker is on a third node
+AGENTS.md :: tighten :: (CannObserv/broker#1).
+AGENTS.md :: tighten :: - Bus monitoring: outbox stats (archiver#112) on the dashboard badge + a
+AGENTS.md :: tighten :: periodic journald line; the `archiver-bus-health` timer (#130) re-runs the query from
+AGENTS.md :: tighten :: outside the publisher process, the only surface still reporting when the
+AGENTS.md :: tighten :: publisher is down. **Broker-side monitoring is not this repo's** - it is
+AGENTS.md :: tighten :: CannObserv/broker's, on the broker's node (#193 D6). Never on `/health`
+AGENTS.md :: tighten :: (unauthenticated, DB-free). See [docs/BUS.md](docs/BUS.md).
+AGENTS.md :: tighten :: Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim - never rename casually. Model ↔ table:
+AGENTS.md :: tighten :: `InfoItem` ↔ `info_items` · `InfoSource` ↔ `info_sources` · `SourceRevision` ↔
+AGENTS.md :: tighten :: `source_revisions` · `InfoItemSource` ↔ `info_item_sources` · `RepSpec` ↔
+AGENTS.md :: tighten :: `rep_specs` · `InfoItemRepSpec` ↔ `info_item_rep_specs` · `ChangesOutboxRow` ↔
+AGENTS.md :: tighten :: `changes_outbox` · `RevokedInfoItem` ↔ `revoked_info_items` · `WatchStatus` ↔
+AGENTS.md :: tighten :: `watch_status` · `ReplicationCommand` ↔ `replication_commands` ·
+AGENTS.md :: tighten :: `BusTailCursor` ↔ `bus_tail_cursors`
+AGENTS.md :: tighten :: What each one is, plus its contracts and invariants:
+AGENTS.md :: tighten :: [docs/SCHEMA.md](docs/SCHEMA.md) - it documents every one of them. The Phase
+AGENTS.md :: tighten :: 1-3a `InfoSpec` model is retired - no new `info_spec*` references.
+AGENTS.md :: tighten :: Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow vendor submodules in `skills-vendor/`. Cross-projec
+AGENTS.md :: tighten :: `.claude/settings.json` wires three hooks: the SocratiCode prefetch reminder,
+AGENTS.md :: tighten :: the once-per-day SocratiCode health check, and the once-per-day `skills-vendor/`
+AGENTS.md :: tighten :: refresh. Both halves are load-bearing - a script `settings.json` does not name
+AGENTS.md :: tighten :: never runs and looks identical to one that works
+AGENTS.md :: tighten :: (`tests/scripts/test_claude_hooks_registered.py` fails on the missing half).
+AGENTS.md :: tighten :: All three scripts are symlinks into `skills-vendor/`: never re-copy one, never
+AGENTS.md :: tighten :: turn the committed `.skills/doctor.sh` into one, and never un-wire a hook to
+AGENTS.md :: tighten :: hold a submodule - use `.skills/skills-pin`. Each hook and its logs:
+AGENTS.md :: tighten :: [docs/SKILLS.md](docs/SKILLS.md).

@@ -8,8 +8,6 @@ AGENTS.md :: enumerated :: Three databases:
 AGENTS.md :: enumerated :: This host answers to two names
 AGENTS.md :: enumerated :: Two env files load in order
 AGENTS.md :: enumerated :: **Four variables carry safety rules
-AGENTS.md :: enumerated :: `.claude/settings.json` wires three hooks:
-AGENTS.md :: enumerated :: All three scripts are symlinks
 
 # Not a count of anything current: the number of services a past MagicDNS
 # failure took down is a historical fact, fixed by the event it describes.
