@@ -232,11 +232,12 @@ lifespan and is dormant unless **both** `ARCHIVER_REDIS_URL` and
 **Both group names are derived, not spelled.** `CONSUMER_GROUP` in
 `consumer.py` and `artifacts_consumer.py` is
 `group_name(<topic>, "archiver")`, from
-`co_core.pure.adapters.bus.streams` (co-core >= 0.13.1, the release that
-introduced the helper, which is what `pyproject.toml` pins). The cluster convention
-is `<service>.<stream-suffix>[-<purpose>]`; it went 0/5 across the cluster while
-it existed only as a docstring beside a free-string `group` parameter, which is
-what cannobserv#384 fixed by making it an importable helper. Deriving evaluates
+`co_core.pure.adapters.bus.streams` (the helper arrived in co-core 0.13.1;
+`pyproject.toml` now floors at 0.15 for archiver#210's shared extension table).
+The cluster convention is `<service>.<stream-suffix>[-<purpose>]`; it went 0/5
+across the cluster while it existed only as a docstring beside a free-string
+`group` parameter, which is what cannobserv#384 fixed by making it an importable
+helper. Deriving evaluates
 to the same `archiver.revisions` / `archiver.artifacts` already on the broker -
 a runtime no-op - but makes a non-conforming literal impossible rather than
 merely discouraged. `OwnedGroup` in `src/core/bus_health.py` enforces the other
