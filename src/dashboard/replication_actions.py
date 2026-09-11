@@ -20,9 +20,13 @@ staying silent on the irreversible outcome is the wrong way round (CR #42).
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from src.core.models import ReplicationCommand
 from src.core.services.replication_issuance import (
+    STATE_REQUESTED,
     ManualIssuanceError,
     manual_issuance_refusal,
 )
@@ -30,6 +34,55 @@ from src.core.services.replication_issuance import (
 # Archiver's own token for "the registry declined, but did not say why" — only
 # reachable if a skip row fails to come back from the read after the commit.
 UNKNOWN_SKIP_REASON = "reason unavailable"
+
+# How long the section keeps asking, and how often (archiver#212). The observed
+# round trip is under a second, so two seconds is several ticks of headroom and
+# a load of one query per open command per operator watching.
+#
+# The window exists because ``requested`` is not bounded by the round trip: the
+# reaper closes an unanswered command after six hours
+# (``DEFAULT_REAP_HORIZON``), and polling to *that* would leave a forgotten tab
+# asking every two seconds all afternoon. Past the window the section stops and
+# says the command is still open, which is the honest report — Replicator has
+# neither refused nor finished, and a transient retry publishes no fact.
+POLL_INTERVAL_SECONDS = 2
+POLL_WINDOW = timedelta(minutes=2)
+
+
+@dataclass(frozen=True, slots=True)
+class LivePoll:
+    """Whether the assignments section should keep asking, and what to say."""
+
+    active: bool
+    stalled: bool
+
+
+def live_poll(
+    latest_commands: Mapping[object, ReplicationCommand],
+    *,
+    now: datetime | None = None,
+) -> LivePoll:
+    """Decide whether the section is waiting on a fact that has not arrived.
+
+    Derived from the same rows the badges render from, so the swap that lands a
+    terminal state is the swap that drops the polling attributes. Nothing has to
+    decide to be the last tick, and a poll cannot outlive what it was watching.
+
+    ``stalled`` is the open-but-past-the-window case, kept separate from
+    ``active`` being false so the template can distinguish "nothing pending"
+    from "still pending, no longer watching" — reporting the second as the
+    first would be a settled row that is not settled.
+    """
+    now = now or datetime.now(UTC)
+    open_commands = [c for c in latest_commands.values() if c.state == STATE_REQUESTED]
+    if not open_commands:
+        return LivePoll(active=False, stalled=False)
+    # The youngest decides: one fresh command is worth watching even beside an
+    # older one that has already outrun the window.
+    youngest = max(c.issued_at for c in open_commands)
+    if youngest.tzinfo is None:
+        youngest = youngest.replace(tzinfo=UTC)
+    return LivePoll(active=now - youngest < POLL_WINDOW, stalled=now - youngest >= POLL_WINDOW)
 
 
 def outcome_flash_header(
