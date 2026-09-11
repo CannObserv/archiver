@@ -43,10 +43,11 @@ docs/UI.md :: retarget :: [UI.md](UI.md) § Failures are surfaced, not swallowed
 # were over the 10000 per-doc budget. BUS.md split on its own produce/consume
 # line - its four consumer-side sections moved verbatim to docs/BUS_CONSUMERS.md
 # - and PAGES.md's Home health-row block moved verbatim to docs/HEALTH_ROW.md.
-# Each `retarget` line below names what this change moved: the index entries
-# gain the two new docs, the provenance pointer names both bus docs, and BUS.md's
-# two in-file pointers now aim at the files that hold their targets, and its
-# opening describes the producing half it keeps (fresh-eyes review finding).
+# Each `retarget` line below was rewritten because this change moved what it
+# names: the index entries gain the two new docs; the provenance pointer names
+# both bus docs; BUS.md's two in-file pointers aim at the files that now hold
+# their targets; and BUS.md's opening, rewritten after the fresh-eyes review,
+# describes the producing half it keeps.
 AGENTS.md :: retarget :: Central registry + authoring service for the Cannabis Observer information layer.
 AGENTS.md :: retarget :: - [docs/BUS.md](docs/BUS.md) - the outbox producer; the three streams published and the three consumed
 AGENTS.md :: retarget :: - The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest:

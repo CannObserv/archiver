@@ -111,11 +111,13 @@ docs/REGISTER.md :: Needed only when working on that screen; [PAGES.md](PAGES.md
 docs/BUS.md :: The shared client's connection policy (archiver#193)
 
 # 2026-09-11 per-doc curation: BUS.md's consumer half split out to
-# BUS_CONSUMERS.md, PAGES.md's Home health row to HEALTH_ROW.md. Every hit below
-# names BUS.md or PAGES.md for content that did NOT move - the info.registry
-# tombstone, outbox retention and growth, the outbox numbers and lag probe the
-# badges render, and the register routes' inventory lines all stayed - or is a
-# new doc's own header saying where its sibling half lives.
+# BUS_CONSUMERS.md, PAGES.md's Home health row to HEALTH_ROW.md. Each hit below
+# takes one of three legitimate shapes. It names BUS.md or PAGES.md for content
+# that did NOT move: the info.registry tombstone, outbox retention and growth,
+# the outbox numbers and lag probe the badges render, content.replicate's
+# contract, the register routes' inventory lines. It names both halves of the
+# split (API.md, ARCHITECTURE.md's tree). Or it is a new doc's own header saying
+# where its sibling half lives.
 docs/API.md :: contracts Archiver produces and consumes are in [BUS.md](BUS.md) and
 docs/API.md :: The deletion is announced as a tombstone on `info.registry` ([BUS.md](BUS.md))
 docs/ARCHITECTURE.md :: BUS.md, BUS_CONSUMERS.md, SCHEMA.md, DEPLOYMENT.md,
