@@ -434,13 +434,8 @@ def test_no_local_extension_table_survives():
     that is still present but shadowed - and a resurrected local table would
     re-open the split silently, on whichever media types someone added to it.
 
-    Parsed rather than grepped (CR 3). ``"import mimetypes" not in source``
-    read past ``from mimetypes import guess_extension`` and
-    ``import mimetypes as mt`` — the two spellings most likely to appear if the
-    fallback comes back — and tripped on any prose containing the phrase, which
-    this module's own comment block already runs close to. ``_imported_modules``
-    is the layering guard's scanner, which its own planted-import tests keep
-    honest, so the detector is proven elsewhere rather than trusted here.
+    Scanned rather than grepped (CR 3): why parsing is the only honest way to
+    ask this is in ``_import_scan``, with the scanner.
     """
     module = Path(destination.__file__)
     assert "mimetypes" not in imported_modules(module)
