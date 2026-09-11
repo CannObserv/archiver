@@ -373,6 +373,11 @@ _MEDIA_TYPES_CHECKED = (
 )
 
 
+def _assert_usable_segment(ext: str, context: object) -> None:
+    assert destination._SEGMENT_SAFE.match(ext), (context, ext)
+    assert ext not in destination._REFUSED_SEGMENTS, (context, ext)
+
+
 def test_extension_for_is_co_cores_table_and_not_a_second_copy():
     """``extension_for`` delegates and adds nothing (archiver#210).
 
@@ -390,11 +395,6 @@ def test_extension_for_is_co_cores_table_and_not_a_second_copy():
     """
     for media_type in _MEDIA_TYPES_CHECKED:
         assert extension_for(media_type) == extension_for_media_type(media_type), media_type
-
-
-def _assert_usable_segment(ext: str, context: object) -> None:
-    assert destination._SEGMENT_SAFE.match(ext), (context, ext)
-    assert ext not in destination._REFUSED_SEGMENTS, (context, ext)
 
 
 def test_every_entry_in_co_cores_table_is_a_usable_path_segment():
