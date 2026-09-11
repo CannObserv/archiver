@@ -1418,3 +1418,46 @@ async def test_replicate_now_hands_back_a_section_that_polls(client, session):
 
     assert r.status_code == 200
     assert 'hx-trigger="every 2s"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_full_detail_page_starts_watching_an_already_open_command(client, session):
+    """CR 12. The swap routes are not the only way this section reaches a
+    browser: a reload, or arriving at the item from the list while a command is
+    in flight, renders it through the detail page. Wired only to the swaps, that
+    page was inert - the original defect, on the most ordinary path there is."""
+    item, assignment, revision = await _assigned(
+        session, name="Detail Poll", url="https://example.com/detail-poll"
+    )
+    session.add(_command_for(assignment, revision, state="requested", issued_at=datetime.now(UTC)))
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert f'hx-get="/dashboard/info-items/{item.info_item_id}/rep-spec-assignments"' in r.text
+    assert 'hx-trigger="every 2s"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_full_detail_page_does_not_poll_with_nothing_open(client, session):
+    """The other half: a page that always polled would be worse than one that
+    never did."""
+    item, assignment, revision = await _assigned(
+        session, name="Detail Idle", url="https://example.com/detail-idle"
+    )
+    session.add(
+        _command_for(
+            assignment,
+            revision,
+            state="complete",
+            issued_at=datetime.now(UTC),
+            closed_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert 'hx-trigger="every 2s"' not in r.text
