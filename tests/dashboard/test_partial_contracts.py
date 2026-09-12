@@ -385,10 +385,12 @@ def _scan(source: str, path: str, carriers: set[str]) -> _SiteFinder:
     return finder
 
 
-def _scan_dashboard(carriers: set[str]) -> tuple[list[_Site], list[str]]:
+def _scan_sources(carriers: set[str]) -> tuple[list[_Site], list[str]]:
+    """Every render site in ``src/`` - not only ``src/dashboard/``, which is
+    where they all live today and so the one assumption worth not making (CR 4)."""
     sites: list[_Site] = []
     unfollowable: list[str] = []
-    for file in sorted(_DASHBOARD.rglob("*.py")):
+    for file in sorted((_ROOT / "src").rglob("*.py")):
         finder = _scan(file.read_text(), str(file.relative_to(_ROOT)), carriers)
         sites += finder.sites
         unfollowable += finder.unfollowable
@@ -404,7 +406,7 @@ def _scan_dashboard(carriers: set[str]) -> tuple[list[_Site], list[str]]:
 def test_every_render_site_spreads_the_partials_builder(partial: str) -> None:
     """What a fifth render site is held to, without anyone writing a test for it."""
     builder = _CONTRACTS[partial].builder.__name__
-    sites, unfollowable = _scan_dashboard(_carriers(_ENV, partial))
+    sites, unfollowable = _scan_sources(_carriers(_ENV, partial))
 
     # Non-vacuity: a scan that finds nothing passes forever. How the partial
     # reaches the screen - swapped, polled, included - is its own business.
