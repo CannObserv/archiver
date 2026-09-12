@@ -281,36 +281,50 @@ def _scope_bindings(name: str, scopes: list[ast.AST]) -> list[ast.expr | None]:
     return []
 
 
-def _builders_reaching(
-    expr: ast.expr | None, scopes: list[ast.AST], seen: frozenset[str] = frozenset()
-) -> frozenset[str]:
-    """Functions whose returned dict provably ends up in ``expr``.
+def _builders_reaching(expr: ast.expr | None, scopes: list[ast.AST]) -> frozenset[str]:
+    """Functions whose returned dict reaches ``expr``.
 
     Follows the three shapes the routes use: a call, a dict literal's ``**``
-    spreads, and a local name - which counts only when *every* assignment to it
-    carries the builder, since a name rebound on one branch would not.
+    spreads, and a local name - which counts only when *every* binding of it
+    carries the builder, since a name rebound on one path would not. A key
+    written after a spread can still shadow one of the builder's; that is a
+    deliberate override, visible in review, and not checked here.
+    """
+    reached = _reach(expr, scopes, frozenset())
+    return frozenset() if reached is None else reached
+
+
+def _reach(
+    expr: ast.expr | None, scopes: list[ast.AST], seen: frozenset[str]
+) -> frozenset[str] | None:
+    """``_builders_reaching`` over the names in ``seen`` being resolved.
+
+    None means "whatever that name already carries": ``ctx = {**ctx, ...}``
+    spreads the name into itself, adding keys and dropping none, so it narrows
+    nothing - and proves nothing on its own either (CR 3).
     """
     if isinstance(expr, ast.Await):
-        return _builders_reaching(expr.value, scopes, seen)
+        return _reach(expr.value, scopes, seen)
     if isinstance(expr, ast.Call):
         name = _called_name(expr)
         return frozenset({name}) if name else frozenset()
     if isinstance(expr, ast.Dict):
-        return frozenset().union(
-            *(
-                _builders_reaching(value, scopes, seen)
-                for key, value in zip(expr.keys, expr.values, strict=True)
-                if key is None
-            )
-        )
-    if isinstance(expr, ast.Name) and expr.id not in seen:
+        spreads = [
+            _reach(value, scopes, seen)
+            for key, value in zip(expr.keys, expr.values, strict=True)
+            if key is None
+        ]
+        return None if None in spreads else frozenset().union(*spreads)
+    if isinstance(expr, ast.Name):
+        if expr.id in seen:
+            return None
         inner = seen | {expr.id}
         if values := _scope_bindings(expr.id, scopes):
             reached = [
-                frozenset() if value is None else _builders_reaching(value, scopes, inner)
-                for value in values
+                frozenset() if value is None else _reach(value, scopes, inner) for value in values
             ]
-            return frozenset.intersection(*reached)
+            proven = [r for r in reached if r is not None]
+            return frozenset.intersection(*proven) if proven else None
     return frozenset()
 
 
@@ -546,6 +560,27 @@ def test_a_binding_the_scan_cannot_evaluate_proves_nothing(rebinding: str) -> No
     finder = _scan(source, "canary.py", {_PARTIAL})
 
     assert [site.builders for site in finder.sites] == [frozenset()]
+
+
+def test_a_name_spread_into_its_own_rebinding_keeps_what_it_carried() -> None:
+    """``ctx = {**ctx, ...}`` adds keys and drops none. Reporting it as missing
+    the builder rejects the idiom with a message that is false (CR 3) - but it
+    carries only what the name already did, so a parameter still proves nothing."""
+    template = """
+        async def added_later(request, spec, session, given):
+            ctx = SOURCE
+            ctx = {**ctx, "swapped": True}
+            return _templates.TemplateResponse(request, "rep_specs/_assignments.html", ctx)
+    """
+    built = _scan(
+        textwrap.dedent(template).replace("SOURCE", "await _assignments_context(spec, session)"),
+        "canary.py",
+        {_PARTIAL},
+    )
+    handed_in = _scan(textwrap.dedent(template).replace("SOURCE", "given"), "canary.py", {_PARTIAL})
+
+    assert [site.builders for site in built.sites] == [frozenset({"_assignments_context"})]
+    assert [site.builders for site in handed_in.sites] == [frozenset()]
 
 
 def test_a_template_name_the_scan_cannot_follow_fails_it() -> None:
