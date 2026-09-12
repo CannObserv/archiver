@@ -298,6 +298,9 @@ async def detail_rep_spec(
         "rep_specs/detail.html",
         {
             "user": user,
+            # The page's own subject, named here even though both section
+            # builders carry it: the header should not read it by accident.
+            "spec": spec,
             **assignments_ctx,
             **await _document_card_context(spec, session),
         },
