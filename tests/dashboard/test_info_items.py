@@ -20,7 +20,7 @@ from src.core.models import (
 )
 from src.core.models.domain import Domain
 from src.core.services.replication_issuance import ManualIssuanceError
-from tests.dashboard.conftest import read_flash
+from tests.dashboard.conftest import poll_sync_violations, read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-items", "X-ExeDev-Email": "items@example.com"}
 _LIST_URL = "/dashboard/info-items/"
@@ -1478,3 +1478,24 @@ async def test_the_poll_fragment_is_never_served_from_a_cache(client, session):
     )
 
     assert r.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_a_poll_always_yields_to_a_row_action(client, session):
+    """archiver#220. The poll and both row actions swap one wrapper, so the
+    response that lands second finds its target detached and is discarded.
+    Unsynced, that was sometimes the operator's: no swap, no toast, no focus,
+    and - if the poll had read before the commit - a section that stopped
+    polling on pre-issuance state. The poll must always be the one that loses."""
+    item, assignment, revision = await _assigned(
+        session, name="Poll Yields", url="https://example.com/poll-yields"
+    )
+    session.add(_command_for(assignment, revision, state="requested", issued_at=datetime.now(UTC)))
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    assert r.status_code == 200
+    assert poll_sync_violations(r.text, "ii-rep-spec-assignments") == []
