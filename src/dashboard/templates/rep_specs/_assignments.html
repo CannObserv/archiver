@@ -15,11 +15,17 @@
 {#- Re-reads itself while a command is open (#212), exactly as the InfoItem
    hub's section does: issuance is synchronous, closure arrives on
    `content.artifacts` a bus round trip later, so the swap that starts a
-   replication is always too early to show its outcome. -#}
+   replication is always too early to show its outcome.
+
+   And yields to both row actions exactly as the hub's does (#220): a response
+   whose target was swapped out is discarded, and it must never be the
+   operator's. Why each attribute: info_items/_rep_spec_assignments.html. -#}
 <div id="rep-spec-assignments" style="margin-top:var(--space-3);"
      {% if poll.active %}hx-get="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments"
      hx-trigger="every {{ poll_interval_seconds }}s"
-     hx-swap="outerHTML"{% endif %}>
+     hx-swap="outerHTML"
+     hx-sync="this:abort"
+     hx-disinherit="hx-sync"{% endif %}>
   <h2 id="rep-spec-assignments-heading" tabindex="-1">Active Assignments{% if assignments %} ({{ assignments | length }}){% endif %}</h2>
   {% if assignments %}
   <div class="table-scroll" tabindex="0" role="region" aria-label="Active assignments">
@@ -62,11 +68,14 @@
                RepSpec-scoped routes, so the swap target is the section wrapper.
                Replicate is confirm-guarded and `hx-disabled-elt`-guarded: it writes
                into a permanent store and htmx does not deduplicate concurrent
-               requests from an element (archiver#171). #}
+               requests from an element (archiver#171). Both `hx-sync` on the
+               section with `drop`, so an in-flight poll is aborted rather than
+               left to discard their response (archiver#220). #}
             <button class="btn btn--sm btn--secondary"
                     hx-post="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}/replicate"
                     hx-target="#rep-spec-assignments"
                     hx-swap="outerHTML"
+                    hx-sync="closest #rep-spec-assignments:drop"
                     hx-disabled-elt="this"
                     hx-confirm="Issue a replication for this assignment against the latest revision?"
                     aria-label="Replicate assignment {{ assignment.id }} now">
@@ -76,6 +85,7 @@
                     hx-delete="/dashboard/rep-specs/{{ spec.rep_spec_id }}/assignments/{{ assignment.id }}"
                     hx-target="#rep-spec-assignments"
                     hx-swap="outerHTML"
+                    hx-sync="closest #rep-spec-assignments:drop"
                     hx-confirm="Deactivate this replication spec assignment?"
                     aria-label="Deactivate assignment {{ assignment.id }}">
               Deactivate

@@ -1,7 +1,10 @@
 {# Partial: single rep-spec assignment row. Included by
    `_rep_spec_assignments.html` only — never returned standalone. Both row
    actions swap the enclosing section instead, because each destroys the button
-   that was clicked and has to move focus off it (archiver#171 CR #37).
+   that was clicked and has to move focus off it (archiver#171 CR #37). Both
+   `hx-sync` on that section with `drop`, so an in-flight poll is aborted
+   rather than left to discard their response (archiver#220; the reasoning is
+   on the section's wrapper).
    Requires `assignment`, `rep_spec`, `item_id`, `latest_command` in context.
 
    `public_url` is **read-only** (archiver#171). It acquired an automated writer
@@ -46,6 +49,7 @@
             hx-post="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}/replicate"
             hx-target="#ii-rep-spec-assignments"
             hx-swap="outerHTML"
+            hx-sync="closest #ii-rep-spec-assignments:drop"
             hx-disabled-elt="this"
             hx-confirm="Issue a replication for this assignment against the latest revision?"
             aria-label="Replicate assignment {{ assignment.id }} now">
@@ -55,6 +59,7 @@
             hx-delete="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assignment.id }}"
             hx-target="#ii-rep-spec-assignments"
             hx-swap="outerHTML"
+            hx-sync="closest #ii-rep-spec-assignments:drop"
             hx-confirm="Deactivate this replication spec assignment?"
             aria-label="Deactivate assignment {{ assignment.id }}">
       Deactivate

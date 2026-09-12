@@ -1,7 +1,9 @@
 {# Replication Specs assignments section — included by info_items/detail.html and
-   returned by DELETE /dashboard/info-items/{id}/rep-spec-assignments/{aid} so a
-   deactivate re-renders the table + empty-state in one swap and can move focus
-   (#81). A row-level "Replicate now" still swaps the individual row. Requires
+   returned by three routes under /dashboard/info-items/{id}/rep-spec-assignments:
+   the poll (GET), deactivate (DELETE .../{aid}) and Replicate now (POST
+   .../{aid}/replicate). Each action re-renders the table + empty-state in one
+   swap and moves focus, because each destroys the clicked button (#81, #171
+   CR #37). Requires
    `item_id`, `irs_rows`, `rep_specs_by_id`, `latest_commands`, `poll` and
    `poll_interval_seconds` in context — all of them, from every render site.
    `poll` was once read through `is defined`, and the one caller that omitted it
@@ -15,11 +17,23 @@
    later, so the swap that starts a replication is always too early to show its
    outcome. The attributes come off the same `latest_commands` the badges do, so
    the swap that lands a terminal state is the swap that stops the polling. -#}
+{#- The poll and both row actions swap this wrapper, so whichever response lands
+   second finds its target detached and htmx discards it - swap, focus script
+   and HX-Trigger toast alike. Unsynced, that was sometimes the operator's, and
+   a poll that had read before the commit left the section idle on
+   pre-issuance state (#220). So the poll always loses: `this:abort` lets any
+   action synced here abort it, and drops a tick while one is in flight; each
+   action syncs here with `drop`. `hx-disinherit` because hx-sync inherits -
+   without it every element inside, boosted links included, would take
+   `this:abort` and be dropped mid-poll. tests/dashboard/conftest.py
+   `poll_sync_violations` holds both screens to this. -#}
 {% from "_macros.html" import replication_stalled_notice %}
 <div id="ii-rep-spec-assignments"
      {% if poll.active %}hx-get="/dashboard/info-items/{{ item_id }}/rep-spec-assignments"
      hx-trigger="every {{ poll_interval_seconds }}s"
-     hx-swap="outerHTML"{% endif %}>
+     hx-swap="outerHTML"
+     hx-sync="this:abort"
+     hx-disinherit="hx-sync"{% endif %}>
   <h3 id="ii-rep-spec-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Replication Specs</h3>
   {% if irs_rows %}
   <div class="table-scroll" tabindex="0" role="region" aria-label="Active Replication Spec assignments">
