@@ -66,14 +66,21 @@ class _Contract:
     # Arguments putting the builder on an empty screen: the keys it returns do
     # not depend on the rows it finds.
     empty_args: Callable[[], tuple]
+    # The keys whose absence changes behaviour rather than omitting text - why
+    # the partial is registered at all. Checked against what the template reads,
+    # so the reason cannot outlive the template (CR 2).
+    behaviour: frozenset[str]
     # Keys the partial reads that a render site may leave out, each with its reason.
     optional: Mapping[str, str]
 
+
+_POLLING = frozenset({"poll", "poll_interval_seconds"})
 
 _CONTRACTS: dict[str, _Contract] = {
     "info_items/_rep_spec_assignments.html": _Contract(
         builder=info_items_routes._rep_spec_assignments_context,
         empty_args=lambda: (ULID(),),
+        behaviour=_POLLING,
         optional={"swapped": _SWAPPED},
     ),
     "rep_specs/_assignments.html": _Contract(
@@ -87,6 +94,7 @@ _CONTRACTS: dict[str, _Contract] = {
                 document={},
             ),
         ),
+        behaviour=_POLLING,
         optional={"swapped": _SWAPPED},
     ),
 }
@@ -384,10 +392,9 @@ def test_every_render_site_spreads_the_partials_builder(partial: str) -> None:
     builder = _CONTRACTS[partial].builder.__name__
     sites, unfollowable = _scan_dashboard(_carriers(_ENV, partial))
 
-    # Non-vacuity: a scan that finds nothing passes forever. Today the partial is
-    # rendered directly (the swaps and the poll) and inside its detail page.
-    assert any(site.template == partial for site in sites), f"no direct render of {partial}"
-    assert any(site.template != partial for site in sites), f"no page carrying {partial}"
+    # Non-vacuity: a scan that finds nothing passes forever. How the partial
+    # reaches the screen - swapped, polled, included - is its own business.
+    assert sites, f"no render of {partial} found - the scan is broken"
 
     assert not unfollowable, (
         f"a template carrying {partial} is named where this scan cannot follow it - "
@@ -406,13 +413,27 @@ def test_every_render_site_spreads_the_partials_builder(partial: str) -> None:
 async def test_the_builder_supplies_every_key_the_partial_reads(partial: str, session) -> None:
     contract = _CONTRACTS[partial]
     required = _required(_ENV, partial)
-    # Non-vacuity: the derivation still sees the keys that shipped the defect.
-    assert {"poll", "poll_interval_seconds"} <= required
 
     context = await contract.builder(*contract.empty_args(), session)
 
     missing = sorted(required - context.keys())
     assert not missing, f"{contract.builder.__name__}() omits {missing}, which {partial} reads"
+
+
+@pytest.mark.parametrize("partial", list(_CONTRACTS))
+def test_the_keys_that_qualify_the_partial_are_ones_it_requires(partial: str) -> None:
+    """Non-vacuity for the derivation, and the registration's reason kept honest:
+    a partial that no longer reads its behaviour keys no longer needs a builder."""
+    behaviour = _CONTRACTS[partial].behaviour
+    assert behaviour, f"{partial} is registered without naming the keys that qualify it"
+    missing = sorted(behaviour - _required(_ENV, partial))
+    assert not missing, f"{partial} no longer requires {missing}; revisit its registration"
+
+
+def test_the_include_walk_reaches_a_page_on_the_real_tree() -> None:
+    """The canary below proves the walk's logic; this proves it runs against the
+    real loader, where a page including a registered partial exists today."""
+    assert any(_carriers(_ENV, partial) - {partial} for partial in _CONTRACTS)
 
 
 @pytest.mark.parametrize("partial", list(_CONTRACTS))
