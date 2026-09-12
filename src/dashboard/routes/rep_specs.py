@@ -110,14 +110,19 @@ async def _load_active_assignments(
 async def _assignments_context(spec: RepSpec, session: AsyncSession) -> dict:
     """The assignments section's context, including whether it should keep asking.
 
-    One builder for all four render sites - the detail page, its 422 re-render,
-    the deactivate swap and the Replicate now swap (archiver#212). The polling
+    One builder for every render site - the detail page, its 422 re-render, the
+    deactivate and Replicate now swaps, and the poll (archiver#212). The polling
     attributes derive from the same ``latest_commands`` the badges do, so a
     section can never show a terminal badge while still asking for updates, and
     the full page starts watching an already-open command on load.
+
+    It returns the partial's whole contract, ``spec`` included, so spreading it
+    is all a render site does; ``tests/dashboard/test_partial_contracts.py``
+    holds every site to that (archiver#219).
     """
     assignment_rows, items_by_id, latest_commands = await _load_active_assignments(spec, session)
     return {
+        "spec": spec,
         "assignments": assignment_rows,
         "items_by_id": items_by_id,
         "latest_commands": latest_commands,
@@ -293,7 +298,6 @@ async def detail_rep_spec(
         "rep_specs/detail.html",
         {
             "user": user,
-            "spec": spec,
             **assignments_ctx,
             **await _document_card_context(spec, session),
         },
@@ -440,7 +444,6 @@ async def replicate_assignment_now(
         "rep_specs/_assignments.html",
         {
             "user": user,
-            "spec": spec,
             **assignments_ctx,
             "swapped": True,
         },
@@ -474,7 +477,6 @@ async def assignments_section(
         "rep_specs/_assignments.html",
         {
             "user": user,
-            "spec": spec,
             **await _assignments_context(spec, session),
             "swapped": False,
         },
@@ -526,7 +528,6 @@ async def deactivate_assignment(
         "rep_specs/_assignments.html",
         {
             "user": user,
-            "spec": spec,
             **assignments_ctx,
             "swapped": True,
         },

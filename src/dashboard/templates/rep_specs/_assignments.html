@@ -6,7 +6,11 @@
    occasion wrote it (archiver#171).
 
    Requires `spec`, `assignments`, `items_by_id`, `latest_commands`, `poll` and
-   `poll_interval_seconds` — all of them, from every render site (CR 13/14). #}
+   `poll_interval_seconds` — all of them, from every render site (CR 13/14), by
+   spreading `_assignments_context`. Never read one through `is defined` or
+   `default`: that turns a missing key into a section that renders and silently
+   misbehaves. tests/dashboard/test_partial_contracts.py enforces both and says
+   why (#219). #}
 {% from "_macros.html" import open_button, replication_state, replication_stalled_notice %}
 {#- Re-reads itself while a command is open (#212), exactly as the InfoItem
    hub's section does: issuance is synchronous, closure arrives on

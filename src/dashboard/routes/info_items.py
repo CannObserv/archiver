@@ -687,6 +687,9 @@ async def _rep_spec_assignments_context(item_id: ULID, session: AsyncSession) ->
     an inert section: archiver#212's defect surviving on the most ordinary path
     to this screen. The RepSpec twin routed all four of its sites from the
     start, so the two screens disagreed.
+
+    ``tests/dashboard/test_partial_contracts.py`` now holds every render site
+    to spreading this, including ones no test renders (archiver#219).
     """
     irs_rows, rep_specs_by_id, latest_commands = await _load_active_rep_spec_assignments(
         item_id, session

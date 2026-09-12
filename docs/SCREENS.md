@@ -170,6 +170,18 @@ enhancement). Emit a focus-move `<script>` in the swap response only (gated on a
 `swapped` flag) so keyboard focus lands on the region heading rather than
 `<body>`.
 
+*One builder per behaviour-bearing partial.* A partial whose missing context key
+changes behaviour rather than omitting text - today the two replication
+assignment sections, whose `poll` drives the self-refresh (#212) - takes its
+whole context from one builder, and every render site spreads it: the swaps, the
+poll, and the full page that includes it. Jinja's default `Undefined` is falsy
+and renders empty, so a site that forgets a key does not fail - it renders a
+section that quietly does nothing, which is how #212 CR 12 shipped green. For the
+same reason such a partial never reads a required key through `is defined` or
+`default`. `tests/dashboard/test_partial_contracts.py` enforces both statically,
+finding sites through the include graph so a site no test renders is still held
+to it; registering a partial in its `_CONTRACTS` is the opt-in (#219).
+
 *Editor cards.* A card whose body is an inline editor - InfoSource **Source
 Specification**, RepSpec **Document** - follows one shape. Extract the card to a
 partial with stable root and heading `id`s and `hx-post` with
