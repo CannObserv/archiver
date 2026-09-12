@@ -228,21 +228,48 @@ def _keyword(call: ast.Call, name: str) -> ast.expr | None:
     return next((kw.value for kw in call.keywords if kw.arg == name), None)
 
 
-def _assigned_values(name: str, scopes: list[ast.AST]) -> list[ast.expr]:
-    """What ``name`` is assigned in the nearest enclosing function that assigns it."""
+def _bindings(name: str, scope: ast.AST) -> list[ast.expr | None]:
+    """Each value ``name`` is bound to in ``scope``; None for one the scan cannot evaluate.
+
+    A parameter, a tuple unpack, a loop or ``with`` target, an augmented
+    assignment: each is a path on which the name may hold anything, so it proves
+    nothing about what reaches the render (CR 1). They are found by counting
+    every binding of the name against the plain assignments evaluated.
+    """
+    values: list[ast.expr | None] = []
+    evaluated = 0
+    for node in ast.walk(scope):
+        if isinstance(node, ast.Assign):
+            simple = [t for t in node.targets if isinstance(t, ast.Name) and t.id == name]
+            values += [node.value] * len(simple)
+            evaluated += len(simple)
+        elif (
+            isinstance(node, ast.AnnAssign | ast.NamedExpr)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == name
+        ):
+            evaluated += 1
+            if node.value is not None:  # a bare annotation binds nothing
+                values.append(node.value)
+    stores = sum(
+        isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store)
+        for node in ast.walk(scope)
+    )
+    parameters = (
+        {node.arg for node in ast.walk(scope.args) if isinstance(node, ast.arg)}
+        if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef)
+        else set()
+    )
+    if stores > evaluated or name in parameters:
+        values.append(None)
+    return values
+
+
+def _scope_bindings(name: str, scopes: list[ast.AST]) -> list[ast.expr | None]:
+    """``name``'s bindings in the nearest enclosing function that binds it."""
     for scope in reversed(scopes):
-        values = [
-            node.value
-            for node in ast.walk(scope)
-            if isinstance(node, ast.Assign | ast.AnnAssign | ast.NamedExpr)
-            and node.value is not None
-            and any(
-                isinstance(t, ast.Name) and t.id == name
-                for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
-            )
-        ]
-        if values:
-            return values
+        if bindings := _bindings(name, scope):
+            return bindings
     return []
 
 
@@ -269,11 +296,13 @@ def _builders_reaching(
             )
         )
     if isinstance(expr, ast.Name) and expr.id not in seen:
-        values = _assigned_values(expr.id, scopes)
-        if values:
-            return frozenset.intersection(
-                *(_builders_reaching(value, scopes, seen | {expr.id}) for value in values)
-            )
+        inner = seen | {expr.id}
+        if values := _scope_bindings(expr.id, scopes):
+            reached = [
+                frozenset() if value is None else _builders_reaching(value, scopes, inner)
+                for value in values
+            ]
+            return frozenset.intersection(*reached)
     return frozenset()
 
 
@@ -453,6 +482,47 @@ def test_a_builder_rebound_on_one_branch_does_not_count() -> None:
         "canary.py",
         {_PARTIAL},
     )
+
+    assert [site.builders for site in finder.sites] == [frozenset()]
+
+
+def test_a_parameter_proves_nothing_about_what_it_holds() -> None:
+    """The caller's ``ctx`` is any dict at all; the builder on the other path is
+    not enough (CR 1)."""
+    finder = _scan(
+        textwrap.dedent("""
+            async def added_later(request, spec, session, ctx=None):
+                if ctx is None:
+                    ctx = await _assignments_context(spec, session)
+                return _templates.TemplateResponse(request, "rep_specs/_assignments.html", ctx)
+        """),
+        "canary.py",
+        {_PARTIAL},
+    )
+
+    assert [site.builders for site in finder.sites] == [frozenset()]
+
+
+@pytest.mark.parametrize(
+    "rebinding",
+    [
+        "ctx, status = {}, 422",
+        "for ctx in drafts: pass",
+        "with drafted() as ctx: pass",
+        "ctx |= {}",
+    ],
+)
+def test_a_binding_the_scan_cannot_evaluate_proves_nothing(rebinding: str) -> None:
+    """Each of these is a path on which ``ctx`` may hold anything (CR 1)."""
+    source = textwrap.dedent("""
+        async def added_later(request, spec, session, htmx, drafts):
+            ctx = await _assignments_context(spec, session)
+            if htmx:
+                REBINDING
+            return _templates.TemplateResponse(request, "rep_specs/_assignments.html", ctx)
+    """).replace("REBINDING", rebinding)
+
+    finder = _scan(source, "canary.py", {_PARTIAL})
 
     assert [site.builders for site in finder.sites] == [frozenset()]
 
