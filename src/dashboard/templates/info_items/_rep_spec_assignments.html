@@ -6,7 +6,10 @@
    `poll_interval_seconds` in context — all of them, from every render site.
    `poll` was once read through `is defined`, and the one caller that omitted it
    rendered a section that silently never polled: the defect #212 exists to fix,
-   reintroduced by the guard meant to be defensive (CR 13/14). #}
+   reintroduced by the guard meant to be defensive (CR 13/14). Every site gets
+   them by spreading `_rep_spec_assignments_context`, and
+   tests/dashboard/test_partial_contracts.py enforces that - and fails on an
+   `is defined` or `default` read of any of them (#219). #}
 {#- The section re-reads itself while a command is open (#212). Issuance is
    synchronous but closure arrives on `content.artifacts` a bus round trip
    later, so the swap that starts a replication is always too early to show its
