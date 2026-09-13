@@ -120,8 +120,9 @@ headroom, per-stream `XLEN` and last-entry age, the two-tick `XPENDING` rule,
 the `*.dlq` sweep and disk are `broker-bus-health.timer` in
 [CannObserv/broker](https://github.com/CannObserv/broker), running on the
 broker's own node. Every one of them measures the broker's host; run from here
-they had begun reporting archiver's disk. Check list, thresholds and the
-cluster stream inventory live in that repo's `docs/STREAMS.md`.
+they had begun reporting archiver's disk. Check list and thresholds live in
+that repo's `docs/BUS-HEALTH.md`, the cluster stream inventory in its
+`docs/STREAMS.md`.
 
 `bus_health` still backs the archiver#147 dashboard panel: `collect_group_lag()`
 reads the archiver-owned groups' `XPENDING` and `*.dlq` depths, four commands

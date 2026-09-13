@@ -166,7 +166,7 @@ TRIM_INTERVAL_ITERATIONS = 20
 # naming this constant as the source of truth - across a repo boundary it
 # cannot import it. Raising it here without raising it there leaves broker's
 # WARN threshold stale-*low*, which fires early rather than going quiet; the
-# safe direction, but fix it. Its index is that repo's ``docs/STREAMS.md``,
+# safe direction, but fix it. Its index is that repo's ``docs/BUS-HEALTH.md``,
 # "Mirrored constants", which deploy/README.md points at and which also covers
 # ``DEFAULT_REGISTRY_STREAM_MAXLEN`` and Watcher's LWW cap.
 DEFAULT_STREAM_MAXLEN = 100_000
