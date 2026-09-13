@@ -185,13 +185,24 @@ function requests() {
 }
 
 describe("a self-polling section's sync rules, on the vendored htmx", function () {
-    it("lets an action abort an in-flight poll, and sends it", function () {
+    it("lets an action abort an in-flight poll, and lands its response", function () {
+        // #220's first acceptance bullet, and the control for the discard test
+        // below: through this stub, an answered action swaps and its toast
+        // reaches document - so there, their absence means something.
         mount(SHIPPED_WRAPPER, SHIPPED_ACTION);
         tick();
         click("act");
 
         expect(requests()).toEqual(["GET /poll", "POST /act"]);
         expect(sent[0].aborted).toBe(true);
+
+        respond(sent[1], "<div id=\"sect\">from the action</div>", {
+            "HX-Trigger": JSON.stringify({ showFlash: { level: "success", body: "done" } })
+        });
+
+        expect(document.getElementById("sect").textContent).toBe("from the action");
+        expect(toasts).toHaveLength(1);
+        expect(toasts[0].body).toBe("done");
     });
 
     it("drops a poll tick while an action is in flight", function () {
