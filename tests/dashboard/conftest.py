@@ -56,8 +56,9 @@ def poll_sync_violations(fragment: str, wrapper_id: str) -> list[str]:
     - the wrapper disinherits ``hx-sync``, or every element inside it inherits
       ``this:abort`` - boosted links included - and is dropped mid-poll;
     - each action syncs on the wrapper with ``drop``. ``abort`` would drop the
-      click; ``replace`` aborts another action's response; ``queue`` re-issues
-      from a detached element and never fires. No ``hx-sync`` at all syncs on
+      click; ``replace`` aborts an in-flight action, losing its response though
+      the server commits it; ``queue`` parks the next action on the wrapper,
+      where the first action's swap wipes it. No ``hx-sync`` at all syncs on
       the button itself, which never sees the poll.
 
     ``fragment`` must be the section alone - its poll route's response - so
