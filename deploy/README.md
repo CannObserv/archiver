@@ -75,8 +75,8 @@ connection string is all that changes to point at a different broker.
 ### The two retention knobs archiver owns
 
 Both are producer-side, and both are the *source of truth* for a warning
-threshold in the broker repo's probe (see `docs/STREAMS.md` there, "Mirrored
-constants"): a change here that is not mirrored leaves that threshold
+threshold in the broker repo's probe (see `docs/BUS-HEALTH.md` there,
+"Mirrored constants"): a change here that is not mirrored leaves that threshold
 stale-low, so it warns early rather than going quiet.
 
 - **`ARCHIVER_REDIS_STREAM_MAXLEN`** (default 100000) caps `info.changes`

@@ -83,7 +83,7 @@ Mirrored across the repo boundary (archiver#196), exactly as
 and names this constant as the source of truth, unable to import it. Raising it
 here and not there leaves that probe's WARN threshold stale-*low* - it fires
 early rather than going quiet, the safe direction, but fix it. Index: that
-repo's ``docs/STREAMS.md``, "Mirrored constants".
+repo's ``docs/BUS-HEALTH.md``, "Mirrored constants".
 
 Derived from key count x sets retained, never from the fact stream's number:
 at O(10^3) items on the 1-hour period that is ~24k entries/day, so 50k covers
