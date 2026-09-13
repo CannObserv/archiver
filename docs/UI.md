@@ -86,10 +86,6 @@ it: assume any dashboard route redirects 307 when unauthenticated.
 
 `<body hx-boost="true">` - all in-dashboard `<a>` links and form submissions use HTMX fetch automatically (no full page reload). HTMX swaps the `<body>` and updates `<title>`.
 
-### Partial fragment swaps
-
-Server returns a partial HTML fragment with `HX-Reswap: outerHTML` / `HX-Retarget: #target-id` headers when refreshing a sub-section (e.g., the rep-spec assignment table row).
-
 ### Inline validation errors (`hx-target-422`)
 
 `<body hx-ext="response-targets">` enables the vendored
