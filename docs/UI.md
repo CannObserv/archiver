@@ -86,10 +86,6 @@ it: assume any dashboard route redirects 307 when unauthenticated.
 
 `<body hx-boost="true">` - all in-dashboard `<a>` links and form submissions use HTMX fetch automatically (no full page reload). HTMX swaps the `<body>` and updates `<title>`.
 
-### Partial fragment swaps
-
-Server returns a partial HTML fragment with `HX-Reswap: outerHTML` / `HX-Retarget: #target-id` headers when refreshing a sub-section (e.g., the rep-spec assignment table row).
-
 ### Inline validation errors (`hx-target-422`)
 
 `<body hx-ext="response-targets">` enables the vendored
@@ -258,6 +254,30 @@ Rules:
 - **Progressive enhancement:** keep `method`/`action` (and, for buttons, a real submit) alongside the `hx-*` attributes so the action still works as a plain POST→303 when JS is disabled. Branch server-side on the `HX-Request` header: HTMX → partial; non-HTMX → 303 redirect (success) / full-page re-render (error).
 - On success the route sends `HX-Trigger: {"showFlash": {...}}` for a toast, and moves focus to the card heading (`tabindex="-1"`, focused by an inline `<script>` gated on a `swapped` flag) so keyboard users are not dropped to `<body>` after the swap (archiver#78).
 - **Validation errors** return the partial with the inline error at status **200** (not 422) so HTMX performs the swap - otherwise a 4xx is discarded unless the `response-targets` extension is wired (see the inline form error pattern above, which is the alternative when you want the error routed to a separate `#error` div rather than re-swapping the whole card). Give the inline error `<p>` `role="alert"` so screen readers announce it after the swap (focus lands on `<body>` otherwise), move focus to the card heading on the error swap too, and echo the operator's submitted input back into the field so a rejected edit isn't discarded.
+
+### A section that polls and takes actions
+
+When a section both **re-reads itself** (`hx-trigger="every Ns"` on its root, swapping its own `outerHTML`) and is the **swap target of actions inside it**, the poll and the action race for one element. htmx resolves a request's target when the request is issued, and an `outerHTML` swap into a target an earlier swap removed is discarded - the swap, its focus script, and its `HX-Trigger` toast, which fires on the now-detached button and never reaches `document`. Unsynced, the loser is whichever response lands second, and that is often the action's: `hx-confirm` blocks the page, so the poll timer runs overdue while the dialog is open and fires just after the action is sent. If that poll also read before the action's commit, its render may be one that no longer polls, and the section stays wrong until reload (archiver#220, reproduced in Chromium on both screens that use this).
+
+The poll must always be the one that loses:
+
+```html
+<div id="the-section"
+     {% if poll.active %}hx-get="…" hx-trigger="every 2s" hx-swap="outerHTML"
+     hx-sync="this:abort" hx-disinherit="hx-sync"{% endif %}>
+  …
+  <button hx-post="…" hx-target="#the-section" hx-swap="outerHTML"
+          hx-sync="closest #the-section:drop">Act</button>
+</div>
+```
+
+Rules:
+- **`hx-sync="this:abort"` on the section.** An action synced here aborts an in-flight poll, and a tick that comes while an action holds the lock is dropped. htmx takes that lock *before* the native `confirm()`, so it spans the dialog too. The `every` timer reschedules itself whatever becomes of one request: an aborted tick needs no re-arming, and cancelling the dialog costs one tick.
+- **`hx-disinherit="hx-sync"` on the section.** `hx-sync` inherits, and `this` resolves to the declaring ancestor, so without it every element inside - boosted links included - takes `this:abort` and is **dropped** mid-poll. The same inheritance is why `hx-sync` on the section alone is the wrong fix: it drops the click.
+- **`hx-sync="closest #the-section:drop"` on every action inside.** An action with no `hx-sync` syncs on itself and never sees the poll. `drop` (the default strategy) still aborts an abortable poll. `abort` would drop the click. `replace` aborts an in-flight action, whose response - swap and toast - is lost though the server still commits it. `queue` parks the next action on the wrapper, where the first action's swap wipes it; if the first fails without swapping, the queued one fires later, behind a second confirm. The cost: a second action clicked while the first is in flight is dropped, and no confirm appears.
+- Each screen asserts `poll_sync_violations(fragment, wrapper_id) == []` (`tests/dashboard/conftest.py`) against its poll fragment. That holds the templates to the attributes; `tests/js/htmx-poll-sync.test.js` holds the vendored htmx to what they are relied on to do. It has to: the `drop`-aborts-an-abortable-poll rule is htmx 2.0.8's implementation, not its documented contract - the docs say `drop` ignores a request while one is in flight - so a vendor bump could undo it with every Python test green.
+
+Used by `info_items/_rep_spec_assignments.html` and `rep_specs/_assignments.html`.
 
 ### JSON data island pattern
 

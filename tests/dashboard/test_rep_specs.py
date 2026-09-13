@@ -17,7 +17,7 @@ from src.core.models import (
     RepSpec,
     SourceRevision,
 )
-from tests.dashboard.conftest import read_flash
+from tests.dashboard.conftest import poll_sync_violations, read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-repspecs", "X-ExeDev-Email": "repspecs@example.com"}
 _LIST_URL = "/dashboard/rep-specs/"
@@ -1125,3 +1125,17 @@ async def test_the_twin_poll_fragment_is_never_served_from_a_cache(client, sessi
     r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments", headers=_HEADERS)
 
     assert r.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_the_twin_poll_always_yields_to_a_row_action(client, session):
+    """archiver#220, the twin's half: the same race on the same shape, which the
+    issue named only for the InfoItem hub."""
+    spec = await _spec_with_open_command(
+        session, name="Twin Yields", state="requested", issued_at=datetime.now(UTC)
+    )
+
+    r = await client.get(f"/dashboard/rep-specs/{spec.rep_spec_id}/assignments", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert poll_sync_violations(r.text, "rep-spec-assignments") == []
