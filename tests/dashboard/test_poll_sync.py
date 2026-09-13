@@ -45,7 +45,8 @@ def test_a_wrapper_only_sync_fails():
 @pytest.mark.parametrize("strategy", ["abort", "replace", "queue all"])
 def test_an_action_drops_rather_than_anything_else(strategy):
     """``abort`` drops the click mid-poll. Between two actions, ``replace`` loses
-    the first one's response and ``queue`` never sends the second."""
+    the first one's response and ``queue`` loses the second whenever the first
+    one swaps."""
     html = _section(_FIXED_WRAPPER, f'hx-sync="closest #s:{strategy}"')
     assert poll_sync_violations(html, "s") == [
         f"<button> 'Replicate' uses '{strategy}', not 'drop'"
