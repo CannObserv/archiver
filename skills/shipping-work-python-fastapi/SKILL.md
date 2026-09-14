@@ -7,7 +7,7 @@ metadata:
   version: "1.4"
   triggers: ship it, push GH, close GH, wrap up
   overrides: gregoryfoster-skills/shipping-work-python-fastapi
-  synced-from: "gregoryfoster-skills 1.4 (662de71)"
+  synced-from: "gregoryfoster-skills 1.4 (178ec64)"
   override-reason: "Sources /etc/archiver/.env and $PROJECT_ROOT/.env before delegating to upstream pre-ship; fixes broken `export $(cat … | xargs)` env-loading pattern via `set -a; . <file>; set +a`."
 ---
 
@@ -81,20 +81,31 @@ bash "<SKILL_SCRIPTS>/doc-check.sh"
 ```
 
 `doc-check.sh` lists files changed on this branch vs the upstream default branch
-and flags any that match the project's sensitive-path list. Entries match path
-*segments*, so `pyproject.toml` covers `clients/python/pyproject.toml` as well as
-the root one. When sensitive paths change, the matching doc sections may need
-updates too.
+and flags any that match the project's sensitive-path list, then prints the doc
+sections to spot-check. Entries match path *segments*, so `pyproject.toml`
+covers `clients/python/pyproject.toml` as well as the root one. When sensitive
+paths change, the matching doc sections may need updates too.
 
-**Archiver commits its own list at `.skills/doc-sensitive-paths`** (one path per
-line, `#`-comments ignored), which replaces the upstream defaults wholesale
-rather than extending them - the defaults' `schema.sql`, `src/models/` and
-`.env.example` match nothing in this tree. Every verdict that consulted the list
-names it; if it says `built-in defaults`, the file is missing and the gate is
-watching the wrong paths (a bare `No changes vs <ref>.` never reached the list at
-all). `tests/scripts/test_doc_sensitive_paths.py` fails on any entry that no
-longer matches a tracked file, so edit `.skills/doc-sensitive-paths` and let the
-test confirm the result.
+**Archiver tailors both halves under `.skills/`** (one entry per line, blank
+lines and `#`-comments ignored). Each file replaces its upstream defaults
+wholesale rather than extending them:
+
+- `.skills/doc-sensitive-paths` - what the gate watches (archiver#190). The
+  defaults' `schema.sql`, `src/models/` and `.env.example` match nothing in
+  this tree.
+- `.skills/doc-sections` - the advice a hit prints: which of archiver's docs to
+  spot-check (archiver#228). The defaults name AGENTS.md's route table and a
+  README quick start, a layout this repo does not keep.
+
+Edit the two together: the list says what the gate watches, the sections say
+what to do about a hit. Every verdict names the list it consulted and every hit
+names its advice; either one reading `built-in defaults` means that file went
+missing (a bare `No changes vs <ref>.` never reached the list at all). A hit
+ending in `Note: this project tailors ...` says the same thing, naming the half
+that is still the default. `tests/scripts/test_doc_sensitive_paths.py` fails on
+any list entry that no longer matches a tracked file, and
+`tests/scripts/test_doc_sections.py` on any advice line naming a path or heading
+that is gone; edit the file and let the tests confirm the result.
 
 If the script exits 1: review the listed files, decide whether each requires a
 doc update, and either commit the docs now or note them as deliberate skips. If
@@ -103,13 +114,19 @@ running - investigate the underlying error rather than proceeding. One exit-2
 case is worth naming: when no entry in the list matches any tracked file, it says
 so instead of passing, because a list that cannot hit anything would otherwise
 print the same clean green as a genuinely doc-neutral branch. Fix the list; do
-not wave the step through.
+not wave the step through. The same goes for either file above, or `.skills/`
+itself, when the script cannot use it: a tailoring never silently reverts to the
+built-in defaults, so an exit 2 there means the override is unusable, not absent.
 
 ### Step 2 - Ensure a clean working tree
 
 ```bash
 bash "<SKILL_SCRIPTS>/check-status.sh"
 ```
+
+If the script exits 2, `git status` itself failed: the tree state is **unknown**,
+which is not the same as clean. Investigate git's error rather than proceeding
+([#257](https://github.com/gregoryfoster/skills/issues/257)).
 
 If uncommitted changes exist, commit them using **archiver's bracket-less convention**
 (note: the upstream variant inlines `[type]` brackets as a default - archiver does not):
