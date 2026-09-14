@@ -27,11 +27,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SECTIONS = REPO_ROOT / ".skills" / "doc-sections"
 SHIPPING_SKILL = REPO_ROOT / "skills" / "shipping-work-python-fastapi" / "SKILL.md"
 
-# A repo-relative file path: optional directory segments, then a name with one of
-# the extensions the advice has reason to cite. The lookarounds keep a match from
-# starting mid-path or stopping short of a longer one (`pyproject.toml.bak`).
+# A repo-relative file path, in one of three shapes: under a directory with any
+# extension (`deploy/archiver.service`); under a dot-directory with or without one
+# (`.skills/doc-sections`); or a bare root name, by known extension only. The last
+# is narrow because a bare `\w.\w` is also prose (`e.g.`), and extensionless paths
+# need the leading dot because `owner/repo` slugs are prose too. The lookarounds
+# keep a match from starting mid-path or stopping short of a longer one
+# (`pyproject.toml.bak`).
 FILE_TOKEN = re.compile(
-    r"(?<![\w/.-])((?:[\w.-]+/)*[\w-]+\.(?:md|py|sh|toml|lock|json))(?![\w/-]|\.\w)"
+    r"(?<![\w/.-])("
+    r"(?:[\w.-]+/)+[\w-]+(?:\.\w+)+"
+    r"|\.[\w-]+(?:/[\w.-]*\w)+"
+    r"|[\w-]+\.(?:md|py|sh|toml|lock|json)"
+    r")(?![\w/-]|\.\w)"
 )
 # A directory path, written the way the path list writes one: trailing slash.
 DIR_TOKEN = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)+)(?![\w.-])")
@@ -78,6 +86,23 @@ def _heading_refs() -> list[tuple[str, str]]:
     """Every distinct ``doc "Heading"`` pair across the parsed sections."""
     found = (ref for section in _sections() for ref in HEADING_REF.findall(section))
     return list(dict.fromkeys(found))
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("deploy/archiver.service units", ["deploy/archiver.service"]),
+        ("src/dashboard/static/dashboard.css", ["src/dashboard/static/dashboard.css"]),
+        ("see .github/workflows/ci.yml.", [".github/workflows/ci.yml"]),
+        ("`.skills/doc-sensitive-paths`", [".skills/doc-sensitive-paths"]),
+        ("CHANGELOG.md: an entry", ["CHANGELOG.md"]),
+        ("e.g. CannObserv/broker or gregoryfoster/skills#284", []),
+        ("pyproject.toml.bak", []),
+    ],
+)
+def test_file_token_grammar(text: str, expected: list[str]) -> None:
+    """Pin what counts as a named path, so the checks below cannot quietly narrow."""
+    assert FILE_TOKEN.findall(text) == expected
 
 
 def test_sections_file_is_committed_and_non_empty() -> None:
