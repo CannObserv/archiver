@@ -1,0 +1,23 @@
+# doc-check.sh advice for archiver (archiver#228; upstream gregoryfoster/skills#261, #284).
+#
+# The doc sections printed when a path in .skills/doc-sensitive-paths changes.
+# Replaces the shipping-work-python-fastapi defaults wholesale - one section per
+# line, `#`-comments and blank lines ignored; a `#` later in a line is content.
+# The defaults sent every hit to AGENTS.md's "route table" and README.md's quick
+# start, whatever had changed. Edit this file beside that list: the list says
+# what the gate watches, this says which doc a hit sends the reader to. Tailoring
+# only one of the two makes every hit end with a "Note: this project tailors" line.
+#
+# Upstream runs no dead-entry check on prose. tests/scripts/test_doc_sections.py
+# fails on any path named here that stops being tracked, and on any
+# `doc "Heading"` pair whose heading no longer exists in that doc.
+
+CHANGELOG.md: an entry when a changed path matches AGENTS.md's changelog trigger regex; what counts and how to tag it: docs/CONVENTIONS.md "Changelog trigger"
+docs/API.md: a route, its SDK wrapper, or the pagination contract under src/api/ or clients/python/
+docs/SCHEMA.md: a migration under alembic/versions/, a model under src/core/models/, or a table contract or invariant enforced elsewhere under src/core/ (services, fingerprints, the JSON Schema validators)
+docs/BUS.md, docs/BUS_CONSUMERS.md: the outbox producer, a stream payload, or a consumer group under src/core/changes/
+docs/CONVENTIONS.md "Dashboard living docs": which doc a change under src/dashboard/ requires (docs/PAGES.md for any template or route); missing one is a CR blocker
+docs/DEPLOYMENT.md, deploy/README.md: deploy/ units, an operator-facing script under scripts/, a new env var, or dependency resolution (pyproject.toml, uv.lock, the co-core wheelhouse)
+docs/ARCHITECTURE.md "Project Layout": a file or package added, moved, or retired under src/, scripts/, deploy/, or clients/python/
+docs/SKILLS.md, deploy/README.md, AGENTS.md "Architecture": a guard test under tests/scripts/ or tests/deploy/, which scripts/ and deploy/ over-match - the doc stating the rule it pins
+AGENTS.md "Detail Docs", README.md "Documentation": a doc added, renamed, or retired; README.md keeps only orientation and curated links into docs/

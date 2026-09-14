@@ -30,6 +30,8 @@ clients/python/
 
 # Deploy + operator surface. Both entries over-match into the test tree:
 # `deploy/` also catches tests/deploy/ (which asserts file parity with deploy/)
-# and `scripts/` also catches tests/scripts/. Both land on the same docs anyway.
+# and `scripts/` also catches tests/scripts/. Kept: a hit there is a guard test,
+# and .skills/doc-sections routes it to the doc stating the rule it pins - often
+# docs/SKILLS.md, not the docs the watched directory itself lands on.
 deploy/
 scripts/

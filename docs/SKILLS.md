@@ -60,13 +60,13 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 
 | Skill | Override reason |
 |---|---|
-| `shipping-work-python-fastapi` | Thin override - sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor. Step 1.5 documents archiver's `.skills/doc-sensitive-paths` (below) |
+| `shipping-work-python-fastapi` | Thin override - sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor. Step 1.5 documents archiver's `.skills/doc-sensitive-paths` and `.skills/doc-sections` (below) |
 | `brainstorming` | Project conventions (docs/plans/ path, commit format); invokes using-git-worktrees after design approval; FastAPI stack context; proactive-suggestion mode |
 | `using-git-worktrees` | Archiver-specific dev port (8001) and env file (`/etc/archiver/.env`); auto-starts uvicorn on 8001; systemd `archiver.service` on 8000 |
 
 `reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) - no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
 
-### Sensitive paths (`doc-check.sh`)
+### Sensitive paths and advice (`doc-check.sh`)
 
 `.skills/doc-sensitive-paths` is archiver's list for the `shipping-work-python-fastapi`
 Step 1.5 doc spot-check. Committing it **replaces** the skill's built-in defaults
@@ -83,6 +83,16 @@ never reached the list at all). `tests/scripts/test_doc_sensitive_paths.py` fail
 any entry that stops matching a tracked file, on any changelog-trigger path the list
 stops covering (regex read from `scripts/check_changelog_lib.sh`, the gate itself), and
 on any entry carrying a glob metacharacter, which bash `case` would expand.
+
+`.skills/doc-sections` is the other half: the advice a hit prints, one doc section per
+line, which likewise replaces the skill's two defaults (AGENTS.md's route table, a
+README quick start) - archiver#228, upstream gregoryfoster/skills#261. Edit it beside
+the list. A repo that tailors only one half gets a hit ending in `Note: this project
+tailors …` (gregoryfoster/skills#284). Upstream never checks advice, since it is prose;
+`tests/scripts/test_doc_sections.py` fails on any path it names that stops being
+tracked, on any `doc "Heading"` pair whose heading is gone, and on a line naming no doc.
+Whether a line routes a given list entry stays unchecked: pasting paths in would
+satisfy such a test and make the advice worse.
 
 ## SocratiCode (Codebase Search)
 
