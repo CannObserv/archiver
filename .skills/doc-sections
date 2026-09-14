@@ -12,7 +12,7 @@
 # fails on any path named here that stops being tracked, and on any
 # `doc "Heading"` pair whose heading no longer exists in that doc.
 
-CHANGELOG.md: an entry when the diff touches AGENTS.md's changelog trigger regex; what counts and how to tag it: docs/CONVENTIONS.md "Changelog trigger"
+CHANGELOG.md: an entry when a changed path matches AGENTS.md's changelog trigger regex; what counts and how to tag it: docs/CONVENTIONS.md "Changelog trigger"
 docs/API.md: a route, its SDK wrapper, or the pagination contract under src/api/ or clients/python/
 docs/SCHEMA.md: a migration under alembic/versions/, a model under src/core/models/, or a table contract or invariant enforced elsewhere under src/core/ (services, fingerprints, the JSON Schema validators)
 docs/BUS.md, docs/BUS_CONSUMERS.md: the outbox producer, a stream payload, or a consumer group under src/core/changes/
