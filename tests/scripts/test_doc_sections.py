@@ -45,6 +45,8 @@ FILE_TOKEN = re.compile(
 DIR_TOKEN = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)+)(?![\w.-])")
 # `docs/X.md "Heading"` - a doc followed by the heading the reader should open.
 HEADING_REF = re.compile(r'(?<![\w/.-])((?:[\w.-]+/)*[\w-]+\.md) "([^"]+)"')
+# A code fence's opening or closing marker; a fence closes on the marker it opened with.
+FENCE = re.compile(r"\s*(```|~~~)")
 
 
 @cache
@@ -88,6 +90,22 @@ def _heading_refs() -> list[tuple[str, str]]:
     return list(dict.fromkeys(found))
 
 
+def _headings(text: str) -> list[str]:
+    """ATX heading lines of ``text``, skipping fenced code, where ``#`` opens a comment."""
+    headings: list[str] = []
+    fence: str | None = None
+    for line in text.splitlines():
+        if marker := FENCE.match(line):
+            if fence is None:
+                fence = marker.group(1)
+            elif marker.group(1) == fence:
+                fence = None
+            continue
+        if fence is None and re.match(r"#+\s", line):
+            headings.append(line)
+    return headings
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
@@ -103,6 +121,12 @@ def _heading_refs() -> list[tuple[str, str]]:
 def test_file_token_grammar(text: str, expected: list[str]) -> None:
     """Pin what counts as a named path, so the checks below cannot quietly narrow."""
     assert FILE_TOKEN.findall(text) == expected
+
+
+def test_headings_skip_fenced_code() -> None:
+    """A ``#`` comment inside a code block is not a heading a reader can open."""
+    text = "## Run locally\n```bash\n# Plain lookup\n~~~\n```\n### After\n~~~\n# Nope\n~~~\n"
+    assert _headings(text) == ["## Run locally", "### After"]
 
 
 def test_sections_file_is_committed_and_non_empty() -> None:
@@ -146,8 +170,7 @@ def test_named_directory_holds_tracked_files(path: str) -> None:
 @pytest.mark.parametrize(("doc", "heading"), _heading_refs())
 def test_quoted_heading_exists(doc: str, heading: str) -> None:
     """A quoted heading is the anchor a reader searches for; it must still be one."""
-    lines = (REPO_ROOT / doc).read_text().splitlines()
-    headings = [line for line in lines if re.match(r"#+\s", line)]
+    headings = _headings((REPO_ROOT / doc).read_text())
     assert any(heading in line for line in headings), (
         f"{SECTIONS.name} sends the reader to {doc} {heading!r}, but no heading there contains it."
     )
