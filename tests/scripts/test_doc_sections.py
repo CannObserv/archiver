@@ -17,13 +17,12 @@ it is satisfied by pasting paths into the advice, which makes the advice worse.
 """
 
 import re
-import subprocess
 from functools import cache
-from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.scripts._skills_lists import REPO_ROOT, read_list_file, tracked_files
+
 SECTIONS = REPO_ROOT / ".skills" / "doc-sections"
 SHIPPING_SKILL = REPO_ROOT / "skills" / "shipping-work-python-fastapi" / "SKILL.md"
 
@@ -51,31 +50,8 @@ FENCE = re.compile(r"\s*(```|~~~)")
 
 @cache
 def _sections() -> tuple[str, ...]:
-    """Parsed ``.skills/doc-sections``, read the way ``doc-check.sh`` reads it.
-
-    Blank lines and lines whose first non-space character is ``#`` are dropped;
-    a ``#`` later in a line is content. Tolerates the file being absent so a
-    missing file fails one readable assertion instead of breaking collection.
-    """
-    if not SECTIONS.is_file():
-        return ()
-    lines = SECTIONS.read_text().splitlines()
-    return tuple(
-        stripped for line in lines if (stripped := line.strip()) and not stripped.startswith("#")
-    )
-
-
-@cache
-def _tracked_files() -> tuple[str, ...]:
-    """Every tracked path, as ``doc-check.sh`` sees them."""
-    result = subprocess.run(
-        ["git", "-c", "core.quotePath=false", "ls-files"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return tuple(result.stdout.splitlines())
+    """Parsed ``.skills/doc-sections``; ``()`` when the file is absent."""
+    return read_list_file(SECTIONS)
 
 
 def _tokens(pattern: re.Pattern[str]) -> list[str]:
@@ -153,7 +129,7 @@ def test_section_names_a_doc(section: str) -> None:
 @pytest.mark.parametrize("path", _tokens(FILE_TOKEN))
 def test_named_file_is_tracked(path: str) -> None:
     """A renamed doc would keep printing under its old name; upstream never checks."""
-    assert path in _tracked_files(), (
+    assert path in tracked_files(), (
         f"{SECTIONS.name} names {path!r}, which is not a tracked file. Name it by "
         f"its repo-relative path, or follow the rename."
     )
@@ -162,7 +138,7 @@ def test_named_file_is_tracked(path: str) -> None:
 @pytest.mark.parametrize("path", _tokens(DIR_TOKEN))
 def test_named_directory_holds_tracked_files(path: str) -> None:
     """A directory the advice routes must still be a directory in this tree."""
-    assert any(file.startswith(path) for file in _tracked_files()), (
+    assert any(file.startswith(path) for file in tracked_files()), (
         f"{SECTIONS.name} names {path!r}, which holds no tracked file."
     )
 

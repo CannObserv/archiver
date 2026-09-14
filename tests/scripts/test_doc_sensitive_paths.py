@@ -23,13 +23,12 @@ script agrees with itself.
 """
 
 import re
-import subprocess
 from functools import cache
-from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.scripts._skills_lists import REPO_ROOT, read_list_file, tracked_files
+
 PATH_LIST = REPO_ROOT / ".skills" / "doc-sensitive-paths"
 CHANGELOG_LIB = REPO_ROOT / "scripts" / "check_changelog_lib.sh"
 
@@ -52,30 +51,8 @@ GLOB_METACHARACTERS = ("*", "?", "[")
 
 @cache
 def _entries() -> tuple[str, ...]:
-    """Parsed ``.skills/doc-sensitive-paths``: blank lines and ``#`` comments out.
-
-    Tolerates the file being absent so a missing list fails one readable
-    assertion instead of breaking collection for the whole module.
-    """
-    if not PATH_LIST.is_file():
-        return ()
-    lines = PATH_LIST.read_text().splitlines()
-    return tuple(
-        stripped for line in lines if (stripped := line.strip()) and not stripped.startswith("#")
-    )
-
-
-@cache
-def _tracked_files() -> tuple[str, ...]:
-    """Every tracked path, as ``doc-check.sh`` sees them."""
-    result = subprocess.run(
-        ["git", "-c", "core.quotePath=false", "ls-files"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return tuple(result.stdout.splitlines())
+    """Parsed ``.skills/doc-sensitive-paths``; ``()`` when the file is absent."""
+    return read_list_file(PATH_LIST)
 
 
 def _matches(file: str, entry: str) -> bool:
@@ -106,7 +83,7 @@ def test_no_duplicate_entries() -> None:
 @pytest.mark.parametrize("entry", _entries())
 def test_entry_matches_a_tracked_file(entry: str) -> None:
     """A dead entry is a gate that cannot fire - the #252 failure, list-side."""
-    tracked = _tracked_files()
+    tracked = tracked_files()
     assert any(_matches(file, entry) for file in tracked), (
         f"{entry!r} matches no tracked file. Either the path was renamed and the "
         f"entry should follow it, or the entry is dead and should be removed."
