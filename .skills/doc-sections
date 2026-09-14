@@ -19,4 +19,5 @@ docs/BUS.md, docs/BUS_CONSUMERS.md: the outbox producer, a stream payload, or a 
 docs/CONVENTIONS.md "Dashboard living docs": which doc a change under src/dashboard/ requires (docs/PAGES.md for any template or route); missing one is a CR blocker
 docs/DEPLOYMENT.md, deploy/README.md: deploy/ units, an operator-facing script under scripts/, a new env var, or dependency resolution (pyproject.toml, uv.lock, the co-core wheelhouse)
 docs/ARCHITECTURE.md "Project Layout": a file or package added, moved, or retired under src/, scripts/, deploy/, or clients/python/
+docs/SKILLS.md, deploy/README.md, AGENTS.md "Architecture": a guard test under tests/scripts/ or tests/deploy/, which scripts/ and deploy/ over-match - the doc stating the rule it pins
 AGENTS.md "Detail Docs", README.md "Documentation": a doc added, renamed, or retired; README.md keeps only orientation and curated links into docs/
