@@ -1,0 +1,9 @@
+{
+  "projectId": "archiver",
+  "linkedProjects": [
+    "../broker",
+    "../notifier",
+    "../replicator",
+    "../watcher"
+  ]
+}

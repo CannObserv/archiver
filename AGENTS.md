@@ -28,11 +28,11 @@ Reproducibility, the upgrade path, and the CI/deploy resolution: [docs/DEPLOYMEN
 
 ## Code Exploration Policy
 
-SocratiCode is configured here (`.socraticodecontextartifacts.json`), indexed per host. Its MCP tools are **deferred**: before exploring, run the `ToolSearch` prefetch the SessionStart hook prints.
+SocratiCode is configured here (`.socraticodecontextartifacts.json`), indexed into the cohort's **shared store on `co-index`** - not on this VM (`.socraticode.json`, archiver#226). Its MCP tools are **deferred**: before exploring, run the `ToolSearch` prefetch the SessionStart hook prints.
 
-**Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search.
+**Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search. `includeLinked: true` fans the same search out over broker, notifier, replicator and watcher - use it before changing a public schema or the API contract.
 
-Tool-by-goal map and the `ToolSearch` prefetch query: [docs/SKILLS.md](docs/SKILLS.md).
+Tool-by-goal map, the shared-store client contract, and the `ToolSearch` prefetch query: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## Architecture
 
