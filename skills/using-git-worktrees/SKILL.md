@@ -70,10 +70,15 @@ Archiver sets neither, so worktrees land in `/home/exedev/archiver/.worktrees/<b
 **Verify the resolved root is ignored before creating anything.** None of the five scripts does this — `worktree-create.sh` will happily create a worktree inside a tracked directory — so it stays a step here:
 
 ```bash
-git check-ignore -q "$(bash "<SKILL_SCRIPTS>/resolve-worktree-root.sh")" || echo "NOT IGNORED"
+ROOT=$(bash "<SKILL_SCRIPTS>/resolve-worktree-root.sh")
+case "$ROOT" in
+  "$(git rev-parse --show-toplevel)"/*)
+    git check-ignore -q "$ROOT" || echo "NOT IGNORED: add $ROOT to .gitignore and commit" ;;
+  *) echo "outside the repo — nothing to ignore" ;;
+esac
 ```
 
-`.gitignore` already carries `.worktrees/`, so the default root passes. The check is not therefore redundant: it is the only guard on the two paths that *override* that default, `WORKTREE_ROOT` and `.skills/worktree_root`, and an unignored root commits an entire second checkout into the repo. If it reports `NOT IGNORED`, add the line and commit it before proceeding — unless the root is outside the repo, which needs nothing.
+`.gitignore` already carries `.worktrees/`, so the default root passes. The check is not therefore redundant: it is the only guard on the two paths that *override* that default, `WORKTREE_ROOT` and `.skills/worktree_root`, and an unignored root commits an entire second checkout into the repo. The `case` matters — `git check-ignore` exits non-zero for *any* unmatched path, so a root outside the repo (where no rule is needed or possible) would otherwise report a false `NOT IGNORED` and teach you to skip the one check with no upstream substitute.
 
 ## Venv linking — `.skills/worktree_venv` is `none` here
 
