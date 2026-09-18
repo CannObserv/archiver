@@ -8,7 +8,7 @@ metadata:
   triggers: create worktree, new worktree, destroy worktree, merge worktree, wt
   overrides: gregoryfoster-skills/using-git-worktrees
   synced-from: "gregoryfoster-skills 1.0 (d3f91c8)"
-  override-reason: "Archiver-specific Phase 3 — `.skills/worktree_venv` is `none` here because the main checkout is archiver.service's WorkingDirectory; the dev server runs on a per-worktree ARCHIVER_DEV_PORT via scripts/dev_server.sh (never hand-rolled uvicorn, see the 2026-07-18 production-write incident); env files load via `set -a; . <file>; set +a`, not the broken `export $(cat … | xargs)` pattern. Phase 5 always needs --force because this repo carries submodules."
+  override-reason: "Archiver-specific Phase 3 — `.skills/worktree_venv` is `none` here because the main checkout is archiver.service's WorkingDirectory; the dev server runs on a per-worktree ARCHIVER_DEV_PORT via scripts/dev_server.sh (never hand-rolled uvicorn, see the 2026-07-18 production-write incident); env files load via `set -a; . <file>; set +a`, not the broken `export $(cat … | xargs)` pattern. Phase 5 names when --force is actually required here: once the SessionStart doctor has checked out submodule content inside the worktree, not merely because the repo has submodules."
 ---
 
 # Using Git Worktrees
@@ -195,13 +195,21 @@ If the branch is **descoped** (will not be merged), document why before Phase 5:
 
 ### Phase 5 — Destroy the worktree
 
-**This repo carries submodules (`skills-vendor/`), so `--force` is required** — `git worktree remove` refuses otherwise. Confirm the worktree is clean first, because `--force` also discards uncommitted changes.
-
 ```bash
-bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --force
-bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --force --descoped "<reason>"
+bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch>
+bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --descoped "<reason>"
 bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --dry-run   # preview the decision, change nothing
 ```
+
+**When `--force` is needed here.** Git refuses to remove a worktree whose **submodule content is checked out**:
+
+```
+fatal: working trees containing submodules cannot be moved or removed
+```
+
+Carrying submodules is not itself the trigger — `git worktree add` leaves them empty, and an untouched worktree of this repo removes cleanly with no flag. What populates them is the SessionStart doctor: it runs `git submodule update --init --recursive` to heal the dangling vendor symlinks a new worktree always has. So **any worktree an agent has actually worked in will need `--force`, and one created and destroyed without a session in it will not.**
+
+Add the flag when you see that message, not before. `--force` also **discards uncommitted changes**, and the Iron Law gate verifies the branch is *merged*, not that the tree is *clean* — so it is the one failure mode nothing else here catches. Confirm `git -C <worktree> status --porcelain` is empty first.
 
 Flags are position-independent here too. Other flags: `--base <ref>` verifies the merge against a non-default integration branch (e.g. `batch/<x>`) instead of `main`; `--unlock` only when the destroy reports a held lock — a lock means the owner is still running **or** died without releasing, so check which first, and note `--force` is not the remedy. The reasoning behind each: [references/destroy-flags.md](references/destroy-flags.md).
 
@@ -234,7 +242,7 @@ Detection-only — it does not kill anything. The operator decides whether to ki
 | Starting the dev server on 8000 | Collides with the live site's systemd unit | `dev_server.sh` refuses 8000; pass `ARCHIVER_DEV_PORT` |
 | Serving a worktree on 8001 | Collides with the main checkout's dev server | Pick a distinct port and record it in `.port` |
 | No `.env` in the worktree | `RuntimeError: TEST_DATABASE_URL not set` | Copy it from the main checkout (Phase 3) |
-| `git worktree remove` without `--force` | Refuses — the worktree contains submodules | Use `worktree-destroy.sh … --force` |
+| Passing `--force` to destroy by habit | It discards uncommitted changes, which the Iron Law gate does not check | Run unforced first; add `--force` only on the submodule refusal, with a clean tree |
 | Destroying before the PR merges | Work loss; the Iron Law gate exists for this | Merge, or pass `--descoped "<reason>"` |
 
 ## Notes
