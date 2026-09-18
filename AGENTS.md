@@ -48,8 +48,9 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
   `generated/`.
 - `src/core/db_safety.py` is mirrored by `scripts/dev_server.sh`, kept in step by
   `tests/scripts/test_db_guard_parity.py`.
-- `tests/` mirrors `src/`; `tests/deploy/` asserts installed systemd artifacts
-  match `deploy/` (file-parity only).
+- `tests/` mirrors `src/`; `tests/deploy/` pins host contracts - installed
+  systemd artifacts against `deploy/` (file-parity only), and the SocratiCode
+  client config.
 
 ## Content-acquisition via co-core
 
