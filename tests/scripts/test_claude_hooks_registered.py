@@ -29,16 +29,21 @@ HOOKS_DIR = REPO_ROOT / ".claude" / "hooks"
 SETTINGS = REPO_ROOT / ".claude" / "settings.json"
 
 
-def _registered_commands() -> list[str]:
-    """Every ``command`` string in ``settings.json``, across all hook events."""
+def _registered_entries() -> list[dict]:
+    """Every command hook entry in ``settings.json``, across all hook events."""
     settings = json.loads(SETTINGS.read_text())
     return [
-        entry["command"]
+        entry
         for matchers in settings.get("hooks", {}).values()
         for matcher in matchers
         for entry in matcher.get("hooks", [])
         if entry.get("type") == "command"
     ]
+
+
+def _registered_commands() -> list[str]:
+    """Every ``command`` string in ``settings.json``, across all hook events."""
+    return [entry["command"] for entry in _registered_entries()]
 
 
 def test_settings_json_is_valid_json_with_hooks() -> None:
@@ -67,6 +72,41 @@ def test_skills_refresh_hook_is_wired() -> None:
         "vendored skills freeze at whatever commit was last bumped by hand "
         "(archiver#163)"
     )
+
+
+# gregoryfoster/skills#259 fixes this hook's budget at 120s - it is the slowest
+# hook a consumer installs. Named as a constant because the assertion below is
+# about *this* number, not about "some timeout being present".
+SKILLS_REFRESH_TIMEOUT = 120
+
+
+def test_skills_refresh_hook_carries_its_prescribed_timeout() -> None:
+    """The refresh hook's entry must pin 120s, not inherit the harness default.
+
+    archiver#232: the entry carried no ``timeout``, so the harness default
+    applied. gregoryfoster/skills#293 then made the hook **push** what it
+    commits, putting a ``git submodule update --remote`` per vendored repo and a
+    ``git push`` on one budget. A kill between the commit and the push leaves
+    ``main`` ahead of ``origin/main`` - churn rather than breakage, but churn
+    that strands a pointer bump on one machine, where nothing reachable through
+    the GitHub API can see it.
+
+    Asserted rather than left to the installer because the value is only ever
+    written once, by a command nobody re-runs; a silent removal in a later
+    ``settings.json`` edit would otherwise restore exactly the #232 state.
+    """
+    entries = [
+        entry for entry in _registered_entries() if "skills-submodule-update.sh" in entry["command"]
+    ]
+    assert entries, "the skills auto-refresh hook is not registered at all"
+
+    for entry in entries:
+        assert entry.get("timeout") == SKILLS_REFRESH_TIMEOUT, (
+            f"the skills auto-refresh hook entry has timeout={entry.get('timeout')!r}, "
+            f"expected {SKILLS_REFRESH_TIMEOUT} (gregoryfoster/skills#259). Repair with: "
+            "bash skills-vendor/gregoryfoster-skills/skills/managing-skills/"
+            "scripts/install-refresh.sh"
+        )
 
 
 def test_socraticode_health_hook_is_wired() -> None:
