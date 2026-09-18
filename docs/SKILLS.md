@@ -24,6 +24,8 @@ Init after cloning: `git submodule update --init --recursive`
 
 Submodule freshness auto-enforced by `SessionStart` hook in `.claude/settings.json`. Force-refresh: `git submodule update --remote --merge -- skills-vendor/`
 
+That entry carries `timeout: 120` (archiver#232): one run updates every vendored repo *and* pushes what it commits, and a kill between those two strands the bump on this machine. Restore it with `install-refresh.sh`, never by hand.
+
 To add a new external skill repo: follow the `managing-skills` skill.
 
 ### Doctor
@@ -62,7 +64,7 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 |---|---|
 | `shipping-work-python-fastapi` | Thin override - sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor. Step 1.5 documents archiver's `.skills/doc-sensitive-paths` and `.skills/doc-sections` (below) |
 | `brainstorming` | Project conventions (docs/plans/ path, commit format); invokes using-git-worktrees after design approval; FastAPI stack context; proactive-suggestion mode |
-| `using-git-worktrees` | Archiver-specific dev port (8001) and env file (`/etc/archiver/.env`); auto-starts uvicorn on 8001; systemd `archiver.service` on 8000 |
+| `using-git-worktrees` | Archiver-specific Phase 3 only; scripts and `references/` symlinked back to vendor. Own `ARCHIVER_DEV_PORT` per worktree recorded in `.port` (8001 is *main's*, 8000 systemd's) via `scripts/dev_server.sh`, never hand-rolled uvicorn; `.skills/worktree_venv` is `none` (this checkout is `archiver.service`'s `WorkingDirectory`) |
 
 `reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) - no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
 
@@ -306,7 +308,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 | `executing-plans` | execute approved plan from docs/plans/ |
 | `subagent-driven-development` | dispatch agents for plan execution |
 | `dispatching-parallel-agents` | 2+ independent tasks in parallel |
-| `using-git-worktrees` | feature work needing isolation (dev port 8001) |
+| `using-git-worktrees` | feature work needing isolation (own dev port, not 8001) |
 | `finishing-a-development-branch` | merge/ship a feature branch |
 | `requesting-code-review` / `receiving-code-review` | CR handoff between agents |
 | `managing-skills` | add skill repo, manage external skills |

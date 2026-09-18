@@ -229,7 +229,8 @@ Wired in `.claude/settings.json`; each script is a symlink into `skills-vendor/`
 Never re-copy one, never symlink the committed `.skills/doctor.sh`, and never
 un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
 `tests/scripts/test_claude_hooks_registered.py` fails when a script and
-`settings.json` disagree. Each hook and its logs: [docs/SKILLS.md](docs/SKILLS.md).
+`settings.json` disagree, and when the refresh hook's entry loses its 120s
+`timeout`. Each hook and its logs: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## Detail Docs
 
