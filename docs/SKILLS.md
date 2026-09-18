@@ -165,11 +165,116 @@ reads (archiver#184 CR).
 
 > **Keep the connection alive during indexing.** Indexing runs in the background. Some MCP hosts disconnect idle connections. Call `codebase_status` roughly every 60 seconds after starting `codebase_index` until it completes.
 
-### Linked Projects
+### The shared index on `co-index` (archiver#226)
 
-Cross-project search to the sister repos is enabled via `SOCRATICODE_LINKED_PROJECTS=/home/exedev/watcher,/home/exedev/notifier` in `.claude/settings.local.json` (gitignored - per-instance config, not a project commitment). **Paths are comma-separated** (not colon-separated PATH-style - the plugin splits on `,` only; a colon-joined value is parsed as a single literal path and silently resolves to nothing). Values may be relative (resolved from the project root) or absolute; absolute is recommended since the MCP server's CWD isn't guaranteed across hosts. Pass `includeLinked: true` on `codebase_search` to fan out across all indexes; results carry a `[archiver]` / `[watcher]` / `[notifier]` label.
+This repo does **not** host its index. Qdrant and Ollama run on a fifth cohort VM,
+`co-index` (`index` on the tailnet); nothing is embedded locally and there is no
+Docker image to keep. Two committed files are the whole client contract, and
+`tests/deploy/test_socraticode_config.py` pins both:
 
-Watcher is archiver's primary consumer (via the `archiver-client` SDK installed as a path dependency in watcher). When changing public schemas or the API contract, search the linked watcher index for callers before merging.
+- **`.socraticode.json`** - `projectId: archiver` names the collections
+  (`codebase_archiver`, `archiver_symgraph_file`, …) so every checkout and every
+  worktree addresses the same ones. Without it the id is `sha256(abs_path)[:12]`,
+  which is why this repo's collections were `…7a9d625938ee` before adoption.
+- **`.claude/settings.json`** `env` - the six non-secret client variables
+  (`QDRANT_MODE`/`QDRANT_URL`, `OLLAMA_MODE`/`OLLAMA_URL`, `EMBEDDING_MODEL`,
+  `EMBEDDING_DIMENSIONS`). Committed on purpose: self-documenting, and they
+  travel with the checkout.
+
+`QDRANT_API_KEY` is the one per-host value and lives in
+`.claude/settings.local.json`, git-ignored by `.gitignore:11`. Install it with
+notifier's `scripts/install_qdrant_key.sh`, never by hand - the key travels on
+**stdin**, since an argument is visible in `ps` and lands in shell history.
+Expect `installed 64 chars`; any other length is a truncated transfer, which
+401s exactly like a wrong key. Qdrant holds a single global `service.api_key`,
+so a leak anywhere is a rotation everywhere with no overlap window
+(CannObserv/notifier#57).
+
+Four traps, each of which reports itself as green:
+
+| Trap | Symptom |
+|---|---|
+| `QDRANT_HOST` instead of `QDRANT_URL` | fallback builds https against port **16333**; reads as a network fault |
+| short MagicDNS name | `index` is not in the certificate SAN - TLS is mandatory because the key is refused over plain http |
+| `QDRANT_COLLECTION_PREFIX` | prepended to the *global* `socraticode_metadata` too; one VM setting it splits the cohort namespace |
+| `SOCRATICODE_BRANCH_AWARE=true` | a fresh six-collection set per branch, re-indexed from empty |
+
+The `env` block applies **only in a trusted folder**. Untrusted, `QDRANT_MODE`
+reverts to `managed` - and what happens next depends on whether this host still
+has Docker. **It does not**: the managed stack was removed at adoption and
+`docker.socket`, `docker.service` and `containerd` are all disabled, so the
+revert now fails loudly, which is the only reason that revert is survivable.
+Confirm with `codebase_health` that it names the external endpoints and not a
+container.
+
+**Do not reinstate a local managed store while this repo is adopted.** During
+adoption, with the containers still up, the running managed-mode server
+re-indexed under the newly-declared `projectId` and produced a *second*
+`codebase_archiver` - 3204 points locally against 4162 on co-index, and
+`context_archiver` 204 against 541. Two collections, one name, different stores.
+A folder-trust revert then answers from the stale local one: well-formed reply,
+real file paths, ~23% of the index missing, no warning at either layer. A green
+`codebase_search` is not evidence of *which store* answered. Reported to the
+repos that have not adopted yet (CannObserv/replicator#92,
+CannObserv/watcher#300); the ordering that avoids it is to stop the managed
+server **before** adding `.socraticode.json`.
+
+Note also that an already-running MCP server never picks up a changed `env`
+block - the server that indexes must be started after it exists, which means a
+fresh session or an out-of-band launch.
+
+Indexing is the memory-hungry step, and this VM shares 3.9 GB with the
+production service on port 8000. Run long index jobs capped; broker took a
+production VM down by launching one uncapped (CannObserv/broker#17, #27). The
+full index of this repo cost 50 min wall under:
+
+```bash
+systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M -p CPUQuota=100% \
+  choom -n 500 -- node \
+  skills-vendor/gregoryfoster-skills/skills/init-socraticode/scripts/mcp-driver.mjs index
+```
+
+`choom -n 500` matters: it makes the index job a *more* attractive OOM target
+than the production service, which sits at adj 0. Memory never dropped below
+1.4 GB free and the bus was unaffected. That driver also carries `validate-store`
+and `validate-manifest`, which check the config with no server and no network -
+run them before an index rather than after a failure.
+
+### Cross-repo search
+
+`linkedProjects` lists the four sibling repos as `../<name>`. Each resolves to a
+**link stub** on this VM - a directory holding one `.socraticode.json`, not a
+clone:
+
+```
+/home/exedev/<sibling>/.socraticode.json   →  { "projectId": "<sibling>" }
+```
+
+`includeLinked` uses the path for exactly two things: reading that `projectId` to
+build a collection name, and `basename` for the result label. No path reaches
+the search itself - content comes wholly from Qdrant. A stub is therefore
+sufficient, and *safer* than a clone: a real checkout carries the sibling's own
+config, so if that repo changes its `projectId` the stale clone silently
+resolves to the old collection.
+
+Pass `includeLinked: true` on `codebase_search` to fan out; results carry a
+`[archiver]` / `[watcher]` / … label. Watcher is archiver's primary consumer (via
+the `archiver-client` SDK, a path dependency there), so search it for callers
+before changing a public schema or the API contract.
+
+**Two silent-skip modes, neither visible in a tool result.** `loadLinkedProjects`
+filters on `fs.existsSync` with no warning, so a missing stub is dropped -
+notifier searched one repo instead of four for weeks this way. And
+`searchMultipleCollections` catches per-collection failures and logs them to the
+server's stderr, so a collection that is missing, unindexed, or written in a
+*newer* `indexFormatVersion` than the client returns zero rows and reports
+nothing (CannObserv/broker#17). A green result is not evidence every sibling
+answered. The daily health hook reports the first half as
+`linkedProjects — N of M resolved`; the second half stays unchecked.
+
+This replaces the pre-#226 mechanism, `SOCRATICODE_LINKED_PROJECTS` set to
+absolute paths in `.claude/settings.local.json` - a per-host value that only
+worked while all four services shared one box.
 
 Upstream reference: [giancarloerra/socraticode#agent-instructions](https://github.com/giancarloerra/socraticode#agent-instructions)
 
@@ -268,7 +373,13 @@ agree, so that state fails a test instead of going unnoticed (archiver#163).
   drift it found. Silent when clean, which is why a copy is unacceptable here:
   a frozen copy that has stopped detecting anything looks exactly like a healthy
   install ([gregoryfoster/skills#179](https://github.com/gregoryfoster/skills/issues/179)).
-  Log: `.git/socraticode-health.log`.
+  Since `d04cebf` it also reports the trap-1 half of cross-repo search -
+  `linkedProjects — N of M resolved (missing: …)`, read the way
+  `loadLinkedProjects()` reads it - and, past the manifest gate, says so out loud
+  on a host with no `node` instead of skipping in silence
+  ([gregoryfoster/skills#281](https://github.com/gregoryfoster/skills/issues/281):
+  9 days, 5 sessions, 0 session lines). It cannot tell whether a link that *does*
+  resolve was ever indexed. Log: `.git/socraticode-health.log`.
 - `skills-submodule-update.sh` - **symlink** into
   `skills-vendor/gregoryfoster-skills/skills/managing-skills/scripts/` (archiver#126),
   so upstream fixes arrive with the normal submodule refresh. Never re-copy it -
