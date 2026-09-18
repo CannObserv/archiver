@@ -24,6 +24,8 @@ Init after cloning: `git submodule update --init --recursive`
 
 Submodule freshness auto-enforced by `SessionStart` hook in `.claude/settings.json`. Force-refresh: `git submodule update --remote --merge -- skills-vendor/`
 
+That entry carries `timeout: 120` (archiver#232): one run updates every vendored repo *and* pushes what it commits, and a kill between those two strands the bump on this machine. Restore it with `install-refresh.sh`, never by hand.
+
 To add a new external skill repo: follow the `managing-skills` skill.
 
 ### Doctor
