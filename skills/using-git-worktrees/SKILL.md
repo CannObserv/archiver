@@ -82,7 +82,7 @@ esac
 
 ## Venv linking — `.skills/worktree_venv` is `none` here
 
-A worktree inherits no virtualenv, so `worktree-create.sh` normally symlinks the main checkout's `.venv` into it. **Archiver turns that off**, and the file recording it is committed:
+A worktree inherits no virtualenv, so `worktree-create.sh` normally symlinks the main checkout's `.venv` into it. **Archiver turns that off**, and the file recording it is **committed** — deliberately against the vendor's default advice ("commit it only if it holds for every clone"), because the asymmetry runs one way here: uncommitted, a fresh clone *on this host* silently reinstates the corruption below, while the cost anywhere else is a clone running `uv sync` instead of linking.
 
 ```bash
 cat .skills/worktree_venv    # none
