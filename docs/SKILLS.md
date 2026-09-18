@@ -200,14 +200,45 @@ Four traps, each of which reports itself as green:
 | `SOCRATICODE_BRANCH_AWARE=true` | a fresh six-collection set per branch, re-indexed from empty |
 
 The `env` block applies **only in a trusted folder**. Untrusted, `QDRANT_MODE`
-reverts to `managed` and SocratiCode tries to start Docker containers rather
-than reporting missing configuration. Confirm with `codebase_health` that it
-names the external endpoints and not a container.
+reverts to `managed` - and what happens next depends on whether this host still
+has Docker. **It does not**: the managed stack was removed at adoption and
+`docker.socket`, `docker.service` and `containerd` are all disabled, so the
+revert now fails loudly, which is the only reason that revert is survivable.
+Confirm with `codebase_health` that it names the external endpoints and not a
+container.
+
+**Do not reinstate a local managed store while this repo is adopted.** During
+adoption, with the containers still up, the running managed-mode server
+re-indexed under the newly-declared `projectId` and produced a *second*
+`codebase_archiver` - 3204 points locally against 4162 on co-index, and
+`context_archiver` 204 against 541. Two collections, one name, different stores.
+A folder-trust revert then answers from the stale local one: well-formed reply,
+real file paths, ~23% of the index missing, no warning at either layer. A green
+`codebase_search` is not evidence of *which store* answered. Reported to the
+repos that have not adopted yet (CannObserv/replicator#92,
+CannObserv/watcher#300); the ordering that avoids it is to stop the managed
+server **before** adding `.socraticode.json`.
+
+Note also that an already-running MCP server never picks up a changed `env`
+block - the server that indexes must be started after it exists, which means a
+fresh session or an out-of-band launch.
 
 Indexing is the memory-hungry step, and this VM shares 3.9 GB with the
-production service on port 8000. Run long index jobs capped
-(`systemd-run --user --scope -p MemoryMax=1536M …`); broker took a production VM
-down by launching one uncapped (CannObserv/broker#17, #27).
+production service on port 8000. Run long index jobs capped; broker took a
+production VM down by launching one uncapped (CannObserv/broker#17, #27). The
+full index of this repo cost 50 min wall under:
+
+```bash
+systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M -p CPUQuota=100% \
+  choom -n 500 -- node \
+  skills-vendor/gregoryfoster-skills/skills/init-socraticode/scripts/mcp-driver.mjs index
+```
+
+`choom -n 500` matters: it makes the index job a *more* attractive OOM target
+than the production service, which sits at adj 0. Memory never dropped below
+1.4 GB free and the bus was unaffected. That driver also carries `validate-store`
+and `validate-manifest`, which check the config with no server and no network -
+run them before an index rather than after a failure.
 
 ### Cross-repo search
 
