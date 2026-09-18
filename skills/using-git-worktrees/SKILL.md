@@ -1,236 +1,258 @@
 ---
 name: using-git-worktrees
-description: Use when starting feature work that needs isolation from current workspace or before executing implementation plans - creates isolated git worktrees with smart directory selection and safety verification
+description: A workflow for parallel branch checkouts via `git worktree`. Standardizes creation, lifecycle, and cleanup so multiple branches can be worked on simultaneously without colliding. Use when the user says "create worktree", "new worktree", "destroy worktree", "merge worktree", or "wt".
+compatibility: Designed for the archiver service. Requires git, uv, and `lsof` for port cleanup in Phase 5. Worktree provisioning is the vendor's; Phase 3 is archiver-specific (dev server on a per-worktree port, env sourcing, `.venv` opt-out).
 metadata:
   author: gregoryfoster
   version: "1.0"
+  triggers: create worktree, new worktree, destroy worktree, merge worktree, wt
   overrides: gregoryfoster-skills/using-git-worktrees
-  omits-required: "skill-scripts: this override ships no scripts/ directory and calls none of the vendor's five scripts - worktree-root resolution is inline under Directory Selection Process, and creation is a direct git worktree add. The resolver block would find resolve-worktree-root.sh at none of its three candidate paths and abort on its own not-found guard, so pasting it back would arm a step that cannot run."
-  override-reason: "Archiver-specific operations — dev server auto-starts on port 8001 (8000 belongs to systemd archiver.service), and worktree setup sources /etc/archiver/.env + .env via `set -a; . <file>; set +a` (not the broken `export $(cat | xargs)` pattern)."
+  synced-from: "gregoryfoster-skills 1.0 (d3f91c8)"
+  override-reason: "Archiver-specific Phase 3 — `.skills/worktree_venv` is `none` here because the main checkout is archiver.service's WorkingDirectory; the dev server runs on a per-worktree ARCHIVER_DEV_PORT via scripts/dev_server.sh (never hand-rolled uvicorn, see the 2026-07-18 production-write incident); env files load via `set -a; . <file>; set +a`, not the broken `export $(cat … | xargs)` pattern. Phase 5 always needs --force because this repo carries submodules."
 ---
 
 # Using Git Worktrees
 
-## Overview
+A workflow for parallel branch checkouts via `git worktree`. Standardizes creation, lifecycle, and cleanup so multiple branches can be worked on without colliding.
 
-Git worktrees create isolated workspaces sharing the same repository, allowing work on multiple branches simultaneously without switching.
+**Activation triggers:** "create worktree", "new worktree", "destroy worktree", "merge worktree", "wt".
 
-**Core principle:** Systematic directory selection + safety verification = reliable isolation.
+## The Iron Law
 
-**Announce at start:** "I'm using the using-git-worktrees skill to set up an isolated workspace."
+```
+NO WORKTREE DESTROY WITHOUT VERIFIED MERGE OR EXPLICIT DESCOPE
+NO BRANCH CHECKED OUT IN TWO WORKTREES SIMULTANEOUSLY
+```
 
-## Directory Selection Process
+If the branch hasn't been merged (or the user hasn't explicitly waived the merge), you cannot destroy the worktree.
+If the target branch is already checked out in another worktree (visible in `git worktree list`), you cannot create another worktree for it — git refuses, and so do we.
 
-Follow this priority order:
+## Rationalization prevention
 
-### 1. Check Existing Directories
+| Thought | Reality |
+|---|---|
+| "I'll merge later, just destroy it" | Destroy = work loss if commits aren't on a tracked branch. Merge or document descope first. |
+| "Same branch in two worktrees is fine, I'll be careful" | Git refuses for a reason — divergent commits race. Use a different branch or a separate clone. |
+| "The dev server is still running, but I want to destroy now" | Free the port first. A live process pinning files in the worktree blocks cleanup and leaks state. |
+| "Every branch needs a worktree" | Short patches don't. Phase 1 exists to filter; skip it and you pay the overhead for nothing. |
+| "The project has no wrapper, I'll just `cd ~/wherever`" | Resolution order is explicit: env var → `.skills/worktree_root` → default. Ad-hoc paths defeat reproducibility. |
+| "I'll link the main `.venv` like every other project" | Not here. This checkout is a running service's `WorkingDirectory=` — see **Venv linking** below. |
+
+## Parameterized invocation
+
+Trigger phrases may include the target branch inline — e.g., `create worktree feature/foo`, `wt feature/foo`, `destroy worktree feature/foo`. Apply the appended branch as the explicit target; skip the "ask for branch name" fallback.
+
+## Script path resolution
+
+The skill's `scripts/` directory is not at the project root — it ships inside the skill. Resolve it once, then substitute the printed path wherever `<SKILL_SCRIPTS>` appears below ([#63](https://github.com/gregoryfoster/skills/issues/63)):
+
+<!-- skill:required id=skill-scripts -->
+```bash
+N=using-git-worktrees S=resolve-worktree-root.sh SD=
+for d in scripts ".claude/skills/$N/scripts" "$HOME/.claude/skills/$N/scripts"; do
+  [ -f "$d/$S" ] && { SD="$d"; break; }
+done
+echo "SKILL_SCRIPTS=${SD:?not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/}"
+```
+
+In this repo it resolves to `.claude/skills/using-git-worktrees/scripts`, which symlinks into `skills-vendor/gregoryfoster-skills/`. The loop's first candidate — a bare `scripts/` — is **archiver's own** `scripts/` directory (`dev_server.sh`, `sync_wheelhouse.py`); it holds none of the five worktree scripts, so the loop passes over it correctly. `<SKILL_SCRIPTS>` is a **placeholder** for the literal path printed here, not an inherited shell variable — each Bash invocation runs in a fresh shell.
+
+## Worktree root resolution
+
+Every operation resolves the worktree directory in this order (first match wins):
+
+1. **`WORKTREE_ROOT` env var** (highest priority) — explicit override for one-off invocations
+2. **`.skills/worktree_root` file** — single-line file under the repo root; project's persistent default
+3. **`<repo-root>/.worktrees/`** — fallback when neither of the above is set
+
+Archiver sets neither, so worktrees land in `/home/exedev/archiver/.worktrees/<branch-slug>`. Invoke `bash "<SKILL_SCRIPTS>/resolve-worktree-root.sh"` to print the resolved root. The final worktree path is always `<resolved-root>/<branch-slug>`, where `<branch-slug>` is the branch name with `/` replaced by `-` (e.g., `feature/foo` → `feature-foo`).
+
+**Verify the resolved root is ignored before creating anything.** None of the five scripts does this — `worktree-create.sh` will happily create a worktree inside a tracked directory — so it stays a step here:
 
 ```bash
-# Check in priority order
-ls -d .worktrees 2>/dev/null     # Preferred (hidden)
-ls -d worktrees 2>/dev/null      # Alternative
+git check-ignore -q "$(bash "<SKILL_SCRIPTS>/resolve-worktree-root.sh")" || echo "NOT IGNORED"
 ```
 
-**If found:** Use that directory. If both exist, `.worktrees` wins.
+`.gitignore` already carries `.worktrees/`, so the default root passes. The check is not therefore redundant: it is the only guard on the two paths that *override* that default, `WORKTREE_ROOT` and `.skills/worktree_root`, and an unignored root commits an entire second checkout into the repo. If it reports `NOT IGNORED`, add the line and commit it before proceeding — unless the root is outside the repo, which needs nothing.
 
-### 2. Check CLAUDE.md
+## Venv linking — `.skills/worktree_venv` is `none` here
+
+A worktree inherits no virtualenv, so `worktree-create.sh` normally symlinks the main checkout's `.venv` into it. **Archiver turns that off**, and the file recording it is committed:
 
 ```bash
-grep -i "worktree.*director" CLAUDE.md 2>/dev/null
+cat .skills/worktree_venv    # none
 ```
 
-**If preference specified:** Use it without asking.
+This is the upstream-documented case where linking is wrong: the main checkout is a running service's `WorkingDirectory=`, so the symlink would hand every worktree one shared *mutable* environment while isolating it in every other respect. Both symptoms are live here:
 
-### 3. Ask User
+- `deploy/archiver.service` — `WorkingDirectory=/home/exedev/archiver`, `ExecStart=uv run uvicorn …`. `uv run` reinstalls the project, restamping the `importlib.metadata.version(...)` that `src/api/main.py` reads to *main's* version.
+- `deploy/archiver-bus-health.service`, fired by `archiver-bus-health.timer` — `uv run python -m src.core.bus_health` from that same directory, on a schedule. It restamps the shared environment *while a worktree suite is running*, so the failure appears in a full run and vanishes in isolation.
 
-If no directory exists and no CLAUDE.md preference:
+The hazard runs both ways: a worktree's own `uv sync` mutates what the live workers import from — the live site, on this host. With `none`, `worktree-create.sh` creates no `.venv` and says so on stderr; provision one in Phase 3.
 
-```
-No worktree directory found. Where should I create worktrees?
+## Procedure
 
-1. .worktrees/ (project-local, hidden)
-2. ~/.config/superpowers/worktrees/<project-name>/ (global location)
+### Phase 1 — Decide whether a worktree is appropriate
 
-Which would you prefer?
-```
+A worktree is appropriate when at least one applies:
+- Branch is long-lived (days+, not minutes)
+- You need to work on a different branch without disturbing the current branch's environment
+- The branch requires an isolated dev server, env config, or DB state
+- A reviewer needs a clean main checkout to compare against
 
-## Safety Verification
+A worktree is **not** appropriate for:
+- Short patches that will be committed and merged in one sitting (`git switch` is faster)
+- Branches the user will switch back to immediately
 
-### For Project-Local Directories (.worktrees or worktrees)
+If none apply, stop. Don't create a worktree just because the trigger phrase fired.
 
-**MUST verify directory is ignored before creating worktree:**
+### Phase 2 — Create the worktree
 
 ```bash
-# Check if directory is ignored (respects local, global, and system gitignore)
-git check-ignore -q .worktrees 2>/dev/null || git check-ignore -q worktrees 2>/dev/null
+bash "<SKILL_SCRIPTS>/worktree-create.sh" <branch>          # existing branch
+bash "<SKILL_SCRIPTS>/worktree-create.sh" --new <branch>    # create the branch too
 ```
 
-**If NOT ignored:**
+Flags are position-independent: `--new <branch>` and `<branch> --new` are equivalent. `--help` works anywhere and never provisions. A stray second word is an error, not a silent drop.
 
-1. Add appropriate line to .gitignore
-2. Commit the change
-3. Proceed with worktree creation
+The script:
+- Resolves the worktree root
+- Refuses if `<branch>` is already checked out elsewhere (per the Iron Law)
+- Runs `git worktree add <root>/<slug> <branch>` (or `add -b <branch> <root>/<slug>` with `--new`)
+- Prints the absolute worktree path on stdout
+- Exits 0 on success, 1 on Iron Law violation (double checkout), 2 on tooling failure
 
-**Why critical:** Prevents accidentally committing worktree contents to repository.
+It will **not** link a `.venv` here — `.skills/worktree_venv` is `none`. That is expected; Phase 3 provisions one.
 
-### For Global Directory (~/.config/superpowers/worktrees)
+### Phase 3 — Work inside the worktree
 
-No .gitignore verification needed - outside project entirely.
+`cd` into the worktree path printed by Phase 2. Upstream leaves three responsibilities to the project; archiver's answers follow, and they are not optional.
 
-## Creation Steps
-
-### 1. Detect Project Name
+**Interpreter environment.** Provision a real venv — do not link main's:
 
 ```bash
-project=$(basename "$(git rev-parse --show-toplevel)")
+uv sync    # resolves co-core from ./.wheelhouse; populate it first if resolution fails
 ```
 
-### 2. Create Worktree
+A worktree provisioned by something *other* than `worktree-create.sh` — notably the Claude Code Agent tool's `isolation: "worktree"`, which calls `git worktree add` directly — also arrives without a `.venv`. The upstream remedy there is to symlink main's; **in this repo, run `uv sync` instead**, for the reason in **Venv linking** above.
+
+The wheelhouse is gitignored and does not come with the worktree:
 
 ```bash
-# Determine full path
-case $LOCATION in
-  .worktrees|worktrees)
-    path="$LOCATION/$BRANCH_NAME"
-    ;;
-  ~/.config/superpowers/worktrees/*)
-    path="~/.config/superpowers/worktrees/$project/$BRANCH_NAME"
-    ;;
-esac
-
-# Create worktree with new branch
-git worktree add "$path" -b "$BRANCH_NAME"
-cd "$path"
+set -a; . /etc/archiver/.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS
+uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 ```
 
-### 3. Run Project Setup
-
-**archiver-specific setup:**
+**Env separation.** `/etc/archiver/.env` is machine-global and reaches the worktree already. `.env` is gitignored, so a fresh worktree has none — and without it `TEST_DATABASE_URL` is unset:
 
 ```bash
-# Install Python dependencies
-uv sync
-
-# Copy .env from main worktree (TEST_DATABASE_URL, GH_TOKEN)
-# Production ARCHIVER_DATABASE_URL is in /etc/archiver/.env and shared automatically
-MAIN_WORKTREE=$(git rev-parse --path-format=absolute --git-common-dir | sed 's|/.git$||')
-if [ -f "$MAIN_WORKTREE/.env" ]; then
-  cp "$MAIN_WORKTREE/.env" .env
-fi
+MAIN=$(git rev-parse --path-format=absolute --git-common-dir | sed 's|/\.git$||')
+[ -f "$MAIN/.env" ] && cp "$MAIN/.env" .env
 ```
 
-### 4. Verify Clean Baseline
+Source env files **only** as `set -a; . <file>; set +a`. `export $(cat … | xargs)` silently corrupts any value containing whitespace, quotes, or a second `=` — which the database URLs do.
 
-Run tests to ensure worktree starts clean:
+**Port allocation.** 8000 belongs to `systemd` (`archiver.service`) and `scripts/dev_server.sh` refuses it outright. 8001 is the **main checkout's** dev-server port (CLAUDE.md, Infrastructure). So a worktree takes its own port and records it, which is what lets Phase 5 free it and what lets two worktrees serve at once:
 
 ```bash
-# Source env files via `set -a; . <file>; set +a` (handles whitespace,
-# quotes, and `=` correctly — unlike the broken `export $(cat | xargs)`
-# pattern). Existence guards keep this safe when one file is absent.
-[ -f /etc/archiver/.env ] && { set -a; . /etc/archiver/.env; set +a; }
-[ -f .env ] && { set -a; . .env; set +a; }
-uv run pytest --no-cov
+PORT=8002                       # any free port in 3000-9999; the exe.dev proxy forwards them all
+echo "$PORT" > .port            # worktree-destroy.sh reads this
+ARCHIVER_DEV_PORT=$PORT bash scripts/dev_server.sh &
+sleep 2 && ss -tlnp | grep "$PORT"
 ```
 
-**If tests fail:** Report failures, ask whether to proceed or investigate.
+Reachable at `https://co-registrar.exe.xyz:<PORT>/`.
 
-**If tests pass:** Report ready.
+**Never hand-roll the `uvicorn` invocation.** The recipe this replaced sourced `/etc/archiver/.env` and ran uvicorn directly, so the worktree dev server inherited `ARCHIVER_DATABASE_URL` pointing at **production**. On 2026-07-18 that wrote a `verify79.example.com` Domain, two InfoSources, and an AppUser into the live registry. `dev_server.sh` resolves a non-production database, refuses to start when the name lacks a `_test`/`_dev` suffix, migrates it, then serves. Without `.env` it exits with a clear message rather than falling back to production — copy `.env` in first.
 
-### 5. Start Dev Server
+### Phase 3.5 — Verify worktree health
 
-**Port 8001 belongs to worktrees.** Never serve main on 8001. When no worktree is
-active, 8001 should not be running.
+Before doing substantial work:
+
+- `git rev-parse --show-toplevel` prints the **worktree** path (not the main checkout)
+- `git status` is clean (or shows only the expected branch state)
+- The dev server (if any) listens on the port recorded in `.port`
+- The baseline suite passes:
+
+  ```bash
+  set -a; [ -f /etc/archiver/.env ] && . /etc/archiver/.env; [ -f .env ] && . .env; set +a
+  uv run pytest --no-cov
+  ```
+
+If any check fails, fix before proceeding. Work in the wrong checkout silently lands on the wrong branch. A failing baseline is your human partner's call to proceed past — report it, don't absorb it, or every later failure is ambiguous.
+
+### Phase 4 — Merge back to the main checkout
+
+When the branch is ready:
+
+1. Commit and push from inside the worktree
+2. `cd` to the main checkout — its path is the first row of `bash "<SKILL_SCRIPTS>/worktree-list.sh"` (or `git worktree list | head -n1 | awk '{print $1}'`)
+3. `git switch main`
+4. **Open a PR and merge it** — archiver integrates through PRs, not direct pushes to `main`; the `shipping-work-python-fastapi` override is authoritative on the sequence
+5. Confirm the merge succeeded before Phase 5
+
+If the branch is **descoped** (will not be merged), document why before Phase 5: a one-line note in the related issue or PR. The descope reason is required input to `worktree-destroy.sh --descoped <reason>`.
+
+### Phase 5 — Destroy the worktree
+
+**This repo carries submodules (`skills-vendor/`), so `--force` is required** — `git worktree remove` refuses otherwise. Confirm the worktree is clean first, because `--force` also discards uncommitted changes.
 
 ```bash
-# Kill any existing process on 8001 (stale worktree, accidental main, etc.)
-lsof -ti :8001 | xargs -r kill -9 2>/dev/null
-
-# Start the dev server from the worktree via the launch script. It sources the
-# env files, resolves a NON-PRODUCTION database, refuses to start if that
-# database name lacks a _test/_dev suffix, migrates it, then serves on 8001.
-bash scripts/dev_server.sh &
-
-# Verify port is bound
-sleep 2
-ss -tlnp | grep 8001
+bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --force
+bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --force --descoped "<reason>"
+bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --dry-run   # preview the decision, change nothing
 ```
 
-**Never hand-roll the `uvicorn` invocation here.** The recipe this replaced
-sourced `/etc/archiver/.env` and ran uvicorn directly, so the worktree dev
-server inherited `ARCHIVER_DATABASE_URL` pointing at **production** — and this
-step runs automatically, with no user prompt, on every worktree. On 2026-07-18
-that wrote a `verify79.example.com` Domain, two InfoSources, and an AppUser
-into the live registry.
+Flags are position-independent here too. Other flags: `--base <ref>` verifies the merge against a non-default integration branch (e.g. `batch/<x>`) instead of `main`; `--unlock` only when the destroy reports a held lock — a lock means the owner is still running **or** died without releasing, so check which first, and note `--force` is not the remedy. The reasoning behind each: [references/destroy-flags.md](references/destroy-flags.md).
 
-A fresh worktree has no `.env` (it is gitignored), so `TEST_DATABASE_URL` is
-unset there and the script exits with a clear message rather than falling back
-to production. Copy or symlink `.env` into the worktree before starting.
+The script:
+- **Finds the worktree by branch**, via `git worktree list --porcelain`, so any layout works regardless of how the directory leaf is named. Harness-provisioned worktrees (`.claude/worktrees/agent-<id>`) are reached this way too.
+- Verifies the branch is an ancestor of the base ref (the actual "merged" check, not just "pushed"), preferring `origin/main` over local `main` so an unpublished local merge doesn't fool the gate. Refuses if the branch is not merged AND `--descoped <reason>` was not supplied.
+- Refuses to destroy the worktree it is being run from. `cd` to the main checkout first.
+- If `<worktree>/.port` exists, kills any process bound to that port via `lsof -ti tcp:<port>`.
+- Runs `git worktree remove` and then `git worktree prune`
+- Exits 0 on success, 1 on Iron Law violation (unmerged work without `--descoped`), 2 on tooling failure
 
-Accessible at `https://co-registrar.exe.xyz:8001/` via the exe.dev proxy.
+The branch ref itself is **not** deleted — that's a separate decision. Use `git branch -d <branch>` afterward if you also want to drop the local ref.
 
-This step runs automatically — no user prompt. The result is included in the
-report (next step). If the server fails to bind, report the error and ask the user.
+### Auditing for zombie processes
 
-### 6. Report Location
+Operators sometimes bypass `worktree-destroy.sh` (raw `git worktree remove`, manual `rm -rf`), leaving behind processes spawned from inside the now-gone worktree — here, a `dev_server.sh` still holding its port. Run the audit from the repo root:
 
-```
-Worktree ready at <full-path>
-Tests passing (<N> tests, 0 failures)
-Dev server running on port 8001 (https://co-registrar.exe.xyz:8001/)
-Ready to implement <feature-name>
+```bash
+bash "<SKILL_SCRIPTS>/audit-worktree-zombies.sh"         # prints zombies, exits 1 if any
+bash "<SKILL_SCRIPTS>/audit-worktree-zombies.sh" --quiet # silent; exit code only — wire into pre-flight
 ```
 
-## Quick Reference
+Detection-only — it does not kill anything. The operator decides whether to kill the listed PIDs. It will not report the systemd service on 8000; that is `archiver.service`, not a zombie.
 
-| Situation | Action |
-|-----------|--------|
-| `.worktrees/` exists | Use it (verify ignored) |
-| `worktrees/` exists | Use it (verify ignored) |
-| Both exist | Use `.worktrees/` |
-| Neither exists | Check CLAUDE.md, then ask user |
-| Directory not ignored | Add to .gitignore + commit |
-| Tests fail during baseline | Report failures + ask |
-| Dev server on 8001 from wrong worktree | Automatically killed and restarted |
+## Common mistakes
 
-## Common Mistakes
+| Mistake | Consequence | Fix |
+|---|---|---|
+| Linking main's `.venv` into the worktree | A timer's `uv run` restamps the shared environment mid-suite; failures appear only in full runs | `uv sync` in the worktree — `.skills/worktree_venv` is `none` for this reason |
+| Starting the dev server on 8000 | Collides with the live site's systemd unit | `dev_server.sh` refuses 8000; pass `ARCHIVER_DEV_PORT` |
+| Serving a worktree on 8001 | Collides with the main checkout's dev server | Pick a distinct port and record it in `.port` |
+| No `.env` in the worktree | `RuntimeError: TEST_DATABASE_URL not set` | Copy it from the main checkout (Phase 3) |
+| `git worktree remove` without `--force` | Refuses — the worktree contains submodules | Use `worktree-destroy.sh … --force` |
+| Destroying before the PR merges | Work loss; the Iron Law gate exists for this | Merge, or pass `--descoped "<reason>"` |
 
-### Skipping ignore verification
+## Notes
 
-- **Problem:** Worktree contents get tracked, pollute git status
-- **Fix:** Always use `git check-ignore` before creating project-local worktree
-
-### Assuming directory location
-
-- **Problem:** Creates inconsistency, violates project conventions
-- **Fix:** Follow priority: existing > CLAUDE.md > ask
-
-### Proceeding with failing tests
-
-- **Problem:** Can't distinguish new bugs from pre-existing issues
-- **Fix:** Report failures, get explicit permission to proceed
-
-### Missing .env in worktree
-
-- **Problem:** Tests fail with `RuntimeError: TEST_DATABASE_URL not set`
-- **Fix:** Copy `.env` from main worktree during setup (Step 3)
-
-### Starting dev server on port 8000
-
-- **Problem:** Conflicts with the systemd service running the live site (`archiver.service`)
-- **Fix:** Always use `--port 8001` in worktrees (and in dev generally)
-
-### Running dev server from main
-
-- **Problem:** Port 8001 belongs to worktrees; serving main breaks operational separation
-- **Fix:** Only start 8001 from a worktree directory. Stop 8001 when worktree is torn down.
+- `git worktree list` is authoritative — never maintain a separate registry
+- A branch may be deleted while a worktree on it exists; reattach with `git worktree repair` if you need to recover
+- The vendor's "project-local wrapper scripts" guidance does not apply: archiver ships no worktree wrapper, and `scripts/dev_server.sh` is a dev-server launcher, not a worktree tool
 
 ## Integration
 
-**Called by:**
-- **brainstorming** (Phase 4) - REQUIRED when design is approved and implementation follows
-- **subagent-driven-development** - REQUIRED before executing any tasks
-- **executing-plans** - REQUIRED before executing any tasks
-- Any skill needing isolated workspace
+**Called by** — each of these invokes this skill rather than rolling its own isolation:
 
-**Pairs with:**
-- **finishing-a-development-branch** - REQUIRED for cleanup after work complete
+- `brainstorming` (Phase 4) — REQUIRED once a design is approved and implementation follows
+- `executing-plans`, `subagent-driven-development` — REQUIRED before executing any tasks
+- `shipping-work-python-fastapi` — invokes **Phase 4** to merge the branch back before it ships
+
+**Pairs with** `finishing-a-development-branch` for the post-merge cleanup decision.
+
+## Detail Docs
+
+- [references/destroy-flags.md](references/destroy-flags.md) — when each `worktree-destroy.sh` flag is the right instrument, and what each does not cover
