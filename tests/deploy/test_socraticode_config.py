@@ -170,6 +170,32 @@ def test_no_api_key_is_committed(settings_env: dict):
     assert "QDRANT_API_KEY" not in settings_env
 
 
+#: The file holding this host's QDRANT_API_KEY. Never tracked, always ignored.
+SETTINGS_LOCAL = ".claude/settings.local.json"
+
+
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=False
+    )
+
+
+def test_settings_local_is_not_tracked():
+    """Tracked beats ignored: a file already in the index is committed regardless.
+
+    `git check-ignore` alone cannot see this. Asked *without* --no-index it
+    reports a tracked path as not-ignored, and asked *with* it reports the
+    matching rule and exits 0 even for a path that `git add -f` has already
+    staged - so the flag turns the one assertion protecting the cohort's shared
+    key blind to the exact state it exists to catch. Hence two tests.
+    """
+    tracked = _git("ls-files", "--error-unmatch", SETTINGS_LOCAL).returncode == 0
+    assert not tracked, (
+        f"{SETTINGS_LOCAL} is TRACKED by git - it holds this host's QDRANT_API_KEY "
+        "and would be committed. Run: git rm --cached " + SETTINGS_LOCAL
+    )
+
+
 def test_settings_local_is_git_ignored():
     """Asks git, rather than reading .gitignore and assuming the answer.
 
@@ -178,15 +204,8 @@ def test_settings_local_is_git_ignored():
     five cohort repos carried the rule, which is exactly what made the assertion
     read as true in the fifth - broker, which is public (notifier#68, broker#18).
     """
-    target = ".claude/settings.local.json"
-    result = subprocess.run(
-        ["git", "check-ignore", "-v", "--no-index", target],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"{target} is not git-ignored: it would be committed"
+    ignored = _git("check-ignore", "-q", SETTINGS_LOCAL).returncode == 0
+    assert ignored, f"{SETTINGS_LOCAL} is not git-ignored: it would be committed"
 
 
 @pytest.mark.parametrize("path", NAMESPACE_GUARD_FILES, ids=lambda p: p.name)
