@@ -211,7 +211,16 @@ def test_settings_local_is_git_ignored():
 @pytest.mark.parametrize("path", NAMESPACE_GUARD_FILES, ids=lambda p: p.name)
 @pytest.mark.parametrize("variable", NAMESPACE_GUARD_VARS)
 def test_namespace_guards_are_not_set_anywhere(variable: str, path: Path):
-    """VM-local where the file is VM-local; skips loudly rather than passing vacuously."""
+    """VM-local where the file is VM-local; skips loudly rather than passing vacuously.
+
+    The membership test is reduced to a bool *before* the assert on purpose. One
+    of these paths is /etc/archiver/.env, and `assert variable not in
+    path.read_text()` puts the whole file in the assertion expression - which
+    pytest prints in full under -vv, database password and GH token included.
+    The repo's -v default truncates it, so the disclosure is one flag away
+    rather than routine. Asserting on the bool leaves nothing to print.
+    """
     if not path.exists():
         pytest.skip(f"{path} not present on this machine")
-    assert variable not in path.read_text(), f"{path.name} sets {variable}"
+    declares = variable in path.read_text()
+    assert not declares, f"{path.name} sets {variable}"
