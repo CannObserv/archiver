@@ -160,12 +160,18 @@ def test_qdrant_url_uses_the_full_magicdns_name(settings_env: dict):
     )
 
 
-def test_no_api_key_is_committed(settings_env: dict):
-    """The one variable that must never reach a tracked file.
+def test_no_api_key_in_the_committed_settings(settings_env: dict):
+    """The tracked settings file must not carry the key.
 
     Qdrant holds a single global service.api_key - no key list, no per-client
     identity - so every cohort VM holds the same secret and a leak anywhere is a
     rotation everywhere, with no overlap window.
+
+    Scope is this one dict, and the name says so: a key pasted into a doc or a
+    tracked .env would pass here. Tree-wide protection is
+    test_settings_local_is_not_tracked plus .gitignore, not a content scan - a
+    64-hex search over every tracked file is a false-positive engine, and a name
+    promising more than it checks is how broker's assertion read as true.
     """
     assert "QDRANT_API_KEY" not in settings_env
 
