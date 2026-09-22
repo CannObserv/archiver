@@ -44,18 +44,21 @@ Trigger phrases may include the target branch inline — e.g., `create worktree 
 
 ## Script path resolution
 
-The skill's `scripts/` directory is not at the project root — it ships inside the skill. Resolve it once, then substitute the printed path wherever `<SKILL_SCRIPTS>` appears below ([#63](https://github.com/gregoryfoster/skills/issues/63)):
+The skill's `scripts/` directory is not at the project root — it ships inside the skill. Resolve **each script on its own**, then substitute the printed paths wherever `<name.sh>` appears below ([#63](https://github.com/gregoryfoster/skills/issues/63), [#301](https://github.com/gregoryfoster/skills/issues/301)):
 
 <!-- skill:required id=skill-scripts -->
 ```bash
-N=using-git-worktrees S=resolve-worktree-root.sh SD=
-for d in scripts ".claude/skills/$N/scripts" "$HOME/.claude/skills/$N/scripts"; do
-  [ -f "$d/$S" ] && { SD="$d"; break; }
+N=using-git-worktrees
+for S in resolve-worktree-root.sh worktree-create.sh worktree-list.sh worktree-destroy.sh audit-worktree-zombies.sh; do SD=
+  for d in scripts ".claude/skills/$N/scripts" "$HOME/.claude/skills/$N/scripts"; do
+    [ -f "$d/$S" ] && { SD="$d"; break; }
+  done
+  [ -n "$SD" ] || echo "$S not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/" >&2
+  echo "<$S>=${SD:?}/$S"
 done
-echo "SKILL_SCRIPTS=${SD:?not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/}"
 ```
 
-In this repo it resolves to `.claude/skills/using-git-worktrees/scripts`, which symlinks into `skills-vendor/gregoryfoster-skills/`. The loop's first candidate — a bare `scripts/` — is **archiver's own** `scripts/` directory (`dev_server.sh`, `sync_wheelhouse.py`); it holds none of the five worktree scripts, so the loop passes over it correctly. `<SKILL_SCRIPTS>` is a **placeholder** for the literal path printed here, not an inherited shell variable — each Bash invocation runs in a fresh shell.
+In this repo every one of them resolves to `.claude/skills/using-git-worktrees/scripts`, which symlinks into `skills-vendor/gregoryfoster-skills/`. The loop's first candidate — a bare `scripts/` — is **archiver's own** `scripts/` directory (`dev_server.sh`, `sync_wheelhouse.py`); it holds none of the five worktree scripts, so the loop passes over it for each. Resolving per script means a project-local `scripts/<name>` wins for that script alone, rather than redirecting the other four with it. Each `<name.sh>` is a **placeholder** for the literal path printed here, not an inherited shell variable — each Bash invocation runs in a fresh shell.
 
 ## Worktree root resolution
 
@@ -65,12 +68,12 @@ Every operation resolves the worktree directory in this order (first match wins)
 2. **`.skills/worktree_root` file** — single-line file under the repo root; project's persistent default
 3. **`<repo-root>/.worktrees/`** — fallback when neither of the above is set
 
-Archiver sets neither, so worktrees land in `/home/exedev/archiver/.worktrees/<branch-slug>`. Invoke `bash "<SKILL_SCRIPTS>/resolve-worktree-root.sh"` to print the resolved root. The final worktree path is always `<resolved-root>/<branch-slug>`, where `<branch-slug>` is the branch name with `/` replaced by `-` (e.g., `feature/foo` → `feature-foo`).
+Archiver sets neither, so worktrees land in `/home/exedev/archiver/.worktrees/<branch-slug>`. Invoke `bash "<resolve-worktree-root.sh>"` to print the resolved root. The final worktree path is always `<resolved-root>/<branch-slug>`, where `<branch-slug>` is the branch name with `/` replaced by `-` (e.g., `feature/foo` → `feature-foo`).
 
 **Verify the resolved root is ignored before creating anything.** None of the five scripts does this — `worktree-create.sh` will happily create a worktree inside a tracked directory — so it stays a step here:
 
 ```bash
-ROOT=$(bash "<SKILL_SCRIPTS>/resolve-worktree-root.sh")
+ROOT=$(bash "<resolve-worktree-root.sh>")
 case "$ROOT" in
   "$(git rev-parse --show-toplevel)"/*)
     git check-ignore -q "$ROOT" || echo "NOT IGNORED: add $ROOT to .gitignore and commit" ;;
@@ -114,8 +117,8 @@ If none apply, stop. Don't create a worktree just because the trigger phrase fir
 ### Phase 2 — Create the worktree
 
 ```bash
-bash "<SKILL_SCRIPTS>/worktree-create.sh" <branch>          # existing branch
-bash "<SKILL_SCRIPTS>/worktree-create.sh" --new <branch>    # create the branch too
+bash "<worktree-create.sh>" <branch>          # existing branch
+bash "<worktree-create.sh>" --new <branch>    # create the branch too
 ```
 
 Flags are position-independent: `--new <branch>` and `<branch> --new` are equivalent. `--help` works anywhere and never provisions. A stray second word is an error, not a silent drop.
@@ -191,7 +194,7 @@ If any check fails, fix before proceeding. Work in the wrong checkout silently l
 When the branch is ready:
 
 1. Commit and push from inside the worktree
-2. `cd` to the main checkout — its path is the first row of `bash "<SKILL_SCRIPTS>/worktree-list.sh"` (or `git worktree list | head -n1 | awk '{print $1}'`)
+2. `cd` to the main checkout — its path is the first row of `bash "<worktree-list.sh>"` (or `git worktree list | head -n1 | awk '{print $1}'`)
 3. `git switch main`
 4. **Open a PR and merge it** — archiver integrates through PRs, not direct pushes to `main`; the `shipping-work-python-fastapi` override is authoritative on the sequence
 5. Confirm the merge succeeded before Phase 5
@@ -201,9 +204,9 @@ If the branch is **descoped** (will not be merged), document why before Phase 5:
 ### Phase 5 — Destroy the worktree
 
 ```bash
-bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch>
-bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --descoped "<reason>"
-bash "<SKILL_SCRIPTS>/worktree-destroy.sh" <branch> --dry-run   # preview the decision, change nothing
+bash "<worktree-destroy.sh>" <branch>
+bash "<worktree-destroy.sh>" <branch> --descoped "<reason>"
+bash "<worktree-destroy.sh>" <branch> --dry-run   # preview the decision, change nothing
 ```
 
 **When `--force` is needed here.** Git refuses to remove a worktree whose **submodule content is checked out**:
@@ -233,8 +236,8 @@ The branch ref itself is **not** deleted — that's a separate decision. Use `gi
 Operators sometimes bypass `worktree-destroy.sh` (raw `git worktree remove`, manual `rm -rf`), leaving behind processes spawned from inside the now-gone worktree — here, a `dev_server.sh` still holding its port. Run the audit from the repo root:
 
 ```bash
-bash "<SKILL_SCRIPTS>/audit-worktree-zombies.sh"         # prints zombies, exits 1 if any
-bash "<SKILL_SCRIPTS>/audit-worktree-zombies.sh" --quiet # silent; exit code only — wire into pre-flight
+bash "<audit-worktree-zombies.sh>"         # prints zombies, exits 1 if any
+bash "<audit-worktree-zombies.sh>" --quiet # silent; exit code only — wire into pre-flight
 ```
 
 Detection-only — it does not kill anything. The operator decides whether to kill the listed PIDs. It will not report the systemd service on 8000; that is `archiver.service`, not a zombie.
