@@ -50,28 +50,38 @@ def _shell_var(script: str) -> str:
 
 
 @cache
-def _steps() -> dict[str, str]:
-    """Each step's name mapped to its ``run:`` body, dedented."""
+def _steps() -> tuple[tuple[str, str], ...]:
+    """``(name, run-body)`` per step, in file order, bodies dedented.
+
+    A list rather than a dict keyed by name: two steps may legitimately share a
+    name, and a dict would collapse them silently - dropping one from the scan
+    below, so the guard would under-report rather than fail.
+    """
     text = WORKFLOW.read_text(encoding="utf-8")
-    steps: dict[str, str] = {}
+    steps: list[tuple[str, str]] = []
     for match in re.finditer(r"^ *- name: (.+?)\n(.*?)(?=^ *- name: |\Z)", text, re.S | re.M):
         name, body = match.group(1).strip(), match.group(2)
         run = re.search(r"^( *)run: (\|.*?\n)?(.*?)(?=^\1[a-z_-]+:|\Z)", body, re.S | re.M)
-        steps[name] = re.sub(r"^ +", "", run.group(3), flags=re.M) if run else ""
-    return steps
+        steps.append((name, re.sub(r"^ +", "", run.group(3), flags=re.M) if run else ""))
+    return tuple(steps)
+
+
+def _resolve_index() -> int:
+    for index, (name, _) in enumerate(_steps()):
+        if name == RESOLVE_STEP:
+            return index
+    raise AssertionError(f"no '{RESOLVE_STEP}' step in {WORKFLOW}")
 
 
 @cache
 def _resolve_script() -> str:
-    assert RESOLVE_STEP in _steps(), f"no '{RESOLVE_STEP}' step in {WORKFLOW}"
-    return _steps()[RESOLVE_STEP]
+    return _steps()[_resolve_index()][1]
 
 
 @cache
 def _later_steps() -> str:
     """Every step after the resolve step, concatenated."""
-    names = list(_steps())
-    return "\n".join(_steps()[n] for n in names[names.index(RESOLVE_STEP) + 1 :])
+    return "\n".join(body for _, body in _steps()[_resolve_index() + 1 :])
 
 
 def _run_resolve(project: Path) -> subprocess.CompletedProcess:
