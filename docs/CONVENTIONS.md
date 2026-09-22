@@ -64,16 +64,22 @@ except InvalidRepSpecError as e:
     raise_422("invalid rep_spec", errors=e.errors, source_exc=e)
 
 # Conflict with structured payload
-raise_envelope(409, "conflict", "duplicate URL",
-               data={"existing_info_source_id": str(existing.id)},
-               source_exc=e)
+raise_envelope(
+    409,
+    "conflict",
+    "duplicate URL",
+    data={"existing_info_source_id": str(existing.id)},
+    source_exc=e,
+)
 
 # Domain error with field-level code
-raise_envelope(422, "domain", "info_item_id is not a valid ULID",
-               errors=[FieldError(path="/info_item_id",
-                                  message="not a valid ULID",
-                                  code="invalid_ulid")],
-               source_exc=e)
+raise_envelope(
+    422,
+    "domain",
+    "info_item_id is not a valid ULID",
+    errors=[FieldError(path="/info_item_id", message="not a valid ULID", code="invalid_ulid")],
+    source_exc=e,
+)
 ```
 
 `kind` is one of: `body` (Pydantic body validation), `schema` (envelope/JSON-schema
@@ -121,3 +127,35 @@ A template change that composes only existing CSS classes needs PAGES.md alone.
   TYPE_CHECKING:` guards are module-level and pass. The vendored SDKs under
   `clients/` resolve their own `[tool.ruff]` config and are exempt - their
   generated code imports lazily to dodge circular imports.
+
+## Ruff's scope - what it reads, and what it must not
+
+Since ruff 0.16 (archiver#242) `ruff format` also formats the `python` fences
+inside `*.md`. Markdown is kept in scope - a sample in a live doc is worth
+formatting - with two trees held out in the root `[tool.ruff] exclude`:
+
+- `docs/plans/` - dated snapshots of what was proposed at the time, not
+  maintained source. Reformatting their samples rewrites a record.
+- `skills/` - overrides quoting vendor skill text, where keeping the two
+  byte-comparable is what makes a re-sync merge (archiver#243) reviewable. It
+  is also where a file-level symlink into `skills-vendor/` lives, and the main
+  CI workflow checks out no submodules: ruff reading a link that dangles there
+  is `io: No such file or directory` and a red build, no formatting opinion
+  involved. `tests/scripts/test_ruff_config.py` re-derives that set of symlinks
+  from `.gitmodules` rather than naming the one path, so the next vendored
+  reference file cannot repeat it.
+
+**A nested `[tool.ruff]` table governs everything beneath it.** The root
+`exclude` never reached `clients/python/src/archiver_client/generated/`,
+because `clients/python/pyproject.toml` carries its own table - which, having
+no `select`, tracked ruff's *default* rule set and picked up 91 findings the
+day those defaults widened. That config now selects its rules explicitly and
+excludes the generated tree under `[tool.ruff.lint]` only: `ruff format` must
+still reach it, because `clients/python/scripts/regen.sh` and the
+`client-drift` gate both format it and diff the result against the committed
+tree. A `lint.exclude` pattern filters per file rather than pruning the walk,
+so the trailing `/**` is load-bearing.
+
+The `rev:` in `.pre-commit-config.yaml` and the `ruff` pin in `pyproject.toml`
+move together; a skew means the commit-time hook and CI disagree about what is
+an error. The same test fails when they drift apart.

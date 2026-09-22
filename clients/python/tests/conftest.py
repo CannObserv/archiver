@@ -1,6 +1,7 @@
 """Test fixtures for archiver-client."""
 
 import pytest
+
 from archiver_client import ArchiverClient
 
 BASE_URL = "http://archiver.test"

@@ -52,10 +52,10 @@ from archiver_client.generated.api.info_items import (
     deactivate_info_source_binding_api_v1_info_items_info_item_id_info_sources_info_source_id_delete as _deactivate_info_source_binding,
 )
 from archiver_client.generated.api.info_items import (
-    delete_info_item_api_v1_info_items_info_item_id_delete as _delete_info_item,
+    deactivate_rep_spec_assignment_api_v1_info_items_info_item_id_rep_spec_assignments_assignment_id_delete as _deactivate_rep_spec,
 )
 from archiver_client.generated.api.info_items import (
-    deactivate_rep_spec_assignment_api_v1_info_items_info_item_id_rep_spec_assignments_assignment_id_delete as _deactivate_rep_spec,
+    delete_info_item_api_v1_info_items_info_item_id_delete as _delete_info_item,
 )
 from archiver_client.generated.api.info_items import (
     get_info_item_api_v1_info_items_info_item_id_get as _get_info_item,

@@ -196,6 +196,7 @@ same commit; failing to is a CR blocker. Which doc each change requires:
 **Logging:**
 ```python
 from src.core.logging import get_logger
+
 logger = get_logger(__name__)
 ```
 Entry points only: call `configure_logging()` once. `ExecStartPre` steps in

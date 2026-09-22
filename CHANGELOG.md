@@ -753,14 +753,17 @@ the row id, so offset-paged iteration is safe.
 ```python
 # Before (v1.1.0)
 items = await client.list_info_items()
-for it in items: ...
+for it in items:
+    ...
 
 # After (v1.2.0)
 page = await client.list_info_items()
-for it in page.items: ...
+for it in page.items:
+    ...
 while page.has_more:
     page = await client.list_info_items(offset=page.offset + page.limit)
-    for it in page.items: ...
+    for it in page.items:
+        ...
 ```
 
 ## v1.1.0 (2026-05-10)

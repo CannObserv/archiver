@@ -29,11 +29,11 @@ dependencies = [
 dev = [
     "openapi-python-client>=0.21,<1",
     "pre-commit>=4.5.1,<5",
-    "pytest>=8.0,<9",
+    "pytest>=9.1.1,<10",
     "pytest-asyncio>=1.3.0,<2",
     "pytest-cov>=6.0,<7",
     "respx>=0.22",
-    "ruff>=0.15.0,<0.16",
+    "ruff>=0.16.8,<0.17",
     "fakeredis>=2.20",
 ]
 
@@ -53,7 +53,26 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = ["skills-vendor/", "clients/python/src/archiver_client/generated/"]
+# ruff 0.16 added `*.md` to the default `include`, so `format` now reaches the
+# `python` fences inside documentation (#242). Markdown stays in scope — the
+# live docs' samples are worth formatting — with two trees held out:
+#
+#   docs/plans/  dated snapshots of what was proposed at the time, not
+#                maintained source; reformatting their samples rewrites a record.
+#   skills/      overrides quoting vendor skill text, and the tree where a
+#                file-level symlink into skills-vendor/ lives. The main CI
+#                workflow checks out no submodules, so ruff reading that link is
+#                `io: No such file or directory` — a red build with no formatting
+#                opinion in it. Holding the tree out rather than the one path
+#                also keeps override text byte-comparable with its vendor, which
+#                is what the re-sync merges in #243 diff against.
+#
+# clients/python/src/archiver_client/generated/ is NOT listed here: that tree
+# carries its own [tool.ruff] table (clients/python/pyproject.toml), and a
+# nested config is the one that governs the files beneath it — this entry never
+# reached them. The exclusion lives there now; tests/scripts/test_ruff_config.py
+# pins all of it.
+exclude = ["skills/", "skills-vendor/", "docs/plans/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
