@@ -29,6 +29,7 @@ stub check scripts to prove each number survives the round trip.
 
 import re
 import subprocess
+import tempfile
 from functools import cache
 from pathlib import Path
 
@@ -232,9 +233,27 @@ def test_a_script_found_nowhere_fails_the_step_by_name(tmp_path: Path) -> None:
 # --- the telemetry variables ---------------------------------------------------
 
 
+@cache
 def _swept_variables() -> tuple[str, ...]:
-    """The names the sweep step appends to ``$GITHUB_ENV``."""
-    return tuple(re.findall(r'echo "([A-Z_]+)=\$\(', _step_body(SWEEP_STEP)))
+    """The variables the sweep step exports - read from running it.
+
+    Not a regex over the YAML. An ``echo`` swapped for a ``printf``, or four
+    appends folded into one redirected block, changes the text and not the
+    behaviour; a pattern that then matches two of the four names leaves half
+    the pairing below silently unguarded, which is the under-reporting
+    ``_steps()`` above is written to avoid. A run cannot half-see them.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp)
+        result = _run_sweep(
+            project,
+            CHECK_SEAMS_SH=_stub(project, "check-seams.sh", prints="seams: 1\nseams_acked: 2"),
+            CHECK_COUNTS_SH=_stub(project, "check-counts.sh", prints="counts: 3\ncounts_acked: 4"),
+        )
+        assert result.returncode == 0, result.stderr
+        found = tuple(_exported(project))
+    assert found, f"the '{SWEEP_STEP}' step exported nothing at all"
+    return found
 
 
 def test_the_sweep_runs_both_checks() -> None:
