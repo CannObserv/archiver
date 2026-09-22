@@ -213,7 +213,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.redis_client = redis_client
             app.state.publisher_task = pub_task
             app.state.publisher_stop_event = stop_event
-            logger.info("Outbox publisher started", extra={"redis_url": redis_url})
+            # Redacted like bus_client's two lines (archiver#251): this one
+            # ran at every service start, so the raw form put the broker
+            # credential in journald for the whole retention window.
+            logger.info(
+                "Outbox publisher started",
+                extra={"redis_url": bus_client.redact_url(redis_url)},
+            )
 
             # --- Registry snapshot timer (archiver#141) ---
             # Shares the publisher's client and stop event; its own task so a
