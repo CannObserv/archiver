@@ -11,15 +11,22 @@ default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.12
+    # Keep in step with the ruff pin in pyproject.toml — a skew here means the
+    # commit-time hook and CI disagree about what is an error (#242).
+    # tests/scripts/test_ruff_config.py fails when they drift apart.
+    rev: v0.16.8
     hooks:
       - id: ruff
         name: ruff check
         args: [--fix]
-        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/)
+        exclude: ^(skills/|skills-vendor/|clients/python/src/archiver_client/generated/)
       - id: ruff-format
         name: ruff format
-        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/)
+        # No generated/ here, deliberately: the SDK config excludes that tree
+        # from lint only, because scripts/regen.sh and the client-drift gate
+        # both format it and diff the result against the committed one. A hook
+        # that skipped it would disagree with both (#242 CR 1).
+        exclude: ^(skills/|skills-vendor/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
