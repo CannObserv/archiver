@@ -47,19 +47,25 @@ Determine which GitHub issue(s) to close (priority order):
 
 ### Step 1 - Run pre-ship checks
 
+<!-- skill:required id=skill-scripts -->
 ```bash
-N=shipping-work-python-fastapi S=pre-ship.sh SD=
+N=shipping-work-python-fastapi
 { [ ! -x .skills/doctor.sh ] || bash .skills/doctor.sh; } || exit 1
-for d in scripts ".claude/skills/$N/scripts" "$HOME/.claude/skills/$N/scripts"; do
-  [ -f "$d/$S" ] && { SD="$d"; break; }
+for S in doc-check.sh check-status.sh push.sh comment-issue.sh close-issue.sh pre-ship.sh; do SD=
+  for d in scripts ".claude/skills/$N/scripts" "$HOME/.claude/skills/$N/scripts"; do
+    [ -f "$d/$S" ] && { SD="$d"; break; }
+  done
+  [ -n "$SD" ] || echo "$S not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/" >&2
+  echo "<$S>=${SD:?}/$S"
 done
-echo "SKILL_SCRIPTS=${SD:?not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/}"
-bash "${SD:?not found in scripts/, .claude/skills/$N/scripts/, or ~/.claude/skills/$N/scripts/}/$S"
+bash "${SD:?}/$S"
 ```
 
-The first line is a preflight: when `.skills/doctor.sh` is present, it heals any dangling vendor symlinks (or reports an actionable error); when absent, the group is a no-op. `|| exit 1` skips `pre-ship.sh` if the doctor reports unrecoverable state so the original "No such file or directory" noise doesn't drown out the doctor's message. The loop then resolves the script against the skill directory rather than the cwd - a bare `scripts/` path resolves relative to the project root, where the script does not exist ([#63](https://github.com/gregoryfoster/skills/issues/63)). A project-local `scripts/` copy still wins if one exists; `${SD:?…}` fails loudly with the searched paths when no candidate resolves. Resolution runs *after* the doctor so a freshly healed symlink chain is visible to it.
+The first line is a preflight: when `.skills/doctor.sh` is present, it heals any dangling vendor symlinks (or reports an actionable error); when absent, the group is a no-op. `|| exit 1` skips `pre-ship.sh` if the doctor reports unrecoverable state so the original "No such file or directory" noise doesn't drown out the doctor's message. The loop then resolves the script against the skill directory rather than the cwd - a bare `scripts/` path resolves relative to the project root, where the script does not exist ([#63](https://github.com/gregoryfoster/skills/issues/63)). A project-local `scripts/` copy still wins if one exists; when no candidate resolves the block stops, naming the script and the searched paths. Resolution runs *after* the doctor so a freshly healed symlink chain is visible to it.
 
-Step 1 prints `SKILL_SCRIPTS=<path>`. In every later step `<SKILL_SCRIPTS>` is a **placeholder** for that literal path - substitute the value printed here (same convention as `init-project-fastapi` Phase 0). Each Bash invocation runs in a fresh shell, so the shell variable itself is not inherited.
+**Each script is resolved on its own** ([#301](https://github.com/gregoryfoster/skills/issues/301)). Probing one anchor and reusing its directory for the other five breaks on a partial `scripts/` override - and archiver has exactly that shape: `skills/shipping-work-python-fastapi/scripts/` holds a local `pre-ship.sh` wrapper beside five symlinks into `skills-vendor/`, so a future change that moves one script without the others would resolve the rest to the wrong directory.
+
+Step 1 prints one `<script>=<path>` line per script. In every later step `<doc-check.sh>`, `<push.sh>` and the rest are **placeholders** for the literal paths printed here - substitute the value printed for that script. Each Bash invocation runs in a fresh shell, so the shell variables themselves are not inherited.
 
 ```
 NO CONTINUATION IF CHECKS FAIL
@@ -77,7 +83,7 @@ If checks fail: stop, report the failure, fix before proceeding. Do not push fai
 ### Step 1.5 - Documentation spot-check
 
 ```bash
-bash "<SKILL_SCRIPTS>/doc-check.sh"
+bash "<doc-check.sh>"
 ```
 
 `doc-check.sh` lists files changed on this branch vs the upstream default branch
@@ -121,7 +127,7 @@ built-in defaults, so an exit 2 there means the override is unusable, not absent
 ### Step 2 - Ensure a clean working tree
 
 ```bash
-bash "<SKILL_SCRIPTS>/check-status.sh"
+bash "<check-status.sh>"
 ```
 
 If the script exits 2, `git status` itself failed: the tree state is **unknown**,
@@ -158,7 +164,7 @@ If Step 2.5 did not apply (single checkout) and you're on a feature branch, merg
 ### Step 4 - Push
 
 ```bash
-bash "<SKILL_SCRIPTS>/push.sh"
+bash "<push.sh>"
 ```
 
 Confirm push succeeded before proceeding.
@@ -168,7 +174,7 @@ Confirm push succeeded before proceeding.
 For each issue in scope:
 
 ```bash
-bash "<SKILL_SCRIPTS>/comment-issue.sh" <number> "<summary>"
+bash "<comment-issue.sh>" <number> "<summary>"
 ```
 
 Comment must include:
@@ -186,7 +192,7 @@ Before closing any issue, verify the original requirements against what was impl
 </HARD-GATE>
 
 ```bash
-bash "<SKILL_SCRIPTS>/close-issue.sh" <number>
+bash "<close-issue.sh>" <number>
 ```
 
 ### Step 7 - Report
