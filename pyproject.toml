@@ -58,7 +58,10 @@ target-version = "py312"
 # live docs' samples are worth formatting — with two trees held out:
 #
 #   docs/plans/  dated snapshots of what was proposed at the time, not
-#                maintained source; reformatting their samples rewrites a record.
+#                maintained source; reformatting their samples rewrites a
+#                record. CHANGELOG.md is dated too and stays IN scope: its
+#                samples are migration guidance a reader runs today, where a
+#                plan's are a closed record of what was once intended.
 #   skills/      overrides quoting vendor skill text, and the tree where a
 #                file-level symlink into skills-vendor/ lives. The main CI
 #                workflow checks out no submodules, so ruff reading that link is

@@ -136,6 +136,12 @@ formatting - with two trees held out in the root `[tool.ruff] exclude`:
 
 - `docs/plans/` - dated snapshots of what was proposed at the time, not
   maintained source. Reformatting their samples rewrites a record.
+
+  **A date is not what decides this.** `CHANGELOG.md` entries are dated too and
+  stay in scope: their samples are migration guidance someone runs today, so
+  formatting them is maintenance. A plan's samples describe what was intended
+  at the time, and editing them makes the record disagree with what shipped.
+  Ask which of the two a document is before adding it here.
 - `skills/` - overrides quoting vendor skill text, where keeping the two
   byte-comparable is what makes a re-sync merge (archiver#243) reviewable. It
   is also where a file-level symlink into `skills-vendor/` lives, and the main
