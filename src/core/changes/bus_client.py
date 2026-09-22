@@ -42,7 +42,7 @@ from redis.asyncio.retry import Retry
 from redis.backoff import ExponentialBackoff
 
 from src.core.changes import read_windows
-from src.core.logging import get_logger
+from src.core.logging import REDACTED, get_logger
 
 logger = get_logger(__name__)
 
@@ -134,8 +134,6 @@ def build_bus_client(redis_url: str) -> RedisAsync:
 # serve, and the dashboard has no business being unavailable because the bus is.
 WORST_CASE_CONNECT_SECONDS = (BUS_RETRIES + 1) * SOCKET_CONNECT_TIMEOUT_SECONDS
 
-_REDACTED = "***"
-
 
 class SupportsPing(Protocol):
     """The only thing the probe needs from a client.
@@ -172,7 +170,7 @@ def redact_url(redis_url: str) -> str:
             host = f"[{host}]"
         if parts.port:
             host = f"{host}:{parts.port}"
-        userinfo = f"{parts.username or ''}:{_REDACTED}"
+        userinfo = f"{parts.username or ''}:{REDACTED}"
         return urlunsplit(
             (parts.scheme, f"{userinfo}@{host}", parts.path, parts.query, parts.fragment)
         )

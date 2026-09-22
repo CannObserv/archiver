@@ -9,6 +9,7 @@ app records and uvicorn access/error lines share one format — see archiver#115
 """
 
 import logging
+import re
 import sys
 
 from pythonjsonlogger.json import JsonFormatter
@@ -47,10 +48,73 @@ class ColorMessageFilter(logging.Filter):
         return True
 
 
+REDACTED = "***"
+"""The single spelling of a removed secret.
+
+``src.core.changes.bus_client.redact_url`` imports it rather than repeating it,
+so a line redacted at the call site and one redacted by the filter below are
+indistinguishable to whoever greps the journal.
+"""
+
+_CREDENTIAL_URL = re.compile(
+    r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.\-]*://)(?P<user>[^/?#\s:@]*):(?P<password>[^/?#\s@]+)@"
+)
+"""Userinfo carrying a password, in any scheme.
+
+Deliberately not a URL parser: the input is an arbitrary log line, which may
+hold a URL mid-sentence, several of them, or one a parser would reject. The
+password group requires at least one character so a bare ``user:@host`` - no
+secret to hide - is left alone.
+"""
+
+
+def _scrub(value: str) -> str:
+    """Replace every embedded password in ``value``; cheap on the common path."""
+    if "://" not in value:
+        return value
+    return _CREDENTIAL_URL.sub(rf"\g<scheme>\g<user>:{REDACTED}@", value)
+
+
+class CredentialRedactingFilter(logging.Filter):
+    """Strip passwords out of URLs anywhere in a record (archiver#251).
+
+    The fix for a leak is to redact at the call site, where the code knows the
+    field is a URL (``bus_client.redact_url``). This is the net under that: it
+    catches the site nobody remembered, and the library we do not own that logs
+    a DSN of its own. archiver#251 was exactly the first case - the lifespan's
+    "Outbox publisher started" line put the broker credential in journald at
+    every service start, two lines away from a helper that redacts.
+
+    Mutates the record rather than a formatted string, for the same reason
+    ``ColorMessageFilter`` does: once, at the source, so every handler benefits
+    instead of whichever sink remembered. Wired on the *handler* rather than on
+    named loggers - the site that leaks next is by definition not one we listed.
+
+    Never drops a record. A log line with a secret in it is still a log line
+    worth having; silence would trade a disclosure for an outage nobody sees.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Scrub message, args and extras in place. Always returns True."""
+        for key, value in record.__dict__.items():
+            if isinstance(value, str):
+                record.__dict__[key] = _scrub(value)
+        if isinstance(record.args, tuple):
+            record.args = tuple(_scrub(a) if isinstance(a, str) else a for a in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {
+                k: _scrub(v) if isinstance(v, str) else v for k, v in record.args.items()
+            }
+        return True
+
+
 def configure_logging(level: int = logging.INFO) -> None:
     """Configure root logger with JSON formatting. Call once at entry points."""
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(build_json_formatter())
+    # On the handler, not the root logger: a logger's filters skip records that
+    # propagate up from its children, which is every record the app emits.
+    handler.addFilter(CredentialRedactingFilter())
     root = logging.getLogger()
     root.setLevel(level)
     root.handlers = [handler]
