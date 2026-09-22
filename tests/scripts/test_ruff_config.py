@@ -147,10 +147,18 @@ def test_sdk_excludes_generated_from_lint_only() -> None:
 
 
 def _pinned_ruff_floor() -> str:
-    """The lower bound of the root dev group's ``ruff`` specifier."""
+    """The lower bound of the root dev group's ``ruff`` specifier.
+
+    Matched at the package-name boundary: a bare ``startswith`` would also take
+    ``ruff-lsp``, and compare the pre-commit rev against the wrong line's
+    version - a failure that accuses the rev of drifting when it has not.
+    """
     dev = tomllib.loads(ROOT_PYPROJECT.read_text(encoding="utf-8"))["dependency-groups"]["dev"]
-    specifier = next(entry for entry in dev if entry.startswith("ruff"))
-    return re.search(r">=\s*([0-9][^,]*)", specifier).group(1).strip()
+    specifier = next((entry for entry in dev if re.match(r"ruff\s*[<>=!~]", entry)), None)
+    assert specifier, f"no `ruff` pin in the dev dependency group of {ROOT_PYPROJECT}"
+    floor = re.search(r">=\s*([0-9][^,]*)", specifier)
+    assert floor, f"the ruff pin {specifier!r} has no `>=` lower bound to compare"
+    return floor.group(1).strip()
 
 
 def test_pre_commit_rev_matches_the_ruff_pin() -> None:
