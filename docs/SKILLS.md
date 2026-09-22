@@ -44,6 +44,18 @@ bash .skills/doctor.sh --verbose    # resolution details even when healthy
 bash .skills/doctor.sh --check-only # report only; makes no changes
 ```
 
+**Required fragments are gated by the suite** (archiver#241). A vendor fences a
+block `<!-- skill:required id=… -->` when dropping it reintroduces a fixed
+failure; an override is *supposed* to differ, so no diff and no `version:` stamp
+sees one go missing. `tests/scripts/test_skill_required_fragments.py` fails on an
+override that omits one, or on a stale `omits-required:`. It **delegates** to
+`.skills/doctor.sh --check-only` rather than reimplementing the rule (a second
+implementation is a second standard); `--check-only` keeps the self-sync above
+from dirtying the tree mid-suite. Skips when `skills-vendor/` is absent, as in
+CI. Where a fragment cannot apply, declare
+`omits-required: "<id>: why"` rather than pasting back a block that cannot run.
+Drift in the *rest* of an override stays advisory - open re-syncs: archiver#243.
+
 ## Skill Sources
 
 The trigger list of all available skills is **Skill Trigger Inventory** below. Each project skill is sourced from one of:
