@@ -4,10 +4,10 @@ description: "For the archiver service (Python/FastAPI on uv + ruff + pytest): f
 compatibility: Designed for the archiver service. Sources `/etc/archiver/.env` and `$PROJECT_ROOT/.env` before pre-ship pytest; otherwise delegates to the upstream shipping-work-python-fastapi variant.
 metadata:
   author: gregoryfoster
-  version: "1.4"
+  version: "1.5"
   triggers: ship it, push GH, close GH, wrap up
   overrides: gregoryfoster-skills/shipping-work-python-fastapi
-  synced-from: "gregoryfoster-skills 1.4 (178ec64)"
+  synced-from: "gregoryfoster-skills 1.5 (75ee33a)"
   override-reason: "Sources /etc/archiver/.env and $PROJECT_ROOT/.env before delegating to upstream pre-ship; fixes broken `export $(cat … | xargs)` env-loading pattern via `set -a; . <file>; set +a`."
 ---
 
@@ -61,7 +61,7 @@ done
 bash "${SD:?}/$S"
 ```
 
-The first line is a preflight: when `.skills/doctor.sh` is present, it heals any dangling vendor symlinks (or reports an actionable error); when absent, the group is a no-op. `|| exit 1` skips `pre-ship.sh` if the doctor reports unrecoverable state so the original "No such file or directory" noise doesn't drown out the doctor's message. The loop then resolves the script against the skill directory rather than the cwd - a bare `scripts/` path resolves relative to the project root, where the script does not exist ([#63](https://github.com/gregoryfoster/skills/issues/63)). A project-local `scripts/` copy still wins if one exists; when no candidate resolves the block stops, naming the script and the searched paths. Resolution runs *after* the doctor so a freshly healed symlink chain is visible to it.
+The first line is a preflight: when `.skills/doctor.sh` is present, it heals any dangling vendor symlinks (or reports an actionable error); when absent, the group is a no-op. `|| exit 1` skips `pre-ship.sh` if the doctor reports unrecoverable state so the original "No such file or directory" noise doesn't drown out the doctor's message. The loop then resolves each script against the skill directory rather than the cwd - a bare `scripts/` path resolves relative to the project root, where the script does not exist ([#63](https://github.com/gregoryfoster/skills/issues/63)). A project-local `scripts/<name>` still wins, for that script alone: a `scripts/pre-ship.sh` wrapper must not send the other five looking beside it ([#301](https://github.com/gregoryfoster/skills/issues/301)). A script found nowhere stops the block here, by name. `pre-ship.sh` is listed last, so the final line runs it. Resolution runs *after* the doctor so a freshly healed symlink chain is visible to it.
 
 **Each script is resolved on its own** ([#301](https://github.com/gregoryfoster/skills/issues/301)). Probing one anchor and reusing its directory for the other five breaks on a partial `scripts/` override - and archiver has exactly that shape: `skills/shipping-work-python-fastapi/scripts/` holds a local `pre-ship.sh` wrapper beside five symlinks into `skills-vendor/`, so a future change that moves one script without the others would resolve the rest to the wrong directory.
 
@@ -75,8 +75,24 @@ The archiver wrapper (`skills/shipping-work-python-fastapi/scripts/pre-ship.sh`,
 non-symlinked script here) sources `/etc/archiver/.env` (system secrets) and
 `$PROJECT_ROOT/.env` (repo-local overrides) before delegating to the upstream variant's
 pre-ship.sh. The upstream script handles lint (`ruff check`), the per-SHA stamp
-(auto-derived as `archiver-tests-clean-<sha>`), and pytest with `-m "not integration"`
-(skips `tests/integration/` flows; CI runs them separately).
+(auto-derived as `archiver-tests-clean-<sha>`), and `uv run pytest -x` with
+`integration`-marked tests deselected - so `tests/integration/` flows are skipped here
+and CI runs them separately.
+
+**Deselected on top of the project's own marker expression, never by passing `-m`**
+([#304](https://github.com/gregoryfoster/skills/issues/304)). A project whose `addopts`
+already carries a marker expression would have it *replaced* by an `-m` of the gate's
+own. Archiver is not that project - its `addopts` is `-v --tb=short`, no markers - so
+the two mechanisms select the same tests here and the distinction is invisible until
+someone adds one. It is written down because the wrong mental model is the thing that
+would then silently widen the gate.
+
+The same change added `.skills/pre-ship-uv-args`: a project whose `uv run` needs extra
+arguments (`--group seed`) commits them there, whitespace-separated, `#`-comments
+ignored, and every uv call in the gate gets them. **Archiver commits no such file** and
+needs none: `uv run pytest` resolves the default dev group, and co-core comes from the
+wheelhouse `[tool.uv] find-links` rather than a group flag. Reach for it only if that
+stops being true.
 
 If checks fail: stop, report the failure, fix before proceeding. Do not push failing code under any circumstances.
 
@@ -115,8 +131,9 @@ that is gone; edit the file and let the tests confirm the result.
 
 If the script exits 1: review the listed files, decide whether each requires a
 doc update, and either commit the docs now or note them as deliberate skips. If
-the script exits 2: an infra/tooling problem prevented the doc check from
-running - investigate the underlying error rather than proceeding. One exit-2
+the script exits 2 - or any code not named here, such as 127 when its path did
+not resolve - the doc check did not run: investigate the underlying error rather
+than proceeding. One exit-2
 case is worth naming: when no entry in the list matches any tracked file, it says
 so instead of passing, because a list that cannot hit anything would otherwise
 print the same clean green as a genuinely doc-neutral branch. Fix the list; do
@@ -131,7 +148,8 @@ bash "<check-status.sh>"
 ```
 
 If the script exits 2, `git status` itself failed: the tree state is **unknown**,
-which is not the same as clean. Investigate git's error rather than proceeding
+which is not the same as clean. Any code but 0 or 1 is no verdict either (127: the
+script was not found). Investigate the error rather than proceeding
 ([#257](https://github.com/gregoryfoster/skills/issues/257)).
 
 If uncommitted changes exist, commit them using **archiver's bracket-less convention**

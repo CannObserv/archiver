@@ -54,7 +54,8 @@ implementation is a second standard); `--check-only` keeps the self-sync above
 from dirtying the tree mid-suite. Skips when `skills-vendor/` is absent, as in
 CI. Where a fragment cannot apply, declare
 `omits-required: "<id>: why"` rather than pasting back a block that cannot run.
-Drift in the *rest* of an override stays advisory - open re-syncs: archiver#243.
+Drift in the *rest* of an override is a hand merge; archiver#243 re-synced all
+three. How: [docs/CONVENTIONS.md](CONVENTIONS.md).
 
 ## Skill Sources
 

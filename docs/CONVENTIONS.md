@@ -120,6 +120,42 @@ applicable doc is a CR blocker.
 
 A template change that composes only existing CSS classes needs PAGES.md alone.
 
+## Re-syncing a `skills/` override
+
+An override is *supposed* to differ from its vendor, so nothing is auto-merged
+and no diff can police it. `.skills/doctor.sh` prints the procedure on every
+run; the half it cannot enforce is the last step. Reapply the local deltas the
+`override-reason:` names onto the **newer upstream text**, never the reverse,
+then bump `version:` **and** `synced-from:` together - a `synced-from:` left
+behind re-reports the drift just paid down. Diff the pre-merge copy afterwards
+and account for every removed line: a presence check cannot see a local delta
+the merge dropped.
+
+All three overrides were re-synced in archiver#243 - `brainstorming` to
+obra-superpowers v6.4.1, `shipping-work-python-fastapi` to 1.5,
+`using-git-worktrees` to 1.1. The required-fragment half is gated by
+`tests/scripts/test_skill_required_fragments.py`
+([docs/SKILLS.md](SKILLS.md)); the rest is advisory and stays a hand merge.
+
+## Script resolution in the cadence workflow
+
+`.github/workflows/context-cadence.yml` is curating-context's installed cadence
+job and runs four of that skill's scripts. It used to resolve one anchor -
+`measure-context.sh` - and export the *directory* it was found in, which every
+later step then joined a script name onto: a project `scripts/` holding that one
+file sent the rest somewhere that lacked them (gregoryfoster/skills#301, carried
+here by archiver#243). It now exports one path per script, under a name derived
+from the script, so the list is the only thing to edit.
+
+`tests/scripts/test_context_cadence.py` **extracts the step and runs it** under
+`bash -e` against fixture projects - the ordinary case, the lone-project-copy
+case, and a script found nowhere. Not an assertion over the YAML: a step can
+export exactly the right variable names and resolve them wrongly, and only
+running it tells the two apart.
+
+The workflow's header lists the deltas archiver holds over the installer's
+render, this one included. Re-rendering it is archiver#249.
+
 ## Import placement - scope and exemptions
 
 - No inline module imports; all at file top - `src/`, `tests/`, `scripts/`, and

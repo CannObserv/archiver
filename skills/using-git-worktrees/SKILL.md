@@ -4,10 +4,10 @@ description: A workflow for parallel branch checkouts via `git worktree`. Standa
 compatibility: Designed for the archiver service. Requires git, uv, and `lsof` for port cleanup in Phase 5. Worktree provisioning is the vendor's; Phase 3 is archiver-specific (dev server on a per-worktree port, env sourcing, `.venv` opt-out).
 metadata:
   author: gregoryfoster
-  version: "1.0"
+  version: "1.1"
   triggers: create worktree, new worktree, destroy worktree, merge worktree, wt
   overrides: gregoryfoster-skills/using-git-worktrees
-  synced-from: "gregoryfoster-skills 1.0 (d3f91c8)"
+  synced-from: "gregoryfoster-skills 1.1 (75ee33a)"
   override-reason: "Archiver-specific Phase 3 — `.skills/worktree_venv` is `none` here because the main checkout is archiver.service's WorkingDirectory; the dev server runs on a per-worktree ARCHIVER_DEV_PORT via scripts/dev_server.sh (never hand-rolled uvicorn, see the 2026-07-18 production-write incident); env files load via `set -a; . <file>; set +a`, not the broken `export $(cat … | xargs)` pattern. Phase 5 names when --force is actually required here: once the SessionStart doctor has checked out submodule content inside the worktree, not merely because the repo has submodules."
 ---
 
@@ -69,6 +69,8 @@ Every operation resolves the worktree directory in this order (first match wins)
 3. **`<repo-root>/.worktrees/`** — fallback when neither of the above is set
 
 Archiver sets neither, so worktrees land in `/home/exedev/archiver/.worktrees/<branch-slug>`. Invoke `bash "<resolve-worktree-root.sh>"` to print the resolved root. The final worktree path is always `<resolved-root>/<branch-slug>`, where `<branch-slug>` is the branch name with `/` replaced by `-` (e.g., `feature/foo` → `feature-foo`).
+
+**Set the root with `WORKTREE_ROOT` or `.skills/worktree_root` - never by editing a resolver.** Every other script that needs the root runs the `resolve-worktree-root.sh` beside it: the skill's own, unless that script is itself a project `scripts/` copy. Overriding the resolver therefore changes only what the command above prints, and leaves `worktree-create.sh` and `worktree-destroy.sh` acting on a different directory. A project that copies any of these scripts copies the whole `scripts/` directory, never single files - which is why the per-script resolution above is about *finding* each script, not about mixing two sources. Archiver copies none of the five: all are symlinks into `skills-vendor/`.
 
 **Verify the resolved root is ignored before creating anything.** None of the five scripts does this — `worktree-create.sh` will happily create a worktree inside a tracked directory — so it stays a step here:
 
