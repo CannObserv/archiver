@@ -54,7 +54,23 @@ implementation is a second standard); `--check-only` keeps the self-sync above
 from dirtying the tree mid-suite. Skips when `skills-vendor/` is absent, as in
 CI. Where a fragment cannot apply, declare
 `omits-required: "<id>: why"` rather than pasting back a block that cannot run.
-Drift in the *rest* of an override stays advisory - open re-syncs: archiver#243.
+Drift in the *rest* of an override stays advisory, and is paid down by hand:
+all three overrides were re-synced onto their vendors in archiver#243
+(`brainstorming` to obra-superpowers v6.4.1, `shipping-work-python-fastapi` to
+1.5, `using-git-worktrees` to 1.1). Nothing is auto-merged - reapply the local
+deltas the `override-reason:` names onto the *newer* upstream text, never the
+reverse, then bump `version:` **and** `synced-from:` together: a `synced-from:`
+left behind re-reports the drift just paid down.
+
+**One surface outside `skills/` follows the same per-script rule.**
+`.github/workflows/context-cadence.yml` is curating-context's installed cadence
+job and runs four of that skill's scripts. It used to resolve one anchor and
+export the *directory*, so a project `scripts/` holding only
+`measure-context.sh` sent the rest somewhere that lacked them
+(gregoryfoster/skills#301). It now exports one path per script;
+`tests/scripts/test_context_cadence.py` executes the step against fixture
+projects rather than reading its YAML, since a step can export the right names
+and still resolve them wrongly.
 
 ## Skill Sources
 

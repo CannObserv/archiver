@@ -6,7 +6,7 @@ metadata:
   author: gregoryfoster
   triggers: brainstorm, design this, let's design
   overrides: obra-superpowers/brainstorming
-  synced-from: "obra-superpowers v6.3.0 (b36e0829c6d0140e93cfef2ca599b1b07d4a7797)"
+  synced-from: "obra-superpowers v6.4.1 (5bf4e78011075bcfc0dc295f0724994cd123ee71)"
   override-reason: "Project-specific conventions: docs/plans/ path, #<n> type: desc commit convention, writing-plans is optional not mandatory; invokes using-git-worktrees for any multi-step implementation on either the bounded or the architectural path; opens a GH issue as part of handoff; FastAPI stack context. Keeps a Scope detection gate upstream has no equivalent for, and ships no visual companion."
 ---
 
@@ -19,13 +19,53 @@ does, classify how much process the request needs (**Three Paths**), then work
 that path: understand the context, refine the idea, present a design, and get
 approval.
 
+## Establish Shared Understanding
+
+The outcome of brainstorming is an understanding the user can recognize and
+correct, grounded in what they want to accomplish.
+
+1. **Discover intent.** Use the request and available context to identify the
+   intended outcome, who it is for, and what success looks like. When that
+   information is missing, ask one focused question about purpose or intended
+   use before proposing features or an approach. Knowing which part of the
+   service a request touches does not tell you why the user wants it. Gathering
+   missing requirements does not ask them to authorize the task again.
+2. **Write back your understanding.** Summarize the intended outcome, relevant
+   constraints, and success criteria in a short note the user can assess.
+   Separate what they said from assumptions. Invite correction and incorporate
+   their answer before treating this as the design brief.
+3. **Carry intent into the design.** Preserve the agreed understanding in the
+   selected path's artifact: the design doc under `docs/plans/` for
+   architectural work, or the in-chat design or probe for bounded work and
+   spikes. Check proposed features and technical choices against it.
+
+When the request already supplies the purpose and constraints — a written GH
+issue carrying the decision, most often — reflect that understanding instead of
+asking the same questions again. Keep the note concise; its accuracy and the
+opportunity to correct it are what matter.
+
 <HARD-GATE>
-Do NOT write any code, create any files (other than the design doc), or take
-any implementation action until you have told the user what you intend and they
-have approved it. This applies to EVERY task this skill applies to (see **Scope
-detection**), on EVERY path below — the ceremony scales with the task; the
-approval gate never does. A task Scope detection exempts is one this skill never
-gated; it is not one this gate released.
+Before taking any implementation action — invoking an implementation skill,
+writing code, creating any file other than the design doc, installing a
+dependency — complete the selected path's prerequisites:
+
+- **Spike** — the user approves the question and the probe.
+- **Bounded** — the user approves the short in-chat design.
+- **Architectural** — the user approves the written design doc, and the GH issue
+  it hands off to. Conversational approval of the idea only permits writing the
+  design doc. `writing-plans` stays optional here (upstream makes it a required
+  second gate; archiver does not) — but when a formal plan *is* wanted, it is
+  written and reviewed before implementation, not alongside it.
+
+A reply approves the stage actually presented. Approval of an idea or of feature
+scope does not approve artifacts that do not exist yet. Resume at the earliest
+incomplete stage; do not turn one approval into permission to skip the rest of
+the path. Read-only exploration of the repo is allowed throughout.
+
+This applies to EVERY task this skill applies to (see **Scope detection**), on
+EVERY path below — the ceremony scales with the task; the approval gate never
+does. A task Scope detection exempts is one this skill never gated; it is not
+one this gate released.
 </HARD-GATE>
 
 ## Scope detection
@@ -83,17 +123,19 @@ up. Nothing downgrades mid-task.
 
 ## Anti-Pattern: "Too Simple To Need Approval"
 
-Every path ends with the user approving your intent before implementation. A
-config change, a one-function utility — the design may be two sentences in chat,
-but you MUST present it and get approval. "Simple" tasks are where unexamined
-assumptions cause the most wasted work. What scales with simplicity is the
-artifact, never the approval.
+Every path ends with the user approving the required design before
+implementation. A config change or a one-function utility is bounded and may
+need only two sentences in chat; a new subsystem is architectural and gets the
+written design doc and the GH issue whatever its line count. Scale the
+**artifact** to the selected path and complete that path's approvals — what
+never scales down is the approval itself. "Simple" tasks are where unexamined
+assumptions cause the most wasted work.
 
 ## Red Flags
 
 | Thought | Reality |
 |---------|---------|
-| "This is too simple to need a design" | Simple means a short design, not no design. Two sentences in chat, then approval. |
+| "This is too simple to need a design" | Follow the selected path: a bounded change gets a short chat design, an architectural one gets the written design doc and the GH issue. Neither gets no design. |
 | "I'll call it bounded and skip the design doc" | Reaching for a label to skip work IS the doubt — take the heavier path. |
 | "It's bounded and the design is obvious — I'll start while they read it" | The gate is the approval, not the design's length. Present, then stop until you hear yes. |
 | "I understand this kind of app, so it's bounded" | Bounded measures the repo, not your familiarity. A flow that does not exist yet is architectural. |
