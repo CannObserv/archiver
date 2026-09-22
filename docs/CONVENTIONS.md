@@ -148,9 +148,10 @@ here by archiver#243). It now exports one path per script, under a name derived
 from the script, so the list is the only thing to edit.
 
 Its other failure is quieter, and was live: a telemetry field the job records as
-`null` every week. `counts` and `counts_acked` were null in 37 of the ledger's
-42 rows because the sweep step ran `check-seams.sh` alone - the populated rows
-were all hand-run curations (archiver#249, upstream #258). A sweep that never
+`null` every week. `counts` and `counts_acked` were null in every
+scheduled row until archiver#249 - 37 of the 42 recorded by then - because the
+sweep step ran `check-seams.sh` alone; the populated rows were all hand-run
+curations (upstream #258). A sweep that never
 runs and a number the record step never forwards produce the same null, so both
 directions are pinned: every variable the sweep exports is paired with the
 `--flag` that carries it into `record-telemetry.sh`, and a check that printed no
