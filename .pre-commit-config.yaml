@@ -22,7 +22,11 @@ repos:
         exclude: ^(skills/|skills-vendor/|clients/python/src/archiver_client/generated/)
       - id: ruff-format
         name: ruff format
-        exclude: ^(skills/|skills-vendor/|clients/python/src/archiver_client/generated/)
+        # No generated/ here, deliberately: the SDK config excludes that tree
+        # from lint only, because scripts/regen.sh and the client-drift gate
+        # both format it and diff the result against the committed one. A hook
+        # that skipped it would disagree with both (#242 CR 1).
+        exclude: ^(skills/|skills-vendor/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
