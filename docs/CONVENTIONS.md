@@ -137,24 +137,36 @@ obra-superpowers v6.4.1, `shipping-work-python-fastapi` to 1.5,
 `tests/scripts/test_skill_required_fragments.py`
 ([docs/SKILLS.md](SKILLS.md)); the rest is advisory and stays a hand merge.
 
-## Script resolution in the cadence workflow
+## The cadence workflow - script resolution and the telemetry variables
 
 `.github/workflows/context-cadence.yml` is curating-context's installed cadence
-job and runs four of that skill's scripts. It used to resolve one anchor -
+job and runs five of that skill's scripts. It used to resolve one anchor -
 `measure-context.sh` - and export the *directory* it was found in, which every
 later step then joined a script name onto: a project `scripts/` holding that one
 file sent the rest somewhere that lacked them (gregoryfoster/skills#301, carried
 here by archiver#243). It now exports one path per script, under a name derived
 from the script, so the list is the only thing to edit.
 
-`tests/scripts/test_context_cadence.py` **extracts the step and runs it** under
-`bash -e` against fixture projects - the ordinary case, the lone-project-copy
-case, and a script found nowhere. Not an assertion over the YAML: a step can
+Its other failure is quieter, and was live: a telemetry field the job records as
+`null` every week. `counts` and `counts_acked` were null in every
+scheduled row until archiver#249 - 37 of the 42 recorded by then - because the
+sweep step ran `check-seams.sh` alone; the populated rows were all hand-run
+curations (upstream #258). A sweep that never
+runs and a number the record step never forwards produce the same null, so both
+directions are pinned: every variable the sweep exports is paired with the
+`--flag` that carries it into `record-telemetry.sh`, and a check that printed no
+number must export **empty** rather than `0` - `${COUNTS:+...}` then drops the
+flag, and a crashed check records "unknown" instead of "clean".
+
+`tests/scripts/test_context_cadence.py` **extracts the steps and runs them**
+under `bash -e` - the resolve step against fixture projects (the ordinary case,
+the lone-project-copy case, a script found nowhere), the sweep step against stub
+checks that print known numbers. Not an assertion over the YAML: a step can
 export exactly the right variable names and resolve them wrongly, and only
 running it tells the two apart.
 
 The workflow's header lists the deltas archiver holds over the installer's
-render, this one included. Re-rendering it is archiver#249.
+render - one, since archiver#249 re-rendered it and the rest landed upstream.
 
 ## Import placement - scope and exemptions
 
