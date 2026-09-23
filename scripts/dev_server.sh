@@ -133,11 +133,16 @@ unset DATABASE_URL
 redis_identity() {
   local url="$1"
   [[ -z "$url" ]] && return 0
+  local scheme=""
   case "$url" in
-    *://*) url="${url#*://}" ;;   # drop scheme
+    *://*) scheme="${url%%://*}"; url="${url#*://}" ;;   # drop scheme
   esac
   url="${url%%\?*}"              # drop query string FIRST (may contain '@')
   url="${url#*@}"               # drop credentials, if any
+  if [[ "${scheme,,}" == "unix" ]]; then
+    printf 'unix:%s' "$url"     # a socket is addressed by its path
+    return 0
+  fi
   local hostport="${url%%/*}"    # drop /db — not part of the identity
   local host port
   case "$hostport" in

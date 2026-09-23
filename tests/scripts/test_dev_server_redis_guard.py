@@ -164,3 +164,28 @@ def test_bracketed_ipv6_on_a_distinct_port_is_allowed() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert _redis_line(result.stdout) == "redis://[::1]:6380/0"
+
+
+def test_distinct_unix_sockets_are_distinct_brokers() -> None:
+    """A unix:// URL's identity is its socket path — not a TCP loopback default
+    that every socket (and prod on localhost:6379) would collapse onto."""
+    result = _run(
+        {
+            "ARCHIVER_REDIS_URL": "redis://localhost:6379/0",
+            "ARCHIVER_DEV_REDIS_URL": "unix:///tmp/archiver-dev-redis.sock",
+        }
+    )
+    assert result.returncode == 0, result.stderr
+    assert _redis_line(result.stdout) == "unix:///tmp/archiver-dev-redis.sock"
+
+
+def test_same_unix_socket_is_refused() -> None:
+    """The same socket path, whatever its ?db= query, is the same broker."""
+    result = _run(
+        {
+            "ARCHIVER_REDIS_URL": "unix:///run/redis/redis.sock?db=0",
+            "ARCHIVER_DEV_REDIS_URL": "unix://u:p@/run/redis/redis.sock?db=1",
+        }
+    )
+    assert result.returncode == 1
+    assert "same broker" in result.stderr
