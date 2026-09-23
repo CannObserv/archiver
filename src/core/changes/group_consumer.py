@@ -113,7 +113,7 @@ def resolve_consumer_name(group: str) -> str:
     The ``-1`` is a slot, not decoration: ``deploy/archiver.service`` runs uvicorn
     with no ``--workers``, so there is exactly one member and the pid carried no
     information a log line does not. A multi-consumer deployment assigns ``-2``
-    upward - and must first raise ``quarantine_undecodable``'s ``min_idle_time``,
+    upward - and must first raise ``quarantine_undecodable``'s ``min_idle_ms``,
     for the reason recorded in that docstring.
     """
     return f"{group.replace('.', '-')}-1"
@@ -277,16 +277,17 @@ async def quarantine_undecodable(consumer: GroupConsumer) -> int:
     stopping at the first ``CLAIM_COUNT`` window: after a backlog (a DB outage,
     say) the poison frame can sit well past entry ten. **Only ``page.exhausted``
     ends it.** An empty page with a non-zero cursor means ``XAUTOCLAIM`` spent its
-    ``count * 10`` attempt budget (on trimmed entries, at ``min_idle_time=0``) and
+    ``count * 10`` attempt budget (on trimmed entries, at ``min_idle_ms=0``) and
     there is more to scan (archiver#259).
 
-    ``min_idle_time=0`` claims regardless of age, and following the cursor means
-    the scan is **bounded only by the pass ceiling** — up to
+    ``min_idle_ms=0`` (``XAUTOCLAIM``'s ``min-idle-time``) claims regardless of
+    age, and following the cursor means the scan is **bounded only by the pass
+    ceiling** — up to
     ``MAX_QUARANTINE_PASSES * CLAIM_COUNT`` entries. With one process per host
     (what ``deploy/archiver.service`` runs, no ``--workers``) that is free. With
     two, one poison frame would pull the *whole* group's in-flight PEL to a single
     worker rather than a slice of it. **A multi-consumer deployment must raise
-    ``min_idle_time`` above the expected per-message processing time** before
+    ``min_idle_ms`` above the expected per-message processing time** before
     adding workers — that is the change this constant is waiting on, recorded here
     because this is where it would be made.
     """

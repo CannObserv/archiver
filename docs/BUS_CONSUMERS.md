@@ -186,7 +186,7 @@ measured rather than assumed:
 
 The `-1` is a slot. `deploy/archiver.service` runs uvicorn with no `--workers`,
 so there is exactly one member per group. Adding members assigns `-2` upward and
-**must first raise `quarantine_undecodable`'s `min_idle_time`** above the
+**must first raise `quarantine_undecodable`'s `min_idle_ms`** above the
 expected per-message processing time - see that docstring.
 
 ## Change-bus tail - `info.watch-status` (archiver#151)
