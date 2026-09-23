@@ -131,9 +131,8 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
   reopens the hole for every sourcing process.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.
-- `ARCHIVER_DEV_REDIS_URL` - unset means the dev server is bus-dormant; prod's
-  `ARCHIVER_REDIS_URL` is never inherited, and a scratch bus is now a scratch
-  *database on a shared remote broker*.
+- `ARCHIVER_DEV_REDIS_URL` - unset means bus-dormant; prod's URL is never
+  inherited. A scratch bus is a local throwaway broker, never a DB index (#240).
 
 ## Common Commands
 

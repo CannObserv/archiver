@@ -117,55 +117,72 @@ esac
 export ARCHIVER_DATABASE_URL="$DEV_URL"
 unset DATABASE_URL
 
-# redis_identity <url> — normalized `host:port/db` for a redis[s] URL, or empty
-# for empty input. The equality guard below compares identities, not raw
-# strings, so cosmetic differences (localhost vs 127.0.0.1, omitted default
-# port/db) do NOT slip a dev server onto prod's broker — the same reasoning the
-# DB guard's db_name() applies (string equality is defeated by spelling; the
-# addressed resource is the boundary). Mirrors db_name()'s ordering: require a
-# scheme-or-bare host, strip the query BEFORE credentials (an '@' can live in a
-# query), then split host:port and /db, applying redis defaults (6379, db 0).
+# redis_identity <url> — normalized `host:port` for a redis[s] URL
+# (`unix:<path>` for a socket), or empty for empty input. The equality guard
+# below compares identities, not raw strings, so cosmetic differences
+# (localhost vs 127.0.0.1 vs [::1], omitted default port) do NOT slip a dev
+# server onto prod's broker — the same reasoning the DB guard's db_name()
+# applies (string equality is defeated by spelling; the addressed resource is
+# the boundary). The /db index is deliberately NOT part of the identity
+# (archiver#240): an index is no boundary — Redis ACLs cannot partition by it —
+# and the broker runs `databases 1` with no `+select`, so `.../1` on prod's
+# host:port is the same broker, refused here rather than failing later as a
+# publisher-init error that reads like dormancy. Mirrors db_name()'s ordering:
+# require a scheme-or-bare host, strip the query BEFORE credentials (an '@' can
+# live in a query), then drop any /db and split host:port, applying the redis
+# default port (6379).
+#
+# Names are compared, never resolved: `broker` vs its tailnet IP or FQDN reads
+# as distinct and passes. Loopback is the only alias folded — the same
+# two-names-one-host trap as docs/reference/tailscale.md.
 redis_identity() {
   local url="$1"
   [[ -z "$url" ]] && return 0
+  local scheme=""
   case "$url" in
-    *://*) url="${url#*://}" ;;   # drop scheme
+    *://*) scheme="${url%%://*}"; url="${url#*://}" ;;   # drop scheme
   esac
   url="${url%%\?*}"              # drop query string FIRST (may contain '@')
   url="${url#*@}"               # drop credentials, if any
-  local hostport db
-  case "$url" in
-    */*) hostport="${url%%/*}"; db="${url#*/}"; db="${db%%/*}" ;;
-    *)   hostport="$url"; db="0" ;;
-  esac
-  [[ -z "$db" ]] && db="0"
+  if [[ "${scheme,,}" == "unix" ]]; then
+    printf 'unix:%s' "$url"     # a socket is addressed by its path
+    return 0
+  fi
+  local hostport="${url%%/*}"    # drop /db — not part of the identity
   local host port
   case "$hostport" in
-    *:*) host="${hostport%:*}"; port="${hostport##*:}" ;;
-    *)   host="$hostport"; port="6379" ;;
+    \[*\]:*) host="${hostport%]:*}]"; port="${hostport##*]:}" ;;  # [v6]:port
+    \[*\])   host="$hostport"; port="6379" ;;   # [v6] — its colons are no port
+    *:*)     host="${hostport%:*}"; port="${hostport##*:}" ;;
+    *)       host="$hostport"; port="6379" ;;
   esac
   [[ -z "$port" ]] && port="6379"
   host="${host,,}"              # lowercase
-  [[ -z "$host" || "$host" == "localhost" ]] && host="127.0.0.1"
-  printf '%s:%s/%s' "$host" "$port" "$db"
+  case "$host" in
+    ""|localhost|"[::1]") host="127.0.0.1" ;;   # loopback, however spelled
+  esac
+  printf '%s:%s' "$host" "$port"
 }
 
 # --- Redis change-bus isolation (archiver#109) ---
 # Same leak class as the DB (2026-07-18): /etc/archiver/.env sets the production
 # ARCHIVER_REDIS_URL, so a dev server that inherited it would publish onto prod's
 # info.changes stream. The dev server never inherits it — it either uses an
-# explicit ARCHIVER_DEV_REDIS_URL (point it at a distinct broker or DB index,
-# e.g. .../1) or runs bus-dormant. And a dev override addressing the SAME broker
-# as production (by normalized identity, not just string) is refused outright.
+# explicit ARCHIVER_DEV_REDIS_URL (a distinct broker — in practice a local
+# throwaway, see docs/DEPLOYMENT.md) or runs bus-dormant. And a dev override
+# addressing the SAME broker as production (by normalized host:port, not just
+# string, and whatever the DB index) is refused outright.
 PROD_REDIS_URL="${ARCHIVER_REDIS_URL:-}"
 DEV_REDIS_URL="${ARCHIVER_DEV_REDIS_URL:-}"
 if [[ -n "$DEV_REDIS_URL" ]]; then
-  if [[ "$(redis_identity "$DEV_REDIS_URL")" == "$(redis_identity "$PROD_REDIS_URL")" ]]; then
+  DEV_REDIS_ID="$(redis_identity "$DEV_REDIS_URL")"
+  if [[ "$DEV_REDIS_ID" == "$(redis_identity "$PROD_REDIS_URL")" ]]; then
     echo "dev_server: refusing — ARCHIVER_DEV_REDIS_URL addresses the same broker" >&2
-    echo "  as the production ARCHIVER_REDIS_URL ('$PROD_REDIS_URL'), by normalized" >&2
-    echo "  host:port/db identity. Point the dev server at a distinct broker or" >&2
-    echo "  logical DB index (e.g. .../1) so it cannot publish onto prod's" >&2
-    echo "  info.changes stream." >&2
+    echo "  as the production ARCHIVER_REDIS_URL ($DEV_REDIS_ID, by normalized" >&2
+    echo "  address; a different DB index is no boundary). Leave it unset to run" >&2
+    echo "  bus-dormant, or use a local throwaway broker:" >&2
+    echo "    docker run --rm -p 127.0.0.1:6380:6379 redis:7" >&2
+    echo "    ARCHIVER_DEV_REDIS_URL=redis://127.0.0.1:6380/0" >&2
     exit 1
   fi
   export ARCHIVER_REDIS_URL="$DEV_REDIS_URL"
