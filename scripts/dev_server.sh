@@ -117,12 +117,13 @@ esac
 export ARCHIVER_DATABASE_URL="$DEV_URL"
 unset DATABASE_URL
 
-# redis_identity <url> — normalized `host:port` for a redis[s] URL, or empty
-# for empty input. The equality guard below compares identities, not raw
-# strings, so cosmetic differences (localhost vs 127.0.0.1, omitted default
-# port) do NOT slip a dev server onto prod's broker — the same reasoning the
-# DB guard's db_name() applies (string equality is defeated by spelling; the
-# addressed resource is the boundary). The /db index is deliberately NOT part
+# redis_identity <url> — normalized `host:port` for a redis[s] URL
+# (`unix:<path>` for a socket), or empty for empty input. The equality guard
+# below compares identities, not raw strings, so cosmetic differences
+# (localhost vs 127.0.0.1 vs [::1], omitted default port) do NOT slip a dev
+# server onto prod's broker — the same reasoning the DB guard's db_name()
+# applies (string equality is defeated by spelling; the addressed resource is
+# the boundary). The /db index is deliberately NOT part
 # of the identity (archiver#240): an index is no boundary — Redis ACLs cannot
 # partition by it — and the broker runs `databases 1` with no `+select`, so
 # `.../1` on prod's host:port is the same broker, refused here rather than
@@ -130,6 +131,10 @@ unset DATABASE_URL
 # db_name()'s ordering: require a scheme-or-bare host, strip the query BEFORE
 # credentials (an '@' can live in a query), then drop any /db and split
 # host:port, applying the redis default port (6379).
+#
+# Names are compared, never resolved: `broker` vs its tailnet IP or FQDN reads
+# as distinct and passes. Loopback is the only alias folded — the same
+# two-names-one-host trap as docs/reference/tailscale.md.
 redis_identity() {
   local url="$1"
   [[ -z "$url" ]] && return 0
