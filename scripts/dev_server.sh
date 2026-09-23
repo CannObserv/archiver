@@ -179,7 +179,7 @@ if [[ -n "$DEV_REDIS_URL" ]]; then
   if [[ "$DEV_REDIS_ID" == "$(redis_identity "$PROD_REDIS_URL")" ]]; then
     echo "dev_server: refusing — ARCHIVER_DEV_REDIS_URL addresses the same broker" >&2
     echo "  as the production ARCHIVER_REDIS_URL ($DEV_REDIS_ID, by normalized" >&2
-    echo "  host:port; a different DB index is no boundary). Leave it unset to run" >&2
+    echo "  address; a different DB index is no boundary). Leave it unset to run" >&2
     echo "  bus-dormant, or use a local throwaway broker:" >&2
     echo "    docker run --rm -p 127.0.0.1:6380:6379 redis:7" >&2
     echo "    ARCHIVER_DEV_REDIS_URL=redis://127.0.0.1:6380/0" >&2

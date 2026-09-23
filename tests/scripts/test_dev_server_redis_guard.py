@@ -190,3 +190,17 @@ def test_same_unix_socket_is_refused() -> None:
     )
     assert result.returncode == 1
     assert "same broker" in result.stderr
+
+
+def test_unix_socket_refusal_does_not_claim_host_port() -> None:
+    """The refusal names the identity it compared — for a socket that is a
+    path, so the message must not describe it as host:port."""
+    result = _run(
+        {
+            "ARCHIVER_REDIS_URL": "unix:///run/redis/redis.sock",
+            "ARCHIVER_DEV_REDIS_URL": "unix:///run/redis/redis.sock?db=1",
+        }
+    )
+    assert result.returncode == 1
+    assert "unix:/run/redis/redis.sock" in result.stderr
+    assert "host:port" not in result.stderr
