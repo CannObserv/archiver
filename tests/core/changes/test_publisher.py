@@ -10,9 +10,10 @@ These tests assert on the canonical envelope field set (``key`` / ``payload`` /
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from co_core.pure.adapters.bus.envelope import _PAYLOAD_BY_EVENT_TYPE
@@ -87,6 +88,11 @@ async def cleanup_outbox(test_engine):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Upper bound on a ``run`` test that stops from inside its trim spy. If trimming
+# never fires - archiver#239's failure mode - the loop would spin forever; the
+# bound turns that hang into a ``TimeoutError`` failure.
+_RUN_TIMEOUT = 5.0
 
 # The single ``occurred_at`` every payload fixture in this module stamps. One
 # constant because two consumers derive from it and would otherwise drift from the
@@ -413,46 +419,42 @@ def test_resolve_stream_maxlen(raw, expected):
 
 
 @pytest.mark.asyncio
-async def test_drain_once_accumulates_seen_topics(session_factory, publisher):
-    """Each successfully-published row's topic is recorded in seen_topics."""
-    await _insert_row(session_factory, topic="info.changes", payload=_captured_event("rev-x"))
-    await _insert_row(session_factory, topic="other.stream", payload=_captured_event("rev-y"))
+async def test_run_trims_info_changes_when_only_registry_rows_drained(
+    session_factory, publisher, fake_redis, monkeypatch
+):
+    """A process whose first drain is registry-only still trims info.changes.
 
-    seen: set[str] = set()
-    n = await drain_once(session_factory=session_factory, publisher=publisher, seen_topics=seen)
-    assert n == 2
-    assert seen == {"info.changes", "other.stream"}
-
-
-@pytest.mark.asyncio
-async def test_run_trims_every_seen_topic(session_factory, publisher, fake_redis, monkeypatch):
-    """When multiple topics were produced to, the loop trims each of them."""
+    archiver#239: an InfoSource specs PATCH enqueues info.registry rows alone.
+    The old denylist trimmed "every topic seen, minus carve-outs", so a
+    non-empty seen set of carve-outs subtracted to nothing and the
+    pre-existing info.changes stream went untrimmed.
+    """
     trim_calls: set[tuple[str, int]] = set()
+    stop = asyncio.Event()
 
     async def _fake_trim(client, topic, maxlen):
         trim_calls.add((topic, maxlen))
-
-    stop = asyncio.Event()
-
-    async def _fake_drain(*, seen_topics=None, **_kwargs):
-        if seen_topics is not None:
-            seen_topics.update({"info.changes", "other.stream"})
         stop.set()
-        return 2
 
     monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
-    monkeypatch.setattr(publisher_mod, "drain_once", _fake_drain)
-
-    await publisher_mod.run(
-        session_factory=session_factory,
-        publisher=publisher,
-        redis_client=fake_redis,
-        stream_maxlen=100,
-        trim_interval_iterations=1,
-        stop_event=stop,
+    await _insert_row(
+        session_factory, payload=_registry_announcement_state("item-only"), topic="info.registry"
     )
 
-    assert trim_calls == {("info.changes", 100), ("other.stream", 100)}
+    await asyncio.wait_for(
+        publisher_mod.run(
+            session_factory=session_factory,
+            publisher=publisher,
+            redis_client=fake_redis,
+            stream_maxlen=100,
+            trim_interval_iterations=1,
+            stop_event=stop,
+        ),
+        timeout=_RUN_TIMEOUT,
+    )
+
+    assert await fake_redis.xlen("info.registry") == 1  # the drain really published
+    assert trim_calls == {("info.changes", 100)}
 
 
 @pytest.mark.asyncio
@@ -1350,31 +1352,27 @@ async def test_registry_topic_publish_carries_its_own_maxlen(session_factory, fa
 
 
 @pytest.mark.asyncio
-async def test_run_never_trims_excluded_topics(session_factory, publisher, fake_redis, monkeypatch):
-    """The trim loop applies one global MAXLEN to every seen topic - sized for
-    info.changes. A replay-from-0-0 stream subjected to it silently loses its
-    convergence floor, so info.registry must be excluded even after its deltas
-    put it in seen_topics."""
+async def test_run_trims_exactly_the_allowlist(session_factory, publisher, fake_redis, monkeypatch):
+    """The loop trims ``trim_topics`` and nothing else, whatever it published.
+
+    One global MAXLEN sized for info.changes must never reach a replay-from-0-0
+    stream (archiver#141) or a command stream (archiver#169), so a topic is
+    trimmed only by being named - never by being produced to (archiver#239).
+    """
     trim_calls: set[tuple[str, int]] = set()
+    stop = asyncio.Event()
 
     async def _fake_trim(client, topic, maxlen):
         trim_calls.add((topic, maxlen))
-
-    async def _fake_drain(*, seen_topics=None, **_kwargs):
-        if seen_topics is not None:
-            seen_topics.update({"info.changes", "info.registry"})
-        return 0
-
-    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
-    monkeypatch.setattr(publisher_mod, "drain_once", _fake_drain)
-
-    stop = asyncio.Event()
-
-    async def _stop_soon():
-        await asyncio.sleep(0.05)
         stop.set()
 
-    await asyncio.gather(
+    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
+    await _insert_row(session_factory, payload=_captured_event("rev-allow"))
+    await _insert_row(
+        session_factory, payload=_registry_announcement_state("item-allow"), topic="info.registry"
+    )
+
+    await asyncio.wait_for(
         publisher_mod.run(
             session_factory=session_factory,
             publisher=publisher,
@@ -1382,15 +1380,66 @@ async def test_run_never_trims_excluded_topics(session_factory, publisher, fake_
             stream_maxlen=100,
             trim_interval_iterations=1,
             stop_event=stop,
-            active_interval=0.001,
-            idle_interval=0.001,
-            no_trim_topics=frozenset({"info.registry"}),
+            trim_topics=frozenset({"info.changes", "other.stream"}),
         ),
-        _stop_soon(),
+        timeout=_RUN_TIMEOUT,
     )
 
-    assert ("info.changes", 100) in trim_calls
-    assert all(topic != "info.registry" for topic, _ in trim_calls)
+    assert trim_calls == {("info.changes", 100), ("other.stream", 100)}
+
+
+def test_run_trim_allowlist_defaults_to_info_changes_only():
+    """Pin the literal: widening the trim set is a reviewed diff (archiver#239).
+
+    Broker's ACL grants archiver ``+xtrim`` on ``~info.changes`` only
+    (CannObserv/broker#14); this default and that grant are one decision.
+    """
+    default = inspect.signature(publisher_mod.run).parameters["trim_topics"].default
+    assert default == frozenset({"info.changes"})
+
+
+@pytest.mark.asyncio
+async def test_run_never_trims_a_topic_with_publish_retention(
+    session_factory, publisher, fake_redis, monkeypatch
+):
+    """A topic whose retention rides the publish is dropped from the trim set.
+
+    Its cap is a consumer contract (archiver#141); the fact stream's global
+    MAXLEN on top of it would silently break the replay floor. Fail safe, not
+    closed: raising would kill the publisher task and stop info.changes too,
+    an outage worse than the misconfiguration. Alarm once and keep going.
+
+    Spies the module logger rather than using caplog: configure_logging()
+    replaces root.handlers, which defeats pytest's capture handler.
+    """
+    trim_calls: set[tuple[str, int]] = set()
+    stop = asyncio.Event()
+
+    async def _fake_trim(client, topic, maxlen):
+        trim_calls.add((topic, maxlen))
+        stop.set()
+
+    spy = MagicMock()
+    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
+    monkeypatch.setattr(publisher_mod.logger, "error", spy)
+
+    await asyncio.wait_for(
+        publisher_mod.run(
+            session_factory=session_factory,
+            publisher=publisher,
+            redis_client=fake_redis,
+            stream_maxlen=100,
+            trim_interval_iterations=1,
+            stop_event=stop,
+            trim_topics=frozenset({"info.changes", "info.registry"}),
+            topic_maxlen={"info.registry": 50_000},
+        ),
+        timeout=_RUN_TIMEOUT,
+    )
+
+    assert trim_calls == {("info.changes", 100)}
+    spy.assert_called_once()
+    assert spy.call_args.kwargs["extra"]["topics"] == ["info.registry"]
 
 
 # ---------------------------------------------------------------------------

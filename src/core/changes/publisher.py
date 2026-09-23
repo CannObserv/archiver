@@ -134,8 +134,8 @@ _TRANSIENT_PUBLISH_ERRORS: tuple[type[BaseException], ...] = (
 # terminates (unlike the unbounded pre-#107 spin).
 MAX_PUBLISH_ATTEMPTS = 100_000
 
-# The single Redis Stream Archiver produces to (both event types share it). Used
-# as the operator-side XTRIM target; the emit sites hardcode the same literal.
+# The fact stream (both event types share it) and the sole default entry in
+# ``run``'s trim allowlist; the emit sites hardcode the same literal.
 CHANGE_STREAM_TOPIC = "info.changes"
 
 # Trim the stream every N drain-loop iterations when a cap is configured. With
@@ -155,7 +155,7 @@ CHANGE_STREAM_TOPIC = "info.changes"
 # words - "a log is not state"), so its cap is pure operator-side housekeeping and
 # belongs on the operator's cadence, not welded to every publish. Switching to
 # XADD MAXLEN would also silently re-scope the cap to topics Archiver publishes to,
-# losing the pre-existing-stream case `run` covers via ``trim_topic``.
+# losing the pre-existing-stream case `run` covers via ``trim_topics``.
 TRIM_INTERVAL_ITERATIONS = 20
 
 # Default approximate cap on info.changes when ARCHIVER_REDIS_STREAM_MAXLEN is
@@ -280,7 +280,6 @@ async def drain_once(
     session_factory: async_sessionmaker[AsyncSession],
     publisher: AsyncBusPublisher,
     batch_size: int = DEFAULT_BATCH_SIZE,
-    seen_topics: set[str] | None = None,
     topic_maxlen: Mapping[str, int] | None = None,
 ) -> int:
     """Drain at most ``batch_size`` unpublished rows.
@@ -289,11 +288,6 @@ async def drain_once(
     number attempted). The caller (``run``) paces on this so an all-failing batch
     reports zero progress and the loop backs off to its idle interval instead of
     busy-waiting at the active interval (CR #10).
-
-    When ``seen_topics`` is provided, each successfully-published ``row.topic`` is
-    added to it, so the caller (``run``) can trim every stream it has actually
-    produced to - not just the canonical one - should the topic set ever grow
-    beyond ``info.changes``.
 
     Delivery is **at-least-once**: the ``XADD`` and the ``commit`` below are not
     atomic, so a crash after a successful publish but before commit leaves the row
@@ -356,8 +350,6 @@ async def drain_once(
                 row.bus_message_id = bus_result.bus_message_id
                 row.last_error = None
                 published += 1
-                if seen_topics is not None:
-                    seen_topics.add(row.topic)
             except Exception as exc:
                 row.publish_attempts = (row.publish_attempts or 0) + 1
                 transient = isinstance(exc, _TRANSIENT_PUBLISH_ERRORS)
@@ -414,10 +406,9 @@ async def run(
     stop_event: asyncio.Event | None = None,
     redis_client: Redis | None = None,
     stream_maxlen: int | None = None,
-    trim_topic: str = CHANGE_STREAM_TOPIC,
+    trim_topics: frozenset[str] = frozenset({CHANGE_STREAM_TOPIC}),
     trim_interval_iterations: int = TRIM_INTERVAL_ITERATIONS,
     error_backoff_base: float = ERROR_BACKOFF_BASE_SECONDS,
-    no_trim_topics: frozenset[str] = frozenset(),
     topic_maxlen: Mapping[str, int] | None = None,
     stats_interval: float | None = STATS_LOG_INTERVAL_SECONDS,
     retention_days: int | None = None,
@@ -434,12 +425,16 @@ async def run(
     other exceptions are logged and the loop continues.
 
     When ``redis_client`` and a positive ``stream_maxlen`` are supplied, the loop
-    caps every stream it has produced to via ``trim_stream`` every
+    caps each stream in ``trim_topics`` via ``trim_stream`` every
     ``trim_interval_iterations`` iterations - operator-side retention
-    (archiver#109). It trims ``trim_topic`` (the canonical ``info.changes``) until
-    a different ``row.topic`` is observed, then trims each observed topic too, so
-    an added stream cannot grow unbounded silently. Left unset (the dormant or
-    unconfigured case), no trimming occurs.
+    (archiver#109). Left unset (the dormant or unconfigured case), no trimming
+    occurs. ``trim_topics`` is an allowlist (archiver#239): a stream is trimmed by
+    being named, never by being produced to, and whether or not it has been
+    published to this process lifetime. It must match broker's ``+xtrim`` grant
+    (CannObserv/broker#14), which refuses any other stream anyway. A topic that
+    also carries per-publish retention in ``topic_maxlen`` is dropped from the
+    trim set with one ERROR: its cap is a consumer contract (archiver#141), and
+    raising instead would kill this task and stop ``info.changes`` with it.
 
     Every ``stats_interval`` seconds (first iteration immediately, ``None``
     disables) the loop emits the periodic "Outbox stats" line via
@@ -451,8 +446,14 @@ async def run(
     default ``retention_days=None`` (the dormant or disabled-knob case) nothing
     is pruned. Failures are swallowed there too, on the same reasoning.
     """
+    both_capped = trim_topics & set(topic_maxlen or {})
+    if both_capped:
+        logger.error(
+            "Trim allowlist names topics with per-publish retention; not trimming them",
+            extra={"topics": sorted(both_capped)},
+        )
+        trim_topics = trim_topics - both_capped
     stop_event = stop_event or asyncio.Event()
-    seen_topics: set[str] = set()
     iteration = 0
     consecutive_failures = 0
     last_stats_log: float | None = None
@@ -463,7 +464,6 @@ async def run(
                 session_factory=session_factory,
                 publisher=publisher,
                 batch_size=batch_size,
-                seen_topics=seen_topics,
                 topic_maxlen=topic_maxlen,
             )
             if consecutive_failures:
@@ -508,13 +508,10 @@ async def run(
             and stream_maxlen > 0
             and iteration % trim_interval_iterations == 0
         ):
-            # Trim every stream produced to; fall back to the canonical topic so
-            # a pre-existing stream is bounded even before the first publish.
-            # no_trim_topics carve out the config/state streams: their retention
-            # is a consumer contract riding BusPublish.maxlen (above). One global
-            # MAXLEN sized for the fact stream would silently break the
-            # replay-from-0-0 convergence floor (archiver#141).
-            for topic in (seen_topics or {trim_topic}) - no_trim_topics:
+            # The allowlist, not "every topic seen" (archiver#239): trimming
+            # does not wait for a publish, so a pre-existing stream is bounded
+            # from the first pass.
+            for topic in trim_topics:
                 await trim_stream(redis_client, topic, stream_maxlen)
 
         delay = _next_delay(

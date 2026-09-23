@@ -75,6 +75,14 @@ stays visible past its one-time dead-letter ERROR. Deliberately **not** on
 `/health`: that route is unauthenticated and DB-free (pure liveness), and these
 numbers are neither.
 
+**Stream trim allowlist (archiver#239)** - the drain loop `XTRIM`s exactly
+`trim_topics`, literally `{info.changes}` (set in `src/api/main.py`, pinned by
+tests), every `TRIM_INTERVAL_ITERATIONS` iterations to
+`ARCHIVER_REDIS_STREAM_MAXLEN`. A stream is trimmed by being named, never by
+being produced to. It is one decision with broker's ACL grant - `+xtrim` on
+`~info.changes` only (CannObserv/broker#14) - so widening one widens the other.
+Why `info.registry` and `content.replicate` are absent: their sections below.
+
 **Published-row retention (archiver#189)** - `src/core/changes/outbox_prune.py`
 deletes rows whose `published_at` is older than `ARCHIVER_OUTBOX_RETENTION_DAYS`
 (default 30), in bounded batches, on the drain loop's own cadence
@@ -157,8 +165,9 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   `POST /tools/republish-registry-announcements`.
 - **Retention rides the publish** (`BusPublish.maxlen`,
   `ARCHIVER_REGISTRY_STREAM_MAXLEN`, default 50k): consumers replay from `0-0`,
-  so the floor is one full set plus the deltas since. The topic is excluded
-  from the fact stream's periodic `XTRIM`.
+  so the floor is one full set plus the deltas since. The topic is absent
+  from the fact stream's `XTRIM` allowlist; listed there by mistake, `run`
+  logs an ERROR and skips it rather than trimming it.
 
 **`content.replicate` - the replication command channel (archiver#169).** A third
 producer surface, *command* kind: exactly one consumer group
@@ -197,7 +206,7 @@ and MUST-7 *inverts* into a scheduling obligation on this side.
   skipped on a `destination_collision`; the rest of the fan-out still ships.
 - **Never `XTRIM`med by Archiver.** Capping a command stream deletes commands the
   consumer group has not delivered and orphans the PEL entries naming them, so
-  the topic is carved out of the drain loop's trim set.
+  the topic is absent from the drain loop's trim allowlist.
 - **Outcomes come back on `content.artifacts`** (archiver#170, landed):
   `replication_complete` / `replication_failed` are consumed by the
   `archiver.artifacts` group, which is what writes `public_url`. The silent
