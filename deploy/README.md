@@ -154,7 +154,10 @@ the only check that sees the running value rather than the tracked file. It warn
 rather than blocks: an uncapped broker doesn't break the producer, and refusing
 to start the API over a broker tuning value would turn tuning drift into an
 outage. Blocking is reserved for the version floor, where the consumer path is
-genuinely broken. The probes are `timeout`-bounded (`ARCHIVER_REDIS_FLOOR_TIMEOUT`, default 5s)
+genuinely broken. Both probes are `INFO` (`server`, then `memory`), so archiver's
+broker ACL needs `+info` and **not** `+config|get` - that grant cannot be narrowed
+to one parameter on Redis 7.0 and also reads `requirepass` (archiver#257,
+CannObserv/broker#50). The probes are `timeout`-bounded (`ARCHIVER_REDIS_FLOOR_TIMEOUT`, default 5s)
 so it can never hang startup, and warns when `redis-cli` lacks TLS support for a
 `rediss://` URL; it soft-skips (never blocks) on a dormant or unreachable broker
 and blocks only a genuinely-<7.0 reachable one. Reinstall the unit after any edit

@@ -40,12 +40,18 @@ def _stub_redis_cli(
     `--help` output includes `--tls` iff `tls`. Any other invocation optionally
     sleeps `sleep` seconds (to simulate a hanging connection), then answers by
     subcommand: `INFO server` prints a `redis_version:` line iff `version` is
-    given, and `CONFIG GET maxmemory` prints the two-line name/value reply iff
-    `maxmemory` is given. `None` means "print nothing" — an unreachable or failed
-    connection. `maxmemory` defaults to a capped broker so the tests that predate
-    the cap check (archiver#128) exercise their own branch without tripping it.
+    given, and `INFO memory` prints a Memory section iff `maxmemory` is given.
+    `None` means "print nothing" — an unreachable or failed connection. `maxmemory`
+    defaults to a capped broker so the tests that predate the cap check
+    (archiver#128) exercise their own branch without tripping it.
     `stderr` is printed on every probe; a non-zero `exit_code` then exits before
     any reply.
+
+    The Memory section is shaped like the live broker's: CRLF line endings, and
+    `maxmemory_human:` / `maxmemory_policy:` beside `maxmemory:`, so a parse that
+    keeps the CR or matches a prefix fails here rather than in production. Any
+    `CONFIG` probe answers NOPERM, as it does for a user without `+config|get`
+    (archiver#257, CannObserv/broker#50).
 
     Every probe also records what an observer would see (archiver#253): its
     argument vector, NUL-separated, in `calls/<n>.argv`, and its `REDISCLI_AUTH`
@@ -58,7 +64,11 @@ def _stub_redis_cli(
     sleep_line = f"sleep {sleep}\n" if sleep else ""
     version_line = f'  echo "redis_version:{version}"' if version is not None else "  true"
     maxmemory_lines = (
-        f'  echo "maxmemory"\n  echo "{maxmemory}"' if maxmemory is not None else "  true"
+        "  printf '# Memory\\r\\nused_memory:1048576\\r\\n"
+        f"maxmemory:{maxmemory}\\r\\nmaxmemory_human:{maxmemory}B\\r\\n"
+        "maxmemory_policy:noeviction\\r\\n'"
+        if maxmemory is not None
+        else "  true"
     )
     # %b, not %s: a multi-line `stderr` arrives here as a repr with an escaped
     # newline, and only %b expands it back into two lines.
@@ -80,8 +90,12 @@ def _stub_redis_cli(
         f"{stderr_line}"
         f"{exit_line}"
         'case "$*" in\n'
-        "  *'CONFIG GET maxmemory'*)\n"
+        "  *'INFO memory'*)\n"
         f"{maxmemory_lines}\n"
+        "    ;;\n"
+        "  *CONFIG*)\n"
+        "    echo \"NOPERM this user has no permissions to run the 'config|get' command\" >&2\n"
+        "    exit 1\n"
         "    ;;\n"
         "  *'INFO server'*)\n"
         f"{version_line}\n"
@@ -231,11 +245,29 @@ def test_capped_broker_reports_the_cap(tmp_path: Path) -> None:
     result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://localhost:6379/0"})
     assert result.returncode == 0, result.stderr
     assert "maxmemory is 0" not in result.stderr
-    assert "536870912" in result.stdout
+    assert "broker maxmemory is 536870912 bytes (capped)" in result.stdout
+
+
+def test_maxmemory_is_read_without_config_get(tmp_path: Path) -> None:
+    """No probe issues CONFIG (archiver#257, CannObserv/broker#50).
+
+    `+config|get` cannot be narrowed to one parameter on Redis 7.0, so the grant
+    that served `CONFIG GET maxmemory` also served `CONFIG GET requirepass`.
+    Broker revokes it once this ships; `INFO memory` needs only `+info`, which
+    the version probe already uses.
+    """
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15", maxmemory="536870912")
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://localhost:6379/0"})
+    assert result.returncode == 0, result.stderr
+    assert "NOPERM" not in result.stderr
+    assert [argv[-2:] for argv, _ in _calls(tmp_path)] == [
+        ["INFO", "server"],
+        ["INFO", "memory"],
+    ]
 
 
 def test_unreadable_maxmemory_is_soft(tmp_path: Path) -> None:
-    """CONFIG GET returning nothing must not be mistaken for an uncapped broker.
+    """INFO memory returning nothing must not be mistaken for an uncapped broker.
 
     A restricted ACL or a killed probe yields an empty reply; warning "uncapped"
     there would train the operator to ignore the warning that matters.
@@ -449,7 +481,7 @@ def test_no_probe_argument_contains_the_password(tmp_path: Path, url: str) -> No
 
     assert result.returncode == 0, result.stderr
     calls = _calls(tmp_path)
-    assert len(calls) == 2  # INFO server, CONFIG GET maxmemory
+    assert len(calls) == 2  # INFO server, INFO memory
     assert not [arg for arg in _all_args(tmp_path) if _SECRET in arg]
     assert all(auth == _SECRET for _, auth in calls)
 
