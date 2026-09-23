@@ -70,18 +70,26 @@ esac
 # every process the password passes through - `timeout` included - so it is
 # handed over as a prefix assignment, never as an `env VAR=...` argument.
 #
-# `-u`'s semantics, so the probe keeps agreeing with the URL it is judging -
-# except where `-u` and redis-py differ, where redis-py wins: it is the client
-# whose verdict counts, and a probe that parts from it is #195 again.
+# Two rules, and which one applies matters:
+#
+# READING the URL follows redis-py, so probe and service extract the same
+# credential from the same string:
 #   - userinfo ends at the LAST '@' (redis-py's rpartition; `-u` takes the first)
 #   - userinfo is split at the first ':'; both halves are percent-decoded, and
 #     an invalid escape is kept literally (redis-py's unquote; `-u` rejects it)
+#
+# SENDING AUTH follows `-u`, NOT redis-py - the probe judges the URL the way
+# the #195 diagnostics below and deploy/README.md describe it. Two forms
+# deliberately differ from what the service sends; do not "fix" either:
 #   - `user:pass@` sends `--user user`, EVEN WHEN `user` IS EMPTY. `:pass@` is
-#     archiver#195: `AUTH "" pass` fails, and the diagnostics below exist to say
-#     so. Defaulting the user to `default` would pass the probe on a URL its
-#     own messages call wrong.
-#   - `pass@` (no ':') sends no --user: the legacy single-argument AUTH
-#   - no port is 6379, no path is db 0 (no -n), rediss:// adds --tls
+#     archiver#195: redis-py sends `AUTH pass` and succeeds, this sends
+#     `AUTH "" pass` and fails, and the diagnostics exist to say so (#253
+#     requires it). Defaulting the user to `default` would pass the probe on a
+#     URL its own messages call wrong.
+#   - `pass@` (no ':') sends no --user: `-u`'s single-argument AUTH, where
+#     redis-py would send `AUTH pass ""`.
+#
+# And: no port is 6379, no path is db 0 (no -n), rediss:// adds --tls.
 # Never echo ${URL}: every message here lands in journald.
 unset REDISCLI_AUTH  # the URL is the only credential source, as it is for -u
 
