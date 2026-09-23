@@ -44,28 +44,41 @@ def _stub_redis_cli(
     `maxmemory` is given. `None` means "print nothing" — an unreachable or failed
     connection. `maxmemory` defaults to a capped broker so the tests that predate
     the cap check (archiver#128) exercise their own branch without tripping it.
+    `stderr` is printed on every probe; a non-zero `exit_code` then exits before
+    any reply.
+
+    Every probe also records what an observer would see (archiver#253): its
+    argument vector, NUL-separated, in `calls/<n>.argv`, and its `REDISCLI_AUTH`
+    in `calls/<n>.auth` (absent when unset). Read them with `_calls`.
     """
     binder = tmp_path / "bin"
     binder.mkdir()
+    (tmp_path / "calls").mkdir()
     help_tls = "  --tls    Use TLS.\n" if tls else ""
     sleep_line = f"sleep {sleep}\n" if sleep else ""
     version_line = f'  echo "redis_version:{version}"' if version is not None else "  true"
     maxmemory_lines = (
         f'  echo "maxmemory"\n  echo "{maxmemory}"' if maxmemory is not None else "  true"
     )
-    fail_lines = (
-        # %b, not %s: a multi-line `stderr` arrives here as a repr with an
-        # escaped newline, and only %b expands it back into two lines.
-        f'  printf "%b\\n" {stderr!r} >&2\n  exit {exit_code}\n' if stderr or exit_code else ""
-    )
+    # %b, not %s: a multi-line `stderr` arrives here as a repr with an escaped
+    # newline, and only %b expands it back into two lines.
+    stderr_line = f'printf "%b\\n" {stderr!r} >&2\n' if stderr else ""
+    exit_line = f"exit {exit_code}\n" if exit_code else ""
     (binder / "redis-cli").write_text(
         "#!/usr/bin/env bash\n"
         'if [[ "$1" == "--help" ]]; then\n'
         f'  printf "usage: redis-cli\\n{help_tls}"\n'
         "  exit 0\n"
         "fi\n"
+        f'calls="{tmp_path / "calls"}"\n'
+        'n="$(find "${calls}" -name "*.argv" | wc -l)"\n'
+        'printf "%s\\0" "$@" > "${calls}/${n}.argv"\n'
+        'if [ -n "${REDISCLI_AUTH+set}" ]; then\n'
+        '  printf "%s" "${REDISCLI_AUTH}" > "${calls}/${n}.auth"\n'
+        "fi\n"
         f"{sleep_line}"
-        f"{fail_lines}"
+        f"{stderr_line}"
+        f"{exit_line}"
         'case "$*" in\n'
         "  *'CONFIG GET maxmemory'*)\n"
         f"{maxmemory_lines}\n"
@@ -77,6 +90,18 @@ def _stub_redis_cli(
     )
     (binder / "redis-cli").chmod(0o755)
     return binder
+
+
+def _calls(tmp_path: Path) -> list[tuple[list[str], str | None]]:
+    """Each recorded probe as (argv, REDISCLI_AUTH or None), in call order."""
+    calls = tmp_path / "calls"
+    recorded = []
+    for n in range(len(list(calls.glob("*.argv")))):
+        raw = (calls / f"{n}.argv").read_bytes().decode()
+        argv = raw.split("\0")[:-1]
+        auth_file = calls / f"{n}.auth"
+        recorded.append((argv, auth_file.read_text() if auth_file.exists() else None))
+    return recorded
 
 
 def _run(bindir: Path | None, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -348,10 +373,14 @@ _CLI_PASSWORD_WARNING = (
 )
 
 
-def test_broker_quote_excludes_the_cli_s_own_warning(tmp_path: Path) -> None:
-    """redis-cli prints that advisory on every `-u` call, so quoting it back
-    under "broker said:" buries the real error and blames the server for the
-    client's warning. Observed live against the authenticated broker."""
+def test_the_cli_s_password_warning_is_no_longer_filtered(tmp_path: Path) -> None:
+    """archiver#253: the filter that dropped this advisory is gone, on purpose.
+
+    It was dropped because it fired on every `-u` call. With the password off
+    the command line it cannot fire, so if it ever does again the password is
+    back in argv - a regression the operator must see, not one we hide. Its
+    absence from the script is the evidence the fix is real.
+    """
     bindir = _stub_redis_cli(
         tmp_path,
         version=None,
@@ -360,18 +389,192 @@ def test_broker_quote_excludes_the_cli_s_own_warning(tmp_path: Path) -> None:
     )
     result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://:pw@broker:6379/0"})
 
-    assert "may not be safe" not in result.stderr
+    assert "may not be safe" in result.stderr
     assert "WRONGPASS" in result.stderr
 
 
-def test_the_cli_warning_alone_does_not_read_as_an_auth_failure(tmp_path: Path) -> None:
-    """The filter has to run BEFORE classification, not just before printing.
+def test_the_cli_warning_surfaces_on_an_otherwise_healthy_probe(tmp_path: Path) -> None:
+    """The reintroduction case: a probe that succeeds and still warns. Stderr on
+    the success path used to be discarded, so the regression would be silent
+    on exactly the starts that go green."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15", stderr=_CLI_PASSWORD_WARNING)
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://default:pw@broker:6379/0"})
 
-    That advisory contains none of the auth tokens, so it classifies as
-    `unknown` either way - but a future pattern that matched it would silently
-    turn every timed-out probe into a confident wrong diagnosis. Pin the order.
+    assert result.returncode == 0, result.stderr
+    assert "may not be safe" in result.stderr
+
+
+def test_the_cli_warning_alone_does_not_read_as_an_auth_failure(tmp_path: Path) -> None:
+    """That advisory contains none of the auth tokens, so it classifies as
+    `unknown` - a future pattern that matched it would turn every timed-out
+    probe into a confident wrong diagnosis. Pin it, and pin that the unknown
+    branch still quotes what redis-cli said rather than dropping it.
     """
     bindir = _stub_redis_cli(tmp_path, version=None, stderr=_CLI_PASSWORD_WARNING, exit_code=1)
     result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://default:pw@broker:6379/0"})
 
     assert "could not reach or authenticate" in result.stderr.lower()
+    assert "may not be safe" in result.stderr
+
+
+# --- the password never reaches argv (archiver#253) -------------------------
+#
+# `/proc/<pid>/cmdline` is mode 444: any local user reads every argument of
+# every process. `/proc/<pid>/environ` is mode 400. `redis-cli -u URL` put the
+# broker password in the first; REDISCLI_AUTH puts it in the second. These
+# pin that - the URL form is one easy edit away from coming back.
+
+_SECRET = "s3cr3t-Pa55"
+
+
+def _all_args(tmp_path: Path) -> list[str]:
+    return [arg for argv, _ in _calls(tmp_path) for arg in argv]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"redis://default:{_SECRET}@broker:6379/0",
+        f"rediss://default:{_SECRET}@broker:6380/2",
+        f"redis://:{_SECRET}@broker:6379/0",
+        f"redis://{_SECRET}@broker:6379",
+    ],
+    ids=["user-pass", "tls", "empty-user", "password-only"],
+)
+def test_no_probe_argument_contains_the_password(tmp_path: Path, url: str) -> None:
+    """The guard. Substring, not equality: `-u URL` is one argument that merely
+    contains the password."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": url})
+
+    assert result.returncode == 0, result.stderr
+    calls = _calls(tmp_path)
+    assert len(calls) == 2  # INFO server, CONFIG GET maxmemory
+    assert not [arg for arg in _all_args(tmp_path) if _SECRET in arg]
+    assert all(auth == _SECRET for _, auth in calls)
+
+
+def test_url_is_split_into_explicit_flags(tmp_path: Path) -> None:
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    _run(bindir, {"ARCHIVER_REDIS_URL": f"redis://default:{_SECRET}@broker:6390/3"})
+
+    argv, _ = _calls(tmp_path)[0]
+    assert argv[: argv.index("INFO")] == [
+        "-h",
+        "broker",
+        "-p",
+        "6390",
+        "--user",
+        "default",
+        "-n",
+        "3",
+    ]
+    assert "-u" not in argv
+
+
+def test_url_defaults_port_and_omits_db(tmp_path: Path) -> None:
+    """No port → redis-cli's 6379; no path → no `-n` (db 0, redis-cli's own default)."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    _run(bindir, {"ARCHIVER_REDIS_URL": "redis://broker"})
+
+    argv, auth = _calls(tmp_path)[0]
+    assert argv[: argv.index("INFO")] == ["-h", "broker", "-p", "6379"]
+    assert auth is None
+
+
+def test_empty_username_is_passed_through_not_defaulted(tmp_path: Path) -> None:
+    """archiver#195's lesson, preserved rather than relearned.
+
+    `redis://:pw@host` makes `redis-cli -u` send `AUTH "" pw`, which fails -
+    and the probe's diagnostics exist to name that. Quietly substituting
+    `default` would make the probe pass on a URL that its own messages, and
+    deploy/README.md, call wrong. Same semantics as `-u`: the empty user is
+    sent as an explicit `--user ""`.
+    """
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    _run(bindir, {"ARCHIVER_REDIS_URL": f"redis://:{_SECRET}@broker:6379/0"})
+
+    argv, auth = _calls(tmp_path)[0]
+    assert argv[argv.index("--user") + 1] == ""
+    assert "default" not in argv
+    assert auth == _SECRET
+
+
+def test_password_without_colon_sends_no_user(tmp_path: Path) -> None:
+    """`redis://pw@host` is `-u`'s legacy single-argument AUTH: no `--user`."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    _run(bindir, {"ARCHIVER_REDIS_URL": f"redis://{_SECRET}@broker:6379"})
+
+    argv, auth = _calls(tmp_path)[0]
+    assert "--user" not in argv
+    assert auth == _SECRET
+
+
+def test_rediss_scheme_adds_tls(tmp_path: Path) -> None:
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    _run(bindir, {"ARCHIVER_REDIS_URL": f"rediss://default:{_SECRET}@broker:6380/0"})
+
+    assert all("--tls" in argv for argv, _ in _calls(tmp_path))
+
+
+def test_redis_scheme_does_not_add_tls(tmp_path: Path) -> None:
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    _run(bindir, {"ARCHIVER_REDIS_URL": f"redis://default:{_SECRET}@broker:6379/0"})
+
+    assert not [argv for argv, _ in _calls(tmp_path) if "--tls" in argv]
+
+
+def test_percent_encoded_credentials_are_decoded(tmp_path: Path) -> None:
+    """`-u` and redis-py both percent-decode userinfo; the split must too, or a
+    password with a reserved character authenticates for the service and not
+    here - #195's disagreement again, by a different route."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    _run(bindir, {"ARCHIVER_REDIS_URL": r"redis://us%3Aer:p%40ss%2Fw\n%25@broker:6379/0"})
+
+    argv, auth = _calls(tmp_path)[0]
+    assert argv[argv.index("--user") + 1] == "us:er"
+    assert auth == r"p@ss/w\n%"
+
+
+def test_bracketed_ipv6_host_is_unbracketed(tmp_path: Path) -> None:
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    _run(bindir, {"ARCHIVER_REDIS_URL": f"redis://default:{_SECRET}@[::1]:6390/0"})
+
+    argv, _ = _calls(tmp_path)[0]
+    assert argv[argv.index("-h") + 1] == "::1"
+    assert argv[argv.index("-p") + 1] == "6390"
+
+
+def test_timeout_s_own_argv_does_not_carry_the_password(tmp_path: Path) -> None:
+    """`timeout` is a process too, and every redis-cli argument rides on its
+    command line. A wrapper records timeout's argv, then execs the real one -
+    so the env assignment must reach redis-cli *through* it, not as an argument.
+    """
+    real_timeout = shutil.which("timeout")
+    assert real_timeout is not None
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    seen = tmp_path / "timeout.argv"
+    (bindir / "timeout").write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\0" "$@" >> "{seen}"\nexec {real_timeout} "$@"\n'
+    )
+    (bindir / "timeout").chmod(0o755)
+
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": f"redis://default:{_SECRET}@broker:6379/0"})
+
+    assert result.returncode == 0, result.stderr
+    timeout_args = seen.read_bytes().decode().split("\0")
+    assert "redis-cli" in timeout_args  # the bounded branch ran
+    assert not [arg for arg in timeout_args if _SECRET in arg]
+    assert all(auth == _SECRET for _, auth in _calls(tmp_path))
+
+
+def test_unsupported_scheme_is_soft_and_does_not_echo_the_url(tmp_path: Path) -> None:
+    """`-u` rejected anything but redis:// and rediss://; the split must too,
+    without quoting the URL - it carries the credential - into journald."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": f"unix://default:{_SECRET}@/run/redis.sock"})
+
+    assert result.returncode == 0
+    assert "unverified" in result.stderr.lower()
+    assert _SECRET not in result.stderr + result.stdout
+    assert _calls(tmp_path) == []
