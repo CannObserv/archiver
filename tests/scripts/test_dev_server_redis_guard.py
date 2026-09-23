@@ -138,3 +138,29 @@ def test_dev_override_without_prod_set_is_used() -> None:
     result = _run({"ARCHIVER_DEV_REDIS_URL": "redis://localhost:6380/0"})
     assert result.returncode == 0, result.stderr
     assert _redis_line(result.stdout) == "redis://localhost:6380/0"
+
+
+def test_bracketed_ipv6_with_omitted_port_is_the_same_broker() -> None:
+    """`[::1]` with and without the default port is one broker — and loopback,
+    like localhost. A bracketed host must not be split on its inner colons."""
+    result = _run(
+        {
+            "ARCHIVER_REDIS_URL": "redis://localhost:6379/0",
+            "ARCHIVER_DEV_REDIS_URL": "redis://[::1]/0",
+        }
+    )
+    assert result.returncode == 1
+    assert "same broker" in result.stderr
+
+
+def test_bracketed_ipv6_on_a_distinct_port_is_allowed() -> None:
+    """The bracket parse still reads an explicit port, so a throwaway on
+    [::1]:6380 is distinct from prod's [::1]:6379."""
+    result = _run(
+        {
+            "ARCHIVER_REDIS_URL": "redis://[::1]:6379/0",
+            "ARCHIVER_DEV_REDIS_URL": "redis://[::1]:6380/0",
+        }
+    )
+    assert result.returncode == 0, result.stderr
+    assert _redis_line(result.stdout) == "redis://[::1]:6380/0"

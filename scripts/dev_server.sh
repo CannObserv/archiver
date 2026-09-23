@@ -141,12 +141,16 @@ redis_identity() {
   local hostport="${url%%/*}"    # drop /db — not part of the identity
   local host port
   case "$hostport" in
-    *:*) host="${hostport%:*}"; port="${hostport##*:}" ;;
-    *)   host="$hostport"; port="6379" ;;
+    \[*\]:*) host="${hostport%]:*}]"; port="${hostport##*]:}" ;;  # [v6]:port
+    \[*\])   host="$hostport"; port="6379" ;;   # [v6] — its colons are no port
+    *:*)     host="${hostport%:*}"; port="${hostport##*:}" ;;
+    *)       host="$hostport"; port="6379" ;;
   esac
   [[ -z "$port" ]] && port="6379"
   host="${host,,}"              # lowercase
-  [[ -z "$host" || "$host" == "localhost" ]] && host="127.0.0.1"
+  case "$host" in
+    ""|localhost|"[::1]") host="127.0.0.1" ;;   # loopback, however spelled
+  esac
   printf '%s:%s' "$host" "$port"
 }
 
