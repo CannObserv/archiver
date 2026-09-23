@@ -50,6 +50,14 @@ every service start, two lines away from a helper that redacts.
 **Rotate, do not only patch.** A credential that reached journald is disclosed;
 fixing the line stops the next write and clears nothing already there.
 
+**Nor a command line.** `/proc/<pid>/cmdline` is mode 444 - any local user reads
+every argument of every process, `timeout` and `sudo` wrappers included - while
+`/proc/<pid>/environ` is 400. A script that shells out with a credentialed URL
+splits it and hands the secret over by environment, as a prefix assignment (never
+`env VAR=…`, which is itself an argument). `scripts/check_redis_floor.sh` does
+this with `REDISCLI_AUTH`, and its test asserts no probe argument contains the
+password (archiver#253).
+
 ## Error envelope
 
 **Error envelope:** Every non-2xx response uses one shape, defined by

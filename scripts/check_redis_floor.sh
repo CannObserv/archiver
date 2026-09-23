@@ -33,6 +33,7 @@
 #   - version read and >= 7.0   -> ok, then probe the cap                 -> exit 0
 #   - maxmemory 0               -> noeviction inert, warn loudly          -> exit 0
 #   - maxmemory unreadable      -> don't cry wolf, stay quiet about it    -> exit 0 (warn)
+#   - scheme not redis(s)://    -> cannot probe, say so                   -> exit 0 (warn)
 #
 # Only a genuinely-too-old *reachable* broker stops archiver from starting.
 set -uo pipefail
@@ -61,16 +62,134 @@ case "${URL}" in
     ;;
 esac
 
-# `-u` accepts redis:// and rediss:// URLs (TLS + auth). Wrap every probe in
-# `timeout` so this ExecStartPre can never hang archiver startup: redis-cli has no
-# connect-timeout flag, and a rediss:// URL against a plaintext/unreachable
-# endpoint blocks on the TLS handshake indefinitely. A timeout kill yields an
-# empty reply → soft-skip. ARCHIVER_REDIS_FLOOR_TIMEOUT (seconds, default 5)
-# bounds each call; tests lower it.
+# --- Split the URL into flags; the password goes via the environment ---------
+# NOT `redis-cli -u "${URL}"` (archiver#253). The URL carries the broker
+# password, and an argument vector is world-readable (/proc/<pid>/cmdline, mode
+# 444) where the environment is not (/proc/<pid>/environ, mode 400). redis-cli
+# reads REDISCLI_AUTH and documents it as the safe path. The same holds for
+# every process the password passes through - `timeout` included - so it is
+# handed over as a prefix assignment, never as an `env VAR=...` argument.
+#
+# Two rules, and which one applies matters:
+#
+# READING the URL follows redis-py, so probe and service extract the same
+# credential from the same string:
+#   - userinfo ends at the LAST '@' (redis-py's rpartition; `-u` takes the first)
+#   - userinfo is split at the first ':'; both halves are percent-decoded, and
+#     an invalid escape is kept literally (redis-py's unquote; `-u` rejects it)
+#
+# SENDING AUTH follows `-u`, NOT redis-py - the probe judges the URL the way
+# the #195 diagnostics below and deploy/README.md describe it. Two forms
+# deliberately differ from what the service sends; do not "fix" either:
+#   - `user:pass@` sends `--user user`, EVEN WHEN `user` IS EMPTY. `:pass@` is
+#     archiver#195: redis-py sends `AUTH pass` and succeeds, this sends
+#     `AUTH "" pass` and fails, and the diagnostics exist to say so (#253
+#     requires it). Defaulting the user to `default` would pass the probe on a
+#     URL its own messages call wrong.
+#   - `pass@` (no ':') sends no --user: `-u`'s single-argument AUTH, where
+#     redis-py would send `AUTH pass ""`.
+#
+# And: no port is 6379, no path is db 0 (no -n), rediss:// adds --tls.
+# Never echo ${URL}: every message here lands in journald.
+unset REDISCLI_AUTH  # the URL is the only credential source, as it is for -u
+
+# Percent-decode $1 into DECODED. Only a valid %XX decodes; any other '%' is
+# kept literally, as urllib.parse.unquote (redis-py) keeps it - so the probe
+# and the service read the same password from the same URL. `printf -v`, not
+# `$(...)`, which would strip a decoded trailing newline.
+DECODED=""
+url_decode() {
+  local s="$1" hex c
+  DECODED=""
+  while [[ "${s}" == *%* ]]; do
+    DECODED+="${s%%\%*}"
+    s="${s#*\%}"
+    hex="${s:0:2}"
+    if [[ "${hex}" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+      printf -v c '%b' "\\x${hex}"
+      DECODED+="${c}"
+      s="${s:2}"
+    else
+      DECODED+="%"
+    fi
+  done
+  DECODED+="${s}"
+}
+
+scheme="${URL%%://*}"
+case "${scheme}" in
+  redis|rediss) ;;
+  *)
+    # Name the scheme only when it provably is one: with no `://` the
+    # "scheme" above is the whole URL, credential and all.
+    if [[ "${URL}" == *://* && "${scheme}" =~ ^[A-Za-z][A-Za-z0-9+.-]*$ ]]; then
+      echo "check_redis_floor: unsupported ARCHIVER_REDIS_URL scheme '${scheme}://' (want redis:// or" >&2
+      echo "check_redis_floor: rediss://) — >=7.0 floor UNVERIFIED, not blocking start" >&2
+    else
+      echo "check_redis_floor: ARCHIVER_REDIS_URL is not a redis:// or rediss:// URL (value withheld:" >&2
+      echo "check_redis_floor: it carries the credential) — >=7.0 floor UNVERIFIED, not blocking start" >&2
+    fi
+    exit 0
+    ;;
+esac
+
+rest="${URL#*://}"
+HAS_AUTH=0
+REDIS_PASS=""
+REDIS_USER_ARGS=()
+if [[ "${rest}" == *@* ]]; then
+  # The LAST '@' ends userinfo (see above): an unencoded '@' in the password survives.
+  userinfo="${rest%@*}"
+  rest="${rest##*@}"
+  HAS_AUTH=1
+  if [[ "${userinfo}" == *:* ]]; then
+    url_decode "${userinfo%%:*}"
+    REDIS_USER_ARGS=(--user "${DECODED}")
+    url_decode "${userinfo#*:}"
+  else
+    url_decode "${userinfo}"
+  fi
+  REDIS_PASS="${DECODED}"
+fi
+
+hostport="${rest%%[/?]*}"
+db="${rest#"${hostport}"}"
+db="${db#/}"
+db="${db%%\?*}"
+if [[ "${hostport}" == \[* ]]; then
+  host="${hostport#\[}"
+  host="${host%%]*}"
+  port="${hostport##*]}"
+  port="${port#:}"
+else
+  host="${hostport%%:*}"
+  port=""
+  [[ "${hostport}" == *:* ]] && port="${hostport#*:}"
+fi
+
+REDIS_ARGS=(-h "${host:-127.0.0.1}" -p "${port:-6379}" "${REDIS_USER_ARGS[@]}")
+[ -n "${db}" ] && REDIS_ARGS+=(-n "${db}")
+[ "${scheme}" = rediss ] && REDIS_ARGS+=(--tls)
+
+# Run "$@" with the password in its environment only. A prefix assignment
+# applies to that one command and is inherited through `timeout` to redis-cli.
+with_auth() {
+  if [ "${HAS_AUTH}" = 1 ]; then
+    REDISCLI_AUTH="${REDIS_PASS}" "$@"
+  else
+    "$@"
+  fi
+}
+
+# Wrap every probe in `timeout` so this ExecStartPre can never hang archiver
+# startup: redis-cli has no connect-timeout flag, and a rediss:// URL against a
+# plaintext/unreachable endpoint blocks on the TLS handshake indefinitely. A
+# timeout kill yields an empty reply → soft-skip. ARCHIVER_REDIS_FLOOR_TIMEOUT
+# (seconds, default 5) bounds each call; tests lower it.
 TIMEOUT_SECS="${ARCHIVER_REDIS_FLOOR_TIMEOUT:-5}"
 TIMEOUT_BIN="$(command -v timeout || true)"
 
-# Run one redis-cli command against ${URL}, bounded by the timeout when available.
+# Run one redis-cli command against the broker, bounded by the timeout when available.
 # Stdout is the raw reply with CRs stripped. Stderr is CAPTURED into PROBE_ERR
 # rather than discarded (archiver#195): an authentication rejection and an
 # unreachable host both produce an empty reply, and stderr is the only thing
@@ -88,15 +207,35 @@ PROBE_OUT=""
 PROBE_ERR=""
 redis_probe() {
   if [ -n "${TIMEOUT_BIN}" ]; then
-    PROBE_OUT="$("${TIMEOUT_BIN}" "${TIMEOUT_SECS}" redis-cli -u "${URL}" "$@" 2>"${ERR_FILE}" | tr -d '\r')"
+    PROBE_OUT="$(with_auth "${TIMEOUT_BIN}" "${TIMEOUT_SECS}" redis-cli "${REDIS_ARGS[@]}" "$@" 2>"${ERR_FILE}" | tr -d '\r')"
   else
-    PROBE_OUT="$(redis-cli -u "${URL}" "$@" 2>"${ERR_FILE}" | tr -d '\r')"
+    PROBE_OUT="$(with_auth redis-cli "${REDIS_ARGS[@]}" "$@" 2>"${ERR_FILE}" | tr -d '\r')"
   fi
-  # Drop redis-cli's own advisory about passwords on the command line. It is
-  # printed on EVERY -u invocation, so quoting it back as "broker said:" both
-  # buries the actual error and misattributes the client's warning to the
-  # server.
-  PROBE_ERR="$(tr -d '\r' < "${ERR_FILE}" | grep -v "option on the command line interface may not be safe" || true)"
+  # Unfiltered, deliberately (archiver#253). redis-cli's "password on the
+  # command line may not be safe" advisory used to be dropped here because
+  # `-u` triggered it on every call. With the password off argv it cannot
+  # fire; if it ever does, the password is back on the command line, and that
+  # is a regression for the operator to see.
+  PROBE_ERR="$(tr -d '\r' < "${ERR_FILE}")"
+}
+
+# Quote PROBE_ERR to stderr under a label, prefixing EVERY line: redis-cli's
+# stderr can be several lines, and an unprefixed continuation reaches journald
+# unlabelled.
+quote_probe_err() {
+  local line
+  while IFS= read -r line; do
+    [ -n "${line}" ] && echo "check_redis_floor: $1: ${line}" >&2
+  done <<< "${PROBE_ERR}"
+}
+
+# Pass on whatever redis-cli said on a probe that otherwise succeeded. Healthy
+# probes are silent on stderr, so anything here is news - and discarding it
+# would hide the advisory above on exactly the starts that go green.
+relay_probe_err() {
+  if [ -n "${PROBE_ERR}" ]; then
+    quote_probe_err "redis-cli said"
+  fi
 }
 
 # Classify an empty reply from its stderr. Three answers, because they want
@@ -133,7 +272,7 @@ if [ -z "${version}" ]; then
   case "$(probe_failure_kind)" in
     auth)
       echo "check_redis_floor: reached the broker but could not authenticate — >=7.0 floor UNVERIFIED" >&2
-      echo "check_redis_floor: broker said: ${PROBE_ERR}" >&2
+      quote_probe_err "broker said"
       echo "check_redis_floor: FIRST thing to check is the URL's username, not the password." >&2
       echo "check_redis_floor: 'redis://:PASSWORD@host' authenticates for redis-py and FAILS here —" >&2
       echo "check_redis_floor: redis-cli sends a two-argument AUTH \"\" PASSWORD against a user that" >&2
@@ -143,16 +282,18 @@ if [ -z "${version}" ]; then
       ;;
     unreachable)
       echo "check_redis_floor: broker unreachable — >=7.0 floor UNVERIFIED, not blocking start" >&2
-      echo "check_redis_floor: broker said: ${PROBE_ERR}" >&2
+      quote_probe_err "broker said"
       echo "check_redis_floor: the outbox buffers through a broker outage; the publisher will retry" >&2
       ;;
     *)
       echo "check_redis_floor: could not reach or authenticate against the broker (probe timed out?)" >&2
       echo "check_redis_floor: — >=7.0 floor UNVERIFIED, not blocking start" >&2
+      relay_probe_err
       ;;
   esac
   exit 0
 fi
+relay_probe_err
 
 major="${version%%.*}"
 if ! [ "${major}" -ge 7 ] 2>/dev/null; then
@@ -173,6 +314,7 @@ echo "check_redis_floor: Redis ${version} meets the >=7.0 floor"
 # bytes. Take the second line rather than grepping, so a value that happens to
 # equal the name cannot confuse the parse.
 redis_probe CONFIG GET maxmemory
+relay_probe_err  # a restricted ACL's NOPERM is the likeliest empty reply
 maxmemory="$(printf '%s\n' "${PROBE_OUT}" | sed -n '2p')"
 
 if [ -z "${maxmemory}" ]; then
