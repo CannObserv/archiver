@@ -129,7 +129,8 @@ def test_refusal_names_a_local_throwaway_not_a_db_index() -> None:
     )
     assert result.returncode == 1
     assert "throwaway" in result.stderr
-    assert "DB index (e.g." not in result.stderr
+    assert "redis://127.0.0.1:6380/0" in result.stderr  # a runnable recipe
+    assert ".../1" not in result.stderr  # never the retracted index advice
 
 
 def test_dev_override_without_prod_set_is_used() -> None:
