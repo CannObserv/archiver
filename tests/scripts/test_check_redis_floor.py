@@ -578,3 +578,24 @@ def test_unsupported_scheme_is_soft_and_does_not_echo_the_url(tmp_path: Path) ->
     assert "unverified" in result.stderr.lower()
     assert _SECRET not in result.stderr + result.stdout
     assert _calls(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"default:{_SECRET}@broker:6379",
+        f"redis:/default:{_SECRET}@broker",
+        f"re dis://x:{_SECRET}@h",
+    ],
+    ids=["no-scheme", "one-slash", "garbage-scheme"],
+)
+def test_malformed_url_is_never_echoed(tmp_path: Path, url: str) -> None:
+    """CR 1. With no `://` the "scheme" is the whole URL, credential included;
+    quoting it would write the password to journald - retained, unlike argv."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": url})
+
+    assert result.returncode == 0
+    assert "unverified" in result.stderr.lower()
+    assert _SECRET not in result.stderr + result.stdout
+    assert _calls(tmp_path) == []

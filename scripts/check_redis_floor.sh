@@ -91,8 +91,15 @@ scheme="${URL%%://*}"
 case "${scheme}" in
   redis|rediss) ;;
   *)
-    echo "check_redis_floor: unsupported ARCHIVER_REDIS_URL scheme '${scheme}://' (want redis:// or" >&2
-    echo "check_redis_floor: rediss://) — >=7.0 floor UNVERIFIED, not blocking start" >&2
+    # Name the scheme only when it provably is one: with no `://` the
+    # "scheme" above is the whole URL, credential and all.
+    if [[ "${URL}" == *://* && "${scheme}" =~ ^[A-Za-z][A-Za-z0-9+.-]*$ ]]; then
+      echo "check_redis_floor: unsupported ARCHIVER_REDIS_URL scheme '${scheme}://' (want redis:// or" >&2
+      echo "check_redis_floor: rediss://) — >=7.0 floor UNVERIFIED, not blocking start" >&2
+    else
+      echo "check_redis_floor: ARCHIVER_REDIS_URL is not a redis:// or rediss:// URL (value withheld:" >&2
+      echo "check_redis_floor: it carries the credential) — >=7.0 floor UNVERIFIED, not blocking start" >&2
+    fi
     exit 0
     ;;
 esac
