@@ -44,14 +44,14 @@ def _stub_redis_cli(
     `None` means "print nothing" — an unreachable or failed connection. `maxmemory`
     defaults to a capped broker so the tests that predate the cap check
     (archiver#128) exercise their own branch without tripping it.
+    `stderr` is printed on every probe; a non-zero `exit_code` then exits before
+    any reply.
 
     The Memory section is shaped like the live broker's: CRLF line endings, and
     `maxmemory_human:` / `maxmemory_policy:` beside `maxmemory:`, so a parse that
     keeps the CR or matches a prefix fails here rather than in production. Any
     `CONFIG` probe answers NOPERM, as it does for a user without `+config|get`
     (archiver#257, CannObserv/broker#50).
-    `stderr` is printed on every probe; a non-zero `exit_code` then exits before
-    any reply.
 
     Every probe also records what an observer would see (archiver#253): its
     argument vector, NUL-separated, in `calls/<n>.argv`, and its `REDISCLI_AUTH`
