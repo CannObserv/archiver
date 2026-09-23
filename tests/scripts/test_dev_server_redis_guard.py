@@ -9,8 +9,9 @@ The guard's contract (asserted here via the dry-run report):
 
   - No dev override        → the bus runs dormant; prod's URL is NOT inherited.
   - Explicit dev override  → that distinct URL is used.
-  - Dev override == prod   → refuse to start (equality backstop over the /1
-                             convention).
+  - Dev override on prod's host:port → refuse to start, whatever the DB
+                             index (archiver#240: the broker runs `databases 1`
+                             and denies SELECT, so an index is no boundary).
 
 Each case is driven with env files skipped, so the test controls the exact
 `ARCHIVER_REDIS_URL` / `ARCHIVER_DEV_REDIS_URL` inputs the launcher sees.
@@ -67,11 +68,11 @@ def test_explicit_dev_override_is_used() -> None:
     result = _run(
         {
             "ARCHIVER_REDIS_URL": "redis://localhost:6379/0",
-            "ARCHIVER_DEV_REDIS_URL": "redis://localhost:6379/1",
+            "ARCHIVER_DEV_REDIS_URL": "redis://localhost:6380/0",
         }
     )
     assert result.returncode == 0, result.stderr
-    assert _redis_line(result.stdout) == "redis://localhost:6379/1"
+    assert _redis_line(result.stdout) == "redis://localhost:6380/0"
 
 
 def test_dev_override_equal_to_prod_is_refused() -> None:
@@ -99,21 +100,41 @@ def test_cosmetically_different_but_same_broker_is_refused() -> None:
     assert "same broker" in result.stderr
 
 
-def test_distinct_db_index_on_same_host_is_allowed() -> None:
-    """The /0-vs-/1 convention: same host, different logical DB → allowed."""
+def test_distinct_db_index_on_same_broker_is_refused() -> None:
+    """A different DB index on prod's host:port is the same broker (archiver#240).
+
+    The broker runs `databases 1` and archiver's ACL has no `+select`, so
+    `.../1` cannot connect at all; and an index was never a boundary — Redis
+    ACLs cannot partition by it. Refuse at launch rather than let it surface as
+    a publisher-init failure that reads like dormancy.
+    """
+    result = _run(
+        {
+            "ARCHIVER_REDIS_URL": "redis://default:s3cret@broker:6379/0",
+            "ARCHIVER_DEV_REDIS_URL": "redis://default:s3cret@broker:6379/1",
+        }
+    )
+    assert result.returncode == 1
+    assert "same broker" in result.stderr
+    assert "s3cret" not in result.stderr  # names host:port, never prod's credentials
+
+
+def test_refusal_names_a_local_throwaway_not_a_db_index() -> None:
+    """The refusal points at the supported alternative, not the retracted `.../1`."""
     result = _run(
         {
             "ARCHIVER_REDIS_URL": "redis://localhost:6379/0",
-            "ARCHIVER_DEV_REDIS_URL": "redis://127.0.0.1:6379/1",
+            "ARCHIVER_DEV_REDIS_URL": "redis://localhost:6379/0",
         }
     )
-    assert result.returncode == 0, result.stderr
-    assert _redis_line(result.stdout) == "redis://127.0.0.1:6379/1"
+    assert result.returncode == 1
+    assert "throwaway" in result.stderr
+    assert "DB index (e.g." not in result.stderr
 
 
 def test_dev_override_without_prod_set_is_used() -> None:
     """Dev override set, prod unset → override used, equality guard not tripped
     (empty prod URL must not spuriously match a non-empty override)."""
-    result = _run({"ARCHIVER_DEV_REDIS_URL": "redis://localhost:6379/1"})
+    result = _run({"ARCHIVER_DEV_REDIS_URL": "redis://localhost:6380/0"})
     assert result.returncode == 0, result.stderr
-    assert _redis_line(result.stdout) == "redis://localhost:6379/1"
+    assert _redis_line(result.stdout) == "redis://localhost:6380/0"
