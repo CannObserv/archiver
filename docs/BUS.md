@@ -75,6 +75,14 @@ stays visible past its one-time dead-letter ERROR. Deliberately **not** on
 `/health`: that route is unauthenticated and DB-free (pure liveness), and these
 numbers are neither.
 
+**Stream trim allowlist (archiver#239)** - the drain loop `XTRIM`s exactly
+`trim_topics`, literally `{info.changes}` (set in `src/api/main.py`, pinned by
+tests), every `TRIM_INTERVAL_ITERATIONS` iterations to
+`ARCHIVER_REDIS_STREAM_MAXLEN`. A stream is trimmed by being named, never by
+being produced to. It is one decision with broker's ACL grant - `+xtrim` on
+`~info.changes` only (CannObserv/broker#14) - so widening one widens the other.
+Why `info.registry` and `content.replicate` are absent: their sections below.
+
 **Published-row retention (archiver#189)** - `src/core/changes/outbox_prune.py`
 deletes rows whose `published_at` is older than `ARCHIVER_OUTBOX_RETENTION_DAYS`
 (default 30), in bounded batches, on the drain loop's own cadence
