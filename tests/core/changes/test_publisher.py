@@ -441,13 +441,16 @@ async def test_run_trims_info_changes_when_only_registry_rows_drained(
         session_factory, payload=_registry_announcement_state("item-only"), topic="info.registry"
     )
 
-    await publisher_mod.run(
-        session_factory=session_factory,
-        publisher=publisher,
-        redis_client=fake_redis,
-        stream_maxlen=100,
-        trim_interval_iterations=1,
-        stop_event=stop,
+    await asyncio.wait_for(
+        publisher_mod.run(
+            session_factory=session_factory,
+            publisher=publisher,
+            redis_client=fake_redis,
+            stream_maxlen=100,
+            trim_interval_iterations=1,
+            stop_event=stop,
+        ),
+        timeout=_RUN_TIMEOUT,
     )
 
     assert await fake_redis.xlen("info.registry") == 1  # the drain really published
@@ -1369,14 +1372,17 @@ async def test_run_trims_exactly_the_allowlist(session_factory, publisher, fake_
         session_factory, payload=_registry_announcement_state("item-allow"), topic="info.registry"
     )
 
-    await publisher_mod.run(
-        session_factory=session_factory,
-        publisher=publisher,
-        redis_client=fake_redis,
-        stream_maxlen=100,
-        trim_interval_iterations=1,
-        stop_event=stop,
-        trim_topics=frozenset({"info.changes", "other.stream"}),
+    await asyncio.wait_for(
+        publisher_mod.run(
+            session_factory=session_factory,
+            publisher=publisher,
+            redis_client=fake_redis,
+            stream_maxlen=100,
+            trim_interval_iterations=1,
+            stop_event=stop,
+            trim_topics=frozenset({"info.changes", "other.stream"}),
+        ),
+        timeout=_RUN_TIMEOUT,
     )
 
     assert trim_calls == {("info.changes", 100), ("other.stream", 100)}
