@@ -624,3 +624,28 @@ def test_invalid_percent_escapes_are_left_as_redis_py_leaves_them(
     assert result.returncode == 0, result.stderr
     assert "hex digit" not in result.stderr
     assert _calls(tmp_path)[0][1] == decoded
+
+
+@pytest.mark.parametrize(
+    ("version", "exit_code"),
+    [(None, 1), ("7.0.15", 0)],
+    ids=["auth-failure", "healthy"],
+)
+def test_every_quoted_stderr_line_carries_the_prefix(
+    tmp_path: Path, version: str | None, exit_code: int
+) -> None:
+    """CR 3. Unfiltered, the advisory plus WRONGPASS is two lines; echoed as one
+    string, the second reached journald unlabelled - hard to find, and the
+    burying the old filter existed to prevent."""
+    bindir = _stub_redis_cli(
+        tmp_path,
+        version=version,
+        stderr=f"{_CLI_PASSWORD_WARNING}\n{_WRONGPASS}",
+        exit_code=exit_code,
+    )
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": "redis://default:pw@broker:6379/0"})
+
+    lines = [line for line in result.stderr.splitlines() if line]
+    assert lines
+    assert all(line.startswith("check_redis_floor: ") for line in lines), lines
+    assert "WRONGPASS" in result.stderr

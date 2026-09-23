@@ -207,12 +207,22 @@ redis_probe() {
   PROBE_ERR="$(tr -d '\r' < "${ERR_FILE}")"
 }
 
+# Quote PROBE_ERR to stderr under a label, prefixing EVERY line: redis-cli's
+# stderr can be several lines, and an unprefixed continuation reaches journald
+# unlabelled.
+quote_probe_err() {
+  local line
+  while IFS= read -r line; do
+    [ -n "${line}" ] && echo "check_redis_floor: $1: ${line}" >&2
+  done <<< "${PROBE_ERR}"
+}
+
 # Pass on whatever redis-cli said on a probe that otherwise succeeded. Healthy
 # probes are silent on stderr, so anything here is news - and discarding it
 # would hide the advisory above on exactly the starts that go green.
 relay_probe_err() {
   if [ -n "${PROBE_ERR}" ]; then
-    echo "check_redis_floor: redis-cli said: ${PROBE_ERR}" >&2
+    quote_probe_err "redis-cli said"
   fi
 }
 
@@ -250,7 +260,7 @@ if [ -z "${version}" ]; then
   case "$(probe_failure_kind)" in
     auth)
       echo "check_redis_floor: reached the broker but could not authenticate — >=7.0 floor UNVERIFIED" >&2
-      echo "check_redis_floor: broker said: ${PROBE_ERR}" >&2
+      quote_probe_err "broker said"
       echo "check_redis_floor: FIRST thing to check is the URL's username, not the password." >&2
       echo "check_redis_floor: 'redis://:PASSWORD@host' authenticates for redis-py and FAILS here —" >&2
       echo "check_redis_floor: redis-cli sends a two-argument AUTH \"\" PASSWORD against a user that" >&2
@@ -260,7 +270,7 @@ if [ -z "${version}" ]; then
       ;;
     unreachable)
       echo "check_redis_floor: broker unreachable — >=7.0 floor UNVERIFIED, not blocking start" >&2
-      echo "check_redis_floor: broker said: ${PROBE_ERR}" >&2
+      quote_probe_err "broker said"
       echo "check_redis_floor: the outbox buffers through a broker outage; the publisher will retry" >&2
       ;;
     *)
