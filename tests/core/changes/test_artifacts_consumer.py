@@ -34,7 +34,7 @@ from fakeredis import aioredis as fakeredis_aio
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from src.core.changes import artifacts_consumer
+from src.core.changes import artifacts_consumer, group_consumer
 from src.core.changes.artifacts_consumer import CONSUMER_GROUP
 from src.core.models import (
     InfoItem,
@@ -49,6 +49,7 @@ from src.core.services.replication_writeback import (
     STATE_COMPLETE,
     STATE_FAILED,
 )
+from tests.core.changes._fakeredis_xautoclaim import with_redis_cursor
 
 PUBLIC_URL = "https://storage.googleapis.com/co-archive/archive/wa-lcb/x.html"
 OCCURRED_AT = datetime(2026, 8, 18, 9, 0, tzinfo=UTC)
@@ -56,7 +57,7 @@ OCCURRED_AT = datetime(2026, 8, 18, 9, 0, tzinfo=UTC)
 
 @pytest.fixture
 async def fake_redis():
-    r = fakeredis_aio.FakeRedis()
+    r = with_redis_cursor(fakeredis_aio.FakeRedis())
     yield r
     await r.aclose()
 
@@ -322,9 +323,12 @@ async def test_undecodable_frame_is_quarantined(fake_redis, session_factory):
     """A frame that will not decode goes to the DLQ instead of wedging the loop."""
     await fake_redis.xadd(CONTENT_ARTIFACTS, {"not": "an envelope"})
 
-    settled = await _consume(fake_redis, session_factory)
+    with patch.object(group_consumer.logger, "warning") as warning:
+        settled = await _consume(fake_redis, session_factory)
 
     assert settled == 0
+    # The scan ended on the cursor, not on MAX_QUARANTINE_PASSES (archiver#259).
+    assert not [c for c in warning.call_args_list if "pass ceiling" in c.args[0]]
     dlq_len = await fake_redis.xlen(f"{CONTENT_ARTIFACTS}.dlq")
     assert dlq_len == 1
 

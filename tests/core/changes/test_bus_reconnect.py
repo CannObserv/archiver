@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+from co_core.effects.bus import ClaimPage
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import NoPermissionError
 
@@ -66,16 +67,15 @@ class _FlakyBus:
             raise self.error
         return []
 
-    async def claim_stale(self, *, min_idle_ms: int, count: int) -> list[Any]:
+    async def claim_stale_page(self, *, min_idle_ms: int, count: int, start_id: str) -> ClaimPage:
         await asyncio.sleep(0)
-        return []
+        return ClaimPage(messages=(), poison=(), cursor="0-0", deleted=())
 
 
 def _consumer(bus: _FlakyBus) -> group_consumer.GroupConsumer:
     return group_consumer.GroupConsumer(
         bus=bus,  # type: ignore[arg-type]
         name="archiver-revisions-1",
-        client=object(),  # type: ignore[arg-type]
         topic="content.revisions",
         group="archiver.revisions",
     )

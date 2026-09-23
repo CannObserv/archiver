@@ -41,8 +41,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.changes import consumer as revisions_consumer
+from src.core.changes import group_consumer
 from src.core.changes.consumer import CONSUMER_GROUP
 from src.core.models import ChangesOutboxRow, InfoSource, SourceRevision
+from tests.core.changes._fakeredis_xautoclaim import with_redis_cursor
 
 FP_OBSERVED = "sha256:" + "a" * 64
 CAPTURED_AT = datetime(2026, 8, 9, 11, 0, tzinfo=UTC)
@@ -51,7 +53,7 @@ BLOB_EXPIRES_AT = datetime(2026, 8, 16, 11, 0, tzinfo=UTC)
 
 @pytest.fixture
 async def fake_redis():
-    r = fakeredis_aio.FakeRedis()
+    r = with_redis_cursor(fakeredis_aio.FakeRedis())
     yield r
     await r.aclose()
 
@@ -313,8 +315,12 @@ async def test_poison_frame_is_dlqd_not_wedged(session_factory, fake_redis, info
     consumer = await _bus_consumer(fake_redis)
 
     # First pass hits the poison and quarantines it; the second gets the good one.
-    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
-    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+    with patch.object(group_consumer.logger, "warning") as warning:
+        await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+        await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    # The scan ended on the cursor, not on MAX_QUARANTINE_PASSES (archiver#259).
+    assert not [c for c in warning.call_args_list if "pass ceiling" in c.args[0]]
 
     assert await fake_redis.xlen(f"{CONTENT_REVISIONS}.dlq") == 1
     assert await _row_count(session_factory, SourceRevision) == 1
