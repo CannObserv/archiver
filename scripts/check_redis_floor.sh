@@ -312,7 +312,7 @@ echo "check_redis_floor: Redis ${version} meets the >=7.0 floor"
 # move this probe above it or the cap check becomes unreachable in that case.
 # Read from INFO memory, never `CONFIG GET` (archiver#257): `+config|get` cannot
 # be narrowed to one parameter on Redis 7.0, so the grant that serves
-# `CONFIG GET maxmemory` also serves `CONFIG GET requirepass`, and broker revokes
+# `CONFIG GET maxmemory` also serves `CONFIG GET requirepass`, so broker can revoke
 # it (CannObserv/broker#50). INFO needs only `+info`, which the version probe
 # above already uses. Same value, same unit (bytes). Anchored on `maxmemory:`,
 # so `maxmemory_human:` and `maxmemory_policy:` do not match; redis_probe has
