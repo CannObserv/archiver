@@ -26,6 +26,7 @@ from co_core.pure.adapters.bus.streams import CONTENT_REPLICATE
 from fakeredis import aioredis as fakeredis_aio
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+from src.api import main
 from src.api.main import app, lifespan
 from src.core.changes import bus_client
 from src.core.changes.outbox_prune import DEFAULT_RETENTION_DAYS
@@ -537,3 +538,31 @@ async def test_publisher_init_failure_disowns_the_reachability_handle(
     async with lifespan(app):
         assert app.state.publisher_task is None
         assert app.state.bus_reachability_task is None
+
+
+@pytest.mark.asyncio
+async def test_publisher_start_line_redacts_the_broker_credential(
+    bus_env, bus_client_calls, test_engine, monkeypatch
+):
+    """The publisher's start line must not put the broker password in journald.
+
+    archiver#251. ``bus_client`` redacts on both of its lines; the lifespan's
+    own "Outbox publisher started" logged ``redis_url`` raw, so every service
+    start wrote the credential to the journal in cleartext - where it stays for
+    the whole retention window, readable by anyone who can run ``journalctl``.
+
+    Asserts the redacted value exactly rather than only the password's absence:
+    a line that dropped the field entirely would satisfy a bare ``not in``, and
+    the field is what names *which* broker the publisher attached to.
+    """
+    infos: list[dict] = []
+    monkeypatch.setattr(main.logger, "info", lambda _m, *a, **k: infos.append(k.get("extra", {})))
+    bus_env.setenv("ARCHIVER_REDIS_URL", "redis://archiver:hunter2@broker:6379/0")
+
+    async with lifespan(app):
+        pass
+
+    start_lines = [i for i in infos if "redis_url" in i]
+    assert len(start_lines) == 1, "the publisher start line did not report a broker"
+    assert start_lines[0]["redis_url"] == "redis://archiver:***@broker:6379/0"
+    assert "hunter2" not in repr(infos)

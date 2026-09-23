@@ -7,6 +7,7 @@ from pathlib import Path
 
 from src.core.logging import (
     ColorMessageFilter,
+    CredentialRedactingFilter,
     build_json_formatter,
     configure_logging,
     get_logger,
@@ -111,3 +112,110 @@ def test_log_config_wires_strip_color_message_on_uvicorn_loggers():
     assert config["filters"]["strip_color_message"]["()"] == "src.core.logging.ColorMessageFilter"
     for name in UVICORN_LOGGERS:
         assert "strip_color_message" in config["loggers"][name]["filters"]
+
+
+def test_credential_filter_redacts_a_url_in_an_extra():
+    """The net behind the call sites: no credentialed URL reaches a sink (#251).
+
+    Call-site redaction (`bus_client.redact_url`) is the fix; this is the thing
+    that holds when a *new* site forgets, or when a library we do not own logs a
+    DSN of its own. Asserts the whole line, not just the password's absence: a
+    filter that blanked the field would satisfy a bare `not in` while destroying
+    the one datum that says which broker the line is about.
+    """
+    record = logging.LogRecord(
+        "src.api.main", logging.INFO, __file__, 1, "Outbox publisher started", None, None
+    )
+    record.redis_url = "redis://archiver:hunter2@broker:6379/0"
+
+    assert CredentialRedactingFilter().filter(record) is True
+    assert record.redis_url == "redis://archiver:***@broker:6379/0"
+
+
+def test_credential_filter_redacts_a_url_in_the_message_and_its_args():
+    """Credentials arrive interpolated as often as they arrive as extras (#251)."""
+    record = logging.LogRecord(
+        "src.core.database",
+        logging.ERROR,
+        __file__,
+        1,
+        "cannot connect to %s",
+        ("postgresql+asyncpg://archiver:hunter2@localhost:5432/archiver",),
+        None,
+    )
+
+    assert CredentialRedactingFilter().filter(record) is True
+    assert record.getMessage() == (
+        "cannot connect to postgresql+asyncpg://archiver:***@localhost:5432/archiver"
+    )
+    assert "hunter2" not in record.getMessage()
+
+
+def test_credential_filter_leaves_a_credential_free_url_alone():
+    """Most URLs carry no secret; rewriting them would corrupt the line (#251)."""
+    record = logging.LogRecord(
+        "src.core.changes.bus_client", logging.INFO, __file__, 1, "Bus broker reachable", None, None
+    )
+    record.redis_url = "redis://localhost:6379/15"
+
+    assert CredentialRedactingFilter().filter(record) is True
+    assert record.redis_url == "redis://localhost:6379/15"
+
+
+def test_configure_logging_wires_the_credential_filter(capsys):
+    """Placement, not just effect: the app's own handler carries the net (#251)."""
+    root = logging.getLogger()
+    saved_handlers, saved_level = root.handlers[:], root.level
+    try:
+        configure_logging()
+        get_logger("src.some.module").info(
+            "started", extra={"redis_url": "redis://archiver:hunter2@broker:6379/0"}
+        )
+    finally:
+        root.handlers, root.level = saved_handlers, saved_level
+
+    out = capsys.readouterr().out
+    assert "hunter2" not in out
+    assert json.loads(out)["redis_url"] == "redis://archiver:***@broker:6379/0"
+
+
+def test_log_config_wires_the_credential_filter_on_the_json_handler():
+    """On the *handler*, so every logger routed there is covered (#251).
+
+    The color-message filter sits on the three uvicorn loggers because that is
+    where its extra originates. This one cannot: the site that leaks next is by
+    definition not one we listed, so it goes where every record passes.
+    """
+    config = json.loads(LOG_CONFIG_PATH.read_text())
+    assert (
+        config["filters"]["redact_credentials"]["()"]
+        == "src.core.logging.CredentialRedactingFilter"
+    )
+    assert "redact_credentials" in config["handlers"]["json_stdout"]["filters"]
+
+
+def test_log_config_redacts_a_credential_on_a_uvicorn_record(capsys):
+    """The production path end to end: uvicorn's own loggers are covered too (#251).
+
+    `uvicorn.*` set `propagate: false` and carry their own handler entry, so the
+    filter `configure_logging()` adds to the app's root handler never sees their
+    records. Both wirings are load-bearing; this is the half the app's own tests
+    cannot reach.
+    """
+    config = json.loads(LOG_CONFIG_PATH.read_text())
+    root = logging.getLogger()
+    saved_handlers, saved_level = root.handlers[:], root.level
+    saved_filters = {name: logging.getLogger(name).filters[:] for name in UVICORN_LOGGERS}
+    try:
+        logging.config.dictConfig(config)
+        logging.getLogger("uvicorn.error").info(
+            "connecting to redis://archiver:hunter2@broker:6379/0"
+        )
+    finally:
+        root.handlers, root.level = saved_handlers, saved_level
+        for name in UVICORN_LOGGERS:
+            logging.getLogger(name).filters = saved_filters[name]
+
+    out = capsys.readouterr().out
+    assert "hunter2" not in out
+    assert json.loads(out)["message"] == "connecting to redis://archiver:***@broker:6379/0"

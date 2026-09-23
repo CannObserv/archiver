@@ -26,6 +26,30 @@ cannot use `build_json_formatter()`. A journald consumer that blindly `json.load
 in particular); native field-based readers are unaffected. See archiver#124,
 gregoryfoster/skills#83.
 
+## Logging - no credential reaches journald
+
+`ARCHIVER_REDIS_URL` and `ARCHIVER_DATABASE_URL` carry passwords, and journald
+keeps whatever is written to it for the whole retention window, readable by
+anyone who can run `journalctl` on the host. Two layers, in this order:
+
+1. **Redact at the call site.** A site that knows its field is a URL calls
+   `bus_client.redact_url(...)` and logs the result. This is the fix; it keeps
+   the line honest about *which* broker or database it names.
+2. **`CredentialRedactingFilter` is the net**, wired on the JSON handler in
+   both `configure_logging()` and `src/core/log_config.json` - on the handler,
+   not on named loggers, because the site that leaks next is by definition not
+   one we listed. It scrubs `scheme://user:password@` out of a record's
+   message, args and extras, and never drops a record.
+
+The filter is not permission to skip step 1: it runs per record on every line,
+and a call site that hands it a secret in a shape it does not recognise (a JSON
+blob, a shell command string) leaks anyway. See archiver#251, where the
+lifespan's publisher-start line logged the broker credential in cleartext at
+every service start, two lines away from a helper that redacts.
+
+**Rotate, do not only patch.** A credential that reached journald is disclosed;
+fixing the line stops the next write and clears nothing already there.
+
 ## Error envelope
 
 **Error envelope:** Every non-2xx response uses one shape, defined by

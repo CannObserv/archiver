@@ -9,13 +9,17 @@
   "filters": {
     "strip_color_message": {
       "()": "src.core.logging.ColorMessageFilter"
+    },
+    "redact_credentials": {
+      "()": "src.core.logging.CredentialRedactingFilter"
     }
   },
   "handlers": {
     "json_stdout": {
       "class": "logging.StreamHandler",
       "formatter": "json",
-      "stream": "ext://sys.stdout"
+      "stream": "ext://sys.stdout",
+      "filters": ["redact_credentials"]
     }
   },
   "root": {
