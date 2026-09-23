@@ -374,7 +374,9 @@ async def reclaim_stale(
     and the caller does not see where it stopped.
 
     Undecodable frames in the page are dead-lettered inline and count as settled,
-    as they do in ``consume_once``. Before ``claim_stale_page`` one bad frame
+    like a handler's poison quarantine in ``_process``. (``consume_once`` returns
+    0 on a decode failure instead: ``read`` raises before it can say which frame
+    failed, so it has nothing to count.) Before ``claim_stale_page`` one bad frame
     raised out of the whole page, and its decodable neighbours - already claimed,
     idle clocks reset - waited for a later pass.
     """
