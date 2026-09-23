@@ -599,3 +599,28 @@ def test_malformed_url_is_never_echoed(tmp_path: Path, url: str) -> None:
     assert "unverified" in result.stderr.lower()
     assert _SECRET not in result.stderr + result.stdout
     assert _calls(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    ("encoded", "decoded"),
+    [
+        ("100%sure", "100%sure"),
+        ("a%4gb", "a%4gb"),
+        ("tail%", "tail%"),
+        ("x%2", "x%2"),
+        ("nl%0A", "nl\n"),
+    ],
+    ids=["non-hex", "half-hex", "trailing", "short", "trailing-newline"],
+)
+def test_invalid_percent_escapes_are_left_as_redis_py_leaves_them(
+    tmp_path: Path, encoded: str, decoded: str
+) -> None:
+    """CR 2. Only a valid `%XX` decodes; anything else passes through literally,
+    as `urllib.parse.unquote` (redis-py) does. Mangling it would hand the probe a
+    different password from the service's - a false auth failure, #195 again."""
+    bindir = _stub_redis_cli(tmp_path, version="7.0.15")
+    result = _run(bindir, {"ARCHIVER_REDIS_URL": f"redis://default:{encoded}@broker:6379/0"})
+
+    assert result.returncode == 0, result.stderr
+    assert "hex digit" not in result.stderr
+    assert _calls(tmp_path)[0][1] == decoded

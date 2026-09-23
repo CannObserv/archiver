@@ -81,10 +81,27 @@ esac
 # Never echo ${URL}: every message here lands in journald.
 unset REDISCLI_AUTH  # the URL is the only credential source, as it is for -u
 
+# Percent-decode $1 into DECODED. Only a valid %XX decodes; any other '%' is
+# kept literally, as urllib.parse.unquote (redis-py) keeps it - so the probe
+# and the service read the same password from the same URL. `printf -v`, not
+# `$(...)`, which would strip a decoded trailing newline.
+DECODED=""
 url_decode() {
-  # Escape backslashes first so %b cannot read the input's own as escapes.
-  local s="${1//\\/\\\\}"
-  printf '%b' "${s//%/\\x}"
+  local s="$1" hex c
+  DECODED=""
+  while [[ "${s}" == *%* ]]; do
+    DECODED+="${s%%\%*}"
+    s="${s#*\%}"
+    hex="${s:0:2}"
+    if [[ "${hex}" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+      printf -v c '%b' "\\x${hex}"
+      DECODED+="${c}"
+      s="${s:2}"
+    else
+      DECODED+="%"
+    fi
+  done
+  DECODED+="${s}"
 }
 
 scheme="${URL%%://*}"
@@ -114,11 +131,13 @@ if [[ "${rest}" == *@* ]]; then
   rest="${rest##*@}"
   HAS_AUTH=1
   if [[ "${userinfo}" == *:* ]]; then
-    REDIS_USER_ARGS=(--user "$(url_decode "${userinfo%%:*}")")
-    REDIS_PASS="$(url_decode "${userinfo#*:}")"
+    url_decode "${userinfo%%:*}"
+    REDIS_USER_ARGS=(--user "${DECODED}")
+    url_decode "${userinfo#*:}"
   else
-    REDIS_PASS="$(url_decode "${userinfo}")"
+    url_decode "${userinfo}"
   fi
+  REDIS_PASS="${DECODED}"
 fi
 
 hostport="${rest%%[/?]*}"
