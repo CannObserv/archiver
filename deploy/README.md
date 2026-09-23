@@ -83,10 +83,14 @@ stale-low, so it warns early rather than going quiet.
   operator-side, via a periodic `XTRIM ... MAXLEN ~ N` on the drain loop.
   Operator-side rather than co-core's XADD-time trim is a **choice, not an
   absence**: `info.changes` is a fact stream nothing replays, so its cap is
-  housekeeping and belongs on the operator's cadence. `content.replicate` is
-  carved out of that trim set entirely - capping a command stream deletes
-  commands the consumer group has not delivered and orphans the PEL entries
-  naming them (#169).
+  housekeeping and belongs on the operator's cadence. The drain loop trims an
+  **explicit allowlist** - `trim_topics`, literally `{info.changes}`, set in
+  `src/api/main.py` and pinned by a test (#239) - never "every topic
+  published to". It is one decision with broker's ACL grant, `+xtrim` on
+  `~info.changes` only (CannObserv/broker#14): widen one, widen the other.
+  `content.replicate` is absent from it by design - capping a command stream
+  deletes commands the consumer group has not delivered and orphans the PEL
+  entries naming them (#169) - and `info.registry` for the reason below.
 - **`ARCHIVER_REGISTRY_STREAM_MAXLEN`** (default 50000) caps `info.registry`
   on **every publish** instead (#141), because consumers boot by replaying from
   `0-0` and the floor is "at least one full snapshot plus the deltas since" - a

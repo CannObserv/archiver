@@ -22,7 +22,6 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from co_core.pure.adapters.bus.streams import CONTENT_REPLICATE
 from fakeredis import aioredis as fakeredis_aio
 from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -196,16 +195,14 @@ async def test_watch_status_failure_leaves_other_bus_tasks_running(
 
 
 @pytest.mark.asyncio
-async def test_command_stream_is_carved_out_of_the_trim_loop(
-    bus_env, bus_client_calls, test_engine
-):
-    """content.replicate must never be XTRIMmed (archiver#169).
+async def test_trim_allowlist_is_info_changes_only(bus_env, bus_client_calls, test_engine):
+    """The drain loop trims info.changes and nothing else (archiver#239).
 
-    The drain loop caps every topic it publishes to, which is right for a fact
-    stream Archiver owns and wrong for a *command* stream with a competing
-    consumer group: trimming it deletes commands nobody delivered and orphans
-    the PEL entries pointing at them. Retention on a command stream belongs to
-    the consumer's progress, not the producer's cap.
+    content.replicate must never be XTRIMmed (archiver#169): trimming a
+    *command* stream deletes commands nobody delivered and orphans the PEL
+    entries pointing at them. info.registry's retention rides the publish
+    (archiver#141). Pinned as a literal so widening it is deliberate - and
+    matches broker's ``+xtrim ~info.changes`` grant (CannObserv/broker#14).
     """
     bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
     captured: dict = {}
@@ -217,8 +214,7 @@ async def test_command_stream_is_carved_out_of_the_trim_loop(
         async with lifespan(app):
             pass
 
-    assert CONTENT_REPLICATE in captured["no_trim_topics"]
-    assert "info.registry" in captured["no_trim_topics"]
+    assert captured["trim_topics"] == frozenset({"info.changes"})
 
 
 @pytest.mark.asyncio
