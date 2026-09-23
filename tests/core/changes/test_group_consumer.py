@@ -312,7 +312,9 @@ async def test_trimmed_id_list_is_capped_in_the_log():
     with patch.object(group_consumer.logger, "warning") as warning:
         await group_consumer.quarantine_undecodable(_scripted(bus))
 
-    extra = warning.call_args_list[0].kwargs["extra"]
+    trimmed = [c for c in warning.call_args_list if "trimmed" in c.args[0]]
+    assert len(trimmed) == 1
+    extra = trimmed[0].kwargs["extra"]
     assert extra["count"] == 50
     assert extra["message_ids"] == list(many[: group_consumer.DELETED_LOG_IDS])
 
