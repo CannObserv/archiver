@@ -310,12 +310,17 @@ echo "check_redis_floor: Redis ${version} meets the >=7.0 floor"
 # while the floor blocks — such a broker cannot serve the producer at all, and a
 # cap warning about it would be noise. If the floor is ever relaxed to a warning,
 # move this probe above it or the cap check becomes unreachable in that case.
-# `CONFIG GET maxmemory` replies with two lines: the name, then the value in
-# bytes. Take the second line rather than grepping, so a value that happens to
-# equal the name cannot confuse the parse.
-redis_probe CONFIG GET maxmemory
+# Read from INFO memory, never `CONFIG GET` (archiver#257): `+config|get` cannot
+# be narrowed to one parameter on Redis 7.0, so the grant that serves
+# `CONFIG GET maxmemory` also serves `CONFIG GET requirepass`, and broker revokes
+# it (CannObserv/broker#50). INFO needs only `+info`, which the version probe
+# above already uses. Same value, same unit (bytes). Anchored on `maxmemory:`,
+# so `maxmemory_human:` and `maxmemory_policy:` do not match; redis_probe has
+# already stripped the CRs INFO ends its lines with, without which a `0` cap
+# would read as `0\r` and the uncapped warning below would never fire.
+redis_probe INFO memory
 relay_probe_err  # a restricted ACL's NOPERM is the likeliest empty reply
-maxmemory="$(printf '%s\n' "${PROBE_OUT}" | sed -n '2p')"
+maxmemory="$(printf '%s\n' "${PROBE_OUT}" | sed -n 's/^maxmemory:\(.*\)$/\1/p')"
 
 if [ -z "${maxmemory}" ]; then
   # Distinct from "uncapped": a restricted ACL or a killed probe reads as empty,
