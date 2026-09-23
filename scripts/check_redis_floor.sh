@@ -70,8 +70,12 @@ esac
 # every process the password passes through - `timeout` included - so it is
 # handed over as a prefix assignment, never as an `env VAR=...` argument.
 #
-# Same semantics as `-u`, so the probe keeps agreeing with the URL it is judging:
-#   - userinfo is split at the first ':'; both halves are percent-decoded
+# `-u`'s semantics, so the probe keeps agreeing with the URL it is judging -
+# except where `-u` and redis-py differ, where redis-py wins: it is the client
+# whose verdict counts, and a probe that parts from it is #195 again.
+#   - userinfo ends at the LAST '@' (redis-py's rpartition; `-u` takes the first)
+#   - userinfo is split at the first ':'; both halves are percent-decoded, and
+#     an invalid escape is kept literally (redis-py's unquote; `-u` rejects it)
 #   - `user:pass@` sends `--user user`, EVEN WHEN `user` IS EMPTY. `:pass@` is
 #     archiver#195: `AUTH "" pass` fails, and the diagnostics below exist to say
 #     so. Defaulting the user to `default` would pass the probe on a URL its
@@ -126,7 +130,7 @@ HAS_AUTH=0
 REDIS_PASS=""
 REDIS_USER_ARGS=()
 if [[ "${rest}" == *@* ]]; then
-  # The LAST '@' ends userinfo, so an unencoded '@' in the password survives.
+  # The LAST '@' ends userinfo (see above): an unencoded '@' in the password survives.
   userinfo="${rest%@*}"
   rest="${rest##*@}"
   HAS_AUTH=1
