@@ -9,7 +9,8 @@ may be acked.
 Copying this would have been the alternative, and it is the wrong one for a
 specific reason: nearly every line encodes an incident or a review finding
 (re-arming ``ensure_group`` after a flush, following ``XAUTOCLAIM``'s cursor past
-the first window, reading the row id before the commit, throttling the error log).
+the first window, carrying the reclaim cursor across passes, reading the row id
+before the commit, throttling the error log).
 A copy inherits those once and then drifts away from them silently, which is the
 same failure mode the no-cross-repo-mirror rule exists to prevent.
 
@@ -28,8 +29,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from co_core.effects.bus import ClaimPage
 from co_core.pure.adapters.bus.exceptions import BusMessageAnomaly
-from co_core_aio.bus import AsyncBusConsumer, BusMessage, from_wire
+from co_core_aio.bus import AsyncBusConsumer, BusMessage
 
 from src.core.changes import read_windows
 from src.core.changes.backoff import (
@@ -61,6 +63,8 @@ CLAIM_COUNT = 10
 # at CLAIM_COUNT per pass this covers 1000 pending entries, and the residue is
 # logged rather than silently skipped.
 MAX_QUARANTINE_PASSES = 100
+# How many trimmed ids one log line names; the count is always exact.
+DELETED_LOG_IDS = 10
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
@@ -109,7 +113,7 @@ def resolve_consumer_name(group: str) -> str:
     The ``-1`` is a slot, not decoration: ``deploy/archiver.service`` runs uvicorn
     with no ``--workers``, so there is exactly one member and the pid carried no
     information a log line does not. A multi-consumer deployment assigns ``-2``
-    upward - and must first raise ``quarantine_undecodable``'s ``min_idle_time``,
+    upward - and must first raise ``quarantine_undecodable``'s ``min_idle_ms``,
     for the reason recorded in that docstring.
     """
     return f"{group.replace('.', '-')}-1"
@@ -117,12 +121,12 @@ def resolve_consumer_name(group: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class GroupConsumer:
-    """The group reader plus the three things every recovery path also needs.
+    """The group reader plus the identity every log line and deploy check needs.
 
     ``AsyncBusConsumer`` exposes neither its own consumer name nor its topic and
-    group, and the raw ``XAUTOCLAIM`` in ``quarantine_undecodable`` needs all
-    three. Bundling them rather than reaching into the driver's internals — they
-    always travel together anyway.
+    group. Bundling them rather than reaching into the driver's internals — they
+    always travel together anyway. (Until archiver#259 this also carried the raw
+    client, for a hand-rolled ``XAUTOCLAIM`` that ``claim_stale_page`` replaced.)
 
     ``name`` must be unique across concurrent *members* of the group, so
     ``XAUTOCLAIM`` can tell a dead member's pending entries from a live one's. It
@@ -132,9 +136,26 @@ class GroupConsumer:
 
     bus: AsyncBusConsumer
     name: str
-    client: Redis
     topic: str
     group: str
+
+
+@dataclass(slots=True)
+class ReclaimCursor:
+    """Where the next ``reclaim_stale`` pass resumes its walk of the group's PEL.
+
+    Restarting every pass at ``0-0`` is replicator#102's shape: ``XAUTOCLAIM``
+    resets the idle clock of what it claims, so the first ``CLAIM_COUNT`` entries
+    that keep failing *transiently* are reclaimed on every pass, and everything
+    behind them waits for as long as their cause lasts. Carrying the cursor makes
+    the walk rotate through the whole list instead.
+
+    Owned by ``run``, not by ``GroupConsumer``, because it is per-loop state and
+    ``GroupConsumer`` is frozen. ``"0-0"`` is both the start and what an exhausted
+    page hands back, so the walk wraps without a special case.
+    """
+
+    position: str = "0-0"
 
 
 def build_group_consumer(
@@ -145,7 +166,6 @@ def build_group_consumer(
     return GroupConsumer(
         bus=AsyncBusConsumer(client, topic=topic, group=group, consumer=name),
         name=name,
-        client=client,
         topic=topic,
         group=group,
     )
@@ -200,68 +220,85 @@ async def _process(
     return ackable
 
 
+async def _claim_page(consumer: GroupConsumer, *, min_idle_ms: int, start_id: str) -> ClaimPage:
+    """One ``XAUTOCLAIM`` page, with any trimmed pending ids logged on the way.
+
+    ``page.deleted`` names entries that were pending when their stream entries
+    were trimmed. ``XAUTOCLAIM`` drops them from the PEL as it finds them, so this
+    line is the only record that work was lost before anyone processed it.
+    """
+    page = await consumer.bus.claim_stale_page(
+        min_idle_ms=min_idle_ms, count=CLAIM_COUNT, start_id=start_id
+    )
+    if page.deleted:
+        logger.warning(
+            "Pending entries were trimmed from the stream before processing",
+            extra={
+                "topic": consumer.topic,
+                "count": len(page.deleted),
+                "message_ids": list(page.deleted[:DELETED_LOG_IDS]),
+            },
+        )
+    return page
+
+
+async def _dead_letter_poison(consumer: GroupConsumer, page: ClaimPage) -> int:
+    """Route every undecodable frame in ``page`` to the topic's DLQ. Returns how many."""
+    for frame in page.poison:
+        logger.error(
+            "Dead-lettering undecodable frame",
+            extra={
+                "message_id": frame.message_id,
+                "topic": consumer.topic,
+                "error": error_text(frame.anomaly),
+            },
+            exc_info=frame.anomaly,
+        )
+        await consumer.bus.dead_letter(frame.message_id, dict(frame.fields))
+    return len(page.poison)
+
+
 async def quarantine_undecodable(consumer: GroupConsumer) -> int:
     """DLQ pending entries that will not decode. Returns how many were moved.
 
     ``AsyncBusConsumer.read`` decodes inside the call, so ``from_wire`` raises
     *before* any message id reaches the caller — there is nothing to hand
     ``dead_letter``, and the entry is already in the group's PEL where a
-    subsequent read or claim hits it again identically. Left alone that is an
-    unbounded crash-backoff loop over one bad frame, the failure the publisher's
-    build-phase dead-letter exists to prevent (archiver#107).
+    subsequent read hits it again identically. Left alone that is an unbounded
+    crash-backoff loop over one bad frame, the failure the publisher's build-phase
+    dead-letter exists to prevent (archiver#107).
 
-    So the recovery goes back to the raw stream: claim the group's pending
-    entries, re-attempt the decode per entry, and route only the ones that fail
-    to the topic's DLQ. Entries that decode are left pending — they are picked up
-    by the next read or by ``reclaim_stale``.
+    So the recovery walks the group's pending entries with ``claim_stale_page``,
+    which returns undecodable frames as ``page.poison`` rather than raising, and
+    routes only those to the topic's DLQ. Entries that decode are left pending —
+    they are picked up by the next read or by ``reclaim_stale``.
 
     The scan follows ``XAUTOCLAIM``'s cursor to the end of the PEL rather than
     stopping at the first ``CLAIM_COUNT`` window: after a backlog (a DB outage,
-    say) the poison frame can sit well past entry ten, and a single-window scan
-    would leave it there for as many passes as it takes the window to advance.
+    say) the poison frame can sit well past entry ten. **Only ``page.exhausted``
+    ends it.** An empty page with a non-zero cursor means ``XAUTOCLAIM`` spent its
+    ``count * 10`` attempt budget (on trimmed entries, at ``min_idle_ms=0``) and
+    there is more to scan (archiver#259).
 
-    ``min_idle_time=0`` claims regardless of age, and following the cursor means
-    the scan is **bounded only by the pass ceiling** — up to
+    ``min_idle_ms=0`` (``XAUTOCLAIM``'s ``min-idle-time``) claims regardless of
+    age, and following the cursor means the scan is **bounded only by the pass
+    ceiling** — up to
     ``MAX_QUARANTINE_PASSES * CLAIM_COUNT`` entries. With one process per host
     (what ``deploy/archiver.service`` runs, no ``--workers``) that is free. With
     two, one poison frame would pull the *whole* group's in-flight PEL to a single
     worker rather than a slice of it. **A multi-consumer deployment must raise
-    ``min_idle_time`` above the expected per-message processing time** before
+    ``min_idle_ms`` above the expected per-message processing time** before
     adding workers — that is the change this constant is waiting on, recorded here
     because this is where it would be made.
     """
     quarantined = 0
     cursor = "0-0"
     for _ in range(MAX_QUARANTINE_PASSES):
-        next_cursor, entries, _deleted = await consumer.client.xautoclaim(
-            consumer.topic,
-            consumer.group,
-            consumer.name,
-            min_idle_time=0,
-            start_id=cursor,
-            count=CLAIM_COUNT,
-        )
-        for entry_id, raw_fields in entries:
-            message_id = _as_str(entry_id)
-            fields = {_as_str(k): _as_str(v) for k, v in raw_fields.items()}
-            try:
-                from_wire(fields, topic=consumer.topic, message_id=message_id)
-            except BusMessageAnomaly as exc:
-                logger.error(
-                    "Dead-lettering undecodable frame",
-                    extra={
-                        "message_id": message_id,
-                        "topic": consumer.topic,
-                        "error": error_text(exc),
-                    },
-                    exc_info=exc,
-                )
-                await consumer.bus.dead_letter(message_id, fields)
-                quarantined += 1
-        cursor = _as_str(next_cursor)
-        # "0-0" is XAUTOCLAIM's end-of-PEL sentinel; an empty page ends it too.
-        if cursor == "0-0" or not entries:
+        page = await _claim_page(consumer, min_idle_ms=0, start_id=cursor)
+        quarantined += await _dead_letter_poison(consumer, page)
+        if page.exhausted:
             break
+        cursor = page.cursor
     else:
         logger.warning(
             "Quarantine scan hit its pass ceiling; pending entries remain unscanned",
@@ -272,11 +309,6 @@ async def quarantine_undecodable(consumer: GroupConsumer) -> int:
             },
         )
     return quarantined
-
-
-def _as_str(value: bytes | str) -> str:
-    """Redis returns bytes unless the client decodes responses; accept both."""
-    return value.decode() if isinstance(value, bytes) else value
 
 
 async def consume_once(
@@ -323,8 +355,9 @@ async def reclaim_stale(
     handle: MessageHandler,
     poison_errors: tuple[type[BaseException], ...] = (),
     min_idle_ms: int = CLAIM_MIN_IDLE_MS,
+    cursor: ReclaimCursor | None = None,
 ) -> int:
-    """Process entries a dead consumer left pending. Returns how many were settled.
+    """Process one page of entries a dead consumer left pending. Returns how many settled.
 
     Without this, a crash between read and ack parks the message in a PEL that
     nothing else reads: ``XREADGROUP`` with ``>`` only ever delivers entries no
@@ -335,15 +368,25 @@ async def reclaim_stale(
     whole group PEL regardless of owner, the claimant included, so that needs no
     special handling. ``min_idle_ms`` is what keeps it from racing a live
     member's in-flight message.
-    """
-    try:
-        messages = await consumer.bus.claim_stale(min_idle_ms=min_idle_ms, count=CLAIM_COUNT)
-    except BusMessageAnomaly:
-        await quarantine_undecodable(consumer)
-        return 0
 
-    settled = 0
-    for message in messages:
+    **One page per pass, resuming at ``cursor``** (archiver#259), which ``run``
+    carries between passes - see ``ReclaimCursor`` for why restarting at ``0-0``
+    starves the tail of the list. Without a ``cursor`` the pass starts at ``0-0``
+    and the caller does not see where it stopped.
+
+    Undecodable frames in the page are dead-lettered inline and count as settled,
+    like a handler's poison quarantine in ``_process``. (``consume_once`` returns
+    0 on a decode failure instead: ``read`` raises before it can say which frame
+    failed, so it has nothing to count.) Before ``claim_stale_page`` one bad frame
+    raised out of the whole page, and its decodable neighbours - already claimed,
+    idle clocks reset - waited for a later pass.
+    """
+    cursor = cursor if cursor is not None else ReclaimCursor()
+    page = await _claim_page(consumer, min_idle_ms=min_idle_ms, start_id=cursor.position)
+    cursor.position = page.cursor
+
+    settled = await _dead_letter_poison(consumer, page)
+    for message in page.messages:
         try:
             if await _process(consumer, handle, message, poison_errors):
                 settled += 1
@@ -408,6 +451,7 @@ async def run(
     iteration = 0
     consecutive_failures = 0
     group_ready = False
+    reclaim_cursor = ReclaimCursor()
     while not stop_event.is_set():
         try:
             if not group_ready:
@@ -426,6 +470,7 @@ async def run(
                     handle=handle,
                     poison_errors=poison_errors,
                     min_idle_ms=claim_min_idle_ms,
+                    cursor=reclaim_cursor,
                 )
             if consecutive_failures:
                 # Positive recovery signal at the same filter level as the
@@ -444,8 +489,10 @@ async def run(
             # failure, because the two states that need it — broker unreachable,
             # group destroyed by a flush — are not distinguishable from the
             # exception type in a way worth branching on, and re-asserting an
-            # existing group is a no-op.
+            # existing group is a no-op. The reclaim walk restarts with it: a flush
+            # took the PEL the cursor pointed into.
             group_ready = False
+            reclaim_cursor.position = "0-0"
             if consecutive_failures == 1 or consecutive_failures % ERROR_LOG_EVERY == 0:
                 logger.exception(
                     "Bus consumer loop error; backing off",

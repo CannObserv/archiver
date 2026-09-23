@@ -85,11 +85,22 @@ exists to prevent.
 Failure routing: a well-formed observation the registry cannot use - a
 fingerprint outside `sha256:<64 hex>`, an `info_source_id` that is not a ULID -
 is quarantined to `content.revisions.dlq`, because redelivery reproduces it
-exactly. A frame that does not decode at all is quarantined too, via a raw pass
-over the group's pending list (`from_wire` raises before any message id reaches
-the caller, so there is nothing to `dead_letter` with - see
+exactly. A frame that does not decode at all is quarantined too, via a walk of
+the group's pending list with co-core's `claim_stale_page` (`read` raises before
+any message id reaches the caller, so there is nothing to `dead_letter` with - see
 `quarantine_undecodable`). Anything transient - the database down - leaves the
 message **pending**, and it is redelivered or reclaimed by `XAUTOCLAIM`.
+
+Both pending-list walks follow `XAUTOCLAIM`'s cursor (archiver#259). The
+quarantine scan runs to `page.exhausted`, because an empty page with a non-zero
+cursor is the `count * 10` attempt budget running out, not the end of the list.
+`reclaim_stale` reads one page per pass and resumes where the last one stopped,
+so a few entries that keep failing transiently cannot take every turn and starve
+the rest (replicator#102's shape); the cursor restarts at `0-0` whenever the loop
+re-arms its group. Pending entries whose stream entries were trimmed before
+anyone processed them are logged as `Pending entries were trimmed from the stream
+before processing`, with a count and up to ten ids - `XAUTOCLAIM` drops them from
+the PEL, so that line is their only record.
 
 The HTTP write path (`POST` / `PATCH /source-revisions`) stays for authoring and
 backfill; retiring it is a separate call from retiring Watcher's *use* of it
@@ -175,7 +186,7 @@ measured rather than assumed:
 
 The `-1` is a slot. `deploy/archiver.service` runs uvicorn with no `--workers`,
 so there is exactly one member per group. Adding members assigns `-2` upward and
-**must first raise `quarantine_undecodable`'s `min_idle_time`** above the
+**must first raise `quarantine_undecodable`'s `min_idle_ms`** above the
 expected per-message processing time - see that docstring.
 
 ## Change-bus tail - `info.watch-status` (archiver#151)

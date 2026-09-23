@@ -4,7 +4,7 @@
 # Run as an `ExecStartPre` on archiver.service. Two assertions, different severities:
 #
 # 1. **Server >= 7.0 — blocks.** The floor is a *consumer*-path requirement —
-#    `XAUTOCLAIM`/`claim_stale` (co-core-aio bus consumer) needs the three-element
+#    `XAUTOCLAIM`/`claim_stale_page` (co-core-aio bus consumer) needs the three-element
 #    reply added in Redis server 7.0 — but Archiver, as the bus operator, asserts
 #    it loud so a distro downgrade fails at producer start rather than silently
 #    breaking the future consumer.
@@ -298,7 +298,7 @@ relay_probe_err
 major="${version%%.*}"
 if ! [ "${major}" -ge 7 ] 2>/dev/null; then
   echo "check_redis_floor: Redis ${version} is below the >=7.0 change-bus floor" >&2
-  echo "check_redis_floor: the consumer path (XAUTOCLAIM/claim_stale) requires server >= 7.0" >&2
+  echo "check_redis_floor: the consumer path (XAUTOCLAIM/claim_stale_page) requires server >= 7.0" >&2
   exit 1
 fi
 
