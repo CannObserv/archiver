@@ -85,6 +85,19 @@ here and not there leaves that probe's WARN threshold stale-*low* - it fires
 early rather than going quiet, the safe direction, but fix it. Index: that
 repo's ``docs/BUS-HEALTH.md``, "Mirrored constants".
 
+**What that mirror is and is not, narrowed with broker-agent 2026-09-23.** It
+feeds one check: ``REGISTRY_WARN_LENGTH = with_margin(REGISTRY_PRODUCER_MAXLEN)``,
+the stream-too-*long* ceiling. It deliberately does **not** feed the shrink check
+(CannObserv/broker#42), which carries no cap at all - ``entries-added - length``
+with ``max-deleted-entry-id`` needs no threshold, which is why it is the right
+signal for a stream getting shorter. Do not delete the pointer above on the
+strength of #42; the ceiling still depends on it.
+
+And the mirror's real hazard is not this literal, it is
+``ARCHIVER_REGISTRY_STREAM_MAXLEN`` below: naming a source is not enough when an
+env var can move it with no commit in either repo. ``docs/DEPLOYMENT.md`` carries
+the operator's side of that - setting the override obliges a note to broker.
+
 Derived from key count x sets retained, never from the fact stream's number:
 at O(10^3) items on the 1-hour period that is ~24k entries/day, so 50k covers
 roughly two days of full sets plus deltas — comfortably above the "one full
