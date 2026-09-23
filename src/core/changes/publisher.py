@@ -427,13 +427,14 @@ async def run(
     When ``redis_client`` and a positive ``stream_maxlen`` are supplied, the loop
     caps each stream in ``trim_topics`` via ``trim_stream`` every
     ``trim_interval_iterations`` iterations - operator-side retention
-    (archiver#109). ``trim_topics`` is an allowlist (archiver#239): a stream is
-    trimmed by being named, never by being produced to, and whether or not it has
-    been published to this process lifetime. It must match broker's ``+xtrim``
-    grant (CannObserv/broker#14), which refuses any other stream anyway. Left
-    unset (the dormant or unconfigured case), no trimming occurs. A topic with
-    per-publish retention in ``topic_maxlen`` cannot also be listed: its cap is a
-    consumer contract (archiver#141), so ``ValueError``.
+    (archiver#109). Left unset (the dormant or unconfigured case), no trimming
+    occurs. ``trim_topics`` is an allowlist (archiver#239): a stream is trimmed by
+    being named, never by being produced to, and whether or not it has been
+    published to this process lifetime. It must match broker's ``+xtrim`` grant
+    (CannObserv/broker#14), which refuses any other stream anyway. A topic that
+    also carries per-publish retention in ``topic_maxlen`` is dropped from the
+    trim set with one ERROR: its cap is a consumer contract (archiver#141), and
+    raising instead would kill this task and stop ``info.changes`` with it.
 
     Every ``stats_interval`` seconds (first iteration immediately, ``None``
     disables) the loop emits the periodic "Outbox stats" line via
@@ -447,9 +448,11 @@ async def run(
     """
     both_capped = trim_topics & set(topic_maxlen or {})
     if both_capped:
-        raise ValueError(
-            f"Topics with per-publish retention cannot also be trimmed: {sorted(both_capped)}"
+        logger.error(
+            "Trim allowlist names topics with per-publish retention; not trimming them",
+            extra={"topics": sorted(both_capped)},
         )
+        trim_topics = trim_topics - both_capped
     stop_event = stop_event or asyncio.Event()
     iteration = 0
     consecutive_failures = 0

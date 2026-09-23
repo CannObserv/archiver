@@ -13,7 +13,7 @@ import asyncio
 import inspect
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from co_core.pure.adapters.bus.envelope import _PAYLOAD_BY_EVENT_TYPE
@@ -88,6 +88,11 @@ async def cleanup_outbox(test_engine):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Upper bound on a ``run`` test that stops from inside its trim spy. If trimming
+# never fires - archiver#239's failure mode - the loop would spin forever; the
+# bound turns that hang into a ``TimeoutError`` failure.
+_RUN_TIMEOUT = 5.0
 
 # The single ``occurred_at`` every payload fixture in this module stamps. One
 # constant because two consumers derive from it and would otherwise drift from the
@@ -1388,19 +1393,47 @@ def test_run_trim_allowlist_defaults_to_info_changes_only():
 
 
 @pytest.mark.asyncio
-async def test_run_refuses_trimming_a_topic_with_publish_retention(session_factory, publisher):
-    """A topic whose retention rides the publish must not also be XTRIMmed.
+async def test_run_never_trims_a_topic_with_publish_retention(
+    session_factory, publisher, fake_redis, monkeypatch
+):
+    """A topic whose retention rides the publish is dropped from the trim set.
 
     Its cap is a consumer contract (archiver#141); the fact stream's global
-    MAXLEN on top of it would silently break the replay floor.
+    MAXLEN on top of it would silently break the replay floor. Fail safe, not
+    closed: raising would kill the publisher task and stop info.changes too,
+    an outage worse than the misconfiguration. Alarm once and keep going.
+
+    Spies the module logger rather than using caplog: configure_logging()
+    replaces root.handlers, which defeats pytest's capture handler.
     """
-    with pytest.raises(ValueError, match="info.registry"):
-        await publisher_mod.run(
+    trim_calls: set[tuple[str, int]] = set()
+    stop = asyncio.Event()
+
+    async def _fake_trim(client, topic, maxlen):
+        trim_calls.add((topic, maxlen))
+        stop.set()
+
+    spy = MagicMock()
+    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
+    monkeypatch.setattr(publisher_mod.logger, "error", spy)
+
+    await asyncio.wait_for(
+        publisher_mod.run(
             session_factory=session_factory,
             publisher=publisher,
+            redis_client=fake_redis,
+            stream_maxlen=100,
+            trim_interval_iterations=1,
+            stop_event=stop,
             trim_topics=frozenset({"info.changes", "info.registry"}),
             topic_maxlen={"info.registry": 50_000},
-        )
+        ),
+        timeout=_RUN_TIMEOUT,
+    )
+
+    assert trim_calls == {("info.changes", 100)}
+    spy.assert_called_once()
+    assert spy.call_args.kwargs["extra"]["topics"] == ["info.registry"]
 
 
 # ---------------------------------------------------------------------------

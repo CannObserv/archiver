@@ -158,8 +158,8 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
 - **Retention rides the publish** (`BusPublish.maxlen`,
   `ARCHIVER_REGISTRY_STREAM_MAXLEN`, default 50k): consumers replay from `0-0`,
   so the floor is one full set plus the deltas since. The topic is absent
-  from the fact stream's `XTRIM` allowlist, and `run` refuses to start if it is
-  listed there while also carrying a publish cap.
+  from the fact stream's `XTRIM` allowlist; listed there by mistake, `run`
+  logs an ERROR and skips it rather than trimming it.
 
 **`content.replicate` - the replication command channel (archiver#169).** A third
 producer surface, *command* kind: exactly one consumer group
