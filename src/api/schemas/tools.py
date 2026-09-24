@@ -1,13 +1,19 @@
 """Pydantic request/response schemas for /api/v1/tools/* endpoints."""
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastapi import Path
 from pydantic import AfterValidator, BaseModel, Field, HttpUrl
 
 from src.api.errors import FieldError
-from src.core.changes.dlq_triage import STREAM_ID_PATTERN, TRIAGE_DLQS, is_exact_stream_id
+from src.core.changes.dlq_triage import (
+    STREAM_ID_PATTERN,
+    TRIAGE_DLQS,
+    ParkedAs,
+    ReprocessOutcome,
+    is_exact_stream_id,
+)
 
 # ---------------------------------------------------------------------------
 # validate-source-spec
@@ -337,7 +343,7 @@ class DeadLetterOut(BaseModel):
     )
     decode_error: str | None = Field(description="Why it does not decode; null when it does.")
     provenance: DeadLetterProvenanceOut
-    parked_as: Literal["handler_poison", "undecodable"] | None = Field(
+    parked_as: ParkedAs | None = Field(
         description="Which quarantine path parked it, read off the reason's prefix. "
         "`handler_poison` decoded and still failed: discard. `undecodable` with `decodes` "
         "true is version skew: reprocess. Null with no reason, or one archiver did not write."
@@ -370,9 +376,7 @@ class ReprocessResultOut(BaseModel):
     """What happened to one requested entry. Only `reprocessed` removed it."""
 
     entry_id: str
-    outcome: Literal[
-        "reprocessed", "not_found", "not_owned", "undecodable", "rejected", "failed", "deferred"
-    ] = Field(
+    outcome: ReprocessOutcome = Field(
         description="`reprocessed`: the handler settled it and it was deleted. `not_owned`: "
         "another group parked it, or it has no provenance. `undecodable`: still does not "
         "decode. `rejected`: the handler's poison - discard it. `failed`: any other handler "

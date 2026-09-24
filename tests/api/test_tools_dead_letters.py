@@ -18,6 +18,8 @@ from ulid import ULID
 
 from src.api.deps import get_db_session_factory, get_redis_client
 from src.api.main import app
+from src.api.schemas.tools import DeadLetterOut, ReprocessResultOut
+from src.core.changes.dlq_triage import ParkedAs, ReprocessOutcome
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 DLQ = "content.revisions.dlq"
@@ -344,3 +346,11 @@ async def test_a_broker_failure_mid_reprocess_is_a_503_that_names_its_progress(
 async def test_reprocess_requires_an_api_key(client, fake_redis):
     resp = await client.post(REPROCESS_URL, json={"entry_ids": ["1-0"]})
     assert resp.status_code in (401, 403)
+
+
+def test_the_response_models_take_their_value_sets_from_core():
+    """One source of truth: a value core adds must not be one the response model
+    rejects, which would turn a new outcome into a 500 at serialization. (typing
+    caches Literal, so an identical re-spelling passes too; any drift does not.)"""
+    assert ReprocessResultOut.model_fields["outcome"].annotation is ReprocessOutcome
+    assert DeadLetterOut.model_fields["parked_as"].annotation == ParkedAs | None
