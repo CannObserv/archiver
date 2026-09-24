@@ -26,6 +26,8 @@ Since #242, `bash clients/python/scripts/regen.sh` wrote a `generated/` tree tha
 
 regen.sh now dumps the snapshot and hands the tree to `scripts/check_client_drift.py --write archiver`, which generates at the staging path and swaps it into place. Generation has one code path, so the check and the write cannot disagree. `tests/scripts/test_client_regen.py` pins the delegation.
 
+A failed dump no longer empties the snapshot. regen.sh redirected `dump_openapi.py` straight into it, so the shell truncated the committed contract before the dump ran; it now dumps to a temp file and copies in only on success.
+
 ## v4.19.0 (2026-09-24)
 
 [both] **Dead-lettered outbox triage: list, rearm, discard, SDK v5.7.0** (archiver#191). A dead-lettered `changes_outbox` row had no exit: nothing cleared `dead_lettered_at`, so the `dead_lettered_count` warning could never be acknowledged and an operator-fixed row could never be republished. Three operator routes, generated-only in the SDK like the DLQ routes. Every write names explicit row ids, never a predicate. No migration.

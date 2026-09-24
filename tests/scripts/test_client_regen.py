@@ -22,11 +22,11 @@ _REGEN = _REPO / "clients" / "python" / "scripts" / "regen.sh"
 
 _DUMPED_SPEC = '{"openapi": "3.1.0"}'
 
-# Records "<cwd>|<argv>" per call; prints a spec for the dump; fails the write on demand.
+# Records "<cwd>|<argv>" per call; prints a spec for the dump; fails either step on demand.
 _UV_STUB = f"""#!/usr/bin/env bash
 echo "$PWD|$*" >> "$UV_LOG"
 case "$*" in
-  *dump_openapi.py*) echo '{_DUMPED_SPEC}' ;;
+  *dump_openapi.py*) echo '{_DUMPED_SPEC}'; exit "${{UV_DUMP_EXIT:-0}}" ;;
   *check_client_drift.py*) exit "${{UV_WRITE_EXIT:-0}}" ;;
 esac
 """
@@ -82,3 +82,13 @@ def test_regen_never_generates_or_formats_on_its_own(sandbox: Path) -> None:
 def test_regen_fails_when_the_write_fails(sandbox: Path) -> None:
     result, _ = _regen(sandbox, UV_WRITE_EXIT="2")
     assert result.returncode == 2
+
+
+def test_a_failed_dump_leaves_the_committed_snapshot_intact(sandbox: Path) -> None:
+    """Redirecting straight into the snapshot would truncate it before the dump ran."""
+    snapshot = sandbox / "repo" / "clients" / "python" / "archiver-openapi.json"
+    snapshot.write_text("committed\n")
+    result, calls = _regen(sandbox, UV_DUMP_EXIT="1")
+    assert result.returncode == 1
+    assert snapshot.read_text() == "committed\n"
+    assert not [call for call in calls if "check_client_drift.py" in call]
