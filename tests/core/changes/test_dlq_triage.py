@@ -1,7 +1,8 @@
 """DLQ triage: listing and discarding the two queues archiver drains (archiver#238).
 
 Exercised against fakeredis so the stream commands (XRANGE / XDEL) are real,
-not mocked. Reprocessing is deliberately absent - see the module docstring.
+not mocked. Reprocess has its own file, ``test_dlq_triage_reprocess.py``,
+because its handlers need the database.
 """
 
 from __future__ import annotations
