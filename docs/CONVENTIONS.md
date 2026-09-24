@@ -237,10 +237,13 @@ because `clients/python/pyproject.toml` carries its own table - which, having
 no `select`, tracked ruff's *default* rule set and picked up 91 findings the
 day those defaults widened. That config now selects its rules explicitly and
 excludes the generated tree under `[tool.ruff.lint]` only: `ruff format` must
-still reach it, because `clients/python/scripts/regen.sh` and the
-`client-drift` gate both format it and diff the result against the committed
-tree. A `lint.exclude` pattern filters per file rather than pruning the walk,
-so the trailing `/**` is load-bearing.
+still reach it, because the `client-drift` gate formats it and diffs the result
+against the committed tree (`clients/python/scripts/regen.sh` delegates its
+write to that gate). A `lint.exclude` pattern filters per file rather than
+pruning the walk, so the trailing `/**` is load-bearing. The generator's own
+import-fixing hook honours the exclude too, so a tree generated in place skips
+import sorting and pruning. The gate generates at a staging path, which is why
+regen.sh must never generate on its own (#272).
 
 The `rev:` in `.pre-commit-config.yaml` and the `ruff` pin in `pyproject.toml`
 move together; a skew means the commit-time hook and CI disagree about what is

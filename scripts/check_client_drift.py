@@ -8,10 +8,10 @@ regenerates the client from the committed OpenAPI snapshot (the
 contract-of-record) into a temp dir and diffs the result against the committed
 ``generated/`` tree. A non-empty diff is drift.
 
-The regen mirrors the SDK's ``scripts/regen.sh`` generate+format invocation
-(against the committed snapshot rather than live) — same ``openapi-python-client``
-flags, same post-generation ``ruff format`` — and runs inside the SDK's own
-``uv`` environment so the generator and ``ruff`` versions are pinned by that
+This script is the only place the tree is generated. The SDK's
+``scripts/regen.sh`` dumps the snapshot, then calls ``--write`` here, so the
+check and the write cannot disagree (#272). Generation runs inside the SDK's
+own ``uv`` environment so the generator and ``ruff`` versions are pinned by that
 SDK's lockfile (a shared/floating toolchain would yield spurious formatting
 diffs). ``regen.sh`` writes both the snapshot and the tree, so running it leaves
 this check a no-op.
@@ -157,15 +157,20 @@ def _run(cmd: list[str], *, cwd: Path) -> None:
 
 
 def _regenerate(client: Client, dest: Path) -> None:
-    """Regenerate ``client`` from its snapshot into ``dest``, mirroring regen.sh.
+    """Regenerate ``client`` from its snapshot into ``dest``.
 
     Runs inside the SDK's own ``uv`` environment (``cwd=sdk_dir``) so the pinned
     generator and ``ruff`` versions are used. ``dest`` MUST live inside the SDK
     tree: ``ruff`` discovers its config by walking up from each formatted file,
-    and only an in-tree path resolves the same ``pyproject.toml`` that regen.sh
-    uses. (A path outside the SDK falls back to ruff's default config, which
-    wraps borderline imports the committed tree leaves on one line — spurious
-    drift.) ``check_client`` and ``write_client`` both pass in-tree paths.
+    and only an in-tree path resolves the SDK's ``pyproject.toml``. (A path
+    outside the SDK falls back to ruff's default config, which wraps borderline
+    imports the committed tree leaves on one line — spurious drift.)
+
+    ``dest`` must also NOT be the committed ``generated/`` path. The generator's
+    own ``ruff check --fix-only --extend-select=I`` post-hook honours the SDK's
+    ``lint.exclude`` of that path (#242), so generating there skips import
+    sorting and pruning (#272). ``check_client`` and ``write_client`` both pass
+    a ``.drift-*`` staging path, which the exclude does not match.
     """
     _run(
         [
@@ -190,8 +195,9 @@ def _regenerate(client: Client, dest: Path) -> None:
 def _regenerate_in_tree(client: Client) -> Iterator[Path]:
     """Regenerate ``client`` into an in-tree temp dir; yield the generated path.
 
-    The temp dir lives inside the SDK tree so ``ruff`` resolves the same config
-    regen.sh does (see ``_regenerate``); it is removed on exit.
+    The temp dir lives inside the SDK tree so ``ruff`` resolves the SDK's config,
+    outside the lint-excluded ``generated/`` path (see ``_regenerate``); it is
+    removed on exit.
     """
     with tempfile.TemporaryDirectory(dir=client.sdk_dir, prefix=".drift-") as tmp:
         dest = Path(tmp) / "generated"

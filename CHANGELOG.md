@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.19.1 (2026-09-24)
+
+[sdk] **`regen.sh` writes the tree the client-drift gate expects** (archiver#272). Tooling only: no route, schema or SDK code change, so `archiver-client` is not bumped. The snapshot changes only in `info.version`.
+
+Since #242, `bash clients/python/scripts/regen.sh` wrote a `generated/` tree that failed CI's `client-drift` job. 121 unrelated files came back with unsorted imports and unused ones restored. openapi-python-client runs `ruff check --fix-only --extend-select=I` inside its output directory, and the SDK's `lint.exclude` of `src/archiver_client/generated/**` switches that hook off at the real path. regen.sh generated at the real path. The gate generated at a `.drift-*` staging path, where the hook runs.
+
+regen.sh now dumps the snapshot and hands the tree to `scripts/check_client_drift.py --write archiver`, which generates at the staging path and swaps it into place. Generation has one code path, so the check and the write cannot disagree. `tests/scripts/test_client_regen.py` pins the delegation.
+
+A failed dump no longer empties the snapshot. regen.sh redirected `dump_openapi.py` straight into it, so the shell truncated the committed contract before the dump ran; it now dumps to a temp file and copies in only on success.
+
 ## v4.19.0 (2026-09-24)
 
 [both] **Dead-lettered outbox triage: list, rearm, discard, SDK v5.7.0** (archiver#191). A dead-lettered `changes_outbox` row had no exit: nothing cleared `dead_lettered_at`, so the `dead_lettered_count` warning could never be acknowledged and an operator-fixed row could never be republished. Three operator routes, generated-only in the SDK like the DLQ routes. Every write names explicit row ids, never a predicate. No migration.
