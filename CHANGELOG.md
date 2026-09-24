@@ -18,6 +18,18 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.19.0 (2026-09-24)
+
+[both] **Dead-lettered outbox triage: list, rearm, discard, SDK v5.7.0** (archiver#191). A dead-lettered `changes_outbox` row had no exit: nothing cleared `dead_lettered_at`, so the `dead_lettered_count` warning could never be acknowledged and an operator-fixed row could never be republished. Three operator routes, generated-only in the SDK like the DLQ routes. Every write names explicit row ids, never a predicate. No migration.
+
+- **`GET /api/v1/tools/outbox/dead-lettered`**: paginated `{items, has_more, limit, offset}`, oldest dead-lettering first. Each item is `{row_id, topic, event_type, payload, last_error, publish_attempts, created_at, dead_lettered_at, rearmable}`.
+- **`POST /api/v1/tools/outbox/dead-lettered/rearm`** `{"row_ids": [...]}` (1-500 ULIDs) returns `{results: [{row_id, outcome, detail}]}`, one per distinct id in request order. `rearmed` clears `dead_lettered_at` and resets `publish_attempts`. Nothing else changes a row:
+  - `not_found`: unknown, live or published
+  - `refused`: topic is not `info.changes`. The `info.registry` snapshot is already the repair, and a late `content.replicate` command may have been abandoned by the reaper
+  - `rejected`: the payload still fails the drain's pure build phase, so it would only re-dead-letter
+- **`POST /api/v1/tools/outbox/dead-lettered/discard`** `{"row_ids": [...]}` returns `{discarded, not_found}`. Each row is logged in full to journald (`Discarding dead-lettered outbox row`), then deleted, in one transaction. A live or published row is never deleted.
+- **No auto-expiry.** A dead-lettered row leaves only through these routes.
+
 ## v4.18.0 (2026-09-24)
 
 [both] **DLQ reprocess, and provenance on every listed entry, SDK v5.6.0** (archiver#238, on co-core 0.19.1's cannobserv#474). Both additive. The v4.17.0 routes keep their shapes, and `DeadLetterOut` only gains fields.

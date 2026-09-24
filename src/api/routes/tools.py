@@ -3,7 +3,8 @@
 Non-mutating helpers that an LLM agent (or human operator) calls while
 composing Information Items + SourceSpecs. Mutating CRUD lives on the existing
 /api/v1/info-items and sub-resource routes. The exceptions are operator bus
-controls: the registry republish trigger, and DLQ triage (archiver#238).
+controls: the registry republish trigger, DLQ triage (archiver#238), and
+dead-lettered outbox triage (archiver#191).
 """
 
 import os
@@ -25,14 +26,20 @@ from src.api.schemas.info_item import InfoItemOut
 from src.api.schemas.pagination import Page
 from src.api.schemas.tools import (
     ChunkPreviewOut,
+    DeadLetteredOutboxRowOut,
     DeadLetterOut,
     DiscardDeadLettersRequest,
     DiscardDeadLettersResponse,
+    DiscardOutboxRowsRequest,
+    DiscardOutboxRowsResponse,
     FetchAndRenderRequest,
     FetchAndRenderResult,
     PreviewExtractionRequest,
     PreviewExtractionResult,
     ProposeSelectorsRequest,
+    RearmOutboxRowsRequest,
+    RearmOutboxRowsResponse,
+    RearmResultOut,
     ReprocessDeadLettersRequest,
     ReprocessDeadLettersResponse,
     ReprocessResultOut,
@@ -57,6 +64,12 @@ from src.core.changes.dlq_triage import (
     discard_dead_letters,
     list_dead_letters,
     reprocess_dead_letters,
+)
+from src.core.changes.outbox_triage import (
+    REARMABLE_TOPICS,
+    discard_dead_lettered,
+    list_dead_lettered,
+    rearm_dead_lettered,
 )
 from src.core.rep_fields import resolve_rep_fields
 from src.core.rep_fields_schema.validator import (
@@ -432,4 +445,71 @@ async def reprocess_dead_letters_route(
         )
     return ReprocessDeadLettersResponse(
         results=[ReprocessResultOut.model_validate(r, from_attributes=True) for r in results]
+    )
+
+
+@router.get("/outbox/dead-lettered", response_model=Page[DeadLetteredOutboxRowOut])
+async def list_dead_lettered_outbox_route(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=2**63 - 1),
+    session: AsyncSession = Depends(get_db_session),
+) -> Page[DeadLetteredOutboxRowOut]:
+    """List dead-lettered outbox rows, oldest first, for triage (archiver#191).
+
+    The rows behind the ``dead_lettered_count`` warning. A database read, so
+    unlike the DLQ routes it works bus-dormant, on the dev server included.
+    """
+    rows, has_more = await list_dead_lettered(session, limit=limit, offset=offset)
+    return Page[DeadLetteredOutboxRowOut](
+        items=[
+            DeadLetteredOutboxRowOut(
+                row_id=str(row.id),
+                topic=row.topic,
+                event_type=row.payload.get("event_type") if isinstance(row.payload, dict) else None,
+                payload=row.payload,
+                last_error=row.last_error,
+                publish_attempts=row.publish_attempts,
+                created_at=row.created_at,
+                dead_lettered_at=row.dead_lettered_at,
+                rearmable=row.topic in REARMABLE_TOPICS,
+            )
+            for row in rows
+        ],
+        has_more=has_more,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/outbox/dead-lettered/discard", response_model=DiscardOutboxRowsResponse)
+async def discard_dead_lettered_outbox_route(
+    body: DiscardOutboxRowsRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> DiscardOutboxRowsResponse:
+    """Delete the named dead-lettered outbox rows (archiver#191).
+
+    Each row is logged in full to journald first. One transaction, so a failure
+    deletes nothing. An id that is not a dead-lettered row comes back in
+    ``not_found`` - a live or published row is never touched - so a retried
+    discard is harmless.
+    """
+    outcome = await discard_dead_lettered(session, body.row_ids)
+    return DiscardOutboxRowsResponse(discarded=outcome.discarded, not_found=outcome.not_found)
+
+
+@router.post("/outbox/dead-lettered/rearm", response_model=RearmOutboxRowsResponse)
+async def rearm_dead_lettered_outbox_route(
+    body: RearmOutboxRowsRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> RearmOutboxRowsResponse:
+    """Return the named dead-lettered outbox rows to the drain's queue (archiver#191).
+
+    Clears ``dead_lettered_at`` and resets ``publish_attempts``. A row whose
+    payload still does not build is ``rejected``, and one whose topic is not
+    ``info.changes`` is ``refused``; neither changes. Every outcome is per row,
+    in request order.
+    """
+    results = await rearm_dead_lettered(session, body.row_ids)
+    return RearmOutboxRowsResponse(
+        results=[RearmResultOut.model_validate(r, from_attributes=True) for r in results]
     )

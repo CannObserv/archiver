@@ -75,6 +75,40 @@ stays visible past its one-time dead-letter ERROR. Deliberately **not** on
 `/health`: that route is unauthenticated and DB-free (pure liveness), and these
 numbers are neither.
 
+**Triaging dead-lettered outbox rows (archiver#191)** - the only way out of
+the terminal state; nothing expires one on its own, because an untriaged
+incident record ageing out silently is worse than a permanent warning.
+`src/core/changes/outbox_triage.py`, behind three operator routes, every write
+by explicit row id:
+
+```bash
+H='X-API-Key: <key>'; Q=http://localhost:8000/api/v1/tools/outbox/dead-lettered
+curl -s -H "$H" "$Q"                              # list, oldest first
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' \
+  -d '{"row_ids": ["<row_id>"]}' "$Q/rearm"       # cause fixed: back to the drain
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' \
+  -d '{"row_ids": ["<row_id>"]}' "$Q/discard"     # post-mortem done: delete
+```
+
+- **Discard** deletes, each row logged in full first (`Discarding
+  dead-lettered outbox row`: payload, `last_error`, attempts, timestamps). The
+  dead-letter-time ERROR line does not outlive journald's retention, about two
+  weeks on this host. One transaction; a live or published row is never
+  touched and comes back in `not_found`.
+- **Rearm** clears `dead_lettered_at` and resets `publish_attempts`. Fix the
+  cause first - a `WRONGTYPE` from a misconfigured key, say - or it dead-letters
+  again. Two guards leave a row unchanged. `rejected`: its payload still fails
+  the drain's pure build phase, so it would re-dead-letter on the next drain;
+  one that now builds is the co-core version-skew case. `refused`: its topic is
+  not `info.changes`. An `info.registry` delta is already repaired by the hourly
+  snapshot and loses on generation anyway; a `content.replicate` command may
+  have been abandoned by the reaper, which never re-issues - re-replicate from
+  the dashboard (archiver#171), which mints a fresh `command_id`. Discard both.
+- **These write the database, not the broker**, so unlike the DLQ routes they
+  work bus-dormant and are exercised on 8001 against the dev database. On 8000
+  they are production writes, an operator's decision about named rows; an
+  agent does not run them unasked.
+
 **Stream trim allowlist (archiver#239)** - the drain loop `XTRIM`s exactly
 `trim_topics`, literally `{info.changes}` (set in `src/api/main.py`, pinned by
 tests), every `TRIM_INTERVAL_ITERATIONS` iterations to

@@ -59,8 +59,8 @@ class ChangesOutboxRow(Base):
         ),
         # Tiny partial index (poison rows only) backing the dead_lettered_count
         # observability query (archiver#112). Dead-lettered rows are exempt from
-        # the archiver#189 pruner by design - they are the post-mortem record -
-        # so this set is the one that still has no retention, and a bare COUNT
+        # the archiver#189 pruner by design - they are the post-mortem record,
+        # leaving only through operator triage (archiver#191) - and a bare COUNT
         # over the table would degrade to an ever-slower seq scan.
         Index(
             "ix_changes_outbox_dead_lettered",

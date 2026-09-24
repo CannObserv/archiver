@@ -23,7 +23,9 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 `InfoSourceOut` gains `domain_name: str | None` (hostname auto-set from URL at create time).
 `GET /info-sources` gains `?domain_name=` filter.
 
-**Read-only tools:**
+**Tools:** read-only authoring helpers, plus operator controls that write - the
+registry republish, DLQ discard/reprocess (#238) and outbox rearm/discard (#191).
+Those take production action on 8000 and run only when the operator asks.
 
 | Tool | HTTP | SDK method |
 |---|---|---|
@@ -35,6 +37,9 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | List a DLQ | `GET /tools/dead-letters/{dlq}` | generated only (operator control, archiver#238): paginated `{items, has_more, limit, offset}`, oldest first, each entry decoded against the running co-core, with its `provenance` (original `source_id`, parking `group`/`consumer`, `reason`), `parked_as` (`handler_poison` / `undecodable`, from the reason's prefix) and `owned` (archiver's own group parked it); `{dlq}` outside `content.revisions.dlq` / `content.artifacts.dlq` is a 422, a dormant bus a 409, an unreadable broker a 503 |
 | Reprocess DLQ entries | `POST /tools/dead-letters/{dlq}/reprocess` | generated only (operator control, archiver#238): same body as discard → `{results: [{entry_id, outcome, detail}]}`. Runs each owned entry through the queue's own handler and deletes what it settles (`reprocessed`); `not_found`, `not_owned`, `undecodable`, `rejected` (handler poison), `failed` and `deferred` stay. A broker failure part-way through is a 503 whose `data` carries `results` and `in_doubt`. Runbook: [BUS_CONSUMERS.md](BUS_CONSUMERS.md#triaging-the-two-dlqs-archiver238) |
 | Discard DLQ entries | `POST /tools/dead-letters/{dlq}/discard` | generated only (operator control, archiver#238): `{"entry_ids": [...]}` (1-500 exact `<ms>-<seq>`, each half a uint64) → `{discarded, not_found}`; each frame logged to journald, then `XDEL`ed; a broker failure part-way through is a 503 whose `data` carries `discarded`, `not_found` and `in_doubt` (the id whose delete was in flight, or null). Runbook: [BUS_CONSUMERS.md](BUS_CONSUMERS.md#triaging-the-two-dlqs-archiver238) |
+| List dead-lettered outbox rows | `GET /tools/outbox/dead-lettered` | generated only (operator control, archiver#191): paginated `{items, has_more, limit, offset}`, oldest dead-lettering first; each item `{row_id, topic, event_type, payload, last_error, publish_attempts, created_at, dead_lettered_at, rearmable}`. A database read, so it works bus-dormant. Runbook: [BUS.md](BUS.md) |
+| Rearm dead-lettered outbox rows | `POST /tools/outbox/dead-lettered/rearm` | generated only (operator control, archiver#191): `{"row_ids": [...]}` (1-500 ULIDs) → `{results: [{row_id, outcome, detail}]}`, one per distinct id in request order. `rearmed` clears `dead_lettered_at` and resets `publish_attempts`; `not_found`, `refused` (topic not `info.changes`) and `rejected` (payload still does not build) change nothing |
+| Discard dead-lettered outbox rows | `POST /tools/outbox/dead-lettered/discard` | generated only (operator control, archiver#191): `{"row_ids": [...]}` (1-500 ULIDs) → `{discarded, not_found}`; each row logged in full to journald, then deleted, in one transaction. A live or published row is never deleted and comes back in `not_found` |
 | `resolve_rep_fields` | `POST /tools/resolve-rep-fields` | `resolve_rep_fields(bag)` |
 | `find_info_item` | `GET /tools/find-info-items?q=…` | `find_info_item(query, limit=20)` |
 | `fetch_and_render` | `POST /tools/fetch-and-render` | `fetch_and_render(url)` |

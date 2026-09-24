@@ -58,7 +58,7 @@ wheels = [
 
 [[package]]
 name = "archiver"
-version = "4.18.0"
+version = "4.19.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -129,7 +129,7 @@ dev = [
 
 [[package]]
 name = "archiver-client"
-version = "5.6.0"
+version = "5.7.0"
 source = { editable = "clients/python" }
 dependencies = [
     { name = "attrs" },

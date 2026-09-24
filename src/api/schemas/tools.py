@@ -7,6 +7,7 @@ from fastapi import Path
 from pydantic import AfterValidator, BaseModel, Field, HttpUrl
 
 from src.api.errors import FieldError
+from src.api.schemas.types import ULIDStr
 from src.core.changes.dlq_triage import (
     STREAM_ID_PATTERN,
     TRIAGE_DLQS,
@@ -14,6 +15,7 @@ from src.core.changes.dlq_triage import (
     ReprocessOutcome,
     is_exact_stream_id,
 )
+from src.core.changes.outbox_triage import RearmOutcome
 
 # ---------------------------------------------------------------------------
 # validate-source-spec
@@ -408,3 +410,81 @@ class DiscardDeadLettersResponse(BaseModel):
 
     discarded: list[str] = Field(description="Ids deleted, each logged in full to journald first.")
     not_found: list[str] = Field(description="Ids that were not in the queue.")
+
+
+# ---------------------------------------------------------------------------
+# outbox/dead-lettered (archiver#191)
+# ---------------------------------------------------------------------------
+
+
+class DeadLetteredOutboxRowOut(BaseModel):
+    """One dead-lettered ``changes_outbox`` row, described for triage."""
+
+    row_id: str = Field(description="The outbox row's ULID; what discard and rearm take.")
+    topic: str = Field(description="The stream the row was bound for.")
+    event_type: str | None = Field(description="The payload's `event_type`, if it has one.")
+    payload: Any = Field(
+        description="The stored payload, as the publisher saw it. Usually an object, but a "
+        "non-object payload is one of the poison cases, so it is returned as stored."
+    )
+    last_error: str | None = Field(
+        description="Why it was dead-lettered, capped at 1000 characters. The full "
+        "traceback is on the journald line `Dead-lettering outbox row`, while retention lasts."
+    )
+    publish_attempts: int = Field(description="Failed attempts before it was dead-lettered.")
+    created_at: datetime
+    dead_lettered_at: datetime
+    rearmable: bool = Field(
+        description="Whether its topic may go back to the drain. Only `info.changes` does: "
+        "`info.registry` is repaired by the hourly snapshot, and a late `content.replicate` "
+        "command may already be abandoned. Discard the rest."
+    )
+
+
+RowIdList = Annotated[list[ULIDStr], Field(min_length=1, max_length=500)]
+"""1-500 outbox row ULIDs. Each request names what its route does with them."""
+
+
+class DiscardOutboxRowsRequest(BaseModel):
+    """Request body for POST /api/v1/tools/outbox/dead-lettered/discard."""
+
+    row_ids: RowIdList = Field(
+        description="Dead-lettered row ids to delete. A live or published row is never "
+        "deleted; it comes back in `not_found`."
+    )
+
+
+class DiscardOutboxRowsResponse(BaseModel):
+    """Response body for POST /api/v1/tools/outbox/dead-lettered/discard."""
+
+    discarded: list[str] = Field(description="Ids deleted, each logged in full to journald first.")
+    not_found: list[str] = Field(
+        description="Ids that are not a dead-lettered row: unknown, live, or published."
+    )
+
+
+class RearmOutboxRowsRequest(BaseModel):
+    """Request body for POST /api/v1/tools/outbox/dead-lettered/rearm."""
+
+    row_ids: RowIdList = Field(
+        description="Dead-lettered row ids to return to the drain's queue. Fix the cause first: "
+        "a rearmed row that fails the same way dead-letters again."
+    )
+
+
+class RearmResultOut(BaseModel):
+    """What happened to one requested row. Only `rearmed` changed it."""
+
+    row_id: str
+    outcome: RearmOutcome = Field(
+        description="`rearmed`: back in the drain's queue, attempts reset. `not_found`: not a "
+        "dead-lettered row. `refused`: its topic is not rearmable - discard it. `rejected`: "
+        "its payload still does not build against the running co-core - discard it."
+    )
+    detail: str | None = Field(description="Why it stayed; null when it did not.")
+
+
+class RearmOutboxRowsResponse(BaseModel):
+    """Response body for POST /api/v1/tools/outbox/dead-lettered/rearm."""
+
+    results: list[RearmResultOut] = Field(description="One per distinct id, in request order.")

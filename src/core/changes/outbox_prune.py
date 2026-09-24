@@ -14,10 +14,11 @@ Two states are never prunable:
   own queue. Age is irrelevant; an ancient live row is the backlog the #112
   stats exist to surface, not garbage.
 - **Dead-lettered** - the archiver#107 post-mortem record and the #112 danger
-  signal. The publisher only ever dead-letters an *unpublished* row, so
-  ``published_at IS NOT NULL`` already excludes them; the clause is stated
-  anyway so the exclusion is a property of this query rather than an emergent
-  consequence of another module.
+  signal. Its only exit is operator triage by row id (``outbox_triage``,
+  archiver#191); nothing ages one out. The publisher only ever dead-letters an
+  *unpublished* row, so ``published_at IS NOT NULL`` already excludes them; the
+  clause is stated anyway so the exclusion is a property of this query rather
+  than an emergent consequence of another module.
 
 **Where this runs.** Inside ``publisher.run``, on its own cadence, alongside the
 periodic XTRIM and the stats line - not on a systemd timer. A timer would need
