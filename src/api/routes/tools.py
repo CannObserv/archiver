@@ -12,9 +12,14 @@ from typing import TYPE_CHECKING
 from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import APIRouter, Depends, Query, Request
 from redis.exceptions import RedisError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.api.deps import get_db_session, get_fetch_driver, get_redis_client
+from src.api.deps import (
+    get_db_session,
+    get_db_session_factory,
+    get_fetch_driver,
+    get_redis_client,
+)
 from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_item import InfoItemOut
 from src.api.schemas.pagination import Page
@@ -28,6 +33,9 @@ from src.api.schemas.tools import (
     PreviewExtractionRequest,
     PreviewExtractionResult,
     ProposeSelectorsRequest,
+    ReprocessDeadLettersRequest,
+    ReprocessDeadLettersResponse,
+    ReprocessResultOut,
     RepublishRegistryResponse,
     ResolveRepFieldsRequest,
     ResolveRepFieldsResponse,
@@ -45,8 +53,10 @@ from src.api.schemas.tools import (
 from src.api.serializers import info_item_to_out
 from src.core.changes.dlq_triage import (
     DiscardInterruptedError,
+    ReprocessInterruptedError,
     discard_dead_letters,
     list_dead_letters,
+    reprocess_dead_letters,
 )
 from src.core.rep_fields import resolve_rep_fields
 from src.core.rep_fields_schema.validator import (
@@ -381,4 +391,45 @@ async def discard_dead_letters_route(
         )
     return DiscardDeadLettersResponse(
         discarded=list(result.discarded), not_found=list(result.not_found)
+    )
+
+
+@router.post("/dead-letters/{dlq}/reprocess", response_model=ReprocessDeadLettersResponse)
+async def reprocess_dead_letters_route(
+    dlq: TriageDlqStr,
+    body: ReprocessDeadLettersRequest,
+    redis: "RedisAsync | None" = Depends(get_redis_client),
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_db_session_factory),
+) -> ReprocessDeadLettersResponse:
+    """Run the named entries through the queue's own handler (archiver#238).
+
+    The handler is the one the consumer loop runs, so an entry is decided exactly
+    as a live delivery would be; only a settled one is ``XDEL``ed, after its frame
+    is logged. An entry another group parked, or one with no provenance, is left
+    alone. Every outcome is per entry, in request order. A broker failure
+    part-way through is a 503 whose ``data`` carries ``results`` so far and
+    ``in_doubt`` (the id whose delete was in flight, its handler already
+    committed; or null).
+    """
+    client = _require_bus(redis)
+    try:
+        results = await reprocess_dead_letters(
+            client, dlq, body.entry_ids, session_factory=session_factory
+        )
+    except ReprocessInterruptedError as e:
+        raise_envelope(
+            503,
+            "server",
+            str(e),
+            data={
+                "results": [
+                    ReprocessResultOut.model_validate(r, from_attributes=True).model_dump()
+                    for r in e.results
+                ],
+                "in_doubt": e.in_doubt,
+            },
+            source_exc=e,
+        )
+    return ReprocessDeadLettersResponse(
+        results=[ReprocessResultOut.model_validate(r, from_attributes=True) for r in results]
     )

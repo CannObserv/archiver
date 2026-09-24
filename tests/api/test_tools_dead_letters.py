@@ -4,19 +4,28 @@ The route borrows the lifespan's Redis client through ``get_redis_client``; the
 tests hand it a fakeredis instance, so XRANGE / XDEL run for real.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from co_core.pure.adapters.bus.dead_letter import dead_letter_fields
+from co_core.pure.adapters.bus.envelope import to_wire
+from co_core.pure.models.changes import SourceRevisionObservedEvent
 from fakeredis import aioredis as fakeredis_aio
 from redis.exceptions import ConnectionError as RedisConnectionError
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from ulid import ULID
 
-from src.api.deps import get_redis_client
+from src.api.deps import get_db_session_factory, get_redis_client
 from src.api.main import app
+from src.api.schemas.tools import DeadLetterOut, ReprocessResultOut
+from src.core.changes.dlq_triage import STREAM_ID_PATTERN, ParkedAs, ReprocessOutcome
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 DLQ = "content.revisions.dlq"
 LIST_URL = f"/api/v1/tools/dead-letters/{DLQ}"
 DISCARD_URL = f"{LIST_URL}/discard"
+REPROCESS_URL = f"{LIST_URL}/reprocess"
 
 
 @pytest.fixture
@@ -47,6 +56,28 @@ async def test_list_returns_a_page_of_entries(client, fake_redis):
     assert item["decodes"] is False
     assert "BusMessageUnknownEventTypeError" in item["decode_error"]
     assert item["dead_lettered_at"].endswith("Z")
+
+
+async def test_list_returns_each_entrys_provenance(client, fake_redis):
+    fields = dead_letter_fields(
+        {"event_type": "nope", "payload": "{}"},
+        source_id="1727179200000-0",
+        group="archiver.revisions",
+        consumer="archiver-revisions-1",
+        reason="undecodable: BusMessageUnknownEventTypeError('nope')",
+    )
+    await fake_redis.xadd(DLQ, fields)
+
+    [item] = (await client.get(LIST_URL, headers=HEADERS)).json()["items"]
+
+    assert item["provenance"] == {
+        "source_id": "1727179200000-0",
+        "group": "archiver.revisions",
+        "consumer": "archiver-revisions-1",
+        "reason": "undecodable: BusMessageUnknownEventTypeError('nope')",
+    }
+    assert item["parked_as"] == "undecodable"
+    assert item["owned"] is True
 
 
 async def test_list_pages_with_limit_and_offset(client, fake_redis):
@@ -194,6 +225,7 @@ async def test_discard_requires_an_api_key(client, fake_redis):
     [
         ("/api/v1/tools/dead-letters/{dlq}", "get"),
         ("/api/v1/tools/dead-letters/{dlq}/discard", "post"),
+        ("/api/v1/tools/dead-letters/{dlq}/reprocess", "post"),
     ],
 )
 def test_openapi_names_the_queues_the_dlq_parameter_accepts(path, method):
@@ -202,3 +234,138 @@ def test_openapi_names_the_queues_the_dlq_parameter_accepts(path, method):
     [dlq] = [p for p in params if p["name"] == "dlq"]
     assert "content.revisions.dlq" in dlq["description"]
     assert "content.artifacts.dlq" in dlq["description"]
+
+
+# --- reprocessing ---
+
+
+def _observed_wire(info_source_id: str, fingerprint: str = "sha256:" + "c" * 64) -> dict[str, str]:
+    return to_wire(
+        SourceRevisionObservedEvent(
+            occurred_at=datetime(2026, 9, 24, 12, 0, tzinfo=UTC),
+            info_source_id=info_source_id,
+            extracted_fingerprint=fingerprint,
+            captured_at=datetime(2026, 9, 24, 11, 59, tzinfo=UTC),
+            content_size_bytes=10,
+            content_media_type="text/plain",
+            source_media_type="text/html",
+            blob_uri="file:///blob",
+            command_id="cmd-route",
+        )
+    )
+
+
+async def _park_owned(fake_redis, frame: dict[str, str], source_id: str = "9-0") -> str:
+    fields = dead_letter_fields(
+        frame,
+        source_id=source_id,
+        group="archiver.revisions",
+        consumer="archiver-revisions-1",
+        reason="undecodable: BusMessageUnknownEventTypeError('source_revision_observed')",
+    )
+    return (await fake_redis.xadd(DLQ, fields)).decode()
+
+
+@pytest.fixture
+def db_factory(test_engine):
+    """The route's handlers open their own sessions, as the consumer loop does."""
+    app.dependency_overrides[get_db_session_factory] = lambda: async_sessionmaker(
+        bind=test_engine, expire_on_commit=False
+    )
+    yield
+
+
+async def test_reprocess_runs_the_handler_and_removes_what_it_settled(
+    client, fake_redis, db_factory
+):
+    """An observation for an InfoSource the registry does not hold is the handler's
+    ack-and-drop: settled, so the entry goes. Poison stays for a discard."""
+    dropped = await _park_owned(fake_redis, _observed_wire(str(ULID())), source_id="1-0")
+    poison = await _park_owned(
+        fake_redis, _observed_wire(str(ULID()), fingerprint="deadbeef"), source_id="2-0"
+    )
+
+    resp = await client.post(REPROCESS_URL, headers=HEADERS, json={"entry_ids": [dropped, poison]})
+
+    assert resp.status_code == 200
+    [first, second] = resp.json()["results"]
+    assert first == {"entry_id": dropped, "outcome": "reprocessed", "detail": None}
+    assert second["entry_id"] == poison
+    assert second["outcome"] == "rejected"
+    assert "InvalidFingerprintError" in second["detail"]
+    assert [eid.decode() for eid, _ in await fake_redis.xrange(DLQ)] == [poison]
+
+
+async def test_reprocess_rejects_inexact_ids(client, fake_redis, db_factory):
+    resp = await client.post(REPROCESS_URL, headers=HEADERS, json={"entry_ids": ["-"]})
+    assert resp.status_code == 422
+
+
+async def test_reprocess_outside_the_allowlist_is_a_422(client, fake_redis, db_factory):
+    resp = await client.post(
+        "/api/v1/tools/dead-letters/content.fetch.dlq/reprocess",
+        headers=HEADERS,
+        json={"entry_ids": ["1-0"]},
+    )
+    assert resp.status_code == 422
+
+
+async def test_reprocess_conflicts_when_bus_dormant(client, db_factory):
+    app.dependency_overrides[get_redis_client] = lambda: None
+    resp = await client.post(REPROCESS_URL, headers=HEADERS, json={"entry_ids": ["1-0"]})
+    assert resp.status_code == 409
+
+
+async def test_a_broker_failure_mid_reprocess_is_a_503_that_names_its_progress(
+    client, fake_redis, db_factory
+):
+    first = await _park_owned(fake_redis, _observed_wire(str(ULID())), source_id="1-0")
+    second = await _park_owned(fake_redis, _observed_wire(str(ULID())), source_id="2-0")
+    real_xdel = fake_redis.xdel
+    calls = 0
+
+    async def xdel_then_fail(*args):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RedisConnectionError("broker went away")
+        return await real_xdel(*args)
+
+    with patch.object(fake_redis, "xdel", xdel_then_fail):
+        resp = await client.post(
+            REPROCESS_URL, headers=HEADERS, json={"entry_ids": [first, second]}
+        )
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["data"] == {
+        "results": [{"entry_id": first, "outcome": "reprocessed", "detail": None}],
+        "in_doubt": second,
+    }
+
+
+async def test_reprocess_requires_an_api_key(client, fake_redis):
+    resp = await client.post(REPROCESS_URL, json={"entry_ids": ["1-0"]})
+    assert resp.status_code in (401, 403)
+
+
+def test_the_response_models_take_their_value_sets_from_core():
+    """One source of truth: a value core adds must not be one the response model
+    rejects, which would turn a new outcome into a 500 at serialization. (typing
+    caches Literal, so an identical re-spelling passes too; any drift does not.)"""
+    assert ReprocessResultOut.model_fields["outcome"].annotation is ReprocessOutcome
+    assert DeadLetterOut.model_fields["parked_as"].annotation == ParkedAs | None
+
+
+def test_each_id_list_says_what_its_route_does_with_the_ids():
+    """Reprocess deletes only what its handler settles, so its contract must not
+    say "to delete"; both lists keep the same constraints."""
+    schemas = app.openapi()["components"]["schemas"]
+    discard = schemas["DiscardDeadLettersRequest"]["properties"]["entry_ids"]
+    reprocess = schemas["ReprocessDeadLettersRequest"]["properties"]["entry_ids"]
+
+    assert "to delete" in discard["description"]
+    assert "to delete" not in reprocess["description"]
+    assert "settles" in reprocess["description"]
+    for ids in (discard, reprocess):
+        assert (ids["minItems"], ids["maxItems"]) == (1, 500)
+        assert ids["items"]["pattern"] == STREAM_ID_PATTERN

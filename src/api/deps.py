@@ -9,7 +9,7 @@ from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import Depends, Request
 from fastapi.security import APIKeyHeader
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.api.errors import raise_envelope
 from src.core.database import get_session_factory
@@ -22,6 +22,16 @@ if TYPE_CHECKING:
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
     async with get_session_factory()() as session:
         yield session
+
+
+async def get_db_session_factory() -> async_sessionmaker[AsyncSession]:
+    """The session factory itself, for code that opens its own transactions.
+
+    DLQ reprocess (archiver#238) runs a consumer's handler, which commits in
+    sessions it opens, exactly as the consumer loop does - a request-scoped
+    ``get_db_session`` would not match that contract.
+    """
+    return get_session_factory()
 
 
 async def get_redis_client(request: Request) -> "RedisAsync | None":

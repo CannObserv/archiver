@@ -1,7 +1,8 @@
 """DLQ triage: listing and discarding the two queues archiver drains (archiver#238).
 
 Exercised against fakeredis so the stream commands (XRANGE / XDEL) are real,
-not mocked. Reprocessing is deliberately absent - see the module docstring.
+not mocked. Reprocess has its own file, ``test_dlq_triage_reprocess.py``,
+because its handlers need the database.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
+from co_core.pure.adapters.bus.dead_letter import DeadLetterProvenance, dead_letter_fields
 from co_core.pure.adapters.bus.envelope import to_wire
 from co_core.pure.models.changes import SourceRevisionObservedEvent
 from fakeredis import aioredis as fakeredis_aio
@@ -51,6 +53,23 @@ def _observed_frame() -> dict[str, str]:
         command_id="cmd-dlq",
     )
     return to_wire(event)
+
+
+def _parked(
+    frame: dict[str, str],
+    *,
+    group: str = "archiver.revisions",
+    reason: str | None = None,
+    source_id: str = "1727179200000-0",
+) -> dict[str, str]:
+    """A DLQ entry as co-core >= 0.19.1's ``dead_letter`` writes it."""
+    return dead_letter_fields(
+        frame,
+        source_id=source_id,
+        group=group,
+        consumer=f"{group.replace('.', '-')}-1",
+        reason=reason,
+    )
 
 
 # --- the allowlist ---
@@ -96,9 +115,9 @@ async def test_list_describes_a_decodable_entry(fake_redis):
 
 
 async def test_list_dates_each_entry_from_its_stream_id(fake_redis):
-    """The id's millisecond part is when ``dead_letter`` wrote it - until
-    cannobserv#474 ships provenance, the one handle back to the journald line
-    that says why."""
+    """The id's millisecond part is when ``dead_letter`` wrote it. On an entry
+    written before co-core 0.19.1 (no provenance), the one handle back to the
+    journald line that says why."""
     await fake_redis.xadd(REVISIONS_DLQ, _observed_frame(), id="1727179200123-0")
 
     [entry], _ = await list_dead_letters(fake_redis, REVISIONS_DLQ, limit=10, offset=0)
@@ -126,6 +145,83 @@ async def test_list_tolerates_a_frame_with_no_event_type(fake_redis):
     assert entry.event_type is None
     assert entry.decodes is False
     assert "BusMessageMissingFieldError" in entry.decode_error
+
+
+async def test_list_surfaces_the_provenance_dead_letter_recorded(fake_redis):
+    """cannobserv#474: the reason and the original id travel with the entry, so
+    triage no longer needs journald. ``fields`` stays the raw entry, provenance
+    included, and the extras do not disturb the decode attempt."""
+    reason = "handler poison: InvalidFingerprintError('deadbeef')"
+    fields = _parked(_observed_frame(), reason=reason)
+    await fake_redis.xadd(REVISIONS_DLQ, fields)
+
+    [entry], _ = await list_dead_letters(fake_redis, REVISIONS_DLQ, limit=10, offset=0)
+
+    assert entry.provenance == DeadLetterProvenance(
+        source_id="1727179200000-0",
+        group="archiver.revisions",
+        consumer="archiver-revisions-1",
+        reason=reason,
+    )
+    assert entry.parked_as == "handler_poison"
+    assert entry.owned is True
+    assert entry.fields == fields
+    assert entry.decodes is True
+
+
+async def test_list_classifies_an_undecodable_parking(fake_redis):
+    await fake_redis.xadd(
+        ARTIFACTS_DLQ,
+        _parked(
+            {"event_type": "nope", "payload": "{}"},
+            group="archiver.artifacts",
+            reason="undecodable: BusMessageUnknownEventTypeError('nope')",
+        ),
+    )
+
+    [entry], _ = await list_dead_letters(fake_redis, ARTIFACTS_DLQ, limit=10, offset=0)
+
+    assert entry.parked_as == "undecodable"
+    assert entry.owned is True
+
+
+@pytest.mark.parametrize(
+    ("dlq", "group"),
+    [
+        (REVISIONS_DLQ, "notifier.revisions"),  # another service's group, same topic
+        (ARTIFACTS_DLQ, "archiver.revisions"),  # archiver's, but for the other topic
+    ],
+)
+async def test_an_entry_parked_by_another_group_is_not_owned(fake_redis, dlq, group):
+    """A fact stream's DLQ is shared: every consuming service's group dead-letters
+    into ``<topic>.dlq`` (cannobserv#474). Only archiver's own group's entries are
+    its handlers' to reprocess."""
+    await fake_redis.xadd(dlq, _parked(_observed_frame(), group=group))
+
+    [entry], _ = await list_dead_letters(fake_redis, dlq, limit=10, offset=0)
+
+    assert entry.owned is False
+
+
+async def test_an_entry_from_before_provenance_is_not_classified(fake_redis):
+    """Written by co-core < 0.19.1: nothing to read, so nothing is claimed."""
+    await fake_redis.xadd(REVISIONS_DLQ, _observed_frame())
+
+    [entry], _ = await list_dead_letters(fake_redis, REVISIONS_DLQ, limit=10, offset=0)
+
+    assert entry.provenance == DeadLetterProvenance(
+        source_id=None, group=None, consumer=None, reason=None
+    )
+    assert entry.parked_as is None
+    assert entry.owned is False
+
+
+async def test_a_reason_without_a_known_prefix_is_not_classified(fake_redis):
+    await fake_redis.xadd(REVISIONS_DLQ, _parked(_observed_frame(), reason="something else"))
+
+    [entry], _ = await list_dead_letters(fake_redis, REVISIONS_DLQ, limit=10, offset=0)
+
+    assert entry.parked_as is None
 
 
 async def test_list_of_an_absent_queue_is_empty(fake_redis):

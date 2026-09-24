@@ -85,10 +85,12 @@ src/core/                      Domain logic
                                event_type, so repr() alone drops the remedy —
                                and that string is the whole diagnostic a
                                dead-lettered row or a quarantined message leaves
-                               (#141). dlq_triage.py lists and discards the
-                               two DLQs archiver drains (archiver#238) - XDEL
-                               by id, never XTRIM; reprocess deferred to
-                               cannobserv#474. outbox_prune.py is the published-row
+                               (#141). dlq_triage.py lists, discards and
+                               reprocesses the two DLQs archiver drains
+                               (archiver#238) - XDEL by id, never XTRIM;
+                               reprocess runs the consumer's own
+                               handle_message on owned entries only.
+                               outbox_prune.py is the published-row
                                retention pass (archiver#189) - it rides the
                                drain loop rather than a systemd timer, because a
                                timer would need a third holder of

@@ -3,6 +3,8 @@
 from .chunk_preview_out import ChunkPreviewOut
 from .dead_letter_out import DeadLetterOut
 from .dead_letter_out_fields import DeadLetterOutFields
+from .dead_letter_out_parked_as_type_0 import DeadLetterOutParkedAsType0
+from .dead_letter_provenance_out import DeadLetterProvenanceOut
 from .discard_dead_letters_request import DiscardDeadLettersRequest
 from .discard_dead_letters_response import DiscardDeadLettersResponse
 from .domain_out import DomainOut
@@ -54,6 +56,10 @@ from .rep_spec_out import RepSpecOut
 from .rep_spec_out_document import RepSpecOutDocument
 from .rep_spec_patch import RepSpecPatch
 from .rep_spec_patch_document_type_0 import RepSpecPatchDocumentType0
+from .reprocess_dead_letters_request import ReprocessDeadLettersRequest
+from .reprocess_dead_letters_response import ReprocessDeadLettersResponse
+from .reprocess_result_out import ReprocessResultOut
+from .reprocess_result_out_outcome import ReprocessResultOutOutcome
 from .republish_registry_response import RepublishRegistryResponse
 from .resolve_rep_fields_request import ResolveRepFieldsRequest
 from .resolve_rep_fields_request_bag import ResolveRepFieldsRequestBag
@@ -80,6 +86,8 @@ __all__ = (
     "ChunkPreviewOut",
     "DeadLetterOut",
     "DeadLetterOutFields",
+    "DeadLetterOutParkedAsType0",
+    "DeadLetterProvenanceOut",
     "DiscardDeadLettersRequest",
     "DiscardDeadLettersResponse",
     "DomainOut",
@@ -122,6 +130,10 @@ __all__ = (
     "PreviewExtractionRequestSourceSpec",
     "PreviewExtractionResult",
     "ProposeSelectorsRequest",
+    "ReprocessDeadLettersRequest",
+    "ReprocessDeadLettersResponse",
+    "ReprocessResultOut",
+    "ReprocessResultOutOutcome",
     "RepSpecAssignmentCreate",
     "RepSpecCreate",
     "RepSpecCreateDocument",

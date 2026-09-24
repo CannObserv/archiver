@@ -212,6 +212,7 @@ class _ScriptedBus:
     starts: list[str] = field(default_factory=list)
     min_idles: list[int] = field(default_factory=list)
     dead_lettered: list[str] = field(default_factory=list)
+    reasons: list[str | None] = field(default_factory=list)
     acked: list[str] = field(default_factory=list)
 
     async def claim_stale_page(self, *, min_idle_ms: int, count: int, start_id: str) -> ClaimPage:
@@ -222,8 +223,11 @@ class _ScriptedBus:
         assert self.pages, f"walk kept scanning past its last page (start_id={start_id})"
         return self.pages.pop(0)
 
-    async def dead_letter(self, message_id: str, fields: dict[str, str]) -> str:
+    async def dead_letter(
+        self, message_id: str, fields: dict[str, str], *, reason: str | None = None
+    ) -> str:
         self.dead_lettered.append(message_id)
+        self.reasons.append(reason)
         await self.ack(message_id)
         return f"dlq-{message_id}"
 
@@ -335,6 +339,8 @@ async def test_reclaim_dead_letters_poison_and_processes_the_rest_in_one_pass():
 
     assert settled == 3
     assert bus.dead_lettered == ["2-0"]
+    [reason] = bus.reasons
+    assert reason.startswith(f"{group_consumer.REASON_UNDECODABLE}: ")
     assert handled == ["1-0", "3-0"]
     assert sorted(bus.acked) == ["1-0", "2-0", "3-0"]
 

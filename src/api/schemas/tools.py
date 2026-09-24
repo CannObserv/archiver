@@ -7,7 +7,13 @@ from fastapi import Path
 from pydantic import AfterValidator, BaseModel, Field, HttpUrl
 
 from src.api.errors import FieldError
-from src.core.changes.dlq_triage import STREAM_ID_PATTERN, TRIAGE_DLQS, is_exact_stream_id
+from src.core.changes.dlq_triage import (
+    STREAM_ID_PATTERN,
+    TRIAGE_DLQS,
+    ParkedAs,
+    ReprocessOutcome,
+    is_exact_stream_id,
+)
 
 # ---------------------------------------------------------------------------
 # validate-source-spec
@@ -303,34 +309,98 @@ TriageDlqStr = Annotated[
 OpenAPI, and so the SDK, learns the two legal values."""
 
 
+class DeadLetterProvenanceOut(BaseModel):
+    """What `dead_letter` recorded about an entry (co-core >= 0.19.1, cannobserv#474).
+
+    Every field is null on an entry written before that.
+    """
+
+    source_id: str | None = Field(description="The original entry's id on the source stream.")
+    group: str | None = Field(description="The consumer group that parked it.")
+    consumer: str | None = Field(description="The consumer within that group.")
+    reason: str | None = Field(
+        description="Why it was parked. Archiver's own start `handler poison: ` or "
+        "`undecodable: `, then the error; capped at 2000 characters."
+    )
+
+
 class DeadLetterOut(BaseModel):
     """One entry of a dead-letter queue, described for triage."""
 
     entry_id: str = Field(description="The entry's stream id in the DLQ; what discard takes.")
     dead_lettered_at: datetime = Field(
-        description="When the entry was dead-lettered, from its stream id. Until co-core "
-        "records provenance (cannobserv#474), the way back to the journald line that says why."
+        description="When the entry was dead-lettered, from its stream id. On an entry with "
+        "no provenance, the way back to the journald line that says why."
     )
-    fields: dict[str, str] = Field(description="The raw wire fields `dead_letter` copied.")
+    fields: dict[str, str] = Field(
+        description="The raw entry: the wire fields `dead_letter` copied, plus its `dlq.*` "
+        "provenance fields."
+    )
     event_type: str | None = Field(description="The frame's `event_type` field, if it has one.")
     decodes: bool = Field(
         description="Whether the frame decodes against the running co-core. True on an entry "
         "that failed to decode when it was parked is the version-skew case."
     )
     decode_error: str | None = Field(description="Why it does not decode; null when it does.")
+    provenance: DeadLetterProvenanceOut
+    parked_as: ParkedAs | None = Field(
+        description="Which quarantine path parked it, read off the reason's prefix. "
+        "`handler_poison` decoded and still failed: discard. `undecodable` with `decodes` "
+        "true is version skew: reprocess. Null with no reason, or one archiver did not write."
+    )
+    owned: bool = Field(
+        description="Whether archiver's own group for this queue's topic parked it. A fact "
+        "stream's DLQ is shared by every consuming service; only owned entries are archiver's "
+        "to reprocess."
+    )
+
+
+StreamIdList = Annotated[
+    list[Annotated[str, Field(pattern=STREAM_ID_PATTERN), AfterValidator(_validate_stream_id)]],
+    Field(min_length=1, max_length=500),
+]
+"""1-500 exact stream ids. Each request names what its route does with them."""
 
 
 class DiscardDeadLettersRequest(BaseModel):
     """Request body for POST /api/v1/tools/dead-letters/{dlq}/discard."""
 
-    entry_ids: list[
-        Annotated[str, Field(pattern=STREAM_ID_PATTERN), AfterValidator(_validate_stream_id)]
-    ] = Field(
-        min_length=1,
-        max_length=500,
+    entry_ids: StreamIdList = Field(
         description="Exact stream ids (`<ms>-<seq>`, each half a uint64) to delete. A range or "
         "bare timestamp is refused: XRANGE would read it as more entries than were named.",
     )
+
+
+class ReprocessDeadLettersRequest(BaseModel):
+    """Request body for POST /api/v1/tools/dead-letters/{dlq}/reprocess."""
+
+    entry_ids: StreamIdList = Field(
+        description="Exact stream ids (`<ms>-<seq>`, each half a uint64) to reprocess. Each "
+        "owned entry runs through the queue's own handler, and only one the handler settles "
+        "is removed. A range or bare timestamp is refused: XRANGE would read it as more "
+        "entries than were named.",
+    )
+
+
+class ReprocessResultOut(BaseModel):
+    """What happened to one requested entry. Only `reprocessed` removed it."""
+
+    entry_id: str
+    outcome: ReprocessOutcome = Field(
+        description="`reprocessed`: the handler settled it and it was deleted. `not_owned`: "
+        "another group parked it, or it has no provenance. `undecodable`: still does not "
+        "decode. `rejected`: the handler's poison - discard it. `failed`: any other handler "
+        "error, e.g. the database down - retry. `deferred`: the handler asked for redelivery."
+    )
+    detail: str | None = Field(
+        description="Why it stayed: the parking group, or the error. Null when it did not."
+    )
+
+
+class ReprocessDeadLettersResponse(BaseModel):
+    """Response body for POST /api/v1/tools/dead-letters/{dlq}/reprocess."""
+
+    results: list[ReprocessResultOut] = Field(description="One per distinct id, in request order.")
 
 
 class DiscardDeadLettersResponse(BaseModel):

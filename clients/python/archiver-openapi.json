@@ -44,7 +44,7 @@
         "description": "One entry of a dead-letter queue, described for triage.",
         "properties": {
           "dead_lettered_at": {
-            "description": "When the entry was dead-lettered, from its stream id. Until co-core records provenance (cannobserv#474), the way back to the journald line that says why.",
+            "description": "When the entry was dead-lettered, from its stream id. On an entry with no provenance, the way back to the journald line that says why.",
             "format": "date-time",
             "title": "Dead Lettered At",
             "type": "string"
@@ -87,9 +87,33 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "The raw wire fields `dead_letter` copied.",
+            "description": "The raw entry: the wire fields `dead_letter` copied, plus its `dlq.*` provenance fields.",
             "title": "Fields",
             "type": "object"
+          },
+          "owned": {
+            "description": "Whether archiver's own group for this queue's topic parked it. A fact stream's DLQ is shared by every consuming service; only owned entries are archiver's to reprocess.",
+            "title": "Owned",
+            "type": "boolean"
+          },
+          "parked_as": {
+            "anyOf": [
+              {
+                "enum": [
+                  "handler_poison",
+                  "undecodable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which quarantine path parked it, read off the reason's prefix. `handler_poison` decoded and still failed: discard. `undecodable` with `decodes` true is version skew: reprocess. Null with no reason, or one archiver did not write.",
+            "title": "Parked As"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/DeadLetterProvenanceOut"
           }
         },
         "required": [
@@ -98,9 +122,73 @@
           "fields",
           "event_type",
           "decodes",
-          "decode_error"
+          "decode_error",
+          "provenance",
+          "parked_as",
+          "owned"
         ],
         "title": "DeadLetterOut",
+        "type": "object"
+      },
+      "DeadLetterProvenanceOut": {
+        "description": "What `dead_letter` recorded about an entry (co-core >= 0.19.1, cannobserv#474).\n\nEvery field is null on an entry written before that.",
+        "properties": {
+          "consumer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The consumer within that group.",
+            "title": "Consumer"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The consumer group that parked it.",
+            "title": "Group"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it was parked. Archiver's own start `handler poison: ` or `undecodable: `, then the error; capped at 2000 characters.",
+            "title": "Reason"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The original entry's id on the source stream.",
+            "title": "Source Id"
+          }
+        },
+        "required": [
+          "source_id",
+          "group",
+          "consumer",
+          "reason"
+        ],
+        "title": "DeadLetterProvenanceOut",
         "type": "object"
       },
       "DiscardDeadLettersRequest": {
@@ -1347,6 +1435,87 @@
         "title": "RepSpecPatch",
         "type": "object"
       },
+      "ReprocessDeadLettersRequest": {
+        "description": "Request body for POST /api/v1/tools/dead-letters/{dlq}/reprocess.",
+        "properties": {
+          "entry_ids": {
+            "description": "Exact stream ids (`<ms>-<seq>`, each half a uint64) to reprocess. Each owned entry runs through the queue's own handler, and only one the handler settles is removed. A range or bare timestamp is refused: XRANGE would read it as more entries than were named.",
+            "items": {
+              "pattern": "^[0-9]+-[0-9]+$",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Entry Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entry_ids"
+        ],
+        "title": "ReprocessDeadLettersRequest",
+        "type": "object"
+      },
+      "ReprocessDeadLettersResponse": {
+        "description": "Response body for POST /api/v1/tools/dead-letters/{dlq}/reprocess.",
+        "properties": {
+          "results": {
+            "description": "One per distinct id, in request order.",
+            "items": {
+              "$ref": "#/components/schemas/ReprocessResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "ReprocessDeadLettersResponse",
+        "type": "object"
+      },
+      "ReprocessResultOut": {
+        "description": "What happened to one requested entry. Only `reprocessed` removed it.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it stayed: the parking group, or the error. Null when it did not.",
+            "title": "Detail"
+          },
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "`reprocessed`: the handler settled it and it was deleted. `not_owned`: another group parked it, or it has no provenance. `undecodable`: still does not decode. `rejected`: the handler's poison - discard it. `failed`: any other handler error, e.g. the database down - retry. `deferred`: the handler asked for redelivery.",
+            "enum": [
+              "reprocessed",
+              "not_found",
+              "not_owned",
+              "undecodable",
+              "rejected",
+              "failed",
+              "deferred"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry_id",
+          "outcome",
+          "detail"
+        ],
+        "title": "ReprocessResultOut",
+        "type": "object"
+      },
       "RepublishRegistryResponse": {
         "description": "Response body for POST /api/v1/tools/republish-registry-announcements.",
         "properties": {
@@ -1864,7 +2033,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.17.0"
+    "version": "4.18.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5271,6 +5440,126 @@
           }
         ],
         "summary": "Discard Dead Letters Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/dead-letters/{dlq}/reprocess": {
+      "post": {
+        "description": "Run the named entries through the queue's own handler (archiver#238).\n\nThe handler is the one the consumer loop runs, so an entry is decided exactly\nas a live delivery would be; only a settled one is ``XDEL``ed, after its frame\nis logged. An entry another group parked, or one with no provenance, is left\nalone. Every outcome is per entry, in request order. A broker failure\npart-way through is a 503 whose ``data`` carries ``results`` so far and\n``in_doubt`` (the id whose delete was in flight, its handler already\ncommitted; or null).",
+        "operationId": "reprocess_dead_letters_route_api_v1_tools_dead_letters__dlq__reprocess_post",
+        "parameters": [
+          {
+            "description": "The dead-letter queue, by its key as broker names it: `content.revisions.dlq` or `content.artifacts.dlq`. Any other key is a 422.",
+            "in": "path",
+            "name": "dlq",
+            "required": true,
+            "schema": {
+              "description": "The dead-letter queue, by its key as broker names it: `content.revisions.dlq` or `content.artifacts.dlq`. Any other key is a 422.",
+              "title": "Dlq",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReprocessDeadLettersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReprocessDeadLettersResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Reprocess Dead Letters Route",
         "tags": [
           "tools"
         ]

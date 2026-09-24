@@ -53,7 +53,7 @@ Identity Federation; see `.github/workflows/ci.yml`.)
 Archiver **publishes** `info.changes`, `info.registry` and `content.replicate`,
 **consumes** `content.revisions`, `content.artifacts` and `info.watch-status`,
 and triages the DLQs of the two streams it consumes - `content.revisions.dlq`
-and `content.artifacts.dlq` (list and discard since #238; runbook in
+and `content.artifacts.dlq` (list, discard and reprocess since #238; runbook in
 `docs/BUS_CONSUMERS.md`). It no longer *operates* the broker: archiver#193
 D6 moved that role, its tuning, and the cluster stream inventory to
 CannObserv/broker.
