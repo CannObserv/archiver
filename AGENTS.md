@@ -32,7 +32,7 @@ SocratiCode is configured here (`.socraticodecontextartifacts.json`), indexed in
 
 **Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search. `includeLinked: true` fans the same search out over broker, notifier, replicator and watcher - use it before changing a public schema or the API contract.
 
-Tool-by-goal map, the shared-store client contract, and the `ToolSearch` prefetch query: [docs/SKILLS.md](docs/SKILLS.md).
+Tool-by-goal map, the shared-store client contract, and the `ToolSearch` prefetch query: [docs/SOCRATICODE.md](docs/SOCRATICODE.md).
 
 ## Architecture
 
@@ -225,7 +225,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 
 ## Agent Skills
 
-Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers, and cross-project search to `watcher`/`notifier`: [docs/SKILLS.md](docs/SKILLS.md).
+Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout and triggers: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## SessionStart Hooks
 
@@ -233,7 +233,7 @@ Wired in `.claude/settings.json`; each script is a symlink into `skills-vendor/`
 Never re-copy one, never symlink the committed `.skills/doctor.sh`, and never
 un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
 `tests/scripts/test_claude_hooks_registered.py` fails when a script and
-`settings.json` disagree, and when the refresh hook's entry loses its 120s
+`settings.json` disagree, and when the refresh or health hook loses its 120s
 `timeout`. Each hook and its logs: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## Detail Docs
@@ -246,5 +246,6 @@ un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev-server internals, full env-var reference
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald contract, error envelope, living-docs rule, `PLC0415` scope
 - [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, overrides, trigger table, SessionStart hook mechanics
+- [docs/SOCRATICODE.md](docs/SOCRATICODE.md) - tool map, `co-index` traps, cross-repo search
 - [docs/reference/tailscale.md](docs/reference/tailscale.md) - this node on the tailnet: the ACL, the bind decision, the two-names-one-host trap
 - The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest: [docs/PAGES.md](docs/PAGES.md), [docs/SCREENS.md](docs/SCREENS.md), [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md), [docs/REGISTER.md](docs/REGISTER.md), [docs/HEALTH_ROW.md](docs/HEALTH_ROW.md), [docs/COMPONENTS.md](docs/COMPONENTS.md), [docs/STYLE.md](docs/STYLE.md)

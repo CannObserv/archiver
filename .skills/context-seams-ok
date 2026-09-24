@@ -128,3 +128,24 @@ docs/HEALTH_ROW.md :: [BUS.md](BUS.md)'s; this file is how the dashboard reports
 docs/HEALTH_ROW.md :: [PAGES.md](PAGES.md) § **Home** stays the inventory line for its routes
 docs/SCHEMA.md :: table that still grows without bound. See [BUS.md](BUS.md).
 docs/CONVENTIONS.md :: Step 3 controls. PAGES.md keeps only
+
+# SocratiCode split out of docs/SKILLS.md into docs/SOCRATICODE.md. Each hit
+# below was read against where the content now lives and still tells the truth.
+docs/SKILLS.md :: line, which likewise replaces the skill's two defaults (AGENTS.md's route table
+docs/SOCRATICODE.md :: `AGENTS.md` "Code Exploration Policy" carries the rule
+docs/SOCRATICODE.md :: `AGENTS.md` keeps only the negative rule and points here
+docs/SOCRATICODE.md :: SessionStart hooks that run here: [SKILLS.md](SKILLS.md)
+docs/SKILLS.md :: Workflow, tool map, the shared index on `co-index`, and cross-repo search
+docs/SKILLS.md :: [cross-repo search](SOCRATICODE.md#cross-repo-search)
+docs/ARCHITECTURE.md :: CONVENTIONS.md, SKILLS.md, SOCRATICODE.md, plus the
+docs/CONVENTIONS.md :: ([docs/SKILLS.md](SKILLS.md)); the rest is advisory
+.socraticodecontextartifacts.json :: "path": "./docs/SKILLS.md",
+.socraticodecontextartifacts.json :: "description": "SocratiCode workflow and tool-by-goal map.
+scripts/test_check_changelog.sh :: "docs/SKILLS.md
+# "Workflow" is the generic word: these name the CI workflow, not the moved section.
+.github/workflows/context-cadence.yml :: curating-context/references/cadence/workflow.md
+tests/scripts/test_ruff_config.py :: workflow's ``actions/checkout`` does not check out
+tests/scripts/test_skill_required_fragments.py :: The main CI workflow does not check out submodules
+# Predates this run: a DLQ heading nothing links by anchor. Renaming it here would
+# widen a docs split into an unrelated doc.
+docs/BUS_CONSUMERS.md :: Triaging the two DLQs (archiver#238)

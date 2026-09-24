@@ -239,7 +239,8 @@ deploy/                        README.md (install instructions) + systemd units:
                                the transient classification in publisher.py
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                BUS.md, BUS_CONSUMERS.md, SCHEMA.md, DEPLOYMENT.md,
-                               CONVENTIONS.md, SKILLS.md, plus the dashboard living docs
+                               CONVENTIONS.md, SKILLS.md, SOCRATICODE.md, plus the
+                               dashboard living docs
                                UI.md + SCREENS.md + PAGES.md +
                                INFO_ITEM_DETAIL.md + REGISTER.md + HEALTH_ROW.md +
                                COMPONENTS.md + STYLE.md

@@ -3,3 +3,20 @@
 # Empty between runs: a warrant only means something against the base of the
 # curation that needed it, so entries are pruned once that curation merges.
 # Their text and reasoning stay in git history (git log -- .skills/context-loss-ok).
+
+# Split of docs/SKILLS.md's SocratiCode section into docs/SOCRATICODE.md.
+# Both AGENTS.md pointers named SKILLS.md for content that moved; the second
+# also dropped "cross-project search", now reached through the first.
+AGENTS.md :: retarget :: Tool-by-goal map, the shared-store client contract, and the `ToolSearch` prefetch query: [docs/SKILLS.md](docs/SKILLS.md).
+AGENTS.md :: retarget :: Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers, and cross-project search to `watcher`/`notifier`: [docs/SKILLS.md](docs/SKILLS.md).
+# Refuted: watcher's pyproject.toml names no archiver dependency (gh api
+# repos/CannObserv/watcher/contents/pyproject.toml), and watcher#254, "drop the
+# Archiver SDK", is closed. Corrected in docs/SOCRATICODE.md "Cross-repo search".
+docs/SKILLS.md :: disproven :: `[archiver]` / `[watcher]` / … label. Watcher is archiver's primary consumer (via
+docs/SKILLS.md :: disproven :: the `archiver-client` SDK, a path dependency there), so search it for callers
+docs/SKILLS.md :: disproven :: before changing a public schema or the API contract.
+# Phase 6.5: `#226` in a heading is a permanent-anchor seam once the section
+# stands alone; the issue number stays cited in the section body ("pre-#226").
+docs/SKILLS.md :: rename :: ### The shared index on `co-index` (archiver#226)
+# The hook bullet stays in SKILLS.md while the section it names moved.
+docs/SKILLS.md :: retarget ::   Since `d04cebf` it also reports the trap-1 half of cross-repo search -
