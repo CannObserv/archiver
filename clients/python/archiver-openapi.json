@@ -5028,10 +5028,12 @@
         "operationId": "list_dead_letters_route_api_v1_tools_dead_letters__dlq__get",
         "parameters": [
           {
+            "description": "The dead-letter queue, by its key as broker names it: `content.revisions.dlq` or `content.artifacts.dlq`. Any other key is a 422.",
             "in": "path",
             "name": "dlq",
             "required": true,
             "schema": {
+              "description": "The dead-letter queue, by its key as broker names it: `content.revisions.dlq` or `content.artifacts.dlq`. Any other key is a 422.",
               "title": "Dlq",
               "type": "string"
             }
@@ -5160,10 +5162,12 @@
         "operationId": "discard_dead_letters_route_api_v1_tools_dead_letters__dlq__discard_post",
         "parameters": [
           {
+            "description": "The dead-letter queue, by its key as broker names it: `content.revisions.dlq` or `content.artifacts.dlq`. Any other key is a 422.",
             "in": "path",
             "name": "dlq",
             "required": true,
             "schema": {
+              "description": "The dead-letter queue, by its key as broker names it: `content.revisions.dlq` or `content.artifacts.dlq`. Any other key is a 422.",
               "title": "Dlq",
               "type": "string"
             }

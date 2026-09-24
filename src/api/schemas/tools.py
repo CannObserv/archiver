@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Annotated, Any
 
+from fastapi import Path
 from pydantic import AfterValidator, BaseModel, Field, HttpUrl
 
 from src.api.errors import FieldError
@@ -289,8 +290,17 @@ def _validate_stream_id(value: str) -> str:
     return value
 
 
-TriageDlqStr = Annotated[str, AfterValidator(_validate_triage_dlq)]
-"""A path segment naming one of ``TRIAGE_DLQS`` - the DLQ key, as broker names it."""
+TriageDlqStr = Annotated[
+    str,
+    AfterValidator(_validate_triage_dlq),
+    Path(
+        description="The dead-letter queue, by its key as broker names it: "
+        + " or ".join(f"`{dlq}`" for dlq in TRIAGE_DLQS)
+        + ". Any other key is a 422."
+    ),
+]
+"""A path segment naming one of ``TRIAGE_DLQS``. The ``Path`` description is how
+OpenAPI, and so the SDK, learns the two legal values."""
 
 
 class DeadLetterOut(BaseModel):

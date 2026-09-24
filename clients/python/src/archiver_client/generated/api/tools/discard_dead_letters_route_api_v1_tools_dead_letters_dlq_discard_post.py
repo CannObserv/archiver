@@ -111,7 +111,8 @@ def sync_detailed(
     delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
-        dlq (str):
+        dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
+            or `content.artifacts.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -152,7 +153,8 @@ def sync(
     delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
-        dlq (str):
+        dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
+            or `content.artifacts.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -188,7 +190,8 @@ async def asyncio_detailed(
     delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
-        dlq (str):
+        dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
+            or `content.artifacts.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -227,7 +230,8 @@ async def asyncio(
     delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
-        dlq (str):
+        dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
+            or `content.artifacts.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 

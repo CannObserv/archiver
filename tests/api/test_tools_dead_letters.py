@@ -187,3 +187,18 @@ async def test_discard_conflicts_when_bus_dormant(client):
 async def test_discard_requires_an_api_key(client, fake_redis):
     resp = await client.post(DISCARD_URL, json={"entry_ids": ["1-0"]})
     assert resp.status_code in (401, 403)
+
+
+@pytest.mark.parametrize(
+    ("path", "method"),
+    [
+        ("/api/v1/tools/dead-letters/{dlq}", "get"),
+        ("/api/v1/tools/dead-letters/{dlq}/discard", "post"),
+    ],
+)
+def test_openapi_names_the_queues_the_dlq_parameter_accepts(path, method):
+    """An SDK caller should learn the two legal values from the contract, not a 422."""
+    params = app.openapi()["paths"][path][method]["parameters"]
+    [dlq] = [p for p in params if p["name"] == "dlq"]
+    assert "content.revisions.dlq" in dlq["description"]
+    assert "content.artifacts.dlq" in dlq["description"]

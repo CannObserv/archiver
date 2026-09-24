@@ -113,7 +113,8 @@ def sync_detailed(
     empty page.
 
     Args:
-        dlq (str):
+        dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
+            or `content.artifacts.dlq`. Any other key is a 422.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -154,7 +155,8 @@ def sync(
     empty page.
 
     Args:
-        dlq (str):
+        dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
+            or `content.artifacts.dlq`. Any other key is a 422.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -190,7 +192,8 @@ async def asyncio_detailed(
     empty page.
 
     Args:
-        dlq (str):
+        dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
+            or `content.artifacts.dlq`. Any other key is a 422.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -229,7 +232,8 @@ async def asyncio(
     empty page.
 
     Args:
-        dlq (str):
+        dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
+            or `content.artifacts.dlq`. Any other key is a 422.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
