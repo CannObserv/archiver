@@ -122,7 +122,9 @@ the other in a comment, and that pair of pointers is the whole mechanism.
 (`OnUnitActiveSec=10min`), WARN-only to journald, running
 `python -m src.core.bus_health`. Per tick it runs the #112 outbox stats query
 from **outside** the publisher process: depth, oldest-unpublished age,
-dead-lettered count.
+dead-lettered count. The dead-lettered WARN clears only when an operator
+discards or rearms each row by id (#191; runbook in `docs/BUS.md`) - nothing
+ages one out.
 
 That last point is why it survived the split rather than being retired in
 favour of the #147 dashboard panel. The publisher's own "Outbox stats" line
