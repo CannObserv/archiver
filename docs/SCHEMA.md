@@ -261,8 +261,9 @@ see the never-rename rule in `AGENTS.md`.
     is why `info_items.announced_at` exists rather than deriving the announce time from
     `published_at`.
   - **Live and dead-lettered rows are never pruned.** A live row is the drain's queue; a
-    dead-lettered row is the archiver#107 post-mortem record, and therefore the only set on this
-    table that still grows without bound. See [BUS.md](BUS.md).
+    dead-lettered row is the archiver#107 post-mortem record. Nothing expires one: it leaves only
+    through operator triage by row id (archiver#191) - discard deletes it, rearm returns an
+    `info.changes` row to the drain. See [BUS.md](BUS.md).
 - **`WatchStatus`** (`watch_status`) — local LWW cache of `info.watch-status`, one row per
   InfoItem (archiver#151). What the watched-item panel renders from, with zero SDK calls. Every
   value is **reported by Watcher, not locally verified**, and coalesced (timestamps under-report

@@ -90,6 +90,9 @@ src/core/                      Domain logic
                                (archiver#238) - XDEL by id, never XTRIM;
                                reprocess runs the consumer's own
                                handle_message on owned entries only.
+                               outbox_triage.py is the exit from a
+                               dead-lettered outbox row (archiver#191):
+                               discard or rearm, by row id only.
                                outbox_prune.py is the published-row
                                retention pass (archiver#189) - it rides the
                                drain loop rather than a systemd timer, because a

@@ -36,6 +36,9 @@ failed)" when the URL is set, which is exactly when a stale backlog *is* ill
 health. Otherwise danger "N dead-lettered" if any poison row, warning
 "backlog" if the oldest live unpublished row exceeds 300s, else success "ok";
 `title` carries `depth=N oldest=Ns dead_lettered=N` in the drain states.
+The badge clears once every dead-lettered row is triaged - discarded or
+rearmed through `/api/v1/tools/outbox/dead-lettered` (archiver#191, runbook in
+[BUS.md](BUS.md)); the dashboard has no triage screen of its own.
 
 **GET `/dashboard/health/consumers`** - over
 `src/core/bus_health.collect_group_lag` (archiver#147). Liveness from

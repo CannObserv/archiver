@@ -191,6 +191,84 @@
         "title": "DeadLetterProvenanceOut",
         "type": "object"
       },
+      "DeadLetteredOutboxRowOut": {
+        "description": "One dead-lettered ``changes_outbox`` row, described for triage.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dead_lettered_at": {
+            "format": "date-time",
+            "title": "Dead Lettered At",
+            "type": "string"
+          },
+          "event_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The payload's `event_type`, if it has one.",
+            "title": "Event Type"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it was dead-lettered, capped at 1000 characters. The full traceback is on the journald line `Dead-lettering outbox row`, while retention lasts.",
+            "title": "Last Error"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "The stored payload, as the publisher saw it.",
+            "title": "Payload",
+            "type": "object"
+          },
+          "publish_attempts": {
+            "description": "Failed attempts before it was dead-lettered.",
+            "title": "Publish Attempts",
+            "type": "integer"
+          },
+          "rearmable": {
+            "description": "Whether its topic may go back to the drain. Only `info.changes` does: `info.registry` is repaired by the hourly snapshot, and a late `content.replicate` command may already be abandoned. Discard the rest.",
+            "title": "Rearmable",
+            "type": "boolean"
+          },
+          "row_id": {
+            "description": "The outbox row's ULID; what discard and rearm take.",
+            "title": "Row Id",
+            "type": "string"
+          },
+          "topic": {
+            "description": "The stream the row was bound for.",
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row_id",
+          "topic",
+          "event_type",
+          "payload",
+          "last_error",
+          "publish_attempts",
+          "created_at",
+          "dead_lettered_at",
+          "rearmable"
+        ],
+        "title": "DeadLetteredOutboxRowOut",
+        "type": "object"
+      },
       "DiscardDeadLettersRequest": {
         "description": "Request body for POST /api/v1/tools/dead-letters/{dlq}/discard.",
         "properties": {
@@ -237,6 +315,53 @@
           "not_found"
         ],
         "title": "DiscardDeadLettersResponse",
+        "type": "object"
+      },
+      "DiscardOutboxRowsRequest": {
+        "description": "Request body for POST /api/v1/tools/outbox/dead-lettered/discard.",
+        "properties": {
+          "row_ids": {
+            "description": "Dead-lettered row ids to delete. A live or published row is never deleted; it comes back in `not_found`.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Row Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "row_ids"
+        ],
+        "title": "DiscardOutboxRowsRequest",
+        "type": "object"
+      },
+      "DiscardOutboxRowsResponse": {
+        "description": "Response body for POST /api/v1/tools/outbox/dead-lettered/discard.",
+        "properties": {
+          "discarded": {
+            "description": "Ids deleted, each logged in full to journald first.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Discarded",
+            "type": "array"
+          },
+          "not_found": {
+            "description": "Ids that are not a dead-lettered row: unknown, live, or published.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Found",
+            "type": "array"
+          }
+        },
+        "required": [
+          "discarded",
+          "not_found"
+        ],
+        "title": "DiscardOutboxRowsResponse",
         "type": "object"
       },
       "DomainOut": {
@@ -1057,6 +1182,37 @@
         "title": "Page[DeadLetterOut]",
         "type": "object"
       },
+      "Page_DeadLetteredOutboxRowOut_": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeadLetteredOutboxRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[DeadLetteredOutboxRowOut]",
+        "type": "object"
+      },
       "Page_DomainOut_": {
         "properties": {
           "has_more": {
@@ -1277,6 +1433,83 @@
           "description"
         ],
         "title": "ProposeSelectorsRequest",
+        "type": "object"
+      },
+      "RearmOutboxRowsRequest": {
+        "description": "Request body for POST /api/v1/tools/outbox/dead-lettered/rearm.",
+        "properties": {
+          "row_ids": {
+            "description": "Dead-lettered row ids to return to the drain's queue. Fix the cause first: a rearmed row that fails the same way dead-letters again.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Row Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "row_ids"
+        ],
+        "title": "RearmOutboxRowsRequest",
+        "type": "object"
+      },
+      "RearmOutboxRowsResponse": {
+        "description": "Response body for POST /api/v1/tools/outbox/dead-lettered/rearm.",
+        "properties": {
+          "results": {
+            "description": "One per distinct id, in request order.",
+            "items": {
+              "$ref": "#/components/schemas/RearmResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "RearmOutboxRowsResponse",
+        "type": "object"
+      },
+      "RearmResultOut": {
+        "description": "What happened to one requested row. Only `rearmed` changed it.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it stayed; null when it did not.",
+            "title": "Detail"
+          },
+          "outcome": {
+            "description": "`rearmed`: back in the drain's queue, attempts reset. `not_found`: not a dead-lettered row. `refused`: its topic is not rearmable - discard it. `rejected`: its payload still does not build against the running co-core - discard it.",
+            "enum": [
+              "rearmed",
+              "not_found",
+              "refused",
+              "rejected"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "row_id": {
+            "title": "Row Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row_id",
+          "outcome",
+          "detail"
+        ],
+        "title": "RearmResultOut",
         "type": "object"
       },
       "RepSpecAssignmentCreate": {
@@ -2033,7 +2266,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.18.0"
+    "version": "4.19.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5796,6 +6029,343 @@
           }
         ],
         "summary": "Find Info Items Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/outbox/dead-lettered": {
+      "get": {
+        "description": "List dead-lettered outbox rows, oldest first, for triage (archiver#191).\n\nThe rows behind the ``dead_lettered_count`` warning. A database read, so\nunlike the DLQ routes it works bus-dormant, on the dev server included.",
+        "operationId": "list_dead_lettered_outbox_route_api_v1_tools_outbox_dead_lettered_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DeadLetteredOutboxRowOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Dead Lettered Outbox Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/outbox/dead-lettered/discard": {
+      "post": {
+        "description": "Delete the named dead-lettered outbox rows (archiver#191).\n\nEach row is logged in full to journald first. One transaction, so a failure\ndeletes nothing. An id that is not a dead-lettered row comes back in\n``not_found`` - a live or published row is never touched - so a retried\ndiscard is harmless.",
+        "operationId": "discard_dead_lettered_outbox_route_api_v1_tools_outbox_dead_lettered_discard_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscardOutboxRowsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscardOutboxRowsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Discard Dead Lettered Outbox Route",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/outbox/dead-lettered/rearm": {
+      "post": {
+        "description": "Return the named dead-lettered outbox rows to the drain's queue (archiver#191).\n\nClears ``dead_lettered_at`` and resets ``publish_attempts``. A row whose\npayload still does not build is ``rejected``, and one whose topic is not\n``info.changes`` is ``refused``; neither changes. Every outcome is per row,\nin request order.",
+        "operationId": "rearm_dead_lettered_outbox_route_api_v1_tools_outbox_dead_lettered_rearm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RearmOutboxRowsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RearmOutboxRowsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Rearm Dead Lettered Outbox Route",
         "tags": [
           "tools"
         ]
