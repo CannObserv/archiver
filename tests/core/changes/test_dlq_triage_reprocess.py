@@ -355,3 +355,23 @@ async def test_reprocess_logs_each_frame_before_deleting_it(fake_redis, session_
     assert extra["entry_id"] == entry_id
     assert extra["source_id"] == "1-0"
     assert extra["fields"]["event_type"] == "source_revision_observed"
+
+
+async def test_a_failed_handler_is_logged_with_its_traceback(fake_redis, session_factory):
+    """``failed`` catches everything outside POISON_ERRORS, a handler bug included.
+    The live loop logs that case with its stack; so must this path, or a crash
+    here would be the one that leaves none."""
+    entry_id = await _park(fake_redis, _parked(_observed("01J0000000000000000000000A")))
+    boom = RuntimeError("handler bug")
+
+    with (
+        patch.dict(dlq_triage._REPROCESSORS, {REVISIONS_DLQ: _spy(boom, [])}),
+        patch.object(dlq_triage.logger, "warning") as warning,
+    ):
+        await reprocess_dead_letters(
+            fake_redis, REVISIONS_DLQ, [entry_id], session_factory=session_factory
+        )
+
+    [call] = warning.call_args_list
+    assert call.kwargs["extra"]["outcome"] == "failed"
+    assert call.kwargs["exc_info"] is boom

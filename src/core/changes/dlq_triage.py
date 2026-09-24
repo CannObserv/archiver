@@ -420,12 +420,21 @@ async def reprocess_dead_letters(
         )
         return err
 
-    def left(entry_id: str, outcome: ReprocessOutcome, detail: str | None = None) -> None:
+    def left(
+        entry_id: str,
+        outcome: ReprocessOutcome,
+        detail: str | None = None,
+        *,
+        exc: BaseException | None = None,
+    ) -> None:
         results.append(ReprocessResult(entry_id=entry_id, outcome=outcome, detail=detail))
         if outcome != "not_found":
             logger.warning(
                 "Dead letter left in queue by reprocess",
                 extra={"dlq": dlq, "entry_id": entry_id, "outcome": outcome, "detail": detail},
+                # Only ``failed`` carries its stack: it is the catch-all, so the
+                # one outcome that can be a handler bug rather than a verdict.
+                exc_info=exc,
             )
 
     for entry_id in requested:
@@ -464,7 +473,7 @@ async def reprocess_dead_letters(
         except Exception as exc:
             # Per entry, like the consumer loop's own catch: a transient failure
             # (the database down) leaves this one for a retry, not the rest.
-            left(entry_id, "failed", error_text(exc))
+            left(entry_id, "failed", error_text(exc), exc=exc)
             continue
         if not settled:
             left(entry_id, "deferred")
