@@ -430,8 +430,10 @@ async def run(
     (archiver#109). Left unset (the dormant or unconfigured case), no trimming
     occurs. ``trim_topics`` is an allowlist (archiver#239): a stream is trimmed by
     being named, never by being produced to, and whether or not it has been
-    published to this process lifetime. It must match broker's ``+xtrim`` grant
-    (CannObserv/broker#14), which refuses any other stream anyway. A topic that
+    published to this process lifetime. It is one decision with broker's
+    ``+xtrim`` grant (CannObserv/broker#55), which admits it and the two DLQs
+    archiver drains: those are the drainer's (archiver#238) and must never join
+    it - a cadence MAXLEN trim would drop dead letters before triage. A topic that
     also carries per-publish retention in ``topic_maxlen`` is dropped from the
     trim set with one ERROR: its cap is a consumer contract (archiver#141), and
     raising instead would kill this task and stop ``info.changes`` with it.

@@ -80,7 +80,13 @@ numbers are neither.
 tests), every `TRIM_INTERVAL_ITERATIONS` iterations to
 `ARCHIVER_REDIS_STREAM_MAXLEN`. A stream is trimmed by being named, never by
 being produced to. It is one decision with broker's ACL grant - `+xtrim` on
-`~info.changes` only (CannObserv/broker#14) - so widening one widens the other.
+`~info.changes` among canonical streams (CannObserv/broker#34) - so widening one
+widens the other; broker pins its half in
+`tests/deploy/test_redis_acl.py::test_archiver_trim_grant_is_its_trim_allowlist`
+(CannObserv/broker#55). The same selector holds `content.revisions.dlq` and
+`content.artifacts.dlq`: the drainer grant (archiver#238), not the drain loop's.
+A DLQ never joins `trim_topics` - a cadence MAXLEN trim drops dead letters
+before triage.
 Why `info.registry` and `content.replicate` are absent: their sections below.
 
 **Published-row retention (archiver#189)** - `src/core/changes/outbox_prune.py`

@@ -1391,8 +1391,14 @@ async def test_run_trims_exactly_the_allowlist(session_factory, publisher, fake_
 def test_run_trim_allowlist_defaults_to_info_changes_only():
     """Pin the literal: widening the trim set is a reviewed diff (archiver#239).
 
-    Broker's ACL grants archiver ``+xtrim`` on ``~info.changes`` only
-    (CannObserv/broker#14); this default and that grant are one decision.
+    This default and broker's ``+xtrim`` grant are one decision; broker pins its
+    half in
+    ``tests/deploy/test_redis_acl.py::test_archiver_trim_grant_is_its_trim_allowlist``
+    (CannObserv/broker#55). The grant is ``~info.changes`` among canonical
+    streams (narrowed in CannObserv/broker#34) plus the two DLQs archiver
+    drains - the drainer grant (archiver#238), not the drain loop's; they never
+    join ``trim_topics``. Broker's test cites this one by name: renaming it
+    breaks that citation.
     """
     default = inspect.signature(publisher_mod.run).parameters["trim_topics"].default
     assert default == frozenset({"info.changes"})
