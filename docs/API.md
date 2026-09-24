@@ -23,7 +23,9 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 `InfoSourceOut` gains `domain_name: str | None` (hostname auto-set from URL at create time).
 `GET /info-sources` gains `?domain_name=` filter.
 
-**Read-only tools:**
+**Tools:** read-only authoring helpers, plus operator controls that write - the
+registry republish, DLQ discard/reprocess (#238) and outbox rearm/discard (#191).
+Those take production action on 8000 and run only when the operator asks.
 
 | Tool | HTTP | SDK method |
 |---|---|---|
