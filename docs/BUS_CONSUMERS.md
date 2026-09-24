@@ -23,8 +23,8 @@ lifespan and is dormant unless **both** `ARCHIVER_REDIS_URL` and
 **Both group names are derived, not spelled.** `CONSUMER_GROUP` in
 `consumer.py` and `artifacts_consumer.py` is
 `group_name(<topic>, "archiver")`, from
-`co_core.pure.adapters.bus.streams` (the helper arrived in co-core 0.13.1;
-`pyproject.toml` now floors at 0.15 for archiver#210's shared extension table).
+`co_core.pure.adapters.bus.streams` (the helper arrived in co-core 0.13.1; the
+current floor is `pyproject.toml`'s, not this line).
 The cluster convention is `<service>.<stream-suffix>[-<purpose>]`; it went 0/5
 across the cluster while it existed only as a docstring beside a free-string
 `group` parameter, which is what cannobserv#384 fixed by making it an importable
