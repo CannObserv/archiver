@@ -170,6 +170,10 @@ def test_socraticode_health_timeout_matches_the_vendored_install_line() -> None:
         for line in _HEALTH_INSTALL.read_text().splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ).split()
+    assert "--timeout" in args, (
+        f"{_HEALTH_INSTALL.name} no longer prescribes a --timeout; decide what the "
+        "settings.json entry should carry before updating this test"
+    )
     assert args[args.index("--timeout") + 1] == str(SOCRATICODE_HEALTH_TIMEOUT)
 
 
