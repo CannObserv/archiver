@@ -1,8 +1,8 @@
 # archiver - change-bus consumers
 
 **The streams Archiver takes off the bus - `content.revisions`,
-`content.artifacts`, `info.watch-status` - and the naming contract its group
-consumers follow.** Split out of [BUS.md](BUS.md), which keeps the producing
+`content.artifacts`, `info.watch-status` - the naming contract its group
+consumers follow, and the triage of their two DLQs.** Split out of [BUS.md](BUS.md), which keeps the producing
 half: the outbox, the published streams, and the shared client every consumer
 loop here connects through.
 
@@ -152,6 +152,68 @@ is closed, and a provider 5xx retries unbounded while publishing nothing. A time
 `ARCHIVER_REPLICATION_REAP_HORIZON` (default 6h) as `abandoned`. It runs on a
 clock rather than off an arrival because it detects an *absence*, and it **never
 re-issues** - a second artifact in a permanent store has no way back.
+
+## Triaging the two DLQs (archiver#238)
+
+Both group consumers quarantine into `<topic>.dlq`, and archiver is the named
+drainer of both queues (CannObserv/broker#1 Phase 5). Broker detects a
+non-resting queue, dumps its entries under `dlq-evidence/` on the broker node,
+and names archiver; archiver reads the payloads and decides. The resting depth
+is 0, and the dashboard bus panel shows each queue's depth.
+
+`src/core/changes/dlq_triage.py` does the work, behind two operator routes:
+
+```bash
+# list: a read of prod's broker
+curl -s -H "X-API-Key: <key>" \
+  http://localhost:8000/api/v1/tools/dead-letters/content.revisions.dlq
+# why it was parked: the journald line at its dead_lettered_at
+sudo journalctl -u archiver --since '<dead_lettered_at - 1min>' --until '<+1min>' \
+  | grep -E 'Quarantining unusable message|Dead-lettering undecodable frame'
+# discard, once decided
+curl -s -X POST -H "X-API-Key: <key>" -H 'Content-Type: application/json' \
+  -d '{"entry_ids": ["<entry_id>"]}' \
+  http://localhost:8000/api/v1/tools/dead-letters/content.revisions.dlq/discard
+```
+
+**Discard is a production write by design.** The queues exist only on prod's
+broker, the dev server is bus-dormant (409), and a scratch bus holds none of
+prod's entries. It is an operator's decision about named entries. An agent
+does not run it unasked, and it is not verification the 8001 rule covers.
+
+- **What the disposition is.** Handler poison (`InvalidFingerprintError`,
+  `InvalidInfoSourceIdError`, revisions only) is deterministic producer data:
+  discard it and file on the producer. An undecodable frame is usually the same.
+  The exception is **version skew**: a producer shipped an `event_type` or schema
+  before archiver upgraded co-core. `decodes: true` on an entry that the
+  journald line says failed to decode is exactly that case. Leave it, because
+  reprocess is not built yet.
+- **Why the reason comes from journald.** `dead_letter` copies the raw fields
+  only, with no original id, group or reason, so `dead_lettered_at` (taken from
+  the entry id) is the only way back to the log line. CannObserv/cannobserv#474
+  asks co-core-aio to record provenance. Journald retention bounds how late
+  triage can recover a reason.
+- **`XDEL` by id, never `XTRIM`.** A cap discards entries nobody read, and
+  broker's detector rests on a resting depth of 0. Each frame is logged in full
+  (`Discarding dead letter`) before its delete, because broker's capture runs on
+  its own tick and an entry discarded between ticks would otherwise leave no
+  record. Ids must be exact `<ms>-<seq>`, each half a uint64: `XRANGE` reads
+  `-`, `+` or a bare `<ms>` as a range, and Redis refuses a half past uint64
+  mid-request, after the ids before it were deleted.
+- **A 503 from discard is not "nothing happened".** A broker failure part-way
+  through returns `data.discarded` (deleted), `data.not_found`, and
+  `data.in_doubt`: the id whose `XDEL` was in flight, which may have landed with
+  its reply lost. Re-list before retrying it. The journald record is
+  `Discard interrupted by a broker failure`.
+- **The allowlist is derived, and one decision with broker's ACL.**
+  `TRIAGE_DLQS` comes from `bus_health.OWNED_GROUPS`, so a new consumer group
+  becomes triageable automatically, and its discard fails NOPERM until broker's
+  `(+xdel ...)` selector names the queue. Anything else is a 422, including the
+  stream a queue copies.
+- **Reprocess is deferred.** When it lands, it runs the consumer's own handler
+  in-process and then `XDEL`s. It never re-`XADD`s onto the source stream:
+  broker's ACL refuses that, and it would forge another service's stream
+  (`content.artifacts` is broadcast).
 
 ## Consumer names are a monitoring contract (archiver#156)
 

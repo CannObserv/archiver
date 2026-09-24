@@ -2,20 +2,27 @@
 
 Non-mutating helpers that an LLM agent (or human operator) calls while
 composing Information Items + SourceSpecs. Mutating CRUD lives on the existing
-/api/v1/info-items and sub-resource routes.
+/api/v1/info-items and sub-resource routes. The exceptions are operator bus
+controls: the registry republish trigger, and DLQ triage (archiver#238).
 """
 
 import os
+from typing import TYPE_CHECKING
 
 from co_core_aio.fetch import AsyncFetchDriver
 from fastapi import APIRouter, Depends, Query, Request
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db_session, get_fetch_driver
+from src.api.deps import get_db_session, get_fetch_driver, get_redis_client
 from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_item import InfoItemOut
+from src.api.schemas.pagination import Page
 from src.api.schemas.tools import (
     ChunkPreviewOut,
+    DeadLetterOut,
+    DiscardDeadLettersRequest,
+    DiscardDeadLettersResponse,
     FetchAndRenderRequest,
     FetchAndRenderResult,
     PreviewExtractionRequest,
@@ -25,6 +32,7 @@ from src.api.schemas.tools import (
     ResolveRepFieldsRequest,
     ResolveRepFieldsResponse,
     SelectorCandidateOut,
+    TriageDlqStr,
     ValidateRepFieldsRequest,
     ValidateRepFieldsResponse,
     ValidateRepSpecRequest,
@@ -35,6 +43,11 @@ from src.api.schemas.tools import (
     ValidateWatchSpecResponse,
 )
 from src.api.serializers import info_item_to_out
+from src.core.changes.dlq_triage import (
+    DiscardInterruptedError,
+    discard_dead_letters,
+    list_dead_letters,
+)
 from src.core.rep_fields import resolve_rep_fields
 from src.core.rep_fields_schema.validator import (
     validate_rep_fields,
@@ -51,6 +64,9 @@ from src.core.tools.preview_extraction import (
 )
 from src.core.tools.propose_selectors import propose_selectors
 from src.core.watch_spec_schema.validator import validate_watch_spec
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis as RedisAsync
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -299,3 +315,70 @@ async def republish_registry_announcements_route(request: Request) -> RepublishR
         )
     trigger.set()
     return RepublishRegistryResponse(triggered=True)
+
+
+def _require_bus(redis: "RedisAsync | None") -> "RedisAsync":
+    """409 when bus-dormant: an empty listing would read as a clean queue."""
+    if redis is None:
+        raise_envelope(409, "conflict", "no broker client (bus dormant — no ARCHIVER_REDIS_URL)")
+    return redis
+
+
+@router.get("/dead-letters/{dlq}", response_model=Page[DeadLetterOut])
+async def list_dead_letters_route(
+    dlq: TriageDlqStr,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=2**63 - 1),
+    redis: "RedisAsync | None" = Depends(get_redis_client),
+) -> Page[DeadLetterOut]:
+    """List one of archiver's two DLQs, oldest first, for triage (archiver#238).
+
+    Each entry is tried against the running co-core, so ``decodes`` answers the
+    version-skew question. 503 when the broker cannot be read, distinct from an
+    empty page.
+    """
+    client = _require_bus(redis)
+    try:
+        entries, has_more = await list_dead_letters(client, dlq, limit=limit, offset=offset)
+    except (RedisError, OSError) as e:
+        raise_envelope(503, "server", f"broker read failed: {type(e).__name__}", source_exc=e)
+    return Page[DeadLetterOut](
+        items=[DeadLetterOut.model_validate(entry, from_attributes=True) for entry in entries],
+        has_more=has_more,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/dead-letters/{dlq}/discard", response_model=DiscardDeadLettersResponse)
+async def discard_dead_letters_route(
+    dlq: TriageDlqStr,
+    body: DiscardDeadLettersRequest,
+    redis: "RedisAsync | None" = Depends(get_redis_client),
+) -> DiscardDeadLettersResponse:
+    """Delete the named entries from one of archiver's two DLQs (archiver#238).
+
+    ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
+    queue come back in ``not_found`` rather than failing the request, so a
+    retried discard is harmless. A broker failure part-way through is a 503 whose
+    ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
+    delete was in flight, or null): the progress a retry could not reconstruct.
+    """
+    client = _require_bus(redis)
+    try:
+        result = await discard_dead_letters(client, dlq, body.entry_ids)
+    except DiscardInterruptedError as e:
+        raise_envelope(
+            503,
+            "server",
+            str(e),
+            data={
+                "discarded": list(e.discarded),
+                "not_found": list(e.not_found),
+                "in_doubt": e.in_doubt,
+            },
+            source_exc=e,
+        )
+    return DiscardDeadLettersResponse(
+        discarded=list(result.discarded), not_found=list(result.not_found)
+    )

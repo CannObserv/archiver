@@ -18,6 +18,19 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.17.0 (2026-09-24)
+
+[both] **DLQ triage: list and discard, SDK v5.5.0** (archiver#238). Archiver is the named drainer of `content.revisions.dlq` and `content.artifacts.dlq` (CannObserv/broker#1 Phase 5). Until now it could only count them. Two operator routes, generated-only in the SDK with no hand-written wrapper, like the registry republish:
+
+- `GET /api/v1/tools/dead-letters/{dlq}` returns the standard paginated envelope, oldest first. Each entry carries its `entry_id`, a `dead_lettered_at` taken from that id, the raw `fields` that `dead_letter` copied, and a decode attempt against the running co-core (`decodes`, `decode_error`). `decodes: true` on an entry that failed to decode when it was parked is the version-skew case.
+- `POST /api/v1/tools/dead-letters/{dlq}/discard` takes `{"entry_ids": [...]}` (1-500 exact `<ms>-<seq>` ids, each half a uint64) and returns `{discarded, not_found}`. Each frame is logged in full to journald (`Discarding dead letter`) and then `XDEL`ed. If the broker fails part-way through, the 503's `data` carries `discarded`, `not_found` and `in_doubt` (the id whose delete was in flight, or null). Otherwise a retry would report ids that request had already deleted as `not_found`.
+
+`{dlq}` is an allowlist derived from the groups archiver consumes. It is one decision with broker's `(+xdel ...)` selector, and anything else, including the stream a queue copies, is a 422. A dormant bus is a 409 and an unreadable broker a 503, so neither can pass for an empty queue.
+
+**Disposal is `XDEL` by id, never `XTRIM`.** A cap discards entries whether or not anyone read them, which defeats broker's detector. That leaves broker's `+xtrim` grant on both queues with no caller; CannObserv/broker#59 proposes cutting it.
+
+**Reprocess is deferred.** Only a version-skew frame can be rescued, and until co-core-aio's `dead_letter` records why an entry was parked (CannObserv/cannobserv#474), a skew frame and a handler rejection look the same once both decode. When it lands, it will run the consumer's handler in-process. It will never re-`XADD` onto the source stream, which broker's ACL refuses.
+
 ## v4.16.7 (2026-09-10)
 
 [service] **`POST /tools/validate-rep-fields` resolves the bag before checking `required_fields`** (archiver#206, corrected by this review's CR 1). No route signature, schema, or SDK code change; `validate_rep_fields(bag, required_fields=None)` observes the new answer without changing shape.
