@@ -185,10 +185,9 @@ def _decide(row: ChangesOutboxRow | None, row_id: str) -> RearmResult:
     if row is None:
         return RearmResult(row_id, "not_found")
     if row.topic not in REARMABLE_TOPICS:
+        rearmable = ", ".join(sorted(REARMABLE_TOPICS))
         return RearmResult(
-            row_id,
-            "refused",
-            f"{row.topic} rows are not rearmable; discard it (see REARMABLE_TOPICS)",
+            row_id, "refused", f"only {rearmable} rows rearm; discard this {row.topic} row"
         )
     error = _build_error(row)
     if error is not None:

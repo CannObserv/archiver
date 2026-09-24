@@ -258,7 +258,7 @@ async def test_rearm_refuses_topics_where_a_late_publish_is_wrong(session_factor
         [result] = await rearm_dead_lettered(session, [str(row.id)])
 
     assert result.outcome == "refused"
-    assert topic in result.detail
+    assert result.detail == f"only info.changes rows rearm; discard this {topic} row"
     after = await _get(session_factory, row.id)
     assert after.dead_lettered_at == _T0
 
