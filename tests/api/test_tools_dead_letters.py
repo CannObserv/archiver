@@ -128,10 +128,13 @@ async def test_discard_deletes_the_named_entries(client, fake_redis):
         ["not-an-id"],
         ["1726"],  # XRANGE would read this as a range start, not one entry
         ["-", "+"],  # XRANGE's range sentinels: every entry
+        # A half past uint64 matches the digit pattern and Redis refuses it -
+        # mid-loop, after the valid id before it was already deleted.
+        ["1726-0", f"{2**64}-0"],
     ],
 )
 async def test_discard_rejects_ids_that_are_not_exact_stream_ids(client, fake_redis, entry_ids):
-    await fake_redis.xadd(DLQ, {"n": "0"})
+    await fake_redis.xadd(DLQ, {"n": "0"}, id="1726-0")
 
     resp = await client.post(DISCARD_URL, headers=HEADERS, json={"entry_ids": entry_ids})
 

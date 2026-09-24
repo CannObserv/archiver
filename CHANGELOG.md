@@ -23,7 +23,7 @@ service-only patch does not require an SDK bump.
 [both] **DLQ triage: list and discard, SDK v5.5.0** (archiver#238). Archiver is the named drainer of `content.revisions.dlq` and `content.artifacts.dlq` (CannObserv/broker#1 Phase 5). Until now it could only count them. Two operator routes, generated-only in the SDK with no hand-written wrapper, like the registry republish:
 
 - `GET /api/v1/tools/dead-letters/{dlq}` returns the standard paginated envelope, oldest first. Each entry carries its `entry_id`, a `dead_lettered_at` taken from that id, the raw `fields` that `dead_letter` copied, and a decode attempt against the running co-core (`decodes`, `decode_error`). `decodes: true` on an entry that failed to decode when it was parked is the version-skew case.
-- `POST /api/v1/tools/dead-letters/{dlq}/discard` takes `{"entry_ids": [...]}` (1-500 exact `<ms>-<seq>` ids) and returns `{discarded, not_found}`. Each frame is logged in full to journald (`Discarding dead letter`) and then `XDEL`ed.
+- `POST /api/v1/tools/dead-letters/{dlq}/discard` takes `{"entry_ids": [...]}` (1-500 exact `<ms>-<seq>` ids, each half a uint64) and returns `{discarded, not_found}`. Each frame is logged in full to journald (`Discarding dead letter`) and then `XDEL`ed.
 
 `{dlq}` is an allowlist derived from the groups archiver consumes. It is one decision with broker's `(+xdel ...)` selector, and anything else, including the stream a queue copies, is a 422. A dormant bus is a 409 and an unreadable broker a 503, so neither can pass for an empty queue.
 

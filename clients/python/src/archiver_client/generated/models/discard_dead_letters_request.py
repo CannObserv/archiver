@@ -14,8 +14,8 @@ class DiscardDeadLettersRequest:
     """Request body for POST /api/v1/tools/dead-letters/{dlq}/discard.
 
     Attributes:
-        entry_ids (list[str]): Exact stream ids (`<ms>-<seq>`) to delete. A range or bare timestamp is refused: XRANGE
-            would read it as more entries than were named.
+        entry_ids (list[str]): Exact stream ids (`<ms>-<seq>`, each half a uint64) to delete. A range or bare timestamp
+            is refused: XRANGE would read it as more entries than were named.
     """
 
     entry_ids: list[str]

@@ -20,6 +20,7 @@ from src.core.changes.dlq_triage import (
     TRIAGE_DLQS,
     NotTriageableError,
     discard_dead_letters,
+    is_exact_stream_id,
     list_dead_letters,
 )
 
@@ -189,7 +190,32 @@ async def test_discard_counts_a_repeated_id_once(fake_redis):
     assert result.not_found == ()
 
 
-@pytest.mark.parametrize("entry_id", ["-", "+", "1726", "not-an-id", "1726-0\n"])
+UINT64_MAX = 2**64 - 1
+
+
+@pytest.mark.parametrize("entry_id", ["0-0", "1726-0", f"{UINT64_MAX}-{UINT64_MAX}"])
+def test_an_exact_stream_id_is_two_uint64_halves(entry_id):
+    assert is_exact_stream_id(entry_id)
+
+
+@pytest.mark.parametrize(
+    "entry_id",
+    [
+        f"{UINT64_MAX + 1}-0",  # matches the digit pattern; Redis refuses the XRANGE
+        f"0-{UINT64_MAX + 1}",
+        "99999999999999999999999-0",
+    ],
+)
+def test_a_half_past_uint64_is_not_a_stream_id(entry_id):
+    """Redis parses each half as an unsigned 64-bit integer and answers
+    ``ERR Invalid stream ID`` past it. fakeredis returns an empty range
+    instead, so only this check can see the case."""
+    assert not is_exact_stream_id(entry_id)
+
+
+@pytest.mark.parametrize(
+    "entry_id", ["-", "+", "1726", "not-an-id", "1726-0\n", f"{UINT64_MAX + 1}-0"]
+)
 async def test_discard_refuses_anything_but_an_exact_stream_id(fake_redis, entry_id):
     """``XRANGE`` reads ``-``/``+`` as the whole stream and a bare ``1726`` as a
     millisecond's worth of entries, so an inexact id is a wider read than the

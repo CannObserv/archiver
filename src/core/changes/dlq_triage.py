@@ -64,10 +64,10 @@ grant follows."""
 _MAX_XRANGE_COUNT = 2**63 - 1
 
 STREAM_ID_PATTERN = r"^[0-9]+-[0-9]+$"
-"""An exact stream id, ``<ms>-<seq>``. Anything looser is a range to ``XRANGE``:
-``-``/``+`` are the whole stream, and a bare ``<ms>`` is every entry in that
-millisecond."""
+"""The *shape* of an exact stream id, ``<ms>-<seq>`` - what OpenAPI can state.
+``is_exact_stream_id`` is the whole rule."""
 _STREAM_ID = re.compile(STREAM_ID_PATTERN)
+_UINT64_MAX = 2**64 - 1
 
 
 class NotTriageableError(ValueError):
@@ -101,6 +101,22 @@ class DiscardResult:
 
     discarded: tuple[str, ...]
     not_found: tuple[str, ...]
+
+
+def is_exact_stream_id(value: str) -> bool:
+    """Whether ``value`` names exactly one stream entry.
+
+    Anything looser is a range to ``XRANGE``: ``-``/``+`` are the whole stream,
+    and a bare ``<ms>`` is every entry in that millisecond. Each half is also
+    bounded at uint64, because Redis parses it as one and answers ``ERR Invalid
+    stream ID`` past it - an error that would otherwise land mid-discard, after
+    the ids before it were deleted. fakeredis returns an empty range instead, so
+    no stream test can see that case; this check is where it is held.
+    """
+    if not _STREAM_ID.fullmatch(value):
+        return False
+    ms, seq = value.split("-")
+    return int(ms) <= _UINT64_MAX and int(seq) <= _UINT64_MAX
 
 
 def _require_triageable(dlq: str) -> str:
@@ -169,12 +185,12 @@ async def discard_dead_letters(client: Redis, dlq: str, entry_ids: Iterable[str]
     would otherwise leave nothing. An id already gone - never there, or taken by
     a concurrent discard between the read and the delete - is ``not_found``.
 
-    Every id is checked against ``STREAM_ID_PATTERN`` before any command is
-    sent, so one bad id deletes nothing.
+    Every id is checked with ``is_exact_stream_id`` before any command is sent,
+    so one bad id deletes nothing.
     """
     _require_triageable(dlq)
     requested = list(dict.fromkeys(entry_ids))
-    inexact = [entry_id for entry_id in requested if not _STREAM_ID.fullmatch(entry_id)]
+    inexact = [entry_id for entry_id in requested if not is_exact_stream_id(entry_id)]
     if inexact:
         raise ValueError(f"not an exact stream id: {inexact!r}")
     discarded: list[str] = []

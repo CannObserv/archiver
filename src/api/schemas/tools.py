@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from pydantic import AfterValidator, BaseModel, Field, HttpUrl
 
 from src.api.errors import FieldError
-from src.core.changes.dlq_triage import STREAM_ID_PATTERN, TRIAGE_DLQS
+from src.core.changes.dlq_triage import STREAM_ID_PATTERN, TRIAGE_DLQS, is_exact_stream_id
 
 # ---------------------------------------------------------------------------
 # validate-source-spec
@@ -282,6 +282,13 @@ def _validate_triage_dlq(value: str) -> str:
     return value
 
 
+def _validate_stream_id(value: str) -> str:
+    """Item validator: the uint64 bound ``pattern`` cannot state (a 422, not a 503)."""
+    if not is_exact_stream_id(value):
+        raise ValueError("not an exact stream id: each half of <ms>-<seq> is a uint64")
+    return value
+
+
 TriageDlqStr = Annotated[str, AfterValidator(_validate_triage_dlq)]
 """A path segment naming one of ``TRIAGE_DLQS`` - the DLQ key, as broker names it."""
 
@@ -306,11 +313,13 @@ class DeadLetterOut(BaseModel):
 class DiscardDeadLettersRequest(BaseModel):
     """Request body for POST /api/v1/tools/dead-letters/{dlq}/discard."""
 
-    entry_ids: list[Annotated[str, Field(pattern=STREAM_ID_PATTERN)]] = Field(
+    entry_ids: list[
+        Annotated[str, Field(pattern=STREAM_ID_PATTERN), AfterValidator(_validate_stream_id)]
+    ] = Field(
         min_length=1,
         max_length=500,
-        description="Exact stream ids (`<ms>-<seq>`) to delete. A range or bare timestamp is "
-        "refused: XRANGE would read it as more entries than were named.",
+        description="Exact stream ids (`<ms>-<seq>`, each half a uint64) to delete. A range or "
+        "bare timestamp is refused: XRANGE would read it as more entries than were named.",
     )
 
 

@@ -197,8 +197,9 @@ does not run it unasked, and it is not verification the 8001 rule covers.
   broker's detector rests on a resting depth of 0. Each frame is logged in full
   (`Discarding dead letter`) before its delete, because broker's capture runs on
   its own tick and an entry discarded between ticks would otherwise leave no
-  record. Ids must be exact `<ms>-<seq>`: `XRANGE` reads `-`, `+` or a bare
-  `<ms>` as a range.
+  record. Ids must be exact `<ms>-<seq>`, each half a uint64: `XRANGE` reads
+  `-`, `+` or a bare `<ms>` as a range, and Redis refuses a half past uint64
+  mid-request, after the ids before it were deleted.
 - **The allowlist is derived, and one decision with broker's ACL.**
   `TRIAGE_DLQS` comes from `bus_health.OWNED_GROUPS`, so a new consumer group
   becomes triageable automatically, and its discard fails NOPERM until broker's
