@@ -226,6 +226,29 @@ async def test_trim_allowlist_is_info_changes_only(bus_env, bus_client_calls, te
 
 
 @pytest.mark.asyncio
+async def test_per_publish_cap_is_info_registry_only(bus_env, bus_client_calls, test_engine):
+    """Only info.registry carries a ``MAXLEN`` on publish (archiver#141).
+
+    The publish-side half of content.replicate's "never capped" (archiver#169,
+    archiver#267), and the half broker cannot hold: the
+    ``+xadd ~content.replicate`` grant admits ``XADD ... MAXLEN``, and an ACL
+    cannot tell a capped ``XADD`` from a plain one. Pinned as a literal so a
+    command stream joining this map is a failing test, not a silent cap.
+    """
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+
+    with patch("src.core.changes.publisher.run", side_effect=_capture):
+        async with lifespan(app):
+            pass
+
+    assert set(captured["topic_maxlen"]) == {"info.registry"}
+
+
+@pytest.mark.asyncio
 async def test_artifacts_consumer_and_reaper_start_behind_the_gate(
     bus_env, bus_client_calls, test_engine
 ):
