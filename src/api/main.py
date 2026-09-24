@@ -208,8 +208,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     # capped by its producer (archiver#169) — an XTRIM on
                     # content.replicate deletes commands Replicator's group has
                     # not delivered and orphans the PEL entries naming them.
-                    # Retention there is the consumer's progress, not the
-                    # producer's cap.
+                    # Nor is it in topic_maxlen, the cap broker's ACL cannot
+                    # refuse. maxmemory is its only bound until archiver#267's
+                    # trigger fires (docs/BUS.md, content.replicate).
                     trim_topics=frozenset({outbox_publisher.CHANGE_STREAM_TOPIC}),
                     topic_maxlen={registry_topic: registry_maxlen},
                     retention_days=retention_days,
