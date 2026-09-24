@@ -206,10 +206,11 @@ async def test_trim_allowlist_is_info_changes_only(bus_env, bus_client_calls, te
     One decision with broker's ``+xtrim`` grant, whose half is pinned by
     CannObserv/broker's
     ``tests/deploy/test_redis_acl.py::test_archiver_trim_grant_is_its_trim_allowlist``
-    (broker#55): widen both or neither. The two DLQs broker assigns archiver to
-    drain are outside it since CannObserv/broker#59 - the drainer's (archiver#238),
-    which disposes with ``XDEL`` and issues no ``XTRIM``; they never join this set. Broker's
-    test cites this one by name: renaming it breaks that citation.
+    (broker#55): widen both or neither. The two DLQs broker assigns archiver
+    to drain are outside it since CannObserv/broker#59 - the drainer's
+    (archiver#238), which disposes with ``XDEL`` and issues no ``XTRIM``;
+    they never join this set. Broker's test cites this one by name: renaming
+    it breaks that citation.
     """
     bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
     captured: dict = {}
