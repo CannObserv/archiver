@@ -14,8 +14,9 @@ class ReprocessDeadLettersRequest:
     """Request body for POST /api/v1/tools/dead-letters/{dlq}/reprocess.
 
     Attributes:
-        entry_ids (list[str]): Exact stream ids (`<ms>-<seq>`, each half a uint64) to delete. A range or bare timestamp
-            is refused: XRANGE would read it as more entries than were named.
+        entry_ids (list[str]): Exact stream ids (`<ms>-<seq>`, each half a uint64) to reprocess. Each owned entry runs
+            through the queue's own handler, and only one the handler settles is removed. A range or bare timestamp is
+            refused: XRANGE would read it as more entries than were named.
     """
 
     entry_ids: list[str]

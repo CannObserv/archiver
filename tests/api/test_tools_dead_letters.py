@@ -19,7 +19,7 @@ from ulid import ULID
 from src.api.deps import get_db_session_factory, get_redis_client
 from src.api.main import app
 from src.api.schemas.tools import DeadLetterOut, ReprocessResultOut
-from src.core.changes.dlq_triage import ParkedAs, ReprocessOutcome
+from src.core.changes.dlq_triage import STREAM_ID_PATTERN, ParkedAs, ReprocessOutcome
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 DLQ = "content.revisions.dlq"
@@ -354,3 +354,18 @@ def test_the_response_models_take_their_value_sets_from_core():
     caches Literal, so an identical re-spelling passes too; any drift does not.)"""
     assert ReprocessResultOut.model_fields["outcome"].annotation is ReprocessOutcome
     assert DeadLetterOut.model_fields["parked_as"].annotation == ParkedAs | None
+
+
+def test_each_id_list_says_what_its_route_does_with_the_ids():
+    """Reprocess deletes only what its handler settles, so its contract must not
+    say "to delete"; both lists keep the same constraints."""
+    schemas = app.openapi()["components"]["schemas"]
+    discard = schemas["DiscardDeadLettersRequest"]["properties"]["entry_ids"]
+    reprocess = schemas["ReprocessDeadLettersRequest"]["properties"]["entry_ids"]
+
+    assert "to delete" in discard["description"]
+    assert "to delete" not in reprocess["description"]
+    assert "settles" in reprocess["description"]
+    for ids in (discard, reprocess):
+        assert (ids["minItems"], ids["maxItems"]) == (1, 500)
+        assert ids["items"]["pattern"] == STREAM_ID_PATTERN

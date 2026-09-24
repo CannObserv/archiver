@@ -355,21 +355,31 @@ class DeadLetterOut(BaseModel):
     )
 
 
+StreamIdList = Annotated[
+    list[Annotated[str, Field(pattern=STREAM_ID_PATTERN), AfterValidator(_validate_stream_id)]],
+    Field(min_length=1, max_length=500),
+]
+"""1-500 exact stream ids. Each request names what its route does with them."""
+
+
 class DiscardDeadLettersRequest(BaseModel):
     """Request body for POST /api/v1/tools/dead-letters/{dlq}/discard."""
 
-    entry_ids: list[
-        Annotated[str, Field(pattern=STREAM_ID_PATTERN), AfterValidator(_validate_stream_id)]
-    ] = Field(
-        min_length=1,
-        max_length=500,
+    entry_ids: StreamIdList = Field(
         description="Exact stream ids (`<ms>-<seq>`, each half a uint64) to delete. A range or "
         "bare timestamp is refused: XRANGE would read it as more entries than were named.",
     )
 
 
-class ReprocessDeadLettersRequest(DiscardDeadLettersRequest):
+class ReprocessDeadLettersRequest(BaseModel):
     """Request body for POST /api/v1/tools/dead-letters/{dlq}/reprocess."""
+
+    entry_ids: StreamIdList = Field(
+        description="Exact stream ids (`<ms>-<seq>`, each half a uint64) to reprocess. Each "
+        "owned entry runs through the queue's own handler, and only one the handler settles "
+        "is removed. A range or bare timestamp is refused: XRANGE would read it as more "
+        "entries than were named.",
+    )
 
 
 class ReprocessResultOut(BaseModel):
