@@ -9,14 +9,18 @@
 #   2. clients/python/src/archiver_client/generated/  — regenerated FROM the
 #      snapshot (not the raw dump), so the snapshot is authoritative.
 #
+# The tree is written by the drift gate itself (`--write`), never generated
+# here: one code path, so the check and the write cannot disagree (#272).
+# A second in-place generate once diverged from the gate over 121 files, because
+# the generator's import-fixing hook honours the SDK's lint.exclude (#242) only
+# at the real generated/ path. tests/scripts/test_client_regen.py pins this.
+#
 # Use this when the Archiver legitimately changes shape. Idempotent — safe to
 # re-run. Offline: the spec comes from the FastAPI app object, not a server.
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-SDK_DIR="${REPO_ROOT}/clients/python"
-GEN_DIR="${SDK_DIR}/src/archiver_client/generated"
-SNAPSHOT="${SDK_DIR}/archiver-openapi.json"
+SNAPSHOT="${REPO_ROOT}/clients/python/archiver-openapi.json"
 
 # Dump the canonical spec straight into the committed snapshot.
 # dump_openapi.py already canonicalizes (json.dumps indent=2, sort_keys=True);
@@ -26,15 +30,6 @@ SNAPSHOT="${SDK_DIR}/archiver-openapi.json"
 # derived from the sorted spec.
 cd "${REPO_ROOT}"
 uv run python scripts/dump_openapi.py > "${SNAPSHOT}"
-
-cd "${SDK_DIR}"
-rm -rf "${GEN_DIR}"
-uv run openapi-python-client generate \
-    --path "${SNAPSHOT}" \
-    --meta none \
-    --output-path "${GEN_DIR}" \
-    --overwrite
-
-uv run ruff format "${GEN_DIR}" || true   # cosmetic; don't fail regen on format diffs
 echo "Regenerated: ${SNAPSHOT}"
-echo "Regenerated: ${GEN_DIR}"
+
+uv run python scripts/check_client_drift.py --write archiver

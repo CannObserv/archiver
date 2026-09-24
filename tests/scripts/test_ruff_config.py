@@ -130,7 +130,7 @@ def test_sdk_selects_its_rules_explicitly() -> None:
 
 
 def test_sdk_excludes_generated_from_lint_only() -> None:
-    """``generated/`` is not hand-maintained - but ``regen.sh`` does format it."""
+    """``generated/`` is not hand-maintained - but the client-drift gate formats it."""
     sdk = _sdk_ruff()
     lint_exclude = sdk.get("lint", {}).get("exclude", [])
     assert any("generated" in pattern for pattern in lint_exclude), (
@@ -139,7 +139,7 @@ def test_sdk_excludes_generated_from_lint_only() -> None:
     )
     assert not any("generated" in pattern for pattern in sdk.get("exclude", [])), (
         "a top-level exclude here would also drop the tree from `ruff format`, "
-        "which scripts/regen.sh and the client-drift gate both run over it"
+        "which the client-drift gate (and regen.sh through it) runs over it"
     )
 
 

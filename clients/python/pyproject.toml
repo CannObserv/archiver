@@ -47,9 +47,11 @@ select = ["E", "F", "I", "W", "UP"]
 extend-select = ["B904"]
 # The generated tree is regenerated, never hand-edited, so linting it reports on
 # openapi-python-client's output rather than on anything anyone can fix here.
-# Lint-only by design: `ruff format` must still reach it, because
-# scripts/regen.sh and the client-drift gate (scripts/check_client_drift.py)
-# both format it and compare the result against the committed tree.
+# Lint-only by design: `ruff format` must still reach it, because the
+# client-drift gate (scripts/check_client_drift.py, which scripts/regen.sh
+# delegates to) formats it and compares the result against the committed tree.
+# The generator's own import-fixing hook honours this exclude too, so the tree
+# is only ever generated at a staging path and copied into place (#272).
 # A `lint.exclude` pattern is matched against each file path rather than
 # pruning the walk, so the directory prefix alone matches nothing — the `/**`
 # is load-bearing.
