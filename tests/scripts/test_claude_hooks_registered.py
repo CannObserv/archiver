@@ -155,9 +155,9 @@ def test_socraticode_health_hook_carries_its_prescribed_timeout() -> None:
     for entry in entries:
         assert entry.get("timeout") == SOCRATICODE_HEALTH_TIMEOUT, (
             f"the SocratiCode health hook entry has timeout={entry.get('timeout')!r}, "
-            f"expected {SOCRATICODE_HEALTH_TIMEOUT} (gregoryfoster/skills#259). Repair "
-            "with the argument line of skills-vendor/gregoryfoster-skills/skills/"
-            "init-socraticode/scripts/socraticode-health.install"
+            f"expected {SOCRATICODE_HEALTH_TIMEOUT} (gregoryfoster/skills#259). Edit the "
+            "entry's `timeout` in .claude/settings.json: install-hook.sh never overwrites "
+            "a registered timeout, so re-running the installer leaves this red"
         )
 
 
