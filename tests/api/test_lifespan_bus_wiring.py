@@ -207,9 +207,9 @@ async def test_trim_allowlist_is_info_changes_only(bus_env, bus_client_calls, te
     CannObserv/broker's
     ``tests/deploy/test_redis_acl.py::test_archiver_trim_grant_is_its_trim_allowlist``
     (broker#55): widen both or neither. That selector also holds the two DLQs
-    archiver drains - the drainer grant (archiver#238), not the drain loop's;
-    they never join this set. Broker's test cites this one by name: renaming it
-    breaks that citation.
+    broker assigns archiver to drain - the grant for the unbuilt drainer
+    (archiver#238), not the drain loop's; they never join this set. Broker's
+    test cites this one by name: renaming it breaks that citation.
     """
     bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
     captured: dict = {}
