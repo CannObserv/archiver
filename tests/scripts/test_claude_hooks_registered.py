@@ -124,6 +124,55 @@ def test_socraticode_health_hook_is_wired() -> None:
     )
 
 
+# The health hook's own ``.install`` line carries ``--timeout 120``
+# (gregoryfoster/skills#259). Named here, not only read from the vendor, because
+# CI checks out without submodules and would have nothing to compare against.
+SOCRATICODE_HEALTH_TIMEOUT = 120
+_HEALTH_INSTALL = (
+    REPO_ROOT
+    / "skills-vendor"
+    / "gregoryfoster-skills"
+    / "skills"
+    / "init-socraticode"
+    / "scripts"
+    / "socraticode-health.install"
+)
+
+
+def test_socraticode_health_hook_carries_its_prescribed_timeout() -> None:
+    """The health hook's entry must pin 120s, the budget its ``.install`` prescribes.
+
+    It stamps its once-per-UTC-day lock before doing the work, so a kill spends
+    the day's only attempt and reports nothing. The entry carried 90 until
+    archiver#273's review found it, which is under the 120 a cold ``npx``
+    launch is budgeted for.
+    """
+    entries = [
+        entry for entry in _registered_entries() if "socraticode-health.sh" in entry["command"]
+    ]
+    assert entries, "the SocratiCode daily health hook is not registered at all"
+
+    for entry in entries:
+        assert entry.get("timeout") == SOCRATICODE_HEALTH_TIMEOUT, (
+            f"the SocratiCode health hook entry has timeout={entry.get('timeout')!r}, "
+            f"expected {SOCRATICODE_HEALTH_TIMEOUT} (gregoryfoster/skills#259). Repair "
+            "with the argument line of skills-vendor/gregoryfoster-skills/skills/"
+            "init-socraticode/scripts/socraticode-health.install"
+        )
+
+
+def test_socraticode_health_timeout_matches_the_vendored_install_line() -> None:
+    """The constant above tracks upstream; a changed ``.install`` fails here first."""
+    if not _HEALTH_INSTALL.is_file():
+        pytest.skip("skills-vendor/gregoryfoster-skills is not checked out")
+    args = next(
+        line
+        for line in _HEALTH_INSTALL.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ).split()
+    assert args[args.index("--timeout") + 1] == str(SOCRATICODE_HEALTH_TIMEOUT)
+
+
 # Both SocratiCode hooks must be symlinks into ``skills-vendor/`` rather than
 # copies, for reasons that differ per hook - hence the rationale rides on the
 # parameter rather than living in one shared docstring.
