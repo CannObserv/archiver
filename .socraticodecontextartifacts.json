@@ -13,7 +13,12 @@
     {
       "name": "skills-doc",
       "path": "./docs/SKILLS.md",
-      "description": "Agent skills index. Catalogues the skills under skills/ (agentskills.io) and .claude/skills/ (Claude Code). Local overrides table, vendor submodule reference (gregoryfoster/skills, obra/superpowers), the committed .skills/doctor.sh symlink doctor, SocratiCode workflow and tool-by-goal map. Carries the shared-index client contract (archiver#226): the cohort's Qdrant and Ollama live on the co-index VM, addressed by the committed .socraticode.json (projectId archiver) and the six-variable env block in .claude/settings.json, with QDRANT_API_KEY per-host in the gitignored settings.local.json; the four traps that report themselves as green (QDRANT_HOST vs QDRANT_URL, the short MagicDNS name, QDRANT_COLLECTION_PREFIX, SOCRATICODE_BRANCH_AWARE); and cross-repo search via includeLinked over ../broker, ../notifier, ../replicator, ../watcher link stubs, including the two silent-skip modes no tool result shows. Also the three SessionStart hooks - the prefetch reminder, the once-per-day SocratiCode health check that reports a declared-but-unindexed context artifact and unresolved linked projects, and the skills-vendor/ refresh - installed as symlinks by install-hook.sh rather than copied."
+      "description": "Agent skills index. Catalogues the skills under skills/ (agentskills.io) and .claude/skills/ (Claude Code). Local overrides table, vendor submodule reference (gregoryfoster/skills, obra/superpowers), the committed .skills/doctor.sh symlink doctor. Also the three SessionStart hooks - the prefetch reminder, the once-per-day SocratiCode health check that reports a declared-but-unindexed context artifact and unresolved linked projects, and the skills-vendor/ refresh - installed as symlinks by install-hook.sh rather than copied."
+    },
+    {
+      "name": "socraticode-doc",
+      "path": "./docs/SOCRATICODE.md",
+      "description": "SocratiCode workflow and tool-by-goal map. Carries the shared-index client contract (archiver#226): the cohort's Qdrant and Ollama live on the co-index VM, addressed by the committed .socraticode.json (projectId archiver) and the six-variable env block in .claude/settings.json, with QDRANT_API_KEY per-host in the gitignored settings.local.json; the four traps that report themselves as green (QDRANT_HOST vs QDRANT_URL, the short MagicDNS name, QDRANT_COLLECTION_PREFIX, SOCRATICODE_BRANCH_AWARE); and cross-repo search via includeLinked over ../broker, ../notifier, ../replicator, ../watcher link stubs, including the two silent-skip modes no tool result shows."
     },
     {
       "name": "design-and-plans",
