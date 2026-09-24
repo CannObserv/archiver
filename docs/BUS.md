@@ -226,7 +226,7 @@ and MUST-7 *inverts* into a scheduling obligation on this side.
   replication fan-out moves to production scale, whichever comes first. The
   check is manual. Archiver's credential holds `+xlen` on the key. Broker's
   probe sets no length threshold on an uncapped stream, so its memory check is
-  the only alarm.
+  the only alarm on growth.
 - **When the trigger fires, delete by id; do not trim.** None of this is built.
   The plan: record the `XADD` id on the `replication_commands` row (a
   migration), then `XDEL` the entry once `content.artifacts` closes that row as
