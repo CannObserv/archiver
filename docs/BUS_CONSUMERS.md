@@ -200,6 +200,11 @@ does not run it unasked, and it is not verification the 8001 rule covers.
   record. Ids must be exact `<ms>-<seq>`, each half a uint64: `XRANGE` reads
   `-`, `+` or a bare `<ms>` as a range, and Redis refuses a half past uint64
   mid-request, after the ids before it were deleted.
+- **A 503 from discard is not "nothing happened".** A broker failure part-way
+  through returns `data.discarded` (deleted), `data.not_found`, and
+  `data.in_doubt`: the id whose `XDEL` was in flight, which may have landed with
+  its reply lost. Re-list before retrying it. The journald record is
+  `Discard interrupted by a broker failure`.
 - **The allowlist is derived, and one decision with broker's ACL.**
   `TRIAGE_DLQS` comes from `bus_health.OWNED_GROUPS`, so a new consumer group
   becomes triageable automatically, and its discard fails NOPERM until broker's

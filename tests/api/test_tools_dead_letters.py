@@ -4,7 +4,7 @@ The route borrows the lifespan's Redis client through ``get_redis_client``; the
 tests hand it a fakeredis instance, so XRANGE / XDEL run for real.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fakeredis import aioredis as fakeredis_aio
@@ -153,6 +153,29 @@ async def test_discard_from_a_queue_outside_the_allowlist_is_a_422(client, fake_
 
     assert resp.status_code == 422
     assert await fake_redis.xlen("content.revisions") == 1
+
+
+async def test_a_broker_failure_mid_discard_is_a_503_that_names_its_progress(client, fake_redis):
+    """Without ``data``, a retry would report the ids this request already deleted
+    as not_found - indistinguishable from ids that never existed."""
+    first, second = [(await fake_redis.xadd(DLQ, {"n": str(n)})).decode() for n in range(2)]
+    real_xdel = fake_redis.xdel
+    calls = 0
+
+    async def xdel_then_fail(*args):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RedisConnectionError("broker went away")
+        return await real_xdel(*args)
+
+    with patch.object(fake_redis, "xdel", xdel_then_fail):
+        resp = await client.post(DISCARD_URL, headers=HEADERS, json={"entry_ids": [first, second]})
+
+    assert resp.status_code == 503
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "server"
+    assert detail["data"] == {"discarded": [first], "not_found": [], "in_doubt": second}
 
 
 async def test_discard_conflicts_when_bus_dormant(client):

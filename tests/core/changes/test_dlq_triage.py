@@ -13,11 +13,13 @@ import pytest
 from co_core.pure.adapters.bus.envelope import to_wire
 from co_core.pure.models.changes import SourceRevisionObservedEvent
 from fakeredis import aioredis as fakeredis_aio
+from redis.exceptions import ConnectionError as RedisConnectionError
 from ulid import ULID
 
 from src.core.changes import dlq_triage
 from src.core.changes.dlq_triage import (
     TRIAGE_DLQS,
+    DiscardInterruptedError,
     NotTriageableError,
     discard_dead_letters,
     is_exact_stream_id,
@@ -260,3 +262,51 @@ async def test_discard_logs_each_frame_in_full_before_deleting_it(fake_redis):
     assert extra["dlq"] == REVISIONS_DLQ
     assert extra["entry_id"] == entry_id
     assert extra["fields"] == frame
+
+
+def _fail_on_call(real, n: int):
+    """Wrap an async client method so its ``n``-th call raises a broker error."""
+    calls = 0
+
+    async def wrapper(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == n:
+            raise RedisConnectionError("broker went away")
+        return await real(*args, **kwargs)
+
+    return wrapper
+
+
+async def test_a_broker_failure_on_a_delete_names_what_was_deleted_and_what_is_in_doubt(
+    fake_redis,
+):
+    """The XDEL in flight may have landed with its reply lost: only a re-list can
+    say, so it is reported apart from what is known deleted."""
+    first, second, third = [
+        (await fake_redis.xadd(REVISIONS_DLQ, {"n": str(n)})).decode() for n in range(3)
+    ]
+
+    with patch.object(fake_redis, "xdel", _fail_on_call(fake_redis.xdel, 2)):
+        with pytest.raises(DiscardInterruptedError) as caught:
+            await discard_dead_letters(fake_redis, REVISIONS_DLQ, ["1-0", first, second, third])
+
+    assert caught.value.discarded == (first,)
+    assert caught.value.not_found == ("1-0",)
+    assert caught.value.in_doubt == second
+    assert isinstance(caught.value.__cause__, RedisConnectionError)
+
+
+async def test_a_broker_failure_on_a_read_leaves_nothing_in_doubt(fake_redis):
+    """A failed XRANGE deletes nothing, so no id is in doubt."""
+    first, second = [
+        (await fake_redis.xadd(REVISIONS_DLQ, {"n": str(n)})).decode() for n in range(2)
+    ]
+
+    with patch.object(fake_redis, "xrange", _fail_on_call(fake_redis.xrange, 2)):
+        with pytest.raises(DiscardInterruptedError) as caught:
+            await discard_dead_letters(fake_redis, REVISIONS_DLQ, [first, second])
+
+    assert caught.value.discarded == (first,)
+    assert caught.value.in_doubt is None
+    assert await fake_redis.xlen(REVISIONS_DLQ) == 1

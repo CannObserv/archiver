@@ -106,7 +106,9 @@ def sync_detailed(
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless.
+    retried discard is harmless. A broker failure part-way through is a 503 whose
+    ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
+    delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
         dlq (str):
@@ -145,7 +147,9 @@ def sync(
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless.
+    retried discard is harmless. A broker failure part-way through is a 503 whose
+    ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
+    delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
         dlq (str):
@@ -179,7 +183,9 @@ async def asyncio_detailed(
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless.
+    retried discard is harmless. A broker failure part-way through is a 503 whose
+    ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
+    delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
         dlq (str):
@@ -216,7 +222,9 @@ async def asyncio(
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless.
+    retried discard is harmless. A broker failure part-way through is a 503 whose
+    ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
+    delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
         dlq (str):

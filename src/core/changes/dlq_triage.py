@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 from co_core.pure.adapters.bus.envelope import from_wire
 from co_core.pure.adapters.bus.exceptions import BusMessageAnomaly
 from co_core.pure.adapters.bus.streams import dlq_name
+from redis.exceptions import RedisError
 
 from src.core.bus_health import OWNED_GROUPS
 from src.core.changes.diagnostics import error_text
@@ -76,6 +77,33 @@ class NotTriageableError(ValueError):
     def __init__(self, dlq: str) -> None:
         super().__init__(f"not a dead-letter queue archiver triages: {dlq!r}")
         self.dlq = dlq
+
+
+class DiscardInterruptedError(Exception):
+    """The broker failed part-way through a discard, and what had happened by then.
+
+    ``discarded`` and ``not_found`` are settled. ``in_doubt`` is the id whose
+    ``XDEL`` was in flight: it may have landed with its reply lost, so only a
+    re-list can say. ``None`` when the failure was a read, which deletes nothing.
+    Ids after it were never attempted.
+    """
+
+    def __init__(
+        self,
+        dlq: str,
+        *,
+        discarded: tuple[str, ...],
+        not_found: tuple[str, ...],
+        in_doubt: str | None,
+    ) -> None:
+        super().__init__(
+            f"broker failed during discard from {dlq!r} after {len(discarded)} deletion(s)"
+            + (f"; {in_doubt} in doubt" if in_doubt else "")
+        )
+        self.dlq = dlq
+        self.discarded = discarded
+        self.not_found = not_found
+        self.in_doubt = in_doubt
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,7 +214,9 @@ async def discard_dead_letters(client: Redis, dlq: str, entry_ids: Iterable[str]
     a concurrent discard between the read and the delete - is ``not_found``.
 
     Every id is checked with ``is_exact_stream_id`` before any command is sent,
-    so one bad id deletes nothing.
+    so one bad id deletes nothing. A broker failure part-way through raises
+    ``DiscardInterruptedError`` carrying the progress so far: without it, a
+    retry would report ids this call already deleted as ``not_found``.
     """
     _require_triageable(dlq)
     requested = list(dict.fromkeys(entry_ids))
@@ -195,8 +225,27 @@ async def discard_dead_letters(client: Redis, dlq: str, entry_ids: Iterable[str]
         raise ValueError(f"not an exact stream id: {inexact!r}")
     discarded: list[str] = []
     not_found: list[str] = []
+
+    def interrupted(exc: BaseException, in_doubt: str | None) -> DiscardInterruptedError:
+        err = DiscardInterruptedError(
+            dlq, discarded=tuple(discarded), not_found=tuple(not_found), in_doubt=in_doubt
+        )
+        logger.error(
+            "Discard interrupted by a broker failure",
+            extra={
+                "dlq": dlq,
+                "discarded": list(err.discarded),
+                "in_doubt": in_doubt,
+                "error": error_text(exc),
+            },
+        )
+        return err
+
     for entry_id in requested:
-        entries = await client.xrange(dlq, min=entry_id, max=entry_id)
+        try:
+            entries = await client.xrange(dlq, min=entry_id, max=entry_id)
+        except (RedisError, OSError) as e:
+            raise interrupted(e, None) from e
         if not entries:
             not_found.append(entry_id)
             continue
@@ -210,7 +259,11 @@ async def discard_dead_letters(client: Redis, dlq: str, entry_ids: Iterable[str]
                 "fields": {_text(k): _text(v) for k, v in raw_fields.items()},
             },
         )
-        if await client.xdel(dlq, entry_id):
+        try:
+            deleted = await client.xdel(dlq, entry_id)
+        except (RedisError, OSError) as e:
+            raise interrupted(e, entry_id) from e
+        if deleted:
             discarded.append(entry_id)
         else:
             not_found.append(entry_id)

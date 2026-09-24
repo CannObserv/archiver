@@ -43,7 +43,11 @@ from src.api.schemas.tools import (
     ValidateWatchSpecResponse,
 )
 from src.api.serializers import info_item_to_out
-from src.core.changes.dlq_triage import discard_dead_letters, list_dead_letters
+from src.core.changes.dlq_triage import (
+    DiscardInterruptedError,
+    discard_dead_letters,
+    list_dead_letters,
+)
 from src.core.rep_fields import resolve_rep_fields
 from src.core.rep_fields_schema.validator import (
     validate_rep_fields,
@@ -356,13 +360,25 @@ async def discard_dead_letters_route(
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless.
+    retried discard is harmless. A broker failure part-way through is a 503 whose
+    ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
+    delete was in flight, or null): the progress a retry could not reconstruct.
     """
     client = _require_bus(redis)
     try:
         result = await discard_dead_letters(client, dlq, body.entry_ids)
-    except (RedisError, OSError) as e:
-        raise_envelope(503, "server", f"broker write failed: {type(e).__name__}", source_exc=e)
+    except DiscardInterruptedError as e:
+        raise_envelope(
+            503,
+            "server",
+            str(e),
+            data={
+                "discarded": list(e.discarded),
+                "not_found": list(e.not_found),
+                "in_doubt": e.in_doubt,
+            },
+            source_exc=e,
+        )
     return DiscardDeadLettersResponse(
         discarded=list(result.discarded), not_found=list(result.not_found)
     )

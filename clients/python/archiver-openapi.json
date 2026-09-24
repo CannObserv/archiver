@@ -5156,7 +5156,7 @@
     },
     "/api/v1/tools/dead-letters/{dlq}/discard": {
       "post": {
-        "description": "Delete the named entries from one of archiver's two DLQs (archiver#238).\n\n``XDEL`` by id, each frame logged in full to journald first. Ids not in the\nqueue come back in ``not_found`` rather than failing the request, so a\nretried discard is harmless.",
+        "description": "Delete the named entries from one of archiver's two DLQs (archiver#238).\n\n``XDEL`` by id, each frame logged in full to journald first. Ids not in the\nqueue come back in ``not_found`` rather than failing the request, so a\nretried discard is harmless. A broker failure part-way through is a 503 whose\n``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose\ndelete was in flight, or null): the progress a retry could not reconstruct.",
         "operationId": "discard_dead_letters_route_api_v1_tools_dead_letters__dlq__discard_post",
         "parameters": [
           {
