@@ -434,9 +434,10 @@ async def run(
     ``+xtrim`` grant, pinned by broker's
     ``test_archiver_trim_grant_is_its_trim_allowlist`` (CannObserv/broker#55):
     widen both or neither. The grant admits this set and the two DLQs
-    broker assigns archiver to drain: those belong to the unbuilt drainer
-    (archiver#238) and must never join ``trim_topics`` - a MAXLEN cap ignores
-    triage: past it, the oldest dead letters go whether or not anyone read them.
+    broker assigns archiver to drain: those belong to the drainer
+    (archiver#238), which disposes with ``XDEL`` and issues no ``XTRIM``, and
+    they must never join ``trim_topics`` - a MAXLEN cap ignores triage: past
+    it, the oldest dead letters go whether or not anyone read them.
     A topic that also carries per-publish retention in ``topic_maxlen`` is
     dropped from the trim set with one ERROR: its cap is a consumer contract
     (archiver#141), and raising instead would kill this task and stop

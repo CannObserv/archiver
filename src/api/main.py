@@ -202,7 +202,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     # pinned by broker's
                     # test_archiver_trim_grant_is_its_trim_allowlist
                     # (CannObserv/broker#55). The grant's two DLQs are the
-                    # drainer's (archiver#238), never this set's. Absent by
+                    # drainer's (archiver#238, XDEL only), never this set's. Absent by
                     # design: info.registry carries retention on each publish
                     # (archiver#141); and a *command* stream must never be
                     # capped by its producer (archiver#169) — an XTRIM on

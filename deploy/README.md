@@ -53,7 +53,8 @@ Identity Federation; see `.github/workflows/ci.yml`.)
 Archiver **publishes** `info.changes`, `info.registry` and `content.replicate`,
 **consumes** `content.revisions`, `content.artifacts` and `info.watch-status`,
 and triages the DLQs of the two streams it consumes - `content.revisions.dlq`
-and `content.artifacts.dlq`. It no longer *operates* the broker: archiver#193
+and `content.artifacts.dlq` (list and discard since #238; runbook in
+`docs/BUS_CONSUMERS.md`). It no longer *operates* the broker: archiver#193
 D6 moved that role, its tuning, and the cluster stream inventory to
 CannObserv/broker.
 
@@ -89,7 +90,8 @@ stale-low, so it warns early rather than going quiet.
   published to". It is one decision with broker's ACL grant, `+xtrim` on
   `~info.changes` among canonical streams (CannObserv/broker#34, pinned by
   broker#55): widen one, widen the other. The grant's two DLQs are the drainer's
-  (#238) and never join `trim_topics`.
+  (#238), which disposes with `XDEL` and issues no `XTRIM`, and they never join
+  `trim_topics`.
   `content.replicate` is absent from it by design - capping a command stream
   deletes commands the consumer group has not delivered and orphans the PEL
   entries naming them (#169) - and `info.registry` for the reason below.

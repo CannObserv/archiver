@@ -1,10 +1,12 @@
 """Pydantic request/response schemas for /api/v1/tools/* endpoints."""
 
-from typing import Any
+from datetime import datetime
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import AfterValidator, BaseModel, Field, HttpUrl
 
 from src.api.errors import FieldError
+from src.core.changes.dlq_triage import STREAM_ID_PATTERN, TRIAGE_DLQS
 
 # ---------------------------------------------------------------------------
 # validate-source-spec
@@ -266,3 +268,54 @@ class RepublishRegistryResponse(BaseModel):
         description="True — the snapshot loop was signalled; the publish itself "
         "happens asynchronously on the loop's task (202 semantics)."
     )
+
+
+# ---------------------------------------------------------------------------
+# dead-letters (archiver#238)
+# ---------------------------------------------------------------------------
+
+
+def _validate_triage_dlq(value: str) -> str:
+    """Path validator: a queue outside ``TRIAGE_DLQS`` is a 422, never a read."""
+    if value not in TRIAGE_DLQS:
+        raise ValueError(f"not a dead-letter queue archiver triages; expected one of {TRIAGE_DLQS}")
+    return value
+
+
+TriageDlqStr = Annotated[str, AfterValidator(_validate_triage_dlq)]
+"""A path segment naming one of ``TRIAGE_DLQS`` - the DLQ key, as broker names it."""
+
+
+class DeadLetterOut(BaseModel):
+    """One entry of a dead-letter queue, described for triage."""
+
+    entry_id: str = Field(description="The entry's stream id in the DLQ; what discard takes.")
+    dead_lettered_at: datetime = Field(
+        description="When the entry was dead-lettered, from its stream id. Until co-core "
+        "records provenance (cannobserv#474), the way back to the journald line that says why."
+    )
+    fields: dict[str, str] = Field(description="The raw wire fields `dead_letter` copied.")
+    event_type: str | None = Field(description="The frame's `event_type` field, if it has one.")
+    decodes: bool = Field(
+        description="Whether the frame decodes against the running co-core. True on an entry "
+        "that failed to decode when it was parked is the version-skew case."
+    )
+    decode_error: str | None = Field(description="Why it does not decode; null when it does.")
+
+
+class DiscardDeadLettersRequest(BaseModel):
+    """Request body for POST /api/v1/tools/dead-letters/{dlq}/discard."""
+
+    entry_ids: list[Annotated[str, Field(pattern=STREAM_ID_PATTERN)]] = Field(
+        min_length=1,
+        max_length=500,
+        description="Exact stream ids (`<ms>-<seq>`) to delete. A range or bare timestamp is "
+        "refused: XRANGE would read it as more entries than were named.",
+    )
+
+
+class DiscardDeadLettersResponse(BaseModel):
+    """Response body for POST /api/v1/tools/dead-letters/{dlq}/discard."""
+
+    discarded: list[str] = Field(description="Ids deleted, each logged in full to journald first.")
+    not_found: list[str] = Field(description="Ids that were not in the queue.")
