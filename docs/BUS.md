@@ -212,9 +212,31 @@ and MUST-7 *inverts* into a scheduling obligation on this side.
   vocabulary for what it decided *before* publishing, deliberately distinct from
   Replicator's producer-owned failure tokens. Only the colliding assignments are
   skipped on a `destination_collision`; the rest of the fan-out still ships.
-- **Never `XTRIM`med by Archiver.** Capping a command stream deletes commands the
-  consumer group has not delivered and orphans the PEL entries naming them, so
-  the topic is absent from the drain loop's trim allowlist.
+- **Never capped, and the broker refuses it.** Capping a command stream deletes
+  commands the consumer group has not delivered and orphans the PEL entries
+  naming them. So the topic is absent from the drain loop's trim allowlist, no
+  `MAXLEN` rides its publish, and no `+xtrim` selector on the broker names it
+  (CannObserv/broker#14).
+- **Retention is `maxmemory` alone, by decision (archiver#267).** Nothing else
+  bounds the stream (CannObserv/broker#60), which is acceptable at today's
+  volume: 3 entries ever added, about 1 KB each (2026-09-24). **Trigger:**
+  revisit when `XLEN content.replicate` passes **10k** (about 10 MB), or when
+  replication fan-out moves to production scale, whichever comes first. The
+  check is manual. Archiver's credential holds `+xlen` on the key. Broker's
+  probe sets no length threshold on an uncapped stream, so its memory check is
+  the only alarm.
+- **When the trigger fires, delete by id; do not trim.** None of this is built.
+  The plan: record the `XADD` id on the `replication_commands` row (a
+  migration), then `XDEL` the entry once `content.artifacts` closes that row as
+  `complete` or `failed`. Never delete on `abandoned`: the reaper closes a row
+  because no fact arrived, and its entry may still be pending or in flight.
+  Broker would grant `+xdel ~content.replicate`, and `XDEL` cannot express a
+  cap, so broker's ACL keeps enforcing "never capped". The alternative is
+  `XTRIM MINID` below the group's settled horizon. Its `+xtrim` grant also
+  admits `MAXLEN`, which moves that guarantee back into archiver's source, the
+  direction broker#14 moved away from. Either path also changes a broker probe
+  rule. The stream is `never_trimmed` there, so **any** fall in its length
+  raises `stream-shrank`. The options and their costs are on archiver#267.
 - **Outcomes come back on `content.artifacts`** (archiver#170, landed):
   `replication_complete` / `replication_failed` are consumed by the
   `archiver.artifacts` group, which is what writes `public_url`. The silent
