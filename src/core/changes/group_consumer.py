@@ -73,6 +73,20 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 # be used" and dead-letters the frame.
 MessageHandler = Callable[[BusMessage], Awaitable[bool]]
 
+# The prefix of every ``dlq.reason`` this module writes, followed by ": " and
+# ``error_text``. A drainer branches on it (archiver#238): a frame parked as
+# *handler poison* decoded and still failed, so it is discarded; one parked as
+# *undecodable* may be version skew, so reprocess is worth trying once co-core
+# catches up. The detail is stored on the broker for anyone with read access to
+# the queue - exception text, never a credential (cannobserv#474).
+REASON_HANDLER_POISON = "handler poison"
+REASON_UNDECODABLE = "undecodable"
+
+
+def dead_letter_reason(kind: str, exc: BaseException) -> str:
+    """``<kind>: <error_text(exc)>``; co-core caps it at 2000 characters."""
+    return f"{kind}: {error_text(exc)}"
+
 
 def consumer_enabled(raw: str | None) -> bool:
     """Whether ``ARCHIVER_BUS_CONSUMER`` opts this process into a group.
@@ -212,7 +226,11 @@ async def _process(
             },
             exc_info=exc,
         )
-        await consumer.bus.dead_letter(message.message_id, dict(message.fields))
+        await consumer.bus.dead_letter(
+            message.message_id,
+            dict(message.fields),
+            reason=dead_letter_reason(REASON_HANDLER_POISON, exc),
+        )
         return True
 
     if ackable:
@@ -254,7 +272,11 @@ async def _dead_letter_poison(consumer: GroupConsumer, page: ClaimPage) -> int:
             },
             exc_info=frame.anomaly,
         )
-        await consumer.bus.dead_letter(frame.message_id, dict(frame.fields))
+        await consumer.bus.dead_letter(
+            frame.message_id,
+            dict(frame.fields),
+            reason=dead_letter_reason(REASON_UNDECODABLE, frame.anomaly),
+        )
     return len(page.poison)
 
 
