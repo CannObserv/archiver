@@ -102,7 +102,10 @@ bash scripts/dev_server.sh
 
 Anything that writes - curl, SDK scripts, manual verification - targets 8001,
 never 8000. Why the script exists, its knobs, and the 2026-07-18
-production-write incident: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+production-write incident: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The one
+exception is DLQ discard (#238): the queues exist only on prod's broker, so it
+goes to 8000, and only when the operator asks
+([docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)).
 
 ## Environment Files
 
