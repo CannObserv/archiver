@@ -44,7 +44,7 @@
         "description": "One entry of a dead-letter queue, described for triage.",
         "properties": {
           "dead_lettered_at": {
-            "description": "When the entry was dead-lettered, from its stream id. Until co-core records provenance (cannobserv#474), the way back to the journald line that says why.",
+            "description": "When the entry was dead-lettered, from its stream id. On an entry with no provenance, the way back to the journald line that says why.",
             "format": "date-time",
             "title": "Dead Lettered At",
             "type": "string"
@@ -87,9 +87,33 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "The raw wire fields `dead_letter` copied.",
+            "description": "The raw entry: the wire fields `dead_letter` copied, plus its `dlq.*` provenance fields.",
             "title": "Fields",
             "type": "object"
+          },
+          "owned": {
+            "description": "Whether archiver's own group for this queue's topic parked it. A fact stream's DLQ is shared by every consuming service; only owned entries are archiver's to reprocess.",
+            "title": "Owned",
+            "type": "boolean"
+          },
+          "parked_as": {
+            "anyOf": [
+              {
+                "enum": [
+                  "handler_poison",
+                  "undecodable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which quarantine path parked it, read off the reason's prefix. `handler_poison` decoded and still failed: discard. `undecodable` with `decodes` true is version skew: reprocess. Null with no reason, or one archiver did not write.",
+            "title": "Parked As"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/DeadLetterProvenanceOut"
           }
         },
         "required": [
@@ -98,9 +122,73 @@
           "fields",
           "event_type",
           "decodes",
-          "decode_error"
+          "decode_error",
+          "provenance",
+          "parked_as",
+          "owned"
         ],
         "title": "DeadLetterOut",
+        "type": "object"
+      },
+      "DeadLetterProvenanceOut": {
+        "description": "What `dead_letter` recorded about an entry (co-core >= 0.19.1, cannobserv#474).\n\nEvery field is null on an entry written before that.",
+        "properties": {
+          "consumer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The consumer within that group.",
+            "title": "Consumer"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The consumer group that parked it.",
+            "title": "Group"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it was parked. Archiver's own start `handler poison: ` or `undecodable: `, then the error; capped at 2000 characters.",
+            "title": "Reason"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The original entry's id on the source stream.",
+            "title": "Source Id"
+          }
+        },
+        "required": [
+          "source_id",
+          "group",
+          "consumer",
+          "reason"
+        ],
+        "title": "DeadLetterProvenanceOut",
         "type": "object"
       },
       "DiscardDeadLettersRequest": {

@@ -3,6 +3,8 @@
 from .chunk_preview_out import ChunkPreviewOut
 from .dead_letter_out import DeadLetterOut
 from .dead_letter_out_fields import DeadLetterOutFields
+from .dead_letter_out_parked_as_type_0 import DeadLetterOutParkedAsType0
+from .dead_letter_provenance_out import DeadLetterProvenanceOut
 from .discard_dead_letters_request import DiscardDeadLettersRequest
 from .discard_dead_letters_response import DiscardDeadLettersResponse
 from .domain_out import DomainOut
@@ -80,6 +82,8 @@ __all__ = (
     "ChunkPreviewOut",
     "DeadLetterOut",
     "DeadLetterOutFields",
+    "DeadLetterOutParkedAsType0",
+    "DeadLetterProvenanceOut",
     "DiscardDeadLettersRequest",
     "DiscardDeadLettersResponse",
     "DomainOut",

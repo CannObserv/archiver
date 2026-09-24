@@ -114,9 +114,9 @@ async def test_list_describes_a_decodable_entry(fake_redis):
 
 
 async def test_list_dates_each_entry_from_its_stream_id(fake_redis):
-    """The id's millisecond part is when ``dead_letter`` wrote it - until
-    cannobserv#474 ships provenance, the one handle back to the journald line
-    that says why."""
+    """The id's millisecond part is when ``dead_letter`` wrote it. On an entry
+    written before co-core 0.19.1 (no provenance), the one handle back to the
+    journald line that says why."""
     await fake_redis.xadd(REVISIONS_DLQ, _observed_frame(), id="1727179200123-0")
 
     [entry], _ = await list_dead_letters(fake_redis, REVISIONS_DLQ, limit=10, offset=0)

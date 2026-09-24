@@ -35,8 +35,9 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
+from co_core.pure.adapters.bus.dead_letter import DeadLetterProvenance, split_dead_letter
 from co_core.pure.adapters.bus.envelope import from_wire
 from co_core.pure.adapters.bus.exceptions import BusMessageAnomaly
 from co_core.pure.adapters.bus.streams import dlq_name
@@ -44,6 +45,7 @@ from redis.exceptions import RedisError
 
 from src.core.bus_health import OWNED_GROUPS
 from src.core.changes.diagnostics import error_text
+from src.core.changes.group_consumer import REASON_HANDLER_POISON, REASON_UNDECODABLE
 from src.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -52,6 +54,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SOURCE_TOPIC_BY_DLQ: dict[str, str] = {dlq_name(g.topic): g.topic for g in OWNED_GROUPS}
+_GROUP_BY_DLQ: dict[str, str] = {dlq_name(g.topic): g.group for g in OWNED_GROUPS}
+
+ParkedAs = Literal["handler_poison", "undecodable"]
+_PARKED_AS_BY_PREFIX: dict[str, ParkedAs] = {
+    f"{REASON_HANDLER_POISON}: ": "handler_poison",
+    f"{REASON_UNDECODABLE}: ": "undecodable",
+}
 
 TRIAGE_DLQS: tuple[str, ...] = tuple(_SOURCE_TOPIC_BY_DLQ)
 """The queues this module will read or delete from, derived from ``OWNED_GROUPS``.
@@ -111,9 +120,14 @@ class DiscardInterruptedError(Exception):
 class DeadLetter:
     """One DLQ entry, described for the operator deciding about it.
 
-    ``dead_lettered_at`` comes from the entry id: ``dead_letter`` records no
-    provenance (cannobserv#474), so the time is the only way back to the
-    journald line that says why the entry was parked.
+    ``provenance`` is what co-core >= 0.19.1's ``dead_letter`` recorded
+    (cannobserv#474): the original id, the group and consumer that parked it,
+    and why. Every field is ``None`` on an entry written before that, where
+    ``dead_lettered_at`` (from the entry id) is still the way back to the
+    journald line. ``parked_as`` reads the reason's prefix; ``owned`` is whether
+    archiver's own group for this queue's topic parked it - a fact stream's DLQ
+    is shared by every consuming service's group, and only owned entries are
+    archiver's handlers' to reprocess.
     """
 
     entry_id: str
@@ -122,6 +136,9 @@ class DeadLetter:
     event_type: str | None
     decodes: bool
     decode_error: str | None
+    provenance: DeadLetterProvenance
+    parked_as: ParkedAs | None
+    owned: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,10 +185,24 @@ def _entry_time(entry_id: str) -> datetime:
     return datetime.fromtimestamp(millis / 1000, tz=UTC)
 
 
-def _describe(source_topic: str, entry_id: str, fields: dict[str, str]) -> DeadLetter:
-    """Try the frame against the running co-core: decoding is the skew question."""
+def _parked_as(reason: str | None) -> ParkedAs | None:
+    """The quarantine path that wrote ``reason``, or ``None`` if it is not ours."""
+    if reason is None:
+        return None
+    for prefix, kind in _PARKED_AS_BY_PREFIX.items():
+        if reason.startswith(prefix):
+            return kind
+    return None
+
+
+def _describe(dlq: str, entry_id: str, fields: dict[str, str]) -> DeadLetter:
+    """Try the frame against the running co-core: decoding is the skew question.
+
+    The decode is of the wire half, as a reprocess would hand it to a handler.
+    """
+    wire, provenance = split_dead_letter(fields)
     try:
-        from_wire(fields, topic=source_topic, message_id=entry_id)
+        from_wire(wire, topic=_SOURCE_TOPIC_BY_DLQ[dlq], message_id=entry_id)
     except BusMessageAnomaly as exc:
         decode_error: str | None = error_text(exc)
     else:
@@ -183,6 +214,9 @@ def _describe(source_topic: str, entry_id: str, fields: dict[str, str]) -> DeadL
         event_type=fields.get("event_type"),
         decodes=decode_error is None,
         decode_error=decode_error,
+        provenance=provenance,
+        parked_as=_parked_as(provenance.reason),
+        owned=provenance.group == _GROUP_BY_DLQ[dlq],
     )
 
 
@@ -195,12 +229,12 @@ async def list_dead_letters(
     a queue's resting depth of 0 and the handful a real dead-letter leaves; a
     queue deep enough for it to matter is a broker finding already.
     """
-    source_topic = _require_triageable(dlq)
+    _require_triageable(dlq)
     count = min(offset + limit + 1, _MAX_XRANGE_COUNT)
     raw = await client.xrange(dlq, count=count)
     window = raw[offset : offset + limit + 1]
     entries = [
-        _describe(source_topic, _text(eid), {_text(k): _text(v) for k, v in fields.items()})
+        _describe(dlq, _text(eid), {_text(k): _text(v) for k, v in fields.items()})
         for eid, fields in window[:limit]
     ]
     return entries, len(window) > limit

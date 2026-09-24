@@ -11,7 +11,7 @@ T = TypeVar("T", bound="DeadLetterOutFields")
 
 @_attrs_define
 class DeadLetterOutFields:
-    """The raw wire fields `dead_letter` copied."""
+    """The raw entry: the wire fields `dead_letter` copied, plus its `dlq.*` provenance fields."""
 
     additional_properties: dict[str, str] = _attrs_field(init=False, factory=dict)
 

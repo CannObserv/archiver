@@ -1,7 +1,7 @@
 """Pydantic request/response schemas for /api/v1/tools/* endpoints."""
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Path
 from pydantic import AfterValidator, BaseModel, Field, HttpUrl
@@ -303,21 +303,50 @@ TriageDlqStr = Annotated[
 OpenAPI, and so the SDK, learns the two legal values."""
 
 
+class DeadLetterProvenanceOut(BaseModel):
+    """What `dead_letter` recorded about an entry (co-core >= 0.19.1, cannobserv#474).
+
+    Every field is null on an entry written before that.
+    """
+
+    source_id: str | None = Field(description="The original entry's id on the source stream.")
+    group: str | None = Field(description="The consumer group that parked it.")
+    consumer: str | None = Field(description="The consumer within that group.")
+    reason: str | None = Field(
+        description="Why it was parked. Archiver's own start `handler poison: ` or "
+        "`undecodable: `, then the error; capped at 2000 characters."
+    )
+
+
 class DeadLetterOut(BaseModel):
     """One entry of a dead-letter queue, described for triage."""
 
     entry_id: str = Field(description="The entry's stream id in the DLQ; what discard takes.")
     dead_lettered_at: datetime = Field(
-        description="When the entry was dead-lettered, from its stream id. Until co-core "
-        "records provenance (cannobserv#474), the way back to the journald line that says why."
+        description="When the entry was dead-lettered, from its stream id. On an entry with "
+        "no provenance, the way back to the journald line that says why."
     )
-    fields: dict[str, str] = Field(description="The raw wire fields `dead_letter` copied.")
+    fields: dict[str, str] = Field(
+        description="The raw entry: the wire fields `dead_letter` copied, plus its `dlq.*` "
+        "provenance fields."
+    )
     event_type: str | None = Field(description="The frame's `event_type` field, if it has one.")
     decodes: bool = Field(
         description="Whether the frame decodes against the running co-core. True on an entry "
         "that failed to decode when it was parked is the version-skew case."
     )
     decode_error: str | None = Field(description="Why it does not decode; null when it does.")
+    provenance: DeadLetterProvenanceOut
+    parked_as: Literal["handler_poison", "undecodable"] | None = Field(
+        description="Which quarantine path parked it, read off the reason's prefix. "
+        "`handler_poison` decoded and still failed: discard. `undecodable` with `decodes` "
+        "true is version skew: reprocess. Null with no reason, or one archiver did not write."
+    )
+    owned: bool = Field(
+        description="Whether archiver's own group for this queue's topic parked it. A fact "
+        "stream's DLQ is shared by every consuming service; only owned entries are archiver's "
+        "to reprocess."
+    )
 
 
 class DiscardDeadLettersRequest(BaseModel):
