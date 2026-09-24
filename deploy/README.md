@@ -88,10 +88,10 @@ stale-low, so it warns early rather than going quiet.
   **explicit allowlist** - `trim_topics`, literally `{info.changes}`, set in
   `src/api/main.py` and pinned by a test (#239) - never "every topic
   published to". It is one decision with broker's ACL grant, `+xtrim` on
-  `~info.changes` among canonical streams (CannObserv/broker#34, pinned by
-  broker#55): widen one, widen the other. The grant's two DLQs are the drainer's
-  (#238), which disposes with `XDEL` and issues no `XTRIM`, and they never join
-  `trim_topics`.
+  `~info.changes` alone (CannObserv/broker#34, pinned by broker#55): widen one,
+  widen the other. The two DLQs are outside it: the drainer (#238) disposes with
+  `XDEL` under its own `+xdel` selector, broker cut their `+xtrim`
+  (CannObserv/broker#59), and they never join `trim_topics`.
   `content.replicate` is absent from it by design - capping a command stream
   deletes commands the consumer group has not delivered and orphans the PEL
   entries naming them (#169) - and `info.registry` for the reason below.

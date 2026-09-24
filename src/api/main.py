@@ -198,11 +198,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     redis_client=redis_client,
                     stream_maxlen=stream_maxlen,
                     # An allowlist (archiver#239), one decision with broker's
-                    # `+xtrim` grant: ~info.changes among canonical streams,
-                    # pinned by broker's
+                    # `+xtrim` grant: ~info.changes alone (CannObserv/broker#59
+                    # cut the two DLQs), pinned by broker's
                     # test_archiver_trim_grant_is_its_trim_allowlist
-                    # (CannObserv/broker#55). The grant's two DLQs are the
-                    # drainer's (archiver#238, XDEL only), never this set's. Absent by
+                    # (CannObserv/broker#55). The DLQs are the drainer's
+                    # (archiver#238, XDEL only), never this set's. Absent by
                     # design: info.registry carries retention on each publish
                     # (archiver#141); and a *command* stream must never be
                     # capped by its producer (archiver#169) — an XTRIM on

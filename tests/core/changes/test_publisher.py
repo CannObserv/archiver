@@ -1394,8 +1394,8 @@ def test_run_trim_allowlist_defaults_to_info_changes_only():
     This default and broker's ``+xtrim`` grant are one decision; broker pins its
     half in
     ``tests/deploy/test_redis_acl.py::test_archiver_trim_grant_is_its_trim_allowlist``
-    (CannObserv/broker#55). The grant is ``~info.changes`` among canonical
-    streams (narrowed in CannObserv/broker#34) plus the two DLQs broker
+    (CannObserv/broker#55). The grant is exactly ``~info.changes``: narrowed in
+    CannObserv/broker#34, and CannObserv/broker#59 cut the two DLQs broker
     assigns archiver to drain - the drainer's (archiver#238), which disposes
     with ``XDEL`` and issues no ``XTRIM``; they never join ``trim_topics``.
     Broker's test cites this one by name: renaming it breaks that citation.

@@ -24,9 +24,9 @@ refuses and which would forge another service's stream.
 
 **Disposal is ``XDEL`` by id, never ``XTRIM``.** A cap discards entries whether
 or not anyone read them, and broker's detector rests on the resting depth being
-0, so an untriaged entry must stay visible. That leaves broker's ``+xtrim``
-grant on these two queues with no caller; CannObserv/broker#59 proposes cutting
-it.
+0, so an untriaged entry must stay visible. Broker's ACL matches: archiver
+holds ``+xdel`` on these two queues and, since CannObserv/broker#59 (live
+2026-09-24), no ``+xtrim``.
 """
 
 from __future__ import annotations
