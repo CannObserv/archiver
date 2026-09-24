@@ -423,7 +423,10 @@ class DeadLetteredOutboxRowOut(BaseModel):
     row_id: str = Field(description="The outbox row's ULID; what discard and rearm take.")
     topic: str = Field(description="The stream the row was bound for.")
     event_type: str | None = Field(description="The payload's `event_type`, if it has one.")
-    payload: dict[str, Any] = Field(description="The stored payload, as the publisher saw it.")
+    payload: Any = Field(
+        description="The stored payload, as the publisher saw it. Usually an object, but a "
+        "non-object payload is one of the poison cases, so it is returned as stored."
+    )
     last_error: str | None = Field(
         description="Why it was dead-lettered, capped at 1000 characters. The full "
         "traceback is on the journald line `Dead-lettering outbox row`, while retention lasts."

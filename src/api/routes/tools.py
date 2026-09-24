@@ -466,7 +466,7 @@ async def list_dead_lettered_outbox_route(
                 row_id=str(row.id),
                 topic=row.topic,
                 event_type=row.payload.get("event_type") if isinstance(row.payload, dict) else None,
-                payload=row.payload if isinstance(row.payload, dict) else {},
+                payload=row.payload,
                 last_error=row.last_error,
                 publish_attempts=row.publish_attempts,
                 created_at=row.created_at,

@@ -229,10 +229,8 @@
             "title": "Last Error"
           },
           "payload": {
-            "additionalProperties": true,
-            "description": "The stored payload, as the publisher saw it.",
-            "title": "Payload",
-            "type": "object"
+            "description": "The stored payload, as the publisher saw it. Usually an object, but a non-object payload is one of the poison cases, so it is returned as stored.",
+            "title": "Payload"
           },
           "publish_attempts": {
             "description": "Failed attempts before it was dead-lettered.",

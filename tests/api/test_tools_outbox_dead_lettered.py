@@ -77,6 +77,16 @@ async def test_list_marks_refused_topics_not_rearmable(client, session):
     assert item["rearmable"] is False
 
 
+async def test_list_shows_a_non_object_payload_as_stored(client, session):
+    """The publisher dead-letters a non-dict payload too; the triage listing is
+    where an operator reads it, so it must not be flattened to ``{}``."""
+    row = await _dead_lettered(session, payload=["not", "an", "object"])
+    body = (await client.get(LIST_URL, headers=HEADERS)).json()
+    [item] = [i for i in body["items"] if i["row_id"] == str(row.id)]
+    assert item["payload"] == ["not", "an", "object"]
+    assert item["event_type"] is None
+
+
 async def test_list_over_max_limit_is_a_422(client):
     resp = await client.get(LIST_URL, params={"limit": 501}, headers=HEADERS)
     assert resp.status_code == 422

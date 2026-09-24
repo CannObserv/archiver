@@ -6,7 +6,6 @@ from .dead_letter_out_fields import DeadLetterOutFields
 from .dead_letter_out_parked_as_type_0 import DeadLetterOutParkedAsType0
 from .dead_letter_provenance_out import DeadLetterProvenanceOut
 from .dead_lettered_outbox_row_out import DeadLetteredOutboxRowOut
-from .dead_lettered_outbox_row_out_payload import DeadLetteredOutboxRowOutPayload
 from .discard_dead_letters_request import DiscardDeadLettersRequest
 from .discard_dead_letters_response import DiscardDeadLettersResponse
 from .discard_outbox_rows_request import DiscardOutboxRowsRequest
@@ -94,7 +93,6 @@ from .validate_watch_spec_response import ValidateWatchSpecResponse
 __all__ = (
     "ChunkPreviewOut",
     "DeadLetteredOutboxRowOut",
-    "DeadLetteredOutboxRowOutPayload",
     "DeadLetterOut",
     "DeadLetterOutFields",
     "DeadLetterOutParkedAsType0",
