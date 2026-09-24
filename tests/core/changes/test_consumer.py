@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 import pytest
+from co_core.pure.adapters.bus.dead_letter import split_dead_letter
 from co_core.pure.adapters.bus.envelope import to_wire
 from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS, group_name
 from co_core.pure.extract import spec_fingerprint
@@ -300,6 +301,56 @@ async def test_group_starts_at_zero_so_earlier_entries_are_consumed(
 
     assert processed == 1
     assert await _row_count(session_factory, SourceRevision) == 1
+
+
+async def _only_dlq_entry(fake_redis) -> tuple[str, dict[str, str]]:
+    [(entry_id, raw)] = await fake_redis.xrange(f"{CONTENT_REVISIONS}.dlq")
+    return entry_id.decode(), {k.decode(): v.decode() for k, v in raw.items()}
+
+
+@pytest.mark.asyncio
+async def test_handler_poison_is_parked_with_its_reason(session_factory, fake_redis, info_source):
+    """The reason is what tells a drainer this frame decoded and still failed:
+    discard it, whatever a later co-core decodes (archiver#238). The prefix is
+    the contract; the detail after it is ``error_text``."""
+    source_id = (
+        await fake_redis.xadd(
+            CONTENT_REVISIONS, _observed(info_source.info_source_id, fingerprint="deadbeef")
+        )
+    ).decode()
+    consumer = await _bus_consumer(fake_redis)
+
+    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    _, fields = await _only_dlq_entry(fake_redis)
+    _, provenance = split_dead_letter(fields)
+    assert provenance.reason.startswith(f"{group_consumer.REASON_HANDLER_POISON}: ")
+    assert "InvalidFingerprintError" in provenance.reason
+    assert provenance.source_id == source_id
+    assert provenance.group == CONSUMER_GROUP
+
+
+@pytest.mark.asyncio
+async def test_an_undecodable_frame_is_parked_with_its_reason(
+    session_factory, fake_redis, info_source
+):
+    """The other half of the split: this one may be version skew, so reprocess
+    is worth trying once co-core catches up."""
+    source_id = (
+        await fake_redis.xadd(
+            CONTENT_REVISIONS, {"event_type": "not_a_real_event", "payload": "{}"}
+        )
+    ).decode()
+    consumer = await _bus_consumer(fake_redis)
+
+    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    _, fields = await _only_dlq_entry(fake_redis)
+    _, provenance = split_dead_letter(fields)
+    assert provenance.reason.startswith(f"{group_consumer.REASON_UNDECODABLE}: ")
+    assert "BusMessageUnknownEventTypeError" in provenance.reason
+    assert provenance.source_id == source_id
+    assert provenance.group == CONSUMER_GROUP
 
 
 @pytest.mark.asyncio
