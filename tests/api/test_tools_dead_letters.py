@@ -7,6 +7,7 @@ tests hand it a fakeredis instance, so XRANGE / XDEL run for real.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from co_core.pure.adapters.bus.dead_letter import dead_letter_fields
 from fakeredis import aioredis as fakeredis_aio
 from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -47,6 +48,28 @@ async def test_list_returns_a_page_of_entries(client, fake_redis):
     assert item["decodes"] is False
     assert "BusMessageUnknownEventTypeError" in item["decode_error"]
     assert item["dead_lettered_at"].endswith("Z")
+
+
+async def test_list_returns_each_entrys_provenance(client, fake_redis):
+    fields = dead_letter_fields(
+        {"event_type": "nope", "payload": "{}"},
+        source_id="1727179200000-0",
+        group="archiver.revisions",
+        consumer="archiver-revisions-1",
+        reason="undecodable: BusMessageUnknownEventTypeError('nope')",
+    )
+    await fake_redis.xadd(DLQ, fields)
+
+    [item] = (await client.get(LIST_URL, headers=HEADERS)).json()["items"]
+
+    assert item["provenance"] == {
+        "source_id": "1727179200000-0",
+        "group": "archiver.revisions",
+        "consumer": "archiver-revisions-1",
+        "reason": "undecodable: BusMessageUnknownEventTypeError('nope')",
+    }
+    assert item["parked_as"] == "undecodable"
+    assert item["owned"] is True
 
 
 async def test_list_pages_with_limit_and_offset(client, fake_redis):
