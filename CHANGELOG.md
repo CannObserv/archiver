@@ -18,6 +18,23 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.18.0 (2026-09-24)
+
+[both] **DLQ reprocess, and provenance on every listed entry, SDK v5.6.0** (archiver#238, on co-core 0.19.1's cannobserv#474). Both additive. The v4.17.0 routes keep their shapes, and `DeadLetterOut` only gains fields.
+
+- **`POST /api/v1/tools/dead-letters/{dlq}/reprocess`** takes the same body as discard and returns `{results: [{entry_id, outcome, detail}]}`, one per distinct id in request order. Each owned entry runs through its queue's own `handle_message`, the function the consumer loop runs, so it is decided exactly as a live delivery would be. The handler gets the wire half under the entry's original id. Only an entry the handler settles is `XDEL`ed (`reprocessed`), after its frame is logged (`Reprocessed dead letter`). Everything else stays, with its reason:
+  - `not_found`
+  - `not_owned`: another group parked it, or it has no provenance
+  - `undecodable`
+  - `rejected`: the handler's `POISON_ERRORS`, so discard it
+  - `failed`: any other handler error, such as the database down, so retry it; the remaining ids still run
+  - `deferred`
+
+  A broker failure part-way through is a 503 whose `data` carries `results` and `in_doubt`. It never re-`XADD`s onto the source stream.
+- **Listing:** each item gains `provenance` (`source_id`, `group`, `consumer`, `reason`, from co-core's `split_dead_letter`), `parked_as` (`handler_poison` / `undecodable`, parsed from the reason's prefix) and `owned` (archiver's own group for that topic parked it). A fact stream's DLQ is shared by every consuming service, and only owned entries are reprocessed. `fields` stays the raw entry, and the decode attempt now runs on its wire half. `dead_lettered_at` stays too: it is the only handle on an entry written before 0.19.1, all of whose provenance is null.
+- **Quarantine records why.** Both group-consumer call sites now pass `reason=`: `handler poison: <error>` or `undecodable: <error>`. The prefixes are constants in `group_consumer.py` because the listing branches on them.
+- **Floor:** `co-core[extract]` and `co-core-aio[bus]` `>=0.19.1,<0.20`. The lock resolves 0.19.2, whose only change is `email_label`.
+
 ## v4.17.0 (2026-09-24)
 
 [both] **DLQ triage: list and discard, SDK v5.5.0** (archiver#238). Archiver is the named drainer of `content.revisions.dlq` and `content.artifacts.dlq` (CannObserv/broker#1 Phase 5). Until now it could only count them. Two operator routes, generated-only in the SDK with no hand-written wrapper, like the registry republish:

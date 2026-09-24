@@ -88,7 +88,9 @@ is quarantined to `content.revisions.dlq`, because redelivery reproduces it
 exactly. A frame that does not decode at all is quarantined too, via a walk of
 the group's pending list with co-core's `claim_stale_page` (`read` raises before
 any message id reaches the caller, so there is nothing to `dead_letter` with - see
-`quarantine_undecodable`). Anything transient - the database down - leaves the
+`quarantine_undecodable`). Each is parked with a `dlq.reason` whose prefix names
+its path, `handler poison: ` or `undecodable: `, which is what triage branches
+on (below). Anything transient - the database down - leaves the
 message **pending**, and it is redelivered or reclaimed by `XAUTOCLAIM`.
 
 Both pending-list walks follow `XAUTOCLAIM`'s cursor (archiver#259). The
@@ -161,59 +163,77 @@ non-resting queue, dumps its entries under `dlq-evidence/` on the broker node,
 and names archiver; archiver reads the payloads and decides. The resting depth
 is 0, and the dashboard bus panel shows each queue's depth.
 
-`src/core/changes/dlq_triage.py` does the work, behind two operator routes:
+`src/core/changes/dlq_triage.py` does the work, behind three operator routes:
 
 ```bash
-# list: a read of prod's broker
-curl -s -H "X-API-Key: <key>" \
-  http://localhost:8000/api/v1/tools/dead-letters/content.revisions.dlq
-# why it was parked: the journald line at its dead_lettered_at
-sudo journalctl -u archiver --since '<dead_lettered_at - 1min>' --until '<+1min>' \
-  | grep -E 'Quarantining unusable message|Dead-lettering undecodable frame'
-# discard, once decided
-curl -s -X POST -H "X-API-Key: <key>" -H 'Content-Type: application/json' \
-  -d '{"entry_ids": ["<entry_id>"]}' \
-  http://localhost:8000/api/v1/tools/dead-letters/content.revisions.dlq/discard
+H='X-API-Key: <key>'; Q=http://localhost:8000/api/v1/tools/dead-letters/content.revisions.dlq
+curl -s -H "$H" "$Q"                          # list: a read of prod's broker
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' \
+  -d '{"entry_ids": ["<entry_id>"]}' "$Q/reprocess"   # skew: run the handler, then delete
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' \
+  -d '{"entry_ids": ["<entry_id>"]}' "$Q/discard"     # everything else, once decided
 ```
 
-**Discard is a production write by design.** The queues exist only on prod's
-broker, the dev server is bus-dormant (409), and a scratch bus holds none of
-prod's entries. It is an operator's decision about named entries. An agent
-does not run it unasked, and it is not verification the 8001 rule covers.
+**Discard and reprocess are production writes by design.** The queues exist
+only on prod's broker, the dev server is bus-dormant (409), and a scratch bus
+holds none of prod's entries. Reprocess also writes prod's database, through
+the same handler the consumer loop runs. Both are an operator's decision about
+named entries. An agent does not run them unasked, and they are not
+verification the 8001 rule covers.
 
-- **What the disposition is.** Handler poison (`InvalidFingerprintError`,
+- **Why it was parked comes with the entry.** Since co-core 0.19.1
+  (cannobserv#474) each item's `provenance` carries the original `source_id`,
+  the `group` and `consumer` that parked it, and a `reason` that quarantine
+  writes with a fixed prefix: `handler poison: ` from a handler's
+  `POISON_ERRORS`, `undecodable: ` from a frame `from_wire` refused. `parked_as`
+  is that prefix, parsed. An entry written before 0.19.1 has none of this; its
+  `dead_lettered_at` (taken from the entry id) is the way back to the journald
+  line (`Quarantining unusable message` / `Dead-lettering undecodable frame`),
+  while retention lasts.
+- **What the disposition is.** `handler_poison` (`InvalidFingerprintError`,
   `InvalidInfoSourceIdError`, revisions only) is deterministic producer data:
-  discard it and file on the producer. An undecodable frame is usually the same.
-  The exception is **version skew**: a producer shipped an `event_type` or schema
-  before archiver upgraded co-core. `decodes: true` on an entry that the
-  journald line says failed to decode is exactly that case. Leave it, because
-  reprocess is not built yet.
-- **Why the reason comes from journald.** `dead_letter` copies the raw fields
-  only, with no original id, group or reason, so `dead_lettered_at` (taken from
-  the entry id) is the only way back to the log line. CannObserv/cannobserv#474
-  asks co-core-aio to record provenance. Journald retention bounds how late
-  triage can recover a reason.
+  discard it and file on the producer. `undecodable` with `decodes: true` is
+  **version skew**: a producer shipped an `event_type` or schema before archiver
+  upgraded co-core. Reprocess it. `undecodable` that still does not decode is
+  usually producer residue too.
+- **Reprocess is safe to try on anything owned.** It runs the queue's own
+  handler (`handle_message` in `consumer.py` / `artifacts_consumer.py`) on the
+  wire half, under the original `source_id`, and deletes only what the handler
+  settles. The handlers are idempotent under redelivery, so a duplicate
+  dead-lettering or a retry after a lost delete reply applies nothing twice.
+  Each id comes back with an `outcome`; only `reprocessed` removed the entry.
+  `rejected` is handler poison (discard it), and `failed` is anything else, such
+  as the database down (retry it). It never re-`XADD`s onto the source stream:
+  broker's ACL refuses that, and `content.artifacts` is broadcast.
+- **Only owned entries run.** A fact stream's DLQ is shared: every consuming
+  service's group dead-letters into `<topic>.dlq`. `owned` means archiver's
+  own group for that topic parked it. Reprocess leaves anything else as
+  `not_owned`, including an entry with no provenance, which nothing proves is
+  archiver's. Discard does not filter, because deciding the queue is archiver's
+  role; read `provenance.group` first.
+- **A frame can be parked twice.** `dead_letter` XADDs before it acks, so an ack
+  lost after the XADD parks the frame again on its next claim. Two items with
+  the same `(provenance.group, provenance.source_id)` are one frame. Reprocessing
+  both is harmless; count them once.
 - **`XDEL` by id, never `XTRIM`.** A cap discards entries nobody read, and
   broker's detector rests on a resting depth of 0. Each frame is logged in full
-  (`Discarding dead letter`) before its delete, because broker's capture runs on
-  its own tick and an entry discarded between ticks would otherwise leave no
-  record. Ids must be exact `<ms>-<seq>`, each half a uint64: `XRANGE` reads
-  `-`, `+` or a bare `<ms>` as a range, and Redis refuses a half past uint64
-  mid-request, after the ids before it were deleted.
-- **A 503 from discard is not "nothing happened".** A broker failure part-way
-  through returns `data.discarded` (deleted), `data.not_found`, and
-  `data.in_doubt`: the id whose `XDEL` was in flight, which may have landed with
-  its reply lost. Re-list before retrying it. The journald record is
-  `Discard interrupted by a broker failure`.
+  (`Discarding dead letter`, `Reprocessed dead letter`) before its delete,
+  because broker's capture runs on its own tick and an entry deleted between
+  ticks would otherwise leave no record. Ids must be exact `<ms>-<seq>`, each
+  half a uint64: `XRANGE` reads `-`, `+` or a bare `<ms>` as a range, and Redis
+  refuses a half past uint64 mid-request, after the ids before it were handled.
+- **A 503 is not "nothing happened".** A broker failure part-way through
+  returns the progress in `data`: discard's `discarded` / `not_found`,
+  reprocess's `results`, and both routes' `in_doubt`, the id whose `XDEL` was in
+  flight. Re-list before retrying it; for reprocess its handler had already
+  committed, so a retry is harmless. The journald records are
+  `Discard interrupted by a broker failure` and
+  `Reprocess interrupted by a broker failure`.
 - **The allowlist is derived, and one decision with broker's ACL.**
   `TRIAGE_DLQS` comes from `bus_health.OWNED_GROUPS`, so a new consumer group
-  becomes triageable automatically, and its discard fails NOPERM until broker's
-  `(+xdel ...)` selector names the queue. Anything else is a 422, including the
-  stream a queue copies.
-- **Reprocess is deferred.** When it lands, it runs the consumer's own handler
-  in-process and then `XDEL`s. It never re-`XADD`s onto the source stream:
-  broker's ACL refuses that, and it would forge another service's stream
-  (`content.artifacts` is broadcast).
+  becomes triageable automatically; a test makes it bring a reprocessor, and
+  its deletes fail NOPERM until broker's `(+xdel ...)` selector names the
+  queue. Anything else is a 422, including the stream a queue copies.
 
 ## Consumer names are a monitoring contract (archiver#156)
 

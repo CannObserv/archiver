@@ -362,6 +362,33 @@ class DiscardDeadLettersRequest(BaseModel):
     )
 
 
+class ReprocessDeadLettersRequest(DiscardDeadLettersRequest):
+    """Request body for POST /api/v1/tools/dead-letters/{dlq}/reprocess."""
+
+
+class ReprocessResultOut(BaseModel):
+    """What happened to one requested entry. Only `reprocessed` removed it."""
+
+    entry_id: str
+    outcome: Literal[
+        "reprocessed", "not_found", "not_owned", "undecodable", "rejected", "failed", "deferred"
+    ] = Field(
+        description="`reprocessed`: the handler settled it and it was deleted. `not_owned`: "
+        "another group parked it, or it has no provenance. `undecodable`: still does not "
+        "decode. `rejected`: the handler's poison - discard it. `failed`: any other handler "
+        "error, e.g. the database down - retry. `deferred`: the handler asked for redelivery."
+    )
+    detail: str | None = Field(
+        description="Why it stayed: the parking group, or the error. Null when it did not."
+    )
+
+
+class ReprocessDeadLettersResponse(BaseModel):
+    """Response body for POST /api/v1/tools/dead-letters/{dlq}/reprocess."""
+
+    results: list[ReprocessResultOut] = Field(description="One per distinct id, in request order.")
+
+
 class DiscardDeadLettersResponse(BaseModel):
     """Response body for POST /api/v1/tools/dead-letters/{dlq}/discard."""
 

@@ -56,6 +56,10 @@ from .rep_spec_out import RepSpecOut
 from .rep_spec_out_document import RepSpecOutDocument
 from .rep_spec_patch import RepSpecPatch
 from .rep_spec_patch_document_type_0 import RepSpecPatchDocumentType0
+from .reprocess_dead_letters_request import ReprocessDeadLettersRequest
+from .reprocess_dead_letters_response import ReprocessDeadLettersResponse
+from .reprocess_result_out import ReprocessResultOut
+from .reprocess_result_out_outcome import ReprocessResultOutOutcome
 from .republish_registry_response import RepublishRegistryResponse
 from .resolve_rep_fields_request import ResolveRepFieldsRequest
 from .resolve_rep_fields_request_bag import ResolveRepFieldsRequestBag
@@ -126,6 +130,10 @@ __all__ = (
     "PreviewExtractionRequestSourceSpec",
     "PreviewExtractionResult",
     "ProposeSelectorsRequest",
+    "ReprocessDeadLettersRequest",
+    "ReprocessDeadLettersResponse",
+    "ReprocessResultOut",
+    "ReprocessResultOutOutcome",
     "RepSpecAssignmentCreate",
     "RepSpecCreate",
     "RepSpecCreateDocument",

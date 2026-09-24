@@ -15,12 +15,20 @@ What lands in them, and the disposition it gets:
   is *version skew*: a producer shipped an ``event_type`` or schema before
   archiver upgraded co-core, and after the upgrade the frame decodes.
 
-This module lists and discards. **Reprocessing is deferred**: nothing needs it
-yet, and until co-core-aio's ``dead_letter`` records why an entry was parked
-(cannobserv#474), a skew frame and a handler rejection look the same once both
-decode. When it lands it runs the consumer's own handler in-process and then
-``XDEL``s. It never re-``XADD``s onto the source stream, which broker's ACL
-refuses and which would forge another service's stream.
+This module lists, discards and reprocesses. co-core >= 0.19.1's
+``dead_letter`` records why each entry was parked (cannobserv#474), and
+quarantine writes a reason prefix per path, so the listing tells the two apart
+even once both decode.
+
+**Reprocess runs the consumer's own handler in-process, then ``XDEL``s.** It
+never re-``XADD``s onto the source stream: broker's ACL refuses that, it would
+forge another service's stream, and on a broadcast stream every other group
+would see the replay. The handlers are idempotent under redelivery, which is
+what makes a second run of an already-applied entry - a duplicate
+dead-lettering, a retry after a lost ``XDEL`` reply - harmless. **Only owned
+entries run**: a fact stream's DLQ is shared by every consuming service's
+group, so an entry another group parked, or one with no provenance to say, is
+left for its owner or for a discard.
 
 **Disposal is ``XDEL`` by id, never ``XTRIM``.** A cap discards entries whether
 or not anyone read them, and broker's detector rests on the resting depth being
@@ -32,7 +40,7 @@ holds ``+xdel`` on these two queues and, since CannObserv/broker#59 (live
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
@@ -40,16 +48,20 @@ from typing import TYPE_CHECKING, Literal
 from co_core.pure.adapters.bus.dead_letter import DeadLetterProvenance, split_dead_letter
 from co_core.pure.adapters.bus.envelope import from_wire
 from co_core.pure.adapters.bus.exceptions import BusMessageAnomaly
-from co_core.pure.adapters.bus.streams import dlq_name
+from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, CONTENT_REVISIONS, dlq_name
 from redis.exceptions import RedisError
 
 from src.core.bus_health import OWNED_GROUPS
+from src.core.changes import artifacts_consumer
+from src.core.changes import consumer as revisions_consumer
 from src.core.changes.diagnostics import error_text
 from src.core.changes.group_consumer import REASON_HANDLER_POISON, REASON_UNDECODABLE
 from src.core.logging import get_logger
 
 if TYPE_CHECKING:
+    from co_core_aio.bus import BusMessage
     from redis.asyncio import Redis
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = get_logger(__name__)
 
@@ -79,6 +91,32 @@ STREAM_ID_PATTERN = r"^[0-9]+-[0-9]+$"
 ``is_exact_stream_id`` is the whole rule."""
 _STREAM_ID = re.compile(STREAM_ID_PATTERN)
 _UINT64_MAX = 2**64 - 1
+
+
+@dataclass(frozen=True, slots=True)
+class _Reprocessor:
+    """A queue's handler, and which of its exceptions mean *poison*."""
+
+    handle: Callable[[async_sessionmaker[AsyncSession], BusMessage], Awaitable[bool]]
+    poison_errors: tuple[type[BaseException], ...]
+
+
+_REPROCESSORS: dict[str, _Reprocessor] = {
+    dlq_name(CONTENT_REVISIONS): _Reprocessor(
+        handle=revisions_consumer.handle_message,
+        poison_errors=revisions_consumer.POISON_ERRORS,
+    ),
+    # content.artifacts has no poison class: a frame decodes or it does not.
+    dlq_name(CONTENT_ARTIFACTS): _Reprocessor(
+        handle=artifacts_consumer.handle_message, poison_errors=()
+    ),
+}
+"""The handler each consumer loop runs, keyed by its DLQ - the same function, so
+a reprocessed entry is decided exactly as a live delivery would be."""
+
+ReprocessOutcome = Literal[
+    "reprocessed", "not_found", "not_owned", "undecodable", "rejected", "failed", "deferred"
+]
 
 
 class NotTriageableError(ValueError):
@@ -113,6 +151,40 @@ class DiscardInterruptedError(Exception):
         self.dlq = dlq
         self.discarded = discarded
         self.not_found = not_found
+        self.in_doubt = in_doubt
+
+
+@dataclass(frozen=True, slots=True)
+class ReprocessResult:
+    """What happened to one requested entry. Only ``reprocessed`` removed it.
+
+    ``detail`` says why an entry stayed: the group that parked it
+    (``not_owned``), or the error (``undecodable``, ``rejected``, ``failed``).
+    """
+
+    entry_id: str
+    outcome: ReprocessOutcome
+    detail: str | None = None
+
+
+class ReprocessInterruptedError(Exception):
+    """The broker failed part-way through a reprocess, and what had happened by then.
+
+    ``results`` are settled. ``in_doubt`` is the id whose ``XDEL`` was in
+    flight: its handler had already committed, so a retry runs it again, which
+    idempotency makes harmless. ``None`` when the failure was a read.
+    """
+
+    def __init__(
+        self, dlq: str, *, results: tuple[ReprocessResult, ...], in_doubt: str | None
+    ) -> None:
+        super().__init__(
+            f"broker failed during reprocess from {dlq!r} after {len(results)} entr"
+            + ("y" if len(results) == 1 else "ies")
+            + (f"; {in_doubt} in doubt" if in_doubt else "")
+        )
+        self.dlq = dlq
+        self.results = results
         self.in_doubt = in_doubt
 
 
@@ -163,6 +235,15 @@ def is_exact_stream_id(value: str) -> bool:
         return False
     ms, seq = value.split("-")
     return int(ms) <= _UINT64_MAX and int(seq) <= _UINT64_MAX
+
+
+def _exact_ids(entry_ids: Iterable[str]) -> list[str]:
+    """``entry_ids`` deduplicated in order, or ``ValueError`` naming the inexact ones."""
+    requested = list(dict.fromkeys(entry_ids))
+    inexact = [entry_id for entry_id in requested if not is_exact_stream_id(entry_id)]
+    if inexact:
+        raise ValueError(f"not an exact stream id: {inexact!r}")
+    return requested
 
 
 def _require_triageable(dlq: str) -> str:
@@ -254,10 +335,7 @@ async def discard_dead_letters(client: Redis, dlq: str, entry_ids: Iterable[str]
     retry would report ids this call already deleted as ``not_found``.
     """
     _require_triageable(dlq)
-    requested = list(dict.fromkeys(entry_ids))
-    inexact = [entry_id for entry_id in requested if not is_exact_stream_id(entry_id)]
-    if inexact:
-        raise ValueError(f"not an exact stream id: {inexact!r}")
+    requested = _exact_ids(entry_ids)
     discarded: list[str] = []
     not_found: list[str] = []
 
@@ -303,3 +381,108 @@ async def discard_dead_letters(client: Redis, dlq: str, entry_ids: Iterable[str]
         else:
             not_found.append(entry_id)
     return DiscardResult(discarded=tuple(discarded), not_found=tuple(not_found))
+
+
+async def reprocess_dead_letters(
+    client: Redis,
+    dlq: str,
+    entry_ids: Iterable[str],
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> tuple[ReprocessResult, ...]:
+    """Run each owned entry through its queue's handler; ``XDEL`` what it settles.
+
+    Per entry, in order: read it; skip it unless archiver's own group for this
+    topic parked it; decode the wire half with the running co-core; hand the
+    handler that message under the entry's original id, so its log lines name
+    the id the source stream knew. Only a settled entry is deleted, after its
+    frame is logged, and a failure is per entry: the rest still run.
+
+    Ids are checked with ``is_exact_stream_id`` before anything runs. A broker
+    failure raises ``ReprocessInterruptedError`` with the results so far.
+    """
+    source_topic = _require_triageable(dlq)
+    requested = _exact_ids(entry_ids)
+    reprocessor = _REPROCESSORS[dlq]
+    own_group = _GROUP_BY_DLQ[dlq]
+    results: list[ReprocessResult] = []
+
+    def interrupted(exc: BaseException, in_doubt: str | None) -> ReprocessInterruptedError:
+        err = ReprocessInterruptedError(dlq, results=tuple(results), in_doubt=in_doubt)
+        logger.error(
+            "Reprocess interrupted by a broker failure",
+            extra={
+                "dlq": dlq,
+                "reprocessed": [r.entry_id for r in results if r.outcome == "reprocessed"],
+                "in_doubt": in_doubt,
+                "error": error_text(exc),
+            },
+        )
+        return err
+
+    def left(entry_id: str, outcome: ReprocessOutcome, detail: str | None = None) -> None:
+        results.append(ReprocessResult(entry_id=entry_id, outcome=outcome, detail=detail))
+        if outcome != "not_found":
+            logger.warning(
+                "Dead letter left in queue by reprocess",
+                extra={"dlq": dlq, "entry_id": entry_id, "outcome": outcome, "detail": detail},
+            )
+
+    for entry_id in requested:
+        try:
+            entries = await client.xrange(dlq, min=entry_id, max=entry_id)
+        except (RedisError, OSError) as e:
+            raise interrupted(e, None) from e
+        if not entries:
+            left(entry_id, "not_found")
+            continue
+        _, raw_fields = entries[0]
+        fields = {_text(k): _text(v) for k, v in raw_fields.items()}
+        wire, provenance = split_dead_letter(fields)
+
+        if provenance.group != own_group:
+            left(
+                entry_id,
+                "not_owned",
+                "no provenance: written before co-core 0.19.1"
+                if provenance.group is None
+                else f"parked by {provenance.group!r}, not {own_group!r}",
+            )
+            continue
+        try:
+            message = from_wire(
+                wire, topic=source_topic, message_id=provenance.source_id or entry_id
+            )
+        except BusMessageAnomaly as exc:
+            left(entry_id, "undecodable", error_text(exc))
+            continue
+        try:
+            settled = await reprocessor.handle(session_factory, message)
+        except reprocessor.poison_errors as exc:
+            left(entry_id, "rejected", error_text(exc))
+            continue
+        except Exception as exc:
+            # Per entry, like the consumer loop's own catch: a transient failure
+            # (the database down) leaves this one for a retry, not the rest.
+            left(entry_id, "failed", error_text(exc))
+            continue
+        if not settled:
+            left(entry_id, "deferred")
+            continue
+
+        logger.info(
+            "Reprocessed dead letter",
+            extra={
+                "dlq": dlq,
+                "entry_id": entry_id,
+                "source_id": provenance.source_id,
+                "dead_lettered_at": _entry_time(entry_id).isoformat(),
+                "fields": fields,
+            },
+        )
+        try:
+            await client.xdel(dlq, entry_id)
+        except (RedisError, OSError) as e:
+            raise interrupted(e, entry_id) from e
+        results.append(ReprocessResult(entry_id=entry_id, outcome="reprocessed"))
+    return tuple(results)
