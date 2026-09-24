@@ -430,11 +430,17 @@ async def run(
     (archiver#109). Left unset (the dormant or unconfigured case), no trimming
     occurs. ``trim_topics`` is an allowlist (archiver#239): a stream is trimmed by
     being named, never by being produced to, and whether or not it has been
-    published to this process lifetime. It must match broker's ``+xtrim`` grant
-    (CannObserv/broker#14), which refuses any other stream anyway. A topic that
-    also carries per-publish retention in ``topic_maxlen`` is dropped from the
-    trim set with one ERROR: its cap is a consumer contract (archiver#141), and
-    raising instead would kill this task and stop ``info.changes`` with it.
+    published to this process lifetime. It is one decision with broker's
+    ``+xtrim`` grant, pinned by broker's
+    ``test_archiver_trim_grant_is_its_trim_allowlist`` (CannObserv/broker#55):
+    widen both or neither. The grant admits this set and the two DLQs
+    broker assigns archiver to drain: those belong to the unbuilt drainer
+    (archiver#238) and must never join ``trim_topics`` - a MAXLEN cap ignores
+    triage: past it, the oldest dead letters go whether or not anyone read them.
+    A topic that also carries per-publish retention in ``topic_maxlen`` is
+    dropped from the trim set with one ERROR: its cap is a consumer contract
+    (archiver#141), and raising instead would kill this task and stop
+    ``info.changes`` with it.
 
     Every ``stats_interval`` seconds (first iteration immediately, ``None``
     disables) the loop emits the periodic "Outbox stats" line via
