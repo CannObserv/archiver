@@ -15,13 +15,14 @@ import pytest
 from co_core.pure.adapters.bus.dead_letter import dead_letter_fields
 from co_core.pure.adapters.bus.envelope import to_wire
 from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS
-from co_core.pure.models.changes import SourceRevisionObservedEvent
+from co_core.pure.models.changes import ReplicationCompleteEvent, SourceRevisionObservedEvent
 from fakeredis import aioredis as fakeredis_aio
 from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from ulid import ULID
 
-from src.core.changes import dlq_triage
+from src.core.changes import artifacts_consumer, dlq_triage
 from src.core.changes.dlq_triage import (
     TRIAGE_DLQS,
     ReprocessInterruptedError,
@@ -375,3 +376,33 @@ async def test_a_failed_handler_is_logged_with_its_traceback(fake_redis, session
     [call] = warning.call_args_list
     assert call.kwargs["extra"]["outcome"] == "failed"
     assert call.kwargs["exc_info"] is boom
+
+
+async def test_an_artifacts_entry_runs_through_the_artifacts_handler(fake_redis, session_factory):
+    """The other queue's wiring, through its real handler: an outcome for a command
+    the registry never issued is ack-and-drop, so the entry settles and goes. A
+    wrong handler in _REPROCESSORS would decode the frame and not know it."""
+    dlq = "content.artifacts.dlq"
+    stray = ReplicationCompleteEvent(
+        occurred_at=datetime(2026, 9, 24, 12, 0, tzinfo=UTC),
+        command_id="never-issued",
+        public_url="https://storage.googleapis.com/co-archive/archive/wa-lcb/x.html",
+        info_item_rep_spec_id=str(ULID()),
+        source_revision_id=str(ULID()),
+        info_source_id=str(ULID()),
+    )
+    entry_id = (
+        await fake_redis.xadd(dlq, _parked(to_wire(stray), group="archiver.artifacts"))
+    ).decode()
+
+    with patch.object(artifacts_consumer.logger, "warning") as warning:
+        [result] = await reprocess_dead_letters(
+            fake_redis, dlq, [entry_id], session_factory=session_factory
+        )
+
+    assert result.outcome == "reprocessed"
+    assert await fake_redis.xlen(dlq) == 0
+    # The artifacts handler's own verdict, not a generic settle.
+    [call] = warning.call_args_list
+    assert call.args[0] == "Dropping outcome for a command this registry never issued"
+    assert call.kwargs["extra"]["command_id"] == "never-issued"
