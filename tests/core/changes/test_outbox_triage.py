@@ -193,6 +193,26 @@ async def test_discard_logs_the_full_row_before_deleting(session_factory):
     assert extra["dead_lettered_at"] == _T0.isoformat()
 
 
+async def test_a_failed_discard_logs_that_it_rolled_back(session_factory):
+    """The per-row ``Discarding`` lines precede the commit. If the commit fails
+    nothing was deleted, and journald must say so rather than stand as the
+    record of a discard that never happened."""
+    row = await _insert(session_factory)
+
+    with patch.object(outbox_triage.logger, "warning") as warning:
+        async with session_factory() as session:
+            with (
+                patch.object(session, "commit", side_effect=RuntimeError("db gone")),
+                pytest.raises(RuntimeError),
+            ):
+                await discard_dead_lettered(session, [str(row.id)])
+
+    [call] = warning.call_args_list
+    assert call.args == ("Discard of dead-lettered outbox rows rolled back",)
+    assert call.kwargs["extra"]["row_ids"] == [str(row.id)]
+    assert await _get(session_factory, row.id) is not None
+
+
 # ---------------------------------------------------------------------------
 # rearm_dead_lettered
 # ---------------------------------------------------------------------------

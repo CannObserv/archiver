@@ -139,7 +139,8 @@ async def discard_dead_lettered(session: AsyncSession, row_ids: Iterable[str]) -
     """Delete the named dead-lettered rows, each logged in full first; commit.
 
     One transaction: a failure rolls every delete back, so there is no partial
-    outcome to report. An id that is unknown, live or published comes back in
+    outcome to report, and it is logged so the per-row lines are not read as
+    done. An id that is unknown, live or published comes back in
     ``not_found``, which also makes a retried discard harmless.
     """
     requested = _distinct(row_ids)
@@ -147,13 +148,23 @@ async def discard_dead_lettered(session: AsyncSession, row_ids: Iterable[str]) -
     discarded = [r for r in requested if r in found]
     for row_id in discarded:
         logger.info("Discarding dead-lettered outbox row", extra=_row_record(found[row_id]))
-    if discarded:
-        await session.execute(
-            delete(ChangesOutboxRow)
-            .where(ChangesOutboxRow.id.in_([found[r].id for r in discarded]))
-            .execution_options(synchronize_session=False)
+    try:
+        if discarded:
+            await session.execute(
+                delete(ChangesOutboxRow)
+                .where(ChangesOutboxRow.id.in_([found[r].id for r in discarded]))
+                .execution_options(synchronize_session=False)
+            )
+        await session.commit()
+    except Exception:
+        # The lines above were written before the delete, so without this one
+        # journald would record a discard that never happened.
+        logger.warning(
+            "Discard of dead-lettered outbox rows rolled back",
+            extra={"row_ids": discarded},
+            exc_info=True,
         )
-    await session.commit()
+        raise
     return DiscardOutcome(discarded=discarded, not_found=[r for r in requested if r not in found])
 
 
