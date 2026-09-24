@@ -27,7 +27,7 @@ service-only patch does not require an SDK bump.
 
 `{dlq}` is an allowlist derived from the groups archiver consumes. It is one decision with broker's `(+xdel ...)` selector, and anything else, including the stream a queue copies, is a 422. A dormant bus is a 409 and an unreadable broker a 503, so neither can pass for an empty queue.
 
-**Disposal is `XDEL` by id, never `XTRIM`.** A cap discards entries whether or not anyone read them, which defeats broker's detector. That leaves broker's `+xtrim` grant on both queues with no caller.
+**Disposal is `XDEL` by id, never `XTRIM`.** A cap discards entries whether or not anyone read them, which defeats broker's detector. That leaves broker's `+xtrim` grant on both queues with no caller; CannObserv/broker#59 proposes cutting it.
 
 **Reprocess is deferred.** Only a version-skew frame can be rescued, and until co-core-aio's `dead_letter` records why an entry was parked (CannObserv/cannobserv#474), a skew frame and a handler rejection look the same once both decode. When it lands, it will run the consumer's handler in-process. It will never re-`XADD` onto the source stream, which broker's ACL refuses.
 

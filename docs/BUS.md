@@ -85,7 +85,8 @@ widens the other; broker pins its half in
 `tests/deploy/test_redis_acl.py::test_archiver_trim_grant_is_its_trim_allowlist`
 (CannObserv/broker#55). The same selector holds `content.revisions.dlq` and
 `content.artifacts.dlq`, and nothing issues it there: the drainer (archiver#238)
-disposes with `XDEL` by id, never `XTRIM`. A DLQ never joins `trim_topics` - a
+disposes with `XDEL` by id, never `XTRIM` (CannObserv/broker#59 proposes the
+cut). A DLQ never joins `trim_topics` - a
 MAXLEN cap ignores triage: past it, the oldest dead letters go whether or not
 anyone read them.
 Why `info.registry` and `content.replicate` are absent: their sections below.
