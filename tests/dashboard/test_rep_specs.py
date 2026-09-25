@@ -26,7 +26,7 @@ _NEW_URL = "/dashboard/rep-specs/new"
 
 _GCS_DOC = {
     "provider": "gcs",
-    "credentials_alias": "default",
+    "credentials_alias": "gcs-publication",
     "path_template": "items/{source_revision.id}.json",
     "required_fields": [],
 }
@@ -35,7 +35,7 @@ _GCS_DOC = {
 def _make_rep_spec(name: str = "Test Spec", provider: str = "gcs") -> RepSpec:
     doc = {
         "provider": provider,
-        "credentials_alias": "default",
+        "credentials_alias": "gcs-publication",
         "path_template": "items/{source_revision.id}.json",
         "required_fields": [],
     }
@@ -76,7 +76,7 @@ async def test_list_provider_filter(client, session):
     session.add(_make_rep_spec("GCS Spec", "gcs"))
     gdrive_doc = {
         "provider": "gdrive",
-        "credentials_alias": "default",
+        "credentials_alias": "gcs-publication",
         "path_template": "{source_revision.id}",
         "required_fields": [],
     }
@@ -778,7 +778,7 @@ async def test_detail_renders_the_latest_occasion_per_assignment(client, session
             source_revision_id=revision.source_revision_id,
             info_source_id=source.info_source_id,
             provider="gcs",
-            credentials_alias="default",
+            credentials_alias="gcs-publication",
             media_type="text/html",
             state="skipped",
             reason="blob_absent",
@@ -1053,7 +1053,7 @@ async def _spec_with_open_command(session, *, name: str, state: str, issued_at: 
             source_revision_id=revision.source_revision_id,
             info_source_id=source.info_source_id,
             provider="gcs",
-            credentials_alias="default",
+            credentials_alias="gcs-publication",
             media_type="text/html",
             state=state,
             issued_at=issued_at,

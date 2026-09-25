@@ -1,4 +1,11 @@
-"""RepSpec validation: envelope, per-provider object_options sub-schema, template.
+"""RepSpec validation: envelope, alias name, per-provider object_options sub-schema, template.
+
+The alias rule is co-core's (``co_core.pure.util.aliases``), shared with
+Replicator, which refuses a non-conforming binding when it loads its alias
+table. Checking it here makes a bad name fail when the RepSpec is saved rather
+than as ``alias_unknown`` on the first replication (archiver#276). Only the
+write paths call this, so an assigned RepSpec whose document is frozen (#83) is
+never re-judged by a rule added after it froze.
 
 The template checks live in ``src.core.replication.template`` rather than here
 because the *renderer* enforces the same rules from the same parser
@@ -12,12 +19,19 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TypedDict
 
+from co_core.pure.util.aliases import alias_provider
 from jsonschema import Draft202012Validator
 
 from src.core.replication.template import validate_path_template
 
 ENVELOPE_PATH = Path(__file__).resolve().parent / "v1.json"
 PROVIDERS_DIR = Path(__file__).resolve().parent / "providers"
+
+# The one pre-rule name, and the provider it was bound under. Production's single
+# RepSpec carries it; Replicator accepts it outside the rule until 2026-12-31
+# (replicator#114) and binds it beside ``gcs-publication`` through the
+# publication cutover. Removed once the data migration moves that RepSpec off it.
+LEGACY_ALIASES: dict[str, str] = {"primary": "gcs"}
 
 
 class ValidationError(TypedDict):
@@ -71,6 +85,8 @@ def validate_rep_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
     ):
         errors.extend(validate_path_template(template, required_fields=required_fields))
 
+    errors.extend(_alias_errors(doc, envelope_errors=errors))
+
     provider = doc.get("provider")
     if provider:
         sub = _provider_validator(provider)
@@ -91,3 +107,40 @@ def validate_rep_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
                 )
 
     return (len(errors) == 0, errors)
+
+
+def _alias_errors(doc: dict, *, envelope_errors: list[ValidationError]) -> list[ValidationError]:
+    """Check ``credentials_alias`` against the shared name rule and ``provider``.
+
+    Skipped when the envelope already refused the alias (absent, empty, not a
+    string), so one fault reports once. The prefix check needs a provider the
+    envelope accepted: comparing against ``'ftp'`` would describe a mismatch
+    with a value that is itself the error.
+    """
+    alias = doc.get("credentials_alias")
+    if not isinstance(alias, str) or any(
+        e["path"] == "/credentials_alias" for e in envelope_errors
+    ):
+        return []
+    provider = doc.get("provider")
+    provider_ok = not any(e["path"] == "/provider" for e in envelope_errors)
+
+    if alias in LEGACY_ALIASES:
+        named = LEGACY_ALIASES[alias]
+    else:
+        try:
+            named = alias_provider(alias)
+        except ValueError as e:
+            return [{"path": "/credentials_alias", "message": str(e)}]
+
+    if provider_ok and named != provider:
+        return [
+            {
+                "path": "/credentials_alias",
+                "message": (
+                    f"credentials_alias {alias!r} names provider {named!r}, "
+                    f"but the RepSpec's provider is {provider!r}."
+                ),
+            }
+        ]
+    return []
