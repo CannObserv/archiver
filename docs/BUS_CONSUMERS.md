@@ -147,6 +147,25 @@ recorded; the command closes **only** when `terminal` is true.
   loop before any handler sees them; a database failure raises instead, leaving
   the entry pending for redelivery.
 
+**Persist outcomes** (archiver#276, cannobserv#493). `blob_persisted` and
+`persist_failed` ride the same stream and group, applied by
+`src/core/services/persist_writeback.py` against `persist_commands`:
+
+- **Correlate on `command_id` only.** Neither fact carries a revision or source
+  id, because the stored object belongs to its digest. A success stamps
+  `persisted_at` on **every** `source_revisions` row whose `blob_fingerprint`
+  matches.
+- **`persisted_at` is a minimum.** `occurred_at` is a publish time, an upper
+  bound on the write, and redeliveries or later commands re-emit with later
+  stamps. Each success lowers it or leaves it; arrival order does not matter.
+- **A success naming another digest stamps nothing**; the command closes
+  `failed` with the local reason `digest_mismatch`.
+- **`blob_expired` is terminal for Archiver.** Recovery is a fresh fetch, which
+  only Watcher issues (#142).
+- **The co-core pin and these branches ship together.** Once a type decodes, the
+  handler's fall-through acks it as foreign: an outcome with no branch is lost,
+  not quarantined.
+
 **The reaper** (`src/core/changes/replication_reaper.py`) closes the silent case
 MUST-6 names: Replicator does not guarantee that every command either succeeds or
 is closed, and a provider 5xx retries unbounded while publishing nothing. A timer

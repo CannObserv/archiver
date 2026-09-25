@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
@@ -79,6 +80,20 @@ class SourceRevision(Base):
     # only provenance link from a registry row to the fetch behind it.
     command_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # --- Permanent store (archiver#276, replicator#114) ------------------------
+    # The raw-bytes sha256, bare hex, from SourceRevisionObservedEvent.
+    # blob_fingerprint. Distinct from content_fingerprint above, which is the
+    # *extracted* fingerprint and the row's identity. NULL until Watcher sends it
+    # (watcher#329) and on every HTTP-written row. The digest is the permanent
+    # store's address: a reader derives the location with co-core's
+    # gcs_uri(bucket, digest), so no URL is stored.
+    blob_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # When the bytes were known to be in the permanent store: the MINIMUM
+    # occurred_at over every blob_persisted fact for blob_fingerprint. occurred_at
+    # is a publish time, an upper bound on the write, and redeliveries re-emit
+    # later stamps (cannobserv#493). NULL means not known to be persisted.
+    persisted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     __table_args__ = (
         UniqueConstraint(
             "info_source_id",
@@ -89,6 +104,12 @@ class SourceRevision(Base):
             "ix_source_revisions_source_captured",
             "info_source_id",
             "captured_at",
+        ),
+        # persist_writeback stamps persisted_at by digest, across sources.
+        Index(
+            "ix_source_revisions_blob_fingerprint",
+            "blob_fingerprint",
+            postgresql_where=text("blob_fingerprint IS NOT NULL"),
         ),
         {"schema": "information"},
     )

@@ -153,6 +153,9 @@ see the never-rename rule in `AGENTS.md`.
     the flag exists for — would never raise one. The WARNING fires on a change of verdict, not on
     every at-least-once redelivery.
   - `command_id` — correlation back to the `content.fetch` command behind the bytes.
+  - `blob_fingerprint` / `persisted_at` (archiver#276) — the **raw-bytes** digest (bare hex; never
+    `content_fingerprint`), the permanent store's address, and the *minimum* `blob_persisted`
+    `occurred_at` for it. NULL until watcher#329. See `PersistCommand`.
   `content_cache_uri` / `content_cache_expires_at` are a **cache, not durable storage** — on the bus
   path Replicator's temp-store blob (`gs://co-gcs-blobs` since 2026-08-20; rows from before the
   flip carry the VM-local `file://` form), on a TTL clock the registry does not own. A `NULL`
@@ -248,6 +251,11 @@ see the never-rename rule in `AGENTS.md`.
     tokens: these are conditions Archiver decided about before publishing.
   - A skip is a *row*, not a log line. Absent one, the dashboard renders a replication that
     silently did not happen as "not yet" forever (archiver#171).
+- **`PersistCommand`** (`persist_commands`) — one `content.persist` occasion (archiver#276);
+  `ReplicationCommand`'s shape. States `requested` → `persisted` | `failed` | `abandoned`. The
+  only link from an outcome to the registry: persist facts carry no domain ids. A success stamps
+  every revision with that digest, not just `source_revision_id`. Semantics:
+  [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
   - **`last_fact_at` is the ordering high-water mark** (archiver#170). `content.artifacts` is
     at-least-once and keyed `command_id:occurred_at` precisely because one command emits a
     *sequence* of facts, so a redelivered older fact can land after a newer one; without the mark

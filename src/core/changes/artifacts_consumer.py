@@ -1,9 +1,15 @@
-"""``content.artifacts`` ingest — the return leg of ``content.replicate``.
+"""``content.artifacts`` ingest — the return leg of ``content.replicate`` and ``content.persist``.
 
 Archiver issues replication (archiver#169) and this is where the outcome lands
 (archiver#170). Both facts share the stream, which is deliberate: an issuer wants
 one consumer group seeing success and failure, because "did this command close?"
-is one question.
+is one question. The persist outcomes (``blob_persisted`` / ``persist_failed``,
+archiver#276) share it for the same reason, and are applied by
+``src.core.services.persist_writeback``.
+
+**Every outcome type Archiver issues for needs a branch here, in the same change
+as the co-core pin that decodes it.** Once a type decodes, the fall-through below
+acks it as foreign, so an outcome with no branch is lost rather than quarantined.
 
 The delivery machinery — read, claim, quarantine, ack, back off, re-arm the group
 — is ``src.core.changes.group_consumer``, shared with the ``content.revisions``
@@ -36,13 +42,19 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, group_name
-from co_core.pure.models.changes import ReplicationCompleteEvent, ReplicationFailedEvent
+from co_core.pure.models.changes import (
+    BlobPersistedEvent,
+    PersistFailedEvent,
+    ReplicationCompleteEvent,
+    ReplicationFailedEvent,
+)
 from co_core_aio.bus import BusMessage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.changes import group_consumer
 from src.core.changes.backoff import ERROR_BACKOFF_BASE_SECONDS
 from src.core.logging import get_logger
+from src.core.services.persist_writeback import apply_persist_failed, apply_persisted
 from src.core.services.replication_writeback import (
     UnknownCommandError,
     apply_failure,
@@ -116,6 +128,35 @@ async def handle_message(
                 reason=payload.reason,
                 terminal=payload.terminal,
                 attempts=payload.attempts,
+                detail=payload.detail,
+                occurred_at=payload.occurred_at,
+            ),
+            command_id=payload.command_id,
+        )
+
+    if isinstance(payload, BlobPersistedEvent):
+        return await _apply(
+            session_factory,
+            message,
+            lambda session: apply_persisted(
+                session,
+                command_id=payload.command_id,
+                content_fingerprint=payload.content_fingerprint,
+                size_bytes=payload.size_bytes,
+                occurred_at=payload.occurred_at,
+            ),
+            command_id=payload.command_id,
+        )
+
+    if isinstance(payload, PersistFailedEvent):
+        return await _apply(
+            session_factory,
+            message,
+            lambda session: apply_persist_failed(
+                session,
+                command_id=payload.command_id,
+                reason=payload.reason,
+                terminal=payload.terminal,
                 detail=payload.detail,
                 occurred_at=payload.occurred_at,
             ),

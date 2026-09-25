@@ -9,6 +9,7 @@ from src.core.models.info_item import InfoItem
 from src.core.models.info_item_rep_spec import InfoItemRepSpec
 from src.core.models.info_item_source import InfoItemSource
 from src.core.models.info_source import InfoSource
+from src.core.models.persist_command import PersistCommand
 from src.core.models.rep_spec import RepSpec
 from src.core.models.replication_command import ReplicationCommand
 from src.core.models.revoked_info_item import RevokedInfoItem
@@ -26,6 +27,7 @@ __all__ = [
     "InfoItemRepSpec",
     "InfoItemSource",
     "InfoSource",
+    "PersistCommand",
     "RepSpec",
     "ReplicationCommand",
     "RevokedInfoItem",

@@ -11,10 +11,12 @@ Covers, per-message:
 5. An unknown command_id → ack and drop, nothing written
 6. A DB failure leaves the message un-acked (redelivery, not loss)
 7. Another event type on the stream → acked, ignored
+8. ``blob_persisted`` / ``persist_failed`` (archiver#276) → applied to the persist
+   command and its digest's revisions, acked; unknown command → dropped
 
 And, around the loop:
-8. The group is created at "0"
-9. A poison frame is DLQ'd rather than wedging the loop
+9. The group is created at "0"
+10. A poison frame is DLQ'd rather than wedging the loop
 """
 
 from __future__ import annotations
@@ -26,6 +28,8 @@ import pytest
 from co_core.pure.adapters.bus.envelope import to_wire
 from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, group_name
 from co_core.pure.models.changes import (
+    BlobPersistedEvent,
+    PersistFailedEvent,
     ReplicationCompleteEvent,
     ReplicationFailedEvent,
     SourceRevisionObservedEvent,
@@ -40,10 +44,12 @@ from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
     InfoSource,
+    PersistCommand,
     ReplicationCommand,
     RepSpec,
     SourceRevision,
 )
+from src.core.services.persist_writeback import STATE_PERSISTED
 from src.core.services.replication_issuance import STATE_REQUESTED
 from src.core.services.replication_writeback import (
     STATE_COMPLETE,
@@ -72,6 +78,7 @@ async def clean_tables(test_engine):
     """These tests commit for real — the consumer opens its own session, so the
     savepoint-isolated ``session`` fixture would be invisible to it."""
     statements = (
+        "TRUNCATE TABLE information.persist_commands CASCADE",
         "TRUNCATE TABLE information.replication_commands CASCADE",
         "TRUNCATE TABLE information.info_item_rep_specs CASCADE",
         "TRUNCATE TABLE information.source_revisions CASCADE",
@@ -300,6 +307,111 @@ async def test_foreign_event_type_is_acked_and_ignored(fake_redis, session_facto
     async with session_factory() as s:
         count = await s.scalar(select(func.count()).select_from(ReplicationCommand))
     assert count == 1
+
+
+# --- the persist outcomes (archiver#276) ---
+#
+# Both decode once co-core >= 0.19.6 is pinned, so without these branches they
+# would fall through to the foreign-event ack below and be lost, not quarantined.
+
+PERSIST_DIGEST = "c" * 64
+
+
+@pytest.fixture
+async def persist_command(session_factory) -> PersistCommand:
+    """One revision carrying a raw digest, with one open persist against it."""
+    async with session_factory() as s:
+        source = InfoSource(url="https://example.com/persist", source_specs=[])
+        s.add(source)
+        await s.flush()
+        revision = SourceRevision(
+            info_source_id=source.info_source_id,
+            content_fingerprint="sha256:" + "a" * 64,
+            captured_at=datetime.now(UTC),
+            blob_fingerprint=PERSIST_DIGEST,
+        )
+        s.add(revision)
+        await s.flush()
+        command = PersistCommand(
+            command_id="pcmd-artifacts-1",
+            source_revision_id=revision.source_revision_id,
+            content_fingerprint=PERSIST_DIGEST,
+            blob_uri=f"gs://co-gcs-blobs/blobs/{PERSIST_DIGEST}.bin",
+            media_type="text/html",
+            state=STATE_REQUESTED,
+        )
+        s.add(command)
+        await s.commit()
+        return command
+
+
+async def _persisted_revision(session_factory, command: PersistCommand) -> SourceRevision:
+    async with session_factory() as s:
+        return await s.get(SourceRevision, command.source_revision_id)
+
+
+@pytest.mark.asyncio
+async def test_blob_persisted_stamps_the_revision_and_acks(
+    fake_redis, session_factory, persist_command
+):
+    fact = BlobPersistedEvent(
+        occurred_at=OCCURRED_AT,
+        command_id=persist_command.command_id,
+        content_fingerprint=PERSIST_DIGEST,
+        size_bytes=77,
+    )
+    await _publish(fake_redis, to_wire(fact))
+
+    assert await _consume(fake_redis, session_factory) == 1
+    assert await _pending(fake_redis) == 0
+
+    revision = await _persisted_revision(session_factory, persist_command)
+    assert revision.persisted_at == OCCURRED_AT
+    async with session_factory() as s:
+        command = await s.get(PersistCommand, persist_command.command_id)
+    assert command.state == STATE_PERSISTED
+    assert command.size_bytes == 77
+
+
+@pytest.mark.asyncio
+async def test_persist_failed_is_recorded_and_acked(fake_redis, session_factory, persist_command):
+    fact = PersistFailedEvent(
+        occurred_at=OCCURRED_AT,
+        command_id=persist_command.command_id,
+        content_fingerprint=PERSIST_DIGEST,
+        reason="blob_expired",
+        terminal=True,
+    )
+    await _publish(fake_redis, to_wire(fact))
+
+    assert await _consume(fake_redis, session_factory) == 1
+    assert await _pending(fake_redis) == 0
+
+    async with session_factory() as s:
+        command = await s.get(PersistCommand, persist_command.command_id)
+    assert command.state == STATE_FAILED
+    assert command.reason == "blob_expired"
+    revision = await _persisted_revision(session_factory, persist_command)
+    assert revision.persisted_at is None
+
+
+@pytest.mark.asyncio
+async def test_persist_outcome_for_unknown_command_is_dropped(
+    fake_redis, session_factory, persist_command
+):
+    fact = BlobPersistedEvent(
+        occurred_at=OCCURRED_AT,
+        command_id="never-issued",
+        content_fingerprint=PERSIST_DIGEST,
+        size_bytes=1,
+    )
+    await _publish(fake_redis, to_wire(fact))
+
+    assert await _consume(fake_redis, session_factory) == 1
+    assert await _pending(fake_redis) == 0
+
+    revision = await _persisted_revision(session_factory, persist_command)
+    assert revision.persisted_at is None
 
 
 # --- around the loop ---

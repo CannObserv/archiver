@@ -18,6 +18,17 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.20.0 (2026-09-25)
+
+[service] **Persist outcomes land, and `credentials_alias` follows the shared naming rule** (archiver#276, replicator#114). No SDK change, so `archiver-client` is not bumped.
+
+- **co-core / co-core-aio `>=0.19.6`** (cannobserv#493): the `content.persist` command and its outcomes, `SourceRevisionObservedEvent.blob_fingerprint`, and `co_core.pure.util.aliases`.
+- **Migration `e964909e0c62`:** adds the `persist_commands` table, plus nullable `source_revisions.blob_fingerprint` (raw-bytes digest) and `persisted_at`. No backfill.
+- **`content.artifacts` applies `blob_persisted` / `persist_failed`.** They correlate on `command_id`. A success stamps `persisted_at` as the minimum `occurred_at` across every revision with that digest. Without these branches the bump would have acked the new types as foreign events and lost them.
+- **RepSpec validation** (`POST /rep-specs`, draft `PATCH`, `POST /tools/validate-rep-fields`): `credentials_alias` must be `<provider>-<role>` and its prefix must match `provider`, so these now 422 at `/credentials_alias`. `primary` (gcs) is grandfathered. Assigned RepSpecs are not re-validated.
+
+Archiver issues no persist yet: that waits on broker#64 and Replicator's persist handler.
+
 ## v4.19.1 (2026-09-24)
 
 [sdk] **`regen.sh` writes the tree the client-drift gate expects** (archiver#272). Tooling only: no route, schema or SDK code change, so `archiver-client` is not bumped. The snapshot changes only in `info.version`.
