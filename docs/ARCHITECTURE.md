@@ -207,7 +207,9 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                with db_safety.py);
                                tests/deploy/ asserts the installed systemd artifacts match
                                deploy/ — archiver.service and the bus-health pair
-                               (each skips when absent, so CI passes). The redis-server
+                               (each skips when absent, so CI passes) — and the
+                               needrestart drop-in against the live config chain
+                               (archiver#278; asserts only on the archiver host). The redis-server
                                drop-in and its parity test left with the broker
                                (archiver#193 D6 → CannObserv/broker); the LIVE broker
                                config is still checked here by check_redis_floor.sh
@@ -235,6 +237,8 @@ scripts/                       sync_wheelhouse.py (mirror co-core wheels from th
                                production DB — see "Server Lifecycle")
 deploy/                        README.md (install instructions) + systemd units:
                                archiver.service +
+                               needrestart.conf.d/archiver.conf (list restarts, never
+                               perform them; archiver#278) +
                                archiver-bus-health.service/.timer (the OUTBOX probe;
                                the broker-side half is CannObserv/broker's since
                                archiver#193 D6). The #128 OOM lockstep now spans two
