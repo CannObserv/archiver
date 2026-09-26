@@ -18,6 +18,8 @@ Covers:
 10. Caller-supplied id already used by a different pair → SourceRevisionIdConflictError
 11. Caller-supplied id matching its own existing pair → idempotent no-op
 12. The service does not commit — the caller owns the transaction boundary
+13. The raw-bytes digest moves with the blob reference until persisted, then
+    freezes (archiver#276)
 """
 
 from datetime import UTC, datetime
@@ -548,3 +550,111 @@ async def test_blob_refresh_emits_no_event_and_issues_no_replication(session, in
 
     assert issue.await_count == 1
     assert await _outbox_count(session) == 1
+
+
+# ---------------------------------------------------------------------------
+# Raw-bytes digest (archiver#276)
+#
+# ``blob_fingerprint`` names the bytes behind ``content_cache_uri``: a persist
+# command sends the two together, and Replicator refuses them ``invalid_source``
+# unless they agree (persist contract P4). So while the revision is unpersisted
+# the digest moves with the URI, from the same observation. Once persisted it is
+# frozen: the persisted bytes stand for the revision.
+# ---------------------------------------------------------------------------
+
+DIGEST = "a" * 64
+LATER_DIGEST = "b" * 64
+BLOB_URI_LATER = "gs://co-gcs-blobs/blobs/" + LATER_DIGEST + ".bin"
+
+
+def _observed(
+    info_source_id: ULID, uri: str | None, expires_at: datetime | None, digest: str | None
+) -> RevisionFacts:
+    return _facts(
+        info_source_id,
+        content_cache_uri=uri,
+        content_cache_expires_at=expires_at,
+        blob_fingerprint=digest,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_new_revision_records_its_raw_bytes_digest(session, info_source):
+    row, inserted = await record_revision(
+        session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST)
+    )
+
+    assert inserted is True
+    assert row.blob_fingerprint == DIGEST
+    assert row.persisted_at is None
+
+
+@pytest.mark.asyncio
+async def test_an_unpersisted_digest_refreshes_with_its_blob_reference(session, info_source):
+    """Same extracted text, different raw bytes (page noise): the pair moves together."""
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+
+    row, _ = await record_revision(
+        session,
+        _observed(info_source.info_source_id, BLOB_URI_LATER, LATER_HORIZON, LATER_DIGEST),
+    )
+
+    assert row.content_cache_uri == BLOB_URI_LATER
+    assert row.blob_fingerprint == LATER_DIGEST
+
+
+@pytest.mark.asyncio
+async def test_a_redelivered_older_observation_leaves_the_digest_alone(session, info_source):
+    """The horizon guard that refuses the URI refuses its digest too."""
+    await record_revision(
+        session,
+        _observed(info_source.info_source_id, BLOB_URI_LATER, LATER_HORIZON, LATER_DIGEST),
+    )
+
+    row, _ = await record_revision(
+        session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST)
+    )
+
+    assert row.content_cache_uri == BLOB_URI_LATER
+    assert row.blob_fingerprint == LATER_DIGEST
+
+
+@pytest.mark.asyncio
+async def test_a_refreshed_reference_without_a_digest_clears_the_stale_one(session, info_source):
+    """A frame from a producer predating watcher#329: the stored digest names the
+    old bytes, not the new URI, so keeping it would pair a digest with the wrong blob."""
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+
+    row, _ = await record_revision(
+        session, _observed(info_source.info_source_id, BLOB_URI_LATER, LATER_HORIZON, None)
+    )
+
+    assert row.content_cache_uri == BLOB_URI_LATER
+    assert row.blob_fingerprint is None
+
+
+@pytest.mark.asyncio
+async def test_a_persisted_digest_is_frozen(session, info_source):
+    """The persisted bytes stand for the revision; the cache reference still refreshes."""
+    row, _ = await record_revision(
+        session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST)
+    )
+    row.persisted_at = HORIZON
+
+    row, _ = await record_revision(
+        session,
+        _observed(info_source.info_source_id, BLOB_URI_LATER, LATER_HORIZON, LATER_DIGEST),
+    )
+
+    assert row.blob_fingerprint == DIGEST
+    assert row.content_cache_uri == BLOB_URI_LATER
+
+
+@pytest.mark.asyncio
+async def test_an_http_repost_never_erases_a_digest(session, info_source):
+    """The HTTP path carries no blob and so no digest; it has nothing newer to say."""
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+
+    row, _ = await record_revision(session, _facts(info_source.info_source_id))
+
+    assert row.blob_fingerprint == DIGEST

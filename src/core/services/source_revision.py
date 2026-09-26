@@ -118,6 +118,10 @@ class RevisionFacts:
     control — it runs from the blob's *last reference*, so a re-observation may
     carry a later horizon for the same bytes (archiver#201). Durable bytes are
     what RepSpec replication is for.
+
+    ``blob_fingerprint`` is the raw-bytes sha256 behind ``content_cache_uri``
+    (archiver#276), already validated by the caller. It travels with the URI:
+    see ``_refresh_cache_reference``.
     """
 
     info_source_id: ULID
@@ -133,6 +137,7 @@ class RevisionFacts:
     source_media_type: str | None = None
     spec_fingerprint: str | None = None
     command_id: str | None = None
+    blob_fingerprint: str | None = None
     source_revision_id: ULID | None = None
 
 
@@ -223,6 +228,7 @@ async def record_revision(
         "spec_match": comparison.match,
         "spec_position": comparison.position,
         "command_id": facts.command_id,
+        "blob_fingerprint": facts.blob_fingerprint,
     }
     if facts.source_revision_id is not None:
         insert_values["source_revision_id"] = facts.source_revision_id
@@ -295,6 +301,15 @@ def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
       a guess (archiver docs/BUS_CONSUMERS.md) — while a known one does
       replace an unknown.
 
+    **The raw-bytes digest moves with the URI (archiver#276).** A persist sends
+    ``blob_fingerprint`` and ``content_cache_uri`` together, and Replicator
+    refuses them unless they name the same bytes, so both come from the one
+    observation. Unchanged extracted text can still arrive as different raw
+    bytes (page noise), which is exactly when the pair moves. A refreshed URI
+    arriving without a digest clears the stored one, which would name the old
+    bytes. Once ``persisted_at`` is set the digest is **frozen**: the persisted
+    bytes stand for the revision, and the URI refreshes alone.
+
     Mutates ``row`` in the caller's session; the caller's commit persists it.
     """
     if facts.content_cache_uri is None:
@@ -316,6 +331,8 @@ def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
     )
     row.content_cache_uri = facts.content_cache_uri
     row.content_cache_expires_at = offered_at
+    if row.persisted_at is None:
+        row.blob_fingerprint = facts.blob_fingerprint
 
 
 def _refresh_spec_comparison(

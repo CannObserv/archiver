@@ -12,6 +12,8 @@ Covers, per-message:
 4. Fingerprint not in the sha256:<64 hex> spelling → quarantined, nothing written
 5. Every wire field lands on its column, blob_* included
 6. A DB failure leaves the message un-acked (redelivery, not loss)
+6a. The raw-bytes digest lands on blob_fingerprint; a misspelled one is dropped,
+    not quarantined (archiver#276)
 
 And, around the loop:
 7. The group is created at "0" so entries predating it are still consumed
@@ -655,3 +657,66 @@ async def test_a_reobservation_with_a_later_horizon_refreshes_the_row(
     assert row.content_cache_expires_at == later
     assert await _row_count(session_factory, ChangesOutboxRow) == 1
     assert await _pending_count(fake_redis) == 0
+
+
+# ---------------------------------------------------------------------------
+# Raw-bytes digest (archiver#276)
+# ---------------------------------------------------------------------------
+
+RAW_DIGEST = "c" * 64
+
+
+@pytest.mark.asyncio
+async def test_the_raw_bytes_digest_lands_on_blob_fingerprint(
+    session_factory, fake_redis, info_source
+):
+    await fake_redis.xadd(
+        CONTENT_REVISIONS, _observed(info_source.info_source_id, blob_fingerprint=RAW_DIGEST)
+    )
+    consumer = await _bus_consumer(fake_redis)
+
+    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    async with session_factory() as s:
+        row = (await s.execute(select(SourceRevision))).scalar_one()
+    assert row.blob_fingerprint == RAW_DIGEST
+    assert row.content_fingerprint == FP_OBSERVED
+
+
+@pytest.mark.asyncio
+async def test_a_frame_without_a_digest_records_absence(session_factory, fake_redis, info_source):
+    """A producer from before watcher#329 sends ``None``: nothing to record."""
+    await fake_redis.xadd(CONTENT_REVISIONS, _observed(info_source.info_source_id))
+    consumer = await _bus_consumer(fake_redis)
+
+    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    async with session_factory() as s:
+        row = (await s.execute(select(SourceRevision))).scalar_one()
+    assert row.blob_fingerprint is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "misspelled", ["sha256:" + RAW_DIGEST, RAW_DIGEST[:63], RAW_DIGEST.upper()]
+)
+async def test_a_misspelled_digest_is_dropped_and_the_revision_kept(
+    session_factory, fake_redis, info_source, misspelled
+):
+    """The digest is optional and the revision is not: an unusable digest is
+    recorded as absent (a persist could never be issued from it), and the
+    observation is acked rather than quarantined."""
+    await fake_redis.xadd(
+        CONTENT_REVISIONS, _observed(info_source.info_source_id, blob_fingerprint=misspelled)
+    )
+    consumer = await _bus_consumer(fake_redis)
+
+    with patch.object(revisions_consumer, "logger") as log:
+        await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    async with session_factory() as s:
+        row = (await s.execute(select(SourceRevision))).scalar_one()
+    assert row.blob_fingerprint is None
+    assert await fake_redis.xlen(f"{CONTENT_REVISIONS}.dlq") == 0
+    assert await _pending_count(fake_redis) == 0
+    assert log.warning.call_count == 1

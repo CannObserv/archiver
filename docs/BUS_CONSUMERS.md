@@ -65,6 +65,7 @@ Field mapping, and the two traps in it:
 | `source_media_type` | `source_media_type` | what the **origin** served; inherits `BlobAvailableEvent.media_type`'s normalization |
 | `blob_uri` | `content_cache_uri` | **a cache, not durable storage** - Replicator's temp store (`gs://co-gcs-blobs` since 2026-08-20; earlier rows carry a VM-local `file://`). Durable bytes are RepSpec replication's job. Refreshed on a re-observation together with the horizon below (archiver#201) |
 | `blob_expires_at` | `content_cache_expires_at` | `None` records *absence*; never substitute a TTL guessed from Replicator's policy. **Forward-only on re-observation** (archiver#201): Replicator's TTL runs from last reference, so an unchanged fingerprint legitimately re-arrives with a later horizon and the row takes it; an older, equal or unknown one leaves the stored pair alone |
+| `blob_fingerprint` | `blob_fingerprint` | the **raw-bytes** sha256 behind `blob_uri`, bare hex (archiver#276) - never `extracted_fingerprint`. `None` until watcher#329. A misspelled one is logged and recorded as absent, not quarantined: the digest is optional, the revision is not. **Moves with `blob_uri`** while `persisted_at` is null (a persist sends the two together and Replicator refuses a mismatch); frozen once persisted |
 | `spec_fingerprint` | `spec_fingerprint` | recorded **and compared** - see below |
 | `command_id` | `command_id` | correlation back to the fetch |
 | *(absent)* | `source_revision_id` | **Archiver allocates.** A service that does not own the registry does not mint registry ids |
