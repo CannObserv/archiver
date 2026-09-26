@@ -385,3 +385,29 @@ async def test_stale_failure_is_logged_not_silent(session, revision):
         )
 
     assert any("older than one already applied" in c.args[0] for c in info.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_mismatched_success_after_a_real_one_changes_nothing(session, revision):
+    """A bad fact must not overwrite a recorded success (CR 8)."""
+    command = await _command(session, revision)
+    await apply_persisted(
+        session,
+        command_id="pcmd-1",
+        content_fingerprint=DIGEST,
+        size_bytes=3,
+        occurred_at=OCCURRED_AT,
+    )
+
+    await apply_persisted(
+        session,
+        command_id="pcmd-1",
+        content_fingerprint=OTHER_DIGEST,
+        size_bytes=3,
+        occurred_at=OCCURRED_AT + timedelta(minutes=1),
+    )
+    await session.refresh(revision)
+
+    assert command.state == STATE_PERSISTED
+    assert command.reason is None
+    assert revision.persisted_at == OCCURRED_AT
