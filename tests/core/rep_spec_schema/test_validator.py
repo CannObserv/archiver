@@ -1,12 +1,6 @@
 """RepSpec validator — envelope + provider dispatch tests."""
 
-from datetime import UTC, date, datetime
-
-from src.core.rep_spec_schema.validator import (
-    LEGACY_ALIASES,
-    LEGACY_ALIASES_DEADLINE,
-    validate_rep_spec,
-)
+from src.core.rep_spec_schema.validator import validate_rep_spec
 
 
 def _valid_gcs(**overrides):
@@ -222,17 +216,12 @@ def test_alias_provider_prefix_must_match_document_provider():
     assert "'gcs'" in alias_errs[0]["message"]
 
 
-def test_legacy_primary_alias_still_accepted():
-    """``primary`` is the one grandfathered name until the gcs-publication cutover."""
+def test_primary_alias_is_refused():
+    """``primary`` was grandfathered until production's RepSpec moved to
+    ``gcs-publication`` (archiver#276); it now follows the rule like any name."""
     ok, errs = validate_rep_spec(_valid_gcs(credentials_alias="primary"))
-    assert ok is True, errs
-
-
-def test_legacy_primary_alias_only_for_gcs():
-    """Production bound ``primary`` to a gcs bucket; it names no other provider."""
-    ok, errs = validate_rep_spec(_valid_ia(credentials_alias="primary"))
     assert ok is False
-    assert _alias_errors(errs)
+    assert len(_alias_errors(errs)) == 1
 
 
 def test_alias_prefix_check_skipped_for_unknown_provider():
@@ -257,14 +246,3 @@ def test_alias_prefix_check_skipped_for_missing_provider():
     ok, errs = validate_rep_spec(doc)
     assert ok is False
     assert _alias_errors(errs) == []
-
-
-def test_legacy_alias_exemption_expires_with_replicators():
-    """Replicator stops accepting ``primary`` cleanly on its deadline (replicator#114);
-    its CI goes red then, and so does this, until the RepSpec migration drops it (CR 6)."""
-    if datetime.now(UTC).date() >= LEGACY_ALIASES_DEADLINE:
-        assert not LEGACY_ALIASES, (
-            f"LEGACY_ALIASES {sorted(LEGACY_ALIASES)} outlived {LEGACY_ALIASES_DEADLINE}: "
-            "migrate production's RepSpec to gcs-publication (archiver#276) and remove it."
-        )
-    assert LEGACY_ALIASES_DEADLINE == date(2026, 12, 31)

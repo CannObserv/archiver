@@ -16,7 +16,6 @@ RepSpec nobody can fix.
 """
 
 import json
-from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import TypedDict
@@ -28,15 +27,6 @@ from src.core.replication.template import validate_path_template
 
 ENVELOPE_PATH = Path(__file__).resolve().parent / "v1.json"
 PROVIDERS_DIR = Path(__file__).resolve().parent / "providers"
-
-# The one pre-rule name, and the provider it was bound under. Production's single
-# RepSpec carries it; Replicator accepts it outside the rule until 2026-12-31
-# (replicator#114) and binds it beside ``gcs-publication`` through the
-# publication cutover. Removed once the data migration moves that RepSpec off it.
-LEGACY_ALIASES: dict[str, str] = {"primary": "gcs"}
-# Replicator's date for ``primary``: after it, every boot logs an ERROR and its CI
-# fails. A test here fails from the same day while LEGACY_ALIASES is non-empty.
-LEGACY_ALIASES_DEADLINE = date(2026, 12, 31)
 
 
 class ValidationError(TypedDict):
@@ -130,13 +120,10 @@ def _alias_errors(doc: dict, *, envelope_errors: list[ValidationError]) -> list[
         return []
     provider = doc.get("provider")
 
-    if alias in LEGACY_ALIASES:
-        named = LEGACY_ALIASES[alias]
-    else:
-        try:
-            named = alias_provider(alias)
-        except ValueError as e:
-            return [{"path": "/credentials_alias", "message": str(e)}]
+    try:
+        named = alias_provider(alias)
+    except ValueError as e:
+        return [{"path": "/credentials_alias", "message": str(e)}]
 
     if provider in REPLICATION_PROVIDERS and named != provider:
         return [

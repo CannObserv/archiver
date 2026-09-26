@@ -18,6 +18,13 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.21.0 (2026-09-26)
+
+[service] **Production's RepSpec moves off `primary`, and the alias grandfather clause is gone** (archiver#276, replicator#114). No SDK surface change (a generated RepSpec docstring drops the `primary` clause), so `archiver-client` is not bumped.
+
+- **Migration `70f32f641751`:** rewrites `document.credentials_alias` from `primary` to `gcs-publication` on every `gcs` RepSpec, and stamps `updated_at`. Nothing else in the document changes. It is the one recorded exception to #83's freeze on assigned documents: since Replicator's publication cutover, both names bind the same bucket, writer and prefix, so no destination changes. Downgrade is a no-op.
+- **`primary` is now refused** like any name outside `<provider>-<role>`: a 422 at `/credentials_alias` from `POST /rep-specs` and a draft `PATCH /rep-specs/{id}`, and `valid: false` from `POST /tools/validate-rep-spec`. The 2026-12-31 tripwire test goes with the grandfather clause.
+
 ## v4.20.0 (2026-09-26)
 
 [service] **Persist outcomes land, and `credentials_alias` follows the shared naming rule** (archiver#276, replicator#114). No SDK surface change (the generated RepSpec docstrings gain the alias rule), so `archiver-client` is not bumped.
