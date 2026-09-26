@@ -89,6 +89,8 @@ class PersistCommand(Base):
             postgresql_where=text("closed_at IS NULL AND state = 'requested'"),
         ),
         Index("ix_persist_commands_revision", "source_revision_id"),
+        # "Is a persist for these bytes already open?", the issuer's re-arm check
+        # (archiver#276 decision 3), which lands with persist issuance.
         Index("ix_persist_commands_fingerprint", "content_fingerprint"),
         {"schema": "information"},
     )
