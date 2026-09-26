@@ -24,10 +24,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.models import RepSpec
 
-_MIGRATION = next(
-    (Path(__file__).parent.parent.parent / "alembic" / "versions").glob(
-        "*_rep_spec_alias_primary_to_gcs_publication.py"
-    )
+_MIGRATION = (
+    Path(__file__).parent.parent.parent
+    / "alembic"
+    / "versions"
+    / "70f32f641751_rep_spec_alias_primary_to_gcs_publication.py"
 )
 
 
