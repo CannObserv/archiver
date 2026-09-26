@@ -241,3 +241,13 @@ def test_empty_alias_reports_one_error():
     ok, errs = validate_rep_spec(_valid_gcs(credentials_alias=""))
     assert ok is False
     assert len(_alias_errors(errs)) == 1
+
+
+def test_alias_prefix_check_skipped_for_missing_provider():
+    """A missing provider errors at "/" (required), not "/provider"; the alias check
+    must not then report a mismatch against None (CR 1)."""
+    doc = _valid_gcs(credentials_alias="gcs-publication")
+    del doc["provider"]
+    ok, errs = validate_rep_spec(doc)
+    assert ok is False
+    assert _alias_errors(errs) == []

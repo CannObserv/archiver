@@ -19,7 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TypedDict
 
-from co_core.pure.util.aliases import alias_provider
+from co_core.pure.util.aliases import REPLICATION_PROVIDERS, alias_provider
 from jsonschema import Draft202012Validator
 
 from src.core.replication.template import validate_path_template
@@ -113,9 +113,10 @@ def _alias_errors(doc: dict, *, envelope_errors: list[ValidationError]) -> list[
     """Check ``credentials_alias`` against the shared name rule and ``provider``.
 
     Skipped when the envelope already refused the alias (absent, empty, not a
-    string), so one fault reports once. The prefix check needs a provider the
-    envelope accepted: comparing against ``'ftp'`` would describe a mismatch
-    with a value that is itself the error.
+    string), so one fault reports once. The prefix check needs a known provider:
+    comparing against ``'ftp'``, or against ``None`` when the field is missing
+    (whose error sits at ``/``, not ``/provider``), would describe a mismatch with
+    a value that is itself the error.
     """
     alias = doc.get("credentials_alias")
     if not isinstance(alias, str) or any(
@@ -123,7 +124,6 @@ def _alias_errors(doc: dict, *, envelope_errors: list[ValidationError]) -> list[
     ):
         return []
     provider = doc.get("provider")
-    provider_ok = not any(e["path"] == "/provider" for e in envelope_errors)
 
     if alias in LEGACY_ALIASES:
         named = LEGACY_ALIASES[alias]
@@ -133,7 +133,7 @@ def _alias_errors(doc: dict, *, envelope_errors: list[ValidationError]) -> list[
         except ValueError as e:
             return [{"path": "/credentials_alias", "message": str(e)}]
 
-    if provider_ok and named != provider:
+    if provider in REPLICATION_PROVIDERS and named != provider:
         return [
             {
                 "path": "/credentials_alias",
