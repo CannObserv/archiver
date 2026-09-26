@@ -673,3 +673,19 @@ async def test_a_same_uri_refresh_without_a_digest_keeps_the_digest(session, inf
 
     assert row.content_cache_expires_at == LATER_HORIZON
     assert row.blob_fingerprint == DIGEST
+
+
+@pytest.mark.asyncio
+async def test_a_digest_change_is_logged_with_its_predecessor(session, info_source):
+    """Decision 2's case - same text, new raw bytes - is visible in journald (CR 2)."""
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+
+    with patch("src.core.services.source_revision.logger") as log:
+        await record_revision(
+            session,
+            _observed(info_source.info_source_id, BLOB_URI_LATER, LATER_HORIZON, LATER_DIGEST),
+        )
+
+    extra = log.info.call_args.kwargs["extra"]
+    assert extra["blob_fingerprint"] == LATER_DIGEST
+    assert extra["previous_blob_fingerprint"] == DIGEST

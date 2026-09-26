@@ -323,19 +323,23 @@ def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
             return
         if stored_at is not None and offered_at <= stored_at:
             return
+    uri_changed = facts.content_cache_uri != row.content_cache_uri
+    previous_digest = row.blob_fingerprint
+    row.content_cache_uri = facts.content_cache_uri
+    row.content_cache_expires_at = offered_at
+    if row.persisted_at is None and (facts.blob_fingerprint is not None or uri_changed):
+        row.blob_fingerprint = facts.blob_fingerprint
     logger.info(
         "Refreshed revision blob reference from a re-observation",
         extra={
             "source_revision_id": str(row.source_revision_id),
             "content_cache_expires_at": offered_at.isoformat() if offered_at else None,
             "previous_expires_at": stored_at.isoformat() if stored_at else None,
+            # A change here is decision 2's case: same text, new raw bytes.
+            "blob_fingerprint": row.blob_fingerprint,
+            "previous_blob_fingerprint": previous_digest,
         },
     )
-    uri_changed = facts.content_cache_uri != row.content_cache_uri
-    row.content_cache_uri = facts.content_cache_uri
-    row.content_cache_expires_at = offered_at
-    if row.persisted_at is None and (facts.blob_fingerprint is not None or uri_changed):
-        row.blob_fingerprint = facts.blob_fingerprint
 
 
 def _refresh_spec_comparison(
