@@ -25,7 +25,7 @@ service-only patch does not require an SDK bump.
 - **co-core / co-core-aio `>=0.19.6`** (cannobserv#493): the `content.persist` command and its outcomes, `SourceRevisionObservedEvent.blob_fingerprint`, and `co_core.pure.util.aliases`.
 - **Migration `e964909e0c62`:** adds the `persist_commands` table, plus nullable `source_revisions.blob_fingerprint` (raw-bytes digest) and `persisted_at`. No backfill.
 - **`content.artifacts` applies `blob_persisted` / `persist_failed`.** They correlate on `command_id`. A success stamps `persisted_at` as the minimum `occurred_at` across every revision with that digest. Without these branches the bump would have acked the new types as foreign events and lost them.
-- **RepSpec validation** (`POST /rep-specs`, draft `PATCH`, `POST /tools/validate-rep-fields`): `credentials_alias` must be `<provider>-<role>` and its prefix must match `provider`, so these now 422 at `/credentials_alias`. `primary` (gcs) is grandfathered. Assigned RepSpecs are not re-validated.
+- **RepSpec validation:** `credentials_alias` must be `<provider>-<role>`, and its prefix must match `provider`. A bad alias now gets a 422 with an error at `/credentials_alias` from `POST /rep-specs` and a draft `PATCH /rep-specs/{id}` (the dashboard forms too). `POST /tools/validate-rep-spec` returns 200 with `valid: false` and the same error. `primary` (gcs) is grandfathered. Assigned RepSpecs are not re-validated.
 
 Archiver issues no persist yet: that waits on broker#64 and Replicator's persist handler.
 

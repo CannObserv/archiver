@@ -4,8 +4,9 @@ The alias rule is co-core's (``co_core.pure.util.aliases``), shared with
 Replicator, which refuses a non-conforming binding when it loads its alias
 table. Checking it here makes a bad name fail when the RepSpec is saved rather
 than as ``alias_unknown`` on the first replication (archiver#276). Only the
-write paths call this, so an assigned RepSpec whose document is frozen (#83) is
-never re-judged by a rule added after it froze.
+write paths and the ``validate-rep-spec`` dry run call this, so an assigned
+RepSpec whose document is frozen (#83) is never re-judged by a rule added after
+it froze.
 
 The template checks live in ``src.core.replication.template`` rather than here
 because the *renderer* enforces the same rules from the same parser
