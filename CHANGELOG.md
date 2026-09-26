@@ -18,7 +18,7 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
-## v4.20.0 (2026-09-25)
+## v4.20.0 (2026-09-26)
 
 [service] **Persist outcomes land, and `credentials_alias` follows the shared naming rule** (archiver#276, replicator#114). No SDK surface change (the generated RepSpec docstrings gain the alias rule), so `archiver-client` is not bumped.
 
