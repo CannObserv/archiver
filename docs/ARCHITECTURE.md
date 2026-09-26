@@ -30,7 +30,8 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,
-                               changes_outbox, replication_command)
+                               changes_outbox, replication_command,
+                               persist_command)
   source_spec_schema/          SourceSpec JSON Schema v1 + validator
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
@@ -69,7 +70,9 @@ src/core/                      Domain logic
                                incident or a review finding, and a copy inherits
                                those once and then drifts. artifacts_consumer.py
                                applies replication outcomes from content.artifacts
-                               (archiver#170) — public_url's automated writer;
+                               (archiver#170) — public_url's automated writer —
+                               and persist outcomes (archiver#276, via
+                               services/persist_writeback.py);
                                replication_reaper.py closes commands that produced
                                no fact at all, on a timer because it detects an
                                absence. publisher.py drains changes_outbox to

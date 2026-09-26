@@ -35,7 +35,9 @@ class RepSpecCreate(BaseModel):
     document: dict[str, Any] = Field(
         description=(
             "RepSpec envelope document. Validated against rep_spec_schema/v1.json + "
-            "the per-provider sub-schema at rep_spec_schema/providers/{provider}/v1.json."
+            "the per-provider sub-schema at rep_spec_schema/providers/{provider}/v1.json. "
+            "credentials_alias must be <provider>-<role> with this provider as its prefix "
+            "(e.g. 'gcs-publication'); 'primary' is accepted for gcs until its migration."
         ),
     )
 
@@ -105,7 +107,8 @@ class RepSpecOut(BaseModel):
     document: dict[str, Any] = Field(
         description=(
             "RepSpec envelope document validated against rep_spec_schema/v1.json "
-            "and the per-provider sub-schema."
+            "and the per-provider sub-schema. credentials_alias follows <provider>-<role> "
+            "for documents saved after archiver#276; earlier ones may carry older names."
         )
     )
     created_at: datetime = Field(description="UTC timestamp when the RepSpec was created.")

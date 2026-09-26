@@ -1,6 +1,12 @@
 """RepSpec validator — envelope + provider dispatch tests."""
 
-from src.core.rep_spec_schema.validator import validate_rep_spec
+from datetime import UTC, date, datetime
+
+from src.core.rep_spec_schema.validator import (
+    LEGACY_ALIASES,
+    LEGACY_ALIASES_DEADLINE,
+    validate_rep_spec,
+)
 
 
 def _valid_gcs(**overrides):
@@ -182,3 +188,83 @@ def test_required_fields_pattern_violation():
     ok, errs = validate_rep_spec(doc)
     assert ok is False
     assert errs
+
+
+# --- credentials_alias naming rule (archiver#276, replicator#114) ---
+
+
+def _alias_errors(errs):
+    return [e for e in errs if e["path"] == "/credentials_alias"]
+
+
+def test_alias_not_matching_shared_pattern_rejected():
+    """An alias outside co-core's <provider>-<role> pattern is refused at /credentials_alias."""
+    ok, errs = validate_rep_spec(_valid_gcs(credentials_alias="default"))
+    assert ok is False
+    alias_errs = _alias_errors(errs)
+    assert len(alias_errs) == 1
+    assert "gcs-publication" in alias_errs[0]["message"]
+
+
+def test_alias_with_uppercase_role_rejected():
+    ok, errs = validate_rep_spec(_valid_gcs(credentials_alias="gcs-Publication"))
+    assert ok is False
+    assert _alias_errors(errs)
+
+
+def test_alias_provider_prefix_must_match_document_provider():
+    """A well-formed alias naming another provider is refused, not reconciled."""
+    ok, errs = validate_rep_spec(_valid_gcs(credentials_alias="ia-publication"))
+    assert ok is False
+    alias_errs = _alias_errors(errs)
+    assert len(alias_errs) == 1
+    assert "'ia'" in alias_errs[0]["message"]
+    assert "'gcs'" in alias_errs[0]["message"]
+
+
+def test_legacy_primary_alias_still_accepted():
+    """``primary`` is the one grandfathered name until the gcs-publication cutover."""
+    ok, errs = validate_rep_spec(_valid_gcs(credentials_alias="primary"))
+    assert ok is True, errs
+
+
+def test_legacy_primary_alias_only_for_gcs():
+    """Production bound ``primary`` to a gcs bucket; it names no other provider."""
+    ok, errs = validate_rep_spec(_valid_ia(credentials_alias="primary"))
+    assert ok is False
+    assert _alias_errors(errs)
+
+
+def test_alias_prefix_check_skipped_for_unknown_provider():
+    """An unknown provider already errors at /provider; the alias gets no second, derived error."""
+    ok, errs = validate_rep_spec(_valid_gcs(provider="ftp", credentials_alias="gcs-publication"))
+    assert ok is False
+    assert _alias_errors(errs) == []
+
+
+def test_empty_alias_reports_one_error():
+    """The envelope's minLength already reports an empty alias; no duplicate from the name rule."""
+    ok, errs = validate_rep_spec(_valid_gcs(credentials_alias=""))
+    assert ok is False
+    assert len(_alias_errors(errs)) == 1
+
+
+def test_alias_prefix_check_skipped_for_missing_provider():
+    """A missing provider errors at "/" (required), not "/provider"; the alias check
+    must not then report a mismatch against None (CR 1)."""
+    doc = _valid_gcs(credentials_alias="gcs-publication")
+    del doc["provider"]
+    ok, errs = validate_rep_spec(doc)
+    assert ok is False
+    assert _alias_errors(errs) == []
+
+
+def test_legacy_alias_exemption_expires_with_replicators():
+    """Replicator stops accepting ``primary`` cleanly on its deadline (replicator#114);
+    its CI goes red then, and so does this, until the RepSpec migration drops it (CR 6)."""
+    if datetime.now(UTC).date() >= LEGACY_ALIASES_DEADLINE:
+        assert not LEGACY_ALIASES, (
+            f"LEGACY_ALIASES {sorted(LEGACY_ALIASES)} outlived {LEGACY_ALIASES_DEADLINE}: "
+            "migrate production's RepSpec to gcs-publication (archiver#276) and remove it."
+        )
+    assert LEGACY_ALIASES_DEADLINE == date(2026, 12, 31)

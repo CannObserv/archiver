@@ -79,7 +79,7 @@ async def test_validate_source_spec_requires_api_key(client):
 
 VALID_REP_SPEC = {
     "provider": "gcs",
-    "credentials_alias": "default",
+    "credentials_alias": "gcs-publication",
     "path_template": "bucket/{gcs.object_name}/{source_revision.id}",
     "required_fields": ["gcs.object_name"],
 }

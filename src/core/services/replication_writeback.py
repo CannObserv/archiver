@@ -75,11 +75,13 @@ class UnknownCommandError(Exception):
     issued, so a fact about something else is ack-and-drop — the same posture
     ``content.revisions`` takes for an unknown ``info_source_id``. Raised rather
     than swallowed so the consumer decides the disposition and logs it once.
+    Shared with ``persist_writeback`` (archiver#276): one disposition for both
+    command families on ``content.artifacts``.
     """
 
     def __init__(self, command_id: str) -> None:
         self.command_id = command_id
-        super().__init__(f"no replication command with id {command_id!r}")
+        super().__init__(f"no issued command with id {command_id!r}")
 
 
 async def apply_success(

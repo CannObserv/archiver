@@ -21,6 +21,7 @@ from co_core.pure.adapters.bus.exceptions import (
     BusMessageMalformedPayloadError,
     BusMessageUnknownEventTypeError,
 )
+from co_core.pure.models.changes import CANONICAL_TEXT_MEDIA_TYPE
 from co_core_aio.bus import AsyncBusPublisher
 from fakeredis import aioredis as fakeredis_aio
 from redis.exceptions import (
@@ -1177,6 +1178,95 @@ def _replication_failed_event(command_id: str = "cmd-rf") -> dict:
     }
 
 
+def _content_persist_command(command_id: str = "cmd-p") -> dict:
+    """A full ``content_persist`` command payload (cannobserv#493, archiver#276).
+
+    No domain echo and no destination: the raw-bytes digest is the address.
+    """
+    return {
+        "schema_version": 1,
+        "event_type": "content_persist",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "content_fingerprint": "f" * 64,
+        "blob_uri": "gs://co-gcs-blobs/blobs/" + "f" * 64 + ".bin",
+        "media_type": "text/html",
+    }
+
+
+def _blob_persisted_event(command_id: str = "cmd-bp") -> dict:
+    """A full ``blob_persisted`` payload - no URL, by design."""
+    return {
+        "schema_version": 1,
+        "event_type": "blob_persisted",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "content_fingerprint": "f" * 64,
+        "size_bytes": 1234,
+    }
+
+
+def _persist_failed_event(command_id: str = "cmd-pf") -> dict:
+    """A full ``persist_failed`` payload. ``reason`` is producer-owned and opaque."""
+    return {
+        "schema_version": 1,
+        "event_type": "persist_failed",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "content_fingerprint": "f" * 64,
+        "reason": "blob_expired",
+        "terminal": True,
+        "detail": "temp blob gone before the persist ran",
+    }
+
+
+def _content_process_command(command_id: str = "cmd-cp") -> dict:
+    """A full ``content_process`` command payload (co-core 0.19.5). Not Archiver's to issue."""
+    return {
+        "schema_version": 1,
+        "event_type": "content_process",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "info_source_id": _INFO_SOURCE_ID,
+        "input_uri": "gs://co-gcs-blobs/blobs/" + "a" * 64 + ".bin",
+        "input_digest": "a" * 64,
+        "processor": "extract",
+        "source_spec": {},
+        "media_type": "text/html",
+    }
+
+
+def _processing_complete_event(command_id: str = "cmd-pc") -> dict:
+    """A full ``processing_complete`` payload (co-core 0.19.5)."""
+    return {
+        "schema_version": 1,
+        "event_type": "processing_complete",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "info_source_id": _INFO_SOURCE_ID,
+        "empty": False,
+        "output_digest": "sha256:" + "b" * 64,
+        "output_uri": "gs://co-gcs-blobs/blobs/" + "b" * 64 + ".bin",
+        "output_size_bytes": 42,
+        "output_media_type": CANONICAL_TEXT_MEDIA_TYPE,
+        "spec_schema_version": 1,
+        "processor_version": "1",
+    }
+
+
+def _processing_failed_event(command_id: str = "cmd-pfx") -> dict:
+    """A full ``processing_failed`` payload (co-core 0.19.5)."""
+    return {
+        "schema_version": 1,
+        "event_type": "processing_failed",
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "info_source_id": _INFO_SOURCE_ID,
+        "reason": "extract_failed",
+        "terminal": True,
+    }
+
+
 # The single source for both the parametrize below and the completeness guard that
 # pins it to co-core's dispatch table (CR round 1, finding 3).
 _UNION_CASES = [
@@ -1221,6 +1311,15 @@ _UNION_CASES = [
         f"cmd-rc:{_OCCURRED_AT}",
     ),
     (_replication_failed_event("cmd-rf"), "replication_failed", f"cmd-rf:{_OCCURRED_AT}"),
+    # The persist trio (cannobserv#493): same key derivations as the replicate trio.
+    (_content_persist_command("cmd-p"), "content_persist", "cmd-p"),
+    (_blob_persisted_event("cmd-bp"), "blob_persisted", f"cmd-bp:{_OCCURRED_AT}"),
+    (_persist_failed_event("cmd-pf"), "persist_failed", f"cmd-pf:{_OCCURRED_AT}"),
+    # The process trio (co-core 0.19.5). Archiver neither issues nor consumes it;
+    # covered because the drain dispatches on the whole table.
+    (_content_process_command("cmd-cp"), "content_process", "cmd-cp"),
+    (_processing_complete_event("cmd-pc"), "processing_complete", f"cmd-pc:{_OCCURRED_AT}"),
+    (_processing_failed_event("cmd-pfx"), "processing_failed", f"cmd-pfx:{_OCCURRED_AT}"),
 ]
 
 
