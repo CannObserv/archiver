@@ -1,6 +1,12 @@
 """RepSpec validator — envelope + provider dispatch tests."""
 
-from src.core.rep_spec_schema.validator import validate_rep_spec
+from datetime import date
+
+from src.core.rep_spec_schema.validator import (
+    LEGACY_ALIASES,
+    LEGACY_ALIASES_DEADLINE,
+    validate_rep_spec,
+)
 
 
 def _valid_gcs(**overrides):
@@ -251,3 +257,14 @@ def test_alias_prefix_check_skipped_for_missing_provider():
     ok, errs = validate_rep_spec(doc)
     assert ok is False
     assert _alias_errors(errs) == []
+
+
+def test_legacy_alias_exemption_expires_with_replicators():
+    """Replicator stops accepting ``primary`` cleanly on its deadline (replicator#114);
+    its CI goes red then, and so does this, until the RepSpec migration drops it (CR 6)."""
+    if date.today() >= LEGACY_ALIASES_DEADLINE:
+        assert not LEGACY_ALIASES, (
+            f"LEGACY_ALIASES {sorted(LEGACY_ALIASES)} outlived {LEGACY_ALIASES_DEADLINE}: "
+            "migrate production's RepSpec to gcs-publication (archiver#276) and remove it."
+        )
+    assert LEGACY_ALIASES_DEADLINE == date(2026, 12, 31)

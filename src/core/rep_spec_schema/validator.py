@@ -16,6 +16,7 @@ RepSpec nobody can fix.
 """
 
 import json
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import TypedDict
@@ -33,6 +34,9 @@ PROVIDERS_DIR = Path(__file__).resolve().parent / "providers"
 # (replicator#114) and binds it beside ``gcs-publication`` through the
 # publication cutover. Removed once the data migration moves that RepSpec off it.
 LEGACY_ALIASES: dict[str, str] = {"primary": "gcs"}
+# Replicator's date for ``primary``: after it, every boot logs an ERROR and its CI
+# fails. A test here fails from the same day while LEGACY_ALIASES is non-empty.
+LEGACY_ALIASES_DEADLINE = date(2026, 12, 31)
 
 
 class ValidationError(TypedDict):
