@@ -141,6 +141,14 @@ async def apply_persist_failed(
         )
         return command
     if _is_stale(command, occurred_at):
+        logger.info(
+            "Ignoring a persist fact older than one already applied",
+            extra={
+                "command_id": command_id,
+                "occurred_at": occurred_at.isoformat(),
+                "last_fact_at": command.last_fact_at.isoformat(),
+            },
+        )
         return command
 
     command.reason = reason

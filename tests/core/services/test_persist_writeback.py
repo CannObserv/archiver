@@ -13,10 +13,12 @@ What differs from replication's writeback:
 """
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 
 from src.core.models import InfoSource, PersistCommand, SourceRevision
+from src.core.services import persist_writeback
 from src.core.services.persist_writeback import (
     REASON_DIGEST_MISMATCH,
     STATE_FAILED,
@@ -357,3 +359,29 @@ async def test_success_wins_over_a_newer_failure_whatever_the_arrival_order(sess
     assert command.size_bytes == 9
     assert command.last_fact_at == OCCURRED_AT + timedelta(minutes=5)
     assert revision.persisted_at == OCCURRED_AT
+
+
+@pytest.mark.asyncio
+async def test_stale_failure_is_logged_not_silent(session, revision):
+    """Replication logs a fact it ignores as stale; so does persist (CR 5)."""
+    await _command(session, revision)
+    await apply_persist_failed(
+        session,
+        command_id="pcmd-1",
+        reason="blob_expired",
+        terminal=True,
+        detail=None,
+        occurred_at=OCCURRED_AT,
+    )
+
+    with patch.object(persist_writeback.logger, "info") as info:
+        await apply_persist_failed(
+            session,
+            command_id="pcmd-1",
+            reason="transient",
+            terminal=False,
+            detail=None,
+            occurred_at=OCCURRED_AT - timedelta(minutes=1),
+        )
+
+    assert any("older than one already applied" in c.args[0] for c in info.call_args_list)
