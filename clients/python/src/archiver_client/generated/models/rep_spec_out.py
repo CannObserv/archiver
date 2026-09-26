@@ -22,7 +22,8 @@ class RepSpecOut:
     Attributes:
         created_at (datetime.datetime): UTC timestamp when the RepSpec was created.
         document (RepSpecOutDocument): RepSpec envelope document validated against rep_spec_schema/v1.json and the per-
-            provider sub-schema.
+            provider sub-schema. credentials_alias follows <provider>-<role> for documents saved after archiver#276; earlier
+            ones may carry older names.
         name (str): Operator-friendly label for this RepSpec.
         provider (str): Provider key (e.g. 'gcs', 'gdrive', 'ia').
         rep_spec_id (str): ULID identifying this RepSpec.

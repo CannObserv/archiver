@@ -22,7 +22,9 @@ class RepSpecCreate:
 
         Attributes:
             document (RepSpecCreateDocument): RepSpec envelope document. Validated against rep_spec_schema/v1.json + the
-                per-provider sub-schema at rep_spec_schema/providers/{provider}/v1.json.
+                per-provider sub-schema at rep_spec_schema/providers/{provider}/v1.json. credentials_alias must be
+                <provider>-<role> with this provider as its prefix (e.g. 'gcs-publication'); 'primary' is accepted for gcs until
+                its migration.
             name (str): Operator-friendly label for this RepSpec. Not unique by design.
             provider (str): Provider key (e.g. 'gcs', 'gdrive', 'ia'). Validated via validate_rep_spec.
     """

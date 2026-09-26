@@ -11,7 +11,11 @@ T = TypeVar("T", bound="RepSpecOutDocument")
 
 @_attrs_define
 class RepSpecOutDocument:
-    """RepSpec envelope document validated against rep_spec_schema/v1.json and the per-provider sub-schema."""
+    """RepSpec envelope document validated against rep_spec_schema/v1.json and the per-provider sub-schema.
+    credentials_alias follows <provider>-<role> for documents saved after archiver#276; earlier ones may carry older
+    names.
+
+    """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 

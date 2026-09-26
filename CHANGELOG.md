@@ -20,7 +20,7 @@ service-only patch does not require an SDK bump.
 
 ## v4.20.0 (2026-09-25)
 
-[service] **Persist outcomes land, and `credentials_alias` follows the shared naming rule** (archiver#276, replicator#114). No SDK change, so `archiver-client` is not bumped.
+[service] **Persist outcomes land, and `credentials_alias` follows the shared naming rule** (archiver#276, replicator#114). No SDK surface change (the generated RepSpec docstrings gain the alias rule), so `archiver-client` is not bumped.
 
 - **co-core / co-core-aio `>=0.19.6`** (cannobserv#493): the `content.persist` command and its outcomes, `SourceRevisionObservedEvent.blob_fingerprint`, and `co_core.pure.util.aliases`.
 - **Migration `e964909e0c62`:** adds the `persist_commands` table, plus nullable `source_revisions.blob_fingerprint` (raw-bytes digest) and `persisted_at`. No backfill.
