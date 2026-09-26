@@ -424,6 +424,15 @@ async def test_new_returns_form(client):
     assert "provider" in r.text
 
 
+@pytest.mark.asyncio
+async def test_new_form_hint_states_the_alias_rule(client):
+    """The alias rule refuses names on save (archiver#276), so the form says what passes."""
+    r = await client.get(_NEW_URL, headers=_HEADERS)
+    hint = r.text.split('id="doc-hint"', 1)[1].split("</p>", 1)[0]
+    assert "credentials_alias" in hint
+    assert "gcs-publication" in hint
+
+
 # ---------------------------------------------------------------------------
 # POST /dashboard/rep-specs/new
 # ---------------------------------------------------------------------------

@@ -67,7 +67,9 @@
           <code>year</code>, <code>date_segment</code>, <code>datetime_time_segment</code>,
           <code>ext</code>) is supplied per replication — never listed there. Include
           <code>{source_revision.id}</code> or <code>{source_revision.fingerprint}</code> so two
-          revisions cannot render one destination.
+          revisions cannot render one destination. <code>credentials_alias</code> is
+          <code>&lt;provider&gt;-&lt;role&gt;</code> with the provider above as its prefix, e.g.
+          <code>gcs-publication</code>.
         </p>
         <p x-show="hasError" class="alert alert--error" x-text="errorMsg" role="alert"></p>
         {% if errors.document %}
