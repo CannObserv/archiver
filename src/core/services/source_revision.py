@@ -305,10 +305,12 @@ def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
     ``blob_fingerprint`` and ``content_cache_uri`` together, and Replicator
     refuses them unless they name the same bytes, so both come from the one
     observation. Unchanged extracted text can still arrive as different raw
-    bytes (page noise), which is exactly when the pair moves. A refreshed URI
+    bytes (page noise), which is exactly when the pair moves. A *changed* URI
     arriving without a digest clears the stored one, which would name the old
-    bytes. Once ``persisted_at`` is set the digest is **frozen**: the persisted
-    bytes stand for the revision, and the URI refreshes alone.
+    bytes; the *same* URI names the same bytes, so its digest stands (an HTTP
+    re-POST never carries one). Once ``persisted_at`` is set the digest is
+    **frozen**: the persisted bytes stand for the revision, and the URI
+    refreshes alone.
 
     Mutates ``row`` in the caller's session; the caller's commit persists it.
     """
@@ -329,9 +331,10 @@ def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
             "previous_expires_at": stored_at.isoformat() if stored_at else None,
         },
     )
+    uri_changed = facts.content_cache_uri != row.content_cache_uri
     row.content_cache_uri = facts.content_cache_uri
     row.content_cache_expires_at = offered_at
-    if row.persisted_at is None:
+    if row.persisted_at is None and (facts.blob_fingerprint is not None or uri_changed):
         row.blob_fingerprint = facts.blob_fingerprint
 
 

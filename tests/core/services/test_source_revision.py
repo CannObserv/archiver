@@ -651,10 +651,25 @@ async def test_a_persisted_digest_is_frozen(session, info_source):
 
 
 @pytest.mark.asyncio
-async def test_an_http_repost_never_erases_a_digest(session, info_source):
-    """The HTTP path carries no blob and so no digest; it has nothing newer to say."""
+async def test_a_repost_without_a_blob_keeps_the_digest(session, info_source):
+    """An HTTP re-POST without a URI has nothing newer to say about the blob."""
     await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
 
     row, _ = await record_revision(session, _facts(info_source.info_source_id))
 
+    assert row.blob_fingerprint == DIGEST
+
+
+@pytest.mark.asyncio
+async def test_a_same_uri_refresh_without_a_digest_keeps_the_digest(session, info_source):
+    """The same URI names the same bytes, so the stored digest still describes it.
+    Reached by an HTTP re-POST carrying the URI (the HTTP path never sends a
+    digest) and by a pre-watcher#329 frame for the same blob (CR 1)."""
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+
+    row, _ = await record_revision(
+        session, _observed(info_source.info_source_id, BLOB_URI, LATER_HORIZON, None)
+    )
+
+    assert row.content_cache_expires_at == LATER_HORIZON
     assert row.blob_fingerprint == DIGEST
