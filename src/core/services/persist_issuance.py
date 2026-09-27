@@ -174,11 +174,13 @@ async def reap_open_persists(
 ) -> tuple[int, int]:
     """Abandon silent commands and re-issue for their bytes. Returns ``(abandoned, reissued)``.
 
-    Re-issues once per digest, from the occasioning revision's *current* pair
-    (decision 2 may have moved it since), and only while switched on, the
-    revision is still unpersisted, no other command for the digest is open, and
-    the digest has been abandoned no more than ``MAX_REISSUES`` times. Does not
-    commit.
+    Re-issues once per **digest**, not per occasioning revision: decision 2 may
+    have moved that revision to new bytes (which then got a command of their
+    own), while other revisions still carry the abandoned digest. The re-issue
+    comes from an eligible revision carrying it, the one with the latest
+    horizon, so the freshest temp blob is read. Only while switched on, no other
+    command for the digest is open, and the digest has been abandoned no more
+    than ``MAX_REISSUES`` times. Does not commit.
     """
     cutoff = datetime.now(UTC) - horizon
     stale = list(
@@ -237,7 +239,28 @@ async def reap_open_persists(
                 extra={"digest": digest, "abandoned": abandoned, "max_reissues": MAX_REISSUES},
             )
             continue
-        revision = await session.get(SourceRevision, command.source_revision_id)
+        revision = await _freshest_carrier(session, digest)
         if revision is not None and await issue_persist(session, revision) is not None:
             reissued += 1
     return len(stale), reissued
+
+
+async def _freshest_carrier(session: AsyncSession, digest: str) -> SourceRevision | None:
+    """An unpersisted revision still carrying ``digest``, latest horizon first.
+
+    A NULL horizon (unknown) sorts last: a known live blob beats a guess.
+    """
+    result = await session.execute(
+        select(SourceRevision)
+        .where(
+            SourceRevision.blob_fingerprint == digest,
+            SourceRevision.persisted_at.is_(None),
+            SourceRevision.content_cache_uri.is_not(None),
+        )
+        .order_by(
+            SourceRevision.content_cache_expires_at.desc().nulls_last(),
+            SourceRevision.source_revision_id.desc(),
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none()

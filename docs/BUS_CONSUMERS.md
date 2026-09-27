@@ -181,9 +181,10 @@ re-issues** - a second artifact in a permanent store has no way back.
 **Persist commands ride the same timer, and are re-issued** (archiver#276, the
 persist contract's P3). A persist open past 6h (`persist_issuance.
 DEFAULT_REAP_HORIZON`) is `abandoned` with `no_fact_before_horizon`, then
-re-issued under a fresh `command_id` from its revision's current pair - once per
-digest, only while `ARCHIVER_PERSIST_ISSUANCE` is on and the revision is still
-unpersisted, and at most `MAX_REISSUES` (3) times per digest. A duplicate persist
+re-issued under a fresh `command_id` - once per digest, from an unpersisted
+revision still carrying it (latest horizon first, since the occasioning revision
+may have moved to new bytes), only while `ARCHIVER_PERSIST_ISSUANCE` is on, and
+at most `MAX_REISSUES` (3) times per digest. A duplicate persist
 is a no-op success on a content-addressed key, which is why re-issue is safe here
 and not for replication. Past the cap the digest waits for a re-observation.
 

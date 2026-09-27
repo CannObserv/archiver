@@ -298,6 +298,35 @@ async def test_two_silent_commands_for_one_digest_reissue_once(session, enabled)
 
 
 @pytest.mark.asyncio
+async def test_a_reissue_follows_the_digest_not_the_occasioning_revision(session, enabled):
+    """The occasioning revision moved to new bytes (decision 2) and already holds
+    a command for them; another revision still carries the abandoned digest and
+    is the one to re-issue from (CR 9)."""
+    moved = await _revision(session, url="https://example.com/moved")
+    still = await _revision(
+        session,
+        url="https://example.com/still",
+        fp="b",
+        content_cache_expires_at=datetime.now(UTC) + timedelta(days=5),
+    )
+    await _raw_command(session, moved)
+    moved.blob_fingerprint = OTHER_DIGEST
+    moved.content_cache_uri = f"gs://co-gcs-blobs/blobs/{OTHER_DIGEST}.bin"
+    await issue_persist(session, moved)
+
+    assert await reap_open_persists(session, horizon=HORIZON) == (1, 1)
+    reissue = (
+        await session.execute(
+            select(PersistCommand).where(
+                PersistCommand.state == STATE_REQUESTED,
+                PersistCommand.content_fingerprint == DIGEST,
+            )
+        )
+    ).scalar_one()
+    assert reissue.source_revision_id == still.source_revision_id
+
+
+@pytest.mark.asyncio
 async def test_a_persisted_command_is_never_reaped(session, enabled):
     revision = await _revision(session)
     command = await _stale(session, revision)
