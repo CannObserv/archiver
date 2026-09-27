@@ -260,7 +260,9 @@ see the never-rename rule in `AGENTS.md`.
   `ReplicationCommand`'s shape. States `requested` → `persisted` | `failed` | `abandoned`. The
   only link from an outcome to the registry: persist facts carry no domain ids. A success stamps
   every revision with that digest, not just `source_revision_id`. Semantics:
-  [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
+  [BUS_CONSUMERS.md](BUS_CONSUMERS.md). **At most one `requested` command per
+  `content_fingerprint`** is the issuer's rule (`persist_issuance`), enforced in code rather than
+  by an index: `abandoned` rows accumulate per digest and count against the reaper's re-issue cap.
   - **`last_fact_at` is the ordering high-water mark** (archiver#170). `content.artifacts` is
     at-least-once and keyed `command_id:occurred_at` precisely because one command emits a
     *sequence* of facts, so a redelivered older fact can land after a newer one; without the mark

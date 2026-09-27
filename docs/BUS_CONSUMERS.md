@@ -161,8 +161,11 @@ recorded; the command closes **only** when `terminal` is true.
   stamps. Each success lowers it or leaves it; arrival order does not matter.
 - **A success naming another digest stamps nothing**; the command closes
   `failed` with the local reason `digest_mismatch`.
-- **`blob_expired` is terminal for Archiver.** Recovery is a fresh fetch, which
-  only Watcher issues (#142).
+- **Every terminal failure waits for a re-observation.** `blob_expired` and
+  `source_corrupt` need a fresh fetch, which only Watcher issues (#142);
+  `store_refused` needs Replicator's operator. In each case the next
+  re-observation that refreshes the blob reference re-issues
+  (`persist_issuance`, decision 3), so `reason` stays opaque here.
 - **The co-core pin and these branches ship together.** Once a type decodes, the
   handler's fall-through acks it as foreign: an outcome with no branch is lost,
   not quarantined.
@@ -174,6 +177,15 @@ is closed, and a provider 5xx retries unbounded while publishing nothing. A time
 `ARCHIVER_REPLICATION_REAP_HORIZON` (default 6h) as `abandoned`. It runs on a
 clock rather than off an arrival because it detects an *absence*, and it **never
 re-issues** - a second artifact in a permanent store has no way back.
+
+**Persist commands ride the same timer, and are re-issued** (archiver#276, the
+persist contract's P3). A persist open past 6h (`persist_issuance.
+DEFAULT_REAP_HORIZON`) is `abandoned` with `no_fact_before_horizon`, then
+re-issued under a fresh `command_id` from its revision's current pair - once per
+digest, only while `ARCHIVER_PERSIST_ISSUANCE` is on and the revision is still
+unpersisted, and at most `MAX_REISSUES` (3) times per digest. A duplicate persist
+is a no-op success on a content-addressed key, which is why re-issue is safe here
+and not for replication. Past the cap the digest waits for a re-observation.
 
 ## Triaging the two DLQs (archiver#238)
 

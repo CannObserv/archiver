@@ -46,7 +46,7 @@ from ulid import ULID
 from src.core.changes import consumer as revisions_consumer
 from src.core.changes import group_consumer
 from src.core.changes.consumer import CONSUMER_GROUP
-from src.core.models import ChangesOutboxRow, InfoSource, SourceRevision
+from src.core.models import ChangesOutboxRow, InfoSource, PersistCommand, SourceRevision
 from tests.core.changes._fakeredis_xautoclaim import with_redis_cursor
 
 FP_OBSERVED = "sha256:" + "a" * 64
@@ -720,3 +720,31 @@ async def test_a_misspelled_digest_is_dropped_and_the_revision_kept(
     assert await fake_redis.xlen(f"{CONTENT_REVISIONS}.dlq") == 0
     assert await _pending_count(fake_redis) == 0
     assert log.warning.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_an_observation_with_a_digest_issues_a_persist_when_switched_on(
+    session_factory, fake_redis, info_source, monkeypatch
+):
+    """P1 end to end: the command and its outbox row commit with the revision."""
+    monkeypatch.setenv("ARCHIVER_PERSIST_ISSUANCE", "1")
+    await fake_redis.xadd(
+        CONTENT_REVISIONS, _observed(info_source.info_source_id, blob_fingerprint=RAW_DIGEST)
+    )
+    consumer = await _bus_consumer(fake_redis)
+
+    await revisions_consumer.consume_once(session_factory=session_factory, consumer=consumer)
+
+    async with session_factory() as s:
+        [command] = (await s.execute(select(PersistCommand))).scalars().all()
+        persist_rows = (
+            (
+                await s.execute(
+                    select(ChangesOutboxRow).where(ChangesOutboxRow.topic == "content.persist")
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert command.content_fingerprint == RAW_DIGEST
+    assert [r.payload["command_id"] for r in persist_rows] == [command.command_id]

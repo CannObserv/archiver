@@ -11,18 +11,22 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import text
+from co_core.pure.adapters.bus.streams import CONTENT_PERSIST
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.changes import replication_reaper
 from src.core.models import (
+    ChangesOutboxRow,
     InfoItem,
     InfoItemRepSpec,
     InfoSource,
+    PersistCommand,
     ReplicationCommand,
     RepSpec,
     SourceRevision,
 )
+from src.core.services import persist_issuance
 from src.core.services.replication_issuance import STATE_REQUESTED
 from src.core.services.replication_writeback import STATE_ABANDONED
 
@@ -36,6 +40,8 @@ def session_factory(test_engine):
 async def clean_tables(test_engine):
     statements = (
         "TRUNCATE TABLE information.replication_commands CASCADE",
+        "TRUNCATE TABLE information.persist_commands CASCADE",
+        "TRUNCATE TABLE information.changes_outbox CASCADE",
         "TRUNCATE TABLE information.info_item_rep_specs CASCADE",
         "TRUNCATE TABLE information.source_revisions CASCADE",
         "TRUNCATE TABLE information.info_items CASCADE",
@@ -194,3 +200,58 @@ async def test_a_failing_sweep_does_not_kill_the_loop(session_factory, monkeypat
 
     assert calls["n"] >= 1
     assert task.done()
+
+
+# --- persist commands (archiver#276 PR C) ---
+
+
+async def _open_persist(session_factory, *, age: timedelta) -> str:
+    async with session_factory() as s:
+        source = InfoSource(url="https://example.com/persist-reaper", source_specs=[])
+        s.add(source)
+        await s.flush()
+        revision = SourceRevision(
+            info_source_id=source.info_source_id,
+            content_fingerprint="sha256:" + "f" * 64,
+            captured_at=datetime.now(UTC),
+            blob_fingerprint="f" * 64,
+            content_cache_uri="gs://co-gcs-blobs/blobs/" + "f" * 64 + ".bin",
+        )
+        s.add(revision)
+        await s.flush()
+        command = PersistCommand(
+            command_id="pcmd-reaper-1",
+            source_revision_id=revision.source_revision_id,
+            content_fingerprint=revision.blob_fingerprint,
+            blob_uri=revision.content_cache_uri,
+            media_type="text/html",
+            state=STATE_REQUESTED,
+            issued_at=datetime.now(UTC) - age,
+        )
+        s.add(command)
+        await s.commit()
+        return command.command_id
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_reissues_a_silent_persist_and_commits(session_factory, monkeypatch):
+    """The same timer serves persist: its condition is also an absence (P3)."""
+    monkeypatch.setenv(persist_issuance.ISSUANCE_ENV, "1")
+    command_id = await _open_persist(session_factory, age=timedelta(hours=9))
+
+    await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    async with session_factory() as s:
+        states = {
+            c.command_id: c.state for c in (await s.execute(select(PersistCommand))).scalars()
+        }
+        outbox = (
+            await s.execute(
+                select(func.count())
+                .select_from(ChangesOutboxRow)
+                .where(ChangesOutboxRow.topic == CONTENT_PERSIST)
+            )
+        ).scalar_one()
+    assert states.pop(command_id) == STATE_ABANDONED
+    assert list(states.values()) == [STATE_REQUESTED]
+    assert outbox == 1

@@ -642,3 +642,58 @@ async def test_a_sibling_that_cannot_render_does_not_warn_on_the_manual_path(
         assert await issue_for_assignment(session, healthy) is not None
 
     assert "cannot render a destination" not in caplog.text
+
+
+# --- publishing from the permanent store (archiver#276 item 4, decision 5) ---
+
+RAW_DIGEST = "c" * 64
+PERMANENT_URI = f"gs://co-gcs-replicator/blobs/{RAW_DIGEST}.bin"
+
+
+@pytest.mark.asyncio
+async def test_a_persisted_revision_publishes_from_the_permanent_store(session, info_source):
+    """The persisted bytes have no expiry, so the temp horizon no longer binds."""
+    await _assigned_item(session, info_source)
+    revision = await _revision(
+        session,
+        info_source,
+        blob_fingerprint=RAW_DIGEST,
+        persisted_at=datetime.now(UTC) - timedelta(days=9),
+        content_cache_expires_at=datetime.now(UTC) - timedelta(days=2),
+    )
+
+    [command] = await issue_for_revision(session, revision)
+
+    assert command.blob_uri == PERMANENT_URI
+    [row] = await _replicate_outbox(session)
+    assert row.payload["blob_uri"] == PERMANENT_URI
+
+
+@pytest.mark.asyncio
+async def test_manual_issue_on_stable_content_uses_the_permanent_store(session, info_source):
+    """Decision 5's payoff: a new assignment on unchanged content, long after the
+    temp blob expired, publishes instead of skipping blob_expired_locally."""
+    assignment = await _assigned_item(session, info_source)
+    await _revision(
+        session,
+        info_source,
+        blob_fingerprint=RAW_DIGEST,
+        persisted_at=datetime.now(UTC) - timedelta(days=30),
+        content_cache_uri=None,
+        content_cache_expires_at=datetime.now(UTC) - timedelta(days=23),
+    )
+
+    command = await issue_for_assignment(session, assignment)
+
+    assert command is not None
+    assert command.blob_uri == PERMANENT_URI
+
+
+@pytest.mark.asyncio
+async def test_an_unpersisted_revision_still_publishes_from_the_temp_store(session, info_source):
+    await _assigned_item(session, info_source)
+    revision = await _revision(session, info_source, blob_fingerprint=RAW_DIGEST)
+
+    [command] = await issue_for_revision(session, revision)
+
+    assert command.blob_uri == BLOB_URI

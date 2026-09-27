@@ -53,6 +53,7 @@ from src.core.replication.destination import (
     render_destination,
 )
 from src.core.replication.errors import ReplicationRenderError
+from src.core.replication.permanent_store import permanent_blob_uri
 
 logger = get_logger(__name__)
 
@@ -383,7 +384,7 @@ def _issue_one(
         emit = ContentReplicateCommandEmit(
             occurred_at=datetime.now(UTC),
             command_id=command_id,
-            blob_uri=revision.content_cache_uri,
+            blob_uri=_source_blob_uri(revision),
             media_type=media_type,
             provider=target.document.get("provider", ""),
             credentials_alias=target.document.get("credentials_alias", ""),
@@ -425,7 +426,7 @@ def _issue_one(
         credentials_alias=emit.credentials_alias,
         destination=destination,
         media_type=media_type,
-        blob_uri=revision.content_cache_uri,
+        blob_uri=emit.blob_uri,
         object_options=object_options,
         state=STATE_REQUESTED,
     )
@@ -434,6 +435,22 @@ def _issue_one(
         ChangesOutboxRow(topic=CONTENT_REPLICATE_TOPIC, payload=emit.model_dump(mode="json"))
     )
     return command
+
+
+def _is_persisted(revision: SourceRevision) -> bool:
+    return revision.persisted_at is not None and revision.blob_fingerprint is not None
+
+
+def _source_blob_uri(revision: SourceRevision) -> str | None:
+    """Where Replicator reads the bytes: the permanent store once persisted.
+
+    A persisted revision's digest is frozen (decision 2), so the permanent URI
+    names exactly the bytes that stand for it, even if ``content_cache_uri`` has
+    since moved on (archiver#276 item 4).
+    """
+    if _is_persisted(revision):
+        return permanent_blob_uri(revision.blob_fingerprint)
+    return revision.content_cache_uri
 
 
 def _blob_skip_reason(revision: SourceRevision) -> str | None:
@@ -445,7 +462,13 @@ def _blob_skip_reason(revision: SourceRevision) -> str | None:
     ``content.fetch`` and archiver#142 leaves no call to make — so an expired
     horizon is surfaced, not retried. A NULL horizon records that the expiry is
     unknown, which is not the same as knowing it has passed.
+
+    A persisted revision is never skipped: the permanent store has no expiry, so
+    Replicator accepts its URI with MUST-7 relaxed (replicate contract, step 5),
+    and refuses ``blob_expired`` itself if the object were somehow absent.
     """
+    if _is_persisted(revision):
+        return None
     if not revision.content_cache_uri:
         return SKIP_BLOB_ABSENT
     expires_at = revision.content_cache_expires_at
@@ -481,7 +504,7 @@ def _record_skips(
                 credentials_alias=target.document.get("credentials_alias", ""),
                 destination=destination,
                 media_type=revision.source_media_type or DEFAULT_MEDIA_TYPE,
-                blob_uri=revision.content_cache_uri,
+                blob_uri=_source_blob_uri(revision),
                 object_options=target.document.get("object_options") or None,
                 state=STATE_SKIPPED,
                 reason=reason,

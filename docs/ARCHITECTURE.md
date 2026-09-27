@@ -54,7 +54,9 @@ src/core/                      Domain logic
                                extension_for_media_type, the cluster's one table
                                — and resolves the bag's _slug companions through
                                rep_fields.py on the way in (archiver#205, #206,
-                               #210). errors.py is the
+                               #210). permanent_store.py derives a persisted
+                               digest's gs://co-gcs-replicator URI (archiver#276).
+                               errors.py is the
                                single base both raise under, so archiver#169 can
                                record a skip by catching one class. Archiver
                                renders because the issuer contract's T3 says so
@@ -75,7 +77,9 @@ src/core/                      Domain logic
                                services/persist_writeback.py);
                                replication_reaper.py closes commands that produced
                                no fact at all, on a timer because it detects an
-                               absence. publisher.py drains changes_outbox to
+                               absence, and re-issues silent persist commands
+                               (services/persist_issuance.py, which also issues
+                               content.persist on receipt, archiver#276). publisher.py drains changes_outbox to
                                info.changes; consumer.py ingests
                                source_revision_observed from content.revisions
                                (archiver#139) and is gated on

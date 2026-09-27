@@ -1,8 +1,8 @@
 # archiver - change-bus contracts
 
 Everything Archiver puts on the Redis bus: the outbox producer and
-the three streams it publishes - `info.changes`, `info.registry`,
-`content.replicate`. What it takes off - `content.revisions`,
+the four streams it publishes - `info.changes`, `info.registry`,
+`content.replicate`, `content.persist`. What it takes off - `content.revisions`,
 `content.artifacts`, `info.watch-status` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
 below serves both. HTTP routes and their SDK wrappers live in [API.md](API.md);
@@ -36,7 +36,7 @@ loses - the outbox is the durable buffer. The URL, the measured path, and the
 Consumer loops need no transient/poison classification of their own; what they do
 on a dropped connection is pinned by `tests/core/changes/test_bus_reconnect.py`.
 
-## Producing - the outbox, the envelope, and the three published streams
+## Producing - the outbox, the envelope, and the four published streams
 
 **Change-bus producer (co-core bus, archiver#106):** Writes rows to
 `information.changes_outbox` in the same transaction (the **outbox stays
@@ -123,7 +123,7 @@ outside it: the drainer (archiver#238) disposes with `XDEL` by id, never
 (CannObserv/broker#59, live 2026-09-24). A DLQ never joins `trim_topics` - a
 MAXLEN cap ignores triage: past it, the oldest dead letters go whether or not
 anyone read them.
-Why `info.registry` and `content.replicate` are absent: their sections below.
+Why `info.registry`, `content.replicate` and `content.persist` are absent: their sections below.
 
 **Published-row retention (archiver#189)** - `src/core/changes/outbox_prune.py`
 deletes rows whose `published_at` is older than `ARCHIVER_OUTBOX_RETENTION_DAYS`
@@ -278,6 +278,44 @@ and MUST-7 *inverts* into a scheduling obligation on this side.
   `archiver.artifacts` group, which is what writes `public_url`. The silent
   case - a command that closes without either fact - is the reaper's, on its
   own timer. Both are documented in [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
+
+**`content.persist` - the persist command channel (archiver#276).** A fourth
+producer surface, *command* kind, `content.replicate`'s posture: one group
+(`replicator.persist`), payload `ContentPersistCommandEmit`, idempotency key the
+bare `command_id`. It asks Replicator to copy a revision's raw bytes from its
+seven-day temp store into its permanent, content-addressed one. The normative
+contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
+(P1-P5); `src/core/services/persist_issuance.py` is this side of it.
+
+- **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([DEPLOYMENT.md](DEPLOYMENT.md)).
+  The go-live order is broker, then Replicator's `REPLICATOR_PERSIST_ENABLED`,
+  then Archiver (broker#64): `replicator.persist` is created at `$`, so an entry
+  sent before it existed is never delivered.
+- **Issued on receipt (P1)** - `record_revision` issues on the revision insert,
+  in its transaction, beside replication - **and re-armed** by a re-observation
+  that refreshed the blob reference while the revision is unpersisted. That is
+  the one retry path for every terminal `persist_failed` (decision 3); a pure
+  redelivery refreshes nothing and re-arms nothing.
+- **One open command per digest.** The object belongs to its digest and a
+  success stamps every revision carrying it, so identical bytes seen by a second
+  source wait on the first command.
+- **The pair goes out as recorded (P4):** `content_fingerprint` is
+  `source_revisions.blob_fingerprint`, `blob_uri` its `content_cache_uri`, both
+  from the same observation. A row with no digest is never issued.
+- **`media_type` echoes `source_media_type`**, falling back to
+  `application/octet-stream`, for replication's reason: the store keeps it as
+  object metadata on the first write.
+- **The reaper re-issues (P3)**, unlike replication's: a duplicate persist is a
+  no-op success on a content-addressed key. See [BUS_CONSUMERS.md](BUS_CONSUMERS.md).
+- **Never capped, never trimmed,** for `content.replicate`'s reasons: Archiver's
+  grant is `+xadd ~content.persist` in a selector only (broker#64), so it can
+  publish but not read, trim or `XACK`.
+- **Outcomes come back on `content.artifacts`** as `blob_persisted` /
+  `persist_failed` ([BUS_CONSUMERS.md](BUS_CONSUMERS.md)). Once persisted, a
+  revision's replication reads `gs://co-gcs-replicator/blobs/<sha256>.bin`
+  (`src/core/replication/permanent_store.py`) with no expiry skip, which is what
+  lets a manual *Replicate now* publish stable content long after its temp blob
+  expired.
 
 `source_revision_captured` schema_version is now **2** - `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 
