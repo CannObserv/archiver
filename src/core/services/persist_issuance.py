@@ -163,7 +163,10 @@ async def issue_persist(session: AsyncSession, revision: SourceRevision) -> Pers
     if await _open_command_for(session, digest):
         logger.debug(
             "A persist for these bytes is already open; not issuing another",
-            extra={"source_revision_id": str(revision.source_revision_id), "digest": digest},
+            extra={
+                "source_revision_id": str(revision.source_revision_id),
+                "content_fingerprint": digest,
+            },
         )
         return None
 
@@ -202,7 +205,7 @@ async def issue_persist(session: AsyncSession, revision: SourceRevision) -> Pers
         extra={
             "command_id": command_id,
             "source_revision_id": str(revision.source_revision_id),
-            "digest": digest,
+            "content_fingerprint": digest,
         },
     )
     return command
@@ -246,7 +249,7 @@ async def reap_open_persists(
             "Persist command produced no fact before the horizon; abandoning",
             extra={
                 "command_id": command.command_id,
-                "digest": command.content_fingerprint,
+                "content_fingerprint": command.content_fingerprint,
                 "issued_at": command.issued_at.isoformat(),
                 "horizon_hours": horizon.total_seconds() / 3600,
             },
@@ -275,7 +278,11 @@ async def reap_open_persists(
         if abandoned > MAX_REISSUES:
             logger.warning(
                 "Persist re-issue cap reached; leaving the digest to a re-observation",
-                extra={"digest": digest, "abandoned": abandoned, "max_reissues": MAX_REISSUES},
+                extra={
+                    "content_fingerprint": digest,
+                    "abandoned": abandoned,
+                    "max_reissues": MAX_REISSUES,
+                },
             )
             continue
         revision = await _freshest_carrier(session, digest)
