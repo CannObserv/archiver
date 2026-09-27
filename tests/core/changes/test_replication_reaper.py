@@ -255,3 +255,21 @@ async def test_the_sweep_reissues_a_silent_persist_and_commits(session_factory, 
     assert states.pop(command_id) == STATE_ABANDONED
     assert list(states.values()) == [STATE_REQUESTED]
     assert outbox == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failing_persist_sweep_does_not_cost_replication_its_reaping(
+    session_factory, monkeypatch
+):
+    """MUST-6's safety net must survive a defect in the newer persist half (CR 10)."""
+    command_id = await _open_command(session_factory, age=timedelta(hours=9))
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("persist sweep defect")
+
+    monkeypatch.setattr(persist_issuance, "reap_open_persists", _boom)
+
+    reaped = await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    assert reaped == 1
+    assert await _state(session_factory, command_id) == STATE_ABANDONED

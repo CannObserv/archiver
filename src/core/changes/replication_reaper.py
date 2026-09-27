@@ -86,20 +86,36 @@ async def sweep_once(
     persist_horizon: timedelta = persist_issuance.DEFAULT_REAP_HORIZON,
 ) -> int:
     """One pass over both command families. Returns how many *replication*
-    commands were abandoned; the persist half logs its own counts."""
+    commands were abandoned; the persist half logs its own counts.
+
+    Two sessions, two transactions: a defect in the persist half must not roll
+    back, or block, replication's reaping, which is MUST-6's safety net. The
+    persist half's failure is logged and contained; replication's still raises
+    into ``run``'s backoff (CR 10).
+    """
     async with session_factory() as session:
         reaped = await reap_open_commands(session, horizon=horizon)
-        abandoned, reissued = await persist_issuance.reap_open_persists(
-            session, horizon=persist_horizon
-        )
-        if reaped or abandoned:
+        if reaped:
+            await session.commit()
+    try:
+        await _sweep_persists(session_factory, horizon=persist_horizon)
+    except Exception:
+        logger.exception("Persist reaper sweep failed; replication reaping unaffected")
+    return reaped
+
+
+async def _sweep_persists(
+    session_factory: async_sessionmaker[AsyncSession], *, horizon: timedelta
+) -> None:
+    async with session_factory() as session:
+        abandoned, reissued = await persist_issuance.reap_open_persists(session, horizon=horizon)
+        if abandoned:
             await session.commit()
     if abandoned:
         logger.warning(
             "Abandoned silent persist commands past the horizon",
             extra={"abandoned": abandoned, "reissued": reissued},
         )
-    return reaped
 
 
 async def run(
