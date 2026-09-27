@@ -185,6 +185,23 @@ async def test_a_closed_command_does_not_block_a_rearm(session, enabled):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("switched_on", [True, False])
+async def test_bytes_already_kept_are_adopted_not_reissued(session, monkeypatch, switched_on):
+    """Another revision's success already names this digest: its persisted_at is
+    the digest's minimum over every fact, so the new revision takes it and no
+    command goes out. Knowledge, not issuance, so the switch does not gate it (CR 11)."""
+    if switched_on:
+        monkeypatch.setenv(persist_issuance.ISSUANCE_ENV, "1")
+    kept_at = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
+    await _revision(session, url="https://example.com/kept", persisted_at=kept_at)
+    later = await _revision(session, url="https://example.com/later", fp="b")
+
+    assert await issue_persist(session, later) is None
+    assert later.persisted_at == kept_at
+    assert await _count(session, PersistCommand) == 0
+
+
+@pytest.mark.asyncio
 async def test_issuance_does_not_commit(session, enabled):
     revision = await _revision(session)
     await issue_persist(session, revision)

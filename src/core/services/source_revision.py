@@ -261,13 +261,15 @@ async def record_revision(
                 payload=(await _captured_emit(session, row)).model_dump(mode="json"),
             )
         )
+        # P1: persist on receipt, inside the temp window (archiver#276). First,
+        # so a revision of bytes already kept adopts persisted_at and the
+        # replication below reads the permanent URI (CR 11).
+        await issue_persist(session, row)
         # Replication rides the same transaction (archiver#169). Under the
         # idempotent no-op it deliberately does not run: a redelivery is the
         # same occasion, and a second command_id for it is exactly the
         # re-replication MUST-1 reserves for a genuinely new one.
         await issue_for_revision(session, row)
-        # P1: persist on receipt, inside the temp window (archiver#276).
-        await issue_persist(session, row)
     else:
         _refresh_spec_comparison(row, facts, comparison)
         if _refresh_cache_reference(row, facts):

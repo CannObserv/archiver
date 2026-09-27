@@ -697,3 +697,37 @@ async def test_an_unpersisted_revision_still_publishes_from_the_temp_store(sessi
     [command] = await issue_for_revision(session, revision)
 
     assert command.blob_uri == BLOB_URI
+
+
+@pytest.mark.asyncio
+async def test_a_new_revision_of_kept_bytes_replicates_from_the_permanent_store(
+    session, info_source
+):
+    """record_revision adopts the digest's persisted_at before issuing replication,
+    so the insert's replicate reads the permanent URI, not the temp one (CR 11)."""
+    await _assigned_item(session, info_source)
+    other = InfoSource(url="https://example.com/kept-elsewhere", source_specs=[])
+    session.add(other)
+    await session.flush()
+    await _revision(
+        session,
+        other,
+        fingerprint=FP_B,
+        blob_fingerprint=RAW_DIGEST,
+        persisted_at=datetime.now(UTC) - timedelta(days=1),
+    )
+
+    await record_revision(
+        session,
+        RevisionFacts(
+            info_source_id=info_source.info_source_id,
+            content_fingerprint=FP_A,
+            captured_at=CAPTURED_AT,
+            content_cache_uri=BLOB_URI,
+            blob_fingerprint=RAW_DIGEST,
+            source_media_type="text/html",
+        ),
+    )
+
+    [command] = await _commands(session)
+    assert command.blob_uri == PERMANENT_URI

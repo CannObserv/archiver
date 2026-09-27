@@ -298,7 +298,10 @@ contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
   redelivery refreshes nothing and re-arms nothing.
 - **One open command per digest.** The object belongs to its digest and a
   success stamps every revision carrying it, so identical bytes seen by a second
-  source wait on the first command.
+  source wait on the first command. **Bytes already kept are adopted:** a
+  revision whose digest another revision has persisted takes that
+  `persisted_at` and sends nothing. Persist runs before replication in
+  `record_revision`, so such a revision's first replicate reads the permanent URI.
 - **The pair goes out as recorded (P4):** `content_fingerprint` is
   `source_revisions.blob_fingerprint`, `blob_uri` its `content_cache_uri`, both
   from the same observation. A row with no digest is never issued.

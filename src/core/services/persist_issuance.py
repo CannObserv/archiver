@@ -26,7 +26,9 @@ never delivered. A switch lets the code ship on its own schedule.
 
 **One open command per digest.** The stored object belongs to the digest, and a
 success stamps ``persisted_at`` on every revision carrying it, so a second open
-command for identical bytes buys nothing.
+command for identical bytes buys nothing. **Bytes already kept are adopted, not
+re-sent:** a revision whose digest another revision has persisted takes that
+``persisted_at`` and issues nothing.
 
 **The pair is sent as recorded (P4).** ``blob_fingerprint`` and
 ``content_cache_uri`` come from the same observation (decision 2, enforced in
@@ -99,6 +101,38 @@ def _eligible(revision: SourceRevision) -> bool:
     )
 
 
+async def _adopt_known_persist(session: AsyncSession, revision: SourceRevision) -> bool:
+    """Stamp ``persisted_at`` from another revision with these bytes, if one has it.
+
+    ``persisted_at`` is the minimum ``occurred_at`` over every ``blob_persisted``
+    fact for the digest, and ``persist_writeback`` writes that minimum onto every
+    revision carrying the digest when the fact lands. A revision arriving later
+    with the same bytes missed that write; the existing minimum is the same
+    answer, so it is adopted and no round trip is spent. Not gated by the
+    switch: it records what is known, and issues nothing (CR 11).
+    """
+    known = (
+        await session.execute(
+            select(func.min(SourceRevision.persisted_at)).where(
+                SourceRevision.blob_fingerprint == revision.blob_fingerprint,
+                SourceRevision.persisted_at.is_not(None),
+            )
+        )
+    ).scalar_one()
+    if known is None:
+        return False
+    revision.persisted_at = known
+    logger.info(
+        "Bytes already kept; adopting the digest's persisted_at",
+        extra={
+            "source_revision_id": str(revision.source_revision_id),
+            "content_fingerprint": revision.blob_fingerprint,
+            "persisted_at": known.isoformat(),
+        },
+    )
+    return True
+
+
 async def _open_command_for(session: AsyncSession, digest: str) -> bool:
     result = await session.execute(
         select(PersistCommand.command_id)
@@ -115,10 +149,15 @@ async def _open_command_for(session: AsyncSession, digest: str) -> bool:
 async def issue_persist(session: AsyncSession, revision: SourceRevision) -> PersistCommand | None:
     """Enqueue one persist for ``revision``'s bytes, or ``None`` when not warranted.
 
-    ``None`` covers: switched off, no digest or no blob reference, already
-    persisted, or a command for these bytes already open. Does not commit.
+    ``None`` covers: no digest or no blob reference, already persisted, bytes
+    already kept (adopted, see ``_adopt_known_persist``), switched off, or a
+    command for these bytes already open. Does not commit.
     """
-    if not issuance_enabled() or not _eligible(revision):
+    if not _eligible(revision):
+        return None
+    if await _adopt_known_persist(session, revision):
+        return None
+    if not issuance_enabled():
         return None
     digest = revision.blob_fingerprint
     if await _open_command_for(session, digest):
