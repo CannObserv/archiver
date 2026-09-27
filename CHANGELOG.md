@@ -18,7 +18,7 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
-## v4.21.0 (2026-09-26)
+## v4.21.0 (2026-09-27)
 
 [service] **Production's RepSpec moves off `primary`, and the alias grandfather clause is gone** (archiver#276, replicator#114). No SDK surface change (a generated RepSpec docstring drops the `primary` clause), so `archiver-client` is not bumped.
 
