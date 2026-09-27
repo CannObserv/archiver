@@ -155,7 +155,11 @@ see the never-rename rule in `AGENTS.md`.
   - `command_id` — correlation back to the `content.fetch` command behind the bytes.
   - `blob_fingerprint` / `persisted_at` (archiver#276) — the **raw-bytes** digest (bare hex; never
     `content_fingerprint`), the permanent store's address, and the *minimum* `blob_persisted`
-    `occurred_at` for it. NULL until watcher#329. See `PersistCommand`.
+    `occurred_at` for it. NULL until watcher#329. See `PersistCommand`. **The digest moves with
+    `content_cache_uri`** under the refresh rule below while `persisted_at` is NULL - a persist
+    sends the two together, and Replicator refuses a digest that does not name the URI's bytes; a
+    changed URI without a digest clears it, the same URI keeps it - and is **frozen** once
+    persisted: the persisted bytes stand for the revision.
   `content_cache_uri` / `content_cache_expires_at` are a **cache, not durable storage** — on the bus
   path Replicator's temp-store blob (`gs://co-gcs-blobs` since 2026-08-20; rows from before the
   flip carry the VM-local `file://` form), on a TTL clock the registry does not own. A `NULL`

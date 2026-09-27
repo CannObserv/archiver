@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 
 from co_core.pure.adapters.bus.streams import CONTENT_REVISIONS, group_name
 from co_core.pure.models.changes import SourceRevisionObservedEvent
+from co_core.pure.util.blobstore import validate_fingerprint as validate_blob_fingerprint
 from co_core_aio.bus import BusMessage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -123,6 +124,10 @@ def _facts_from(event: SourceRevisionObservedEvent) -> RevisionFacts:
     replication is for. A missing expiry records absence rather than a TTL
     guessed from Replicator's policy.
 
+    ``blob_fingerprint`` → ``blob_fingerprint``: the raw-bytes digest behind
+    ``blob_uri`` (archiver#276), ``None`` from a producer predating
+    watcher#329. See ``_usable_blob_fingerprint`` for a misspelled one.
+
     Raises:
         SourceRevisionWriteError: the observation names an unusable
             ``info_source_id`` or fingerprint — poison, since redelivery yields
@@ -139,7 +144,34 @@ def _facts_from(event: SourceRevisionObservedEvent) -> RevisionFacts:
         source_media_type=event.source_media_type,
         spec_fingerprint=event.spec_fingerprint,
         command_id=event.command_id,
+        blob_fingerprint=_usable_blob_fingerprint(event),
     )
+
+
+def _usable_blob_fingerprint(event: SourceRevisionObservedEvent) -> str | None:
+    """The event's raw-bytes digest, or ``None`` if it is not bare lowercase hex.
+
+    Not poison, unlike a misspelled ``extracted_fingerprint``: the digest is
+    optional and the revision is not, so quarantining the observation would
+    lose a revision to save a field. A persist could never be issued from a
+    misspelled digest (``ContentPersistCommandEmit`` refuses it), so it is
+    recorded as absent and logged, and the frame is acked.
+    """
+    digest = event.blob_fingerprint
+    if digest is None:
+        return None
+    try:
+        return validate_blob_fingerprint(digest)
+    except ValueError:
+        logger.warning(
+            "Dropping a misspelled blob_fingerprint; recording the revision without it",
+            extra={
+                "info_source_id": event.info_source_id,
+                "blob_fingerprint": digest,
+                "command_id": event.command_id,
+            },
+        )
+        return None
 
 
 async def handle_message(
