@@ -86,8 +86,8 @@ MAX_REISSUES = 3
 def issuance_enabled(raw: str | None = None) -> bool:
     """Whether ``ARCHIVER_PERSIST_ISSUANCE`` switches issuance on.
 
-    Read at call time rather than at import, so enabling it needs a restart of
-    nothing but the variable's reader, and tests can set it per case.
+    Read per call rather than at import, so a test can set it per case. A
+    running service sees a change on its next restart.
     """
     value = os.environ.get(ISSUANCE_ENV) if raw is None else raw
     return (value or "").strip().lower() in _TRUTHY
