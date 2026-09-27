@@ -26,6 +26,7 @@ from ulid import ULID
 from src.core.fingerprints import is_valid_fingerprint
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource, SourceRevision
+from src.core.services.persist_issuance import issue_persist
 from src.core.services.replication_issuance import issue_for_revision
 from src.core.spec_match import (
     NOT_COMPARED,
@@ -260,6 +261,10 @@ async def record_revision(
                 payload=(await _captured_emit(session, row)).model_dump(mode="json"),
             )
         )
+        # P1: persist on receipt, inside the temp window (archiver#276). First,
+        # so a revision of bytes already kept adopts persisted_at and the
+        # replication below reads the permanent URI (CR 11).
+        await issue_persist(session, row)
         # Replication rides the same transaction (archiver#169). Under the
         # idempotent no-op it deliberately does not run: a redelivery is the
         # same occasion, and a second command_id for it is exactly the
@@ -267,12 +272,15 @@ async def record_revision(
         await issue_for_revision(session, row)
     else:
         _refresh_spec_comparison(row, facts, comparison)
-        _refresh_cache_reference(row, facts)
+        if _refresh_cache_reference(row, facts):
+            # Decision 3's re-arm: a fresher blob reference is a new occasion to
+            # persist an unpersisted revision. A redelivery refreshes nothing.
+            await issue_persist(session, row)
 
     return row, inserted
 
 
-def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
+def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> bool:
     """Carry a re-observation's blob reference onto an existing row (archiver#201).
 
     The idempotent no-op returns the row the *first* observation wrote, and its
@@ -312,17 +320,18 @@ def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
     **frozen**: the persisted bytes stand for the revision, and the URI
     refreshes alone.
 
-    Mutates ``row`` in the caller's session; the caller's commit persists it.
+    Returns whether the reference was refreshed. Mutates ``row`` in the
+    caller's session; the caller's commit persists it.
     """
     if facts.content_cache_uri is None:
-        return
+        return False
     stored_at = row.content_cache_expires_at
     offered_at = facts.content_cache_expires_at
     if row.content_cache_uri is not None:
         if offered_at is None:
-            return
+            return False
         if stored_at is not None and offered_at <= stored_at:
-            return
+            return False
     uri_changed = facts.content_cache_uri != row.content_cache_uri
     previous_digest = row.blob_fingerprint
     row.content_cache_uri = facts.content_cache_uri
@@ -340,6 +349,7 @@ def _refresh_cache_reference(row: SourceRevision, facts: RevisionFacts) -> None:
             "previous_blob_fingerprint": previous_digest,
         },
     )
+    return True
 
 
 def _refresh_spec_comparison(

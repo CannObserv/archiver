@@ -30,7 +30,15 @@ from co_core.pure.extract import spec_fingerprint
 from sqlalchemy import func, select
 from ulid import ULID
 
-from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource, SourceRevision
+from src.core.models import (
+    ChangesOutboxRow,
+    InfoItem,
+    InfoItemSource,
+    InfoSource,
+    PersistCommand,
+    SourceRevision,
+)
+from src.core.services import persist_issuance
 from src.core.services.source_revision import (
     RevisionFacts,
     SourceRevisionIdConflictError,
@@ -704,3 +712,76 @@ async def test_an_http_written_row_gains_a_digest_on_its_first_bus_observation(
 
     assert row.content_cache_uri == BLOB_URI
     assert row.blob_fingerprint == DIGEST
+
+
+# ---------------------------------------------------------------------------
+# Persist issuance (archiver#276 PR C)
+#
+# On receipt (P1), and on a re-observation that refreshed the blob reference -
+# the re-arm after a terminal failure or a lost command (decision 3). A pure
+# redelivery refreshes nothing and so re-arms nothing.
+# ---------------------------------------------------------------------------
+
+
+async def _persist_commands(session) -> list[PersistCommand]:
+    result = await session.execute(select(PersistCommand).order_by(PersistCommand.issued_at))
+    return list(result.scalars().all())
+
+
+@pytest.fixture
+def persist_on(monkeypatch):
+    monkeypatch.setenv(persist_issuance.ISSUANCE_ENV, "1")
+
+
+@pytest.mark.asyncio
+async def test_a_new_revision_with_a_digest_is_persisted_on_receipt(
+    session, info_source, persist_on
+):
+    row, _ = await record_revision(
+        session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST)
+    )
+
+    [command] = await _persist_commands(session)
+    assert command.source_revision_id == row.source_revision_id
+    assert command.content_fingerprint == DIGEST
+    assert command.blob_uri == BLOB_URI
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_persisted_while_switched_off(session, info_source, monkeypatch):
+    monkeypatch.delenv(persist_issuance.ISSUANCE_ENV, raising=False)
+
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+
+    assert await _persist_commands(session) == []
+
+
+@pytest.mark.asyncio
+async def test_a_refreshing_reobservation_rearms_after_a_failure(session, info_source, persist_on):
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+    [failed] = await _persist_commands(session)
+    failed.state = "failed"
+    failed.closed_at = datetime.now(UTC)
+
+    await record_revision(
+        session,
+        _observed(info_source.info_source_id, BLOB_URI_LATER, LATER_HORIZON, LATER_DIGEST),
+    )
+
+    commands = await _persist_commands(session)
+    assert len(commands) == 2
+    assert commands[1].content_fingerprint == LATER_DIGEST
+    assert commands[1].blob_uri == BLOB_URI_LATER
+
+
+@pytest.mark.asyncio
+async def test_a_redelivery_does_not_rearm(session, info_source, persist_on):
+    """Equal horizon: the same emission, which refreshes nothing."""
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+    [failed] = await _persist_commands(session)
+    failed.state = "failed"
+    failed.closed_at = datetime.now(UTC)
+
+    await record_revision(session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST))
+
+    assert len(await _persist_commands(session)) == 1

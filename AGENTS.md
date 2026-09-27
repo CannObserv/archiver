@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences; sacrifice grammar for density. S
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry` and `content.replicate` via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](docs/BUS.md) and [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate` and `content.persist` via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](docs/BUS.md) and [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 **Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one - a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
 
@@ -240,7 +240,7 @@ un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - layout tree; co-core acquisition wiring
 - [docs/API.md](docs/API.md) - every HTTP route, its SDK wrapper, pagination
-- [docs/BUS.md](docs/BUS.md) - the outbox producer; the three streams published
+- [docs/BUS.md](docs/BUS.md) - the outbox producer; the four streams published
 - [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the three streams consumed; consumer naming
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev-server internals, full env-var reference

@@ -102,6 +102,12 @@ _OUTBOUND_SERVICE_ENV_VARS = (
 for _var in _OUTBOUND_SERVICE_ENV_VARS:
     os.environ.pop(_var, None)
 
+# Behaviour switches a sourced env file may carry. Not outbound themselves, but
+# ARCHIVER_PERSIST_ISSUANCE set in /etc/archiver/.env would make every revision a
+# test records also write a persist command and an outbox row, and counts that
+# pass in CI would fail on this VM. Tests that need it set it (archiver#276).
+os.environ.pop("ARCHIVER_PERSIST_ISSUANCE", None)
+
 
 def _run_alembic_upgrade() -> None:
     """Run alembic upgrade head against TEST_DATABASE_URL.
