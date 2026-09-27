@@ -106,3 +106,24 @@ land on copy-on-write (clone) instead, which gets the same lineage from rows
 that already exist.
 
 **Provider mutable while draft.** Rejected for contract simplicity — see above.
+
+## Amendment 2026-09-26: one migrated exception (archiver#276)
+
+Migration `70f32f641751` rewrote `document.credentials_alias` from `primary` to
+`gcs-publication` on production's one RepSpec. That RepSpec was assigned, so
+tier 3 froze its document. This is the only edit made to a frozen document, and
+it did not go through a route. The contract above is otherwise unchanged:
+`PATCH` still refuses an assigned document.
+
+It keeps this ADR's promise, which is that an assignment names the document
+that produced its artefacts. The rewrite changed no behaviour. Replicator's
+publication cutover (replicator#114 plan step 4) bound both names to the same
+bucket, writer identity and empty prefix, so every destination the document
+renders is the same object under either name. Artefacts written earlier under
+`primary` into `co-gcs-replication` keep their `public_url`: that bucket was
+frozen, not moved. `updated_at` records the edit.
+
+Why not #95 (clone and migrate)? It is still open, and the change was forced by
+a deadline: Replicator retires `primary` on 2026-12-31. Building tier 3 for a
+single alias rename, with no change in behaviour, would have put the machinery
+ahead of the need this ADR deferred it for.

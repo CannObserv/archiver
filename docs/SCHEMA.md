@@ -188,9 +188,10 @@ see the never-rename rule in `AGENTS.md`.
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
   **`credentials_alias` rule** (archiver#276, replicator#114): `<provider>-<role>` per co-core's
   `co_core.pure.util.aliases` (e.g. `gcs-publication`), and the prefix must equal `provider`.
-  Checked on save only, so a frozen assigned document is never re-judged. `primary` (gcs) is
-  the one grandfathered name (`LEGACY_ALIASES`) until production's RepSpec migrates to
-  `gcs-publication`; Replicator stops accepting it cleanly after 2026-12-31.
+  Checked on save only, so a frozen assigned document is never re-judged. The pre-rule name
+  `primary` is refused. Migration `70f32f641751` moved production's one RepSpec to
+  `gcs-publication`, the one recorded exception to #83's freeze: both names bind the same
+  bucket, so no destination changed.
   **`path_template` contract** (archiver#168) — three rules the envelope schema cannot express,
   checked by `src/core/replication/template.py` from the *same parser* the renderer uses, so a
   document that validates is one that renders:
