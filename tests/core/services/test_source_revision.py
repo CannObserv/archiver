@@ -689,3 +689,18 @@ async def test_a_digest_change_is_logged_with_its_predecessor(session, info_sour
     extra = log.info.call_args.kwargs["extra"]
     assert extra["blob_fingerprint"] == LATER_DIGEST
     assert extra["previous_blob_fingerprint"] == DIGEST
+
+
+@pytest.mark.asyncio
+async def test_an_http_written_row_gains_a_digest_on_its_first_bus_observation(
+    session, info_source
+):
+    """The digest arrives with the first blob reference, as the URI does (CR 7)."""
+    await record_revision(session, _facts(info_source.info_source_id))
+
+    row, _ = await record_revision(
+        session, _observed(info_source.info_source_id, BLOB_URI, HORIZON, DIGEST)
+    )
+
+    assert row.content_cache_uri == BLOB_URI
+    assert row.blob_fingerprint == DIGEST
