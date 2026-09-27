@@ -84,7 +84,8 @@ class SourceRevision(Base):
     # The raw-bytes sha256, bare hex, from SourceRevisionObservedEvent.
     # blob_fingerprint. Distinct from content_fingerprint above, which is the
     # *extracted* fingerprint and the row's identity. NULL until Watcher sends it
-    # (watcher#329) and on every HTTP-written row. The digest is the permanent
+    # (watcher#329) and on a row only the HTTP path has written: an HTTP row
+    # gains one on its first bus observation. The digest is the permanent
     # store's address: a reader derives the location with co-core's
     # gcs_uri(bucket, digest), so no URL is stored.
     blob_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
