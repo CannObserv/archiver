@@ -202,7 +202,9 @@ ran on all four boots journald retained through 2026-09-29 (09-04, 09-08, 09-09,
 - **Revoking the key is the only step that lasts.** It is the one thing that
   covers the copy re-delivered each boot, exe.dev's stored script and every
   transcript at once. A re-join succeeding on an already-registered node proves
-  nothing about the key: the node does not need it.
+  nothing about the key: the node does not need it. #193's key was **not
+  reusable and is revoked** (owner, 2026-09-29), so the copy that keeps coming
+  back is inert. Whether exe.dev can clear the stored script is #290.
 - **The script must stay harmless to re-run**: every boot re-applies its
   `tailscale up` flags. Leave `exe-setup.service` itself alone - it is exe.dev's.
 
