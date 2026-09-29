@@ -45,6 +45,7 @@ BUS_HEALTH_UNIT = DEPLOY / "archiver-bus-health.service"
 POSTGRES_UNIT = DEPLOY / "postgresql@16-main.service.d" / "10-memory.conf"
 SYSCTL = DEPLOY / "99-archiver-memory.conf"
 TAILSCALED_DROPIN = DEPLOY / "tailscaled.service.d" / "10-oom.conf"
+PG_ENVIRONMENT = DEPLOY / "postgresql" / "16" / "main" / "environment"
 EARLYOOM = DEPLOY / "earlyoom.default"
 
 #: Live peaks (``memory.peak``) on co-registrar, 2026-09-28: archiver.service
@@ -496,10 +497,34 @@ def production_adj() -> int:
     return int(setting(PROD_UNIT, "OOMScoreAdjust"))
 
 
+def cluster_environment(path: Path) -> dict[str, str]:
+    """``VARIABLE = value`` pairs, the postgresql.conf syntax pg_ctlcluster reads."""
+    pairs = {}
+    for line in path.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            key, value = (part.strip() for part in line.split("=", 1))
+            pairs[key] = value.strip("'")
+    return pairs
+
+
 def postgres_children_adj() -> int:
-    value = environment(POSTGRES_UNIT).get("PG_OOM_ADJUST_VALUE")
-    assert value is not None, f"{POSTGRES_UNIT.name} leaves postgres's children at 0"
+    value = cluster_environment(PG_ENVIRONMENT).get("PG_OOM_ADJUST_VALUE")
+    assert value is not None, f"{PG_ENVIRONMENT.name} leaves postgres's children at 0"
     return int(value)
+
+
+def test_the_postgres_unit_does_not_carry_the_childrens_score():
+    """pg_ctlcluster starts the postmaster on an environment it builds itself.
+
+    It keeps only the cluster's ``environment`` file (and LANG), so a systemd
+    ``Environment=`` never reaches postgres: set there on 2026-09-29, the
+    children still read 0 after a restart (archiver#285).
+    """
+    assert "PG_OOM_ADJUST_VALUE" not in environment(POSTGRES_UNIT), (
+        f"{POSTGRES_UNIT.name} sets PG_OOM_ADJUST_VALUE, which pg_ctlcluster drops: "
+        f"set it in {PG_ENVIRONMENT.relative_to(REPO_ROOT)}"
+    )
 
 
 def test_tailscaled_goes_after_sessions_and_before_production():
@@ -530,12 +555,13 @@ def test_postgres_children_rank_with_production():
     [
         (TAILSCALED_DROPIN, "/etc/systemd/system/tailscaled.service.d/10-oom.conf"),
         (POSTGRES_UNIT, "/etc/systemd/system/postgresql@16-main.service.d/10-memory.conf"),
+        (PG_ENVIRONMENT, "/etc/postgresql/16/main/environment"),
     ],
 )
 def test_the_tail_drop_ins_are_installed(repo, installed):
     path = Path(installed)
     assert path.exists() and path.read_text() == repo.read_text(), (
-        f"install {repo.relative_to(REPO_ROOT)} to {path} and daemon-reload (deploy/README.md)"
+        f"install {repo.relative_to(REPO_ROOT)} to {path} (deploy/README.md)"
     )
 
 
