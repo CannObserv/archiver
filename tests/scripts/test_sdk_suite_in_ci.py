@@ -1,10 +1,11 @@
 """CI must run the ``archiver-client`` SDK's own pytest suite (archiver#248).
 
 The root ``testpaths = ["tests"]`` never reaches ``clients/python/tests/``, and
-``client-drift`` only diffs the regenerated tree against the snapshot. For
-months nothing ran the SDK suite: fixtures went stale behind #150's required
-``watch_spec``, and ``__version__`` sat at 5.0.0 through seven SDK releases,
-while the test written to catch exactly that failed unwatched.
+``client-drift`` only diffs the regenerated tree against the snapshot. From
+SDK 5.1.0 (2026-08-09) nothing noticed the SDK suite failing: fixtures went
+stale behind #150's required ``watch_spec``, and ``__version__`` sat at 5.0.0
+through seven SDK releases, while the test written to catch exactly that failed
+unwatched.
 
 The suite runs inside ``client-drift``, from ``clients/python`` so it resolves
 the SDK's own lockfile and pinned toolchain rather than the service's.
