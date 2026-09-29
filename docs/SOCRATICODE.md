@@ -150,9 +150,10 @@ through `codebase_context_search` and stop outranking source in
 ### Two launch paths, pinned separately (archiver#237)
 
 This host is 7.7 GiB with 4 G of swap (3.8 GiB, no swap until archiver#286),
-with `archiver.service` co-tenant — the case gregoryfoster/skills#295 is about. The plugin's default launch installs a
-server at every start: 1.2 G cold against 75 MB pinned. Two things launch one,
-and **each needs its own pin**, at the same version:
+with `archiver.service` co-tenant — the case gregoryfoster/skills#295 is about.
+The plugin's default launch installs a server at every start: 1.2 G cold against
+75 MB pinned. Two things launch one, and **each needs its own pin**, at the same
+version:
 
 | Path | Resolves via | Pinned by |
 |---|---|---|

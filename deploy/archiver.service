@@ -70,9 +70,10 @@ Restart=on-failure
 RestartSec=5
 
 # Memory reservation (archiver#237). This host is 7.7 GiB with a 4 G swapfile
-# (archiver#286) and shares its kernel with agent sessions. They read oom_score_adj 0 since
-# exe-init 14fd603 (archiver#285; -1000 before, when no killer could take one
-# and this service was what went - gregoryfoster/skills#295, row U).
+# (archiver#286) and shares its kernel with agent sessions. They read
+# oom_score_adj 0 since exe-init 14fd603 (archiver#285; -1000 before, when no
+# killer could take one and this service was what went -
+# gregoryfoster/skills#295, row U).
 #
 # MemoryLow is a soft floor, not a cap: reclaim leaves the working set alone
 # under pressure. Sized above the measured 193 MiB peak (2026-09-28). Inert

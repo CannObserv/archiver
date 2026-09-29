@@ -15,10 +15,10 @@ A floating spec installs at session start on any day the package moves: the
 ~1.2 G peak a host sharing its kernel with production cannot afford
 (gregoryfoster/skills#295; this one was 3.8 GiB with no swap until
 archiver#286). One that differs from the pre-install puts two builds on one
-shared store. Re-pinning changes four places - the pre-install,
-the block, the machine setting and docs/SOCRATICODE.md - and these fail until
-all four agree. The pre-install and the machine setting are VM-local, so CI
-holds only the block and the doc.
+shared store. Re-pinning changes four places - the pre-install, the block, the
+machine setting and docs/SOCRATICODE.md - and these fail until all four agree.
+The pre-install and the machine setting are VM-local, so CI holds only the block
+and the doc.
 """
 
 import json

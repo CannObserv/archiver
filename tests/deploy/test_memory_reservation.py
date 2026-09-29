@@ -3,10 +3,10 @@
 This host is 7.7 GiB with a 4 G swapfile (archiver#286; 3.8 GiB and no swap
 before), and it runs the live service, PostgreSQL and interactive agent sessions
 on one kernel. The failure this guards against is not an OOM kill - it is the
-*absence* of one. An atomic allocation cannot wait for swap, so past the
-reserve the kernel fails one in whatever asks next (``tailscaled``,
-``ksoftirqd``) and the production service is what goes down: CannObserv/broker lost its bus
-for 57m 48s that way on 2026-09-16 (gregoryfoster/skills#295,
+*absence* of one. An atomic allocation cannot wait for swap, so past the reserve
+the kernel fails one in whatever asks next (``tailscaled``, ``ksoftirqd``) and
+the production service is what goes down: CannObserv/broker lost its bus for
+57m 48s that way on 2026-09-16 (gregoryfoster/skills#295,
 ``references/troubleshooting.md`` row U).
 
 Five settings, none a substitute for another:

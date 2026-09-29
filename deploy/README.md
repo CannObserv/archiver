@@ -32,15 +32,15 @@ only.
 
 This VM is 7.7 GiB with a 4 G swapfile on a 30 GB disk (resized 2026-09-29,
 archiver#286; 3.8 GiB and no swap before), and runs `archiver.service`, Postgres
-and interactive agent sessions on one kernel. The RAM is headroom, not
-immunity: broker was already 8 GiB when it lost its bus. Sessions read
-`oom_score_adj` **0** (measured 2026-09-29, after `exe-init` 14fd603 replaced
-a build that started them at -1000, archiver#285; unchanged across the #286
-reboot), so a killer *can* take one, and `OOMScoreAdjust=` below is what puts
-it ahead of the production service. An atomic allocation cannot wait for swap, so past the reserve the kernel fails
-one in an unrelated process instead - how CannObserv/broker lost its bus for
-57m 48s on 2026-09-16 (gregoryfoster/skills#295). Six parts, none a substitute
-for another:
+and interactive agent sessions on one kernel. The RAM is headroom, not immunity:
+broker was already 8 GiB when it lost its bus. Sessions read `oom_score_adj`
+**0** (measured 2026-09-29, after `exe-init` 14fd603 replaced a build that
+started them at -1000, archiver#285; unchanged across the #286 reboot), so a
+killer *can* take one, and `OOMScoreAdjust=` below is what puts it ahead of the
+production service. An atomic allocation cannot wait for swap, so past the
+reserve the kernel fails one in an unrelated process instead - how
+CannObserv/broker lost its bus for 57m 48s on 2026-09-16
+(gregoryfoster/skills#295). Six parts, none a substitute for another:
 
 | Part | Where | Why |
 |---|---|---|
@@ -56,13 +56,13 @@ already takes a session first: on 2026-09-29 the kernel's order, earlyoom's
 package defaults and a tuned `--prefer`/`--avoid` all named the same first
 victim, a session `MainThread` (470 MiB). What earlyoom changed was timing - it
 killed at 10-12% available (391-469 MiB, at 3.8 GiB), page cache the kernel
-reclaims before it kills anything - and, tuned, a protected tail, which the kernel honours from
-`OOMScoreAdjust=` directly. Memory PSI read 0 and no boot since 09-04 logged an
-OOM or an allocation failure. The comparison is on #285; it matches
-CannObserv/power-map#588. (#237 declined it at -1000 for a different reason: it
-skips a -1000 process as the kernel does.) If it is ever reconsidered, swap is
-now present, so it needs `-s 100,100`: the default `-s 10` waits until swap is
-~90% used (host-memory.md section 4).
+reclaims before it kills anything - and, tuned, a protected tail, which the
+kernel honours from `OOMScoreAdjust=` directly. Memory PSI read 0 and no boot
+since 09-04 logged an OOM or an allocation failure. The comparison is on #285;
+it matches CannObserv/power-map#588. (#237 declined it at -1000 for a different
+reason: it skips a -1000 process as the kernel does.) If it is ever
+reconsidered, swap is now present, so it needs `-s 100,100`: the default `-s 10`
+waits until swap is ~90% used (host-memory.md section 4).
 
 **Postgres's children take their score from the cluster, not systemd.**
 Debian's unit gives the postmaster -900 and sets `PG_OOM_ADJUST_FILE`, so each
