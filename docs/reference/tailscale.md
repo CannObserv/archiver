@@ -192,8 +192,9 @@ script aborted under `-e`, and the shred never ran - leaving the auth key in
 description says. `new --setup-script` cannot be re-run on demand, but exe.dev
 puts `/exe.dev/setup` back before **every** boot, and the unit is gated only on
 `ConditionPathExists=/exe.dev/setup` (#284, CannObserv/replicator#122). Here it
-ran on all four boots journald retained through 2026-09-29 (09-04, 09-08, 09-09,
-09-26), each `Result=success`: `systemctl enable --now tailscaled`, `tailscale up
+ran five times through 2026-09-29 - every boot journald retains after the first
+(09-04, 09-08, 09-09, 09-26, and 09-29 after a platform `restart` for #285) -
+each `Result=success`: `systemctl enable --now tailscaled`, `tailscale up
 --auth-key=file:… --hostname=archiver --ssh`, then both `shred` and the unit's
 `rm`. So:
 
