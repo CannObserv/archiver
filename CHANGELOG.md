@@ -20,7 +20,7 @@ service-only patch does not require an SDK bump.
 
 ## v4.21.1 (2026-09-29)
 
-[sdk] **`archiver_client.__version__` reports the installed version, and CI runs the SDK's own suite, SDK v5.7.1** (archiver#248). No route or schema change. The snapshot changes only in `info.version`.
+[sdk] **`archiver_client.__version__` reports the installed version, and CI runs the SDK's own suite** (archiver#248). No route or schema change, so `archiver-client` stays at 5.7.0, which `__version__` now reports. The snapshot changes only in `info.version`.
 
 - **`__version__`** had been the literal `"5.0.0"` since #101, through seven SDK releases. It is now read from the installed distribution's metadata, so it can't drift again.
 - **The SDK suite now runs in CI**, as a step in `client-drift`, from `clients/python` so it uses the SDK's own lockfile. Until now nothing ran it: the root `testpaths` never reach `clients/python/tests/`. It had been failing 9 tests on main: the `__version__` guard and 8 fixtures built without `watch_spec`, which has been required since #150.
