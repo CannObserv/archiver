@@ -49,8 +49,9 @@ how CannObserv/broker lost its bus for 57m 48s on 2026-09-16
 **earlyoom runs, since sessions read 0 (#285).** It was declined (#237) while
 they sat at -1000: it skips a -1000 process exactly as the kernel does, so its
 `--prefer` reached nothing in a session and it would only have shed small adj-0
-daemons (`tailscaled` among them) sooner. At 0 `--prefer` reaches every session
-process (skills `host-memory.md` section 4). SIGTERM at 12% free, SIGKILL at 6%;
+daemons (`tailscaled` among them) sooner. At 0 every session process is
+killable, and `--prefer` puts the session's tooling first (skills
+`host-memory.md` section 4). SIGTERM at 12% free, SIGKILL at 6%;
 `--avoid` names the service (`uv`, `uvicorn`), postgres, `tailscaled`, journald
 and the launchers. A forced dry run on 2026-09-29 picked a session `MainThread`
 (483 MiB). The regex rules - no blank, no backslash, never `$` on `--prefer` - are
