@@ -375,9 +375,18 @@ def test_the_live_service_carries_its_oom_score():
 
 
 def sysctl_value(text: str, key: str) -> int | None:
-    """The integer ``key`` is set to in a sysctl drop-in, or None."""
-    match = re.search(rf"^{re.escape(key)}\s*=\s*(\d+)", text, re.MULTILINE)
-    return int(match.group(1)) if match else None
+    """The integer ``key`` is set to in a sysctl drop-in, or None.
+
+    The last line wins, as ``sysctl --system`` applies them in order.
+    """
+    values = re.findall(rf"^\s*{re.escape(key)}\s*=\s*(\d+)", text, re.MULTILINE)
+    return int(values[-1]) if values else None
+
+
+def test_a_key_set_twice_reads_as_the_kernel_applies_it():
+    """``sysctl --system`` applies lines in order, so the last one wins."""
+    text = "vm.swappiness = 60\n# later override\n  vm.swappiness = 10\n"
+    assert sysctl_value(text, "vm.swappiness") == 10
 
 
 def test_sysctl_drop_in_raises_the_atomic_allocation_reserve():
