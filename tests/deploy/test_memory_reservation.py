@@ -20,9 +20,10 @@ Four settings, none a substitute for another:
 * earlyoom - kills a session before the kernel has to pick. Adopted once
   sessions read 0 (archiver#285); at -1000 it reached none of them.
 
-Two premises belong to the host rather than the repo - what the kernel grants,
-and what score exe.dev starts a session at - so those tests read the live host
-and skip everywhere else, CI included.
+Three things belong to the host rather than the repo - what the kernel grants,
+what score exe.dev starts a session at, and whether earlyoom runs the shipped
+configuration - so those tests read the live host and skip everywhere else, CI
+included.
 """
 
 import math
