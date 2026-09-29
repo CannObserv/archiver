@@ -17,12 +17,14 @@ Four settings, none a substitute for another:
   the foot.
 * ``vm.min_free_kbytes`` - the reserve atomic allocations draw on. The other
   two are per-cgroup and cannot help an allocation in ``ksoftirqd``.
-* earlyoom - kills a session before the kernel has to pick. Adopted once
-  sessions read 0 (archiver#285); at -1000 it reached none of them.
+* The tail's order - ``OOMScoreAdjust=`` on ``tailscaled`` and
+  ``PG_OOM_ADJUST_VALUE`` for postgres's children, which both sat at 0. With
+  sessions at 0 the kernel takes a session first; these decide what goes after.
+  earlyoom was measured and declined in their favour (archiver#285).
 
 Three things belong to the host rather than the repo - what the kernel grants,
-what score exe.dev starts a session at, and whether earlyoom runs the shipped
-configuration - so those tests read the live host and skip everywhere else, CI
+what score exe.dev starts a session at, and what score the running tail
+processes hold - so those tests read the live host and skip everywhere else, CI
 included.
 """
 
@@ -42,6 +44,7 @@ PROD_UNIT = DEPLOY / "archiver.service"
 BUS_HEALTH_UNIT = DEPLOY / "archiver-bus-health.service"
 POSTGRES_UNIT = DEPLOY / "postgresql@16-main.service.d" / "10-memory.conf"
 SYSCTL = DEPLOY / "99-archiver-memory.conf"
+TAILSCALED_DROPIN = DEPLOY / "tailscaled.service.d" / "10-oom.conf"
 EARLYOOM = DEPLOY / "earlyoom.default"
 
 #: Live peaks (``memory.peak``) on co-registrar, 2026-09-28: archiver.service
@@ -448,110 +451,126 @@ def test_a_unit_is_not_a_session(tmp_path):
     assert session_root_adj(tmp_path, 301) is None
 
 
-# -- earlyoom: adopted once sessions read 0 (archiver#285) ----------------------
-
-#: What each regex must reach, as ``/proc/<pid>/comm`` spells it on this host.
-#: ``npm exec socrat`` is the SocratiCode server, truncated to 15 characters.
-PREFERRED_COMMS = ("MainThread", "claude", "npm exec socrat", "node", "npx")
-AVOIDED_COMMS = ("uv", "uvicorn", "postgres", "tailscaled", "systemd-journal", "sshd")
-#: Session processes ``--avoid`` must never shield, the editor's server included.
-NOT_AVOIDED_COMMS = ("MainThread", "claude", "npm exec socrat", "code-04c0d99f4f")
+# -- earlyoom: measured and declined at 0 (archiver#285) -----------------------
 
 
-def earlyoom_value() -> str:
-    """The ``EARLYOOM_ARGS`` value, its surrounding double quotes stripped."""
-    for line in EARLYOOM.read_text().splitlines():
-        if line.startswith("EARLYOOM_ARGS="):
-            value = line.split("=", 1)[1].strip()
-            assert value.startswith('"') and value.endswith('"'), line
-            return value[1:-1]
-    raise AssertionError(f"{EARLYOOM.name} sets no EARLYOOM_ARGS=")
+def test_no_earlyoom_config_ships():
+    """Declined on the 2026-09-29 measurement, not on #237's -1000 reading.
 
-
-def earlyoom_args() -> list[str]:
-    """What systemd hands earlyoom: Debian's unit expands ``$EARLYOOM_ARGS`` unquoted.
-
-    By then the file's quotes are gone, so the value splits on every blank.
+    With sessions at 0 the kernel, package-default earlyoom and the tuned config
+    all named the same first victim, a session's ``MainThread``. earlyoom changed
+    the timing: it killed at ~470 MiB available, page cache the kernel reclaims
+    before it kills anything. What its ``--avoid`` added, a protected tail, is
+    the ``OOMScoreAdjust=`` section below, which the kernel honours itself.
     """
-    return earlyoom_value().split()
-
-
-def earlyoom_option(flag: str) -> str:
-    """The argument after ``flag``, which must appear exactly once.
-
-    earlyoom keeps the last of a repeated flag, so a second one would silently
-    override what the tests read.
-    """
-    args = earlyoom_args()
-    assert args.count(flag) == 1, f"{flag} must appear exactly once: {args}"
-    return args[args.index(flag) + 1]
-
-
-def test_an_earlyoom_config_ships():
-    assert EARLYOOM.exists(), f"{EARLYOOM} is missing: earlyoom runs on stock arguments"
-
-
-def test_earlyoom_regexes_survive_the_unquoted_split():
-    """A blank splits a regex into two arguments; a backslash is dropped (skills#303)."""
-    value = earlyoom_value()
-    assert "\\" not in value, f"a backslash does not survive systemd's split: {value}"
-    assert "'" not in value and '"' not in value, f"inner quotes do not survive: {value}"
-    for flag in ("--prefer", "--avoid"):
-        regex = earlyoom_option(flag)
-        assert not regex.startswith("-"), f"{flag} lost its regex to the split: {regex}"
-        re.compile(regex)
-
-
-@pytest.mark.parametrize("comm", PREFERRED_COMMS)
-def test_earlyoom_prefers_session_tooling(comm):
-    """Start-anchored, never ``$``-anchored: comm is truncated to 15 chars (skills#307)."""
-    assert re.search(earlyoom_option("--prefer"), comm), f"--prefer misses {comm!r}"
-
-
-@pytest.mark.parametrize("comm", AVOIDED_COMMS)
-def test_earlyoom_avoids_production(comm):
-    assert re.search(earlyoom_option("--avoid"), comm), f"--avoid misses {comm!r}"
-
-
-@pytest.mark.parametrize("comm", NOT_AVOIDED_COMMS)
-def test_earlyoom_does_not_avoid_a_session(comm):
-    assert not re.search(earlyoom_option("--avoid"), comm), f"--avoid shields {comm!r}"
-
-
-def test_earlyoom_acts_on_memory_alone():
-    """``-s 100,100``: the package default waits on swap. Inert without swap, and right."""
-    assert earlyoom_option("-s") == "100,100"
+    assert not EARLYOOM.exists(), f"{EARLYOOM.name} ships: earlyoom was declined (#285)"
 
 
 @live_host_only
-def test_installed_earlyoom_config_matches_repo():
-    installed = Path("/etc/default/earlyoom")
-    assert installed.exists(), "earlyoom is not configured: see deploy/README.md"
-    assert installed.read_text() == EARLYOOM.read_text(), (
-        f"{installed} has drifted: sudo install -m 644 {EARLYOOM} {installed} "
-        "&& sudo systemctl restart earlyoom"
+def test_earlyoom_is_not_running():
+    state = subprocess.run(
+        ["systemctl", "is-active", "earlyoom"], capture_output=True, text=True
+    ).stdout.strip()
+    assert state != "active", "earlyoom is running: sudo apt-get purge earlyoom (#285)"
+
+
+# -- the tail: what the kernel takes after the sessions (archiver#285) ---------
+
+#: Debian's ``postgresql@.service`` sets this on the postmaster. Its children
+#: inherit it, then write ``PG_OOM_ADJUST_VALUE``; raising a score needs no
+#: privilege, lowering one does, so no child can go below it.
+POSTMASTER_OOM_SCORE_ADJ = -900
+
+
+def environment(unit: Path) -> dict[str, str]:
+    """Every ``Environment=`` assignment in a unit file."""
+    pairs = [
+        line.split("=", 1)[1]
+        for line in directives(unit).splitlines()
+        if line.startswith("Environment=")
+    ]
+    return dict(pair.split("=", 1) for pair in pairs)
+
+
+def production_adj() -> int:
+    return int(setting(PROD_UNIT, "OOMScoreAdjust"))
+
+
+def postgres_children_adj() -> int:
+    value = environment(POSTGRES_UNIT).get("PG_OOM_ADJUST_VALUE")
+    assert value is not None, f"{POSTGRES_UNIT.name} leaves postgres's children at 0"
+    return int(value)
+
+
+def test_tailscaled_goes_after_sessions_and_before_production():
+    """Below the sessions' 0, above archiver's -500, as on watcher (#309).
+
+    It carries the bus and MagicDNS, but the API and dashboard are reached
+    through the exe.dev proxy and the outbox buffers a bus outage, so archiver
+    should outlive the tunnel.
+    """
+    adj = int(setting(TAILSCALED_DROPIN, "OOMScoreAdjust"))
+    assert production_adj() < adj < 0, f"tailscaled's OOMScoreAdjust={adj}"
+
+
+def test_postgres_children_rank_with_production():
+    """Killing any child sends postgres into crash recovery: it is production too.
+
+    Level with archiver.service, so under pressure from production the larger of
+    the two goes, and never below the postmaster they inherit from.
+    """
+    adj = postgres_children_adj()
+    assert adj == production_adj(), f"PG_OOM_ADJUST_VALUE={adj}, archiver is {production_adj()}"
+    assert adj >= POSTMASTER_OOM_SCORE_ADJ, "a child cannot lower its inherited score"
+
+
+@live_host_only
+@pytest.mark.parametrize(
+    ("repo", "installed"),
+    [
+        (TAILSCALED_DROPIN, "/etc/systemd/system/tailscaled.service.d/10-oom.conf"),
+        (POSTGRES_UNIT, "/etc/systemd/system/postgresql@16-main.service.d/10-memory.conf"),
+    ],
+)
+def test_the_tail_drop_ins_are_installed(repo, installed):
+    path = Path(installed)
+    assert path.exists() and path.read_text() == repo.read_text(), (
+        f"install {repo.relative_to(REPO_ROOT)} to {path} and daemon-reload (deploy/README.md)"
+    )
+
+
+def _main_pid(unit: str) -> str:
+    return subprocess.run(
+        ["systemctl", "show", unit, "-p", "MainPID", "--value"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+@live_host_only
+def test_the_live_tailscaled_carries_its_oom_score():
+    """Applies at exec: an unrestarted tailscaled still reads 0."""
+    pid = _main_pid("tailscaled.service")
+    if pid in ("", "0"):
+        pytest.skip("tailscaled is not running")
+    live = int((PROC_FS / pid / "oom_score_adj").read_text())
+    assert live == int(setting(TAILSCALED_DROPIN, "OOMScoreAdjust")), (
+        f"tailscaled reads oom_score_adj={live}: restart it"
     )
 
 
 @live_host_only
-def test_earlyoom_runs_the_configuration_as_written():
-    """Installing starts it on stock arguments, and enable --now reloads nothing."""
-
-    def show(prop: str) -> str:
-        return subprocess.run(
-            ["systemctl", "show", "earlyoom", "-p", prop, "--value"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-
-    assert show("ActiveState") == "active", "earlyoom.service is not running"
-    assert show("UnitFileState") == "enabled", "earlyoom.service will not come back on boot"
-    cmdline = (PROC_FS / show("MainPID") / "cmdline").read_bytes().split(b"\0")
-    argv = [arg.decode() for arg in cmdline if arg]
-    assert argv[1:] == earlyoom_args(), (
-        f"earlyoom runs {argv[1:]}, not {EARLYOOM.name}: sudo systemctl restart earlyoom"
-    )
+def test_the_live_postgres_children_carry_their_oom_score():
+    """The postmaster reads its environment at start: a new value needs a restart."""
+    pid = _main_pid("postgresql@16-main.service")
+    if pid in ("", "0"):
+        pytest.skip("postgresql@16-main is not running")
+    children = (PROC_FS / pid / "task" / pid / "children").read_text().split()
+    assert children, "the postmaster has no children"
+    live = {child: int((PROC_FS / child / "oom_score_adj").read_text()) for child in children}
+    wrong = {child: adj for child, adj in live.items() if adj != postgres_children_adj()}
+    assert not wrong, f"postgres children at {wrong}: restart postgresql@16-main"
 
 
 @live_host_only
