@@ -279,7 +279,8 @@ skills-vendor/                 Git submodules for external skill repos
                                + check_version_lockstep.py),
                                test job (Postgres service container, alembic upgrade,
                                pytest), client-drift job (regen vendored clients
-                               from committed OpenAPI snapshots, fail on diff),
+                               from committed OpenAPI snapshots, fail on diff;
+                               then the SDK's own pytest suite under its lockfile),
                                and changelog job (changes under
                                alembic/versions/, src/api/routes/,
                                src/api/schemas/, or clients/python/ must touch

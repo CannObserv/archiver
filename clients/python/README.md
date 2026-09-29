@@ -2,13 +2,14 @@
 
 Async Python SDK for the Archiver service (v2 model — InfoItem, InfoSource,
 SourceRevision, RepSpec, assignments). Generated from the service's
-OpenAPI schema with hand-written ergonomic wrappers on `ArchiverClient`,
-pinned 1:1 with server version.
+OpenAPI schema with hand-written ergonomic wrappers on `ArchiverClient`.
+Versioned independently of the server: the version is `[project].version` in
+`pyproject.toml` (also `archiver_client.__version__`), and `CHANGELOG.md`
+records each `[sdk]` change.
 
-Currently at **v2.0** (breaking — unified error envelope for every non-2xx
-response; `InformationError` subclasses surface `.kind`, `.message`,
-`.errors`, `.data`). v0.x clients targeted the now-retired InfoSpec model
-and are not compatible.
+Since v2.0 every non-2xx response surfaces as an `InformationError` subclass
+carrying `.kind`, `.message`, `.errors`, `.data` (the unified error envelope).
+v0.x clients targeted the now-retired InfoSpec model and are not compatible.
 
 ## Install (path dependency, prototype phase)
 

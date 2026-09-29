@@ -167,6 +167,13 @@ jobs:
       - name: detect generated-client drift vs committed OpenAPI snapshot
         run: uv run --no-project --python 3.12 python scripts/check_client_drift.py
 
+      # The SDK's own suite: the root testpaths never reach clients/python/tests,
+      # and the drift diff says nothing about the hand-written wrappers. Run from
+      # the SDK dir so its own lockfile pins the toolchain (archiver#248).
+      - name: SDK test suite
+        working-directory: clients/python
+        run: uv run pytest
+
   changelog:
     name: changelog
     runs-on: ubuntu-latest

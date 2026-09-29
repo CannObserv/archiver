@@ -25,6 +25,7 @@ def _info_item_payload(info_item_id: str = "01HZZ00000000000000000000A") -> dict
         "description": None,
         "owner": None,
         "rep_fields": {},
+        "watch_spec": {"schema_version": 1},
         "created_at": _TS,
         "updated_at": _TS,
     }
