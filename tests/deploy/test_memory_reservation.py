@@ -1,4 +1,4 @@
-"""Drift tests for the production memory reservation (archiver#237).
+"""Drift tests for the production memory reservation and swap (archiver#237, #286).
 
 This host is 7.7 GiB with a 4 G swapfile (archiver#286; 3.8 GiB and no swap
 before), and it runs the live service, PostgreSQL and interactive agent sessions
