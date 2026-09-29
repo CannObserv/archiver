@@ -414,7 +414,8 @@ SWAP_GIB = 4
 def test_sysctl_drop_in_keeps_swap_a_last_resort():
     """Swap is there so reclaim has somewhere to go, not to page the working set.
 
-    At the kernel default of 60, anonymous pages go out as readily as cache.
+    Reclaim weighs anonymous pages against cache as ``swappiness : 200 -
+    swappiness``: 60:140 at the kernel default, 10:190 here.
     """
     assert sysctl_value(SYSCTL.read_text(), "vm.swappiness") == 10
 

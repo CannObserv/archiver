@@ -48,7 +48,7 @@ for another:
 | Reserve | `MemoryLow=` on `archiver.service` (256M) and postgres (320M), granted on `system.slice` (576M) and `system-postgresql.slice` (320M) | Keeps the working sets resident under reclaim. The slice grants are load-bearing: this cgroup2 mount has no `memory_recursiveprot` and `system.slice` ships 0 |
 | Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on the postmaster (its children: *Order the tail*) | Behind everything killable, never -1000 |
 | Kernel reserve | `vm.min_free_kbytes = 65536` (kernel default here: ~11 MB) | The only buffer for atomic allocations, which cannot wait for swap. The cohort's absolute figure, not a share of RAM (CannObserv/replicator#99) |
-| Swap | 4 G `/swapfile`, `vm.swappiness = 10` | Gives reclaim a slow path for anonymous pages instead of a hard ceiling. At 10 the kernel drops cache first; replicator's figures (CannObserv/replicator#99) |
+| Swap | 4 G `/swapfile`, `vm.swappiness = 10` | Gives reclaim a slow path for anonymous pages instead of a hard ceiling. Reclaim weighs anonymous pages against cache 10:190 (60:140 at the default), so cache goes long before anything swaps; replicator's figures (CannObserv/replicator#99) |
 | Order the tail | `OOMScoreAdjust=-400` on `tailscaled`; `PG_OOM_ADJUST_VALUE = -500` for postgres's children | Both sat at 0, level with the sessions. The kernel takes sessions and small daemons (0, the largest first), then the tunnel, then production |
 
 **earlyoom is declined, measured at 0 (#285).** With sessions at 0 the kernel
