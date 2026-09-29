@@ -5,3 +5,8 @@
 # submodules and the .claude/skills/ discovery mirror are excluded.
 skills-vendor/
 .claude/skills/
+# Dated prose (archiver#237). Both are directory context artifacts, so they
+# stay searchable through codebase_context_search - the root ignore file does
+# not reach an artifact - and stop outranking source in codebase_search.
+docs/plans/
+docs/research/

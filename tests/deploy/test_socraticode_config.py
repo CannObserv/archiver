@@ -230,3 +230,24 @@ def test_namespace_guards_are_not_set_anywhere(variable: str, path: Path):
         pytest.skip(f"{path} not present on this machine")
     declares = variable in path.read_text()
     assert not declares, f"{path.name} sets {variable}"
+
+
+#: Dated prose registered as directory context artifacts (archiver#237). Out of
+#: the code index so it stops outranking source in `codebase_search`; still
+#: searchable through `codebase_context_search`, which the root ignore file
+#: never reaches.
+DATED_PROSE_ARTIFACTS = ["docs/plans/", "docs/research/"]
+
+
+@pytest.mark.parametrize("directory", DATED_PROSE_ARTIFACTS)
+def test_dated_prose_leaves_the_code_index(directory: str):
+    ignore = (REPO_ROOT / ".socraticodeignore").read_text().splitlines()
+    assert directory in ignore, f".socraticodeignore does not exclude {directory}"
+
+
+@pytest.mark.parametrize("directory", DATED_PROSE_ARTIFACTS)
+def test_dated_prose_stays_a_context_artifact(directory: str):
+    """Excluding a directory that is not an artifact would make it unsearchable."""
+    manifest = json.loads((REPO_ROOT / ".socraticodecontextartifacts.json").read_text())
+    paths = {artifact["path"] for artifact in manifest["artifacts"]}
+    assert f"./{directory}" in paths, f"{directory} is excluded but not a context artifact"

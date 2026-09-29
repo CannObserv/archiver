@@ -26,13 +26,36 @@ uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_whee
 
 Reproducibility, the upgrade path, and the CI/deploy resolution: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
+<!-- BEGIN socraticode-policy -->
 ## Code Exploration Policy
 
-SocratiCode is configured here (`.socraticodecontextartifacts.json`), indexed into the cohort's **shared store on `co-index`** - not on this VM (`.socraticode.json`, archiver#226). Its MCP tools are **deferred**: before exploring, run the `ToolSearch` prefetch the SessionStart hook prints.
+SocratiCode is the preferred semantic-search tool here once indexed (manifest
+`.socraticodecontextartifacts.json`). Its MCP tools are **deferred** — schemas
+load only after the `ToolSearch` prefetch that
+`.claude/hooks/socraticode-reminder.sh` prints each session.
 
-**Negative rule.** For broad semantic questions ("where is X", "how does Y work", "what depends on Z"), use SocratiCode MCP tools first. Reach for `grep`/`ripgrep` only on exact strings (error messages, log lines, known symbols). Reserve the Explore subagent for path-pattern walks (e.g. "all `*.py` under `src/api/routes/`"), not semantic search. `includeLinked: true` fans the same search out over broker, notifier, replicator and watcher - use it before changing a public schema or the API contract.
+**Negative rule.** Use SocratiCode MCP tools first for semantic questions
+("where is X", "how does Y work", "what depends on Z"). Reach for `grep`/`rg`
+only on exact strings (error messages, log lines, known symbols). Reserve the
+Explore subagent for path-pattern walks (`*.py` under `src/api/routes/`), not
+semantic search.
 
-Tool-by-goal map, the shared-store client contract, and the `ToolSearch` prefetch query: [docs/SOCRATICODE.md](docs/SOCRATICODE.md).
+| Goal | Tool |
+|------|------|
+| Where is X defined / how does Y work / what touches Z | `codebase_search` |
+| Exact string or regex (errors, log lines, known symbols) | `grep` / `rg` |
+| Imports/dependents of a file · blast radius of a change | `codebase_graph_query` / `codebase_impact` |
+
+Full tool table, prefetch hook, per-tool guidance: [`docs/SOCRATICODE.md`](docs/SOCRATICODE.md).
+<!-- END socraticode-policy -->
+
+## Code Exploration Notes (repo-specific)
+
+Indexed into the cohort's **shared store on `co-index`**, not on this VM
+(`.socraticode.json`, archiver#226). `includeLinked: true` fans a search out
+over broker, notifier, replicator and watcher - use it before changing a public
+schema or the API contract. The server is pinned on this small host
+(archiver#237): [docs/SOCRATICODE.md](docs/SOCRATICODE.md#repo-specific-notes).
 
 ## Architecture
 

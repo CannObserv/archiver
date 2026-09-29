@@ -217,7 +217,9 @@ agree, so that state fails a test instead of going unnoticed (archiver#163).
   on a host with no `node` instead of skipping in silence
   ([gregoryfoster/skills#281](https://github.com/gregoryfoster/skills/issues/281):
   9 days, 5 sessions, 0 session lines). It cannot tell whether a link that *does*
-  resolve was ever indexed. Log: `.git/socraticode-health.log`.
+  resolve was ever indexed. Log: `.git/socraticode-health.log`. It caps its own
+  check in a user-systemd scope ([gregoryfoster/skills#330](https://github.com/gregoryfoster/skills/issues/330)),
+  and through the pinned pre-install installs nothing ([SOCRATICODE.md](SOCRATICODE.md#repo-specific-notes)).
 - `skills-submodule-update.sh` - **symlink** into
   `skills-vendor/gregoryfoster-skills/skills/managing-skills/scripts/` (archiver#126),
   so upstream fixes arrive with the normal submodule refresh. Never re-copy it -
