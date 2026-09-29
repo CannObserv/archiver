@@ -79,8 +79,9 @@ reads -1000 again, the kernel can no longer take one - check
 Install, or restore after a rebuild:
 
 ```bash
-sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
-sudo mkswap /swapfile && sudo swapon /swapfile
+# Create once: mkswap on a live swapfile rewrites the header the kernel is using
+[ -e /swapfile ] || { sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile; }
+swapon --show=NAME --noheadings | grep -qx /swapfile || sudo swapon /swapfile
 grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 sudo install -m 644 deploy/99-archiver-memory.conf /etc/sysctl.d/
 sudo sysctl --system
