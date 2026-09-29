@@ -29,12 +29,13 @@ only.
 ## Host memory posture (archiver#237)
 
 This VM is 3.8 GiB with **no swap**, and runs `archiver.service`, Postgres and
-interactive agent sessions on one kernel. Sessions inherit `oom_score_adj`
-**-1000** (measured 2026-09-28), so no killer can take one: under real
-exhaustion the production service goes instead, and past the ceiling the
-kernel fails atomic allocations in unrelated processes - how CannObserv/broker
-lost its bus for 57m 48s on 2026-09-16 (gregoryfoster/skills#295). Four parts,
-none a substitute for another:
+interactive agent sessions on one kernel. Sessions read `oom_score_adj` **0**
+(measured 2026-09-29, after `exe-init` 14fd603 replaced a build that started
+them at -1000, archiver#285), so a killer *can* take one, and
+`OOMScoreAdjust=` below is what puts it ahead of the production service. Past
+the ceiling the kernel fails atomic allocations in unrelated processes instead -
+how CannObserv/broker lost its bus for 57m 48s on 2026-09-16
+(gregoryfoster/skills#295). Four parts, none a substitute for another:
 
 | Part | Where | Why |
 |---|---|---|
@@ -43,11 +44,14 @@ none a substitute for another:
 | Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on postgres | Behind everything killable, never -1000 |
 | Kernel reserve | `vm.min_free_kbytes = 65536` (default here: 7999) | The only buffer for atomic allocations on a swapless host |
 
-**earlyoom is declined.** It skips a -1000 process exactly as the kernel does,
-so its `--prefer` reaches nothing in a session here; it would only shed small
-adj-0 daemons (`tailscaled` among them) sooner. watcher (#323) and replicator
-declined it on the same reading. `tests/deploy/test_memory_reservation.py` pins
-the -1000 premise live - if a session ever reads 0, revisit.
+**earlyoom is not installed, and that is open again.** It was declined
+(#237) while sessions sat at -1000: it skips a -1000 process exactly as the
+kernel does, so its `--prefer` reached nothing in a session and it would only
+have shed small adj-0 daemons (`tailscaled` among them) sooner. At 0 its
+`--prefer` reaches every session process (skills `host-memory.md` section 4), so
+that reason is gone; adopting it is the owner's decision (#285).
+`tests/deploy/test_memory_reservation.py` pins the 0 reading live - if a session
+reads -1000 again, check `/exe.dev/bin/exe-init --version` and reopen #285.
 
 Install, or restore after a rebuild:
 

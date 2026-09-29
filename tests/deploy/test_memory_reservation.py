@@ -12,8 +12,9 @@ Three settings, none a substitute for another:
 
 * ``MemoryLow=`` - a soft floor reclaim will not take the working set below.
   Inert unless every slice above the unit grants it too (CannObserv/notifier#85).
-* ``OOMScoreAdjust=`` - puts production behind everything killable. It cannot
-  make a -1000 session killable; see the session premise at the foot.
+* ``OOMScoreAdjust=`` - puts production behind everything killable. Sessions
+  here read 0 (archiver#285), so that includes them; see the session premise at
+  the foot.
 * ``vm.min_free_kbytes`` - the reserve atomic allocations draw on. The other
   two are per-cgroup and cannot help an allocation in ``ksoftirqd``.
 
@@ -382,7 +383,7 @@ def test_the_live_kernel_holds_the_reserve():
     )
 
 
-# -- the session premise the earlyoom decline rests on -------------------------
+# -- the session premise: what a killer can take ------------------------------
 
 #: What a session's root can hang from: PID 1 once the VS Code server has
 #: daemonised, or exe.dev's own launchers.
@@ -422,6 +423,14 @@ def test_a_daemonised_vscode_session_reports_its_root(tmp_path):
     assert session_root_adj(tmp_path, 900) == -1000
 
 
+def test_a_session_under_exe_init_reports_its_root_not_exe_init(tmp_path):
+    """This host's shape after exe-init 14fd603 (archiver#285): only the launcher stays at -1000."""
+    _fake_process(tmp_path, 215, 1, "exe-init", -1000)
+    _fake_process(tmp_path, 559, 215, "bash", 0)
+    _fake_process(tmp_path, 1080, 559, "claude", 0)
+    assert session_root_adj(tmp_path, 1080) == 0
+
+
 def test_a_session_under_sshd_reports_its_root(tmp_path):
     _fake_process(tmp_path, 218, 1, "sshd", -1000)
     _fake_process(tmp_path, 700, 218, "sshd-session", 0)
@@ -435,25 +444,27 @@ def test_a_unit_is_not_a_session(tmp_path):
     assert session_root_adj(tmp_path, 301) is None
 
 
-def test_no_earlyoom_config_ships_while_sessions_sit_at_minus_1000():
-    """Declined, as on watcher (#323) and replicator: earlyoom skips -1000 as the kernel does.
+def test_no_earlyoom_config_ships_until_it_is_decided():
+    """Not adopted. Declined at -1000 (#237), where it reaches nothing in a session.
 
-    Its ``--prefer`` would reach nothing in a session here, and it would shed
-    small adj-0 daemons - ``tailscaled`` included - sooner than the kernel.
+    That reason went with archiver#285: at 0 its ``--prefer`` reaches every
+    session process (host-memory.md section 4), so adopting it is open again.
+    Shipping a config *is* that decision - change this test with it.
     """
     assert not (DEPLOY / "earlyoom.default").exists()
 
 
 @live_host_only
-def test_sessions_here_sit_at_minus_1000():
-    """The earlyoom decline, and the ``choom -n 500`` discipline, rest on this.
+def test_sessions_here_sit_at_0():
+    """``OOMScoreAdjust=-500`` putting production behind a session rests on this.
 
-    exe.dev's setup, not this repo's, and it changes by path in: notifier moved
-    from 0 to -1000 across one reboot (CannObserv/notifier#88). If it reads 0
-    here, a killer *can* take a session: revisit earlyoom (host-memory.md section 4)
-    and reopen archiver#237.
+    exe.dev's, not this repo's: an ``exe-init`` build started sessions at -1000,
+    where no killer can take one, until 14fd603 replaced it (archiver#285,
+    2026-09-29). It has changed across one reboot before (CannObserv/notifier#88).
+    If it reads -1000 again, check ``/exe.dev/bin/exe-init --version`` and
+    reopen archiver#285.
     """
     adj = session_root_adj(PROC_FS, os.getpid())
     if adj is None:
         pytest.skip("not run from an interactive session")
-    assert adj == -1000, f"this session's root reads oom_score_adj={adj}, not -1000"
+    assert adj == 0, f"this session's root reads oom_score_adj={adj}, not 0"
