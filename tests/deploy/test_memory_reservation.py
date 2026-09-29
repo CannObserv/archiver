@@ -593,8 +593,15 @@ def test_the_live_postgres_children_carry_their_oom_score():
     if pid in ("", "0"):
         pytest.skip("postgresql@16-main is not running")
     children = (PROC_FS / pid / "task" / pid / "children").read_text().split()
-    assert children, "the postmaster has no children"
-    live = {child: int((PROC_FS / child / "oom_score_adj").read_text()) for child in children}
+    live = {}
+    for child in children:
+        # Backends come and go - the suite's own archiver_test connections among
+        # them - so a child listed a moment ago may have exited.
+        try:
+            live[child] = int((PROC_FS / child / "oom_score_adj").read_text())
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+    assert live, "no postmaster child could be read"
     wrong = {child: adj for child, adj in live.items() if adj != postgres_children_adj()}
     assert not wrong, f"postgres children at {wrong}: restart postgresql@16-main"
 
