@@ -196,8 +196,9 @@ def test_production_unit_is_deprioritised_for_the_killer():
     """Negative, but never -1000.
 
     -1000 makes the unit unkillable, so a leak in it wedges a swapless host
-    rather than shedding one process. Postgres needs no line here: Debian's
-    ``postgresql@.service`` already ships -900.
+    rather than shedding one process. The postmaster needs no line here: Debian's
+    ``postgresql@.service`` already ships -900. Its children's score is
+    ``PG_OOM_ADJUST_VALUE`` in the cluster's environment file (the tail, below).
     """
     value = setting(PROD_UNIT, "OOMScoreAdjust")
     assert value is not None, "archiver.service declares no OOMScoreAdjust="
