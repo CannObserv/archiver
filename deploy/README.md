@@ -43,9 +43,9 @@ how CannObserv/broker lost its bus for 57m 48s on 2026-09-16
 |---|---|---|
 | Pin the SocratiCode server | `~/.socraticode/pin`, `SOCRATICODE_SPEC` | Removes the 1.2 G install-at-launch peak; see `docs/SOCRATICODE.md` |
 | Reserve | `MemoryLow=` on `archiver.service` (256M) and postgres (320M), granted on `system.slice` (576M) and `system-postgresql.slice` (320M) | Keeps the working sets resident under reclaim. The slice grants are load-bearing: this cgroup2 mount has no `memory_recursiveprot` and `system.slice` ships 0 |
-| Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on postgres | Behind everything killable, never -1000 |
+| Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on the postmaster (its children: *Order the tail*) | Behind everything killable, never -1000 |
 | Kernel reserve | `vm.min_free_kbytes = 65536` (default here: 7999) | The only buffer for atomic allocations on a swapless host |
-| Order the tail | `OOMScoreAdjust=-400` on `tailscaled`; `PG_OOM_ADJUST_VALUE = -500` for postgres's children | Both sat at 0, level with the sessions. The kernel takes sessions first, then small daemons, then the tunnel, then production |
+| Order the tail | `OOMScoreAdjust=-400` on `tailscaled`; `PG_OOM_ADJUST_VALUE = -500` for postgres's children | Both sat at 0, level with the sessions. The kernel takes sessions and small daemons (0, the largest first), then the tunnel, then production |
 
 **earlyoom is declined, measured at 0 (#285).** With sessions at 0 the kernel
 already takes a session first: on 2026-09-29 the kernel's order, earlyoom's
