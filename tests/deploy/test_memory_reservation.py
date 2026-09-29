@@ -477,6 +477,11 @@ def earlyoom_args() -> list[str]:
 
 
 def earlyoom_option(flag: str) -> str:
+    """The argument after ``flag``, which must appear exactly once.
+
+    earlyoom keeps the last of a repeated flag, so a second one would silently
+    override what the tests read.
+    """
     args = earlyoom_args()
     assert args.count(flag) == 1, f"{flag} must appear exactly once: {args}"
     return args[args.index(flag) + 1]
