@@ -213,7 +213,10 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                deploy/ — archiver.service and the bus-health pair
                                (each skips when absent, so CI passes) — and the
                                needrestart drop-in against the live config chain
-                               (archiver#278; asserts only on the archiver host). The redis-server
+                               (archiver#278; asserts only on the archiver host),
+                               the memory reservation's effective protection and
+                               the SocratiCode server pin (archiver#237; live
+                               halves skip off-host). The redis-server
                                drop-in and its parity test left with the broker
                                (archiver#193 D6 → CannObserv/broker); the LIVE broker
                                config is still checked here by check_redis_floor.sh
@@ -243,6 +246,10 @@ deploy/                        README.md (install instructions) + systemd units:
                                archiver.service +
                                needrestart.conf.d/archiver.conf (list restarts, never
                                perform them; archiver#278) +
+                               the memory reservation (archiver#237):
+                               99-archiver-memory.conf (sysctl),
+                               system.slice.d/, system-postgresql.slice.d/,
+                               postgresql@16-main.service.d/ +
                                archiver-bus-health.service/.timer (the OUTBOX probe;
                                the broker-side half is CannObserv/broker's since
                                archiver#193 D6). The #128 OOM lockstep now spans two
