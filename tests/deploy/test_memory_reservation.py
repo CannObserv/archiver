@@ -8,18 +8,24 @@ and the production service is what goes down: CannObserv/broker lost its bus
 for 57m 48s that way on 2026-09-16 (gregoryfoster/skills#295,
 ``references/troubleshooting.md`` row U).
 
-Three settings, none a substitute for another:
+Four settings, none a substitute for another:
 
 * ``MemoryLow=`` - a soft floor reclaim will not take the working set below.
   Inert unless every slice above the unit grants it too (CannObserv/notifier#85).
-* ``OOMScoreAdjust=`` - puts production behind everything killable. It cannot
-  make a -1000 session killable; see the session premise at the foot.
+* ``OOMScoreAdjust=`` - puts production behind everything killable. Sessions
+  here read 0 (archiver#285), so that includes them; see the session premise at
+  the foot.
 * ``vm.min_free_kbytes`` - the reserve atomic allocations draw on. The other
   two are per-cgroup and cannot help an allocation in ``ksoftirqd``.
+* The tail's order - ``OOMScoreAdjust=`` on ``tailscaled`` and
+  ``PG_OOM_ADJUST_VALUE`` for postgres's children, which both sat at 0. With
+  sessions at 0 the kernel takes a session first; these decide what goes after.
+  earlyoom was measured and declined in their favour (archiver#285).
 
-Two premises belong to the host rather than the repo - what the kernel grants,
-and what score exe.dev starts a session at - so those tests read the live host
-and skip everywhere else, CI included.
+Three things belong to the host rather than the repo - what the kernel grants,
+what score exe.dev starts a session at, and what score the running tail
+processes hold - so those tests read the live host and skip everywhere else, CI
+included.
 """
 
 import math
@@ -38,6 +44,9 @@ PROD_UNIT = DEPLOY / "archiver.service"
 BUS_HEALTH_UNIT = DEPLOY / "archiver-bus-health.service"
 POSTGRES_UNIT = DEPLOY / "postgresql@16-main.service.d" / "10-memory.conf"
 SYSCTL = DEPLOY / "99-archiver-memory.conf"
+TAILSCALED_DROPIN = DEPLOY / "tailscaled.service.d" / "10-oom.conf"
+PG_ENVIRONMENT = DEPLOY / "postgresql" / "16" / "main" / "environment"
+EARLYOOM = DEPLOY / "earlyoom.default"
 
 #: Live peaks (``memory.peak``) on co-registrar, 2026-09-28: archiver.service
 #: 193 MiB after ~30h up, postgresql@16-main 281 MiB after 2.7 days. A floor
@@ -187,8 +196,9 @@ def test_production_unit_is_deprioritised_for_the_killer():
     """Negative, but never -1000.
 
     -1000 makes the unit unkillable, so a leak in it wedges a swapless host
-    rather than shedding one process. Postgres needs no line here: Debian's
-    ``postgresql@.service`` already ships -900.
+    rather than shedding one process. The postmaster needs no line here: Debian's
+    ``postgresql@.service`` already ships -900. Its children's score is
+    ``PG_OOM_ADJUST_VALUE`` in the cluster's environment file (the tail, below).
     """
     value = setting(PROD_UNIT, "OOMScoreAdjust")
     assert value is not None, "archiver.service declares no OOMScoreAdjust="
@@ -382,7 +392,7 @@ def test_the_live_kernel_holds_the_reserve():
     )
 
 
-# -- the session premise the earlyoom decline rests on -------------------------
+# -- the session premise: what a killer can take ------------------------------
 
 #: What a session's root can hang from: PID 1 once the VS Code server has
 #: daemonised, or exe.dev's own launchers.
@@ -422,6 +432,14 @@ def test_a_daemonised_vscode_session_reports_its_root(tmp_path):
     assert session_root_adj(tmp_path, 900) == -1000
 
 
+def test_a_session_under_exe_init_reports_its_root_not_exe_init(tmp_path):
+    """This host's shape after exe-init 14fd603 (archiver#285): only the launcher stays at -1000."""
+    _fake_process(tmp_path, 215, 1, "exe-init", -1000)
+    _fake_process(tmp_path, 559, 215, "bash", 0)
+    _fake_process(tmp_path, 1080, 559, "claude", 0)
+    assert session_root_adj(tmp_path, 1080) == 0
+
+
 def test_a_session_under_sshd_reports_its_root(tmp_path):
     _fake_process(tmp_path, 218, 1, "sshd", -1000)
     _fake_process(tmp_path, 700, 218, "sshd-session", 0)
@@ -435,25 +453,193 @@ def test_a_unit_is_not_a_session(tmp_path):
     assert session_root_adj(tmp_path, 301) is None
 
 
-def test_no_earlyoom_config_ships_while_sessions_sit_at_minus_1000():
-    """Declined, as on watcher (#323) and replicator: earlyoom skips -1000 as the kernel does.
+# -- earlyoom: measured and declined at 0 (archiver#285) -----------------------
 
-    Its ``--prefer`` would reach nothing in a session here, and it would shed
-    small adj-0 daemons - ``tailscaled`` included - sooner than the kernel.
+
+def test_no_earlyoom_config_ships():
+    """Declined on the 2026-09-29 measurement, not on #237's -1000 reading.
+
+    With sessions at 0 the kernel, package-default earlyoom and the tuned config
+    all named the same first victim, a session's ``MainThread``. earlyoom changed
+    the timing: it killed at ~470 MiB available, page cache the kernel reclaims
+    before it kills anything. What its ``--avoid`` added, a protected tail, is
+    the ``OOMScoreAdjust=`` section below, which the kernel honours itself.
     """
-    assert not (DEPLOY / "earlyoom.default").exists()
+    assert not EARLYOOM.exists(), f"{EARLYOOM.name} ships: earlyoom was declined (#285)"
 
 
 @live_host_only
-def test_sessions_here_sit_at_minus_1000():
-    """The earlyoom decline, and the ``choom -n 500`` discipline, rest on this.
+def test_earlyoom_is_not_running():
+    state = subprocess.run(
+        ["systemctl", "is-active", "earlyoom"], capture_output=True, text=True
+    ).stdout.strip()
+    assert state != "active", "earlyoom is running: sudo apt-get purge earlyoom (#285)"
 
-    exe.dev's setup, not this repo's, and it changes by path in: notifier moved
-    from 0 to -1000 across one reboot (CannObserv/notifier#88). If it reads 0
-    here, a killer *can* take a session: revisit earlyoom (host-memory.md section 4)
-    and reopen archiver#237.
+
+# -- the tail: what the kernel takes after the sessions (archiver#285) ---------
+
+#: Debian's ``postgresql@.service`` sets this on the postmaster. Its children
+#: inherit it, then write ``PG_OOM_ADJUST_VALUE``; raising a score needs no
+#: privilege, lowering one does, so no child can go below it.
+POSTMASTER_OOM_SCORE_ADJ = -900
+
+
+def environment(unit: Path) -> dict[str, str]:
+    """Every ``Environment=`` assignment in a unit file."""
+    pairs = [
+        line.split("=", 1)[1]
+        for line in directives(unit).splitlines()
+        if line.startswith("Environment=")
+    ]
+    return dict(pair.split("=", 1) for pair in pairs)
+
+
+def production_adj() -> int:
+    return int(setting(PROD_UNIT, "OOMScoreAdjust"))
+
+
+#: One postgresql.conf assignment: a bare value, or a single-quoted one that may
+#: hold ``#``; then an optional trailing comment.
+_CONF_LINE = re.compile(r"^\s*(\w+)\s*=\s*('(?:[^']|'')*'|[^\s#']*)\s*(?:#.*)?$")
+
+
+def cluster_environment(path: Path) -> dict[str, str]:
+    """``VARIABLE = value`` pairs, the postgresql.conf syntax pg_ctlcluster reads."""
+    pairs = {}
+    for number, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = _CONF_LINE.match(line)
+        assert match, f"{path.name}:{number} is not VARIABLE = value: {line!r}"
+        key, value = match.groups()
+        if value.startswith("'"):
+            value = value[1:-1].replace("''", "'")
+        pairs[key] = value
+    return pairs
+
+
+def test_cluster_environment_parses_postgresql_conf_syntax(tmp_path):
+    conf = tmp_path / "environment"
+    conf.write_text("# header\nA = -500\nB = 'x # y'  # note\nC='it''s'\n")
+    assert cluster_environment(conf) == {"A": "-500", "B": "x # y", "C": "it's"}
+
+
+def test_cluster_environment_names_a_line_it_cannot_parse(tmp_path):
+    conf = tmp_path / "environment"
+    conf.write_text("A = 1\nnot an assignment\n")
+    with pytest.raises(AssertionError, match="environment:2"):
+        cluster_environment(conf)
+
+
+def postgres_children_adj() -> int:
+    value = cluster_environment(PG_ENVIRONMENT).get("PG_OOM_ADJUST_VALUE")
+    assert value is not None, f"{PG_ENVIRONMENT.name} leaves postgres's children at 0"
+    return int(value)
+
+
+def test_the_postgres_unit_does_not_carry_the_childrens_score():
+    """pg_ctlcluster starts the postmaster on an environment it builds itself.
+
+    It keeps only the cluster's ``environment`` file (and LANG), so a systemd
+    ``Environment=`` never reaches postgres: set there on 2026-09-29, the
+    children still read 0 after a restart (archiver#285).
+    """
+    assert "PG_OOM_ADJUST_VALUE" not in environment(POSTGRES_UNIT), (
+        f"{POSTGRES_UNIT.name} sets PG_OOM_ADJUST_VALUE, which pg_ctlcluster drops: "
+        f"set it in {PG_ENVIRONMENT.relative_to(REPO_ROOT)}"
+    )
+
+
+def test_tailscaled_goes_after_sessions_and_before_production():
+    """Below the sessions' 0, above archiver's -500, as on watcher (#309).
+
+    It carries the bus and MagicDNS, but the API and dashboard are reached
+    through the exe.dev proxy and the outbox buffers a bus outage, so archiver
+    should outlive the tunnel.
+    """
+    adj = int(setting(TAILSCALED_DROPIN, "OOMScoreAdjust"))
+    assert production_adj() < adj < 0, f"tailscaled's OOMScoreAdjust={adj}"
+
+
+def test_postgres_children_rank_with_production():
+    """Killing any child sends postgres into crash recovery: it is production too.
+
+    Level with archiver.service, so under pressure from production the larger of
+    the two goes, and never below the postmaster they inherit from.
+    """
+    adj = postgres_children_adj()
+    assert adj == production_adj(), f"PG_OOM_ADJUST_VALUE={adj}, archiver is {production_adj()}"
+    assert adj >= POSTMASTER_OOM_SCORE_ADJ, "a child cannot lower its inherited score"
+
+
+@live_host_only
+@pytest.mark.parametrize(
+    ("repo", "installed"),
+    [
+        (TAILSCALED_DROPIN, "/etc/systemd/system/tailscaled.service.d/10-oom.conf"),
+        (POSTGRES_UNIT, "/etc/systemd/system/postgresql@16-main.service.d/10-memory.conf"),
+        (PG_ENVIRONMENT, "/etc/postgresql/16/main/environment"),
+    ],
+)
+def test_the_tail_drop_ins_are_installed(repo, installed):
+    path = Path(installed)
+    assert path.exists() and path.read_text() == repo.read_text(), (
+        f"install {repo.relative_to(REPO_ROOT)} to {path} (deploy/README.md)"
+    )
+
+
+def _main_pid(unit: str) -> str:
+    return subprocess.run(
+        ["systemctl", "show", unit, "-p", "MainPID", "--value"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+@live_host_only
+def test_the_live_tailscaled_carries_its_oom_score():
+    """Applies at exec: an unrestarted tailscaled still reads 0."""
+    pid = _main_pid("tailscaled.service")
+    if pid in ("", "0"):
+        pytest.skip("tailscaled is not running")
+    live = int((PROC_FS / pid / "oom_score_adj").read_text())
+    assert live == int(setting(TAILSCALED_DROPIN, "OOMScoreAdjust")), (
+        f"tailscaled reads oom_score_adj={live}: restart it"
+    )
+
+
+@live_host_only
+def test_the_live_postgres_children_carry_their_oom_score():
+    """The postmaster reads its environment at start: a new value needs a restart."""
+    pid = _main_pid("postgresql@16-main.service")
+    if pid in ("", "0"):
+        pytest.skip("postgresql@16-main is not running")
+    children = (PROC_FS / pid / "task" / pid / "children").read_text().split()
+    live = {}
+    for child in children:
+        # Backends come and go - the suite's own archiver_test connections among
+        # them - so a child listed a moment ago may have exited.
+        try:
+            live[child] = int((PROC_FS / child / "oom_score_adj").read_text())
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+    assert live, "no postmaster child could be read"
+    wrong = {child: adj for child, adj in live.items() if adj != postgres_children_adj()}
+    assert not wrong, f"postgres children at {wrong}: restart postgresql@16-main"
+
+
+@live_host_only
+def test_sessions_here_sit_at_0():
+    """``OOMScoreAdjust=-500`` putting production behind a session rests on this.
+
+    exe.dev's, not this repo's: an ``exe-init`` build started sessions at -1000,
+    where no killer can take one, until 14fd603 replaced it (archiver#285,
+    2026-09-29). It has changed across one reboot before (CannObserv/notifier#88).
+    If it reads -1000 again, check ``/exe.dev/bin/exe-init --version`` and
+    reopen archiver#285.
     """
     adj = session_root_adj(PROC_FS, os.getpid())
     if adj is None:
         pytest.skip("not run from an interactive session")
-    assert adj == -1000, f"this session's root reads oom_score_adj={adj}, not -1000"
+    assert adj == 0, f"this session's root reads oom_score_adj={adj}, not 0"

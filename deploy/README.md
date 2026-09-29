@@ -11,6 +11,8 @@ Systemd units for the Archiver VM.
 | `99-archiver-memory.conf` | sysctl drop-in | `vm.min_free_kbytes = 65536`: the atomic-allocation reserve no cgroup setting can provide (#237). See *Host memory posture*. |
 | `system.slice.d/10-memory-protection.conf`, `system-postgresql.slice.d/10-memory-protection.conf` | slice drop-ins | The `MemoryLow=` grants without which a unit's own floor is inert (#237). |
 | `postgresql@16-main.service.d/10-memory.conf` | service drop-in | Postgres's `MemoryLow=` floor (#237). |
+| `tailscaled.service.d/10-oom.conf` | service drop-in | `OOMScoreAdjust=-400`: after the sessions, before archiver (#285). See *Host memory posture*. |
+| `postgresql/16/main/environment` | cluster environment file | `PG_OOM_ADJUST_VALUE = -500` for postgres's children, which `pg_ctlcluster` reads from here and nowhere else (#285). Installed to `/etc/postgresql/16/main/`, owner `postgres`. |
 
 **The broker is not deployed from this repo.** The broker's tuning (now
 `CannObserv/broker:deploy/redis.conf.broker`), its parity test, and the
@@ -29,37 +31,59 @@ only.
 ## Host memory posture (archiver#237)
 
 This VM is 3.8 GiB with **no swap**, and runs `archiver.service`, Postgres and
-interactive agent sessions on one kernel. Sessions inherit `oom_score_adj`
-**-1000** (measured 2026-09-28), so no killer can take one: under real
-exhaustion the production service goes instead, and past the ceiling the
-kernel fails atomic allocations in unrelated processes - how CannObserv/broker
-lost its bus for 57m 48s on 2026-09-16 (gregoryfoster/skills#295). Four parts,
-none a substitute for another:
+interactive agent sessions on one kernel. Sessions read `oom_score_adj` **0**
+(measured 2026-09-29, after `exe-init` 14fd603 replaced a build that started
+them at -1000, archiver#285), so a killer *can* take one, and
+`OOMScoreAdjust=` below is what puts it ahead of the production service. Past
+the ceiling the kernel fails atomic allocations in unrelated processes instead -
+how CannObserv/broker lost its bus for 57m 48s on 2026-09-16
+(gregoryfoster/skills#295). Five parts, none a substitute for another:
 
 | Part | Where | Why |
 |---|---|---|
 | Pin the SocratiCode server | `~/.socraticode/pin`, `SOCRATICODE_SPEC` | Removes the 1.2 G install-at-launch peak; see `docs/SOCRATICODE.md` |
 | Reserve | `MemoryLow=` on `archiver.service` (256M) and postgres (320M), granted on `system.slice` (576M) and `system-postgresql.slice` (320M) | Keeps the working sets resident under reclaim. The slice grants are load-bearing: this cgroup2 mount has no `memory_recursiveprot` and `system.slice` ships 0 |
-| Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on postgres | Behind everything killable, never -1000 |
+| Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on the postmaster (its children: *Order the tail*) | Behind everything killable, never -1000 |
 | Kernel reserve | `vm.min_free_kbytes = 65536` (default here: 7999) | The only buffer for atomic allocations on a swapless host |
+| Order the tail | `OOMScoreAdjust=-400` on `tailscaled`; `PG_OOM_ADJUST_VALUE = -500` for postgres's children | Both sat at 0, level with the sessions. The kernel takes sessions and small daemons (0, the largest first), then the tunnel, then production |
 
-**earlyoom is declined.** It skips a -1000 process exactly as the kernel does,
-so its `--prefer` reaches nothing in a session here; it would only shed small
-adj-0 daemons (`tailscaled` among them) sooner. watcher (#323) and replicator
-declined it on the same reading. `tests/deploy/test_memory_reservation.py` pins
-the -1000 premise live - if a session ever reads 0, revisit.
+**earlyoom is declined, measured at 0 (#285).** With sessions at 0 the kernel
+already takes a session first: on 2026-09-29 the kernel's order, earlyoom's
+package defaults and a tuned `--prefer`/`--avoid` all named the same first
+victim, a session `MainThread` (470 MiB). What earlyoom changed was timing - it
+killed at 10-12% available (391-469 MiB), page cache the kernel reclaims before
+it kills anything - and, tuned, a protected tail, which the kernel honours from
+`OOMScoreAdjust=` directly. Memory PSI read 0 and no boot since 09-04 logged an
+OOM or an allocation failure. The comparison is on #285; it matches
+CannObserv/power-map#588. (#237 declined it at -1000 for a different reason: it
+skips a -1000 process as the kernel does.)
+
+**Postgres's children take their score from the cluster, not systemd.**
+Debian's unit gives the postmaster -900 and sets `PG_OOM_ADJUST_FILE`, so each
+child writes `PG_OOM_ADJUST_VALUE` after fork - default 0. `pg_ctlcluster`
+starts the postmaster on `/etc/postgresql/16/main/environment` alone, so a
+systemd `Environment=` never reaches it: set there, the children still read 0
+after a restart. The file is read at start - restart `postgresql@16-main`
+(about 2.5 s; the outbox publisher logs one error and recovers).
+
+`tests/deploy/test_memory_reservation.py` pins the 0 reading live: if a session
+reads -1000 again, the kernel can no longer take one - check
+`/exe.dev/bin/exe-init --version` and reopen #285.
 
 Install, or restore after a rebuild:
 
 ```bash
 sudo install -m 644 deploy/99-archiver-memory.conf /etc/sysctl.d/
 sudo sysctl --system
-for d in system.slice.d system-postgresql.slice.d postgresql@16-main.service.d; do
+for d in system.slice.d system-postgresql.slice.d postgresql@16-main.service.d tailscaled.service.d; do
   sudo install -D -m 644 "deploy/$d/"*.conf -t "/etc/systemd/system/$d/"
 done
 sudo cp deploy/archiver.service /etc/systemd/system/
 sudo systemctl daemon-reload          # applies every MemoryLow=, restarts nothing
 sudo systemctl restart archiver       # OOMScoreAdjust= applies at start
+sudo choom -p "$(systemctl show tailscaled -p MainPID --value)" -n -400   # or restart tailscaled
+sudo install -m 644 -o postgres -g postgres deploy/postgresql/16/main/environment /etc/postgresql/16/main/
+sudo systemctl restart postgresql@16-main   # the postmaster reads it at start
 ```
 
 **Verify the effective protection, never `systemctl show`.** A unit keeps at

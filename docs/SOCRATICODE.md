@@ -275,10 +275,13 @@ systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M -p CPUQuota=10
   skills-vendor/gregoryfoster-skills/skills/init-socraticode/scripts/mcp-driver.mjs index
 ```
 
-`choom -n 500` matters more than it first looked: sessions here inherit
-`oom_score_adj` **-1000** (measured 2026-09-28, archiver#237), so without it no
-killer can take the job and a cap *stalls* it rather than killing it. Raised to
-500 it sits ahead of `archiver.service` (-500) and postgres (-900). Memory never
+`choom -n 500` was load-bearing while sessions inherited `oom_score_adj`
+**-1000** (measured 2026-09-28, archiver#237): without it no killer could take
+the job and a cap *stalled* it rather than killing it. Sessions read **0**
+since `exe-init` 14fd603 (2026-09-29, archiver#285), so the job is killable
+either way; keep the `choom` - raised to 500 it goes before the rest of the
+session, and well ahead of `archiver.service` (-500) and postgres (-900) - and
+it is the guard if a session ever reads -1000 again. Memory never
 dropped below 1.4 GB free and the bus was unaffected. That driver also carries `validate-store`
 and `validate-manifest`, which check the config with no server and no network -
 run them before an index rather than after a failure.
