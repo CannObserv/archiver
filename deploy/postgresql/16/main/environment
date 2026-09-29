@@ -1,0 +1,20 @@
+# environment variables for postgres processes
+# This file has the same syntax as postgresql.conf:
+#  VARIABLE = simple_value
+#  VARIABLE2 = 'any value!'
+# I. e. you need to enclose any value which does not only consist of letters,
+# numbers, and '-', '_', '.' in single quotes. Shell commands are not
+# evaluated.
+
+# archiver#285. Install to /etc/postgresql/16/main/environment (owner postgres,
+# 0644); see deploy/README.md. pg_ctlcluster starts the postmaster on this file
+# alone, so a systemd Environment= never reaches it.
+#
+# Debian's postgresql@.service puts the postmaster at -900 and sets
+# PG_OOM_ADJUST_FILE, so each child writes PG_OOM_ADJUST_VALUE after fork -
+# default 0, level with the sessions. Killing any child (a backend, the
+# checkpointer) sends the cluster into crash recovery and drops every
+# connection, so they rank with archiver.service at -500 and the larger of the
+# two goes first. Raising the inherited -900 needs no privilege. Read at start:
+# restart postgresql@16-main for a change to apply.
+PG_OOM_ADJUST_VALUE = -500
