@@ -69,5 +69,20 @@ ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8
 Restart=on-failure
 RestartSec=5
 
+# Memory reservation (archiver#237). This host is 3.8 GiB with no swap and
+# shares its kernel with agent sessions that sit at oom_score_adj -1000, so no
+# killer can take a session and, under real exhaustion, this service is what
+# goes (gregoryfoster/skills#295, troubleshooting.md row U).
+#
+# MemoryLow is a soft floor, not a cap: reclaim leaves the working set alone
+# under pressure. Sized above the measured 193 MiB peak (2026-09-28). Inert
+# unless every slice above grants it: deploy/system.slice.d/ does. Never
+# MemoryHigh=/MemoryMax= here - a cap bounds the victim, not the cause.
+MemoryLow=256M
+# Behind every killable process, but not -1000: an unkillable service on a
+# swapless host wedges the box rather than shedding one process. Applied at
+# start, so a change needs a restart.
+OOMScoreAdjust=-500
+
 [Install]
 WantedBy=multi-user.target
