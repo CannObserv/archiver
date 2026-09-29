@@ -370,25 +370,67 @@ def test_the_live_service_carries_its_oom_score():
 # -- the half a cgroup cannot do -----------------------------------------------
 
 
-def _min_free_kbytes(text: str) -> int | None:
-    match = re.search(r"^vm\.min_free_kbytes\s*=\s*(\d+)", text, re.MULTILINE)
+def sysctl_value(text: str, key: str) -> int | None:
+    """The integer ``key`` is set to in a sysctl drop-in, or None."""
+    match = re.search(rf"^{re.escape(key)}\s*=\s*(\d+)", text, re.MULTILINE)
     return int(match.group(1)) if match else None
 
 
 def test_sysctl_drop_in_raises_the_atomic_allocation_reserve():
-    """The kernel default here is 7999 kB, far too thin to absorb a 1.2 G spike."""
+    """The kernel default is ~11 MB at 7.7 GiB, far too thin to absorb a 1.2 G spike.
+
+    64 MiB is the cohort's absolute figure, not a share of RAM: replicator kept
+    it at 7.75 GiB (CannObserv/replicator#99), and an atomic burst does not grow
+    with the host.
+    """
     assert SYSCTL.is_file(), f"{SYSCTL.name} is missing from deploy/"
-    value = _min_free_kbytes(SYSCTL.read_text())
+    value = sysctl_value(SYSCTL.read_text(), "vm.min_free_kbytes")
     assert value is not None, "the drop-in does not set vm.min_free_kbytes"
-    assert value >= 65536, "a reserve under 64 MiB leaves this no-swap host where it started"
+    assert value >= 65536, "a reserve under 64 MiB is thinner than the cohort's figure"
 
 
 @live_host_only
-def test_the_live_kernel_holds_the_reserve():
-    live = int((PROC_FS / "sys" / "vm" / "min_free_kbytes").read_text())
-    assert live == _min_free_kbytes(SYSCTL.read_text()), (
-        f"vm.min_free_kbytes is {live} live: install {SYSCTL.name} to /etc/sysctl.d/ "
+@pytest.mark.parametrize("key", ["vm.min_free_kbytes", "vm.swappiness"])
+def test_the_live_kernel_holds_the_drop_in(key):
+    live = int((PROC_FS / "sys" / key.replace(".", "/")).read_text())
+    assert live == sysctl_value(SYSCTL.read_text(), key), (
+        f"{key} is {live} live: install {SYSCTL.name} to /etc/sysctl.d/ "
         "and run `sudo sysctl --system`"
+    )
+
+
+# -- swap: the slow path (archiver#286) -----------------------------------------
+
+#: The swapfile deploy/README.md creates, and its size. 4 G matches replicator
+#: (CannObserv/replicator#99); the 30 GB disk is sized to hold it.
+SWAPFILE = "/swapfile"
+SWAP_GIB = 4
+
+
+def test_sysctl_drop_in_keeps_swap_a_last_resort():
+    """Swap is there so reclaim has somewhere to go, not to page the working set.
+
+    At the kernel default of 60, anonymous pages go out as readily as cache.
+    """
+    assert sysctl_value(SYSCTL.read_text(), "vm.swappiness") == 10
+
+
+@live_host_only
+def test_the_swapfile_is_active():
+    swaps = (PROC_FS / "swaps").read_text().splitlines()[1:]
+    sizes = {line.split()[0]: int(line.split()[2]) for line in swaps}
+    assert SWAPFILE in sizes, f"{SWAPFILE} is not swapped on: see deploy/README.md"
+    assert sizes[SWAPFILE] * 1024 >= SWAP_GIB * 1024**3 - MIB, (
+        f"{SWAPFILE} is {sizes[SWAPFILE]} KiB, not {SWAP_GIB} G"
+    )
+
+
+@live_host_only
+def test_the_swapfile_survives_a_reboot():
+    fstab = Path("/etc/fstab").read_text().splitlines()
+    entries = [line.split() for line in fstab if line.strip() and not line.startswith("#")]
+    assert any(e[0] == SWAPFILE and e[2] == "swap" for e in entries if len(e) >= 3), (
+        f"/etc/fstab has no swap entry for {SWAPFILE}: it is off after the next reboot"
     )
 
 
