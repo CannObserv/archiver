@@ -1,7 +1,10 @@
 """archiver-client — async Python SDK for the Archiver service.
 
-Pinned 1:1 with Archiver service version. See README for usage.
+Versioned independently of the Archiver service. See README for usage.
 """
+
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _dist_version
 
 from archiver_client.client import ArchiverClient
 from archiver_client.defaults import (
@@ -30,7 +33,12 @@ from archiver_client.generated.models.rep_spec_out import RepSpecOut
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
 from archiver_client.tools import ValidationResult
 
-__version__ = "5.0.0"
+# Read from the installed distribution, never a literal: a literal sat at 5.0.0
+# through seven SDK releases (archiver#248).
+try:
+    __version__ = _dist_version("archiver-client")
+except _PackageNotFoundError:  # pragma: no cover - source tree without an install
+    __version__ = "0+unknown"
 
 __all__ = [
     "ArchiverClient",

@@ -1,6 +1,6 @@
 [project]
 name = "archiver"
-version = "4.21.0"
+version = "4.21.1"
 description = "Cannabis Observer Archiver service — central registry for Information Items, Information Sources, Source Revisions, and Replication Specifications."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -32,6 +32,7 @@ dev = [
     "pytest>=9.1.1,<10",
     "pytest-asyncio>=1.3.0,<2",
     "pytest-cov>=6.0,<7",
+    "pyyaml>=6,<7",                # tests/scripts parse .github/workflows/ci.yml (archiver#248)
     "respx>=0.22",
     "ruff>=0.16.8,<0.17",
     "fakeredis>=2.20",
