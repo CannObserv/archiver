@@ -175,7 +175,9 @@ Back in about ten seconds. All four units (`archiver`, `postgresql`,
 
 ```bash
 # Key staged in a 0600 file, never in argv - PAM audits argv into journald
-# (observo#264). Generate it Pre-approved + Tagged + NOT Ephemeral.
+# (observo#264). Generate it Pre-approved + Tagged + NOT Ephemeral, and
+# single-use (NOT Reusable) with a short expiry: a key in a --setup-script
+# comes back at every boot, so it must already be dead by then (#284).
 sudo install -m 600 /dev/null /run/ts.key
 sudo tee /run/ts.key >/dev/null <<< 'tskey-auth-...'
 sudo systemctl enable --now tailscaled
