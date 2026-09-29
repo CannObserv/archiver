@@ -381,7 +381,7 @@ def sysctl_value(text: str, key: str) -> int | None:
 
 
 def test_sysctl_drop_in_raises_the_atomic_allocation_reserve():
-    """The kernel default is ~11 MB at 7.7 GiB, far too thin to absorb a 1.2 G spike.
+    """The kernel default computes to ~11 MB at 7.7 GiB, too thin for a 1.2 G spike.
 
     64 MiB is the cohort's absolute figure, not a share of RAM: replicator kept
     it at 7.75 GiB (CannObserv/replicator#99), and an atomic burst does not grow
