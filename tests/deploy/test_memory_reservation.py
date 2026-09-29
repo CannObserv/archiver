@@ -498,15 +498,37 @@ def production_adj() -> int:
     return int(setting(PROD_UNIT, "OOMScoreAdjust"))
 
 
+#: One postgresql.conf assignment: a bare value, or a single-quoted one that may
+#: hold ``#``; then an optional trailing comment.
+_CONF_LINE = re.compile(r"^\s*(\w+)\s*=\s*('(?:[^']|'')*'|[^\s#']*)\s*(?:#.*)?$")
+
+
 def cluster_environment(path: Path) -> dict[str, str]:
     """``VARIABLE = value`` pairs, the postgresql.conf syntax pg_ctlcluster reads."""
     pairs = {}
-    for line in path.read_text().splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            key, value = (part.strip() for part in line.split("=", 1))
-            pairs[key] = value.strip("'")
+    for number, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = _CONF_LINE.match(line)
+        assert match, f"{path.name}:{number} is not VARIABLE = value: {line!r}"
+        key, value = match.groups()
+        if value.startswith("'"):
+            value = value[1:-1].replace("''", "'")
+        pairs[key] = value
     return pairs
+
+
+def test_cluster_environment_parses_postgresql_conf_syntax(tmp_path):
+    conf = tmp_path / "environment"
+    conf.write_text("# header\nA = -500\nB = 'x # y'  # note\nC='it''s'\n")
+    assert cluster_environment(conf) == {"A": "-500", "B": "x # y", "C": "it's"}
+
+
+def test_cluster_environment_names_a_line_it_cannot_parse(tmp_path):
+    conf = tmp_path / "environment"
+    conf.write_text("A = 1\nnot an assignment\n")
+    with pytest.raises(AssertionError, match="environment:2"):
+        cluster_environment(conf)
 
 
 def postgres_children_adj() -> int:
