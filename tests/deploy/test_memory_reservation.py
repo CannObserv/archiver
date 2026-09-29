@@ -1,14 +1,15 @@
 """Drift tests for the production memory reservation (archiver#237).
 
-This host is 3.8 GiB with no swap, and it runs the live service, PostgreSQL
-and interactive agent sessions on one kernel. The failure this guards against
-is not an OOM kill - it is the *absence* of one. Past the ceiling the kernel
-fails atomic allocations in whatever asks next (``tailscaled``, ``ksoftirqd``)
-and the production service is what goes down: CannObserv/broker lost its bus
+This host is 7.7 GiB with a 4 G swapfile (archiver#286; 3.8 GiB and no swap
+before), and it runs the live service, PostgreSQL and interactive agent sessions
+on one kernel. The failure this guards against is not an OOM kill - it is the
+*absence* of one. An atomic allocation cannot wait for swap, so past the
+reserve the kernel fails one in whatever asks next (``tailscaled``,
+``ksoftirqd``) and the production service is what goes down: CannObserv/broker lost its bus
 for 57m 48s that way on 2026-09-16 (gregoryfoster/skills#295,
 ``references/troubleshooting.md`` row U).
 
-Four settings, none a substitute for another:
+Five settings, none a substitute for another:
 
 * ``MemoryLow=`` - a soft floor reclaim will not take the working set below.
   Inert unless every slice above the unit grants it too (CannObserv/notifier#85).
@@ -21,11 +22,13 @@ Four settings, none a substitute for another:
   ``PG_OOM_ADJUST_VALUE`` for postgres's children, which both sat at 0. With
   sessions at 0 the kernel takes a session first; these decide what goes after.
   earlyoom was measured and declined in their favour (archiver#285).
+* Swap at ``vm.swappiness`` 10 - a slow path for reclaim, kept a last resort
+  (archiver#286).
 
-Three things belong to the host rather than the repo - what the kernel grants,
-what score exe.dev starts a session at, and what score the running tail
-processes hold - so those tests read the live host and skip everywhere else, CI
-included.
+Four things belong to the host rather than the repo - what the kernel grants,
+what score exe.dev starts a session at, what score the running tail processes
+hold, and the swapfile - so those tests read the live host and skip everywhere
+else, CI included.
 """
 
 import math
@@ -195,10 +198,11 @@ def test_production_units_are_never_capped(unit, key):
 def test_production_unit_is_deprioritised_for_the_killer():
     """Negative, but never -1000.
 
-    -1000 makes the unit unkillable, so a leak in it wedges a swapless host
-    rather than shedding one process. The postmaster needs no line here: Debian's
-    ``postgresql@.service`` already ships -900. Its children's score is
-    ``PG_OOM_ADJUST_VALUE`` in the cluster's environment file (the tail, below).
+    -1000 makes the unit unkillable, so a leak in it wedges the host rather
+    than shedding one process; swap only slows the leak down. The postmaster
+    needs no line here: Debian's ``postgresql@.service`` already ships -900. Its
+    children's score is ``PG_OOM_ADJUST_VALUE`` in the cluster's environment
+    file (the tail, below).
     """
     value = setting(PROD_UNIT, "OOMScoreAdjust")
     assert value is not None, "archiver.service declares no OOMScoreAdjust="

@@ -149,8 +149,8 @@ through `codebase_context_search` and stop outranking source in
 
 ### Two launch paths, pinned separately (archiver#237)
 
-This host is 3.8 GiB, no swap, with `archiver.service` co-tenant — the case
-gregoryfoster/skills#295 is about. The plugin's default launch installs a
+This host is 7.7 GiB with 4 G of swap (3.8 GiB, no swap until archiver#286),
+with `archiver.service` co-tenant — the case gregoryfoster/skills#295 is about. The plugin's default launch installs a
 server at every start: 1.2 G cold against 75 MB pinned. Two things launch one,
 and **each needs its own pin**, at the same version:
 
@@ -264,7 +264,7 @@ Note also that an already-running MCP server never picks up a changed `env`
 block - the server that indexes must be started after it exists, which means a
 fresh session or an out-of-band launch.
 
-Indexing is the memory-hungry step, and this VM shares 3.8 GiB (no swap)
+Indexing is the memory-hungry step, and this VM shares 7.7 GiB (4 G swap)
 with the production service on port 8000. Run long index jobs capped; broker took a
 production VM down by launching one uncapped (CannObserv/broker#17, #27). The
 full index of this repo cost 50 min wall under:

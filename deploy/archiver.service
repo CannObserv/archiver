@@ -69,8 +69,8 @@ ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8
 Restart=on-failure
 RestartSec=5
 
-# Memory reservation (archiver#237). This host is 3.8 GiB with no swap and
-# shares its kernel with agent sessions. They read oom_score_adj 0 since
+# Memory reservation (archiver#237). This host is 7.7 GiB with a 4 G swapfile
+# (archiver#286) and shares its kernel with agent sessions. They read oom_score_adj 0 since
 # exe-init 14fd603 (archiver#285; -1000 before, when no killer could take one
 # and this service was what went - gregoryfoster/skills#295, row U).
 #
@@ -80,8 +80,8 @@ RestartSec=5
 # MemoryHigh=/MemoryMax= here - a cap bounds the victim, not the cause.
 MemoryLow=256M
 # Behind every killable process - sessions included, at 0 - but not -1000: an
-# unkillable service on a swapless host wedges the box rather than shedding one
-# process. Applied at start, so a change needs a restart.
+# unkillable service wedges the box rather than shedding one process - swap
+# only slows the leak down. Applied at start, so a change needs a restart.
 OOMScoreAdjust=-500
 
 [Install]
