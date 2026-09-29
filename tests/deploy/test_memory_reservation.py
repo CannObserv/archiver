@@ -454,7 +454,7 @@ def test_a_unit_is_not_a_session(tmp_path):
 #: ``npm exec socrat`` is the SocratiCode server, truncated to 15 characters.
 PREFERRED_COMMS = ("MainThread", "claude", "npm exec socrat", "node", "npx")
 AVOIDED_COMMS = ("uv", "uvicorn", "postgres", "tailscaled", "systemd-journal", "sshd")
-#: Session processes a ``$``-anchor or a truncation must not make it miss.
+#: Session processes ``--avoid`` must never shield, the editor's server included.
 NOT_AVOIDED_COMMS = ("MainThread", "claude", "npm exec socrat", "code-04c0d99f4f")
 
 
