@@ -249,7 +249,8 @@ deploy/                        README.md (install instructions) + systemd units:
                                the memory reservation (archiver#237):
                                99-archiver-memory.conf (sysctl),
                                system.slice.d/, system-postgresql.slice.d/,
-                               postgresql@16-main.service.d/ +
+                               postgresql@16-main.service.d/,
+                               earlyoom.default (archiver#285) +
                                archiver-bus-health.service/.timer (the OUTBOX probe;
                                the broker-side half is CannObserv/broker's since
                                archiver#193 D6). The #128 OOM lockstep now spans two

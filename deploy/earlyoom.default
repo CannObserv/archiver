@@ -1,0 +1,13 @@
+# /etc/default/earlyoom (archiver#285). Adopted once sessions read
+# oom_score_adj 0: before that, at -1000, --prefer reached nothing in a session.
+#
+# Debian's unit runs `earlyoom $EARLYOOM_ARGS` unquoted, so systemd splits the
+# value on every blank after dropping these quotes: no space and no backslash
+# inside a regex (a literal dot is [.]). --prefer matches /proc/<pid>/comm,
+# truncated to 15 chars, so it is start-anchored and never $-anchored
+# (`npm exec socrat` is the SocratiCode server). -s 100,100 lets memory alone
+# decide; there is no swap here. Pinned by tests/deploy/test_memory_reservation.py.
+#
+# Install: sudo install -m 644 deploy/earlyoom.default /etc/default/earlyoom
+#          sudo systemctl restart earlyoom    # enable --now alone reloads nothing
+EARLYOOM_ARGS="-r 3600 -m 12,6 -s 100,100 --avoid ^(uv|uvicorn|postgres|tailscaled|systemd|systemd-journal|sshd|exe-init)$ --prefer ^(MainThread|claude|npm|node|npx)"

@@ -8,7 +8,7 @@ and the production service is what goes down: CannObserv/broker lost its bus
 for 57m 48s that way on 2026-09-16 (gregoryfoster/skills#295,
 ``references/troubleshooting.md`` row U).
 
-Three settings, none a substitute for another:
+Four settings, none a substitute for another:
 
 * ``MemoryLow=`` - a soft floor reclaim will not take the working set below.
   Inert unless every slice above the unit grants it too (CannObserv/notifier#85).
@@ -17,6 +17,8 @@ Three settings, none a substitute for another:
   the foot.
 * ``vm.min_free_kbytes`` - the reserve atomic allocations draw on. The other
   two are per-cgroup and cannot help an allocation in ``ksoftirqd``.
+* earlyoom - kills a session before the kernel has to pick. Adopted once
+  sessions read 0 (archiver#285); at -1000 it reached none of them.
 
 Two premises belong to the host rather than the repo - what the kernel grants,
 and what score exe.dev starts a session at - so those tests read the live host
@@ -39,6 +41,7 @@ PROD_UNIT = DEPLOY / "archiver.service"
 BUS_HEALTH_UNIT = DEPLOY / "archiver-bus-health.service"
 POSTGRES_UNIT = DEPLOY / "postgresql@16-main.service.d" / "10-memory.conf"
 SYSCTL = DEPLOY / "99-archiver-memory.conf"
+EARLYOOM = DEPLOY / "earlyoom.default"
 
 #: Live peaks (``memory.peak``) on co-registrar, 2026-09-28: archiver.service
 #: 193 MiB after ~30h up, postgresql@16-main 281 MiB after 2.7 days. A floor
@@ -444,14 +447,105 @@ def test_a_unit_is_not_a_session(tmp_path):
     assert session_root_adj(tmp_path, 301) is None
 
 
-def test_no_earlyoom_config_ships_until_it_is_decided():
-    """Not adopted. Declined at -1000 (#237), where it reaches nothing in a session.
+# -- earlyoom: adopted once sessions read 0 (archiver#285) ----------------------
 
-    That reason went with archiver#285: at 0 its ``--prefer`` reaches every
-    session process (host-memory.md section 4), so adopting it is open again.
-    Shipping a config *is* that decision - change this test with it.
+#: What each regex must reach, as ``/proc/<pid>/comm`` spells it on this host.
+#: ``npm exec socrat`` is the SocratiCode server, truncated to 15 characters.
+PREFERRED_COMMS = ("MainThread", "claude", "npm exec socrat", "node", "npx")
+AVOIDED_COMMS = ("uv", "uvicorn", "postgres", "tailscaled", "systemd-journal", "sshd")
+#: Session processes a ``$``-anchor or a truncation must not make it miss.
+NOT_AVOIDED_COMMS = ("MainThread", "claude", "npm exec socrat", "code-04c0d99f4f")
+
+
+def earlyoom_value() -> str:
+    """The ``EARLYOOM_ARGS`` value, its surrounding double quotes stripped."""
+    for line in EARLYOOM.read_text().splitlines():
+        if line.startswith("EARLYOOM_ARGS="):
+            value = line.split("=", 1)[1].strip()
+            assert value.startswith('"') and value.endswith('"'), line
+            return value[1:-1]
+    raise AssertionError(f"{EARLYOOM.name} sets no EARLYOOM_ARGS=")
+
+
+def earlyoom_args() -> list[str]:
+    """What systemd hands earlyoom: Debian's unit expands ``$EARLYOOM_ARGS`` unquoted.
+
+    By then the file's quotes are gone, so the value splits on every blank.
     """
-    assert not (DEPLOY / "earlyoom.default").exists()
+    return earlyoom_value().split()
+
+
+def earlyoom_option(flag: str) -> str:
+    args = earlyoom_args()
+    assert args.count(flag) == 1, f"{flag} must appear exactly once: {args}"
+    return args[args.index(flag) + 1]
+
+
+def test_an_earlyoom_config_ships():
+    assert EARLYOOM.exists(), f"{EARLYOOM} is missing: earlyoom runs on stock arguments"
+
+
+def test_earlyoom_regexes_survive_the_unquoted_split():
+    """A blank splits a regex into two arguments; a backslash is dropped (skills#303)."""
+    value = earlyoom_value()
+    assert "\\" not in value, f"a backslash does not survive systemd's split: {value}"
+    assert "'" not in value and '"' not in value, f"inner quotes do not survive: {value}"
+    for flag in ("--prefer", "--avoid"):
+        regex = earlyoom_option(flag)
+        assert not regex.startswith("-"), f"{flag} lost its regex to the split: {regex}"
+        re.compile(regex)
+
+
+@pytest.mark.parametrize("comm", PREFERRED_COMMS)
+def test_earlyoom_prefers_session_tooling(comm):
+    """Start-anchored, never ``$``-anchored: comm is truncated to 15 chars (skills#307)."""
+    assert re.search(earlyoom_option("--prefer"), comm), f"--prefer misses {comm!r}"
+
+
+@pytest.mark.parametrize("comm", AVOIDED_COMMS)
+def test_earlyoom_avoids_production(comm):
+    assert re.search(earlyoom_option("--avoid"), comm), f"--avoid misses {comm!r}"
+
+
+@pytest.mark.parametrize("comm", NOT_AVOIDED_COMMS)
+def test_earlyoom_does_not_avoid_a_session(comm):
+    assert not re.search(earlyoom_option("--avoid"), comm), f"--avoid shields {comm!r}"
+
+
+def test_earlyoom_acts_on_memory_alone():
+    """``-s 100,100``: the package default waits on swap. Inert without swap, and right."""
+    assert earlyoom_option("-s") == "100,100"
+
+
+@live_host_only
+def test_installed_earlyoom_config_matches_repo():
+    installed = Path("/etc/default/earlyoom")
+    assert installed.exists(), "earlyoom is not configured: see deploy/README.md"
+    assert installed.read_text() == EARLYOOM.read_text(), (
+        f"{installed} has drifted: sudo install -m 644 {EARLYOOM} {installed} "
+        "&& sudo systemctl restart earlyoom"
+    )
+
+
+@live_host_only
+def test_earlyoom_runs_the_configuration_as_written():
+    """Installing starts it on stock arguments, and enable --now reloads nothing."""
+
+    def show(prop: str) -> str:
+        return subprocess.run(
+            ["systemctl", "show", "earlyoom", "-p", prop, "--value"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    assert show("ActiveState") == "active", "earlyoom.service is not running"
+    assert show("UnitFileState") == "enabled", "earlyoom.service will not come back on boot"
+    cmdline = (PROC_FS / show("MainPID") / "cmdline").read_bytes().split(b"\0")
+    argv = [arg.decode() for arg in cmdline if arg]
+    assert argv[1:] == earlyoom_args(), (
+        f"earlyoom runs {argv[1:]}, not {EARLYOOM.name}: sudo systemctl restart earlyoom"
+    )
 
 
 @live_host_only

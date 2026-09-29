@@ -11,6 +11,7 @@ Systemd units for the Archiver VM.
 | `99-archiver-memory.conf` | sysctl drop-in | `vm.min_free_kbytes = 65536`: the atomic-allocation reserve no cgroup setting can provide (#237). See *Host memory posture*. |
 | `system.slice.d/10-memory-protection.conf`, `system-postgresql.slice.d/10-memory-protection.conf` | slice drop-ins | The `MemoryLow=` grants without which a unit's own floor is inert (#237). |
 | `postgresql@16-main.service.d/10-memory.conf` | service drop-in | Postgres's `MemoryLow=` floor (#237). |
+| `earlyoom.default` | `/etc/default/earlyoom` | earlyoom's arguments: kill a session's tooling before the kernel has to pick (#285). See *Host memory posture*. |
 
 **The broker is not deployed from this repo.** The broker's tuning (now
 `CannObserv/broker:deploy/redis.conf.broker`), its parity test, and the
@@ -35,7 +36,7 @@ them at -1000, archiver#285), so a killer *can* take one, and
 `OOMScoreAdjust=` below is what puts it ahead of the production service. Past
 the ceiling the kernel fails atomic allocations in unrelated processes instead -
 how CannObserv/broker lost its bus for 57m 48s on 2026-09-16
-(gregoryfoster/skills#295). Four parts, none a substitute for another:
+(gregoryfoster/skills#295). Five parts, none a substitute for another:
 
 | Part | Where | Why |
 |---|---|---|
@@ -43,15 +44,20 @@ how CannObserv/broker lost its bus for 57m 48s on 2026-09-16
 | Reserve | `MemoryLow=` on `archiver.service` (256M) and postgres (320M), granted on `system.slice` (576M) and `system-postgresql.slice` (320M) | Keeps the working sets resident under reclaim. The slice grants are load-bearing: this cgroup2 mount has no `memory_recursiveprot` and `system.slice` ships 0 |
 | Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on postgres | Behind everything killable, never -1000 |
 | Kernel reserve | `vm.min_free_kbytes = 65536` (default here: 7999) | The only buffer for atomic allocations on a swapless host |
+| Kill early | earlyoom, `deploy/earlyoom.default` | Takes a session's tooling at 12% free, before the kernel has to pick |
 
-**earlyoom is not installed, and that is open again.** It was declined
-(#237) while sessions sat at -1000: it skips a -1000 process exactly as the
-kernel does, so its `--prefer` reached nothing in a session and it would only
-have shed small adj-0 daemons (`tailscaled` among them) sooner. At 0 its
-`--prefer` reaches every session process (skills `host-memory.md` section 4), so
-that reason is gone; adopting it is the owner's decision (#285).
-`tests/deploy/test_memory_reservation.py` pins the 0 reading live - if a session
-reads -1000 again, check `/exe.dev/bin/exe-init --version` and reopen #285.
+**earlyoom runs, since sessions read 0 (#285).** It was declined (#237) while
+they sat at -1000: it skips a -1000 process exactly as the kernel does, so its
+`--prefer` reached nothing in a session and it would only have shed small adj-0
+daemons (`tailscaled` among them) sooner. At 0 `--prefer` reaches every session
+process (skills `host-memory.md` section 4). SIGTERM at 12% free, SIGKILL at 6%;
+`--avoid` names the service (`uv`, `uvicorn`), postgres, `tailscaled`, journald
+and the launchers. A forced dry run on 2026-09-29 picked a session `MainThread`
+(483 MiB). The regex rules - no blank, no backslash, never `$` on `--prefer` - are
+in the file's header and pinned by `tests/deploy/test_memory_reservation.py`.
+That file also pins the 0 reading live: if a session reads -1000 again, earlyoom
+is back to reaching nothing - check `/exe.dev/bin/exe-init --version` and
+reopen #285.
 
 Install, or restore after a rebuild:
 
@@ -64,6 +70,9 @@ done
 sudo cp deploy/archiver.service /etc/systemd/system/
 sudo systemctl daemon-reload          # applies every MemoryLow=, restarts nothing
 sudo systemctl restart archiver       # OOMScoreAdjust= applies at start
+sudo apt-get install -y earlyoom      # starts on STOCK arguments
+sudo install -m 644 deploy/earlyoom.default /etc/default/earlyoom
+sudo systemctl restart earlyoom       # enable --now alone reloads nothing
 ```
 
 **Verify the effective protection, never `systemctl show`.** A unit keeps at
