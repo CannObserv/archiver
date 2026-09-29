@@ -191,9 +191,9 @@ cache on the spec string, so the first launch of a new spec otherwise installs
 uncapped at an unattended start:
 
 ```bash
-systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M \
+systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M -p MemorySwapMax=0 \
   choom -n 500 -- npm install --prefix ~/.socraticode/pin socraticode@<version>
-systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M \
+systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M -p MemorySwapMax=0 \
   choom -n 500 -- npm exec --yes --prefer-online --package=socraticode@<version> -- true
 ```
 
@@ -270,10 +270,18 @@ production VM down by launching one uncapped (CannObserv/broker#17, #27). The
 full index of this repo cost 50 min wall under:
 
 ```bash
-systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M -p CPUQuota=100% \
-  choom -n 500 -- node \
+systemd-run --user --scope -p MemoryHigh=1200M -p MemoryMax=1536M -p MemorySwapMax=0 \
+  -p CPUQuota=100% choom -n 500 -- node \
   skills-vendor/gregoryfoster-skills/skills/init-socraticode/scripts/mcp-driver.mjs index
 ```
+
+**`MemorySwapMax=0` keeps a cap a cap (archiver#286).** `MemoryMax=` bounds RAM
+only, and a scope's `memory.swap.max` defaults to unlimited, so with the host's
+4 G of swap a job past its cap pages out and grinds instead of dying. Measured
+2026-09-29: 200 MB under `MemoryMax=64M` ran to completion; adding
+`MemorySwapMax=0` killed it (exit 137). Every capped command in this doc carries
+it. The daily health hook's default cap (`SOCRATICODE_HEALTH_CAP`) does not yet -
+that default is gregoryfoster/skills'.
 
 `choom -n 500` was load-bearing while sessions inherited `oom_score_adj`
 **-1000** (measured 2026-09-28, archiver#237): without it no killer could take

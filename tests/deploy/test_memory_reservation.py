@@ -419,6 +419,29 @@ def test_sysctl_drop_in_keeps_swap_a_last_resort():
     assert sysctl_value(SYSCTL.read_text(), "vm.swappiness") == 10
 
 
+def capped_commands(doc: Path) -> list[str]:
+    """Each ``systemd-run`` command in ``doc`` that sets ``MemoryMax=``, continuations joined."""
+    joined = re.sub(r"\\\n\s*", " ", doc.read_text())
+    return [
+        line.strip()
+        for line in joined.splitlines()
+        if "systemd-run" in line and "MemoryMax=" in line
+    ]
+
+
+def test_every_documented_cap_bounds_swap_too():
+    """``MemoryMax=`` bounds RAM only; a scope's ``memory.swap.max`` defaults to max.
+
+    With swap on the host, a job past its cap pages out and grinds instead of
+    dying: 200 MB under ``MemoryMax=64M`` ran to completion here, and was killed
+    (137) once ``MemorySwapMax=0`` was added (2026-09-29).
+    """
+    commands = capped_commands(REPO_ROOT / "docs" / "SOCRATICODE.md")
+    assert commands, "docs/SOCRATICODE.md documents no capped command"
+    unbounded = [c for c in commands if "MemorySwapMax=0" not in c]
+    assert not unbounded, f"capped commands that can swap past their cap: {unbounded}"
+
+
 @live_host_only
 def test_the_swapfile_is_active():
     swaps = (PROC_FS / "swaps").read_text().splitlines()[1:]
