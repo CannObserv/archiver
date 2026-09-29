@@ -186,8 +186,36 @@ sudo shred -u /run/ts.key
 **Shred outside `set -euo pipefail`, or shred before you can fail.** During
 #193's provisioning `tailscale up` exited non-zero on an SSH-ACL *warning*, the
 script aborted under `-e`, and the shred never ran - leaving the auth key in
-`/exe.dev/setup` and in journald. `--setup-script` runs once at first boot and
-cannot be re-run, so the cleanup has to be unconditional.
+`/exe.dev/setup` and in journald. The cleanup has to be unconditional.
+
+**The setup script is not first-boot-only**, whatever `exe-setup.service`'s
+description says. `new --setup-script` cannot be re-run on demand, but exe.dev
+puts `/exe.dev/setup` back before **every** boot, and the unit is gated only on
+`ConditionPathExists=/exe.dev/setup` (#284, CannObserv/replicator#122). Here it
+ran on all four boots journald retained through 2026-09-29 (09-04, 09-08, 09-09,
+09-26), each `Result=success`: `systemctl enable --now tailscaled`, `tailscale up
+--auth-key=file:… --hostname=archiver --ssh`, then both `shred` and the unit's
+`rm`. So:
+
+- **An absent file is not evidence of cleanup** - it is back at the next boot.
+  Shredding it removes only the current copy.
+- **Revoking the key is the only step that lasts.** It is the one thing that
+  covers the copy re-delivered each boot, exe.dev's stored script and every
+  transcript at once. A re-join succeeding on an already-registered node proves
+  nothing about the key: the node does not need it.
+- **The script must stay harmless to re-run**: every boot re-applies its
+  `tailscale up` flags. Leave `exe-setup.service` itself alone - it is exe.dev's.
+
+Check it read-only - pattern names and counts, never a value:
+
+```bash
+systemctl show exe-setup.service -p ConditionResult,Result   # yes = a script was delivered this boot
+sudo journalctl -u exe-setup.service -o cat --no-pager | grep -c 'Failed with result'
+sudo journalctl -u exe-setup.service --no-pager | grep -cE 'tskey-|ghp_|github_pat_|PRIVATE KEY'
+```
+
+A whole-journal count for `tskey-` also matches sudo's audit line for any
+`sudo grep 'tskey-…'` run to look for it - including that check itself.
 
 **Tags bind at device registration.** Re-authenticating an existing node with a
 differently-tagged key does *not* retag it - `tailscale up --reset` leaves the
