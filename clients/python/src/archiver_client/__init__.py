@@ -3,7 +3,8 @@
 Versioned independently of the Archiver service. See README for usage.
 """
 
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _dist_version
 
 from archiver_client.client import ArchiverClient
 from archiver_client.defaults import (
@@ -35,8 +36,8 @@ from archiver_client.tools import ValidationResult
 # Read from the installed distribution, never a literal: a literal sat at 5.0.0
 # through seven SDK releases (archiver#248).
 try:
-    __version__ = version("archiver-client")
-except PackageNotFoundError:  # pragma: no cover - source tree without an install
+    __version__ = _dist_version("archiver-client")
+except _PackageNotFoundError:  # pragma: no cover - source tree without an install
     __version__ = "0+unknown"
 
 __all__ = [
