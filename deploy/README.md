@@ -8,6 +8,9 @@ Systemd units for the Archiver VM.
 | `archiver-bus-health.service` | service (oneshot) | One WARN-only tick of the **outbox** probe: depth, oldest-unpublished age, dead-lettered count (#130, reduced by #193). Never blocks anything; see *Outbox health timer* below. |
 | `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
 | `needrestart.conf.d/archiver.conf` | needrestart drop-in | `$nrconf{restart} = 'l'`: apt's hook lists restarts and never performs them, so a security update cannot restart Postgres or archiver mid-apply (#278). Install with `sudo install -m 644 deploy/needrestart.conf.d/archiver.conf /etc/needrestart/conf.d/`. |
+| `99-archiver-memory.conf` | sysctl drop-in | `vm.min_free_kbytes = 65536`: the atomic-allocation reserve no cgroup setting can provide (#237). See *Host memory posture*. |
+| `system.slice.d/10-memory-protection.conf`, `system-postgresql.slice.d/10-memory-protection.conf` | slice drop-ins | The `MemoryLow=` grants without which a unit's own floor is inert (#237). |
+| `postgresql@16-main.service.d/10-memory.conf` | service drop-in | Postgres's `MemoryLow=` floor (#237). |
 
 **The broker is not deployed from this repo.** The broker's tuning (now
 `CannObserv/broker:deploy/redis.conf.broker`), its parity test, and the
@@ -21,6 +24,50 @@ It left here as `redis-server.dropin.conf` and did not survive the move under
 that name: on the dedicated node the tuning is appended to `redis.conf`
 (broker#1 Phase 5, archiver#196), and the drop-in slot carries unit ordering
 only.
+
+
+## Host memory posture (archiver#237)
+
+This VM is 3.8 GiB with **no swap**, and runs `archiver.service`, Postgres and
+interactive agent sessions on one kernel. Sessions inherit `oom_score_adj`
+**-1000** (measured 2026-09-28), so no killer can take one: under real
+exhaustion the production service goes instead, and past the ceiling the
+kernel fails atomic allocations in unrelated processes - how CannObserv/broker
+lost its bus for 57m 48s on 2026-09-16 (gregoryfoster/skills#295). Four parts,
+none a substitute for another:
+
+| Part | Where | Why |
+|---|---|---|
+| Pin the SocratiCode server | `~/.socraticode/pin`, `SOCRATICODE_SPEC` | Removes the 1.2 G install-at-launch peak; see `docs/SOCRATICODE.md` |
+| Reserve | `MemoryLow=` on `archiver.service` (256M) and postgres (320M), granted on `system.slice` (576M) and `system-postgresql.slice` (320M) | Keeps the working sets resident under reclaim. The slice grants are load-bearing: this cgroup2 mount has no `memory_recursiveprot` and `system.slice` ships 0 |
+| Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on postgres | Behind everything killable, never -1000 |
+| Kernel reserve | `vm.min_free_kbytes = 65536` (default here: 7999) | The only buffer for atomic allocations on a swapless host |
+
+**earlyoom is declined.** It skips a -1000 process exactly as the kernel does,
+so its `--prefer` reaches nothing in a session here; it would only shed small
+adj-0 daemons (`tailscaled` among them) sooner. watcher (#323) and replicator
+declined it on the same reading. `tests/deploy/test_memory_reservation.py` pins
+the -1000 premise live - if a session ever reads 0, revisit.
+
+Install, or restore after a rebuild:
+
+```bash
+sudo install -m 644 deploy/99-archiver-memory.conf /etc/sysctl.d/
+sudo sysctl --system
+for d in system.slice.d system-postgresql.slice.d postgresql@16-main.service.d; do
+  sudo install -D -m 644 "deploy/$d/"*.conf -t "/etc/systemd/system/$d/"
+done
+sudo cp deploy/archiver.service /etc/systemd/system/
+sudo systemctl daemon-reload          # applies every MemoryLow=, restarts nothing
+sudo systemctl restart archiver       # OOMScoreAdjust= applies at start
+```
+
+**Verify the effective protection, never `systemctl show`.** A unit keeps at
+most the smallest `memory.low` on its way up; the live tests in
+`tests/deploy/test_memory_reservation.py` walk the real `ControlGroup` and read
+the MainPID's `oom_score_adj`, and skip on any other host. Re-size a floor when
+its unit's `memory.peak` outgrows it, and keep each slice's grant at exactly the
+sum of its children's.
 
 ## cannobserv wheelhouse (archiver#72/#75)
 
