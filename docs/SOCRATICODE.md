@@ -282,7 +282,7 @@ only, and a scope's `memory.swap.max` defaults to unlimited, so with the host's
 2026-09-29: 200 MB under `MemoryMax=64M` ran to completion; adding
 `MemorySwapMax=0` killed it (exit 137). Every capped command in this doc carries
 it. The daily health hook's default cap (`SOCRATICODE_HEALTH_CAP`) does not yet -
-that default is gregoryfoster/skills'.
+that default is gregoryfoster/skills', tracked on gregoryfoster/skills#340.
 
 `choom -n 500` was load-bearing while sessions inherited `oom_score_adj`
 **-1000** (measured 2026-09-28, archiver#237): without it no killer could take
