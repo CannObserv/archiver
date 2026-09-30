@@ -29,10 +29,12 @@ and on a key no consumer ever held it is a tombstone the full set would then
 republish every period (archiver#167). It is *not* visible drift: the panel
 renders ``not_watching`` for an unannounceable item, which carries none.
 
-**The binding path still re-tombstones.** ``announce_info_item`` tombstones an
-already-revoked item again - it cannot tell "was live" from "was already
-revoked" without persisting the last announcement's kind. Accepted churn for
-now: the snapshot republishes that tombstone every period anyway (archiver#293).
+**The binding path skips an already-revoked key too** (archiver#293). A binding
+or spec mutation *can* change announceability, so it cannot skip on the kind of
+write; it skips on the kind of the last announcement instead.
+``info_items.announced_revoked``, written in the same UPDATE as the bump, tells
+"was live, now isn't" (a tombstone is owed) from "was already revoked" (nothing
+changed). The snapshot keeps republishing the tombstone either way.
 
 **The generation bump is a single atomic UPDATE.** ``UPDATE … SET
 announcement_generation = announcement_generation + 1 RETURNING`` — never
@@ -105,13 +107,17 @@ def build_tombstone(*, info_item_id: ULID | str, generation: int) -> RegistryAnn
     )
 
 
-async def _bump_generation(session: AsyncSession, info_item_id: ULID) -> int | None:
+async def _bump_generation(
+    session: AsyncSession, info_item_id: ULID, *, revoked: bool
+) -> int | None:
     """Atomically increment and return the item's generation; None if no row.
 
     ``announced_at`` rides the same UPDATE (archiver#151): it is the drift
     detector's clock — "applied lags announced by 40m" needs to know when the
     announced generation went out, and ``changes_outbox.published_at`` is
     pruned on a retention window (archiver#189), so the stamp lives on the item.
+    ``announced_revoked`` rides it too (archiver#293), so the kind it records is
+    always the kind of the generation it sits beside.
     """
     return (
         await session.execute(
@@ -120,6 +126,7 @@ async def _bump_generation(session: AsyncSession, info_item_id: ULID) -> int | N
             .values(
                 announcement_generation=InfoItem.announcement_generation + 1,
                 announced_at=datetime.now(UTC),
+                announced_revoked=revoked,
             )
             .returning(InfoItem.announcement_generation)
         )
@@ -174,20 +181,22 @@ async def is_announceable(session: AsyncSession, info_item_id: ULID) -> bool:
     return source_is_announceable(await _active_source(session, info_item_id))
 
 
-async def _lock_generation(session: AsyncSession, info_item_id: ULID) -> int | None:
-    """Row-lock the item and read its generation; None if no row.
+async def _lock_generation(session: AsyncSession, info_item_id: ULID) -> tuple[int, bool] | None:
+    """Row-lock the item; read its generation and last announcement's kind.
 
-    Taken before announceability is read, so a concurrent binding or policy
-    write serializes behind it and the state read is the state announced - the
-    guarantee the bump-first ordering used to give for free.
+    None if no row. Taken before announceability is read, so a concurrent
+    binding or policy write serializes behind it and the state read is the
+    state announced - the guarantee the bump-first ordering used to give for
+    free.
     """
-    return (
+    row = (
         await session.execute(
-            select(InfoItem.announcement_generation)
+            select(InfoItem.announcement_generation, InfoItem.announced_revoked)
             .where(InfoItem.info_item_id == info_item_id)
             .with_for_update()
         )
-    ).scalar_one_or_none()
+    ).one_or_none()
+    return None if row is None else (row[0], row[1])
 
 
 def _add_outbox_row(session: AsyncSession, event: RegistryAnnouncementEmit) -> None:
@@ -221,18 +230,19 @@ async def announce_policy_change(session: AsyncSession, info_item_id: ULID) -> b
 
 
 async def _announce(session: AsyncSession, info_item_id: ULID, *, revoke: bool) -> bool:
-    current = await _lock_generation(session, info_item_id)
-    if current is None:
+    locked = await _lock_generation(session, info_item_id)
+    if locked is None:
         return False
+    current, already_revoked = locked
     source = await _active_source(session, info_item_id)
     announceable = source_is_announceable(source)
-    # Unannounceable and either never announced (no consumer knows the key) or
-    # a policy write (the key's announced state cannot have changed): nothing
-    # to say, and no generation to burn saying it.
-    if not announceable and (current == 0 or not revoke):
+    # Unannounceable and either never announced (no consumer knows the key), a
+    # policy write (the key's announced state cannot have changed), or already
+    # tombstoned (archiver#293): nothing to say, and no generation to burn.
+    if not announceable and (current == 0 or not revoke or already_revoked):
         return False
 
-    generation = await _bump_generation(session, info_item_id)
+    generation = await _bump_generation(session, info_item_id, revoked=not announceable)
     if announceable:
         item = (
             await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
@@ -249,8 +259,9 @@ async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) 
 
     ``info_item_sources`` has no uniqueness on ``info_source_id`` — one source
     can be the active primary for several items, and the announcement grain is
-    the item. Each gets its own generation bump. Returns the announcement
-    count (zero for a source nothing is bound to — a fresh create).
+    the item. Each gets its own generation bump. Returns the number of
+    announcements emitted — zero for a source nothing is bound to (a fresh
+    create), and skipped items (never announced, already revoked) don't count.
 
     Known scale ceiling (CR round 3, #14): this is N sequential
     announce_info_item calls — a locking SELECT, the source read, the UPDATE
@@ -272,9 +283,10 @@ async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) 
         .scalars()
         .all()
     )
+    emitted = 0
     for item_id in item_ids:
-        await announce_info_item(session, item_id)
-    return len(item_ids)
+        emitted += await _announce(session, item_id, revoke=True)
+    return emitted
 
 
 async def announce_info_item_revoked(session: AsyncSession, item: InfoItem) -> None:
@@ -286,7 +298,7 @@ async def announce_info_item_revoked(session: AsyncSession, item: InfoItem) -> N
     tombstones even a never-announced item — the row is about to not exist, so
     no later mutation can ever speak for this key again.
     """
-    generation = await _bump_generation(session, item.info_item_id)
+    generation = await _bump_generation(session, item.info_item_id, revoked=True)
     if generation is None:
         return
     session.add(RevokedInfoItem(info_item_id=item.info_item_id, generation=generation))

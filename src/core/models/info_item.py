@@ -67,6 +67,17 @@ class InfoItem(Base, TimestampMixin):
     pruned on a retention window (archiver#189), so the fact lives here. ``NULL``
     until the first bump; snapshots republish without touching it.
     """
+    announced_revoked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    """Whether the last delta announcement was a tombstone (archiver#293).
+
+    Written in the same atomic UPDATE as the bump - ``true`` for a tombstone,
+    ``false`` for a live announcement - so it always describes generation
+    ``announcement_generation``. The binding path reads it to skip re-tombstoning
+    a key that is already revoked: "was live, now isn't" owes a tombstone,
+    "was already revoked" does not. Meaningless at generation 0.
+    """
 
     __table_args__ = (
         Index(
