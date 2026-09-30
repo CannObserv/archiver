@@ -1284,8 +1284,11 @@ async def toggle_watch_active(
     item = await _resolve_item(item_id, session)
 
     # The template hides this button on an unannounceable item; the route
-    # enforces the same gate for a stale tab or a script (archiver#167). The
-    # re-render shows ``not_watching``, which corrects the stale tab.
+    # refuses too, for a stale tab or a script (archiver#167). The re-render
+    # shows ``not_watching``, which corrects the stale tab. This read is
+    # unlocked and only decides what the operator is told: enforcement is
+    # ``announce_policy_change``, which re-checks under the row lock, so a
+    # binding change landing between the two cannot announce anything wrong.
     if not await is_announceable(session, item.info_item_id):
         response = await _render_status_partial(request, session=session, item=item)
         response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _UNANNOUNCEABLE_FLASH))
@@ -1346,7 +1349,8 @@ async def set_watch_cadence(
     """
     item = await _resolve_item(item_id, session)
 
-    # Same server-side gate as pause/resume (archiver#167).
+    # Same server-side refusal as pause/resume, and likewise advisory: the
+    # service re-checks under the row lock (archiver#167).
     if not await is_announceable(session, item.info_item_id):
         response = await _render_watcher_section(request, session=session, item=item)
         response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _UNANNOUNCEABLE_FLASH))
