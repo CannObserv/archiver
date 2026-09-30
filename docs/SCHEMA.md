@@ -67,11 +67,12 @@ see the never-rename rule in `AGENTS.md`.
   both revoked lists by their own `> 0` guards, and lifting it would start a tombstone for a key
   no consumer has ever held. Those stay at `0` until first announceable; the delta path has not
   bumped an unannounceable row off `0` since archiver#167 (pre-#167 never-live rows at `1` stay,
-  already tombstoned there). The reason is the return leg: `info.watch-status` spells "never reconciled" as `applied_generation = 0`, so a
-  generation-0 *announcement* would make the wire value ambiguous and the #151 drift detector
-  read an unapplied item as clean. Reserved `0` in the DB (never announced) and a floor of 1 on
-  the wire are the two halves of that. A live snapshot entry at 0 is now logged as an anomaly —
-  it would mean an announceable item reached the snapshot without passing any announce site.
+  already tombstoned there). The reason is the return leg: `info.watch-status` spells "never
+  reconciled" as `applied_generation = 0`, so a generation-0 *announcement* would make the wire
+  value ambiguous and the #151 drift detector read an unapplied item as clean. Reserved `0` in
+  the DB (never announced) and a floor of 1 on the wire are the two halves of that. A live
+  snapshot entry at 0 is now logged as an anomaly — it would mean an announceable item reached
+  the snapshot without passing any announce site.
 
   `announced_at TIMESTAMPTZ NULL` (archiver#151) — when the generation last bumped, stamped in
   the same atomic UPDATE. The drift detector's clock: "applied lags announced by 40m" needs to
