@@ -245,9 +245,9 @@ async def test_policy_change_on_a_revoked_item_emits_nothing(session):
     deactivated (tombstone at gen 2), and a policy write arrives after.
 
     Policy cannot change announceability, so the key's announced state is
-    unchanged - still revoked. A second tombstone would burn a generation and
-    render as drift on the panel for an item where nothing is wrong. The next
-    binding announces live with whatever policy was written meanwhile.
+    unchanged - still revoked. A second tombstone would only burn a generation
+    and put churn on the wire. The next binding announces live with whatever
+    policy was written meanwhile.
     """
     item = await _make_item(session)
     await announce_info_item(session, item.info_item_id)  # gen 1, live

@@ -24,8 +24,10 @@ at 0, so ``> 0`` means "was announced" to the snapshot as well (archiver#167).
 **Policy writes announce through ``announce_policy_change``.** Pause and cadence
 cannot change announceability, so on an unannounceable item they leave the
 key's announced state exactly where it was: nothing to emit, no generation to
-burn. Re-tombstoning a revoked key on every stale-tab click would render as
-drift on the panel for an item where nothing is wrong (archiver#167).
+burn. Re-tombstoning a revoked key on every stale-tab click is pure wire churn,
+and on a key no consumer ever held it is a tombstone the full set would then
+republish every period (archiver#167). It is *not* visible drift: the panel
+renders ``not_watching`` for an unannounceable item, which carries none.
 
 **The generation bump is a single atomic UPDATE.** ``UPDATE … SET
 announcement_generation = announcement_generation + 1 RETURNING`` — never

@@ -1114,8 +1114,9 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
     # specs. Pause/resume and the cadence editor are both gated on it (CR round
     # 1 finding 3, round 2 finding 9), and since archiver#167 so are their
     # routes: mutating policy on an item that cannot announce *live* used to
-    # emit a **tombstone** and burn a generation — which then read as drift on
-    # this very panel, for an item where nothing is wrong.
+    # emit a **tombstone** and burn a generation. (That once read as drift on
+    # this panel; since archiver#142 an unannounceable item renders
+    # `not_watching`, which carries no drift, so the cost left is wire churn.)
     #
     # Since archiver#142 it also selects the panel's *state*: it is what "watched"
     # now means, the announced set being the whole of the contract with Watcher.
