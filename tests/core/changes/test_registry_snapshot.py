@@ -299,7 +299,7 @@ async def test_a_live_entry_at_generation_zero_is_published_and_reported(
 ):
     """Generation 0 must not reach the wire as a live announcement (archiver#161).
 
-    The delta path cannot produce one — ``_bump_generation`` increments before
+    The delta path cannot produce one — ``_bump_generations`` increments before
     the payload is built, so its floor is 1. Only the snapshot can, by reading a
     row that never passed an announce site: pre-``f5c522f65657`` rows carrying
     the column's ``server_default`` of 0. The backfill migration removes that
