@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 
 import pytest
 from co_core.pure.adapters.bus.envelope import payload_from_dict, to_wire
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
@@ -494,6 +494,87 @@ async def test_fan_out_announces_every_item_actively_bound_to_the_source(session
     announced = {r.payload["info_item_id"] for r in rows}
     assert announced == {str(i.info_item_id) for i in items}
     assert all(r.payload["generation"] == 1 for r in rows)
+
+
+async def _fan_out_statements(session, test_engine, *, items: int) -> int:
+    """Statements ``announce_for_info_source`` issues over ``items`` bound items."""
+    source = InfoSource(url=f"https://example.test/{ULID()}", source_specs=_SPECS)
+    session.add(source)
+    await session.flush()
+    for n in range(items):
+        item = InfoItem(name=f"fan-{n}")
+        session.add(item)
+        await session.flush()
+        session.add(
+            InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+        )
+    await session.flush()
+
+    statements = 0
+
+    def _count(*_args) -> None:
+        nonlocal statements
+        statements += 1
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _count)
+    try:
+        assert await announce_for_info_source(session, source.info_source_id) == items
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _count)
+    return statements
+
+
+@pytest.mark.asyncio
+async def test_fan_out_round_trips_do_not_grow_with_the_item_count(session, test_engine):
+    """One spec edit on a source backing O(10^3) items was ~4k sequential
+    round-trips inside one transaction (CR round 3, #14). The batch form locks,
+    reads, bumps and hydrates the whole set in a fixed number of statements."""
+    one = await _fan_out_statements(session, test_engine, items=1)
+    many = await _fan_out_statements(session, test_engine, items=5)
+
+    assert many == one
+
+
+@pytest.mark.asyncio
+async def test_fan_out_judges_each_item_on_its_own_announced_state(session):
+    """One pass, three outcomes. A spec edit that empties the source's list
+    tombstones the item that was live on it, and skips both the item already
+    revoked and the item never announced."""
+    source = InfoSource(url="https://example.test/mixed", source_specs=_SPECS)
+    session.add(source)
+    await session.flush()
+    was_live = InfoItem(name="was-live")
+    never = InfoItem(name="never")
+    session.add_all([was_live, never])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=was_live.info_item_id, info_source_id=source.info_source_id)
+    )
+    await session.flush()
+    await announce_info_item(session, was_live.info_item_id)  # live, gen 1
+    revoked = await _revoked_item(session)  # gen 2, tombstone
+
+    source.source_specs = []
+    for item in (revoked, never):
+        session.add(
+            InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+        )
+    await session.flush()
+    rows_before = len(await _outbox_rows(session))
+
+    assert await announce_for_info_source(session, source.info_source_id) == 1
+
+    rows = await _outbox_rows(session)
+    assert len(rows) == rows_before + 1
+    (tombstone,) = [
+        r
+        for r in rows
+        if r.payload["info_item_id"] == str(was_live.info_item_id) and r.payload["revoked"]
+    ]
+    assert tombstone.payload["generation"] == 2
+    assert await _generation(session, was_live.info_item_id) == 2
+    assert await _generation(session, revoked.info_item_id) == 2
+    assert await _generation(session, never.info_item_id) == 0
 
 
 @pytest.mark.asyncio
