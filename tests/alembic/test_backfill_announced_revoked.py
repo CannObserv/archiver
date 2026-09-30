@@ -112,14 +112,14 @@ async def test_a_deactivated_binding_does_not_count_as_live(test_engine, session
     """``deactivated_at`` is the snapshot's own liveness test."""
     async with session_factory() as s:
         item = await _item(s, "detached", generation=2, specs=_SPECS)
-        binding = await s.execute(
+        result = await s.execute(
             text(
                 "UPDATE information.info_item_sources SET deactivated_at = :now"
                 " WHERE info_item_id = :id"
             ),
             {"now": datetime.now(UTC), "id": str(item.info_item_id)},
         )
-        assert binding.rowcount == 1
+        assert result.rowcount == 1
         await s.commit()
 
     await _run_upgrade(test_engine)
