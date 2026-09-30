@@ -214,8 +214,10 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                (each skips when absent, so CI passes) — and the
                                needrestart drop-in against the live config chain
                                (archiver#278; asserts only on the archiver host),
-                               the memory reservation's effective protection and
-                               the SocratiCode server pin (archiver#237; live
+                               the memory reservation's effective protection,
+                               the swapfile and swappiness, every capped command
+                               in docs/SOCRATICODE.md bounding swap (archiver#286)
+                               and the SocratiCode server pin (archiver#237; live
                                halves skip off-host). The redis-server
                                drop-in and its parity test left with the broker
                                (archiver#193 D6 → CannObserv/broker); the LIVE broker
@@ -247,7 +249,8 @@ deploy/                        README.md (install instructions) + systemd units:
                                needrestart.conf.d/archiver.conf (list restarts, never
                                perform them; archiver#278) +
                                the memory reservation (archiver#237):
-                               99-archiver-memory.conf (sysctl),
+                               99-archiver-memory.conf (sysctl; vm.swappiness for
+                               the 4 G /swapfile, archiver#286),
                                system.slice.d/, system-postgresql.slice.d/,
                                postgresql@16-main.service.d/ +
                                the OOM order of the tail (archiver#285):

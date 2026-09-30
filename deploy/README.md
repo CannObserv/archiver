@@ -8,7 +8,7 @@ Systemd units for the Archiver VM.
 | `archiver-bus-health.service` | service (oneshot) | One WARN-only tick of the **outbox** probe: depth, oldest-unpublished age, dead-lettered count (#130, reduced by #193). Never blocks anything; see *Outbox health timer* below. |
 | `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
 | `needrestart.conf.d/archiver.conf` | needrestart drop-in | `$nrconf{restart} = 'l'`: apt's hook lists restarts and never performs them, so a security update cannot restart Postgres or archiver mid-apply (#278). Install with `sudo install -m 644 deploy/needrestart.conf.d/archiver.conf /etc/needrestart/conf.d/`. |
-| `99-archiver-memory.conf` | sysctl drop-in | `vm.min_free_kbytes = 65536`: the atomic-allocation reserve no cgroup setting can provide (#237). See *Host memory posture*. |
+| `99-archiver-memory.conf` | sysctl drop-in | `vm.min_free_kbytes = 65536`: the atomic-allocation reserve no cgroup setting can provide (#237). `vm.swappiness = 10`: the 4 G swapfile is a last resort (#286). See *Host memory posture*. |
 | `system.slice.d/10-memory-protection.conf`, `system-postgresql.slice.d/10-memory-protection.conf` | slice drop-ins | The `MemoryLow=` grants without which a unit's own floor is inert (#237). |
 | `postgresql@16-main.service.d/10-memory.conf` | service drop-in | Postgres's `MemoryLow=` floor (#237). |
 | `tailscaled.service.d/10-oom.conf` | service drop-in | `OOMScoreAdjust=-400`: after the sessions, before archiver (#285). See *Host memory posture*. |
@@ -28,35 +28,41 @@ that name: on the dedicated node the tuning is appended to `redis.conf`
 only.
 
 
-## Host memory posture (archiver#237)
+## Host memory posture (archiver#237, archiver#286)
 
-This VM is 3.8 GiB with **no swap**, and runs `archiver.service`, Postgres and
-interactive agent sessions on one kernel. Sessions read `oom_score_adj` **0**
-(measured 2026-09-29, after `exe-init` 14fd603 replaced a build that started
-them at -1000, archiver#285), so a killer *can* take one, and
-`OOMScoreAdjust=` below is what puts it ahead of the production service. Past
-the ceiling the kernel fails atomic allocations in unrelated processes instead -
-how CannObserv/broker lost its bus for 57m 48s on 2026-09-16
-(gregoryfoster/skills#295). Five parts, none a substitute for another:
+This VM is 7.7 GiB with a 4 G swapfile on a 30 GB disk (resized 2026-09-29,
+archiver#286; 3.8 GiB and no swap before), and runs `archiver.service`, Postgres
+and interactive agent sessions on one kernel. The RAM is headroom, not immunity:
+broker was already 8 GiB when it lost its bus. Sessions read `oom_score_adj`
+**0** (measured 2026-09-29, after `exe-init` 14fd603 replaced a build that
+started them at -1000, archiver#285; unchanged across the #286 reboot), so a
+killer *can* take one, and `OOMScoreAdjust=` below is what puts it ahead of the
+production service. An atomic allocation cannot wait for swap, so past the
+reserve the kernel fails one in an unrelated process instead - how
+CannObserv/broker lost its bus for 57m 48s on 2026-09-16
+(gregoryfoster/skills#295). Six parts, none a substitute for another:
 
 | Part | Where | Why |
 |---|---|---|
 | Pin the SocratiCode server | `~/.socraticode/pin`, `SOCRATICODE_SPEC` | Removes the 1.2 G install-at-launch peak; see `docs/SOCRATICODE.md` |
 | Reserve | `MemoryLow=` on `archiver.service` (256M) and postgres (320M), granted on `system.slice` (576M) and `system-postgresql.slice` (320M) | Keeps the working sets resident under reclaim. The slice grants are load-bearing: this cgroup2 mount has no `memory_recursiveprot` and `system.slice` ships 0 |
 | Deprioritise | `OOMScoreAdjust=-500` on `archiver.service`; Debian's -900 on the postmaster (its children: *Order the tail*) | Behind everything killable, never -1000 |
-| Kernel reserve | `vm.min_free_kbytes = 65536` (default here: 7999) | The only buffer for atomic allocations on a swapless host |
+| Kernel reserve | `vm.min_free_kbytes = 65536` (kernel default here: ~11 MB, computed) | The only buffer for atomic allocations, which cannot wait for swap. The cohort's absolute figure, not a share of RAM (CannObserv/replicator#99) |
+| Swap | 4 G `/swapfile`, `vm.swappiness = 10` | Gives reclaim a slow path for anonymous pages instead of a hard ceiling. Reclaim weighs anonymous pages against cache 10:190 (60:140 at the default; classic LRU, multi-gen LRU is off here), so anonymous memory is scanned ~1/19 as hard - some swap use is expected, not a symptom; replicator's figures (CannObserv/replicator#99) |
 | Order the tail | `OOMScoreAdjust=-400` on `tailscaled`; `PG_OOM_ADJUST_VALUE = -500` for postgres's children | Both sat at 0, level with the sessions. The kernel takes sessions and small daemons (0, the largest first), then the tunnel, then production |
 
 **earlyoom is declined, measured at 0 (#285).** With sessions at 0 the kernel
 already takes a session first: on 2026-09-29 the kernel's order, earlyoom's
 package defaults and a tuned `--prefer`/`--avoid` all named the same first
 victim, a session `MainThread` (470 MiB). What earlyoom changed was timing - it
-killed at 10-12% available (391-469 MiB), page cache the kernel reclaims before
-it kills anything - and, tuned, a protected tail, which the kernel honours from
-`OOMScoreAdjust=` directly. Memory PSI read 0 and no boot since 09-04 logged an
-OOM or an allocation failure. The comparison is on #285; it matches
-CannObserv/power-map#588. (#237 declined it at -1000 for a different reason: it
-skips a -1000 process as the kernel does.)
+killed at 10-12% available (391-469 MiB, at 3.8 GiB), page cache the kernel
+reclaims before it kills anything - and, tuned, a protected tail, which the
+kernel honours from `OOMScoreAdjust=` directly. Memory PSI read 0 and no boot
+since 09-04 logged an OOM or an allocation failure. The comparison is on #285;
+it matches CannObserv/power-map#588. (#237 declined it at -1000 for a different
+reason: it skips a -1000 process as the kernel does.) If it is ever
+reconsidered, swap is now present, so it needs `-s 100,100`: the default `-s 10`
+waits until swap is ~90% used (host-memory.md section 4).
 
 **Postgres's children take their score from the cluster, not systemd.**
 Debian's unit gives the postmaster -900 and sets `PG_OOM_ADJUST_FILE`, so each
@@ -73,6 +79,10 @@ reads -1000 again, the kernel can no longer take one - check
 Install, or restore after a rebuild:
 
 ```bash
+# Create once: mkswap on a live swapfile rewrites the header the kernel is using
+[ -e /swapfile ] || { sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile; }
+swapon --show=NAME --noheadings | grep -qx /swapfile || sudo swapon /swapfile
+grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 sudo install -m 644 deploy/99-archiver-memory.conf /etc/sysctl.d/
 sudo sysctl --system
 for d in system.slice.d system-postgresql.slice.d postgresql@16-main.service.d tailscaled.service.d; do
