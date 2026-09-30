@@ -18,6 +18,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.22.0 (2026-09-30)
+
+[service] **Binding and spec writes no longer re-tombstone an already-revoked item, and the source fan-out is one batch** (archiver#293). Adds one column; no route, schema or SDK surface change, so `archiver-client` stays at 5.7.0. The OpenAPI snapshot changes only in `info.version`.
+
+- **Migrations `b7e2d94c1a38` + `d3f9a6b8e015`:** add `info_items.announced_revoked BOOLEAN NOT NULL DEFAULT false`, then backfill `true` on every row the snapshot currently tombstones (announced, and with no active binding to a source with non-empty `source_specs`). Run `uv run alembic upgrade head` before restarting.
+- **`info.registry` deltas:** binding a spec-less source to a revoked item, deactivating or swapping a spec-less binding, or re-saving empty `source_specs` used to send another tombstone and burn a generation per item. They now emit nothing. Only a live-to-revoked transition tombstones. This is the #167 fix for policy writes, extended to the binding path. The hourly full set still republishes every tombstone.
+- **`PATCH /info-sources/{id}/source-specs` fan-out** (and the dashboard spec editor) announces every item the source backs in a fixed five statements, instead of four per item. Row locks are taken in id order, so two overlapping fan-outs cannot deadlock.
+
 ## v4.21.2 (2026-09-30)
 
 [service] **Policy writes on an unannounceable item no longer announce** (archiver#167). No schema or SDK surface change; `archiver-client` stays at 5.7.0, and the regenerated SDK changes only in two docstrings.

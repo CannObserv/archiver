@@ -80,6 +80,13 @@ see the never-rename rule in `AGENTS.md`.
   retention window (archiver#189), so the fact lives here. `NULL` until the first bump (including
   rows that predate the column); the panel then shows drift without an age.
 
+  `announced_revoked BOOLEAN NOT NULL DEFAULT false` (archiver#293) — whether the last delta
+  announcement was a tombstone, set in the same UPDATE as the bump, so it always describes the
+  current generation. The binding path skips an unannounceable item whose flag is already `true`:
+  the key is revoked and nothing changed, so a second tombstone would only burn a generation.
+  Migration `d3f9a6b8e015` backfilled `true` on exactly the rows the snapshot tombstones
+  (`> 0`, no active binding to a source with non-empty `source_specs`). Meaningless at `0`.
+
   **Deletion — use `DELETE /info-items/{id}`, never psql** (archiver#141). An InfoItem's exit
   from the registry is announced as a `revoked: true` tombstone, and that tombstone must be
   written to `changes_outbox` in the deletion's own transaction. Raw SQL cannot do that, so a
