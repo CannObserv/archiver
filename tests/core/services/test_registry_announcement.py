@@ -284,6 +284,112 @@ async def test_policy_change_on_a_missing_item_is_a_silent_no_op(session):
     assert await _outbox_rows(session) == []
 
 
+async def _revoked_item(session) -> InfoItem:
+    """An item announced live (gen 1), then unbound: tombstoned at gen 2."""
+    item = await _make_item(session)
+    await announce_info_item(session, item.info_item_id)
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+    await announce_info_item(session, item.info_item_id)
+    return item
+
+
+async def _bind_new_source(session, item: InfoItem, *, specs: list) -> InfoSource:
+    source = InfoSource(url=f"https://example.test/{ULID()}", source_specs=specs)
+    session.add(source)
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    await session.flush()
+    return source
+
+
+@pytest.mark.asyncio
+async def test_binding_mutation_on_an_already_revoked_item_emits_nothing(session):
+    """archiver#293: binding a spec-less source leaves a revoked item revoked.
+
+    The key's announced state is unchanged, so a second tombstone would only
+    burn a generation - the same churn #167 removed for policy writes, reached
+    through the binding path. The snapshot keeps republishing the tombstone.
+    """
+    item = await _revoked_item(session)
+
+    await _bind_new_source(session, item, specs=[])
+    await announce_info_item(session, item.info_item_id)
+
+    assert len(await _outbox_rows(session)) == 2
+    assert await _generation(session, item.info_item_id) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_live_announcement_rearms_the_tombstone(session):
+    """The skip keys on the *last announcement's kind*, not on history.
+
+    Revoked, skipped, then bound live (gen 3): the key is live again, so losing
+    the binding once more is a real transition and owes a tombstone (gen 4).
+    """
+    item = await _revoked_item(session)
+    await _bind_new_source(session, item, specs=[])
+    await announce_info_item(session, item.info_item_id)  # skipped
+
+    live_binding = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    live_binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+    await _bind_new_source(session, item, specs=_SPECS)
+    await announce_info_item(session, item.info_item_id)  # live, gen 3
+
+    (binding,) = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalars()
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+    await announce_info_item(session, item.info_item_id)  # revoked, gen 4
+
+    rows = sorted(await _outbox_rows(session), key=lambda r: r.payload["generation"])
+    assert [r.payload["generation"] for r in rows] == [1, 2, 3, 4]
+    assert [r.payload["revoked"] for r in rows] == [False, True, False, True]
+
+
+@pytest.mark.asyncio
+async def test_fan_out_over_already_revoked_items_emits_nothing(session):
+    """archiver#293's multiplying path: re-saving empty specs on a spec-less
+    source used to tombstone every revoked item it backs, once per save."""
+    first = await _revoked_item(session)
+    second = await _revoked_item(session)
+    specless = InfoSource(url="https://example.test/shared-specless", source_specs=[])
+    session.add(specless)
+    await session.flush()
+    for item in (first, second):
+        session.add(
+            InfoItemSource(info_item_id=item.info_item_id, info_source_id=specless.info_source_id)
+        )
+    await session.flush()
+
+    assert await announce_for_info_source(session, specless.info_source_id) == 0
+
+    assert len(await _outbox_rows(session)) == 4
+    assert await _generation(session, first.info_item_id) == 2
+    assert await _generation(session, second.info_item_id) == 2
+
+
 @pytest.mark.asyncio
 async def test_is_announceable_follows_the_active_binding_and_its_specs(session):
     bound = await _make_item(session, name="bound")
