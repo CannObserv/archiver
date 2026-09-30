@@ -248,11 +248,12 @@ async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) 
     count (zero for a source nothing is bound to — a fresh create).
 
     Known scale ceiling (CR round 3, #14): this is N sequential
-    announce_info_item calls — an UPDATE plus two SELECTs each — inside one
+    announce_info_item calls — a locking SELECT, the source read, the UPDATE
+    and the item read each (archiver#167 added the lock) — inside one
     transaction, holding N row locks. Nothing at O(10) items; a spec edit on a
-    source backing O(10^3) becomes ~3k round-trips. The batch rewrite (one
-    UPDATE ... RETURNING over the id set, one joined SELECT) belongs here when
-    the corpus gets there.
+    source backing O(10^3) becomes ~4k round-trips. The batch rewrite (one
+    ``SELECT ... FOR UPDATE`` and one UPDATE ... RETURNING over the id set, one
+    joined SELECT) belongs here when the corpus gets there.
     """
     item_ids = (
         (
