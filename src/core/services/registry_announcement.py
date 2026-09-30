@@ -200,9 +200,9 @@ async def announce_info_item(session: AsyncSession, info_item_id: ULID) -> None:
     with the final state. Two calls in one flow would emit revoked-then-live
     and the consumer would destroy and recreate its row, losing local state.
 
-    Silent no-op when the item does not exist (deletion has its own path) and
+    Silent no-op when the item does not exist (deletion has its own path),
     when an unannounceable item has never been announced — without a bump, so
-    its generation stays 0.
+    its generation stays 0 — and when it is already revoked (archiver#293).
     """
     await _announce_many(session, [info_item_id], revoke=True)
 
