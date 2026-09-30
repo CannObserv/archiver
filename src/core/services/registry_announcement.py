@@ -57,6 +57,7 @@ snapshot's full-set republish must keep tombstoning the key — absence from a
 snapshot is deliberately *not* the delete signal.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from co_core.pure.adapters.bus.streams import INFO_REGISTRY
@@ -107,30 +108,36 @@ def build_tombstone(*, info_item_id: ULID | str, generation: int) -> RegistryAnn
     )
 
 
-async def _bump_generation(
-    session: AsyncSession, info_item_id: ULID, *, revoked: bool
-) -> int | None:
-    """Atomically increment and return the item's generation; None if no row.
+async def _bump_generations(
+    session: AsyncSession, *, live: Sequence[ULID], tombstoned: Sequence[ULID]
+) -> dict[ULID, int]:
+    """Atomically increment each item's generation; returns the new one per id.
 
-    ``announced_at`` rides the same UPDATE (archiver#151): it is the drift
-    detector's clock — "applied lags announced by 40m" needs to know when the
-    announced generation went out, and ``changes_outbox.published_at`` is
-    pruned on a retention window (archiver#189), so the stamp lives on the item.
-    ``announced_revoked`` rides it too (archiver#293), so the kind it records is
-    always the kind of the generation it sits beside.
+    One ``UPDATE … RETURNING`` over the whole set; ids with no row are simply
+    absent from the result. ``announced_at`` rides the same statement
+    (archiver#151): it is the drift detector's clock — "applied lags announced
+    by 40m" needs to know when the announced generation went out, and
+    ``changes_outbox.published_at`` is pruned on a retention window
+    (archiver#189), so the stamp lives on the item. ``announced_revoked`` rides
+    it too (archiver#293), set per row from which list the id is in, so the kind
+    it records is always the kind of the generation beside it.
     """
-    return (
-        await session.execute(
-            update(InfoItem)
-            .where(InfoItem.info_item_id == info_item_id)
-            .values(
-                announcement_generation=InfoItem.announcement_generation + 1,
-                announced_at=datetime.now(UTC),
-                announced_revoked=revoked,
+    return dict(
+        (
+            await session.execute(
+                update(InfoItem)
+                .where(InfoItem.info_item_id.in_([*live, *tombstoned]))
+                .values(
+                    announcement_generation=InfoItem.announcement_generation + 1,
+                    announced_at=datetime.now(UTC),
+                    announced_revoked=InfoItem.info_item_id.in_(tombstoned),
+                )
+                .returning(InfoItem.info_item_id, InfoItem.announcement_generation)
             )
-            .returning(InfoItem.announcement_generation)
         )
-    ).scalar_one_or_none()
+        .tuples()
+        .all()
+    )
 
 
 async def _active_source(session: AsyncSession, info_item_id: ULID) -> InfoSource | None:
@@ -181,24 +188,6 @@ async def is_announceable(session: AsyncSession, info_item_id: ULID) -> bool:
     return source_is_announceable(await _active_source(session, info_item_id))
 
 
-async def _lock_generation(session: AsyncSession, info_item_id: ULID) -> tuple[int, bool] | None:
-    """Row-lock the item; read its generation and last announcement's kind.
-
-    None if no row. Taken before announceability is read, so a concurrent
-    binding or policy write serializes behind it and the state read is the
-    state announced - the guarantee the bump-first ordering used to give for
-    free.
-    """
-    row = (
-        await session.execute(
-            select(InfoItem.announcement_generation, InfoItem.announced_revoked)
-            .where(InfoItem.info_item_id == info_item_id)
-            .with_for_update()
-        )
-    ).one_or_none()
-    return None if row is None else (row[0], row[1])
-
-
 def _add_outbox_row(session: AsyncSession, event: RegistryAnnouncementEmit) -> None:
     session.add(ChangesOutboxRow(topic=INFO_REGISTRY_TOPIC, payload=event.model_dump(mode="json")))
 
@@ -215,7 +204,7 @@ async def announce_info_item(session: AsyncSession, info_item_id: ULID) -> None:
     when an unannounceable item has never been announced — without a bump, so
     its generation stays 0.
     """
-    await _announce(session, info_item_id, revoke=True)
+    await _announce_many(session, [info_item_id], revoke=True)
 
 
 async def announce_policy_change(session: AsyncSession, info_item_id: ULID) -> bool:
@@ -226,32 +215,90 @@ async def announce_policy_change(session: AsyncSession, info_item_id: ULID) -> b
     item's key stays where it was (revoked, or unknown to every consumer), and
     the next binding announces live with the policy written meanwhile.
     """
-    return await _announce(session, info_item_id, revoke=False)
+    return await _announce_many(session, [info_item_id], revoke=False) > 0
 
 
-async def _announce(session: AsyncSession, info_item_id: ULID, *, revoke: bool) -> bool:
-    locked = await _lock_generation(session, info_item_id)
-    if locked is None:
-        return False
-    current, already_revoked = locked
-    source = await _active_source(session, info_item_id)
-    announceable = source_is_announceable(source)
-    # Unannounceable and either never announced (no consumer knows the key), a
-    # policy write (the key's announced state cannot have changed), or already
-    # tombstoned (archiver#293): nothing to say, and no generation to burn.
-    if not announceable and (current == 0 or not revoke or already_revoked):
-        return False
+async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, revoke: bool) -> int:
+    """Announce each item's current state; returns how many announcements went out.
 
-    generation = await _bump_generation(session, info_item_id, revoked=not announceable)
-    if announceable:
-        item = (
-            await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
-        ).scalar_one()
-        event = build_live_announcement(item=item, source=source, generation=generation)
-    else:
-        event = build_tombstone(info_item_id=info_item_id, generation=generation)
-    _add_outbox_row(session, event)
-    return True
+    The one emit path, for a single item and a fan-out alike, in a fixed number
+    of statements however many items: lock, read the active sources, bump, and
+    hydrate the live items (CR round 3, #14). Missing ids are skipped silently.
+
+    The lock comes first, so a concurrent binding or policy write serializes
+    behind it and the state read is the state announced. It is taken in id
+    order: two fan-outs over overlapping item sets acquire their row locks in
+    the same sequence, so neither can hold one the other is waiting on.
+    """
+    if not item_ids:
+        return 0
+    locked = (
+        await session.execute(
+            select(
+                InfoItem.info_item_id,
+                InfoItem.announcement_generation,
+                InfoItem.announced_revoked,
+            )
+            .where(InfoItem.info_item_id.in_(item_ids))
+            .order_by(InfoItem.info_item_id)
+            .with_for_update()
+        )
+    ).all()
+    if not locked:
+        return 0
+    sources = dict(
+        (
+            await session.execute(
+                select(InfoItemSource.info_item_id, InfoSource)
+                .join(InfoSource, InfoSource.info_source_id == InfoItemSource.info_source_id)
+                .where(
+                    InfoItemSource.info_item_id.in_([row[0] for row in locked]),
+                    InfoItemSource.deactivated_at.is_(None),
+                )
+            )
+        )
+        .tuples()
+        .all()
+    )
+
+    live: list[ULID] = []
+    tombstoned: list[ULID] = []
+    for info_item_id, current, already_revoked in locked:
+        if source_is_announceable(sources.get(info_item_id)):
+            live.append(info_item_id)
+        # Unannounceable and never announced (no consumer knows the key), a
+        # policy write (the key's announced state cannot have changed), or
+        # already tombstoned (archiver#293): nothing to say, no generation to
+        # burn. Otherwise the key was live and a tombstone is owed.
+        elif current > 0 and revoke and not already_revoked:
+            tombstoned.append(info_item_id)
+    if not live and not tombstoned:
+        return 0
+
+    generations = await _bump_generations(session, live=live, tombstoned=tombstoned)
+    items = (
+        {
+            item.info_item_id: item
+            for item in (
+                await session.execute(select(InfoItem).where(InfoItem.info_item_id.in_(live)))
+            ).scalars()
+        }
+        if live
+        else {}
+    )
+    for info_item_id, _current, _revoked in locked:
+        if info_item_id in items:
+            event = build_live_announcement(
+                item=items[info_item_id],
+                source=sources[info_item_id],
+                generation=generations[info_item_id],
+            )
+        elif info_item_id in generations:
+            event = build_tombstone(info_item_id=info_item_id, generation=generations[info_item_id])
+        else:
+            continue
+        _add_outbox_row(session, event)
+    return len(generations)
 
 
 async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) -> int:
@@ -263,13 +310,10 @@ async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) 
     announcements emitted — zero for a source nothing is bound to (a fresh
     create), and skipped items (never announced, already revoked) don't count.
 
-    Known scale ceiling (CR round 3, #14): this is N sequential
-    announce_info_item calls — a locking SELECT, the source read, the UPDATE
-    and the item read each (archiver#167 added the lock) — inside one
-    transaction, holding N row locks. Nothing at O(10) items; a spec edit on a
-    source backing O(10^3) becomes ~4k round-trips. The batch rewrite (one
-    ``SELECT ... FOR UPDATE`` and one UPDATE ... RETURNING over the id set, one
-    joined SELECT) belongs here when the corpus gets there.
+    One batch over the id set, not N ``announce_info_item`` calls (CR round 3,
+    #14): the statement count is fixed, so a spec edit on a source backing
+    O(10^3) items is five round-trips, not ~4k. It still holds N row locks for
+    the transaction - inherent, since every item's generation moves.
     """
     item_ids = (
         (
@@ -283,10 +327,7 @@ async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) 
         .scalars()
         .all()
     )
-    emitted = 0
-    for item_id in item_ids:
-        emitted += await _announce(session, item_id, revoke=True)
-    return emitted
+    return await _announce_many(session, item_ids, revoke=True)
 
 
 async def announce_info_item_revoked(session: AsyncSession, item: InfoItem) -> None:
@@ -298,7 +339,9 @@ async def announce_info_item_revoked(session: AsyncSession, item: InfoItem) -> N
     tombstones even a never-announced item — the row is about to not exist, so
     no later mutation can ever speak for this key again.
     """
-    generation = await _bump_generation(session, item.info_item_id, revoked=True)
+    generation = (await _bump_generations(session, live=[], tombstoned=[item.info_item_id])).get(
+        item.info_item_id
+    )
     if generation is None:
         return
     session.add(RevokedInfoItem(info_item_id=item.info_item_id, generation=generation))
