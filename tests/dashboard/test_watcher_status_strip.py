@@ -136,7 +136,7 @@ async def test_degraded_copy_blames_the_local_write_not_watcher(
     def boom(*args, **kwargs):
         raise RuntimeError("announce failed")
 
-    monkeypatch.setattr(info_items_routes, "announce_info_item", boom)
+    monkeypatch.setattr(info_items_routes, "announce_policy_change", boom)
 
     r = await client.post(
         f"/dashboard/info-items/{item.info_item_id}/toggle-watch-active",

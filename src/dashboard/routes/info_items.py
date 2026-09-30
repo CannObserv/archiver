@@ -27,7 +27,12 @@ from src.core.models import (
     SourceRevision,
     WatchStatus,
 )
-from src.core.services.registry_announcement import announce_info_item
+from src.core.services.registry_announcement import (
+    announce_info_item,
+    announce_policy_change,
+    announceable_specs_clause,
+    is_announceable,
+)
 from src.core.services.replication_issuance import (
     ManualIssuanceError,
     issue_for_assignment,
@@ -1056,6 +1061,12 @@ def _format_spec_summary(source_specs: list) -> str:
 
 _POLICY_WRITE_FAILED_MSG = "the watch policy write didn't commit"
 _POLICY_WRITE_FAILED_FLASH = "Couldn't update the watch state — the change was not saved."
+# The routes' own announceability gate (archiver#167); the copy names what
+# closes the gap, as the not-watching panel does.
+_UNANNOUNCEABLE_FLASH = (
+    "Not saved — this item has no active source with extraction specs, "
+    "so there is no watch policy to announce."
+)
 
 
 def _status_degraded(request: Request, item_id: str, error_message: str) -> HTMLResponse:
@@ -1097,33 +1108,30 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
     # to a source that has never been fetched still reports its announceability
     # — the previous revision-first query could not see a binding at all.
     #
-    # `has_active_source` is announceability, by the same rule `_collect_full_set`
-    # and the announce service use: an active binding whose source carries
-    # non-empty specs. Pause/resume and the cadence editor are both gated on it
-    # (CR round 1 finding 3, round 2 finding 9) because mutating policy on an
-    # item that cannot announce *live* emits a **tombstone** and burns a
-    # generation — which then reads as drift on this very panel, for an item
-    # where nothing is wrong.
+    # `has_active_source` is announceability — `announceable_specs_clause`, the
+    # SQL form of the one rule `_collect_full_set` and the announce service
+    # apply (archiver#167): an active binding whose source carries non-empty
+    # specs. Pause/resume and the cadence editor are both gated on it (CR round
+    # 1 finding 3, round 2 finding 9), and since archiver#167 so are their
+    # routes: mutating policy on an item that cannot announce *live* used to
+    # emit a **tombstone** and burn a generation. (That once read as drift on
+    # this panel; since archiver#142 an unannounceable item renders
+    # `not_watching`, which carries no drift, so the cost left is wire churn.)
     #
     # Since archiver#142 it also selects the panel's *state*: it is what "watched"
     # now means, the announced set being the whole of the contract with Watcher.
     # It replaced `watcher_item_id`, which announcements never populate — keeping
     # that key would have reported `not_watching` for every item.
     #
-    # `jsonb_typeof(...) = 'array'` guards the length call (CR round 2, finding
-    # 11): `jsonb_array_length` errors on a non-array, and this runs on the panel
-    # *render* path, which archiver#151 made unfailable on purpose. Not reachable
-    # through the app — both write paths validate a list — so the guard is about
-    # where a hand-edited row's blast radius lands, not a live defect.
+    # The clause's `jsonb_typeof` guard (CR round 2, finding 11) is what keeps
+    # this *render* path — archiver#151 made it unfailable on purpose — from
+    # erroring on a hand-edited non-array row.
     aggregate = (
         await session.execute(
             select(
                 func.max(SourceRevision.captured_at).label("last_changed_at"),
                 func.coalesce(
-                    func.bool_or(
-                        (func.jsonb_typeof(InfoSource.source_specs) == "array")
-                        & (func.jsonb_array_length(InfoSource.source_specs) > 0)
-                    ),
+                    func.bool_or(announceable_specs_clause()),
                     False,
                 ).label("has_active_source"),
             )
@@ -1275,9 +1283,20 @@ async def toggle_watch_active(
     """
     item = await _resolve_item(item_id, session)
 
+    # The template hides this button on an unannounceable item; the route
+    # refuses too, for a stale tab or a script (archiver#167). The re-render
+    # shows ``not_watching``, which corrects the stale tab. This read is
+    # unlocked and only decides what the operator is told: enforcement is
+    # ``announce_policy_change``, which re-checks under the row lock, so a
+    # binding change landing between the two cannot announce anything wrong.
+    if not await is_announceable(session, item.info_item_id):
+        response = await _render_status_partial(request, session=session, item=item)
+        response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _UNANNOUNCEABLE_FLASH))
+        return response
+
     try:
         item.watch_active = active == "true"
-        await announce_info_item(session, item.info_item_id)
+        await announce_policy_change(session, item.info_item_id)
         await session.commit()
     except Exception:
         # A failed local write is our fault, not an upstream outage — but the
@@ -1330,6 +1349,13 @@ async def set_watch_cadence(
     """
     item = await _resolve_item(item_id, session)
 
+    # Same server-side refusal as pause/resume, and likewise advisory: the
+    # service re-checks under the row lock (archiver#167).
+    if not await is_announceable(session, item.info_item_id):
+        response = await _render_watcher_section(request, session=session, item=item)
+        response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _UNANNOUNCEABLE_FLASH))
+        return response
+
     # The item's *own* announced interval passes even when the dropdown does not
     # offer it (CR round 1, finding 2). The guard is aimed at a hand-posted value
     # the dashboard never offered; re-submitting what the item already announces
@@ -1363,7 +1389,7 @@ async def set_watch_cadence(
 
     try:
         item.watch_spec = document
-        await announce_info_item(session, item.info_item_id)
+        await announce_policy_change(session, item.info_item_id)
         await session.commit()
     except Exception:
         await session.rollback()

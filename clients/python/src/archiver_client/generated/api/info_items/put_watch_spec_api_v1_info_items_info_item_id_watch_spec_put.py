@@ -117,6 +117,11 @@ def sync_detailed(
     a pre-rework client that still nests ``active``, which the schema rejects
     rather than silently dropping.
 
+    On an item that cannot announce live (no active binding, or a spec-less
+    source) the document is stored and **nothing is announced** (archiver#167):
+    policy cannot change announceability, so the key's announced state is
+    unchanged, and the first live announcement after a bind carries it.
+
     Args:
         info_item_id (str):
         body (InfoItemWatchSpecPut): Request body for PUT /info-items/{id}/watch-spec.
@@ -171,6 +176,11 @@ def sync(
     a pre-rework client that still nests ``active``, which the schema rejects
     rather than silently dropping.
 
+    On an item that cannot announce live (no active binding, or a spec-less
+    source) the document is stored and **nothing is announced** (archiver#167):
+    policy cannot change announceability, so the key's announced state is
+    unchanged, and the first live announcement after a bind carries it.
+
     Args:
         info_item_id (str):
         body (InfoItemWatchSpecPut): Request body for PUT /info-items/{id}/watch-spec.
@@ -219,6 +229,11 @@ async def asyncio_detailed(
     The stored document is left untouched when validation fails — including for
     a pre-rework client that still nests ``active``, which the schema rejects
     rather than silently dropping.
+
+    On an item that cannot announce live (no active binding, or a spec-less
+    source) the document is stored and **nothing is announced** (archiver#167):
+    policy cannot change announceability, so the key's announced state is
+    unchanged, and the first live announcement after a bind carries it.
 
     Args:
         info_item_id (str):
@@ -271,6 +286,11 @@ async def asyncio(
     The stored document is left untouched when validation fails — including for
     a pre-rework client that still nests ``active``, which the schema rejects
     rather than silently dropping.
+
+    On an item that cannot announce live (no active binding, or a spec-less
+    source) the document is stored and **nothing is announced** (archiver#167):
+    policy cannot change announceability, so the key's announced state is
+    unchanged, and the first live announcement after a bind carries it.
 
     Args:
         info_item_id (str):

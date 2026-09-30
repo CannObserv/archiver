@@ -37,6 +37,10 @@ from src.core.services.registry_announcement import (
     announce_for_info_source,
     announce_info_item,
     announce_info_item_revoked,
+    announce_policy_change,
+    announceable_specs_clause,
+    is_announceable,
+    source_is_announceable,
 )
 
 _SPECS = [{"schema_version": 1, "extraction": {"algorithm": "css", "selector": "body"}}]
@@ -176,21 +180,168 @@ async def test_bound_source_with_empty_specs_is_not_announceable_live(session):
     await session.flush()
 
     await announce_info_item(session, item.info_item_id)
-    assert await _outbox_rows(session) == []  # never announced → skip
+    assert await _outbox_rows(session) == []  # never announced → skip, no bump
 
     source.source_specs = _SPECS
     await session.flush()
-    await announce_info_item(session, item.info_item_id)  # live, gen 2
+    await announce_info_item(session, item.info_item_id)  # live, gen 1
 
     source.source_specs = []
     await session.flush()
-    await announce_info_item(session, item.info_item_id)  # revoked, gen 3
+    await announce_info_item(session, item.info_item_id)  # revoked, gen 2
 
     rows = sorted(await _outbox_rows(session), key=lambda r: r.payload["generation"])
     assert [r.payload["revoked"] for r in rows] == [False, True]
-    assert [r.payload["generation"] for r in rows] == [2, 3]
+    assert [r.payload["generation"] for r in rows] == [1, 2]
     for r in rows:
         payload_from_dict(r.payload)
+
+
+async def _generation(session, item_id) -> int:
+    return (
+        await session.execute(
+            select(InfoItem.announcement_generation).where(InfoItem.info_item_id == item_id)
+        )
+    ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_never_announced_item_stays_at_generation_zero(session):
+    """Generation 0 is the only "never announced" signal (archiver#167).
+
+    The skip used to be keyed on the bump *returning* 1, but every call bumped
+    first - so the second mutation of a bare item (a create, then a
+    ``PUT /watch-spec``) reached gen 2 and tombstoned a key no consumer had
+    ever held. The snapshot's ``announcement_generation > 0`` guard then kept
+    tombstoning it in every full set, forever. Not bumping away from 0 while
+    unannounceable makes ``> 0`` mean "was announced" everywhere.
+    """
+    item = await _make_item(session, bound=False)
+
+    await announce_info_item(session, item.info_item_id)
+    await announce_info_item(session, item.info_item_id)
+
+    assert await _outbox_rows(session) == []
+    assert await _generation(session, item.info_item_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_policy_change_on_an_announceable_item_announces_live(session):
+    item = await _make_item(session)
+    item.watch_active = False
+    await session.flush()
+
+    assert await announce_policy_change(session, item.info_item_id) is True
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["revoked"] is False
+    assert row.payload["active"] is False
+    assert row.payload["generation"] == 1
+
+
+@pytest.mark.asyncio
+async def test_policy_change_on_a_revoked_item_emits_nothing(session):
+    """The stale-tab case (archiver#167): the item was live, its binding was
+    deactivated (tombstone at gen 2), and a policy write arrives after.
+
+    Policy cannot change announceability, so the key's announced state is
+    unchanged - still revoked. A second tombstone would only burn a generation
+    and put churn on the wire. The next binding announces live with whatever
+    policy was written meanwhile.
+    """
+    item = await _make_item(session)
+    await announce_info_item(session, item.info_item_id)  # gen 1, live
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+    await announce_info_item(session, item.info_item_id)  # gen 2, revoked
+
+    item.watch_active = False
+    await session.flush()
+    assert await announce_policy_change(session, item.info_item_id) is False
+
+    assert len(await _outbox_rows(session)) == 2
+    assert await _generation(session, item.info_item_id) == 2
+
+
+@pytest.mark.asyncio
+async def test_policy_change_on_a_never_announced_item_emits_nothing(session):
+    item = await _make_item(session, bound=False)
+
+    assert await announce_policy_change(session, item.info_item_id) is False
+
+    assert await _outbox_rows(session) == []
+    assert await _generation(session, item.info_item_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_policy_change_on_a_missing_item_is_a_silent_no_op(session):
+    assert await announce_policy_change(session, ULID()) is False
+    assert await _outbox_rows(session) == []
+
+
+@pytest.mark.asyncio
+async def test_is_announceable_follows_the_active_binding_and_its_specs(session):
+    bound = await _make_item(session, name="bound")
+    unbound = await _make_item(session, name="unbound", bound=False)
+    specless = InfoItem(name="specless")
+    empty = InfoSource(url="https://example.test/empty", source_specs=[])
+    session.add_all([specless, empty])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=specless.info_item_id, info_source_id=empty.info_source_id)
+    )
+    await session.flush()
+
+    assert await is_announceable(session, bound.info_item_id) is True
+    assert await is_announceable(session, unbound.info_item_id) is False
+    assert await is_announceable(session, specless.info_item_id) is False
+    assert await is_announceable(session, ULID()) is False
+
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == bound.info_item_id)
+        )
+    ).scalar_one()
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+    assert await is_announceable(session, bound.info_item_id) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "specs",
+    [_SPECS, [], {}, {"extraction": "not a list"}, "a string", 0, None],
+    # `None` is JSON `null`, not SQL NULL: the ORM's JSONB stores it as 'null',
+    # which is how a NOT NULL column still admits it, and `jsonb_typeof` answers
+    # 'null' rather than NULL - a different SQL branch from every other case.
+    ids=["non-empty-list", "empty-list", "empty-object", "object", "string", "number", "json-null"],
+)
+async def test_python_and_sql_predicates_agree(session, specs):
+    """One rule, two forms (archiver#167): the Python check the announce
+    service and the full set apply to a loaded source, and the SQL expression
+    the panel aggregates over. Three hand copies had already drifted - the
+    panel refused a non-array ``source_specs`` while the service only asked for
+    truthiness. The non-list cases are unreachable through the app (both write
+    paths validate a list); they pin where a hand-edited row lands."""
+    source = InfoSource(url="https://example.test/parity", source_specs=specs)
+    session.add(source)
+    await session.flush()
+
+    in_sql = (
+        await session.execute(
+            select(announceable_specs_clause()).where(
+                InfoSource.info_source_id == source.info_source_id
+            )
+        )
+    ).scalar_one()
+
+    assert in_sql is source_is_announceable(source)
+    assert in_sql is (specs == _SPECS)
 
 
 @pytest.mark.asyncio

@@ -10,14 +10,24 @@ dashboard call in here; hand-building the payload at each would drift.
 
 **The live/revoked/skip rule.** An item with an active primary binding
 announces live — provided the source carries non-empty ``source_specs``, which
-co-core's live-entry validator requires. Otherwise it announces ``revoked`` *if
-it was ever announced*
+co-core's live-entry validator requires (``source_is_announceable``, with its
+SQL twin ``announceable_specs_clause`` for the panel - one rule, archiver#167).
+Otherwise it announces ``revoked`` *if it was ever announced*
 — skipping would leave a consumer fetching the old URL forever, which is the
 drift bug this channel exists to remove; a later re-binding announces live at a
 higher generation and the consumer resurrects the key (watcher#254 tests
 exactly this). A never-announced sourceless item emits nothing: no consumer
 knows the key, and co-core's validator would reject a live announcement without
-``info_source_id``/``url``/``source_specs`` anyway.
+``info_source_id``/``url``/``source_specs`` anyway - and its generation stays
+at 0, so ``> 0`` means "was announced" to the snapshot as well (archiver#167).
+
+**Policy writes announce through ``announce_policy_change``.** Pause and cadence
+cannot change announceability, so on an unannounceable item they leave the
+key's announced state exactly where it was: nothing to emit, no generation to
+burn. Re-tombstoning a revoked key on every stale-tab click is pure wire churn,
+and on a key no consumer ever held it is a tombstone the full set would then
+republish every period (archiver#167). It is *not* visible drift: the panel
+renders ``not_watching`` for an unannounceable item, which carries none.
 
 **The generation bump is a single atomic UPDATE.** ``UPDATE … SET
 announcement_generation = announcement_generation + 1 RETURNING`` — never
@@ -44,7 +54,7 @@ from datetime import UTC, datetime
 
 from co_core.pure.adapters.bus.streams import INFO_REGISTRY
 from co_core.pure.models.changes import RegistryAnnouncementEmit
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -124,6 +134,57 @@ async def _active_source(session: AsyncSession, info_item_id: ULID) -> InfoSourc
     ).scalar_one_or_none()
 
 
+def source_is_announceable(source: InfoSource | None) -> bool:
+    """Whether ``source`` can back a *live* announcement: non-empty spec list.
+
+    co-core's validator refuses a live entry with empty ``source_specs``
+    ("nothing to reconcile against"). A non-list is refused too, matching the
+    SQL form - unreachable through the app, whose write paths validate a list,
+    but a hand-edited row must land on the same side of both.
+    """
+    if source is None:
+        return False
+    specs = source.source_specs
+    return isinstance(specs, list) and len(specs) > 0
+
+
+def announceable_specs_clause() -> ColumnElement[bool]:
+    """``source_is_announceable`` as SQL over ``InfoSource.source_specs``.
+
+    ``jsonb_typeof`` guards the length call: ``jsonb_array_length`` *errors* on
+    a non-array, and the panel aggregates this on a render path archiver#151
+    made unfailable. ``coalesce`` pins NULL to false so the two forms agree
+    value-for-value, not just on truthiness. Kept beside the Python form so a
+    change to one is a diff against the other; a parity test holds them.
+    """
+    return func.coalesce(
+        (func.jsonb_typeof(InfoSource.source_specs) == "array")
+        & (func.jsonb_array_length(InfoSource.source_specs) > 0),
+        False,
+    )
+
+
+async def is_announceable(session: AsyncSession, info_item_id: ULID) -> bool:
+    """Whether the item would announce *live* right now."""
+    return source_is_announceable(await _active_source(session, info_item_id))
+
+
+async def _lock_generation(session: AsyncSession, info_item_id: ULID) -> int | None:
+    """Row-lock the item and read its generation; None if no row.
+
+    Taken before announceability is read, so a concurrent binding or policy
+    write serializes behind it and the state read is the state announced - the
+    guarantee the bump-first ordering used to give for free.
+    """
+    return (
+        await session.execute(
+            select(InfoItem.announcement_generation)
+            .where(InfoItem.info_item_id == info_item_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+
+
 def _add_outbox_row(session: AsyncSession, event: RegistryAnnouncementEmit) -> None:
     session.add(ChangesOutboxRow(topic=INFO_REGISTRY_TOPIC, payload=event.model_dump(mode="json")))
 
@@ -137,32 +198,45 @@ async def announce_info_item(session: AsyncSession, info_item_id: ULID) -> None:
     and the consumer would destroy and recreate its row, losing local state.
 
     Silent no-op when the item does not exist (deletion has its own path) and
-    when a sourceless item has never been announced.
+    when an unannounceable item has never been announced — without a bump, so
+    its generation stays 0.
     """
-    generation = await _bump_generation(session, info_item_id)
-    if generation is None:
-        return
+    await _announce(session, info_item_id, revoke=True)
 
-    item = (
-        await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
-    ).scalar_one()
+
+async def announce_policy_change(session: AsyncSession, info_item_id: ULID) -> bool:
+    """Announce a pause or cadence write; returns whether anything was emitted.
+
+    Live when the item is announceable, otherwise nothing — no tombstone, no
+    bump. A policy write never changes announceability, so an unannounceable
+    item's key stays where it was (revoked, or unknown to every consumer), and
+    the next binding announces live with the policy written meanwhile.
+    """
+    return await _announce(session, info_item_id, revoke=False)
+
+
+async def _announce(session: AsyncSession, info_item_id: ULID, *, revoke: bool) -> bool:
+    current = await _lock_generation(session, info_item_id)
+    if current is None:
+        return False
     source = await _active_source(session, info_item_id)
+    announceable = source_is_announceable(source)
+    # Unannounceable and either never announced (no consumer knows the key) or
+    # a policy write (the key's announced state cannot have changed): nothing
+    # to say, and no generation to burn saying it.
+    if not announceable and (current == 0 or not revoke):
+        return False
 
-    # Announceable-as-live needs non-empty source_specs too: co-core's validator
-    # refuses a live announcement with an empty list ("nothing to reconcile
-    # against"), so an item bound to a spec-less source follows the same rule as
-    # an unbound one. The spec edit that later fills the list fans out through
-    # announce_for_info_source and resurrects the key at a higher generation.
-    if source is None or not source.source_specs:
-        if generation == 1:
-            # Never announced: no consumer knows the key. The bump is kept —
-            # harmless, and un-bumping would need a second UPDATE racing the
-            # first — so the first real announcement goes out as gen 2.
-            return
-        event = build_tombstone(info_item_id=info_item_id, generation=generation)
-    else:
+    generation = await _bump_generation(session, info_item_id)
+    if announceable:
+        item = (
+            await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
+        ).scalar_one()
         event = build_live_announcement(item=item, source=source, generation=generation)
+    else:
+        event = build_tombstone(info_item_id=info_item_id, generation=generation)
     _add_outbox_row(session, event)
+    return True
 
 
 async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) -> int:
@@ -174,11 +248,12 @@ async def announce_for_info_source(session: AsyncSession, info_source_id: ULID) 
     count (zero for a source nothing is bound to — a fresh create).
 
     Known scale ceiling (CR round 3, #14): this is N sequential
-    announce_info_item calls — an UPDATE plus two SELECTs each — inside one
+    announce_info_item calls — a locking SELECT, the source read, the UPDATE
+    and the item read each (archiver#167 added the lock) — inside one
     transaction, holding N row locks. Nothing at O(10) items; a spec edit on a
-    source backing O(10^3) becomes ~3k round-trips. The batch rewrite (one
-    UPDATE ... RETURNING over the id set, one joined SELECT) belongs here when
-    the corpus gets there.
+    source backing O(10^3) becomes ~4k round-trips. The batch rewrite (one
+    ``SELECT ... FOR UPDATE`` and one UPDATE ... RETURNING over the id set, one
+    joined SELECT) belongs here when the corpus gets there.
     """
     item_ids = (
         (

@@ -45,6 +45,7 @@ from src.core.replication.errors import ReplicationRenderError
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_info_item_revoked,
+    announce_policy_change,
 )
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError as AssignInfoItemNotFoundError,
@@ -743,10 +744,11 @@ async def delete_info_item(
     # Keyed on Watcher having *reported* on this item, not on the retired
     # `watcher_item_id` (archiver#142) and not on `announcement_generation`. The
     # column only ever covered items provisioned over the HTTP push, so every
-    # post-cutover item slipped through. The generation is worse: a bare item's
-    # create bumps it to 1 without emitting anything, and deletion tombstones even
-    # a never-announced key, so both would fire on every delete and the signal
-    # would be noise. A `watch_status` row is evidence *from Watcher* that it is
+    # post-cutover item slipped through. The generation is too broad: `> 0` means
+    # announced at some point (exactly so since archiver#167 - before it, a bare
+    # create bumped to 1 without emitting), which takes in items revoked since
+    # and items Watcher never picked up, so it would warn about orphans that
+    # cannot exist. A `watch_status` row is evidence *from Watcher* that it is
     # scheduling this item — the exact condition under which an orphan can exist.
     #
     # Known blind spot, in the quiet direction: an item announced but not yet
@@ -794,6 +796,11 @@ async def put_watch_spec(
     The stored document is left untouched when validation fails — including for
     a pre-rework client that still nests ``active``, which the schema rejects
     rather than silently dropping.
+
+    On an item that cannot announce live (no active binding, or a spec-less
+    source) the document is stored and **nothing is announced** (archiver#167):
+    policy cannot change announceability, so the key's announced state is
+    unchanged, and the first live announcement after a bind carries it.
     """
     item = await _resolve_or_404(session, info_item_id)
 
@@ -806,7 +813,7 @@ async def put_watch_spec(
 
     item.watch_spec = body.document
     await session.flush()
-    await announce_info_item(session, item.info_item_id)
+    await announce_policy_change(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)
     return await _item_out_with_active_relations(session, item)
@@ -831,12 +838,15 @@ async def put_watch_active(
 
     Idempotent. ``active`` is required — the column's NULL means "the registry
     has no opinion yet", which only the absence of any write can express.
+
+    Announces like ``PUT /watch-spec``: stored always, announced only while the
+    item can announce live (archiver#167).
     """
     item = await _resolve_or_404(session, info_item_id)
 
     item.watch_active = body.active
     await session.flush()
-    await announce_info_item(session, item.info_item_id)
+    await announce_policy_change(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)
     return await _item_out_with_active_relations(session, item)

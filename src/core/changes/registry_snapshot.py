@@ -65,6 +65,7 @@ from src.core.services.registry_announcement import (
     INFO_REGISTRY_TOPIC,
     build_live_announcement,
     build_tombstone,
+    source_is_announceable,
 )
 
 logger = get_logger(__name__)
@@ -146,13 +147,13 @@ async def _collect_full_set(session: AsyncSession) -> tuple[list, list]:
             .where(InfoItemSource.deactivated_at.is_(None))
         )
     ).all()
-    live = [(item, source) for item, source in bound if source.source_specs]
+    live = [(item, source) for item, source in bound if source_is_announceable(source)]
     # Bound to a spec-less source: unannounceable-as-live, same rule as the
     # delta path — revoked if ever announced.
     specless = [
         (item.info_item_id, item.announcement_generation)
         for item, source in bound
-        if not source.source_specs and item.announcement_generation > 0
+        if not source_is_announceable(source) and item.announcement_generation > 0
     ]
 
     # NOT EXISTS rather than a materialized notin_ list (CR round 3, #15):

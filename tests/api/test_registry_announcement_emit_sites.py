@@ -515,3 +515,151 @@ async def test_dashboard_set_cadence_rejects_an_unoffered_value(client, session)
     assert resp.status_code == 200  # partial re-render, not a 4xx — HTMX target
     assert "showFlash" in resp.headers.get("HX-Trigger", "")
     assert len(await _registry_rows(session)) == before
+
+
+# --- Policy writes on an unannounceable item (archiver#167) -----------------
+#
+# Pause and cadence cannot change announceability, so on an item that cannot
+# announce live they must emit nothing: no tombstone, no generation burned. The
+# dashboard refuses outright (its affordances are hidden there, so a POST is a
+# stale tab or a script); the API writes the policy and stays silent, because
+# configuring an item before binding it is legitimate and the bind announces it.
+
+
+async def _make_revoked_item(client) -> str:
+    """Live at gen 1, then unbound: tombstoned at gen 2 — the stale-tab state."""
+    item_id, source_id = await _make_bound_item(client)
+    resp = await client.delete(
+        f"/api/v1/info-items/{item_id}/info-sources/{source_id}", headers=HEADERS
+    )
+    assert resp.status_code == 200
+    return item_id
+
+
+async def _item(session, item_id: str) -> InfoItem:
+    item = (
+        await session.execute(
+            select(InfoItem).where(InfoItem.info_item_id == ULID.from_str(item_id))
+        )
+    ).scalar_one()
+    await session.refresh(item)
+    return item
+
+
+@pytest.mark.asyncio
+async def test_dashboard_toggle_watch_active_refuses_an_unannounceable_item(client, session):
+    item_id = await _make_revoked_item(client)
+    before = len(await _registry_rows(session))
+
+    resp = await client.post(
+        f"/dashboard/info-items/{item_id}/toggle-watch-active",
+        headers=DASH_HEADERS,
+        data={"active": "false"},
+    )
+
+    assert resp.status_code == 200  # partial re-render + flash, never a 4xx/5xx
+    trigger = resp.headers.get("HX-Trigger", "")
+    assert "showFlash" in trigger and "error" in trigger
+    assert "Not watching" in resp.text  # the re-render corrects the stale tab
+    assert len(await _registry_rows(session)) == before
+    item = await _item(session, item_id)
+    assert item.watch_active is None
+    assert item.announcement_generation == 2
+
+
+@pytest.mark.asyncio
+async def test_dashboard_set_cadence_refuses_an_unannounceable_item(client, session):
+    item_id = await _make_revoked_item(client)
+    before = len(await _registry_rows(session))
+
+    resp = await client.post(
+        f"/dashboard/info-items/{item_id}/watch-cadence",
+        headers=DASH_HEADERS,
+        data={"interval": "7d"},
+    )
+
+    assert resp.status_code == 200
+    trigger = resp.headers.get("HX-Trigger", "")
+    assert "showFlash" in trigger and "error" in trigger
+    assert "Not watching" in resp.text
+    assert len(await _registry_rows(session)) == before
+    item = await _item(session, item_id)
+    assert item.watch_spec == DEFAULT_WATCH_SPEC
+    assert item.announcement_generation == 2
+
+
+@pytest.mark.asyncio
+async def test_dashboard_policy_routes_refuse_a_never_bound_item(client, session):
+    resp = await client.post("/api/v1/info-items", headers=HEADERS, json={"name": "Bare"})
+    item_id = resp.json()["info_item_id"]
+
+    for path, data in (
+        ("toggle-watch-active", {"active": "false"}),
+        ("watch-cadence", {"interval": "7d"}),
+    ):
+        resp = await client.post(
+            f"/dashboard/info-items/{item_id}/{path}", headers=DASH_HEADERS, data=data
+        )
+        assert resp.status_code == 200
+        assert "showFlash" in resp.headers.get("HX-Trigger", "")
+
+    assert await _registry_rows(session) == []
+    assert (await _item(session, item_id)).announcement_generation == 0
+
+
+@pytest.mark.asyncio
+async def test_api_policy_puts_on_a_revoked_item_write_but_emit_nothing(client, session):
+    item_id = await _make_revoked_item(client)
+    before = len(await _registry_rows(session))
+
+    resp = await client.put(
+        f"/api/v1/info-items/{item_id}/watch-spec",
+        headers=HEADERS,
+        json={"document": {"schema_version": 1, "interval": "6h"}},
+    )
+    assert resp.status_code == 200
+    resp = await client.put(
+        f"/api/v1/info-items/{item_id}/watch-active", headers=HEADERS, json={"active": False}
+    )
+    assert resp.status_code == 200
+
+    assert len(await _registry_rows(session)) == before
+    item = await _item(session, item_id)
+    assert item.watch_spec == {"schema_version": 1, "interval": "6h"}
+    assert item.watch_active is False
+    assert item.announcement_generation == 2
+
+
+@pytest.mark.asyncio
+async def test_api_policy_set_before_binding_rides_the_first_live_announcement(client, session):
+    """The sequence that used to tombstone a key no consumer had held: a bare
+    create, then a policy PUT. Now silent, and the bind carries the policy."""
+    resp = await client.post("/api/v1/info-items", headers=HEADERS, json={"name": "Bare"})
+    item_id = resp.json()["info_item_id"]
+    await client.put(
+        f"/api/v1/info-items/{item_id}/watch-spec",
+        headers=HEADERS,
+        json={"document": {"schema_version": 1, "interval": "6h"}},
+    )
+    await client.put(
+        f"/api/v1/info-items/{item_id}/watch-active", headers=HEADERS, json={"active": False}
+    )
+    assert await _registry_rows(session) == []
+
+    resp = await client.post(
+        "/api/v1/info-sources",
+        headers=HEADERS,
+        json={"url": "https://example.com/later", "source_specs": [_SPEC]},
+    )
+    resp = await client.post(
+        f"/api/v1/info-items/{item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": resp.json()["info_source_id"]},
+    )
+    assert resp.status_code == 201, resp.text
+
+    (payload,) = await _registry_rows(session)
+    assert payload["generation"] == 1
+    assert payload["revoked"] is False
+    assert payload["watch_spec"] == {"schema_version": 1, "interval": "6h"}
+    assert payload["active"] is False
