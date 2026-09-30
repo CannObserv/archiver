@@ -30,7 +30,7 @@ republish every period (archiver#167). It is *not* visible drift: the panel
 renders ``not_watching`` for an unannounceable item, which carries none.
 The binding path (``announce_info_item``) still re-tombstones an already-revoked
 item - it cannot tell "was live" from "was already revoked" without persisting
-the last announcement's kind. Accepted churn, not a bug: the snapshot republishes
+the last announcement's kind. Accepted churn for now: the snapshot republishes
 that tombstone every period anyway (archiver#293).
 
 **The generation bump is a single atomic UPDATE.** ``UPDATE … SET
