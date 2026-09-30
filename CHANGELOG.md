@@ -18,6 +18,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.21.2 (2026-09-30)
+
+[service] **Policy writes on an unannounceable item no longer announce** (archiver#167). No schema or SDK surface change; `archiver-client` stays at 5.7.0, and the regenerated SDK changes only in two docstrings.
+
+- **`PUT /info-items/{id}/watch-spec` and `PUT /info-items/{id}/watch-active`** still store the policy, but emit nothing on `info.registry` when the item cannot announce live (no active binding, or a source with empty `source_specs`). They used to re-tombstone a revoked key and burn a generation, which showed up as drift on the panel. Setting policy before binding is supported: the first live announcement after a bind carries it.
+- **A never-announced item stays at generation 0.** Every announce used to bump first, so a bare create followed by a policy PUT reached gen 2 and tombstoned a key no consumer had held. The hourly full set then kept tombstoning it. Rows already at gen 1 this way are left alone, because resetting them would let Watcher's apply-iff-greater reject their first live announcement.
+- **Dashboard:** `toggle-watch-active` and `watch-cadence` now refuse server-side (flash + re-render) on an unannounceable item, closing the stale-tab path. The template gate was the only one before.
+
 ## v4.21.1 (2026-09-29)
 
 [sdk] **`archiver_client.__version__` reports the installed version, and CI runs the SDK's own suite** (archiver#248). No route or schema change, so `archiver-client` stays at 5.7.0, which `__version__` now reports. The snapshot changes only in `info.version`.

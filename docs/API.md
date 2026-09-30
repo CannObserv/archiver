@@ -89,6 +89,12 @@ own default" and a merge would make that state unreachable once an interval had 
 documents return the 422 envelope with per-field errors and leave the stored policy untouched,
 including a pre-rework document that still nests `active` (rejected, not silently dropped).
 
+**Both policy PUTs store on any item but announce only an announceable one** (archiver#167): an
+active binding whose source has non-empty `source_specs`. Pause and cadence cannot change
+announceability, so on an unbound or spec-less item the write is stored and `info.registry` stays
+silent, with no tombstone and no generation bump. The first live announcement after a bind carries
+the stored policy, so configuring an item before binding it works.
+
 `PUT /info-items/{id}/watch-active` accepts `{active: bool}` — required, idempotent. **Two routes
 rather than one body** because the two fields need opposite absence rules: an omitted `interval`
 means "consumer default", while pause state has no omitted case at all (`NULL` is reachable only by

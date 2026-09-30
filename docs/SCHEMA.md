@@ -65,7 +65,10 @@ see the never-rename rule in `AGENTS.md`.
   **announceable** ones (active binding, non-empty `source_specs`), because those are the only
   rows a snapshot publishes at all at 0; an unbound or spec-less row is already filtered out of
   both revoked lists by their own `> 0` guards, and lifting it would start a tombstone for a key
-  no consumer has ever held. Those stay at `0` and heal on their first real mutation. The reason is the return
+  no consumer has ever held. Those stay at `0` until they first become announceable: since
+  archiver#167 the delta path does not bump an unannounceable row off `0` either, so `> 0` means
+  "was announced" to both paths. (Before #167 it did, so rows exist at `1` that were never live;
+  they are left there because the full set has already tombstoned them at `1`.) The reason is the return
   leg: `info.watch-status` spells "never reconciled" as `applied_generation = 0`, so a
   generation-0 *announcement* would make the wire value ambiguous and the #151 drift detector
   read an unapplied item as clean. Reserved `0` in the DB (never announced) and a floor of 1 on

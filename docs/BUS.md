@@ -197,7 +197,9 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   back mutation leaves no orphaned announcement. Emit rule: an item with an
   active primary binding and non-empty `source_specs` announces **live**;
   previously-announced without one announces **revoked**; never-announced
-  sourceless items emit nothing. One InfoSource mutation fans out to every item
+  sourceless items emit nothing and keep generation `0`. Pause and cadence writes
+  (`announce_policy_change`) announce only a live item: on an unannounceable one
+  they emit nothing, since policy cannot change announceability (archiver#167). One InfoSource mutation fans out to every item
   it actively backs. Swaps announce exactly once, with the final state.
 - **Snapshots** bypass the outbox (`src/core/changes/registry_snapshot.py`): a
   full-set republish direct to the stream at startup and every

@@ -112,6 +112,9 @@ def sync_detailed(
     Idempotent. ``active`` is required — the column's NULL means \"the registry
     has no opinion yet\", which only the absence of any write can express.
 
+    Announces like ``PUT /watch-spec``: stored always, announced only while the
+    item can announce live (archiver#167).
+
     Args:
         info_item_id (str):
         body (InfoItemWatchActivePut): Request body for PUT /info-items/{id}/watch-active.
@@ -158,6 +161,9 @@ def sync(
     Idempotent. ``active`` is required — the column's NULL means \"the registry
     has no opinion yet\", which only the absence of any write can express.
 
+    Announces like ``PUT /watch-spec``: stored always, announced only while the
+    item can announce live (archiver#167).
+
     Args:
         info_item_id (str):
         body (InfoItemWatchActivePut): Request body for PUT /info-items/{id}/watch-active.
@@ -198,6 +204,9 @@ async def asyncio_detailed(
 
     Idempotent. ``active`` is required — the column's NULL means \"the registry
     has no opinion yet\", which only the absence of any write can express.
+
+    Announces like ``PUT /watch-spec``: stored always, announced only while the
+    item can announce live (archiver#167).
 
     Args:
         info_item_id (str):
@@ -242,6 +251,9 @@ async def asyncio(
 
     Idempotent. ``active`` is required — the column's NULL means \"the registry
     has no opinion yet\", which only the absence of any write can express.
+
+    Announces like ``PUT /watch-spec``: stored always, announced only while the
+    item can announce live (archiver#167).
 
     Args:
         info_item_id (str):

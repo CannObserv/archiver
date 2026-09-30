@@ -2264,7 +2264,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.21.1"
+    "version": "4.21.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -4003,7 +4003,7 @@
     },
     "/api/v1/info-items/{info_item_id}/watch-active": {
       "put": {
-        "description": "Pause or resume an InfoItem.\n\nIts own route rather than a field on the WatchSpec body: ``active`` is not\npolicy (a document shared across items could not carry per-item pause\nstate), and a single boolean keeps pausing from requiring a round-trip\nthrough the cadence document.\n\nIdempotent. ``active`` is required \u2014 the column's NULL means \"the registry\nhas no opinion yet\", which only the absence of any write can express.",
+        "description": "Pause or resume an InfoItem.\n\nIts own route rather than a field on the WatchSpec body: ``active`` is not\npolicy (a document shared across items could not carry per-item pause\nstate), and a single boolean keeps pausing from requiring a round-trip\nthrough the cadence document.\n\nIdempotent. ``active`` is required \u2014 the column's NULL means \"the registry\nhas no opinion yet\", which only the absence of any write can express.\n\nAnnounces like ``PUT /watch-spec``: stored always, announced only while the\nitem can announce live (archiver#167).",
         "operationId": "put_watch_active_api_v1_info_items__info_item_id__watch_active_put",
         "parameters": [
           {
@@ -4121,7 +4121,7 @@
     },
     "/api/v1/info-items/{info_item_id}/watch-spec": {
       "put": {
-        "description": "Replace an InfoItem's cadence policy.\n\nA whole-document PUT rather than a general InfoItem PATCH: the document is\nvalidated as a unit, and omitting ``interval`` is the only way to express\n\"the consumer applies its own default\" \u2014 a merge would make that state\nunreachable once an interval had been set.\n\nCadence only. Pause state is ``PUT /watch-active``, which keeps this body to\none absence rule and keeps pausing from becoming a read-modify-write of a\ndocument the operator did not mean to touch.\n\nThe stored document is left untouched when validation fails \u2014 including for\na pre-rework client that still nests ``active``, which the schema rejects\nrather than silently dropping.",
+        "description": "Replace an InfoItem's cadence policy.\n\nA whole-document PUT rather than a general InfoItem PATCH: the document is\nvalidated as a unit, and omitting ``interval`` is the only way to express\n\"the consumer applies its own default\" \u2014 a merge would make that state\nunreachable once an interval had been set.\n\nCadence only. Pause state is ``PUT /watch-active``, which keeps this body to\none absence rule and keeps pausing from becoming a read-modify-write of a\ndocument the operator did not mean to touch.\n\nThe stored document is left untouched when validation fails \u2014 including for\na pre-rework client that still nests ``active``, which the schema rejects\nrather than silently dropping.\n\nOn an item that cannot announce live (no active binding, or a spec-less\nsource) the document is stored and **nothing is announced** (archiver#167):\npolicy cannot change announceability, so the key's announced state is\nunchanged, and the first live announcement after a bind carries it.",
         "operationId": "put_watch_spec_api_v1_info_items__info_item_id__watch_spec_put",
         "parameters": [
           {
