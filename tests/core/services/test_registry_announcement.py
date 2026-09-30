@@ -315,8 +315,11 @@ async def test_is_announceable_follows_the_active_binding_and_its_specs(session)
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "specs",
-    [_SPECS, [], {}, {"extraction": "not a list"}, "a string", 0],
-    ids=["non-empty-list", "empty-list", "empty-object", "object", "string", "number"],
+    [_SPECS, [], {}, {"extraction": "not a list"}, "a string", 0, None],
+    # `None` is JSON `null`, not SQL NULL: the ORM's JSONB stores it as 'null',
+    # which is how a NOT NULL column still admits it, and `jsonb_typeof` answers
+    # 'null' rather than NULL - a different SQL branch from every other case.
+    ids=["non-empty-list", "empty-list", "empty-object", "object", "string", "number", "json-null"],
 )
 async def test_python_and_sql_predicates_agree(session, specs):
     """One rule, two forms (archiver#167): the Python check the announce
