@@ -19,9 +19,9 @@ live and stays ``false``.
 does not promise ``AND`` evaluates left to right, so ``jsonb_typeof(...) =
 'array' AND jsonb_array_length(...) > 0`` is not a guard.
 
-Idempotent: the predicate reads only state the upgrade does not write. Downgrade
-is a no-op - dropping the column in ``b7e2d94c1a38``'s downgrade removes the
-flags anyway.
+Idempotent: a re-run matches no row, since every row it would mark already
+reads ``true``. Downgrade is a no-op - ``b7e2d94c1a38``'s downgrade drops the
+column, flags and all.
 """
 
 import logging
