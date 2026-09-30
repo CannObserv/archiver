@@ -744,10 +744,11 @@ async def delete_info_item(
     # Keyed on Watcher having *reported* on this item, not on the retired
     # `watcher_item_id` (archiver#142) and not on `announcement_generation`. The
     # column only ever covered items provisioned over the HTTP push, so every
-    # post-cutover item slipped through. The generation is worse: a bare item's
-    # create bumps it to 1 without emitting anything, and deletion tombstones even
-    # a never-announced key, so both would fire on every delete and the signal
-    # would be noise. A `watch_status` row is evidence *from Watcher* that it is
+    # post-cutover item slipped through. The generation is too broad: `> 0` means
+    # announced at some point (exactly so since archiver#167 - before it, a bare
+    # create bumped to 1 without emitting), which takes in items revoked since
+    # and items Watcher never picked up, so it would warn about orphans that
+    # cannot exist. A `watch_status` row is evidence *from Watcher* that it is
     # scheduling this item — the exact condition under which an orphan can exist.
     #
     # Known blind spot, in the quiet direction: an item announced but not yet
