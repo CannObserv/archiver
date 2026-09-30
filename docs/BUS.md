@@ -200,6 +200,8 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   sourceless items emit nothing and keep generation `0`. Pause and cadence writes
   (`announce_policy_change`) announce only a live item: on an unannounceable one
   they emit nothing, since policy cannot change announceability (archiver#167).
+  A binding or spec mutation on an already-revoked item does tombstone again, at
+  a higher generation - accepted churn (archiver#293).
   One InfoSource mutation fans out to every item it actively backs. Swaps announce
   exactly once, with the final state.
 - **Snapshots** bypass the outbox (`src/core/changes/registry_snapshot.py`): a

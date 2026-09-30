@@ -29,6 +29,11 @@ and on a key no consumer ever held it is a tombstone the full set would then
 republish every period (archiver#167). It is *not* visible drift: the panel
 renders ``not_watching`` for an unannounceable item, which carries none.
 
+**The binding path still re-tombstones.** ``announce_info_item`` tombstones an
+already-revoked item again - it cannot tell "was live" from "was already
+revoked" without persisting the last announcement's kind. Accepted churn for
+now: the snapshot republishes that tombstone every period anyway (archiver#293).
+
 **The generation bump is a single atomic UPDATE.** ``UPDATE … SET
 announcement_generation = announcement_generation + 1 RETURNING`` — never
 read-modify-write in Python: two concurrent mutations would both read N and
