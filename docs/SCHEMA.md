@@ -85,7 +85,9 @@ see the never-rename rule in `AGENTS.md`.
   current generation. The binding path skips an unannounceable item whose flag is already `true`:
   the key is revoked and nothing changed, so a second tombstone would only burn a generation.
   Migration `d3f9a6b8e015` backfilled `true` on exactly the rows the snapshot tombstones
-  (`> 0`, no active binding to a source with non-empty `source_specs`). Meaningless at `0`.
+  (`> 0`, no active binding to a source with non-empty `source_specs`). Meaningless at `0`. A
+  stray `true` on a live key is the unsafe direction: it suppresses an owed tombstone that the
+  snapshot cannot repair, since it republishes at the generation the consumer already holds.
 
   **Deletion — use `DELETE /info-items/{id}`, never psql** (archiver#141). An InfoItem's exit
   from the registry is announced as a `revoked: true` tombstone, and that tombstone must be
