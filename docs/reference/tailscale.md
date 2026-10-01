@@ -194,27 +194,38 @@ script aborted under `-e`, and the shred never ran - leaving the auth key in
 description says. `new --setup-script` cannot be re-run on demand, but exe.dev
 puts `/exe.dev/setup` back before **every** boot, and the unit is gated only on
 `ConditionPathExists=/exe.dev/setup` (#284, CannObserv/replicator#122). Here it
-ran five times through 2026-09-29 - every boot journald retains after the first
-(09-04, 09-08, 09-09, 09-26, and 09-29 after a platform `restart` for #285) -
-each `Result=success`: `systemctl enable --now tailscaled`, `tailscale up
---auth-key=file:… --hostname=archiver --ssh`, then both `shred` and the unit's
-`rm`. So:
+ran six times - every boot journald retains after the first (09-04, 09-08,
+09-09, 09-26, and twice on 09-29, the first after a platform `restart` for
+#285) - each `Result=success`: `systemctl enable --now tailscaled`, `tailscale
+up --auth-key=file:… --hostname=archiver --ssh`, then both `shred` and the
+unit's `rm`. exe.dev confirmed it is a bug, not intended, with the fix still
+undecided (2026-10-01, #290).
 
-- **An absent file is not evidence of cleanup** - it is back at the next boot.
-  Shredding it removes only the current copy.
+**`exe-setup.service` is disabled here** (2026-10-01, #290) on exe.dev's advice:
+`sudo systemctl disable exe-setup.service`. Nothing else pulls the unit in, and
+`tailscaled`'s enablement and its prefs (`RunSSH`, `Hostname`) persist in their
+own state, so the re-runs added nothing. So:
+
+- **A present file is now expected.** Only the script's `shred` and the unit's
+  `rm` ever removed `/exe.dev/setup`; with the unit disabled, the copy delivered
+  at each boot stays on disk. Neither a present nor an absent file says whether
+  the script ran - the journal does.
 - **Revoking the key is the only step that lasts.** It is the one thing that
-  covers the copy re-delivered each boot, exe.dev's stored script and every
-  transcript at once. A re-join succeeding on an already-registered node proves
-  nothing about the key: the node does not need it. #193's key was **not
-  reusable and is revoked** (owner, 2026-09-29), so the copy that keeps coming
-  back is inert. Whether exe.dev can clear the stored script is #290.
-- **The script must stay harmless to re-run**: every boot re-applies its
-  `tailscale up` flags. Leave `exe-setup.service` itself alone - it is exe.dev's.
+  covers the copy on disk, exe.dev's stored script and every transcript at
+  once. A re-join succeeding on an already-registered node proves nothing about
+  the key: the node does not need it. #193's key was **not reusable and is
+  revoked** (owner, 2026-09-29), so the copy on disk is inert. Whether exe.dev
+  can view, replace or clear the stored script is still open on #290.
+- **Keep the script harmless to re-run anyway.** A `systemctl enable` or
+  `preset` (the unit's preset reads `enabled`) restores the per-boot run, and a
+  new VM created with a script starts with the unit enabled.
 
-Check it read-only - pattern names and counts, never a value:
+Check it read-only - pattern names, counts and modes, never a value:
 
 ```bash
-systemctl show exe-setup.service -p ConditionResult,Result   # yes = a script was delivered this boot
+systemctl show exe-setup.service -p UnitFileState                        # disabled
+sudo journalctl -b -u exe-setup.service --no-pager | grep -c Starting   # 0 = did not run this boot
+sudo stat -c '%a %U:%G %y' /exe.dev/setup                                # present = delivered, not run
 sudo journalctl -u exe-setup.service -o cat --no-pager | grep -c 'Failed with result'
 sudo journalctl -u exe-setup.service --no-pager | grep -cE 'tskey-|ghp_|github_pat_|PRIVATE KEY'
 ```
