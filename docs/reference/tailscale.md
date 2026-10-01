@@ -215,7 +215,8 @@ own state, so the re-runs added nothing. So:
   once. A re-join succeeding on an already-registered node proves nothing about
   the key: the node does not need it. #193's key was **not reusable and is
   revoked** (owner, 2026-09-29), so the copy on disk is inert. Whether exe.dev
-  can view, replace or clear the stored script is still open on #290.
+  can view, replace or clear the stored script is cohort-wide now, tracked in
+  CannObserv/provisioner#4 (under #1).
 - **Keep the script harmless to re-run anyway.** A `systemctl enable` or
   `preset` (the unit's preset reads `enabled`) restores the per-boot run, and a
   new VM created with a script starts with the unit enabled.
