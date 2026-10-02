@@ -242,6 +242,12 @@ see the never-rename rule in `AGENTS.md`.
   because its assignment rows assert which document produced the artefacts at their `public_url`;
   clone + migrate is #95. See `docs/plans/2026-07-20-83-rep-spec-document-editing-adr.md`.
 - **`InfoItemRepSpec`** (`info_item_rep_specs`) — effective-dated assignment + `public_url` writeback target.
+  - **At most one active row per `(info_item_id, rep_spec_id)`** (archiver#301): partial unique
+    index `uq_iirs_item_spec_active` `WHERE deactivated_at IS NULL`. Two active rows render one
+    destination, and issuance skips **both** as `destination_collision` on every occasion.
+    `assign_rep_spec` refuses first (`DuplicateAssignmentError` → 409) under the RepSpec row lock;
+    the index is the backstop for any other writer. Deactivated rows are history and may repeat, so
+    reassigning after a deactivate is allowed.
 - **`RevokedInfoItem`** (`revoked_info_items`) — a deleted InfoItem's identity + final
   generation (archiver#141). Written in the deletion's transaction by `DELETE /info-items/{id}`;
   what the hourly snapshot's tombstone republish reads once the item row is gone, because
@@ -257,9 +263,9 @@ see the never-rename rule in `AGENTS.md`.
     re-replication in a TTL-bounded, intermittent way. Text rather than a ULID column because it
     is a wire value Replicator echoes back verbatim; issuance mints ULIDs, but the column does not
     require one.
-  - **`info_item_rep_spec_id` is the target**, not `(info_item_id, rep_spec_id)`: that pair has no
-    uniqueness, only a partial index over active rows, so it stops identifying a target once a spec
-    is deactivated and later reassigned.
+  - **`info_item_rep_spec_id` is the target**, not `(info_item_id, rep_spec_id)`: that pair is
+    unique only among *active* rows, so it stops identifying a target once a spec is deactivated
+    and later reassigned.
   - **States**: `requested` → `complete` | `failed` | `abandoned` (archiver#170 writes the last
     three), plus `skipped` — terminal on arrival, nothing went on the wire. Skip reasons are
     **local** (`blob_absent`, `blob_expired_locally`, `unrenderable`, `destination_collision`,

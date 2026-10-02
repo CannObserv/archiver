@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
 
@@ -58,25 +59,44 @@ async def test_public_url_writeback(session, item, rep_spec):
 
 
 @pytest.mark.asyncio
-async def test_two_active_assignments_to_same_rep_spec_allowed(session, item, rep_spec):
-    """Independent assignments — no UNIQUE on (info_item_id, rep_spec_id)."""
-    a = InfoItemRepSpec(
-        info_item_id=item.info_item_id,
-        rep_spec_id=rep_spec.rep_spec_id,
-        activated_at=datetime.now(UTC),
+async def test_two_active_assignments_to_same_rep_spec_rejected(session, item, rep_spec):
+    """``uq_iirs_item_spec_active`` refuses on its own, without assign_rep_spec (archiver#301).
+
+    Both rows would render one destination, and issuance skips both as
+    ``destination_collision`` on every occasion.
+    """
+    for _ in range(2):
+        session.add(
+            InfoItemRepSpec(
+                info_item_id=item.info_item_id,
+                rep_spec_id=rep_spec.rep_spec_id,
+                activated_at=datetime.now(UTC),
+            )
+        )
+    with pytest.raises(IntegrityError, match="uq_iirs_item_spec_active"):
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_a_deactivated_assignment_may_repeat_an_active_one(session, item, rep_spec):
+    """History is not a duplicate: the index covers active rows only."""
+    now = datetime.now(UTC)
+    session.add_all(
+        [
+            InfoItemRepSpec(
+                info_item_id=item.info_item_id,
+                rep_spec_id=rep_spec.rep_spec_id,
+                activated_at=now,
+                deactivated_at=now,
+            ),
+            InfoItemRepSpec(
+                info_item_id=item.info_item_id, rep_spec_id=rep_spec.rep_spec_id, activated_at=now
+            ),
+        ]
     )
-    b = InfoItemRepSpec(
-        info_item_id=item.info_item_id,
-        rep_spec_id=rep_spec.rep_spec_id,
-        activated_at=datetime.now(UTC),
-    )
-    session.add_all([a, b])
     await session.commit()
     result = await session.execute(
-        select(InfoItemRepSpec).where(
-            InfoItemRepSpec.info_item_id == item.info_item_id,
-            InfoItemRepSpec.deactivated_at.is_(None),
-        )
+        select(InfoItemRepSpec).where(InfoItemRepSpec.info_item_id == item.info_item_id)
     )
     assert len(list(result.scalars())) == 2
 

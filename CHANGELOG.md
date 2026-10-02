@@ -18,6 +18,15 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.23.0 (2026-10-02)
+
+[both] **Assignment refusals: an unrenderable bag is a 422, a duplicate active assignment is a 409** (archiver#301). `archiver-client` stays at 5.7.0: no method or type changes, only the `assign_rep_spec` docstring and the regenerated route docstring, which now list the 409 and both 422 codes. The snapshot also changes in `info.version`.
+
+- **`POST /info-items/{id}/rep-spec-assignments`:** when `rep_fields` satisfies `required_fields` but cannot render the spec's `path_template`, the route now returns **422** (`kind="domain"`, one error with `path="/rep_fields"` and `code="rep_fields_unrenderable"`, `data.rep_spec_id`). It used to return a 500. This is the shape `POST /info-items` already used. When the spec is already actively assigned to the item, the route returns **409** (`kind="conflict"`, `data.existing_assignment_id`). It used to accept it. Two active rows render one destination, and issuance skipped both as `destination_collision` on every occasion.
+- **`POST /info-items`:** naming the same RepSpec twice in `initial_rep_spec_assignments` returns 422 (`code="duplicate_assignment"`, path `/initial_rep_spec_assignments/{i}/rep_spec_id`) before any row is written.
+- **Migration `cdeb05831bd7`:** adds the partial unique index `uq_iirs_item_spec_active` on `info_item_rep_specs (info_item_id, rep_spec_id) WHERE deactivated_at IS NULL`. It checks for existing duplicates first. If it finds any, it refuses and names every colliding pair and its assignment ids. Deactivate the extra rows, then re-run. Plain `uv run alembic upgrade head` then restart; old code running against the index can only turn a duplicate assign into a 500, which is no worse than the collision it replaces.
+- **Dashboard:** the assign form's refusals name what is wrong: the missing keys, the render reason, or the RepSpec already assigned. The assign form's success redirect lands on the Replication section (`#replication`), not `?tab=repspecs`, a tab retired in #49.
+
 ## v4.22.0 (2026-09-30)
 
 [service] **Binding and spec writes no longer re-tombstone an already-revoked item, and the source fan-out is one batch** (archiver#293). Adds one column; no route, schema or SDK surface change, so `archiver-client` stays at 5.7.0. The OpenAPI snapshot changes only in `info.version`.

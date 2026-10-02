@@ -167,6 +167,38 @@ async def test_create_rejects_rep_fields_that_cannot_render(client, session, rep
 
 
 @pytest.mark.asyncio
+async def test_create_rejects_the_same_rep_spec_twice_no_rows(client, session, rep_spec_row):
+    """Two active rows for one (item, spec) would collide on one destination (archiver#301).
+
+    Refused before any insert, so the partial unique index never turns it into a 500.
+    """
+    rep_spec_id = str(rep_spec_row.rep_spec_id)
+    response = await client.post(
+        "/api/v1/info-items",
+        headers=HEADERS,
+        json={
+            "name": "duplicate-assignment",
+            "rep_fields": {"gcs": {"object_name": "co-active-licenses"}},
+            "initial_rep_spec_assignments": [
+                {"rep_spec_id": rep_spec_id},
+                {"rep_spec_id": rep_spec_id},
+            ],
+        },
+    )
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [
+        ("/initial_rep_spec_assignments/1/rep_spec_id", "duplicate_assignment")
+    ]
+    assert (
+        await session.scalar(
+            select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "duplicate-assignment")
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_with_explicit_activated_at(client, session, rep_spec_row):
     """activated_at supplied → stored verbatim."""
     rep_spec_id = str(rep_spec_row.rep_spec_id)

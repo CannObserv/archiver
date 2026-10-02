@@ -280,7 +280,12 @@ class ArchiverClient:
     ) -> InfoItemRepSpecOut:
         """Assign a RepSpec to an InfoItem.
 
-        ``activated_at`` defaults to now() when omitted.
+        ``activated_at`` defaults to now() when omitted. Raises ``NotFound``
+        (unknown item or spec), ``Conflict`` (409: the spec is already actively
+        assigned to this item; ``data.existing_assignment_id`` names it -
+        deactivate it first), or ``ValidationError`` (422: ``rep_fields`` lacks a
+        required field, ``code="rep_fields_incomplete"``, or cannot render the
+        spec's ``path_template``, ``code="rep_fields_unrenderable"``).
         """
         body = InfoItemRepSpecCreate(
             rep_spec_id=rep_spec_id,

@@ -39,12 +39,14 @@ from src.core.services.replication_issuance import (
 )
 from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.assign_rep_spec import (
-    InfoItemNotFoundError as AssignItemNotFoundError,
-)
-from src.core.tools.assign_rep_spec import (
+    DuplicateAssignmentError,
     RepFieldsIncompleteError,
+    RepFieldsUnrenderableError,
     RepSpecNotFoundError,
     assign_rep_spec,
+)
+from src.core.tools.assign_rep_spec import (
+    InfoItemNotFoundError as AssignItemNotFoundError,
 )
 from src.core.tools.bind_info_source import (
     ActiveBindingAlreadyExistsError,
@@ -649,12 +651,20 @@ async def deactivate_source_binding(
 
 @router.post("/{item_id}/assign-rep-spec")
 async def assign_rep_spec_route(
+    request: Request,
     item_id: str,
     rep_spec_id: str = Form(...),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Assign a RepSpec to this InfoItem."""
+    """Assign a RepSpec to this InfoItem and land on the Replication section.
+
+    A plain form post gets a 303; an htmx (boosted) one gets 204 + HX-Redirect,
+    since its XHR would follow a 303 itself and drop ``#replication`` (CR 1).
+    Every refusal names what is wrong - the missing keys, the render reason, or
+    the RepSpec already assigned - because the error page is all the operator
+    sees (archiver#301).
+    """
     try:
         item_ulid = ULID.from_str(item_id)
     except Exception as e:
@@ -672,13 +682,44 @@ async def assign_rep_spec_route(
     except RepSpecNotFoundError as e:
         raise DashboardNotFound("Replication Specification not found") from e
     except RepFieldsIncompleteError as e:
-        raise_envelope(422, "domain", "rep_fields incomplete for this RepSpec", source_exc=e)
+        missing = ", ".join(m.get("path", "").strip("/").replace("/", ".") for m in e.missing)
+        raise_envelope(
+            422,
+            "domain",
+            f"This item's Rep Fields lack what {await _rep_spec_label(session, rs_ulid)} "
+            f"requires: {missing}. Add them under Rep Fields, save, and assign again.",
+            source_exc=e,
+        )
+    except RepFieldsUnrenderableError as e:
+        raise_envelope(
+            422,
+            "domain",
+            f"This item's Rep Fields cannot render the path of "
+            f"{await _rep_spec_label(session, rs_ulid)}: {e.reason}",
+            source_exc=e,
+        )
+    except DuplicateAssignmentError as e:
+        raise_envelope(
+            409,
+            "conflict",
+            f"{await _rep_spec_label(session, rs_ulid)} is already assigned to this item. "
+            "Deactivate that assignment first to replace it.",
+            source_exc=e,
+        )
 
     await session.commit()
-    return RedirectResponse(
-        url=f"/dashboard/info-items/{item_id}?tab=repspecs",
-        status_code=303,
-    )
+    target = f"/dashboard/info-items/{item_id}#replication"
+    # hx-boost makes this an XHR, which follows a 303 itself and drops the
+    # fragment; HX-Redirect has htmx set location.href, which keeps it (CR 1).
+    if "HX-Request" in request.headers:
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(url=target, status_code=303)
+
+
+async def _rep_spec_label(session: AsyncSession, rep_spec_id: ULID) -> str:
+    """The RepSpec's name for a refusal message; assign_rep_spec has loaded it."""
+    spec = await session.get(RepSpec, rep_spec_id)
+    return f"RepSpec '{spec.name}'" if spec is not None else "this RepSpec"
 
 
 # ---------------------------------------------------------------------------

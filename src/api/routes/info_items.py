@@ -48,13 +48,15 @@ from src.core.services.registry_announcement import (
     announce_policy_change,
 )
 from src.core.tools.assign_rep_spec import (
-    InfoItemNotFoundError as AssignInfoItemNotFoundError,
-)
-from src.core.tools.assign_rep_spec import (
+    DuplicateAssignmentError,
     RepFieldsIncompleteError,
+    RepFieldsUnrenderableError,
     RepSpecNotFoundError,
     assign_rep_spec,
     lock_rep_specs,
+)
+from src.core.tools.assign_rep_spec import (
+    InfoItemNotFoundError as AssignInfoItemNotFoundError,
 )
 from src.core.tools.bind_info_source import (
     ActiveBindingAlreadyExistsError,
@@ -108,13 +110,28 @@ async def create_info_item(
     )
 
     rep_spec_rows: list[RepSpec] = []
-    for assignment in body.initial_rep_spec_assignments:
+    for index, assignment in enumerate(body.initial_rep_spec_assignments):
         rep_spec = locked_rep_specs.get(str(assignment.rep_spec_id))
         if rep_spec is None:
             raise_envelope(
                 404,
                 "lookup",
                 f"RepSpec {assignment.rep_spec_id!r} not found",
+            )
+        # Two active rows for one spec collide on one destination; refused here
+        # rather than left to uq_iirs_item_spec_active as a 500 (archiver#301).
+        if rep_spec in rep_spec_rows:
+            raise_422(
+                f"RepSpec {assignment.rep_spec_id!r} is listed more than once",
+                kind="domain",
+                errors=[
+                    FieldError(
+                        path=f"/initial_rep_spec_assignments/{index}/rep_spec_id",
+                        message="duplicate of an earlier entry",
+                        code="duplicate_assignment",
+                    )
+                ],
+                data={"rep_spec_id": str(assignment.rep_spec_id)},
             )
         rep_spec_rows.append(rep_spec)
 
@@ -502,12 +519,18 @@ async def add_rep_spec_assignment(
 ) -> InfoItemRepSpecOut:
     """Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
-    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+    Validates that the InfoItem exists, the RepSpec exists and is not already
+    actively assigned to it, and the InfoItem's rep_fields satisfies the
+    RepSpec's required_fields and renders its path_template. Returns 201 on
+    success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
-    - 422: rep_fields incomplete (missing required fields)
+    - 409: the RepSpec is already actively assigned to this InfoItem
+      (``data.existing_assignment_id``)
+    - 422: rep_fields incomplete (``code="rep_fields_incomplete"``, one error per
+      missing field) or unrenderable (``code="rep_fields_unrenderable"``, path
+      ``/rep_fields``)
     """
     try:
         item_ulid = ULID.from_str(info_item_id)
@@ -566,6 +589,26 @@ async def add_rep_spec_assignment(
                 )
                 for m in e.missing
             ],
+            source_exc=e,
+        )
+    except RepFieldsUnrenderableError as e:
+        raise_422(
+            "rep_fields cannot render this RepSpec's path_template",
+            kind="domain",
+            errors=[
+                FieldError(path="/rep_fields", message=e.reason, code="rep_fields_unrenderable")
+            ],
+            data={"rep_spec_id": str(spec_ulid)},
+            source_exc=e,
+        )
+    except DuplicateAssignmentError as e:
+        raise_envelope(
+            409,
+            "conflict",
+            "this RepSpec is already actively assigned to this InfoItem; "
+            "deactivate that assignment first via "
+            "DELETE /api/v1/info-items/{info_item_id}/rep-spec-assignments/{assignment_id}",
+            data={"existing_assignment_id": str(e.existing_assignment_id)},
             source_exc=e,
         )
 
