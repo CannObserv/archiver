@@ -226,6 +226,20 @@ async def test_repairing_a_bag_that_could_not_render_is_not_a_move(session):
 
 
 @pytest.mark.asyncio
+async def test_repairing_a_malformed_stored_bag_is_not_a_move(session):
+    """The pre-#302 save stored any JSON object, so an assigned item can hold a
+    bag the v1 shape refuses. Probing it for the "before" path must fail as a
+    render error (no path, so no move), not crash the repair (CR 4)."""
+    item = await _assigned(session, {"org": "flat"}, _spec("s", "org.title_slug"))
+
+    saved = await set_rep_fields(
+        session, info_item_id=item.info_item_id, rep_fields={"org": {"title": "WA LCB"}}
+    )
+
+    assert saved.rep_fields == {"org": {"title": "WA LCB"}}
+
+
+@pytest.mark.asyncio
 async def test_every_refusal_is_a_write_error():
     for cls in (RepFieldsInvalidError, RepFieldsRefusedError, RepFieldsMoveError):
         assert issubclass(cls, RepFieldsWriteError)
