@@ -955,8 +955,13 @@ async def put_rep_fields(
         )
     except RepFieldsRefusedError as e:
         names = ", ".join(f"'{r.rep_spec_name}'" for r in e.refusals)
+        what = (
+            "the active assignment of RepSpec"
+            if len(e.refusals) == 1
+            else "the active assignments of RepSpecs"
+        )
         raise_422(
-            f"rep_fields would break the active assignment of RepSpec {names}",
+            f"rep_fields would break {what} {names}",
             kind="domain",
             errors=[
                 FieldError(

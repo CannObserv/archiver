@@ -103,7 +103,9 @@ async def test_put_refusal_names_the_assignment_and_the_key(client, session):
 
     assert response.status_code == 422
     detail = response.json()["detail"]
-    assert "Org spec" in detail["message"]
+    assert detail["message"] == (
+        "rep_fields would break the active assignment of RepSpec 'Org spec'"
+    )
     assert [(e["path"], e["code"]) for e in detail["errors"]] == [
         ("/rep_fields/org/title_slug", "rep_fields_incomplete")
     ]
@@ -133,6 +135,8 @@ async def test_put_names_every_broken_assignment(client, session):
     assert response.status_code == 422
     names = {r["rep_spec_name"] for r in response.json()["detail"]["data"]["refusals"]}
     assert names == {"First", "Second"}
+    message = response.json()["detail"]["message"]
+    assert message.startswith("rep_fields would break the active assignments of RepSpecs ")
 
 
 @pytest.mark.asyncio
