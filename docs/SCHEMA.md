@@ -19,6 +19,9 @@ see the never-rename rule in `AGENTS.md`.
   `src/core/tools/rep_fields_gate.py` gives assign, atomic create and save alike. The writers
   serialize on the InfoItem row (`FOR UPDATE`, taken before any RepSpec lock).
   A valid edit that moves an active assignment's destination needs `allow_destination_change`.
+  Enforced **on write only**: rows written before #302 were not backfilled. Production was
+  checked read-only on 2026-10-02 and every bag passed; a malformed legacy bag would be refused
+  only at its next save.
   `watcher_item_id` — **dropped** (archiver#142). It held *Watcher's* primary key on an *Archiver*
   row, which is the coupling artifact the decoupling epic set out to remove. Announcements key on
   Archiver's own `info_item_id` and Watcher reconciles against that, so nothing allocates a
