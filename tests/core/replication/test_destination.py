@@ -252,7 +252,27 @@ def test_probe_refuses_a_missing_bag_value():
 def test_probe_is_a_no_op_without_a_path_template():
     """Document validity is create-time's job; a partial document is not this
     check's failure to report."""
-    probe_destination({"required_fields": []}, rep_fields={})
+    assert probe_destination({"required_fields": []}, rep_fields={}) is None
+
+
+def test_probe_returns_the_path_it_rendered():
+    """``set_rep_fields`` compares a bag's path before and after a save (archiver#302)."""
+    path = probe_destination(
+        {"path_template": "archive/{info_item.slug}/{source_revision.year}.html"},
+        rep_fields={"info_item": {"slug": "notices"}},
+        captured_at=datetime(2026, 10, 2, tzinfo=UTC),
+    )
+    assert path == "archive/notices/2026.html"
+
+
+def test_probe_renders_one_occasion_for_one_captured_at():
+    """Two bags compared against one ``captured_at`` differ only where the bags do."""
+    document = {"path_template": "a/{org.title_slug}/{source_revision.captured_at}.html"}
+    when = datetime(2026, 10, 2, 12, tzinfo=UTC)
+    before = probe_destination(document, {"org": {"title": "Old Name"}}, captured_at=when)
+    after = probe_destination(document, {"org": {"title": "New Name"}}, captured_at=when)
+    assert before == "a/old_name/20261002T120000Z.html"
+    assert after == "a/new_name/20261002T120000Z.html"
 
 
 # --- fan-out pre-flight ---

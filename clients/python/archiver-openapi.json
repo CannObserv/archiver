@@ -868,6 +868,29 @@
         "title": "InfoItemOut",
         "type": "object"
       },
+      "InfoItemRepFieldsPut": {
+        "additionalProperties": false,
+        "description": "Request body for PUT /info-items/{id}/rep-fields (archiver#302).\n\nReplaces the whole bag; this is not a merge. The bag must be v1-shaped and\nkeep every active assignment able to render. A valid bag that changes where\nan active assignment renders is refused with 409 unless\n``allow_destination_change`` is true: later occasions would land at the new\npath, beside everything already published at the old one.",
+        "properties": {
+          "allow_destination_change": {
+            "default": false,
+            "description": "Store the bag even though it changes the path an active assignment renders. Without it, such a bag is refused with 409.",
+            "title": "Allow Destination Change",
+            "type": "boolean"
+          },
+          "rep_fields": {
+            "additionalProperties": true,
+            "description": "The whole rep_fields bag (Rep Fields v1: namespace \u2192 key \u2192 scalar), validated against the item's active assignments before it is stored.",
+            "title": "Rep Fields",
+            "type": "object"
+          }
+        },
+        "required": [
+          "rep_fields"
+        ],
+        "title": "InfoItemRepFieldsPut",
+        "type": "object"
+      },
       "InfoItemRepSpecCreate": {
         "description": "Request body for POST /info-items/{id}/rep-spec-assignments.",
         "properties": {
@@ -2264,7 +2287,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.23.0"
+    "version": "4.24.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3643,6 +3666,124 @@
           }
         ],
         "summary": "Deactivate Info Source Binding",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/rep-fields": {
+      "put": {
+        "description": "Replace an InfoItem's rep_fields bag (archiver#302).\n\nThe only route that changes a bag after create. A whole-bag PUT like\n``/watch-spec``: the bag is judged as a unit against every active\nassignment, which a merge would make a read-modify-write of state the\ncaller never saw.\n\nRefusals leave the stored bag untouched:\n\n- **422** ``rep_fields_invalid``: not Rep Fields v1.\n- **422** ``rep_fields_incomplete`` / ``rep_fields_unrenderable``: the bag\n  would break an active assignment. ``data.refusals`` names every one.\n- **409** ``rep_fields_moves_destination``: valid, but an active\n  assignment would render somewhere else from now on. ``data.moves``\n  carries each path before and after; resend with\n  ``allow_destination_change: true`` to store it anyway.\n\nNothing is announced: ``rep_fields`` rides no bus stream.",
+        "operationId": "put_rep_fields_api_v1_info_items__info_item_id__rep_fields_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemRepFieldsPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Rep Fields",
         "tags": [
           "info-items"
         ]

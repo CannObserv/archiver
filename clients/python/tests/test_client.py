@@ -1,5 +1,7 @@
 """respx-mocked tests for ArchiverClient v2 endpoints."""
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -305,6 +307,80 @@ async def test_assign_rep_spec(client):
         )
     assert out.rep_spec_id == "01HZZ00000000000000000000D"
     assert out.deactivated_at is None
+
+
+_REP_FIELDS_URL = f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/rep-fields"
+
+
+@pytest.mark.asyncio
+async def test_set_rep_fields_puts_the_whole_bag(client):
+    bag = {"org": {"title": "WA LCB"}}
+    with respx.mock:
+        route = respx.put(_REP_FIELDS_URL).mock(
+            return_value=httpx.Response(200, json={**_info_item_payload(), "rep_fields": bag})
+        )
+        out = await client.set_rep_fields("01HZZ00000000000000000000A", bag)
+    sent = json.loads(route.calls.last.request.content)
+    assert sent == {"rep_fields": bag, "allow_destination_change": False}
+    assert out.rep_fields.to_dict() == bag
+
+
+@pytest.mark.asyncio
+async def test_set_rep_fields_sends_the_destination_override(client):
+    with respx.mock:
+        route = respx.put(_REP_FIELDS_URL).mock(
+            return_value=httpx.Response(200, json=_info_item_payload())
+        )
+        await client.set_rep_fields("01HZZ00000000000000000000A", {}, allow_destination_change=True)
+    assert json.loads(route.calls.last.request.content)["allow_destination_change"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_rep_fields_refusal_raises_validation_error_with_refusals(client):
+    refusals = [{"rep_spec_name": "Org spec", "code": "rep_fields_incomplete"}]
+    with respx.mock:
+        respx.put(_REP_FIELDS_URL).mock(
+            return_value=httpx.Response(
+                422,
+                json={
+                    "detail": {
+                        "kind": "domain",
+                        "message": "rep_fields would break the active assignment",
+                        "errors": [
+                            {
+                                "path": "/rep_fields/org/title_slug",
+                                "message": "required field org.title_slug missing or null",
+                                "code": "rep_fields_incomplete",
+                            }
+                        ],
+                        "data": {"refusals": refusals},
+                    }
+                },
+            )
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            await client.set_rep_fields("01HZZ00000000000000000000A", {})
+    assert exc_info.value.data == {"refusals": refusals}
+
+
+@pytest.mark.asyncio
+async def test_set_rep_fields_destination_move_raises_conflict(client):
+    with respx.mock:
+        respx.put(_REP_FIELDS_URL).mock(
+            return_value=httpx.Response(
+                409,
+                json={
+                    "detail": {
+                        "kind": "conflict",
+                        "message": "rep_fields would move where active assignments render",
+                        "errors": [],
+                        "data": {"moves": [{"before": "a/old/x", "after": "a/new/x"}]},
+                    }
+                },
+            )
+        )
+        with pytest.raises(Conflict):
+            await client.set_rep_fields("01HZZ00000000000000000000A", {"org": {"title": "New"}})
 
 
 @pytest.mark.asyncio

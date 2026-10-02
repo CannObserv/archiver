@@ -8,10 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
-from src.core.rep_fields_schema.validator import validate_rep_fields_against_spec
-from src.core.replication.destination import probe_destination
-from src.core.replication.errors import ReplicationRenderError
+from src.core.models import InfoItemRepSpec, RepSpec
+from src.core.tools.rep_fields_gate import check_bag_against_spec, lock_info_item
 
 
 class AssignmentError(Exception):
@@ -105,12 +103,16 @@ async def assign_rep_spec(
     - the RepSpec exists
     - the RepSpec is not already actively assigned to this InfoItem
     - the InfoItem.rep_fields satisfies the RepSpec.document.required_fields list
-      (per src.core.rep_fields_schema.validator.validate_rep_fields_against_spec)
+      and renders its path_template (per src.core.tools.rep_fields_gate)
 
     On success returns the persisted assignment row (active, public_url=None).
     Caller is responsible for committing the session.
     """
-    item = await db.get(InfoItem, info_item_id)
+    # FOR UPDATE, and before the RepSpec lock (item → spec, the order every
+    # writer takes): serializes against set_rep_fields, which checks this
+    # item's active assignments under the same lock. Without it a save and this
+    # assign each pass on their own snapshot and both commit (archiver#302).
+    item = await lock_info_item(db, info_item_id)
     if item is None:
         raise InfoItemNotFoundError(str(info_item_id))
 
@@ -133,17 +135,13 @@ async def assign_rep_spec(
     if existing_id is not None:
         raise DuplicateAssignmentError(existing_id)
 
-    required_fields = (spec.document or {}).get("required_fields", [])
-    ok, errors = validate_rep_fields_against_spec(item.rep_fields or {}, required_fields)
-    if not ok:
-        raise RepFieldsIncompleteError(errors)
-
     # Presence is not renderability, and this is the last synchronous chance to
-    # say so (archiver#168 CR #5).
-    try:
-        probe_destination(spec.document or {}, item.rep_fields or {})
-    except ReplicationRenderError as e:
-        raise RepFieldsUnrenderableError(str(e)) from e
+    # say so (archiver#168 CR #5): the gate checks both.
+    check = check_bag_against_spec(item.rep_fields or {}, spec.document or {})
+    if check.missing:
+        raise RepFieldsIncompleteError(check.missing)
+    if check.unrenderable is not None:
+        raise RepFieldsUnrenderableError(check.unrenderable)
 
     assignment = InfoItemRepSpec(
         info_item_id=info_item_id,

@@ -76,7 +76,7 @@ each route.
 
 **GET `/dashboard/info-items/new`** - 301 redirect to `/dashboard/register`.
 
-**POST `/dashboard/info-items/new`** - legacy direct-create, still live. Form fields: `name`, `description`, `owner`, `rep_fields` (JSON), `initial_url` (string), `initial_source_specs` (JSON array). 303 to detail on success; 422 re-rendering `info_items/new.html` on validation error. Interactive registration goes through `/dashboard/register`.
+**POST `/dashboard/info-items/new`** - legacy direct-create, still live. Form fields: `name`, `description`, `owner`, `rep_fields` (JSON), `initial_url` (string), `initial_source_specs` (JSON array). 303 to detail on success; 422 re-rendering `info_items/new.html` on validation error, including a `rep_fields` bag that is not Rep Fields v1 (archiver#302). Interactive registration goes through `/dashboard/register`.
 
 **GET `/dashboard/info-items/{id}`** - the 5-section vertical-scroll hub page
 (`info_items/detail.html`). Its section anatomy, partial templates, and swap
@@ -111,7 +111,7 @@ The entries below stay the inventory line for each route.
 
 **POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** - issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading - the swap destroys the clicked button, exactly as the Deactivate beside it does. Double guard: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**. Both buttons `hx-sync` on the section so its poll yields to them (archiver#220, [UI.md](UI.md) § *A section that polls and takes actions*).
 
-**PATCH `/dashboard/info-items/{id}/rep-fields`** - inline save for `rep_fields` JSONB (form field: `rep_fields` JSON string). Returns a flash fragment into `#rep-fields-flash`.
+**PATCH `/dashboard/info-items/{id}/rep-fields`** - inline save for `rep_fields` JSONB through `set_rep_fields` (form fields: `rep_fields` JSON string, optional `allow_destination_change=true`). Renders `info_items/_rep_fields_flash.html` into `#rep-fields-flash`: 200 saved; 422 for invalid JSON, a non-v1 bag, or one that breaks an active assignment (naming the RepSpec and key); 409 when the bag moves an assignment's destination, with a confirm button that re-sends that bag (archiver#302, [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5).
 
 **GET `/dashboard/info-items/{id}/suggest-rep-fields`** - HTMX partial: domain-scoped `rep_fields` key suggestions as `sortableChips` ([COMPONENTS.md](COMPONENTS.md)).
 

@@ -64,6 +64,32 @@ class InfoItemWatchSpecPut(BaseModel):
     )
 
 
+class InfoItemRepFieldsPut(BaseModel):
+    """Request body for PUT /info-items/{id}/rep-fields (archiver#302).
+
+    Replaces the whole bag; this is not a merge. The bag must be v1-shaped and
+    keep every active assignment able to render. A valid bag that changes where
+    an active assignment renders is refused with 409 unless
+    ``allow_destination_change`` is true: later occasions would land at the new
+    path, beside everything already published at the old one.
+    """
+
+    model_config = {"extra": "forbid"}
+    rep_fields: dict[str, Any] = Field(
+        description=(
+            "The whole rep_fields bag (Rep Fields v1: namespace → key → scalar), "
+            "validated against the item's active assignments before it is stored."
+        )
+    )
+    allow_destination_change: bool = Field(
+        default=False,
+        description=(
+            "Store the bag even though it changes the path an active assignment "
+            "renders. Without it, such a bag is refused with 409."
+        ),
+    )
+
+
 class InfoItemWatchActivePut(BaseModel):
     """Request body for PUT /info-items/{id}/watch-active.
 

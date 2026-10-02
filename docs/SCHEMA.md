@@ -13,6 +13,11 @@ see the never-rename rule in `AGENTS.md`.
   writes (archiver#206). Derivation runs where the bag is consumed (`render_destination`,
   `assign_rep_spec`'s `required_fields` check, `POST /tools/validate-rep-fields`) and never
   rewrites the stored bag; a stored `_slug` key is an explicit override and is never replaced.
+  **One writer after create: `set_rep_fields`** (archiver#302), behind `PUT …/rep-fields` and the
+  dashboard save. A written bag is v1-shaped and serves every active assignment, per the gate
+  `src/core/tools/rep_fields_gate.py` that assign and create share; writers serialize on the
+  InfoItem row. Enforced on write only, no backfill (prod clean 2026-10-02). Codes and the
+  destination-move 409: [API.md](API.md).
   `watcher_item_id` — **dropped** (archiver#142). It held *Watcher's* primary key on an *Archiver*
   row, which is the coupling artifact the decoupling epic set out to remove. Announcements key on
   Archiver's own `info_item_id` and Watcher reconciles against that, so nothing allocates a

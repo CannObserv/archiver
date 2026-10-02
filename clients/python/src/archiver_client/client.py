@@ -66,6 +66,9 @@ from archiver_client.generated.api.info_items import (
 from archiver_client.generated.api.info_items import (
     patch_rep_spec_assignment_public_url_api_v1_info_items_info_item_id_rep_spec_assignments_assignment_id_patch as _patch_rep_spec_url,
 )
+from archiver_client.generated.api.info_items import (
+    put_rep_fields_api_v1_info_items_info_item_id_rep_fields_put as _put_rep_fields,
+)
 from archiver_client.generated.api.info_sources import (
     create_info_source_route_api_v1_info_sources_post as _create_info_source,
 )
@@ -105,6 +108,10 @@ from archiver_client.generated.models.info_item_create_initial_source_specs_type
 )
 from archiver_client.generated.models.info_item_create_rep_fields import InfoItemCreateRepFields
 from archiver_client.generated.models.info_item_out import InfoItemOut
+from archiver_client.generated.models.info_item_rep_fields_put import InfoItemRepFieldsPut
+from archiver_client.generated.models.info_item_rep_fields_put_rep_fields import (
+    InfoItemRepFieldsPutRepFields,
+)
 from archiver_client.generated.models.info_item_rep_spec_create import InfoItemRepSpecCreate
 from archiver_client.generated.models.info_item_rep_spec_out import InfoItemRepSpecOut
 from archiver_client.generated.models.info_item_rep_spec_public_url_patch import (
@@ -268,6 +275,34 @@ class ArchiverClient:
             client=self._gen_client, info_item_id=info_item_id
         )
         _unwrap_no_content(response)
+
+    async def set_rep_fields(
+        self,
+        info_item_id: str,
+        rep_fields: dict[str, Any],
+        *,
+        allow_destination_change: bool = False,
+    ) -> InfoItemOut:
+        """Replace an InfoItem's whole ``rep_fields`` bag (not a merge).
+
+        Checked against every active RepSpec assignment before it is stored;
+        any refusal leaves the stored bag unchanged. Raises ``NotFound``,
+        ``ValidationError`` (422: not Rep Fields v1, ``code="rep_fields_invalid"``;
+        or it would break an assignment, ``rep_fields_incomplete`` /
+        ``rep_fields_unrenderable``, every one named in ``data.refusals``), or
+        ``Conflict`` (409, ``rep_fields_moves_destination``: valid, but an
+        assignment would render to a new path from now on; ``data.moves`` holds
+        each path before and after - pass ``allow_destination_change=True`` to
+        store it anyway).
+        """
+        body = InfoItemRepFieldsPut(
+            rep_fields=InfoItemRepFieldsPutRepFields.from_dict(rep_fields),
+            allow_destination_change=allow_destination_change,
+        )
+        response = await _put_rep_fields.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id, body=body
+        )
+        return _unwrap(response)
 
     # --- RepSpec assignment endpoints ---
 
