@@ -662,8 +662,8 @@ async def assign_rep_spec_route(
     A plain form post gets a 303; an htmx (boosted) one gets 204 + HX-Redirect,
     since its XHR would follow a 303 itself and drop ``#replication`` (CR 1).
     Every refusal names what is wrong - the missing keys, the render reason, or
-    the assignment already in place - because the error page is all the
-    operator sees (archiver#301).
+    the RepSpec already assigned - because the error page is all the operator
+    sees (archiver#301).
     """
     try:
         item_ulid = ULID.from_str(item_id)
