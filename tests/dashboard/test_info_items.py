@@ -1411,6 +1411,8 @@ async def test_rep_fields_save_that_moves_a_destination_asks_first(client, sessi
     assert "Org Layout" in r.text
     assert "organizations/old_name/" in r.text
     assert "organizations/new_name/" in r.text
+    # The probe's placeholder revision id is in both paths; say so (CR 3).
+    assert "example revision" in r.text
     # The confirmation re-sends exactly the bag it warned about, not whatever
     # the textarea holds by the time the operator clicks.
     assert "allow_destination_change" in r.text

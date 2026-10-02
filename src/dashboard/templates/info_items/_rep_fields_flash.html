@@ -16,6 +16,7 @@
     <li>RepSpec '{{ m.rep_spec_name }}': <code>{{ m.before }}</code> → <code>{{ m.after }}</code></li>
     {% endfor %}
   </ul>
+  <p class="text-muted">Paths shown for an example revision; only the part that comes from Rep Fields changes.</p>
   <button type="button" class="btn btn--secondary"
           hx-patch="/dashboard/info-items/{{ item_id }}/rep-fields"
           hx-vals='{{ {"rep_fields": bag_json, "allow_destination_change": "true"} | tojson }}'
