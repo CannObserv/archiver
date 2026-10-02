@@ -651,6 +651,7 @@ async def deactivate_source_binding(
 
 @router.post("/{item_id}/assign-rep-spec")
 async def assign_rep_spec_route(
+    request: Request,
     item_id: str,
     rep_spec_id: str = Form(...),
     user=Depends(get_dashboard_user),
@@ -705,10 +706,12 @@ async def assign_rep_spec_route(
         )
 
     await session.commit()
-    return RedirectResponse(
-        url=f"/dashboard/info-items/{item_id}#replication",
-        status_code=303,
-    )
+    target = f"/dashboard/info-items/{item_id}#replication"
+    # hx-boost makes this an XHR, which follows a 303 itself and drops the
+    # fragment; HX-Redirect has htmx set location.href, which keeps it (CR 1).
+    if "HX-Request" in request.headers:
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(url=target, status_code=303)
 
 
 async def _rep_spec_label(session: AsyncSession, rep_spec_id: ULID) -> str:

@@ -597,6 +597,27 @@ async def test_assign_rep_spec_creates_assignment(client, session):
 
 
 @pytest.mark.asyncio
+async def test_assign_rep_spec_under_htmx_redirects_client_side_to_keep_the_anchor(client, session):
+    """hx-boost follows a 303 inside the XHR and drops the fragment (CR 1).
+
+    ``HX-Redirect`` makes htmx set ``location.href``, which keeps it.
+    """
+    item = _make_item("Boosted Assign Item")
+    rs = _make_rep_spec()
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
+        data={"rep_spec_id": str(rs.rep_spec_id)},
+        headers={**_HEADERS, "HX-Request": "true", "HX-Boosted": "true"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 204
+    assert r.headers["HX-Redirect"] == f"/dashboard/info-items/{item.info_item_id}#replication"
+
+
+@pytest.mark.asyncio
 async def test_detail_page_carries_the_replication_anchor(client, session):
     """The assign redirect's fragment has to land somewhere."""
     item = _make_item("Anchor Item")
