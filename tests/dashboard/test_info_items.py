@@ -1318,12 +1318,168 @@ async def test_rep_fields_inline_save(client, session):
     r = await client.patch(
         f"/dashboard/info-items/{item.info_item_id}/rep-fields",
         headers=_HEADERS,
-        data={"rep_fields": '{"key1":"value1"}'},
+        data={"rep_fields": '{"org": {"title": "WA LCB"}}'},
     )
-    assert r.status_code in (200, 303)
+    assert r.status_code == 200
+    assert "Saved." in r.text
 
     await session.refresh(item)
-    assert item.rep_fields == {"key1": "value1"}
+    assert item.rep_fields == {"org": {"title": "WA LCB"}}
+
+
+async def _item_assigned_to(session, bag: dict, rs: RepSpec) -> InfoItem:
+    item = _make_item("Assigned Bag Item", rep_fields=bag)
+    session.add_all([item, rs])
+    await session.flush()
+    session.add(
+        InfoItemRepSpec(
+            info_item_id=item.info_item_id,
+            rep_spec_id=rs.rep_spec_id,
+            activated_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+    return item
+
+
+_ORG_PATH = "organizations/{org.title_slug}/{source_revision.id}.html"
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_save_refuses_a_bag_off_the_v1_shape(client, session):
+    """Was "Saved." for anything that parsed as a JSON object (archiver#302)."""
+    item = _make_item("Flat Bag Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": '{"key1": "value1"}'},
+    )
+    assert r.status_code == 422
+    assert "key1" in r.text
+    await session.refresh(item)
+    assert item.rep_fields == {}
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_save_refusal_names_the_assignment_and_key(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "WA LCB"}}, rs)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": "{}"},
+    )
+    assert r.status_code == 422
+    assert "Org Layout" in r.text
+    assert "org.title_slug" in r.text
+    await session.refresh(item)
+    assert item.rep_fields == {"org": {"title": "WA LCB"}}
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_save_refuses_an_unrenderable_value(client, session):
+    rs = _rep_spec_requiring(
+        "Raw Name", "org.name", path_template="a/{org.name}/{source_revision.id}"
+    )
+    item = await _item_assigned_to(session, {"org": {"name": "wa_lcb"}}, rs)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": '{"org": {"name": "WA LCB"}}'},
+    )
+    assert r.status_code == 422
+    assert "Raw Name" in r.text
+    assert "org.name" in r.text
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_save_that_moves_a_destination_asks_first(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Old Name"}}, rs)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": '{"org": {"title": "New Name"}}'},
+    )
+    assert r.status_code == 409
+    assert "Org Layout" in r.text
+    assert "organizations/old_name/" in r.text
+    assert "organizations/new_name/" in r.text
+    # The confirmation re-sends exactly the bag it warned about, not whatever
+    # the textarea holds by the time the operator clicks.
+    assert "allow_destination_change" in r.text
+    assert "New Name" in r.text
+    await session.refresh(item)
+    assert item.rep_fields == {"org": {"title": "Old Name"}}
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_save_moves_a_destination_when_confirmed(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Old Name"}}, rs)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": '{"org": {"title": "New Name"}}', "allow_destination_change": "true"},
+    )
+    assert r.status_code == 200
+    await session.refresh(item)
+    assert item.rep_fields == {"org": {"title": "New Name"}}
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_save_invalid_json_is_422(client, session):
+    item = _make_item("Bad JSON Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": "{not json"},
+    )
+    assert r.status_code == 422
+    assert "Invalid" in r.text
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_form_swaps_refusals_into_its_flash(client, session):
+    """Without hx-target-4xx a 422 never reaches the operator: htmx-errors.js
+    toasts a bare "request failed" instead (archiver#302)."""
+    item = _make_item("Flash Target Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    form = r.text[
+        r.text.index(f'hx-patch="/dashboard/info-items/{item.info_item_id}/rep-fields"') :
+    ]
+    form = form[: form.index("</form>")]
+    assert 'hx-target-422="#rep-fields-flash"' in form
+    assert 'hx-target-409="#rep-fields-flash"' in form
+    assert 'id="rep-fields-flash"' in form
+
+
+@pytest.mark.asyncio
+async def test_create_refuses_a_bag_off_the_v1_shape(client, session):
+    r = await client.post(
+        _NEW_URL,
+        data={"name": "Flat Created Item", "rep_fields": '{"key1": "value1"}'},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 422
+    assert "key1" in r.text
+    result = await session.execute(select(InfoItem).where(InfoItem.name == "Flat Created Item"))
+    assert result.scalar_one_or_none() is None
 
 
 # ---------------------------------------------------------------------------

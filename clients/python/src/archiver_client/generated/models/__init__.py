@@ -29,6 +29,8 @@ from .info_item_create_rep_fields import InfoItemCreateRepFields
 from .info_item_out import InfoItemOut
 from .info_item_out_rep_fields import InfoItemOutRepFields
 from .info_item_out_watch_spec import InfoItemOutWatchSpec
+from .info_item_rep_fields_put import InfoItemRepFieldsPut
+from .info_item_rep_fields_put_rep_fields import InfoItemRepFieldsPutRepFields
 from .info_item_rep_spec_create import InfoItemRepSpecCreate
 from .info_item_rep_spec_out import InfoItemRepSpecOut
 from .info_item_rep_spec_public_url_patch import InfoItemRepSpecPublicUrlPatch
@@ -118,6 +120,8 @@ __all__ = (
     "InfoItemOut",
     "InfoItemOutRepFields",
     "InfoItemOutWatchSpec",
+    "InfoItemRepFieldsPut",
+    "InfoItemRepFieldsPutRepFields",
     "InfoItemRepSpecCreate",
     "InfoItemRepSpecOut",
     "InfoItemRepSpecPublicUrlPatch",

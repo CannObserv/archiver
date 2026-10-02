@@ -276,7 +276,12 @@ def render_destination(
     return rendered
 
 
-def probe_destination(document: Mapping[str, object], rep_fields: Mapping[str, object]) -> None:
+def probe_destination(
+    document: Mapping[str, object],
+    rep_fields: Mapping[str, object],
+    *,
+    captured_at: datetime | None = None,
+) -> str | None:
     """Check that this document + bag could render, before the assignment exists.
 
     ``assign_rep_spec`` validates that every ``required_fields`` entry is present
@@ -291,19 +296,24 @@ def probe_destination(document: Mapping[str, object], rep_fields: Mapping[str, o
     create/update gate's job, and reporting it here would blame the assignment
     for a document that was already incomplete.
 
+    Returns the rendered path, or ``None`` when there is no template. Every
+    probe renders one placeholder occasion, so two probes given one
+    ``captured_at`` differ only where their bags do: ``set_rep_fields`` compares
+    a bag's path before and after a save that way (archiver#302).
+
     Raises:
         ReplicationRenderError: the pair cannot produce a destination.
     """
     template = document.get("path_template")
     if not isinstance(template, str):
-        return
-    render_destination(
+        return None
+    return render_destination(
         template,
         rep_fields=rep_fields,
         occasion=RenderOccasion(
             source_revision_id=_PROBE_OCCASION_ID,
             content_fingerprint=_PROBE_FINGERPRINT,
-            captured_at=datetime.now(UTC),
+            captured_at=captured_at or datetime.now(UTC),
         ),
     )
 

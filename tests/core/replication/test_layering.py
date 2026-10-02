@@ -33,9 +33,10 @@ FORBIDDEN_PREFIX = "src.core.tools"
 # Floor for the derivation. A scan that silently matched nothing would forbid
 # nothing and pass every assertion, so the derived set has to contain at least
 # the layers known to import replication today.
+# ``src.api.routes`` left it in archiver#302: the create route asks
+# ``src.core.tools.rep_fields_gate`` rather than probing a destination itself.
 KNOWN_CONSUMER_PACKAGES = frozenset(
     {
-        "src.api.routes",
         "src.core.services",
         "src.core.tools",
         "src.core.rep_spec_schema",

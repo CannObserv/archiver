@@ -65,6 +65,7 @@ Those take production action on 8000 and run only when the operator asks.
 | Assign a RepSpec | `POST /info-items/{id}/rep-spec-assignments` | `assign_rep_spec(info_item_id, rep_spec_id, activated_at=None)` |
 | Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
 | Public-URL writeback | `PATCH /info-items/{id}/rep-spec-assignments/{aid}` | `set_public_url(info_item_id, assignment_id, public_url)` |
+| Replace an item's rep_fields bag | `PUT /info-items/{id}/rep-fields` | `set_rep_fields(info_item_id, rep_fields, allow_destination_change=False)` |
 | Replace an item's cadence policy | `PUT /info-items/{id}/watch-spec` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Pause / resume an item | `PUT /info-items/{id}/watch-active` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
@@ -80,6 +81,28 @@ archiver#301); **409** `kind="conflict"` when the spec is already actively assig
 `data.existing_assignment_id` - deactivate it first. `POST /info-items` refuses the same spec listed
 twice in `initial_rep_spec_assignments` (422, `code="duplicate_assignment"`). One active row per
 `(item, spec)` is a database invariant ([SCHEMA.md](SCHEMA.md) § `InfoItemRepSpec`).
+
+`PUT /info-items/{id}/rep-fields` accepts `{rep_fields, allow_destination_change=false}` and
+**replaces** the bag whole (archiver#302). It is the only way to change a bag after create, and it
+holds every later bag to the standard assignment did, so it cannot break an active assignment. The
+InfoItem row is locked `FOR UPDATE`, and `assign_rep_spec` takes the same lock, so a save and a
+concurrent assign cannot each pass on their own snapshot. Refusals leave the stored bag untouched:
+
+- **422** `code="rep_fields_invalid"`: not Rep Fields v1 (`src/core/rep_fields_schema/v1.json`).
+  `POST /info-items` now refuses the same, assignments or not.
+- **422** `kind="domain"`, `code="rep_fields_incomplete"` / `"rep_fields_unrenderable"`: the bag
+  would break an active assignment. Every broken assignment is reported, not just the first:
+  `data.refusals` is `[{assignment_id, rep_spec_id, rep_spec_name, code, errors}]`, and each
+  `FieldError` message names its RepSpec.
+- **409** `kind="conflict"`, `code="rep_fields_moves_destination"`: the bag is valid, but an active
+  assignment would render to a different path from now on, beside everything already published at
+  the old one in a permanent bucket. `data.moves` is `[{assignment_id, rep_spec_id, rep_spec_name,
+  before, after}]`, rendered against one placeholder occasion so the two differ only where the bags
+  do. Resend with `allow_destination_change: true` to store it; the move is logged at WARNING.
+  Repairing a bag that could not render is not a move.
+
+Error paths point into the request body (`/rep_fields/org/title_slug`). Nothing is announced:
+`rep_fields` rides no bus stream.
 
 `DELETE /info-items/{id}` returns 204 and cascades the item's source bindings and rep-spec
 assignments; the InfoSource and its SourceRevisions survive (the physical layer is shared). 404 on

@@ -27,6 +27,7 @@ from src.core.models import (
     SourceRevision,
     WatchStatus,
 )
+from src.core.rep_fields_schema.validator import validate_rep_fields
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_policy_change,
@@ -68,6 +69,12 @@ from src.core.tools.create_info_source import (
 from src.core.tools.deactivate_info_item_source_binding import (
     BindingNotFoundError,
     deactivate_info_item_source_binding,
+)
+from src.core.tools.set_rep_fields import (
+    RepFieldsInvalidError,
+    RepFieldsMoveError,
+    RepFieldsRefusedError,
+    set_rep_fields,
 )
 from src.core.url_canonicalization import canonicalize_url
 from src.core.watch_spec_schema.validator import validate_watch_spec
@@ -258,6 +265,13 @@ async def create_info_item(
             errors["rep_fields"] = "Must be a JSON object."
     except json.JSONDecodeError:
         errors["rep_fields"] = "Invalid JSON."
+    if "rep_fields" not in errors:
+        # The shape PUT /rep-fields and the API create refuse (archiver#302).
+        ok, shape_errors = validate_rep_fields(rep_fields_dict)
+        if not ok:
+            errors["rep_fields"] = "Not Rep Fields v1: " + "; ".join(
+                f"{e['path']}: {e['message']}" for e in shape_errors
+            )
 
     source_specs_list: list | None = None
     if initial_source_specs and initial_source_specs.strip():
@@ -544,29 +558,70 @@ async def patch_rep_fields(
     item_id: str,
     request: Request,
     rep_fields: str = Form(default="{}"),
+    allow_destination_change: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """HTMX: save rep_fields JSON inline; return updated section partial."""
+    """HTMX: save the rep_fields bag through ``set_rep_fields``; the outcome lands inline.
+
+    The same gate as ``PUT /info-items/{id}/rep-fields`` (archiver#302): a bag
+    off the v1 shape, or one that would break an active assignment, is a 422
+    naming the RepSpec and key; one that moves an assignment's destination is a
+    409 asking the operator to confirm.
+    """
     item = await _resolve_item(item_id, session)
+
+    def flash(status_code: int, **context) -> HTMLResponse:
+        return _templates.TemplateResponse(
+            request,
+            "info_items/_rep_fields_flash.html",
+            {"saved": False, "moves": [], "message": "", "problems": [], **context},
+            status_code=status_code,
+        )
 
     try:
         parsed = json.loads(rep_fields) if rep_fields.strip() else {}
         if not isinstance(parsed, dict):
             raise ValueError("rep_fields must be a JSON object")
     except (json.JSONDecodeError, ValueError) as exc:
-        return HTMLResponse(
-            f'<p class="text-danger text-sm">Invalid rep_fields: {html_escape(str(exc))}</p>',
-            status_code=422,
+        return flash(422, message=f"Invalid rep_fields: {exc}")
+
+    try:
+        await set_rep_fields(
+            session,
+            info_item_id=item.info_item_id,
+            rep_fields=parsed,
+            # A str parsed by hand: FastAPI's bool coercion fails as JSON (#86).
+            allow_destination_change=allow_destination_change.strip().lower() == "true",
+        )
+    except AssignItemNotFoundError as e:
+        raise DashboardNotFound("Information Item not found") from e
+    except RepFieldsInvalidError as e:
+        return flash(
+            422,
+            message="Not saved: Rep Fields must map each namespace to an object of plain values.",
+            problems=[f"{err['path']}: {err['message']}" for err in e.errors],
+        )
+    except RepFieldsRefusedError as e:
+        return flash(
+            422,
+            message="Not saved: this would break assigned RepSpecs.",
+            problems=[
+                f"RepSpec '{r.rep_spec_name}': {err['message']}"
+                for r in e.refusals
+                for err in r.errors
+            ],
+        )
+    except RepFieldsMoveError as e:
+        return flash(
+            409,
+            moves=e.moves,
+            item_id=str(item.info_item_id),
+            bag_json=json.dumps(parsed),
         )
 
-    item.rep_fields = parsed
     await session.commit()
-    await session.refresh(item)
-
-    return HTMLResponse(
-        '<p class="badge badge--success" style="margin-top:var(--space-1);">Saved.</p>'
-    )
+    return flash(200, saved=True)
 
 
 # ---------------------------------------------------------------------------

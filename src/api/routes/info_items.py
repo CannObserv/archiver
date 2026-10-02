@@ -14,6 +14,7 @@ from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_item import (
     InfoItemCreate,
     InfoItemOut,
+    InfoItemRepFieldsPut,
     InfoItemRepSpecCreate,
     InfoItemRepSpecOut,
     InfoItemRepSpecPublicUrlPatch,
@@ -39,9 +40,7 @@ from src.core.models import (
     RepSpec,
     WatchStatus,
 )
-from src.core.rep_fields_schema.validator import validate_rep_fields_against_spec
-from src.core.replication.destination import probe_destination
-from src.core.replication.errors import ReplicationRenderError
+from src.core.rep_fields_schema.validator import ValidationError, validate_rep_fields
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_info_item_revoked,
@@ -79,6 +78,17 @@ from src.core.tools.deactivate_info_item_source_binding import (
     BindingNotFoundError,
     deactivate_info_item_source_binding,
 )
+from src.core.tools.rep_fields_gate import check_bag_against_spec
+from src.core.tools.set_rep_fields import (
+    CODE_INCOMPLETE,
+    CODE_INVALID,
+    CODE_MOVES_DESTINATION,
+    CODE_UNRENDERABLE,
+    RepFieldsInvalidError,
+    RepFieldsMoveError,
+    RepFieldsRefusedError,
+    set_rep_fields,
+)
 from src.core.watch_spec_schema.validator import validate_watch_spec
 
 router = APIRouter(prefix="/info-items", tags=["info-items"])
@@ -98,6 +108,14 @@ async def create_info_item(
     effective-dated RepSpec assignments). All writes are a single transaction; any
     validation or lookup failure rolls back the whole thing.
     """
+    # --- 0. The bag's shape, assignments or not (archiver#302) ---
+    ok, shape_errors = validate_rep_fields(body.rep_fields)
+    if not ok:
+        raise_422(
+            "rep_fields failed schema validation",
+            errors=_rep_fields_errors(shape_errors, code=CODE_INVALID),
+        )
+
     # --- 1. Look up RepSpecs + validate rep_fields against required_fields ---
     # Locked FOR UPDATE: step 4 below inserts InfoItemRepSpec rows directly
     # rather than going through assign_rep_spec, so without the lock a
@@ -135,39 +153,35 @@ async def create_info_item(
             )
         rep_spec_rows.append(rep_spec)
 
-        required_fields: list[str] = rep_spec.document.get("required_fields", [])
-        if required_fields:
-            ok, errors = validate_rep_fields_against_spec(body.rep_fields, required_fields)
-            if not ok:
-                raise_422(
-                    f"rep_fields does not satisfy RepSpec {assignment.rep_spec_id!r}",
-                    kind="domain",
-                    errors=[
-                        FieldError(
-                            path=e.get("path", ""),
-                            message=e.get("message", "missing"),
-                            code="rep_fields_incomplete",
-                        )
-                        for e in errors
-                    ],
-                    data={"rep_spec_id": str(assignment.rep_spec_id)},
-                )
-
-        # Presence satisfied; can it render? This path inserts InfoItemRepSpec
-        # rows directly rather than calling assign_rep_spec, so the pre-flight is
-        # repeated here rather than inherited (archiver#168 CR #5). Refusing now
-        # keeps the fix synchronous: the document freezes on assignment (#83).
-        try:
-            probe_destination(rep_spec.document or {}, body.rep_fields)
-        except ReplicationRenderError as e:
+        # Presence, then renderability: this path inserts InfoItemRepSpec rows
+        # directly rather than calling assign_rep_spec, so it asks the same gate
+        # (archiver#168 CR #5, #302). Refusing now keeps the fix synchronous:
+        # the document freezes on assignment (#83).
+        check = check_bag_against_spec(body.rep_fields, rep_spec.document or {})
+        if check.missing:
+            raise_422(
+                f"rep_fields does not satisfy RepSpec {assignment.rep_spec_id!r}",
+                kind="domain",
+                errors=[
+                    FieldError(
+                        path=e.get("path", ""),
+                        message=e.get("message", "missing"),
+                        code=CODE_INCOMPLETE,
+                    )
+                    for e in check.missing
+                ],
+                data={"rep_spec_id": str(assignment.rep_spec_id)},
+            )
+        if check.unrenderable is not None:
             raise_422(
                 f"rep_fields cannot render RepSpec {assignment.rep_spec_id!r} path_template",
                 kind="domain",
                 errors=[
-                    FieldError(path="/rep_fields", message=str(e), code="rep_fields_unrenderable")
+                    FieldError(
+                        path="/rep_fields", message=check.unrenderable, code=CODE_UNRENDERABLE
+                    )
                 ],
                 data={"rep_spec_id": str(assignment.rep_spec_id)},
-                source_exc=e,
             )
 
     # --- 2. Create InfoSource (if requested) BEFORE inserting the InfoItem ---
@@ -893,3 +907,118 @@ async def put_watch_active(
     await session.commit()
     await session.refresh(item)
     return await _item_out_with_active_relations(session, item)
+
+
+@router.put(
+    "/{info_item_id}/rep-fields",
+    response_model=InfoItemOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def put_rep_fields(
+    info_item_id: ULIDStr,
+    body: InfoItemRepFieldsPut,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemOut:
+    """Replace an InfoItem's rep_fields bag (archiver#302).
+
+    The only route that changes a bag after create. A whole-bag PUT like
+    ``/watch-spec``: the bag is judged as a unit against every active
+    assignment, which a merge would make a read-modify-write of state the
+    caller never saw.
+
+    Refusals leave the stored bag untouched:
+
+    - **422** ``rep_fields_invalid``: not Rep Fields v1.
+    - **422** ``rep_fields_incomplete`` / ``rep_fields_unrenderable``: the bag
+      would break an active assignment. ``data.refusals`` names every one.
+    - **409** ``rep_fields_moves_destination``: valid, but an active
+      assignment would render somewhere else from now on. ``data.moves``
+      carries each path before and after; resend with
+      ``allow_destination_change: true`` to store it anyway.
+
+    Nothing is announced: ``rep_fields`` rides no bus stream.
+    """
+    try:
+        item = await set_rep_fields(
+            session,
+            info_item_id=ULID.from_str(info_item_id),
+            rep_fields=body.rep_fields,
+            allow_destination_change=body.allow_destination_change,
+        )
+    except AssignInfoItemNotFoundError as e:
+        raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
+    except RepFieldsInvalidError as e:
+        raise_422(
+            "rep_fields failed schema validation",
+            errors=_rep_fields_errors(e.errors, code=CODE_INVALID),
+            source_exc=e,
+        )
+    except RepFieldsRefusedError as e:
+        names = ", ".join(f"'{r.rep_spec_name}'" for r in e.refusals)
+        raise_422(
+            f"rep_fields would break the active assignment of RepSpec {names}",
+            kind="domain",
+            errors=[
+                FieldError(
+                    path=f"/rep_fields{err['path']}",
+                    message=f"RepSpec '{r.rep_spec_name}' ({r.rep_spec_id!s}): {err['message']}",
+                    code=r.code,
+                )
+                for r in e.refusals
+                for err in r.errors
+            ],
+            data={
+                "refusals": [
+                    {
+                        "assignment_id": str(r.assignment_id),
+                        "rep_spec_id": str(r.rep_spec_id),
+                        "rep_spec_name": r.rep_spec_name,
+                        "code": r.code,
+                        "errors": _rep_fields_errors(r.errors, code=r.code),
+                    }
+                    for r in e.refusals
+                ]
+            },
+            source_exc=e,
+        )
+    except RepFieldsMoveError as e:
+        raise_envelope(
+            409,
+            "conflict",
+            "rep_fields would move where active assignments render; "
+            "resend with allow_destination_change to store it",
+            errors=[
+                FieldError(
+                    path="/rep_fields",
+                    message=(
+                        f"RepSpec '{m.rep_spec_name}' ({m.rep_spec_id!s}): {m.before} -> {m.after}"
+                    ),
+                    code=CODE_MOVES_DESTINATION,
+                )
+                for m in e.moves
+            ],
+            data={
+                "moves": [
+                    {
+                        "assignment_id": str(m.assignment_id),
+                        "rep_spec_id": str(m.rep_spec_id),
+                        "rep_spec_name": m.rep_spec_name,
+                        "before": m.before,
+                        "after": m.after,
+                    }
+                    for m in e.moves
+                ]
+            },
+            source_exc=e,
+        )
+
+    await session.commit()
+    await session.refresh(item)
+    return await _item_out_with_active_relations(session, item)
+
+
+def _rep_fields_errors(errors: list[ValidationError], *, code: str) -> list[FieldError]:
+    """Bag-relative validation errors as request-body ``FieldError``s under ``/rep_fields``."""
+    return [
+        FieldError(path=f"/rep_fields{e['path']}", message=e["message"], code=code) for e in errors
+    ]

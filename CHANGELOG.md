@@ -18,6 +18,20 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.24.0 (2026-10-02)
+
+[both] **Validated rep_fields writes: `PUT /info-items/{id}/rep-fields` and `set_rep_fields`** (archiver#302). `archiver-client` 5.8.0 adds `set_rep_fields`. No migration.
+
+- **`PUT /info-items/{id}/rep-fields`** (new) replaces an item's whole bag: `{rep_fields, allow_destination_change=false}` → 200 `InfoItemOut`. Until now no route could change a bag after create. It refuses, leaving the stored bag untouched, when:
+  - the bag is not Rep Fields v1: **422** `rep_fields_invalid`.
+  - the bag would break an active assignment: **422** `rep_fields_incomplete` / `rep_fields_unrenderable`. `data.refusals` names every broken assignment (`assignment_id`, `rep_spec_id`, `rep_spec_name`, `code`, `errors`).
+  - the bag is valid but moves where an active assignment renders: **409** `rep_fields_moves_destination`. `data.moves` carries each path `before`/`after`; resend with `allow_destination_change: true` to store it.
+  Error paths point into the body (`/rep_fields/...`). Nothing is announced on the bus.
+- **`POST /info-items`** refuses a bag that is not Rep Fields v1 (**422** `rep_fields_invalid`, path `/rep_fields/...`) even with no `initial_rep_spec_assignments`. It used to store any JSON object.
+- **`POST /info-items/{id}/rep-spec-assignments`** now locks the InfoItem row before the RepSpec row, as the save does. A concurrent save and assign used to be able to each pass on their own snapshot and both commit, leaving the spec assigned to a bag that cannot serve it. No response change.
+- **SDK:** `set_rep_fields(info_item_id, rep_fields, *, allow_destination_change=False)`; the 422s raise `ValidationError`, the 409 `Conflict`, with `data` carried through.
+- **Dashboard:** the Rep Fields save goes through the same gate. Refusals now appear inline, naming the RepSpec and key; the form had no `hx-target-422`, so even the old invalid-JSON 422 only produced a generic toast. A destination move asks for confirmation with both paths. The create form refuses a non-v1 bag.
+
 ## v4.23.0 (2026-10-02)
 
 [both] **Assignment refusals: an unrenderable bag is a 422, a duplicate active assignment is a 409** (archiver#301). `archiver-client` stays at 5.7.0: no method or type changes, only the `assign_rep_spec` docstring and the regenerated route docstring, which now list the 409 and both 422 codes. The snapshot also changes in `info.version`.

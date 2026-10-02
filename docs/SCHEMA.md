@@ -13,6 +13,12 @@ see the never-rename rule in `AGENTS.md`.
   writes (archiver#206). Derivation runs where the bag is consumed (`render_destination`,
   `assign_rep_spec`'s `required_fields` check, `POST /tools/validate-rep-fields`) and never
   rewrites the stored bag; a stored `_slug` key is an explicit override and is never replaced.
+  **One writer after create: `set_rep_fields`** (`src/core/tools/set_rep_fields.py`, archiver#302),
+  behind `PUT /info-items/{id}/rep-fields` and the dashboard save. A stored bag is v1-shaped and
+  serves every active assignment: `required_fields` present and the path renders, the check
+  `src/core/tools/rep_fields_gate.py` gives assign, atomic create and save alike. The writers
+  serialize on the InfoItem row (`FOR UPDATE`, taken before any RepSpec lock).
+  A valid edit that moves an active assignment's destination needs `allow_destination_change`.
   `watcher_item_id` — **dropped** (archiver#142). It held *Watcher's* primary key on an *Archiver*
   row, which is the coupling artifact the decoupling epic set out to remove. Announcements key on
   Archiver's own `info_item_id` and Watcher reconciles against that, so nothing allocates a

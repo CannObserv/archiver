@@ -217,15 +217,15 @@
       </div>
       <form hx-patch="/dashboard/info-items/{{ item.info_item_id }}/rep-fields"
             hx-target="#rep-fields-flash"
+            hx-target-422="#rep-fields-flash"
+            hx-target-409="#rep-fields-flash"
             hx-swap="innerHTML"
             style="max-width:40rem;">
         <textarea name="rep_fields" class="form-textarea"
                   rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;margin-bottom:var(--space-2);"
                   placeholder='{"key": "value"}'>{{ item.rep_fields | tojson(indent=2) if item.rep_fields else '{}' }}</textarea>
-        <div style="display:flex;align-items:center;gap:var(--space-2);">
-          <button type="submit" class="btn btn--primary">Save Rep Fields</button>
-          <span id="rep-fields-flash"></span>
-        </div>
+        <button type="submit" class="btn btn--primary">Save Rep Fields</button>
+        <div id="rep-fields-flash" aria-live="polite"></div>
       </form>
     </div>
 
