@@ -171,6 +171,7 @@ src/core/                      Domain logic
                                "": present-and-empty satisfies a presence check
                                for a value that can never be a path segment.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
+                               set_rep_fields + the rep_fields_gate they share,
                                update_rep_spec, preview_extraction, etc.)
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
