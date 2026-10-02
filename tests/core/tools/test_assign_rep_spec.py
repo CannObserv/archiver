@@ -8,6 +8,7 @@ from ulid import ULID
 from src.core.models import InfoItem, RepSpec
 from src.core.tools.assign_rep_spec import (
     AssignmentError,
+    DuplicateAssignmentError,
     InfoItemNotFoundError,
     RepFieldsIncompleteError,
     RepFieldsUnrenderableError,
@@ -238,3 +239,44 @@ async def test_a_raw_value_that_slugs_to_nothing_is_refused_at_assignment(sessio
 
     with pytest.raises(AssignmentError):
         await assign_rep_spec(session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id)
+
+
+# ---------------------------------------------------------------------------
+# archiver#301: one active assignment per (item, spec)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_second_active_assignment_of_the_same_spec_is_refused(session):
+    """Both rows would render one destination; issuance skips both, forever."""
+    item = _make_item()
+    spec = _make_spec()
+    session.add_all([item, spec])
+    await session.flush()
+    first = await assign_rep_spec(
+        session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id
+    )
+
+    with pytest.raises(DuplicateAssignmentError) as exc_info:
+        await assign_rep_spec(session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id)
+
+    assert exc_info.value.existing_assignment_id == first.id
+    assert issubclass(DuplicateAssignmentError, AssignmentError)
+
+
+@pytest.mark.asyncio
+async def test_a_deactivated_assignment_does_not_block_reassignment(session):
+    item = _make_item()
+    spec = _make_spec()
+    session.add_all([item, spec])
+    await session.flush()
+    first = await assign_rep_spec(
+        session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id
+    )
+    first.deactivated_at = datetime.now(UTC)
+    await session.flush()
+
+    second = await assign_rep_spec(
+        session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id
+    )
+    assert second.id != first.id

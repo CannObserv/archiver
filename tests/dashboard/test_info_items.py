@@ -584,7 +584,9 @@ async def test_assign_rep_spec_creates_assignment(client, session):
         headers=_HEADERS,
         follow_redirects=False,
     )
-    assert r.status_code in (302, 303)
+    assert r.status_code == 303
+    # The Replication section, not ?tab=repspecs - a tab retired in #49 (archiver#301).
+    assert r.headers["location"] == f"/dashboard/info-items/{item.info_item_id}#replication"
 
     result = await session.execute(
         select(InfoItemRepSpec).where(
@@ -592,6 +594,95 @@ async def test_assign_rep_spec_creates_assignment(client, session):
         )
     )
     assert result.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_detail_page_carries_the_replication_anchor(client, session):
+    """The assign redirect's fragment has to land somewhere."""
+    item = _make_item("Anchor Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    assert r.status_code == 200
+    assert 'id="replication"' in r.text
+
+
+def _rep_spec_requiring(name: str, *required: str, path_template: str) -> RepSpec:
+    rs = _make_rep_spec(name)
+    rs.document = {**rs.document, "required_fields": list(required), "path_template": path_template}
+    return rs
+
+
+@pytest.mark.asyncio
+async def test_assign_rep_spec_incomplete_names_the_missing_fields(client, session):
+    item = _make_item("Incomplete Item", rep_fields={})
+    rs = _rep_spec_requiring(
+        "Needs org",
+        "org.title",
+        "org.acronym",
+        path_template="o/{org.title}/{org.acronym}/{source_revision.id}.html",
+    )
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
+        data={"rep_spec_id": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+    )
+    assert r.status_code == 422
+    assert "text/html" in r.headers["content-type"]
+    assert "org.title" in r.text
+    assert "org.acronym" in r.text
+
+
+@pytest.mark.asyncio
+async def test_assign_rep_spec_unrenderable_returns_422_with_the_reason(client, session):
+    """Was an unhandled 500 (archiver#301)."""
+    item = _make_item("Unrenderable Item", rep_fields={"org": {"name": "WA LCB"}})
+    rs = _rep_spec_requiring(
+        "Raw name", "org.name", path_template="archive/{org.name}/{source_revision.id}.html"
+    )
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
+        data={"rep_spec_id": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+    )
+    assert r.status_code == 422
+    assert "text/html" in r.headers["content-type"]
+    assert "cannot render" in r.text
+    assert "org.name" in r.text
+    assert "incident" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_assign_rep_spec_duplicate_returns_409(client, session):
+    item = _make_item("Duplicate Item")
+    rs = _make_rep_spec("Shared Spec")
+    session.add_all([item, rs])
+    await session.flush()
+    session.add(
+        InfoItemRepSpec(
+            info_item_id=item.info_item_id,
+            rep_spec_id=rs.rep_spec_id,
+            activated_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
+        data={"rep_spec_id": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+    )
+    assert r.status_code == 409
+    assert "text/html" in r.headers["content-type"]
+    assert "already" in r.text
+    assert "Shared Spec" in r.text
 
 
 @pytest.mark.asyncio

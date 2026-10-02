@@ -239,6 +239,55 @@ async def test_add_rep_spec_assignment_incomplete_rep_fields_returns_422(client,
 
 
 @pytest.mark.asyncio
+async def test_add_rep_spec_assignment_unrenderable_rep_fields_returns_422(client, session):
+    """Present but not a path segment → 422, not a 500 (archiver#301)."""
+    item = InfoItem(name="unrenderable-item", rep_fields={"org": {"name": "WA LCB"}})
+    spec = RepSpec(
+        provider="gcs",
+        name="unrenderable-spec",
+        schema_version=1,
+        document={
+            "provider": "gcs",
+            "credentials_alias": "default",
+            "path_template": "archive/{org.name}/{source_revision.id}",
+            "required_fields": ["org.name"],
+        },
+    )
+    session.add_all([item, spec])
+    await session.flush()
+
+    response = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/rep-spec-assignments",
+        headers=HEADERS,
+        json={"rep_spec_id": str(spec.rep_spec_id)},
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [
+        ("/rep_fields", "rep_fields_unrenderable")
+    ]
+    assert detail["errors"][0]["message"]
+    assert detail["data"] == {"rep_spec_id": str(spec.rep_spec_id)}
+
+
+@pytest.mark.asyncio
+async def test_add_rep_spec_assignment_duplicate_active_returns_409(
+    client, rep_spec_assignment, info_item, rep_spec
+):
+    """A second active assignment of one spec to one item → 409 (archiver#301)."""
+    response = await client.post(
+        f"/api/v1/info-items/{info_item.info_item_id}/rep-spec-assignments",
+        headers=HEADERS,
+        json={"rep_spec_id": str(rep_spec.rep_spec_id)},
+    )
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["kind"] == "conflict"
+    assert detail["data"] == {"existing_assignment_id": str(rep_spec_assignment.id)}
+
+
+@pytest.mark.asyncio
 async def test_add_rep_spec_assignment_requires_api_key(client, info_item, rep_spec):
     item_id = str(info_item.info_item_id)
     spec_id = str(rep_spec.rep_spec_id)
