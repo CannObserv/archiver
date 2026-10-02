@@ -9,7 +9,7 @@
 {% if saved %}
 <p class="badge badge--success" style="margin-top:var(--space-1);">Saved.</p>
 {% elif moves %}
-<div class="text-sm" role="alert" style="margin-top:var(--space-2);">
+<div class="text-sm" style="margin-top:var(--space-2);">
   <p class="text-danger">Not saved yet: this changes where assigned RepSpecs replicate to. Later revisions will land at the new path; everything already published stays at the old one.</p>
   <ul>
     {% for m in moves %}
@@ -25,7 +25,7 @@
           hx-swap="innerHTML">Save and move</button>
 </div>
 {% else %}
-<div class="text-danger text-sm" role="alert" style="margin-top:var(--space-2);">
+<div class="text-danger text-sm" style="margin-top:var(--space-2);">
   <p>{{ message }}</p>
   {% if problems %}
   <ul>

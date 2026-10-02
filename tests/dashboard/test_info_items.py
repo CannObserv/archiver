@@ -1465,7 +1465,23 @@ async def test_rep_fields_form_swaps_refusals_into_its_flash(client, session):
     form = form[: form.index("</form>")]
     assert 'hx-target-422="#rep-fields-flash"' in form
     assert 'hx-target-409="#rep-fields-flash"' in form
-    assert 'id="rep-fields-flash"' in form
+    assert 'id="rep-fields-flash" aria-live="polite" aria-atomic="true"' in form
+
+
+@pytest.mark.asyncio
+async def test_rep_fields_flash_fragments_add_no_nested_live_region(client, session):
+    """The target is the live region (UI.md); an alert inside it can announce twice."""
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Old Name"}}, rs)
+    url = f"/dashboard/info-items/{item.info_item_id}/rep-fields"
+
+    refused = await client.patch(url, headers=_HEADERS, data={"rep_fields": "{}"})
+    moved = await client.patch(
+        url, headers=_HEADERS, data={"rep_fields": '{"org": {"title": "New Name"}}'}
+    )
+    for r in (refused, moved):
+        assert 'role="alert"' not in r.text
+        assert "aria-live" not in r.text
 
 
 @pytest.mark.asyncio
