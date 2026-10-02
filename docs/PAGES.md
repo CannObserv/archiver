@@ -105,7 +105,7 @@ The entries below stay the inventory line for each route.
 
 **DELETE `/dashboard/info-items/{id}/info-sources/{source_id}`** - HTMX delete (form POST + route handler); sets `deactivated_at = now()`. Response triggers an HTMX redirect to detail.
 
-**POST `/dashboard/info-items/{id}/assign-rep-spec`** - assigns a RepSpec (form field: `rep_spec_id`). 303 to detail.
+**POST `/dashboard/info-items/{id}/assign-rep-spec`** - assigns a RepSpec (form field: `rep_spec_id`). 303 to the detail page's Replication section (`#replication`). Refusals render the error page naming what is wrong (archiver#301): 422 listing the missing `rep_fields` keys, 422 with the render reason when the bag cannot render the spec's path, 409 when the spec is already actively assigned to the item.
 
 **DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** - HTMX delete; sets `deactivated_at = now()`, idempotent (skipped if already deactivated). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`), which updates the table/empty-state and moves focus to the section heading.
 

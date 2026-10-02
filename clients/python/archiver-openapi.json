@@ -2264,7 +2264,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.22.0"
+    "version": "4.23.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3650,7 +3650,7 @@
     },
     "/api/v1/info-items/{info_item_id}/rep-spec-assignments": {
       "post": {
-        "description": "Assign a RepSpec to an InfoItem with effective dating.\n\nValidates that the InfoItem exists, the RepSpec exists, and the InfoItem's\nrep_fields satisfies the RepSpec's required_fields. Returns 201 on success.\n\nError responses:\n- 404: InfoItem or RepSpec not found\n- 422: rep_fields incomplete (missing required fields)",
+        "description": "Assign a RepSpec to an InfoItem with effective dating.\n\nValidates that the InfoItem exists, the RepSpec exists and is not already\nactively assigned to it, and the InfoItem's rep_fields satisfies the\nRepSpec's required_fields and renders its path_template. Returns 201 on\nsuccess.\n\nError responses:\n- 404: InfoItem or RepSpec not found\n- 409: the RepSpec is already actively assigned to this InfoItem\n  (``data.existing_assignment_id``)\n- 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per\n  missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path\n  ``/rep_fields``)",
         "operationId": "add_rep_spec_assignment_api_v1_info_items__info_item_id__rep_spec_assignments_post",
         "parameters": [
           {

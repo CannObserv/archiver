@@ -100,16 +100,22 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: InfoItemRepSpecCreate,
 ) -> Response[EnvelopeResponse | InfoItemRepSpecOut]:
-    """Add Rep Spec Assignment
+    r"""Add Rep Spec Assignment
 
      Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
-    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+    Validates that the InfoItem exists, the RepSpec exists and is not already
+    actively assigned to it, and the InfoItem's rep_fields satisfies the
+    RepSpec's required_fields and renders its path_template. Returns 201 on
+    success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
-    - 422: rep_fields incomplete (missing required fields)
+    - 409: the RepSpec is already actively assigned to this InfoItem
+      (``data.existing_assignment_id``)
+    - 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
+      missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
+      ``/rep_fields``)
 
     Args:
         info_item_id (str):
@@ -141,16 +147,22 @@ def sync(
     client: AuthenticatedClient,
     body: InfoItemRepSpecCreate,
 ) -> EnvelopeResponse | InfoItemRepSpecOut | None:
-    """Add Rep Spec Assignment
+    r"""Add Rep Spec Assignment
 
      Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
-    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+    Validates that the InfoItem exists, the RepSpec exists and is not already
+    actively assigned to it, and the InfoItem's rep_fields satisfies the
+    RepSpec's required_fields and renders its path_template. Returns 201 on
+    success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
-    - 422: rep_fields incomplete (missing required fields)
+    - 409: the RepSpec is already actively assigned to this InfoItem
+      (``data.existing_assignment_id``)
+    - 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
+      missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
+      ``/rep_fields``)
 
     Args:
         info_item_id (str):
@@ -177,16 +189,22 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: InfoItemRepSpecCreate,
 ) -> Response[EnvelopeResponse | InfoItemRepSpecOut]:
-    """Add Rep Spec Assignment
+    r"""Add Rep Spec Assignment
 
      Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
-    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+    Validates that the InfoItem exists, the RepSpec exists and is not already
+    actively assigned to it, and the InfoItem's rep_fields satisfies the
+    RepSpec's required_fields and renders its path_template. Returns 201 on
+    success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
-    - 422: rep_fields incomplete (missing required fields)
+    - 409: the RepSpec is already actively assigned to this InfoItem
+      (``data.existing_assignment_id``)
+    - 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
+      missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
+      ``/rep_fields``)
 
     Args:
         info_item_id (str):
@@ -216,16 +234,22 @@ async def asyncio(
     client: AuthenticatedClient,
     body: InfoItemRepSpecCreate,
 ) -> EnvelopeResponse | InfoItemRepSpecOut | None:
-    """Add Rep Spec Assignment
+    r"""Add Rep Spec Assignment
 
      Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists, and the InfoItem's
-    rep_fields satisfies the RepSpec's required_fields. Returns 201 on success.
+    Validates that the InfoItem exists, the RepSpec exists and is not already
+    actively assigned to it, and the InfoItem's rep_fields satisfies the
+    RepSpec's required_fields and renders its path_template. Returns 201 on
+    success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
-    - 422: rep_fields incomplete (missing required fields)
+    - 409: the RepSpec is already actively assigned to this InfoItem
+      (``data.existing_assignment_id``)
+    - 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
+      missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
+      ``/rep_fields``)
 
     Args:
         info_item_id (str):

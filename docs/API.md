@@ -72,6 +72,15 @@ Those take production action on 8000 and run only when the operator asks.
 
 `POST /info-sources` accepts `{url, source_specs}`. Multiple InfoSources at the same URL are valid. Returns 422 on invalid URL or spec validation failure.
 
+`POST /info-items/{id}/rep-spec-assignments` refuses before the RepSpec document freezes (#83),
+because afterwards nothing can fix it: **422** `code="rep_fields_incomplete"` (one error per missing
+`required_fields` key) or `code="rep_fields_unrenderable"` (path `/rep_fields`; the bag is present
+but cannot render `path_template`, e.g. `"WA LCB"` as a path segment - this was a 500 until
+archiver#301); **409** `kind="conflict"` when the spec is already actively assigned to the item, with
+`data.existing_assignment_id` - deactivate it first. `POST /info-items` refuses the same spec listed
+twice in `initial_rep_spec_assignments` (422, `code="duplicate_assignment"`). One active row per
+`(item, spec)` is a database invariant ([SCHEMA.md](SCHEMA.md) § `InfoItemRepSpec`).
+
 `DELETE /info-items/{id}` returns 204 and cascades the item's source bindings and rep-spec
 assignments; the InfoSource and its SourceRevisions survive (the physical layer is shared). 404 on
 an already-deleted item, not a silent 204. It exists to give the registry's exit a **transactional

@@ -48,6 +48,19 @@ class RepFieldsUnrenderableError(AssignmentError):
         super().__init__(f"rep_fields cannot render this RepSpec's path_template: {reason}")
 
 
+class DuplicateAssignmentError(AssignmentError):
+    """The RepSpec is already actively assigned to this InfoItem.
+
+    Both rows would render one destination, and issuance skips both as
+    ``destination_collision`` on every occasion (archiver#301). Backed by the
+    ``uq_iirs_item_spec_active`` partial unique index.
+    """
+
+    def __init__(self, existing_assignment_id: ULID) -> None:
+        self.existing_assignment_id = existing_assignment_id
+        super().__init__(f"already actively assigned as {existing_assignment_id!s}")
+
+
 async def lock_rep_specs(
     db: AsyncSession,
     rep_spec_ids: list[str],
@@ -90,6 +103,7 @@ async def assign_rep_spec(
     Validates that:
     - the InfoItem exists
     - the RepSpec exists
+    - the RepSpec is not already actively assigned to this InfoItem
     - the InfoItem.rep_fields satisfies the RepSpec.document.required_fields list
       (per src.core.rep_fields_schema.validator.validate_rep_fields_against_spec)
 
@@ -106,6 +120,18 @@ async def assign_rep_spec(
     spec = await db.get(RepSpec, rep_spec_id, with_for_update=True)
     if spec is None:
         raise RepSpecNotFoundError(str(rep_spec_id))
+
+    # Race-free under the spec lock above: a concurrent assign of this spec
+    # waits on it, then sees this row once we commit.
+    existing_id = await db.scalar(
+        select(InfoItemRepSpec.id).where(
+            InfoItemRepSpec.info_item_id == info_item_id,
+            InfoItemRepSpec.rep_spec_id == rep_spec_id,
+            InfoItemRepSpec.deactivated_at.is_(None),
+        )
+    )
+    if existing_id is not None:
+        raise DuplicateAssignmentError(existing_id)
 
     required_fields = (spec.document or {}).get("required_fields", [])
     ok, errors = validate_rep_fields_against_spec(item.rep_fields or {}, required_fields)

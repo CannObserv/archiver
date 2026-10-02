@@ -41,6 +41,16 @@ class InfoItemRepSpec(Base):
             "info_item_id",
             postgresql_where=text("deactivated_at IS NULL"),
         ),
+        # Two active rows for one (item, spec) render one destination, and
+        # issuance skips both as destination_collision forever (archiver#301).
+        # assign_rep_spec refuses first; this is the backstop.
+        Index(
+            "uq_iirs_item_spec_active",
+            "info_item_id",
+            "rep_spec_id",
+            unique=True,
+            postgresql_where=text("deactivated_at IS NULL"),
+        ),
         Index("ix_iirs_rep_spec", "rep_spec_id"),
         {"schema": "information"},
     )
