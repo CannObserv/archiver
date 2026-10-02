@@ -93,8 +93,20 @@ it: assume any dashboard route redirects 307 when unauthenticated.
 somewhere other than its success target. A form that can 422 carries
 `hx-target-422="#some-error"` and the route returns just that error `<div>`, so
 the message lands beside the field instead of replacing the whole form. Both
-forms in `info_items/_swap_primary.html` use it; route entries elsewhere name
-only their target id.
+forms in `info_items/_swap_primary.html` use it, as does the Rep Fields save on
+the InfoItem detail screen (archiver#302); route entries elsewhere name only
+their target id.
+
+**A refusal the operator can override goes to the same target as a 409.** The
+Rep Fields save carries `hx-target-409` beside `hx-target-422`: a valid bag that
+moves where an assignment replicates comes back as a 409 fragment with a
+confirm button, not as an error. That button re-sends the **exact payload it
+warned about**, pinned in `hx-vals` (which overrides the enclosing form's
+fields), plus the override flag, never the form's current values. Otherwise an
+edit made after the warning would ride through on a confirmation given for
+something else. When one target receives successes, refusals and confirmations
+alike, it is the only live region (`aria-live="polite" aria-atomic="true"`), and
+the fragments swapped into it carry no `role="alert"` of their own.
 
 This is the form-level counterpart to the pagination clamp (see **Pagination
 params are clamped, not validated**) - query-param errors are removed by
