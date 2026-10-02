@@ -657,8 +657,10 @@ async def assign_rep_spec_route(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Assign a RepSpec to this InfoItem; 303 back to the Replication section.
+    """Assign a RepSpec to this InfoItem and land on the Replication section.
 
+    A plain form post gets a 303; an htmx (boosted) one gets 204 + HX-Redirect,
+    since its XHR would follow a 303 itself and drop ``#replication`` (CR 1).
     Every refusal names what is wrong - the missing keys, the render reason, or
     the assignment already in place - because the error page is all the
     operator sees (archiver#301).
