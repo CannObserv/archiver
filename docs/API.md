@@ -102,7 +102,10 @@ concurrent assign cannot each pass on their own snapshot. Refusals leave the sto
   Repairing a bag that could not render is not a move.
 
 Error paths point into the request body (`/rep_fields/org/title_slug`). Nothing is announced:
-`rep_fields` rides no bus stream.
+`rep_fields` rides no bus stream. **`POST /info-items` uses two path conventions:** its new
+`rep_fields_invalid` paths are body-relative like these, but its `rep_fields_incomplete` paths
+stay bag-relative (`/org/title_slug`), as they were before #302. Changing them would break
+existing callers.
 
 `DELETE /info-items/{id}` returns 204 and cascades the item's source bindings and rep-spec
 assignments; the InfoSource and its SourceRevisions survive (the physical layer is shared). 404 on
