@@ -18,8 +18,8 @@ the extra row (``DELETE /info-items/{id}/rep-spec-assignments/{aid}``) and
 re-run. It never picks a survivor itself: which row's ``public_url`` is the
 citable one is the operator's call.
 
-``ix_iirs_item_active`` stays - it serves the item-only lookups this index's
-leading column would also serve, but dropping it is a separate decision.
+``ix_iirs_item_active`` stays for now. This index's leading column serves the
+same item-only lookups, so it is redundant; dropping it is archiver#311.
 """
 
 import logging
