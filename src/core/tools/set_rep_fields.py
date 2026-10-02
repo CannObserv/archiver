@@ -20,10 +20,11 @@ Nothing is announced: ``rep_fields`` rides no bus stream.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -182,10 +183,13 @@ def _refusal(assignment: InfoItemRepSpec, spec: RepSpec, bag: dict) -> Assignmen
     )
 
 
-def _moves(assignments: list, old_bag: dict, new_bag: dict) -> list[DestinationMove]:
+def _moves(
+    assignments: Sequence[Row[tuple[InfoItemRepSpec, RepSpec]]], old_bag: dict, new_bag: dict
+) -> list[DestinationMove]:
     """Assignments whose path differs between the bags, rendered for one occasion.
 
     An old bag that could not render is no move: no path came from it to move.
+    A document without a ``path_template`` renders nothing from either bag.
     """
     if old_bag == new_bag:
         return []
@@ -198,14 +202,15 @@ def _moves(assignments: list, old_bag: dict, new_bag: dict) -> list[DestinationM
         except ReplicationRenderError:
             continue
         after = probe_destination(document, new_bag, captured_at=when)
-        if before is not None and before != after:
-            moves.append(
-                DestinationMove(
-                    assignment_id=assignment.id,
-                    rep_spec_id=spec.rep_spec_id,
-                    rep_spec_name=spec.name,
-                    before=before,
-                    after=after or "",
-                )
+        if before is None or after is None or after == before:
+            continue
+        moves.append(
+            DestinationMove(
+                assignment_id=assignment.id,
+                rep_spec_id=spec.rep_spec_id,
+                rep_spec_name=spec.name,
+                before=before,
+                after=after,
             )
+        )
     return moves
