@@ -1,8 +1,11 @@
 """Tests for rep_fields slug normalization (``src.core.rep_fields``)."""
 
+import copy
+
+import pytest
 from co_core.pure.util.text import normalize_string
 
-from src.core.rep_fields import resolve_rep_fields, slugify
+from src.core.rep_fields import OrgValues, effective_rep_fields, resolve_rep_fields, slugify
 
 # ---------------------------------------------------------------------------
 # slugify corner cases
@@ -154,3 +157,76 @@ class TestEmptySlugsAreAbsent:
     def test_a_usable_value_still_derives(self):
         result = resolve_rep_fields({"org": {"title": "WA LCB"}})
         assert result["org"]["title_slug"] == "wa_lcb"
+
+
+# ---------------------------------------------------------------------------
+# effective_rep_fields - the single resolution point (archiver#303)
+#
+# Precedence, lowest first: the linked org's name/acronym, then the stored
+# bag, then resolve_rep_fields' derivations (which never replace a stored
+# key). The refusal of a stored org.title/org.acronym while linked is #304's.
+# ---------------------------------------------------------------------------
+
+WA_LCB = OrgValues(name="Washington State Liquor and Cannabis Board", acronym="WSLCB")
+
+
+class TestEffectiveRepFields:
+    @pytest.mark.parametrize(
+        "bag",
+        [
+            {},
+            DESIGN_DOC_BAG,
+            {"org": {"title": "WA LCB", "title_slug": "override"}},
+            {"meta": "some_string_value", "event": {"year": 2025}},
+            {"org": {"title": "!!!"}},
+        ],
+    )
+    def test_no_org_is_resolve_rep_fields_exactly(self, bag):
+        assert effective_rep_fields(bag, None) == resolve_rep_fields(bag)
+
+    def test_an_org_supplies_title_and_acronym(self):
+        result = effective_rep_fields({}, WA_LCB)
+        assert result["org"]["title"] == "Washington State Liquor and Cannabis Board"
+        assert result["org"]["acronym"] == "WSLCB"
+        assert result["org"]["title_slug"] == "washington_state_liquor_and_cannabis_board"
+        assert result["org"]["acronym_or_title_slug"] == "wslcb"
+
+    def test_an_org_merges_beside_other_stored_org_keys(self):
+        result = effective_rep_fields({"org": {"jurisdiction": "WA"}}, WA_LCB)
+        assert result["org"]["jurisdiction"] == "WA"
+        assert result["org"]["title"] == WA_LCB.name
+
+    def test_other_namespaces_are_untouched(self):
+        bag = {"info_item": {"name": "Agenda"}}
+        result = effective_rep_fields(bag, WA_LCB)
+        assert result["info_item"] == resolve_rep_fields(bag)["info_item"]
+
+    def test_a_none_acronym_is_skipped(self):
+        result = effective_rep_fields({}, OrgValues(name="WA LCB", acronym=None))
+        assert result["org"] == {"title": "WA LCB", "title_slug": "wa_lcb"}
+
+    def test_a_stored_title_wins(self):
+        result = effective_rep_fields({"org": {"title": "Hand Typed"}}, WA_LCB)
+        assert result["org"]["title"] == "Hand Typed"
+        assert result["org"]["title_slug"] == "hand_typed"
+        assert result["org"]["acronym"] == "WSLCB"
+
+    def test_a_stored_acronym_wins(self):
+        result = effective_rep_fields({"org": {"acronym": "LCB"}}, WA_LCB)
+        assert result["org"]["acronym"] == "LCB"
+        assert result["org"]["acronym_or_title"] == "LCB"
+
+    def test_a_stored_slug_stays_an_override(self):
+        result = effective_rep_fields({"org": {"title_slug": "wslcb"}}, WA_LCB)
+        assert result["org"]["title_slug"] == "wslcb"
+        assert result["org"]["title"] == WA_LCB.name
+
+    def test_the_stored_bag_is_not_mutated(self):
+        bag = {"org": {"jurisdiction": "WA"}}
+        before = copy.deepcopy(bag)
+        effective_rep_fields(bag, WA_LCB)
+        assert bag == before
+
+    def test_a_stored_non_dict_org_replaces_the_org_values(self):
+        """Stored wins at the namespace too; shape validation is what refuses this bag."""
+        assert effective_rep_fields({"org": "WA LCB"}, WA_LCB) == {"org": "WA LCB"}

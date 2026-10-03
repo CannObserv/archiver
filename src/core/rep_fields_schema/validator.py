@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from jsonschema import Draft202012Validator
 
-from src.core.rep_fields import resolve_rep_fields
+from src.core.rep_fields import OrgValues, effective_rep_fields
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "v1.json"
 
@@ -36,15 +36,16 @@ def validate_rep_fields(bag: dict) -> tuple[bool, list[ValidationError]]:
 
 
 def validate_rep_fields_against_spec(
-    bag: dict, required_fields: list[str]
+    bag: dict, required_fields: list[str], *, org: OrgValues | None
 ) -> tuple[bool, list[ValidationError]]:
     """Run shape validation, then check that every '<ns>.<key>' in
     required_fields resolves to a non-null value in bag.
 
-    Presence is checked on the *resolved* bag (archiver#206): a required
-    ``org.title_slug`` is satisfied by a stored ``org.title``, because that is
-    how ``render_destination`` will read it. Shape validation still runs on the
-    bag as stored — the derived keys are strings and cannot fail it.
+    Presence is checked on the *effective* bag (archiver#206, #303): a required
+    ``org.title_slug`` is satisfied by a stored ``org.title`` or by ``org``'s
+    name, because that is how ``render_destination`` will read it. Shape
+    validation still runs on the bag as stored — the derived keys are strings
+    and cannot fail it.
     """
     ok, errors = validate_rep_fields(bag)
     # A separate name, not a rebind: every error below reports a path, and a
@@ -53,7 +54,7 @@ def validate_rep_fields_against_spec(
     # below calls `.get` either way — a list reached it and raised
     # AttributeError one line later, which is the failure the guard read as
     # prevented. The annotation is the contract (CR 12).
-    resolved = resolve_rep_fields(bag)
+    resolved = effective_rep_fields(bag, org)
     for path in required_fields:
         ns, _, key = path.partition(".")
         if not ns or not key:

@@ -53,8 +53,8 @@ src/core/                      Domain logic
                                origin's media type via co-core's
                                extension_for_media_type, the cluster's one table
                                — and resolves the bag's _slug companions through
-                               rep_fields.py on the way in (archiver#205, #206,
-                               #210). permanent_store.py derives a persisted
+                               rep_fields.effective_rep_fields on the way in
+                               (archiver#205, #206, #210, #303). permanent_store.py derives a persisted
                                digest's gs://co-gcs-replicator URI (archiver#276).
                                errors.py is the
                                single base both raise under, so archiver#169 can
@@ -170,6 +170,10 @@ src/core/                      Domain logic
                                An empty derivation is omitted, never written as
                                "": present-and-empty satisfies a presence check
                                for a value that can never be a path segment.
+                               effective_rep_fields(bag, org) is the one
+                               resolution point (archiver#303): the stored bag
+                               over the linked org, then derived. A guard test
+                               refuses any other resolve_rep_fields reference.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
                                set_rep_fields + the rep_fields_gate they share,
                                update_rep_spec, preview_extraction, etc.)
