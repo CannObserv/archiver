@@ -151,6 +151,8 @@ async def validate_rep_fields_route(
     the purpose.
     """
     if body.required_fields is not None:
+        # A raw bag with no InfoItem, so no linked org: org=None is permanent
+        # here, not a placeholder awaiting #304 (archiver#303).
         ok, errors = validate_rep_fields_against_spec(body.bag, body.required_fields, org=None)
     else:
         ok, errors = validate_rep_fields(body.bag)
@@ -169,7 +171,8 @@ async def resolve_rep_fields_route(
     Idempotent: existing ``_slug`` keys are preserved. Unknown namespaces and
     non-string values pass through unchanged.
     """
-    resolved = effective_rep_fields(body.bag, None)
+    # A raw bag with no InfoItem, so no linked org: permanent, not awaiting #304.
+    resolved = effective_rep_fields(body.bag, org=None)
     return ResolveRepFieldsResponse(bag=resolved)
 
 
