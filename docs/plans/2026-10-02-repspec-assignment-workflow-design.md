@@ -144,8 +144,8 @@ Link / Unlink.
 
 **Linking over hand-typed keys.** If the stored `org.title`/`org.acronym` equal Power Map's,
 the link drops them silently. If they differ, the link shows the path diff
-(`organizations/old/…` → `organizations/new/…`) and requires confirmation — the one moment a
-link can move existing output.
+(`organizations/old/…` → `organizations/new/…`) and requires confirmation — see Amendments
+2026-10-03: one move-confirmation contract, shared with the rep-fields save.
 
 **"Replicator" → "Replication"**, three blocks, each its own swap target:
 
@@ -260,3 +260,25 @@ Phase 3 (#307, #308) depends only on Phases 0–1 and runs in parallel with Phas
 - **Hourly sweep latency.** A rename reaches replication up to an hour late; renames are rare.
 - **Merge before power-map#607 ships** reads as *missing*: the last snapshot keeps rendering,
   so replication continues on the pre-merge name until the item is re-linked by hand.
+
+## Amendments
+
+### 2026-10-03 — from #302's pre-implementation review (merged `fd685cb`)
+
+- **One bag-vs-spec check.** `src/core/tools/rep_fields_gate.py`'s `check_bag_against_spec(bag, document)`
+  (`required_fields` + probe) is shared by assign, create and `set_rep_fields`. #303 routes it through
+  `effective_rep_fields`; #304 adds `org` there once, not at each caller.
+- **Writers serialize on the InfoItem row** (`lock_info_item`, order item → spec). The race is a
+  phantom — a save and an assign of a not-yet-assigned spec — so assignment rows cannot be the lock.
+  `link_org` (#304) and the follower (#305) take the same lock: both change the effective bag.
+- **`PUT /info-items/{id}/rep-fields` body** is `{rep_fields, allow_destination_change=false}`; error
+  paths `/rep_fields/<ns>/<key>`; 422 `rep_fields_invalid` / `_incomplete` / `_unrenderable` with
+  `data.refusals`.
+- **A valid change that moves an active assignment's destination is refused** — 409
+  `rep_fields_moves_destination`, `data.moves` (before → after per assignment), confirmed by
+  `allow_destination_change: true`, logged at WARNING. §3's "the one moment a link can move existing
+  output" was wrong: a bag save is a second one. **This is the single move-confirmation contract**:
+  #304's link uses it instead of the proposed `replace_hand_typed` flag, #306's confirm reuses #302's
+  "Save and move" pattern, and #305's automatic rename (Q4, no confirmation) logs the same before → after
+  at WARNING.
+- **`POST /info-items` shape-checks** the bag even with no assignments.
