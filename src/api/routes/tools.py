@@ -71,7 +71,7 @@ from src.core.changes.outbox_triage import (
     list_dead_lettered,
     rearm_dead_lettered,
 )
-from src.core.rep_fields import resolve_rep_fields
+from src.core.rep_fields import effective_rep_fields
 from src.core.rep_fields_schema.validator import (
     validate_rep_fields,
     validate_rep_fields_against_spec,
@@ -151,7 +151,9 @@ async def validate_rep_fields_route(
     the purpose.
     """
     if body.required_fields is not None:
-        ok, errors = validate_rep_fields_against_spec(body.bag, body.required_fields)
+        # A raw bag with no InfoItem, so no linked org: org=None is permanent
+        # here, not a placeholder awaiting #304 (archiver#303).
+        ok, errors = validate_rep_fields_against_spec(body.bag, body.required_fields, org=None)
     else:
         ok, errors = validate_rep_fields(body.bag)
     return ValidateRepFieldsResponse(
@@ -169,7 +171,8 @@ async def resolve_rep_fields_route(
     Idempotent: existing ``_slug`` keys are preserved. Unknown namespaces and
     non-string values pass through unchanged.
     """
-    resolved = resolve_rep_fields(body.bag)
+    # A raw bag with no InfoItem, so no linked org: permanent, not awaiting #304.
+    resolved = effective_rep_fields(body.bag, org=None)
     return ResolveRepFieldsResponse(bag=resolved)
 
 

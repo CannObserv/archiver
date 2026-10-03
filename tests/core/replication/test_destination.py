@@ -16,6 +16,7 @@ from co_core.pure.util.files import (
     extension_for_media_type,
 )
 
+from src.core.rep_fields import OrgValues
 from src.core.replication import destination
 from src.core.replication.destination import (
     DestinationCollisionError,
@@ -50,11 +51,29 @@ def _occasion(**overrides) -> RenderOccasion:
 # --- resolution ---
 
 
+def test_renders_from_the_effective_bag():
+    """archiver#303: the linked org's name reaches the path; a stored key still wins."""
+    org = OrgValues(name="WA LCB", acronym="WSLCB")
+    template = "organizations/{org.acronym_or_title_slug}/{org.title_slug}/{source_revision.id}"
+    rendered = render_destination(template, rep_fields={}, occasion=_occasion(), org=org)
+    assert rendered == "organizations/wslcb/wa_lcb/01JZZZZZZZZZZZZZZZZZZZZZZZ"
+    stored = {"org": {"title": "Board"}}
+    rendered = render_destination(template, rep_fields=stored, occasion=_occasion(), org=org)
+    assert rendered == "organizations/wslcb/board/01JZZZZZZZZZZZZZZZZZZZZZZZ"
+
+
+def test_probe_renders_from_the_effective_bag():
+    document = {"path_template": "organizations/{org.title_slug}/{source_revision.id}"}
+    path = probe_destination(document, {}, org=OrgValues(name="WA LCB", acronym=None))
+    assert path is not None and path.startswith("organizations/wa_lcb/")
+
+
 def test_renders_bag_and_occasion_values():
     rendered = render_destination(
         "archive/{info_item.slug}/{source_revision.fingerprint}.html",
         rep_fields={"info_item": {"slug": "wa-lcb-notices"}},
         occasion=_occasion(),
+        org=None,
     )
     assert rendered == f"archive/wa-lcb-notices/{'ab' * 32}.html"
 
@@ -62,14 +81,14 @@ def test_renders_bag_and_occasion_values():
 def test_fingerprint_renders_without_the_algorithm_prefix():
     """'sha256:' would put a colon in a path segment; the digest alone is safe."""
     rendered = render_destination(
-        "{source_revision.fingerprint}", rep_fields={}, occasion=_occasion()
+        "{source_revision.fingerprint}", rep_fields={}, occasion=_occasion(), org=None
     )
     assert rendered == "ab" * 32
 
 
 def test_date_renders_as_iso_calendar_date():
     rendered = render_destination(
-        "{source_revision.date}/{source_revision.id}", rep_fields={}, occasion=_occasion()
+        "{source_revision.date}/{source_revision.id}", rep_fields={}, occasion=_occasion(), org=None
     )
     assert rendered.startswith("2026-08-17/")
 
@@ -77,7 +96,10 @@ def test_date_renders_as_iso_calendar_date():
 def test_captured_at_renders_in_basic_iso_form():
     """Extended ISO carries colons; the basic form is the path-safe spelling."""
     rendered = render_destination(
-        "{source_revision.captured_at}/{source_revision.id}", rep_fields={}, occasion=_occasion()
+        "{source_revision.captured_at}/{source_revision.id}",
+        rep_fields={},
+        occasion=_occasion(),
+        org=None,
     )
     assert rendered.startswith("20260817T143005Z/")
 
@@ -87,6 +109,7 @@ def test_numeric_and_boolean_bag_values_render():
         "{event.year}/{doc.final}/{source_revision.id}",
         rep_fields={"event": {"year": 2026}, "doc": {"final": True}},
         occasion=_occasion(),
+        org=None,
     )
     assert rendered.startswith("2026/true/")
 
@@ -98,7 +121,9 @@ def test_same_occasion_renders_the_same_key_twice():
         "occasion": _occasion(),
     }
     template = "archive/{info_item.slug}/{source_revision.fingerprint}.html"
-    assert render_destination(template, **args) == render_destination(template, **args)
+    assert render_destination(template, **args, org=None) == render_destination(
+        template, **args, org=None
+    )
 
 
 def test_occasion_value_wins_over_a_bag_namespace_of_the_same_name():
@@ -107,6 +132,7 @@ def test_occasion_value_wins_over_a_bag_namespace_of_the_same_name():
         "{source_revision.date}/{source_revision.id}",
         rep_fields={"source_revision": {"date": "1999-01-01"}},
         occasion=_occasion(),
+        org=None,
     )
     assert rendered.startswith("2026-08-17/")
 
@@ -118,7 +144,7 @@ def test_missing_bag_value_is_unrenderable():
     """rep_fields is editable after assignment, so required_fields is not a guarantee."""
     with pytest.raises(MissingFieldError):
         render_destination(
-            "{info_item.slug}/{source_revision.id}", rep_fields={}, occasion=_occasion()
+            "{info_item.slug}/{source_revision.id}", rep_fields={}, occasion=_occasion(), org=None
         )
 
 
@@ -128,6 +154,7 @@ def test_null_bag_value_is_unrenderable():
             "{info_item.slug}/{source_revision.id}",
             rep_fields={"info_item": {"slug": None}},
             occasion=_occasion(),
+            org=None,
         )
 
 
@@ -137,6 +164,7 @@ def test_empty_bag_value_is_unrenderable():
             "{info_item.slug}/{source_revision.id}",
             rep_fields={"info_item": {"slug": ""}},
             occasion=_occasion(),
+            org=None,
         )
 
 
@@ -152,6 +180,7 @@ def test_bag_value_outside_the_segment_charset_is_refused(value):
             "{info_item.slug}/{source_revision.id}",
             rep_fields={"info_item": {"slug": value}},
             occasion=_occasion(),
+            org=None,
         )
 
 
@@ -174,12 +203,12 @@ def test_bag_value_outside_the_segment_charset_is_refused(value):
 )
 def test_unsafe_rendered_path_refused(template):
     with pytest.raises(UnsafeDestinationError):
-        render_destination(template, rep_fields={}, occasion=_occasion())
+        render_destination(template, rep_fields={}, occasion=_occasion(), org=None)
 
 
 def test_plain_relative_path_is_safe():
     assert render_destination(
-        "archive/2026/{source_revision.id}.html", rep_fields={}, occasion=_occasion()
+        "archive/2026/{source_revision.id}.html", rep_fields={}, occasion=_occasion(), org=None
     ).endswith(".html")
 
 
@@ -191,7 +220,10 @@ def test_occasion_value_outside_the_segment_charset_refused(value):
     """Half the vocabulary skipping the charset check is half a guard."""
     with pytest.raises(InvalidOccasionError):
         render_destination(
-            "x/{source_revision.id}", rep_fields={}, occasion=_occasion(source_revision_id=value)
+            "x/{source_revision.id}",
+            rep_fields={},
+            occasion=_occasion(source_revision_id=value),
+            org=None,
         )
 
 
@@ -203,6 +235,7 @@ def test_naive_captured_at_refused():
             "{source_revision.captured_at}/{source_revision.id}",
             rep_fields={},
             occasion=_occasion(captured_at=datetime(2026, 8, 17, 1, 30)),
+            org=None,
         )
 
 
@@ -214,6 +247,7 @@ def test_non_utc_captured_at_is_converted_not_refused():
         occasion=_occasion(
             captured_at=datetime(2026, 8, 17, 1, 30, tzinfo=timezone(timedelta(hours=4)))
         ),
+        org=None,
     )
     assert rendered.startswith("2026-08-16/")
 
@@ -230,6 +264,7 @@ def test_probe_accepts_a_renderable_document():
     probe_destination(
         {"path_template": "archive/{info_item.slug}/{source_revision.id}.html"},
         rep_fields={"info_item": {"slug": "wa-lcb-notices"}},
+        org=None,
     )
 
 
@@ -239,20 +274,23 @@ def test_probe_refuses_a_bag_value_that_cannot_be_a_segment():
         probe_destination(
             {"path_template": "archive/{org.name}/{source_revision.id}.html"},
             rep_fields={"org": {"name": "WA LCB"}},
+            org=None,
         )
 
 
 def test_probe_refuses_a_missing_bag_value():
     with pytest.raises(MissingFieldError):
         probe_destination(
-            {"path_template": "archive/{org.name}/{source_revision.id}.html"}, rep_fields={}
+            {"path_template": "archive/{org.name}/{source_revision.id}.html"},
+            rep_fields={},
+            org=None,
         )
 
 
 def test_probe_is_a_no_op_without_a_path_template():
     """Document validity is create-time's job; a partial document is not this
     check's failure to report."""
-    assert probe_destination({"required_fields": []}, rep_fields={}) is None
+    assert probe_destination({"required_fields": []}, rep_fields={}, org=None) is None
 
 
 def test_probe_returns_the_path_it_rendered():
@@ -261,6 +299,7 @@ def test_probe_returns_the_path_it_rendered():
         {"path_template": "archive/{info_item.slug}/{source_revision.year}.html"},
         rep_fields={"info_item": {"slug": "notices"}},
         captured_at=datetime(2026, 10, 2, tzinfo=UTC),
+        org=None,
     )
     assert path == "archive/notices/2026.html"
 
@@ -269,8 +308,8 @@ def test_probe_renders_one_occasion_for_one_captured_at():
     """Two bags compared against one ``captured_at`` differ only where the bags do."""
     document = {"path_template": "a/{org.title_slug}/{source_revision.captured_at}.html"}
     when = datetime(2026, 10, 2, 12, tzinfo=UTC)
-    before = probe_destination(document, {"org": {"title": "Old Name"}}, captured_at=when)
-    after = probe_destination(document, {"org": {"title": "New Name"}}, captured_at=when)
+    before = probe_destination(document, {"org": {"title": "Old Name"}}, captured_at=when, org=None)
+    after = probe_destination(document, {"org": {"title": "New Name"}}, captured_at=when, org=None)
     assert before == "a/old_name/20261002T120000Z.html"
     assert after == "a/new_name/20261002T120000Z.html"
 
@@ -313,6 +352,7 @@ def test_year_and_segments_render_in_the_storage_framework_forms():
         "{source_revision.datetime_time_segment}/{source_revision.id}",
         rep_fields={},
         occasion=_occasion(captured_at=datetime(2026, 8, 17, 14, 30, 5, tzinfo=UTC)),
+        org=None,
     )
     assert rendered == "2026/2026_08_17/2026_08_17-14_30_05/01JZZZZZZZZZZZZZZZZZZZZZZZ"
 
@@ -324,6 +364,7 @@ def test_segments_render_in_utc_whatever_zone_the_row_carries():
         occasion=_occasion(
             captured_at=datetime(2026, 8, 17, 16, 30, 5, tzinfo=timezone(timedelta(hours=2)))
         ),
+        org=None,
     )
     assert rendered.startswith("2026_08_17-14_30_05/")
 
@@ -358,6 +399,7 @@ def test_ext_derives_from_the_source_media_type(media_type, ext):
         "{source_revision.id}.{source_revision.ext}",
         rep_fields={},
         occasion=_occasion(source_media_type=media_type),
+        org=None,
     )
     assert rendered == f"01JZZZZZZZZZZZZZZZZZZZZZZZ.{ext}"
 
@@ -488,6 +530,7 @@ def test_bag_slugs_derive_at_render_time_with_the_shared_normalizer():
             "info_item": {"name": "Café Résumé"},
         },
         occasion=_occasion(),
+        org=None,
     )
     assert rendered == "wslcb-meeting_schedule/cafe_resume/01JZZZZZZZZZZZZZZZZZZZZZZZ"
 
@@ -497,6 +540,7 @@ def test_a_stored_slug_is_an_explicit_override():
         "{org.title_slug}/{source_revision.id}",
         rep_fields={"org": {"title": "Anything At All", "title_slug": "custom"}},
         occasion=_occasion(),
+        org=None,
     )
     assert rendered == "custom/01JZZZZZZZZZZZZZZZZZZZZZZZ"
 
@@ -508,6 +552,7 @@ def test_a_raw_placeholder_still_refuses_rather_than_rewrites():
             "{org.title}/{source_revision.id}",
             rep_fields={"org": {"title": "WA LCB"}},
             occasion=_occasion(),
+            org=None,
         )
 
 
@@ -515,6 +560,7 @@ def test_probe_resolves_slugs_the_same_way():
     probe_destination(
         {"path_template": "{org.title_slug}/{source_revision.id}"},
         {"org": {"title": "Washington State LCB"}},
+        org=None,
     )
 
 
@@ -540,6 +586,7 @@ def test_the_canonical_layout_renders_the_approved_key():
             captured_at=datetime(2026, 9, 9, 18, 54, 2, tzinfo=UTC),
             source_media_type="text/html",
         ),
+        org=None,
     )
     assert rendered == (
         "organizations/washington_state_liquor_and_cannabis_board/infoitems/"

@@ -167,7 +167,7 @@ async def set_rep_fields(
 
 
 def _refusal(assignment: InfoItemRepSpec, spec: RepSpec, bag: dict) -> AssignmentRefusal | None:
-    check = check_bag_against_spec(bag, spec.document or {})
+    check = check_bag_against_spec(bag, spec.document or {}, org=None)
     if check.ok:
         return None
     if check.missing:
@@ -198,10 +198,10 @@ def _moves(
     for assignment, spec in assignments:
         document = spec.document or {}
         try:
-            before = probe_destination(document, old_bag, captured_at=when)
+            before = probe_destination(document, old_bag, org=None, captured_at=when)
         except ReplicationRenderError:
             continue
-        after = probe_destination(document, new_bag, captured_at=when)
+        after = probe_destination(document, new_bag, org=None, captured_at=when)
         if before is None or after is None or after == before:
             continue
         moves.append(

@@ -10,9 +10,11 @@ see the never-rename rule in `AGENTS.md`.
   every string field's `<key>_slug` companion, plus `acronym_or_title(_slug)` when both are
   present, is derived with co-core's `normalize_string` — the same function the storage
   framework's `*Vars` use, so a segment archiver renders matches the sibling directories the CLI
-  writes (archiver#206). Derivation runs where the bag is consumed (`render_destination`,
-  `assign_rep_spec`'s `required_fields` check, `POST /tools/validate-rep-fields`) and never
-  rewrites the stored bag; a stored `_slug` key is an explicit override and is never replaced.
+  writes (archiver#206). **Derivation has one point: `effective_rep_fields(bag, org)`**
+  (archiver#303) — the stored bag over the linked org's `name`/`acronym` as
+  `org.title`/`org.acronym`, then derived; a guard test refuses any other `resolve_rep_fields`
+  caller. A stored key wins, and a stored `_slug` key is an explicit override that is never
+  replaced. Derivation never rewrites the stored bag.
   **One writer after create: `set_rep_fields`** (archiver#302), behind `PUT …/rep-fields` and the
   dashboard save. A written bag is v1-shaped and serves every active assignment, per the gate
   `src/core/tools/rep_fields_gate.py` that assign and create share; writers serialize on the

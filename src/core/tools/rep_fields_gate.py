@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import InfoItem
+from src.core.rep_fields import OrgValues
 from src.core.rep_fields_schema.validator import (
     ValidationError,
     validate_rep_fields_against_spec,
@@ -47,14 +48,19 @@ class BagCheck:
         return not self.missing and self.unrenderable is None
 
 
-def check_bag_against_spec(bag: dict, document: Mapping[str, object]) -> BagCheck:
-    """Check ``bag`` against a RepSpec document: required-field presence, then a probe render."""
+def check_bag_against_spec(
+    bag: dict, document: Mapping[str, object], *, org: OrgValues | None
+) -> BagCheck:
+    """Check ``bag`` against a RepSpec document: required-field presence, then a probe render.
+
+    Both halves read the effective bag, ``bag`` over ``org`` (archiver#303).
+    """
     required_fields = document.get("required_fields") or []
-    ok, errors = validate_rep_fields_against_spec(bag, list(required_fields))
+    ok, errors = validate_rep_fields_against_spec(bag, list(required_fields), org=org)
     if not ok:
         return BagCheck(missing=errors)
     try:
-        probe_destination(document, bag)
+        probe_destination(document, bag, org=org)
     except ReplicationRenderError as e:
         return BagCheck(unrenderable=str(e))
     return BagCheck()
