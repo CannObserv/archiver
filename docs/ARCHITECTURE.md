@@ -54,7 +54,8 @@ src/core/                      Domain logic
                                extension_for_media_type, the cluster's one table
                                — and resolves the bag's _slug companions through
                                rep_fields.effective_rep_fields on the way in
-                               (archiver#205, #206, #210, #303). permanent_store.py derives a persisted
+                               (archiver#205, #206, #210, #303).
+                               permanent_store.py derives a persisted
                                digest's gs://co-gcs-replicator URI (archiver#276).
                                errors.py is the
                                single base both raise under, so archiver#169 can
