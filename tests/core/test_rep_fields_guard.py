@@ -6,7 +6,9 @@ path is. #304 overlays the linked Power Map org inside ``effective_rep_fields``;
 a site that resolved the stored bag directly would render a different path from
 the rest without failing anything. So the sweep refuses any *reference* to
 ``resolve_rep_fields`` in ``src/`` outside that one function: a call, an import
-(an alias would dodge a name check), or an attribute reach through the module.
+(an alias would dodge a name check), an attribute reach through the module, or
+the bare name as a string (``getattr``). Prose that mentions it is never the
+exact string, so docstrings pass.
 """
 
 from __future__ import annotations
@@ -52,6 +54,8 @@ def resolve_violations(source: str, relpath: Path) -> list[str]:
             violations.append(f"{relpath}:{node.lineno} references {TARGET}")
         elif isinstance(node, ast.Attribute) and node.attr == TARGET:
             violations.append(f"{relpath}:{node.lineno} references .{TARGET}")
+        elif isinstance(node, ast.Constant) and node.value == TARGET:
+            violations.append(f"{relpath}:{node.lineno} names {TARGET!r}")
     return violations
 
 
@@ -91,6 +95,16 @@ def test_the_sweep_catches_an_aliased_import():
 def test_the_sweep_catches_a_reach_through_the_module():
     planted = "from src.core import rep_fields\n\nrep_fields.resolve_rep_fields({})\n"
     assert resolve_violations(planted, Path("src/x.py")) == [f"src/x.py:3 references .{TARGET}"]
+
+
+def test_the_sweep_catches_a_reach_by_name():
+    planted = (
+        "from src.core import rep_fields\n"
+        "\n"
+        'resolve = getattr(rep_fields, "resolve_rep_fields")\n'
+        '"""A docstring naming resolve_rep_fields is prose, not a reach."""\n'
+    )
+    assert resolve_violations(planted, Path("src/x.py")) == [f"src/x.py:3 names {TARGET!r}"]
 
 
 def test_the_sweep_catches_a_call_elsewhere_in_the_home_module():
