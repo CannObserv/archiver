@@ -35,7 +35,7 @@ from urllib.parse import unquote
 
 from co_core.pure.util.files import extension_for_media_type
 
-from src.core.rep_fields import resolve_rep_fields
+from src.core.rep_fields import OrgValues, effective_rep_fields
 from src.core.replication.errors import ReplicationRenderError
 from src.core.replication.template import (
     OCCASION_NAMESPACE,
@@ -237,12 +237,17 @@ class RenderOccasion:
 
 
 def render_destination(
-    template: str, *, rep_fields: Mapping[str, object], occasion: RenderOccasion
+    template: str,
+    *,
+    rep_fields: Mapping[str, object],
+    occasion: RenderOccasion,
+    org: OrgValues | None,
 ) -> str:
     """Resolve ``template`` into the provider-relative path the command carries.
 
-    The bag is read through ``resolve_rep_fields`` first (archiver#206): every
-    string field's ``<key>_slug`` companion derives with co-core's
+    The bag is read through ``effective_rep_fields`` first (archiver#206,
+    #303), so ``org``'s name and acronym fill whatever the stored bag leaves
+    unset. Every string field's ``<key>_slug`` companion derives with co-core's
     ``normalize_string`` — the one slugger the storage framework's ``*Vars`` use,
     so ``{org.title_slug}`` here is the directory the CLI writes beside — and a
     stored ``_slug`` key is left alone as an explicit override. Resolution never
@@ -259,7 +264,7 @@ def render_destination(
         UnsafeDestinationError: the rendered path would be refused downstream.
     """
     occasion_values = occasion.values()
-    bag = resolve_rep_fields(dict(rep_fields))
+    bag = effective_rep_fields(dict(rep_fields), org)
     rendered = template
     for namespace, key in parse_placeholders(template):
         if namespace == OCCASION_NAMESPACE:
@@ -280,6 +285,7 @@ def probe_destination(
     document: Mapping[str, object],
     rep_fields: Mapping[str, object],
     *,
+    org: OrgValues | None,
     captured_at: datetime | None = None,
 ) -> str | None:
     """Check that this document + bag could render, before the assignment exists.
@@ -310,6 +316,7 @@ def probe_destination(
     return render_destination(
         template,
         rep_fields=rep_fields,
+        org=org,
         occasion=RenderOccasion(
             source_revision_id=_PROBE_OCCASION_ID,
             content_fingerprint=_PROBE_FINGERPRINT,
@@ -356,7 +363,7 @@ def _bag_value(bag: Mapping[str, object], namespace: str, key: str) -> str:
     """Resolve one bag entry into a path segment.
 
     ``bag`` is the **resolved** bag, not the InfoItem's stored one: the caller
-    has already run ``resolve_rep_fields`` over it, so a ``_slug`` key is
+    has already run ``effective_rep_fields`` over it, so a ``_slug`` key is
     present here whether it was stored or derived. Naming it ``rep_fields``
     erased that distinction one frame below the only place it is made.
     """

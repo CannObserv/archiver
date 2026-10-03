@@ -157,7 +157,7 @@ async def create_info_item(
         # directly rather than calling assign_rep_spec, so it asks the same gate
         # (archiver#168 CR #5, #302). Refusing now keeps the fix synchronous:
         # the document freezes on assignment (#83).
-        check = check_bag_against_spec(body.rep_fields, rep_spec.document or {})
+        check = check_bag_against_spec(body.rep_fields, rep_spec.document or {}, org=None)
         if check.missing:
             raise_422(
                 f"rep_fields does not satisfy RepSpec {assignment.rep_spec_id!r}",

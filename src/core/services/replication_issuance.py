@@ -307,6 +307,7 @@ def _issue_targets(
                 target.document.get("path_template", ""),
                 rep_fields=target.rep_fields,
                 occasion=occasion,
+                org=None,
             )
         except ReplicationRenderError as e:
             # Only a *requested* target gets a skip row, and only a requested

@@ -16,13 +16,30 @@ CLI writes through the storage framework's ``*Vars``. One slugger cluster-wide
 call — "WSLCB - Meeting Schedule" is ``wslcb-meeting_schedule`` on both sides,
 and diacritics fold instead of vanishing.
 
-Consumed where the bag is read, never persisted: ``render_destination``,
-``assign_rep_spec``'s ``required_fields`` check and ``POST /tools/validate-rep-fields``
-all resolve the stored bag on the way in, so operators enter raw values and a
-stored ``_slug`` key stays an explicit override.
+Consumed where the bag is read, never persisted, and only through
+``effective_rep_fields`` (archiver#303): render, the ``required_fields`` check,
+the probe, issuance, both tool routes and ``set_rep_fields`` all resolve there,
+so operators enter raw values and a stored ``_slug`` key stays an explicit
+override. A guard test (``tests/core/test_rep_fields_guard.py``) fails on any
+other reference to ``resolve_rep_fields``.
 """
 
+from dataclasses import dataclass
+
 from co_core.pure.util.text import normalize_string
+
+
+@dataclass(frozen=True, slots=True)
+class OrgValues:
+    """The linked organization's identity, as the bag's ``org`` namespace reads it.
+
+    ``name`` becomes ``org.title`` and ``acronym`` ``org.acronym``. Plain values,
+    not a model: ``effective_rep_fields`` stays pure, and the caller decides
+    where an org comes from (Power Map's local snapshot, archiver#304).
+    """
+
+    name: str
+    acronym: str | None
 
 
 def slugify(value: str) -> str:
@@ -82,3 +99,27 @@ def resolve_rep_fields(bag: dict) -> dict:
         else:
             out[ns] = fields
     return out
+
+
+def effective_rep_fields(bag: dict, org: OrgValues | None) -> dict:
+    """The bag every consumer reads: the stored bag over the linked org, resolved.
+
+    **The single resolution point** (archiver#303). Precedence, lowest first:
+    the org's ``name``/``acronym`` as ``org.title``/``org.acronym`` (a ``None``
+    acronym is skipped), then the stored bag key by key, then
+    ``resolve_rep_fields``' derivations, which never replace a key already
+    there. A stored non-dict ``org`` replaces the org's values whole; shape
+    validation is what refuses it.
+
+    Pure: the caller loads the org. With ``org=None`` the result is exactly
+    ``resolve_rep_fields(bag)``. ``bag`` is never mutated.
+    """
+    if org is None:
+        return resolve_rep_fields(bag)
+    org_ns: dict = {"title": org.name}
+    if org.acronym is not None:
+        org_ns["acronym"] = org.acronym
+    stored_org = bag.get("org", {})
+    if isinstance(stored_org, dict):
+        stored_org = {**org_ns, **stored_org}
+    return resolve_rep_fields({**bag, "org": stored_org})
