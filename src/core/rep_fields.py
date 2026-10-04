@@ -119,14 +119,16 @@ def empty_slug_reason(resolved: Mapping[str, object], namespace: str, key: str) 
 
     ``resolved`` is the **effective** bag. ``None`` for anything else: a key that
     is present (a stored null is a plain miss), not a ``_slug`` key, or whose raw
-    value is absent, not a string, or slugs fine.
+    value is absent, not a string, itself a ``_slug`` key, or slugs fine.
     """
     fields = resolved.get(namespace)
     if not isinstance(fields, Mapping) or key in fields or not key.endswith(_SLUG_SUFFIX):
         return None
     raw_key = key.removesuffix(_SLUG_SUFFIX)
     raw = fields.get(raw_key)
-    if not isinstance(raw, str) or slugify(raw):
+    # A `_slug` key never gets a companion of its own, so `<key>_slug_slug` is
+    # absent whatever the value holds: a plain miss, not a value to blame.
+    if not isinstance(raw, str) or raw_key.endswith(_SLUG_SUFFIX) or slugify(raw):
         return None
     if raw_key == "acronym_or_title":
         raw_key = next((k for k in ("acronym", "title") if fields.get(k) == raw), raw_key)

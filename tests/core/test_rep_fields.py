@@ -274,6 +274,7 @@ class TestEmptySlugReason:
             ({"org": {"year": 2025}}, "year_slug"),  # non-strings get no companion
             ({"org": {"title": "!!!"}}, "title"),  # not a _slug key
             ({"org": "flat"}, "title_slug"),  # namespace is not a dict
+            ({"org": {"name_slug": "!!!"}}, "name_slug_slug"),  # _slug keys never derive
         ],
     )
     def test_is_none_unless_a_raw_string_slugged_to_nothing(self, bag, key):
