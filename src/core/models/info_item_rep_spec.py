@@ -36,14 +36,11 @@ class InfoItemRepSpec(Base):
     public_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
-        Index(
-            "ix_iirs_item_active",
-            "info_item_id",
-            postgresql_where=text("deactivated_at IS NULL"),
-        ),
         # Two active rows for one (item, spec) render one destination, and
         # issuance skips both as destination_collision forever (archiver#301).
-        # assign_rep_spec refuses first; this is the backstop.
+        # assign_rep_spec refuses first; this is the backstop. Leading with
+        # info_item_id, it also serves every item-only active lookup, so it is
+        # the table's one active-row index (archiver#311).
         Index(
             "uq_iirs_item_spec_active",
             "info_item_id",

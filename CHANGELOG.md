@@ -18,6 +18,12 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.24.1 (2026-10-04)
+
+[service] **Drop the redundant `ix_iirs_item_active` index** (archiver#311). No route, schema or SDK surface change, so `archiver-client` stays at 5.8.0. The OpenAPI snapshot changes only in `info.version`.
+
+- **Migration `7c4e1f2a9b30`:** drops `ix_iirs_item_active (info_item_id) WHERE deactivated_at IS NULL` from `info_item_rep_specs`. `uq_iirs_item_spec_active` (archiver#301) has the same predicate and leads with the same column, so item-only active lookups now use it. This removes write overhead only. Run `uv run alembic upgrade head` and restart, in either order: no code names the index. The downgrade re-creates it.
+
 ## v4.24.0 (2026-10-02)
 
 [both] **Validated rep_fields writes: `PUT /info-items/{id}/rep-fields` and `set_rep_fields`** (archiver#302). `archiver-client` 5.8.0 adds `set_rep_fields`. No migration.

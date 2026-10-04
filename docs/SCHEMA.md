@@ -254,7 +254,7 @@ see the never-rename rule in `AGENTS.md`.
     destination, and issuance skips **both** as `destination_collision` on every occasion.
     `assign_rep_spec` refuses first (`DuplicateAssignmentError` → 409) under the RepSpec row lock;
     the index is the backstop for any other writer. Deactivated rows are history and may repeat, so
-    reassigning after a deactivate is allowed.
+    reassigning after a deactivate is allowed. It is also the item-only active lookups' index (#311).
 - **`RevokedInfoItem`** (`revoked_info_items`) — a deleted InfoItem's identity + final
   generation (archiver#141). Written in the deletion's transaction by `DELETE /info-items/{id}`;
   what the hourly snapshot's tombstone republish reads once the item row is gone, because
