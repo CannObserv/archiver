@@ -272,6 +272,39 @@ async def test_add_rep_spec_assignment_unrenderable_rep_fields_returns_422(clien
 
 
 @pytest.mark.asyncio
+async def test_add_rep_spec_assignment_names_the_raw_field_that_slugs_to_nothing(client, session):
+    """archiver#312: the operator typed ``org.title``, not ``org.title_slug``."""
+    item = InfoItem(name="slugless-item", rep_fields={"org": {"title": "!!!"}})
+    spec = RepSpec(
+        provider="gcs",
+        name="slugless-spec",
+        schema_version=1,
+        document={
+            "provider": "gcs",
+            "credentials_alias": "default",
+            "path_template": "archive/{org.title_slug}/{source_revision.id}",
+            "required_fields": ["org.title_slug"],
+        },
+    )
+    session.add_all([item, spec])
+    await session.flush()
+
+    response = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/rep-spec-assignments",
+        headers=HEADERS,
+        json={"rep_spec_id": str(spec.rep_spec_id)},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["errors"] == [
+        {
+            "path": "/rep_fields",
+            "message": 'org.title "!!!" slugs to nothing (org.title_slug)',
+            "code": "rep_fields_unrenderable",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_add_rep_spec_assignment_duplicate_active_returns_409(
     client, rep_spec_assignment, info_item, rep_spec
 ):

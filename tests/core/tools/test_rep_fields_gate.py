@@ -49,6 +49,28 @@ def test_a_linked_org_satisfies_the_spec():
     assert check.ok
 
 
+def test_a_raw_value_that_slugs_to_nothing_is_unrenderable_not_missing():
+    """archiver#312: the operator did enter ``org.title``; its value is what fails."""
+    check = check_bag_against_spec({"org": {"title": "!!!"}}, _DOC, org=None)
+    assert not check.ok
+    assert check.missing == []
+    assert check.unrenderable == 'org.title "!!!" slugs to nothing (org.title_slug)'
+
+
+def test_a_required_slug_outside_the_template_is_still_caught():
+    """``required_fields`` may name keys no placeholder uses, so the probe cannot be relied on."""
+    doc = {**_DOC, "required_fields": ["org.title_slug", "org.acronym_slug"]}
+    check = check_bag_against_spec({"org": {"title": "WA LCB", "acronym": "--"}}, doc, org=None)
+    assert check.unrenderable == 'org.acronym "--" slugs to nothing (org.acronym_slug)'
+
+
+def test_a_genuine_miss_is_reported_before_a_slug_to_nothing():
+    doc = {**_DOC, "required_fields": ["org.title_slug", "org.jurisdiction"]}
+    check = check_bag_against_spec({"org": {"title": "!!!"}}, doc, org=None)
+    assert [m["path"] for m in check.missing] == ["/org/jurisdiction"]
+    assert check.unrenderable is None
+
+
 @pytest.mark.asyncio
 async def test_lock_info_item_returns_the_row(session):
     item = InfoItem(name="lock-me", rep_fields={})

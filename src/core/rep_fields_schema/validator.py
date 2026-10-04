@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from jsonschema import Draft202012Validator
 
-from src.core.rep_fields import OrgValues, effective_rep_fields
+from src.core.rep_fields import OrgValues, effective_rep_fields, empty_slug_reason
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "v1.json"
 
@@ -46,8 +46,28 @@ def validate_rep_fields_against_spec(
     name, because that is how ``render_destination`` will read it. Shape
     validation still runs on the bag as stored — the derived keys are strings
     and cannot fail it.
+
+    A required ``_slug`` key whose raw value slugged to nothing still fails, but
+    its message names the raw field (archiver#312).
     """
-    ok, errors = validate_rep_fields(bag)
+    _, errors = validate_rep_fields(bag)
+    missing, empty_slugs = check_required_fields(bag, required_fields, org=org)
+    errors += missing + empty_slugs
+    return not errors, errors
+
+
+def check_required_fields(
+    bag: dict, required_fields: list[str], *, org: OrgValues | None
+) -> tuple[list[ValidationError], list[ValidationError]]:
+    """The presence half of ``validate_rep_fields_against_spec``, split by remedy.
+
+    Returns ``(missing, empty_slugs)``. ``missing`` is a key the bag lacks (or a
+    malformed entry), which the operator fixes by adding a value. ``empty_slugs``
+    is a derived ``_slug`` key withheld because the raw value the operator *did*
+    enter slugs to nothing (archiver#312): the remedy is a different value, which
+    makes it a render failure rather than a gap, and the rep_fields gate reports
+    it as one.
+    """
     # A separate name, not a rebind: every error below reports a path, and a
     # reader has to be able to tell which bag it is a path into. Unconditional:
     # an `isinstance(bag, dict)` guard here bought nothing, because the loop
@@ -55,24 +75,25 @@ def validate_rep_fields_against_spec(
     # AttributeError one line later, which is the failure the guard read as
     # prevented. The annotation is the contract (CR 12).
     resolved = effective_rep_fields(bag, org)
+    missing: list[ValidationError] = []
+    empty_slugs: list[ValidationError] = []
     for path in required_fields:
         ns, _, key = path.partition(".")
         if not ns or not key:
-            errors.append(
+            missing.append(
                 {
                     "path": f"/{path}",
                     "message": f"required_fields entry {path!r} is malformed (expect 'ns.key')",
                 }
             )
-            ok = False
             continue
         ns_dict = resolved.get(ns)
         if not isinstance(ns_dict, dict) or key not in ns_dict or ns_dict.get(key) is None:
-            errors.append(
-                {
-                    "path": f"/{ns}/{key}",
-                    "message": f"required field {path} missing or null",
-                }
-            )
-            ok = False
-    return ok, errors
+            reason = empty_slug_reason(resolved, ns, key)
+            if reason is not None:
+                empty_slugs.append({"path": f"/{ns}/{key}", "message": reason})
+            else:
+                missing.append(
+                    {"path": f"/{ns}/{key}", "message": f"required field {path} missing or null"}
+                )
+    return missing, empty_slugs

@@ -24,7 +24,8 @@ from src.core.models import InfoItem
 from src.core.rep_fields import OrgValues
 from src.core.rep_fields_schema.validator import (
     ValidationError,
-    validate_rep_fields_against_spec,
+    check_required_fields,
+    validate_rep_fields,
 )
 from src.core.replication.destination import probe_destination
 from src.core.replication.errors import ReplicationRenderError
@@ -53,12 +54,19 @@ def check_bag_against_spec(
 ) -> BagCheck:
     """Check ``bag`` against a RepSpec document: required-field presence, then a probe render.
 
-    Both halves read the effective bag, ``bag`` over ``org`` (archiver#303).
+    Both halves read the effective bag, ``bag`` over ``org`` (archiver#303). A
+    required ``_slug`` whose raw value slugs to nothing is unrenderable, not
+    missing (archiver#312): the operator entered the raw field, so "add it"
+    is the wrong remedy. Checked here rather than left to the probe, because
+    ``required_fields`` may name keys no placeholder uses.
     """
-    required_fields = document.get("required_fields") or []
-    ok, errors = validate_rep_fields_against_spec(bag, list(required_fields), org=org)
-    if not ok:
-        return BagCheck(missing=errors)
+    required_fields = list(document.get("required_fields") or [])
+    _, shape_errors = validate_rep_fields(bag)
+    missing, empty_slugs = check_required_fields(bag, required_fields, org=org)
+    if shape_errors or missing:
+        return BagCheck(missing=shape_errors + missing)
+    if empty_slugs:
+        return BagCheck(unrenderable="; ".join(e["message"] for e in empty_slugs))
     try:
         probe_destination(document, bag, org=org)
     except ReplicationRenderError as e:

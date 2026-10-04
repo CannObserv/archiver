@@ -24,6 +24,8 @@ override. A guard test (``tests/core/test_rep_fields_guard.py``) fails on any
 other reference to ``resolve_rep_fields``.
 """
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from co_core.pure.util.text import normalize_string
@@ -99,6 +101,37 @@ def resolve_rep_fields(bag: dict) -> dict:
         else:
             out[ns] = fields
     return out
+
+
+_SLUG_SUFFIX = "_slug"
+
+
+def empty_slug_reason(resolved: Mapping[str, object], namespace: str, key: str) -> str | None:
+    """Why ``<namespace>.<key>`` is absent, when the answer is "its raw value slugged to nothing".
+
+    A derived ``_slug`` key the operator never typed is withheld when its raw
+    value has no path-segment form (``resolve_rep_fields``' last bullet), and a
+    message naming only the derived key points the operator at a key they never
+    entered (archiver#312). This names the raw field and its value instead:
+    ``org.title "!!!" slugs to nothing (org.title_slug)``. For
+    ``acronym_or_title_slug`` the raw field is whichever of ``acronym`` and
+    ``title`` the composite took.
+
+    ``resolved`` is the **effective** bag. ``None`` for anything else: a key that
+    is present (a stored null is a plain miss), not a ``_slug`` key, or whose raw
+    value is absent, not a string, or slugs fine.
+    """
+    fields = resolved.get(namespace)
+    if not isinstance(fields, Mapping) or key in fields or not key.endswith(_SLUG_SUFFIX):
+        return None
+    raw_key = key.removesuffix(_SLUG_SUFFIX)
+    raw = fields.get(raw_key)
+    if not isinstance(raw, str) or slugify(raw):
+        return None
+    if raw_key == "acronym_or_title":
+        raw_key = next((k for k in ("acronym", "title") if fields.get(k) == raw), raw_key)
+    shown = json.dumps(raw, ensure_ascii=False)
+    return f"{namespace}.{raw_key} {shown} slugs to nothing ({namespace}.{key})"
 
 
 def effective_rep_fields(bag: dict, org: OrgValues | None) -> dict:
