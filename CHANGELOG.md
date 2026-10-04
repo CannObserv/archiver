@@ -22,7 +22,7 @@ service-only patch does not require an SDK bump.
 
 [service] **Drop the redundant `ix_iirs_item_active` index** (archiver#311). No route, schema or SDK surface change, so `archiver-client` stays at 5.8.0. The OpenAPI snapshot changes only in `info.version`.
 
-- **Migration `7c4e1f2a9b30`:** drops `ix_iirs_item_active (info_item_id) WHERE deactivated_at IS NULL` from `info_item_rep_specs`. `uq_iirs_item_spec_active` (archiver#301) has the same predicate and leads with the same column, so item-only active lookups now use it. This removes write overhead only. Plain `uv run alembic upgrade head` then restart, in either order; the downgrade re-creates the index.
+- **Migration `7c4e1f2a9b30`:** drops `ix_iirs_item_active (info_item_id) WHERE deactivated_at IS NULL` from `info_item_rep_specs`. `uq_iirs_item_spec_active` (archiver#301) has the same predicate and leads with the same column, so item-only active lookups now use it. This removes write overhead only. Run `uv run alembic upgrade head` and restart, in either order: no code names the index. The downgrade re-creates it.
 
 ## v4.24.0 (2026-10-02)
 
