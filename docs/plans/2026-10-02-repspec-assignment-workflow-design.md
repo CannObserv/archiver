@@ -282,3 +282,15 @@ Phase 3 (#307, #308) depends only on Phases 0–1 and runs in parallel with Phas
   "Save and move" pattern, and #305's automatic rename (Q4, no confirmation) logs the same before → after
   at WARNING.
 - **`POST /info-items` shape-checks** the bag even with no assignments.
+
+### 2026-10-04 — CannObserv/power-map#607's contract, and #303's shipped seam
+
+- **Gone orgs answer `410 Gone`** with `{id, entity_type, deleted_at, merged_into}` (no ETag, `no-cache`);
+  `merged_into` is the server-resolved chain end. The adapter maps 410 + `merged_into` → `Merged`,
+  410 null or 404 → `Gone`. Merge tombstones are durable on Power Map's side, so §2's "merged" row has
+  no time window. Merge handling in #305 waits for #607 to **deploy** (the 410 declared in Power Map's
+  served OpenAPI), not merely close.
+- **#303 shipped `org` as a required keyword-only parameter** on `render_destination`,
+  `probe_destination`, `validate_rep_fields_against_spec` and `check_bag_against_spec`, all passed
+  `None` today. #304 wires it at the gate, issuance's `render_destination`, and `set_rep_fields._moves`.
+  The two `/tools/*-rep-fields` routes take a bag with no item: their `org=None` is permanent.
