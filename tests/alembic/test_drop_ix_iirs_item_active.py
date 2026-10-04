@@ -68,9 +68,12 @@ async def _plan(test_engine, sql: str) -> str:
 
 
 def test_model_declares_one_active_row_index():
-    names = {index.name for index in InfoItemRepSpec.__table__.indexes}
-    assert _DROPPED not in names
-    assert _SURVIVOR in names
+    partial = {
+        index.name
+        for index in InfoItemRepSpec.__table__.indexes
+        if index.dialect_options["postgresql"]["where"] is not None
+    }
+    assert partial == {_SURVIVOR}
 
 
 @pytest.mark.asyncio
