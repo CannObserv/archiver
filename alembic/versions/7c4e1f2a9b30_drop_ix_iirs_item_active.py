@@ -2,7 +2,7 @@
 
 Revision ID: 7c4e1f2a9b30
 Revises: cdeb05831bd7
-Create Date: 2026-10-04 00:00:00.000000
+Create Date: 2026-10-04 18:41:00.530047
 
 archiver#311 - ``uq_iirs_item_spec_active`` (cdeb05831bd7, archiver#301) has
 the same ``deactivated_at IS NULL`` predicate as ``ix_iirs_item_active`` and
