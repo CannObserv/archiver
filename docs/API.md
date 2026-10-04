@@ -77,9 +77,9 @@ Those take production action on 8000 and run only when the operator asks.
 because afterwards nothing can fix it: **422** `code="rep_fields_incomplete"` (one error per missing
 `required_fields` key) or `code="rep_fields_unrenderable"` (path `/rep_fields`; the bag is present
 but cannot render `path_template`, e.g. `"WA LCB"` as a path segment - this was a 500 until
-archiver#301). A required `_slug` whose raw value slugs to nothing is the second kind, and its
-message names the raw field: `org.title "!!!" slugs to nothing (org.title_slug)` (archiver#312);
-**409** `kind="conflict"` when the spec is already actively assigned to the item, with
+archiver#301). A required `_slug` whose raw value slugs to nothing is the second kind wherever the
+bag is checked against a spec - here, `POST /info-items` and `PUT …/rep-fields` - and its message
+names the raw field: `org.title "!!!" slugs to nothing (org.title_slug)` (archiver#312); **409** `kind="conflict"` when the spec is already actively assigned to the item, with
 `data.existing_assignment_id` - deactivate it first. `POST /info-items` refuses the same spec listed
 twice in `initial_rep_spec_assignments` (422, `code="duplicate_assignment"`). One active row per
 `(item, spec)` is a database invariant ([SCHEMA.md](SCHEMA.md) § `InfoItemRepSpec`).
