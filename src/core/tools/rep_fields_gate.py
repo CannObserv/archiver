@@ -38,6 +38,8 @@ class BagCheck:
     ``missing`` holds the shape and ``required_fields`` errors. ``unrenderable``
     is the render failure's reason, and is only looked for once ``missing`` is
     empty: probing a bag that lacks the key restates the miss as a render error.
+    It is found before any render when a required ``_slug``'s raw value slugs to
+    nothing (archiver#312), one reason per such key joined with ``"; "``.
     """
 
     missing: list[ValidationError] = field(default_factory=list)
