@@ -255,6 +255,8 @@ see the never-rename rule in `AGENTS.md`.
     `assign_rep_spec` refuses first (`DuplicateAssignmentError` → 409) under the RepSpec row lock;
     the index is the backstop for any other writer. Deactivated rows are history and may repeat, so
     reassigning after a deactivate is allowed.
+  - **The one active-row index** (archiver#311): leading with `info_item_id`, it serves item-only
+    active lookups too; `ix_iirs_item_active` was redundant and is dropped.
 - **`RevokedInfoItem`** (`revoked_info_items`) — a deleted InfoItem's identity + final
   generation (archiver#141). Written in the deletion's transaction by `DELETE /info-items/{id}`;
   what the hourly snapshot's tombstone republish reads once the item row is gone, because
