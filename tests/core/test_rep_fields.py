@@ -5,7 +5,13 @@ import copy
 import pytest
 from co_core.pure.util.text import normalize_string
 
-from src.core.rep_fields import OrgValues, effective_rep_fields, resolve_rep_fields, slugify
+from src.core.rep_fields import (
+    OrgValues,
+    effective_rep_fields,
+    empty_slug_reason,
+    resolve_rep_fields,
+    slugify,
+)
 
 # ---------------------------------------------------------------------------
 # slugify corner cases
@@ -230,3 +236,46 @@ class TestEffectiveRepFields:
     def test_a_stored_non_dict_org_replaces_the_org_values(self):
         """Stored wins at the namespace too; shape validation is what refuses this bag."""
         assert effective_rep_fields({"org": "WA LCB"}, WA_LCB) == {"org": "WA LCB"}
+
+
+class TestEmptySlugReason:
+    """archiver#312: name the raw field the operator typed, not the derived key."""
+
+    def test_names_the_raw_field_and_its_value(self):
+        resolved = effective_rep_fields({"org": {"title": "!!!"}}, None)
+        assert empty_slug_reason(resolved, "org", "title_slug") == (
+            'org.title "!!!" slugs to nothing (org.title_slug)'
+        )
+
+    def test_names_the_source_of_acronym_or_title(self):
+        resolved = effective_rep_fields({"org": {"acronym": "", "title": "!!!"}}, None)
+        assert empty_slug_reason(resolved, "org", "acronym_or_title_slug") == (
+            'org.title "!!!" slugs to nothing (org.acronym_or_title_slug)'
+        )
+
+    def test_names_the_acronym_when_it_was_preferred(self):
+        resolved = effective_rep_fields({"org": {"acronym": "--", "title": "WA LCB"}}, None)
+        assert empty_slug_reason(resolved, "org", "acronym_or_title_slug") == (
+            'org.acronym "--" slugs to nothing (org.acronym_or_title_slug)'
+        )
+
+    def test_names_the_linked_org_name_as_org_title(self):
+        resolved = effective_rep_fields({}, OrgValues(name="???", acronym=None))
+        assert empty_slug_reason(resolved, "org", "title_slug") == (
+            'org.title "???" slugs to nothing (org.title_slug)'
+        )
+
+    @pytest.mark.parametrize(
+        ("bag", "key"),
+        [
+            ({}, "title_slug"),  # no raw value at all: a plain miss
+            ({"org": {"title": "WA LCB"}}, "title_slug"),  # slugged fine
+            ({"org": {"title": "!!!", "title_slug": None}}, "title_slug"),  # stored null
+            ({"org": {"year": 2025}}, "year_slug"),  # non-strings get no companion
+            ({"org": {"title": "!!!"}}, "title"),  # not a _slug key
+            ({"org": "flat"}, "title_slug"),  # namespace is not a dict
+            ({"org": {"name_slug": "!!!"}}, "name_slug_slug"),  # _slug keys never derive
+        ],
+    )
+    def test_is_none_unless_a_raw_string_slugged_to_nothing(self, bag, key):
+        assert empty_slug_reason(effective_rep_fields(bag, None), "org", key) is None

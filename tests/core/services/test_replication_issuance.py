@@ -338,6 +338,25 @@ async def test_unrenderable_bag_is_skipped_per_assignment(session, info_source):
 
 
 @pytest.mark.asyncio
+async def test_unrenderable_skip_names_the_raw_field_that_slugged_to_nothing(session, info_source):
+    """archiver#312: the skip detail carries the assign refusal's wording."""
+    document = _document(
+        path_template="archive/{org.title_slug}/{source_revision.fingerprint}.html",
+        required_fields=["org.title_slug"],
+    )
+    assignment = await _assigned_item(session, info_source, document=document)
+    item = await session.get(InfoItem, assignment.info_item_id)
+    item.rep_fields = {"org": {"title": "!!!"}}
+    await session.flush()
+    revision = await _revision(session, info_source)
+
+    assert await issue_for_revision(session, revision) == []
+    [command] = await _commands(session)
+    assert command.reason == SKIP_UNRENDERABLE
+    assert command.detail == 'org.title "!!!" slugs to nothing (org.title_slug)'
+
+
+@pytest.mark.asyncio
 async def test_colliding_destinations_are_skipped_not_published(session, info_source):
     """Two assignments rendering one path: publishing both would return as
     destination_conflict, reporting a conflict rather than the path-design

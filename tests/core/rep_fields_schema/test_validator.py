@@ -72,3 +72,17 @@ def test_required_fields_read_the_effective_bag():
     )
     assert ok is True
     assert errors == []
+
+
+def test_a_required_slug_whose_raw_value_slugs_to_nothing_names_the_raw_field():
+    """archiver#312: the operator typed ``org.title``; the message must say so."""
+    ok, errors = validate_rep_fields_against_spec(
+        {"org": {"title": "!!!"}}, ["org.title_slug"], org=None
+    )
+    assert ok is False
+    assert errors == [
+        {
+            "path": "/org/title_slug",
+            "message": 'org.title "!!!" slugs to nothing (org.title_slug)',
+        }
+    ]

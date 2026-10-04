@@ -35,7 +35,7 @@ from urllib.parse import unquote
 
 from co_core.pure.util.files import extension_for_media_type
 
-from src.core.rep_fields import OrgValues, effective_rep_fields
+from src.core.rep_fields import OrgValues, effective_rep_fields, empty_slug_reason
 from src.core.replication.errors import ReplicationRenderError
 from src.core.replication.template import (
     OCCASION_NAMESPACE,
@@ -111,11 +111,15 @@ class MissingFieldError(DestinationRenderError):
     ``required_fields`` is checked when a RepSpec is *assigned*, but
     ``rep_fields`` stays editable afterwards — so a template that was renderable
     at assignment can stop being renderable without anything failing loudly.
+
+    ``reason`` replaces the generic message when the key is a ``_slug`` its raw
+    value slugged to nothing, so the text names the field the operator typed
+    (archiver#312) — the same wording the rep_fields gate refuses with.
     """
 
-    def __init__(self, namespace: str, key: str) -> None:
+    def __init__(self, namespace: str, key: str, reason: str | None = None) -> None:
         self.field = f"{namespace}.{key}"
-        super().__init__(f"rep_fields has no non-null value for {self.field}")
+        super().__init__(reason or f"rep_fields has no non-null value for {self.field}")
 
 
 class InvalidFieldValueError(DestinationRenderError):
@@ -371,7 +375,7 @@ def _bag_value(bag: Mapping[str, object], namespace: str, key: str) -> str:
     if not isinstance(namespace_bag, Mapping):
         raise MissingFieldError(namespace, key)
     if key not in namespace_bag or namespace_bag[key] is None:
-        raise MissingFieldError(namespace, key)
+        raise MissingFieldError(namespace, key, empty_slug_reason(bag, namespace, key))
 
     raw = namespace_bag[key]
     # bool before int: it *is* an int in Python, and "True" is a Python spelling

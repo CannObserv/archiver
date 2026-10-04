@@ -148,6 +148,19 @@ def test_missing_bag_value_is_unrenderable():
         )
 
 
+def test_a_slug_to_nothing_names_the_raw_field():
+    """archiver#312: the issuance ``unrenderable`` detail carries this text."""
+    with pytest.raises(MissingFieldError) as excinfo:
+        render_destination(
+            "{org.title_slug}/{source_revision.id}",
+            rep_fields={"org": {"title": "!!!"}},
+            occasion=_occasion(),
+            org=None,
+        )
+    assert str(excinfo.value) == 'org.title "!!!" slugs to nothing (org.title_slug)'
+    assert excinfo.value.field == "org.title_slug"
+
+
 def test_null_bag_value_is_unrenderable():
     with pytest.raises(MissingFieldError):
         render_destination(

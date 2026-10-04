@@ -681,6 +681,29 @@ async def test_assign_rep_spec_unrenderable_returns_422_with_the_reason(client, 
 
 
 @pytest.mark.asyncio
+async def test_assign_rep_spec_names_the_raw_field_that_slugs_to_nothing(client, session):
+    """archiver#312: not "lack what ... requires: org.title_slug" - the operator typed org.title."""
+    item = _make_item("Slugless Item", rep_fields={"org": {"title": "!!!"}})
+    rs = _rep_spec_requiring(
+        "Slugged title",
+        "org.title_slug",
+        path_template="o/{org.title_slug}/{source_revision.id}.html",
+    )
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
+        data={"rep_spec_id": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+    )
+    assert r.status_code == 422
+    assert "cannot render" in r.text
+    assert "org.title &#34;!!!&#34; slugs to nothing (org.title_slug)" in r.text
+    assert "lack what" not in r.text
+
+
+@pytest.mark.asyncio
 async def test_assign_rep_spec_duplicate_returns_409(client, session):
     item = _make_item("Duplicate Item")
     rs = _make_rep_spec("Shared Spec")
