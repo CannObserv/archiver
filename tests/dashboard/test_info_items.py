@@ -1633,6 +1633,9 @@ async def test_the_name_row_offers_the_item_name_without_its_acronym(client, ses
     r = await client.get(f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS)
 
     assert 'data-suggestion="Meeting Schedule"' in r.text
+    assert 'data-target="rf-input-info_item-name"' in r.text
+    # Data stays in data attributes; the Alpine expression is a constant (CR 3).
+    assert '@click="useSuggestion($el.dataset.target, $el.dataset.suggestion)"' in r.text
 
 
 @pytest.mark.asyncio

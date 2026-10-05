@@ -65,8 +65,9 @@
                      value="{{ row.stored.input_value }}">
               {% if row.suggestion %}
               <button type="button" class="btn btn--ghost btn--sm"
+                      data-target="rf-input-{{ row.stored.dom_id }}"
                       data-suggestion="{{ row.suggestion }}"
-                      @click="useSuggestion('rf-input-{{ row.stored.dom_id }}', $el.dataset.suggestion)">Use “{{ row.suggestion }}”</button>
+                      @click="useSuggestion($el.dataset.target, $el.dataset.suggestion)">Use “{{ row.suggestion }}”</button>
               {% endif %}
               {% endif %}
               {% for override in row.overrides %}
