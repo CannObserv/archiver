@@ -879,9 +879,7 @@ async def test_assign_success_prompts_to_replicate_the_latest_revision(client, s
 
 
 @pytest.mark.asyncio
-async def test_the_prompts_replicate_button_yields_to_nothing_but_drops_like_a_row_action(
-    client, session
-):
+async def test_the_prompts_replicate_button_syncs_on_the_table_like_a_row_action(client, session):
     """It swaps the assignments table from outside it, so it races the table's
     poll as a row action does (archiver#220) - and syncs the same way."""
     item, _ = await _bound_item(session, "Prompt Sync Picker", {})
