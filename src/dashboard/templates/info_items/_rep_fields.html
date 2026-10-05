@@ -166,7 +166,7 @@
   {# The picker's Select: focus the first key the selected spec still needs. #}
   <script>
     (function () {
-      var el = document.getElementById("{{ focus_input }}");
+      var el = document.getElementById({{ focus_input | tojson }});
       if (el) { el.focus(); }
     }());
   </script>

@@ -2479,6 +2479,24 @@ async def test_selecting_focuses_the_first_key_the_spec_still_needs(client, sess
 
 
 @pytest.mark.asyncio
+async def test_the_focus_target_is_written_as_a_js_string(client, session):
+    """CR 11. Keys come from operator-authored required_fields, and HTML
+    escaping is the wrong context inside <script>: entities are not decoded."""
+    item = _make_item("Script Context Item", rep_fields={})
+    rs = _rep_spec_requiring("Odd Key", 'info_item.a"b', path_template="x/{source_revision.id}")
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        params={"selected_spec": str(rs.rep_spec_id), "focus": "true"},
+        headers=_HEADERS,
+    )
+
+    assert 'getElementById("rf-input-info_item-a\\"b")' in r.text
+
+
+@pytest.mark.asyncio
 async def test_selecting_focuses_by_the_specs_keys_not_its_name(client, session):
     """CR 4. RepSpec names are not unique: focus by name could land on a row
     only an assigned namesake needs."""
