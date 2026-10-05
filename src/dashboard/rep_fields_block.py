@@ -121,7 +121,7 @@ def suggest_item_name(name: str, acronym: str | None) -> str | None:
     return match.group("rest").strip() or None if match else None
 
 
-def _raw_keys(key: str) -> list[str]:
+def raw_keys(key: str) -> list[str]:
     """The keys in the same namespace the operator types for one required key."""
     if key in _COMPOSITES:
         return ["acronym", "title"]
@@ -151,7 +151,7 @@ def build_fields(
             ns, _, key = str(required).partition(".")
             if not ns or not key:
                 continue
-            for raw in _raw_keys(key):
+            for raw in raw_keys(key):
                 names, derived = feeds.setdefault(f"{ns}.{raw}", ([], []))
                 if spec_name not in names:
                     names.append(spec_name)

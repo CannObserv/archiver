@@ -220,25 +220,11 @@ async def issue_for_assignment(
     if assignment.deactivated_at is not None:
         raise AssignmentNotActiveError(assignment.id)
 
-    binding = (
-        await session.execute(
-            select(InfoItemSource).where(
-                InfoItemSource.info_item_id == assignment.info_item_id,
-                InfoItemSource.deactivated_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
+    binding = await _active_binding(session, assignment.info_item_id)
     if binding is None:
         raise NoActiveSourceError(assignment.id)
 
-    revision = (
-        await session.execute(
-            select(SourceRevision)
-            .where(SourceRevision.info_source_id == binding.info_source_id)
-            .order_by(SourceRevision.captured_at.desc(), SourceRevision.source_revision_id.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+    revision = await _latest_revision(session, binding.info_source_id)
     if revision is None:
         raise NoRevisionError(assignment.id)
 
@@ -255,6 +241,54 @@ async def issue_for_assignment(
         },
     )
     return issued[0] if issued else None
+
+
+async def latest_revision_for_item(
+    session: AsyncSession, info_item_id: ULID
+) -> SourceRevision | None:
+    """The revision ``issue_for_assignment`` would replicate for this item, or ``None``.
+
+    The active binding's newest capture. ``None`` covers both of the manual
+    path's refusals - no active binding, nothing captured yet - because a
+    caller previewing a path (the dashboard's spec picker, archiver#308) has
+    the same answer for each: there is no revision to render against.
+    """
+    binding = await _active_binding(session, info_item_id)
+    if binding is None:
+        return None
+    return await _latest_revision(session, binding.info_source_id)
+
+
+def occasion_for(revision: SourceRevision) -> RenderOccasion:
+    """The render occasion one revision supplies: what issuance renders, and the picker previews."""
+    return RenderOccasion(
+        source_revision_id=str(revision.source_revision_id),
+        content_fingerprint=revision.content_fingerprint,
+        captured_at=revision.captured_at,
+        source_media_type=revision.source_media_type,
+    )
+
+
+async def _active_binding(session: AsyncSession, info_item_id: ULID) -> InfoItemSource | None:
+    return (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def _latest_revision(session: AsyncSession, info_source_id: ULID) -> SourceRevision | None:
+    return (
+        await session.execute(
+            select(SourceRevision)
+            .where(SourceRevision.info_source_id == info_source_id)
+            .order_by(SourceRevision.captured_at.desc(), SourceRevision.source_revision_id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
 
 
 def _issue_targets(
@@ -292,12 +326,7 @@ def _issue_targets(
         )
         return []
 
-    occasion = RenderOccasion(
-        source_revision_id=str(revision.source_revision_id),
-        content_fingerprint=revision.content_fingerprint,
-        captured_at=revision.captured_at,
-        source_media_type=revision.source_media_type,
-    )
+    occasion = occasion_for(revision)
 
     rendered: dict[str, str] = {}
     renderable: list[_Target] = []

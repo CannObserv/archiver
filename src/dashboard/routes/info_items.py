@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape as html_escape
 from pathlib import Path
+from typing import NamedTuple
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -36,6 +37,8 @@ from src.core.services.registry_announcement import (
 from src.core.services.replication_issuance import (
     ManualIssuanceError,
     issue_for_assignment,
+    latest_revision_for_item,
+    occasion_for,
 )
 from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.assign_rep_spec import (
@@ -81,7 +84,15 @@ from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
-from src.dashboard.rep_fields_block import FieldsFormError, build_fields, parse_fields_form
+from src.dashboard.providers import UNWRITABLE_PROVIDERS
+from src.dashboard.rep_fields_block import (
+    FieldRow,
+    FieldsFormError,
+    build_fields,
+    parse_fields_form,
+    raw_keys,
+)
+from src.dashboard.rep_spec_picker import build_picker, example_occasion
 from src.dashboard.replication_actions import (
     POLL_INTERVAL_SECONDS,
     live_poll,
@@ -425,6 +436,7 @@ async def detail_info_item(
     # should keep re-reading itself (CR 12).
     assignments_ctx = await _rep_spec_assignments_context(item.info_item_id, session)
     fields_ctx = await _rep_fields_context(item, session)
+    picker_ctx = await _rep_spec_picker_context(item, session)
 
     # Revision history (last 50). Sourced from source_revisions captured across
     # ALL of the item's InfoSource bindings — active primary plus previous
@@ -480,6 +492,7 @@ async def detail_info_item(
             "spec_summary_by_source_id": spec_summary_by_source_id,
             **assignments_ctx,
             **fields_ctx,
+            **picker_ctx,
             "revisions": revisions,
             "rev_sources_by_id": rev_sources_by_id,
             "now": datetime.now(UTC),
@@ -514,23 +527,90 @@ async def _active_specs(item_id: ULID, session: AsyncSession) -> list[tuple[str,
     return [(name, document or {}) for name, document in rows]
 
 
-async def _rep_fields_context(item: InfoItem, session: AsyncSession) -> dict:
+async def _selectable_spec(
+    item_id: ULID, selected_spec: str | None, session: AsyncSession
+) -> RepSpec | None:
+    """The spec the picker selected (archiver#308), if it names one not actively assigned.
+
+    Anything else - blank, not a ULID, gone, or assigned since - is no
+    selection: an assigned spec's keys are already rows.
+    """
+    if not selected_spec or not selected_spec.strip():
+        return None
+    try:
+        rep_spec_id = ULID.from_str(selected_spec.strip())
+    except ValueError:
+        return None
+    spec = await session.get(RepSpec, rep_spec_id)
+    if spec is None:
+        return None
+    assigned = await session.scalar(
+        select(InfoItemRepSpec.id).where(
+            InfoItemRepSpec.info_item_id == item_id,
+            InfoItemRepSpec.rep_spec_id == rep_spec_id,
+            InfoItemRepSpec.deactivated_at.is_(None),
+        )
+    )
+    return None if assigned is not None else spec
+
+
+async def _fields_specs(
+    item_id: ULID, selected_spec: str | None, session: AsyncSession
+) -> tuple[list[tuple[str, dict]], RepSpec | None]:
+    """The specs the block's rows span: assigned specs ∪ the picker's selection."""
+    specs = await _active_specs(item_id, session)
+    selected = await _selectable_spec(item_id, selected_spec, session)
+    if selected is not None:
+        specs.append((selected.name, selected.document or {}))
+    return specs, selected
+
+
+def _first_needed(rows: tuple[FieldRow, ...], document: dict) -> str | None:
+    """The input focus moves to on selecting a spec: its first key still to fix.
+
+    A missing or empty-slug key first; else the spec's first editable row,
+    since a spec that cannot render on a stored value is fixed there too.
+    Matched by the spec's own raw keys, not its name: names are not unique (CR 4).
+    """
+    keys: set[str] = set()
+    for required in document.get("required_fields") or []:
+        ns, _, key = str(required).partition(".")
+        if ns and key:
+            keys.update(f"{ns}.{raw}" for raw in raw_keys(key))
+    editable = [r for r in rows if r.key in keys and r.badge != "from_power_map"]
+    needed = [r for r in editable if r.badge in ("missing", "slugs_to_nothing")]
+    first = (needed or editable or [None])[0]
+    return f"rf-input-{first.dom_id}" if first is not None else None
+
+
+async def _rep_fields_context(
+    item: InfoItem,
+    session: AsyncSession,
+    *,
+    selected_spec: str | None = None,
+    focus: bool = False,
+) -> dict:
     """The Fields block's context: one builder for the page, the re-fetch and the save.
 
-    Rows come from the active assignments' ``required_fields`` (archiver#308
-    adds the spec selected in the picker). ``org=None`` until archiver#304
-    links items to Power Map; every value already reads through
-    ``effective_rep_fields``, so the link changes the argument, not the block.
+    Rows come from the active assignments' ``required_fields`` and the spec
+    selected in the picker (archiver#308), which the block then carries in its
+    re-fetch URL and both forms so a save or a sibling's re-fetch keeps it.
+    ``focus`` (the picker's Select) names the input to focus. ``org=None``
+    until archiver#304 links items to Power Map; every value already reads
+    through ``effective_rep_fields``, so the link changes the argument, not the block.
     """
     bag = dict(item.rep_fields or {})
-    view = build_fields(
-        bag, await _active_specs(item.info_item_id, session), org=None, item_name=item.name
-    )
+    specs, selected = await _fields_specs(item.info_item_id, selected_spec, session)
+    view = build_fields(bag, specs, org=None, item_name=item.name)
     return {
         "item_id": item.info_item_id,
         "rows": view.rows,
         "other_fields": view.other_fields,
         "bag_json": json.dumps(bag, indent=2),
+        "selected": selected,
+        "focus_input": (
+            _first_needed(view.rows, selected.document or {}) if focus and selected else None
+        ),
     }
 
 
@@ -550,18 +630,26 @@ def _replication_changed(source: str, flash: tuple[str, str] | None = None) -> s
 async def rep_fields_block(
     item_id: str,
     request: Request,
+    selected_spec: str = Query(default=""),
+    focus: str = Query(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """HTMX partial: the Fields block, re-read on a sibling's ``replicationChanged``.
 
-    ``swapped=False``: the operator acted in another block, and focus stays there.
+    Also the picker's Select (archiver#308): ``selected_spec`` adds that spec's
+    keys, and ``focus`` moves focus to the first one it still needs.
+    ``swapped=False``: a re-fetch leaves focus where the operator acted.
     """
     item = await _resolve_item(item_id, session)
+    # A str parsed by hand: FastAPI's bool coercion fails as JSON (#86).
+    context = await _rep_fields_context(
+        item, session, selected_spec=selected_spec, focus=focus.strip().lower() == "true"
+    )
     response = _templates.TemplateResponse(
         request,
         "info_items/_rep_fields.html",
-        {"user": user, **await _rep_fields_context(item, session), "swapped": False},
+        {"user": user, **context, "swapped": False},
     )
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -574,6 +662,7 @@ async def rep_fields_readout(
     field_key: list[str] = Query(default=[]),
     field_value: list[str] = Query(default=[]),
     field_type: list[str] = Query(default=[]),
+    selected_spec: str = Query(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
@@ -586,9 +675,8 @@ async def rep_fields_readout(
     """
     item = await _resolve_item(item_id, session)
     bag = parse_fields_form(field_key, field_value, field_type, strict=False)
-    view = build_fields(
-        bag, await _active_specs(item.info_item_id, session), org=None, item_name=item.name
-    )
+    specs, _selected = await _fields_specs(item.info_item_id, selected_spec, session)
+    view = build_fields(bag, specs, org=None, item_name=item.name)
     response = _templates.TemplateResponse(
         request, "info_items/_rep_fields_readout.html", {"user": user, "rows": view.rows}
     )
@@ -605,6 +693,7 @@ async def patch_rep_fields(
     field_value: list[str] = Form(default=[]),
     field_type: list[str] = Form(default=[]),
     allow_destination_change: str = Form(default=""),
+    selected_spec: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
@@ -628,7 +717,7 @@ async def patch_rep_fields(
         return _templates.TemplateResponse(
             request,
             "info_items/_rep_fields_flash.html",
-            {"moves": [], "message": "", "problems": [], **context},
+            {"moves": [], "message": "", "problems": [], "selected_spec": "", **context},
             status_code=status_code,
         )
 
@@ -677,13 +766,18 @@ async def patch_rep_fields(
             moves=e.moves,
             item_id=str(item.info_item_id),
             bag_json=json.dumps(parsed),
+            selected_spec=selected_spec.strip(),
         )
 
     await session.commit()
     response = _templates.TemplateResponse(
         request,
         "info_items/_rep_fields.html",
-        {"user": user, **await _rep_fields_context(item, session), "swapped": True},
+        {
+            "user": user,
+            **await _rep_fields_context(item, session, selected_spec=selected_spec),
+            "swapped": True,
+        },
     )
     response.headers["HX-Retarget"] = "#ii-rep-fields"
     response.headers["HX-Reswap"] = "outerHTML"
@@ -769,85 +863,192 @@ async def deactivate_source_binding(
 
 
 # ---------------------------------------------------------------------------
-# POST /{item_id}/assign-rep-spec
+# The Replication section's Add-a-spec picker  (archiver#308)
 # ---------------------------------------------------------------------------
+#
+# Replaced the `<details>` ULID form and its full-page `POST …/assign-rep-spec`.
+# Its own swap target, `#ii-rep-spec-picker`: Assign answers with the picker and
+# fires `replicationChanged`, so the table gains the row and Fields re-reads
+# its rows; the picker re-fetches itself on its siblings' changes (a Fields save
+# changes readiness, a deactivate frees a spec).
+
+_PICKER_SOURCE = "picker"
+_GONE_SPEC = "That Replication Spec no longer exists. Reload to see the current list."
 
 
-@router.post("/{item_id}/assign-rep-spec")
-async def assign_rep_spec_route(
+class _Assigned(NamedTuple):
+    """What the success prompt names: the new assignment, and its spec."""
+
+    assignment_id: ULID
+    name: str
+
+
+async def _rep_spec_picker_context(
+    item: InfoItem,
+    session: AsyncSession,
+    *,
+    assigned: _Assigned | None = None,
+    refusal: str | None = None,
+) -> dict:
+    """The picker's context: one builder for the page, the re-fetch and Assign.
+
+    Every spec not actively assigned, by name, each judged by the gate
+    ``assign_rep_spec`` refuses on and previewed against the revision
+    ``issue_for_assignment`` would replicate - or a labelled example occasion
+    when there is none. ``assigned`` (a success) and ``refusal`` are Assign's.
+    """
+    active = select(InfoItemRepSpec.rep_spec_id).where(
+        InfoItemRepSpec.info_item_id == item.info_item_id,
+        InfoItemRepSpec.deactivated_at.is_(None),
+    )
+    specs = list(
+        (
+            await session.execute(
+                select(RepSpec)
+                .where(RepSpec.rep_spec_id.not_in(active))
+                .order_by(RepSpec.name, RepSpec.rep_spec_id)
+            )
+        ).scalars()
+    )
+    revision = await latest_revision_for_item(session, item.info_item_id)
+    occasion = occasion_for(revision) if revision is not None else example_occasion()
+    entries = build_picker(dict(item.rep_fields or {}), specs, occasion=occasion, org=None)
+    has_specs = bool(entries) or bool(await session.scalar(select(func.count(RepSpec.rep_spec_id))))
+    return {
+        "item_id": item.info_item_id,
+        "entries": entries,
+        "has_specs": has_specs,
+        "preview_revision": revision,
+        "assigned": assigned,
+        "refusal": refusal,
+    }
+
+
+async def _render_picker(
     request: Request,
+    *,
+    user,
+    item: InfoItem,
+    session: AsyncSession,
+    swapped: bool,
+    assigned: _Assigned | None = None,
+    refusal: str | None = None,
+) -> HTMLResponse:
+    """The picker from the rows as they stand; ``swapped`` runs the focus script."""
+    context = await _rep_spec_picker_context(item, session, assigned=assigned, refusal=refusal)
+    return _templates.TemplateResponse(
+        request, "info_items/_rep_spec_picker.html", {"user": user, **context, "swapped": swapped}
+    )
+
+
+@router.get("/{item_id}/rep-spec-picker", response_class=HTMLResponse)
+async def rep_spec_picker(
     item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX partial: the picker, re-read on a sibling's ``replicationChanged``.
+
+    ``swapped=False``: a re-fetch leaves focus where the operator acted.
+    """
+    item = await _resolve_item(item_id, session)
+    response = await _render_picker(request, user=user, item=item, session=session, swapped=False)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.post("/{item_id}/rep-spec-picker/assign", response_class=HTMLResponse)
+async def assign_from_picker(
+    item_id: str,
+    request: Request,
     rep_spec_id: str = Form(...),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
-) -> Response:
-    """Assign a RepSpec to this InfoItem and land on the Replication section.
+) -> HTMLResponse:
+    """HTMX: assign one spec through ``assign_rep_spec``; answers with the picker.
 
-    A plain form post gets a 303; an htmx (boosted) one gets 204 + HX-Redirect,
-    since its XHR would follow a 303 itself and drop ``#replication`` (CR 1).
-    Every refusal names what is wrong - the missing keys, the render reason, or
-    the RepSpec already assigned - because the error page is all the operator
-    sees (archiver#301).
+    **Success** re-renders the picker with an inline "Replicate latest revision
+    now?" prompt, and fires ``replicationChanged`` (``{"source": "picker"}``)
+    plus a toast. **A refusal is a 200** with the reason inside the picker, in
+    #301's words: htmx discards a 4xx body (docs/STYLE.md). The button is
+    disabled for a spec that is not ready, but the server re-checks: the gate
+    is ``assign_rep_spec``'s, and an unwritable provider is refused here, since
+    a disabled button is only a template gate (#167).
     """
-    try:
-        item_ulid = ULID.from_str(item_id)
-    except Exception as e:
-        raise DashboardNotFound("Information Item not found") from e
+    item = await _resolve_item(item_id, session)
+
+    async def refused(message: str) -> HTMLResponse:
+        # No rollback: assign_rep_spec raises before writing, and a rollback
+        # would only risk the caller's own work (as Replicate now, #171).
+        return await _render_picker(
+            request, user=user, item=item, session=session, swapped=True, refusal=message
+        )
 
     try:
         rs_ulid = ULID.from_str(rep_spec_id.strip())
-    except Exception as e:
-        raise_envelope(422, "domain", "rep_spec_id is not a valid ULID", source_exc=e)
+    except ValueError:
+        return await refused(_GONE_SPEC)
+    # Columns, not the instance (CR 1): assign_rep_spec re-reads the spec FOR
+    # UPDATE without populate_existing, so an instance loaded here would keep
+    # its attributes - a draft edited in between would be gated on its old
+    # document and frozen on the new one (#83).
+    row = (
+        await session.execute(
+            select(RepSpec.name, RepSpec.provider).where(RepSpec.rep_spec_id == rs_ulid)
+        )
+    ).one_or_none()
+    if row is None:
+        return await refused(_GONE_SPEC)
+    name, provider = row
+    label = f"RepSpec '{name}'"
+    if provider in UNWRITABLE_PROVIDERS:
+        return await refused(f"{label} cannot be assigned: {UNWRITABLE_PROVIDERS[provider]}.")
 
     try:
-        await assign_rep_spec(session, info_item_id=item_ulid, rep_spec_id=rs_ulid)
+        assignment = await assign_rep_spec(
+            session, info_item_id=item.info_item_id, rep_spec_id=rs_ulid
+        )
     except AssignItemNotFoundError as e:
         raise DashboardNotFound("Information Item not found") from e
-    except RepSpecNotFoundError as e:
-        raise DashboardNotFound("Replication Specification not found") from e
+    except RepSpecNotFoundError:
+        return await refused(_GONE_SPEC)
     except RepFieldsIncompleteError as e:
         missing = ", ".join(m.get("path", "").strip("/").replace("/", ".") for m in e.missing)
-        raise_envelope(
-            422,
-            "domain",
-            f"This item's Rep Fields lack what {await _rep_spec_label(session, rs_ulid)} "
-            f"requires: {missing}. Add them under Rep Fields, save, and assign again.",
-            source_exc=e,
+        return await refused(
+            f"This item's Rep Fields lack what {label} requires: {missing}. "
+            "Add them under Fields, save, and assign again."
         )
     except RepFieldsUnrenderableError as e:
-        raise_envelope(
-            422,
-            "domain",
-            f"This item's Rep Fields cannot render the path of "
-            f"{await _rep_spec_label(session, rs_ulid)}: {e.reason}",
-            source_exc=e,
+        return await refused(
+            f"This item's Rep Fields cannot render the path of {label}: {e.reason}"
         )
-    except DuplicateAssignmentError as e:
-        raise_envelope(
-            409,
-            "conflict",
-            f"{await _rep_spec_label(session, rs_ulid)} is already assigned to this item. "
-            "Deactivate that assignment first to replace it.",
-            source_exc=e,
+    except DuplicateAssignmentError:
+        return await refused(
+            f"{label} is already assigned to this item. "
+            "Deactivate that assignment first to replace it."
         )
 
     await session.commit()
-    target = f"/dashboard/info-items/{item_id}#replication"
-    # hx-boost makes this an XHR, which follows a 303 itself and drops the
-    # fragment; HX-Redirect has htmx set location.href, which keeps it (CR 1).
-    if "HX-Request" in request.headers:
-        return Response(status_code=204, headers={"HX-Redirect": target})
-    return RedirectResponse(url=target, status_code=303)
-
-
-async def _rep_spec_label(session: AsyncSession, rep_spec_id: ULID) -> str:
-    """The RepSpec's name for a refusal message; assign_rep_spec has loaded it."""
-    spec = await session.get(RepSpec, rep_spec_id)
-    return f"RepSpec '{spec.name}'" if spec is not None else "this RepSpec"
+    response = await _render_picker(
+        request,
+        user=user,
+        item=item,
+        session=session,
+        swapped=True,
+        assigned=_Assigned(assignment.id, name),
+    )
+    response.headers["HX-Trigger"] = _replication_changed(
+        _PICKER_SOURCE, ("success", f"Assigned {label}.")
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------
 # DELETE /{item_id}/rep-spec-assignments/{aid}
+# ---------------------------------------------------------------------------
+
+
 async def _rep_spec_assignments_context(item_id: ULID, session: AsyncSession) -> dict:
     """The Replication Specs section's context, including whether to keep asking.
 
@@ -975,7 +1176,8 @@ async def deactivate_rep_spec_assignment(
     response, _ = await _render_rep_spec_assignments(
         request, user=user, item_id=item_ulid, session=session, swapped=True
     )
-    # The Fields rows come from the active assignments, so this changed them.
+    # The Fields rows come from the active assignments, and the picker lists the
+    # specs not assigned, so this changed both (archiver#307, #308).
     response.headers["HX-Trigger"] = _replication_changed("assignments")
     return response
 

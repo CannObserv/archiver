@@ -2,12 +2,19 @@
    info_items/detail.html and returned by GET .../rep-fields (the re-fetch) and
    by a successful PATCH .../rep-fields (the save, re-targeted here).
 
-   Requires `item_id`, `rows`, `other_fields` and `bag_json`, from every render
-   site, by spreading `_rep_fields_context` (tests/dashboard/test_partial_contracts.py,
-   archiver#219). Without `rows` the block renders "nothing required" for an
-   item whose specs do require fields - a section that looks right and is not.
-   `swapped` is the caller's: the save sets it so focus moves to the heading;
-   a re-fetch on a sibling's event must not take focus from where the operator is.
+   Requires `item_id`, `rows`, `other_fields`, `bag_json`, `selected` and
+   `focus_input`, from every render site, by spreading `_rep_fields_context`
+   (tests/dashboard/test_partial_contracts.py, archiver#219). Without `rows` the
+   block renders "nothing required" for an item whose specs do require fields -
+   a section that looks right and is not. `swapped` is the caller's: the save
+   sets it so focus moves to the heading; a re-fetch on a sibling's event must
+   not take focus from where the operator is.
+
+   `selected` is the spec chosen in the picker (archiver#308): its keys join
+   the rows, and the block carries it - in its re-fetch URL and as a hidden
+   `selected_spec` in both forms - so a save or a sibling's re-fetch keeps it.
+   `focus_input` is set only by the picker's Select, naming the first input
+   that spec still needs.
 
    **Its own swap target, outside the assignments table.** The table polls
    every two seconds while a command is open; were this block inside it, a
@@ -20,7 +27,7 @@
    status cell (`_rep_fields_status.html`) is re-rendered out of band by the
    live readout as the operator types. -#}
 <div id="ii-rep-fields"
-     hx-get="/dashboard/info-items/{{ item_id }}/rep-fields"
+     hx-get="/dashboard/info-items/{{ item_id }}/rep-fields{% if selected %}?selected_spec={{ selected.rep_spec_id }}{% endif %}"
      hx-trigger="replicationChanged[detail.source!=='fields'] from:body"
      hx-target="this"
      hx-swap="outerHTML"
@@ -28,6 +35,16 @@
      x-data="repFieldsForm"
      style="margin-bottom:var(--space-4);">
   <h3 id="ii-rep-fields-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Fields</h3>
+  {% if selected %}
+  <p class="text-sm" style="margin-bottom:var(--space-2);">
+    Including the fields <a href="/dashboard/rep-specs/{{ selected.rep_spec_id }}">{{ selected.name }}</a> needs (selected in Add a spec, not assigned).
+    <button type="button" class="btn btn--ghost btn--sm"
+            hx-get="/dashboard/info-items/{{ item_id }}/rep-fields"
+            hx-target="#ii-rep-fields"
+            hx-swap="outerHTML"
+            aria-label="Stop including the fields {{ selected.name }} needs">Clear</button>
+  </p>
+  {% endif %}
 
   <form id="ii-rep-fields-form"
         hx-patch="/dashboard/info-items/{{ item_id }}/rep-fields"
@@ -35,9 +52,10 @@
         hx-target-422="#rep-fields-flash"
         hx-target-409="#rep-fields-flash"
         hx-swap="innerHTML">
+    {% if selected %}<input type="hidden" name="selected_spec" value="{{ selected.rep_spec_id }}">{% endif %}
     {% if rows %}
-    <div class="table-scroll" tabindex="0" role="region" aria-label="Fields the assigned Replication Specs require">
-      <table class="data-table" aria-label="Fields the assigned Replication Specs require">
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Fields the Replication Specs require">
+      <table class="data-table" aria-label="Fields the Replication Specs require">
         <thead>
           <tr>
             <th class="data-table__th">Field</th>
@@ -137,13 +155,22 @@
           hx-target-409="#rep-fields-flash"
           hx-swap="innerHTML"
           style="margin-top:var(--space-2);">
+      {% if selected %}<input type="hidden" name="selected_spec" value="{{ selected.rep_spec_id }}">{% endif %}
       <textarea name="rep_fields" class="form-textarea" aria-label="Rep Fields as JSON"
                 rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;margin-bottom:var(--space-2);">{{ bag_json }}</textarea>
       <button type="submit" class="btn btn--secondary">Save JSON</button>
     </form>
   </details>
 
-  {% if swapped %}
+  {% if focus_input %}
+  {# The picker's Select: focus the first key the selected spec still needs. #}
+  <script>
+    (function () {
+      var el = document.getElementById({{ focus_input | tojson }});
+      if (el) { el.focus(); }
+    }());
+  </script>
+  {% elif swapped %}
   {# After a save swaps the block, focus its heading: the button that was
      clicked is gone. Rendered only on the save's response, never the include
      or a re-fetch. htmx runs scripts in swaps. #}

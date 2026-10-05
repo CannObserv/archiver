@@ -91,6 +91,14 @@ _CONTRACTS: dict[str, _Contract] = {
         behaviour=frozenset({"rows"}),
         optional={"swapped": _SWAPPED},
     ),
+    # archiver#308: without `entries` the picker renders its empty state - "No
+    # Replication Specs yet" - on a registry that holds some.
+    "info_items/_rep_spec_picker.html": _Contract(
+        builder=info_items_routes._rep_spec_picker_context,
+        empty_args=lambda: (InfoItem(info_item_id=ULID(), name="contract probe", rep_fields={}),),
+        behaviour=frozenset({"entries"}),
+        optional={"swapped": _SWAPPED},
+    ),
     "rep_specs/_assignments.html": _Contract(
         builder=rep_specs_routes._assignments_context,
         empty_args=lambda: (

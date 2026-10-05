@@ -43,6 +43,7 @@ from src.core.services.replication_issuance import (
     NoRevisionError,
     issue_for_assignment,
     issue_for_revision,
+    latest_revision_for_item,
 )
 from src.core.services.source_revision import RevisionFacts, record_revision
 
@@ -572,6 +573,44 @@ async def test_manual_issue_refuses_when_the_source_has_no_revision_yet(session,
         await issue_for_assignment(session, assignment)
 
     assert await _commands(session) == []
+
+
+@pytest.mark.asyncio
+async def test_latest_revision_for_item_is_the_one_a_manual_issue_replicates(session, info_source):
+    """The picker previews its path against this revision (archiver#308), so it
+    has to be the revision Replicate now would use, not merely a recent one."""
+    assignment = await _assigned_item(session, info_source)
+    await _revision(session, info_source, fingerprint=FP_A)
+    newest = await _revision(session, info_source, fingerprint=FP_B, captured_at=CAPTURED_AT_LATER)
+
+    revision = await latest_revision_for_item(session, assignment.info_item_id)
+
+    assert revision is not None
+    assert revision.source_revision_id == newest.source_revision_id
+    command = await issue_for_assignment(session, assignment)
+    assert command.source_revision_id == revision.source_revision_id
+
+
+@pytest.mark.asyncio
+async def test_latest_revision_for_item_is_none_with_no_capture(session, info_source):
+    assignment = await _assigned_item(session, info_source)
+
+    assert await latest_revision_for_item(session, assignment.info_item_id) is None
+
+
+@pytest.mark.asyncio
+async def test_latest_revision_for_item_ignores_a_deactivated_binding(session, info_source):
+    assignment = await _assigned_item(session, info_source)
+    await _revision(session, info_source)
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == assignment.info_item_id)
+        )
+    ).scalar_one()
+    binding.deactivated_at = datetime.now(UTC)
+    await session.flush()
+
+    assert await latest_revision_for_item(session, assignment.info_item_id) is None
 
 
 @pytest.mark.asyncio

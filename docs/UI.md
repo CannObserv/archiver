@@ -287,13 +287,14 @@ Rules:
 - **`hx-sync="this:abort"` on the section.** An action synced here aborts an in-flight poll, and a tick that comes while an action holds the lock is dropped. htmx takes that lock *before* the native `confirm()`, so it spans the dialog too. The `every` timer reschedules itself whatever becomes of one request: an aborted tick needs no re-arming, and cancelling the dialog costs one tick.
 - **`hx-disinherit="hx-sync"` on the section.** `hx-sync` inherits, and `this` resolves to the declaring ancestor, so without it every element inside - boosted links included - takes `this:abort` and is **dropped** mid-poll. The same inheritance is why `hx-sync` on the section alone is the wrong fix: it drops the click.
 - **`hx-sync="closest #the-section:drop"` on every action inside.** An action with no `hx-sync` syncs on itself and never sees the poll. `drop` (the default strategy) still aborts an abortable poll. `abort` would drop the click. `replace` aborts an in-flight action, whose response - swap and toast - is lost though the server still commits it. `queue` parks the next action on the wrapper, where the first action's swap wipes it; if the first fails without swapping, the queued one fires later, behind a second confirm. The cost: a second action clicked while the first is in flight is dropped, and no confirm appears.
+- **An action outside the section syncs on `#the-section:drop`** - `closest` finds nothing from outside (the picker's *Replicate now* prompt, archiver#308); `outside_action_sync_violations` checks it.
 - Each screen asserts `poll_sync_violations(fragment, wrapper_id) == []` (`tests/dashboard/conftest.py`) against its poll fragment. That holds the templates to the attributes; `tests/js/htmx-poll-sync.test.js` holds the vendored htmx to what they are relied on to do. It has to: the `drop`-aborts-an-abortable-poll rule is htmx 2.0.8's implementation, not its documented contract - the docs say `drop` ignores a request while one is in flight - so a vendor bump could undo it with every Python test green.
 
 Used by `info_items/_rep_spec_assignments.html` and `rep_specs/_assignments.html`.
 
 ### Blocks that share a section
 
-When one section holds several independently editable blocks - the InfoItem screen's **Replication** section: the assignments table, Fields, and (archiver#308) the spec picker - make **each block its own swap target** and coordinate them with one event rather than one big swap (archiver#307):
+When one section holds several independently editable blocks (the InfoItem **Replication** section's table, Fields and picker), make **each block its own swap target** and coordinate them with one event rather than one big swap (archiver#307):
 
 ```html
 <div id="ii-rep-fields"
@@ -307,10 +308,11 @@ When one section holds several independently editable blocks - the InfoItem scre
 
 Rules:
 - **An action answers with its own block**, and moves focus to that block's heading (the `swapped` focus script) - never to a sibling's.
-- **An action that changes what a sibling renders also fires `HX-Trigger: {"replicationChanged": {"source": "<block>"}}`**; the siblings re-fetch on it. Deactivate fires (it changes the Fields rows); *Replicate now* does not, since a re-fetch would discard unsaved Fields input. Fire on a real change, not every click.
-- **Each listener skips its own source** (`[detail.source!=='<block>']`). The action's response already swapped the block; re-fetching it as well renders twice and can land the stale read second. `HX-Trigger` fires on receipt, before the swap.
+- **An action that changes what a sibling renders also fires `HX-Trigger: {"replicationChanged": {"source": "<block>"}}`**; the siblings re-fetch on it. Sources: `assignments` (Deactivate), `fields` (a save), `picker` (Assign). *Replicate now* fires nothing, anywhere: a re-fetch would discard unsaved Fields input. Fire on a real change, not on a click or a refusal.
+- **Each listener skips its own source** (`[detail.source!=='<block>']`): the response already swapped the block, and a re-fetch too renders twice and can land the stale read second (`HX-Trigger` fires on receipt, before the swap).
 - **A re-fetch never moves focus** (`swapped=False`): the operator acted in another block, and focus belongs there.
-- **A polling block stays out of the coordination.** The assignments table keeps its poll and `hx-sync` contract (§ *A section that polls and takes actions*); its poll fires no `HX-Trigger` and wraps no other block, so a tick can never clobber a half-edited form - which is why Fields is its sibling, not part of it.
+- **A polling block keeps its poll contract** (§ *A section that polls and takes actions*): its poll fires nothing and wraps no other block, so a tick never clobbers a half-edited form. It listens through a hidden element inside the wrapper, synced like a row action.
+- **A block may swap a sibling** that is what changes (the picker's *Select* GETs Fields with a spec's keys added); the sibling carries that state itself, so its saves and re-fetches keep it.
 - `hx-disinherit="*"` on a block root that declares its own `hx-target`/`hx-swap`, so they do not leak to the forms inside it. A polling block keeps its own section's `hx-sync` rules instead.
 
 A save whose form targets an inline flash (so a 422/409 leaves the operator's input on screen) but whose success should replace the whole block answers 200 with `HX-Retarget: #<block>` + `HX-Reswap: outerHTML` - the swap style and target belong to the outcome, not the form.

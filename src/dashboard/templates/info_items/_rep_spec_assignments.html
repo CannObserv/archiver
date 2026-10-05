@@ -1,7 +1,8 @@
 {# Replication Specs assignments section — included by info_items/detail.html and
    returned by three routes under /dashboard/info-items/{id}/rep-spec-assignments:
-   the poll (GET), deactivate (DELETE .../{aid}) and Replicate now (POST
-   .../{aid}/replicate). Each action re-renders the table + empty-state in one
+   the GET (the poll, and the re-fetch on a sibling's `replicationChanged`,
+   archiver#308), deactivate (DELETE .../{aid}) and Replicate now (POST
+   .../{aid}/replicate), which the picker's prompt also posts. Each action re-renders the table + empty-state in one
    swap and moves focus, because each destroys the clicked button (#81, #171
    CR #37). Requires
    `item_id`, `irs_rows`, `rep_specs_by_id`, `latest_commands`, `poll` and
@@ -35,6 +36,22 @@
      hx-sync="this:abort"
      hx-disinherit="hx-sync"{% endif %}>
   <h3 id="ii-rep-spec-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Replication Specs</h3>
+  {#- Re-read on a sibling's `replicationChanged` (archiver#308): the picker's
+     Assign adds a row. On a hidden element rather than the wrapper, so the
+     wrapper's poll attributes stay exactly the poll's (#212), and synced like
+     a row action - `drop` on the wrapper - so the poll yields to it (#220).
+     Skips its own source: a deactivate's response already swapped the table.
+     `drop`, knowingly (CR 9): a click landing while this re-read is in flight
+     is dropped - nothing sent, the next click works. `abort` would drop the
+     re-read behind a poll instead, and a poll that read before the commit can
+     land a stale table that has stopped polling (tests/js/htmx-poll-sync.test.js). -#}
+  <div hidden
+       hx-get="/dashboard/info-items/{{ item_id }}/rep-spec-assignments"
+       hx-trigger="replicationChanged[detail.source!=='assignments'] from:body"
+       hx-target="#ii-rep-spec-assignments"
+       hx-swap="outerHTML"
+       hx-sync="closest #ii-rep-spec-assignments:drop"
+       aria-label="Refresh the assignments on a change elsewhere in Replication"></div>
   {% if irs_rows %}
   <div class="table-scroll" tabindex="0" role="region" aria-label="Active Replication Spec assignments">
     <table class="data-table" aria-label="Active Replication Spec assignments">
