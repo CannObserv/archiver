@@ -284,4 +284,37 @@ describe("a self-polling section's sync rules, on the vendored htmx", function (
         expect(requests()).toEqual(["GET /poll", "GET /refetch"]);
         expect(sent[0].aborted).toBe(true);
     });
+
+    // CR 9: the table's re-read syncs with `drop`, and the cost is pinned
+    // here. A click landing behind an in-flight re-read is dropped (no
+    // confirm, nothing sent; the next click goes through). `abort` would not
+    // fix it: 2.0.8's `abort` drops a newcomer whenever anything is in flight,
+    // so the re-read would be dropped behind a poll - and a poll that read
+    // before the commit can land a stale table that has stopped polling.
+    it("drops a click behind an in-flight re-read: the accepted window", function () {
+        mount(SHIPPED_WRAPPER, SHIPPED_ACTION);
+        var reread = document.createElement("div");
+        reread.setAttribute("hidden", "");
+        reread.setAttribute("hx-get", "/reread");
+        reread.setAttribute("hx-trigger", "changed from:body");
+        reread.setAttribute("hx-target", "#sect");
+        reread.setAttribute("hx-swap", "outerHTML");
+        reread.setAttribute("hx-sync", "closest #sect:drop");
+        document.getElementById("sect").appendChild(reread);
+        htmx.process(reread);
+        htmx.trigger(document.body, "changed");
+        click("act");
+
+        expect(requests()).toEqual(["GET /reread"]);
+
+        respond(sent[0], "<div id=\"sect\">re-read</div>");
+        document.body.insertAdjacentHTML("beforeend",
+            "<button id=\"again\" hx-post=\"/act\" hx-target=\"#sect\" "
+            + "hx-sync=\"#sect:drop\">Again</button>");
+        htmx.process(document.getElementById("again"));
+        click("again");
+
+        expect(requests()).toEqual(["GET /reread", "POST /act"]);
+    });
 });
+
