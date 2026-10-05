@@ -1,0 +1,29 @@
+{#- One row's derived slug and source badge (archiver#307). Included by
+   `_rep_fields.html` per row, and by `_rep_fields_readout.html` with `oob` set,
+   so the live readout and the saved render are one markup. Reads `row` (a
+   `FieldRow`) and `oob`.
+
+   Wrapped in a <div> rather than carried on the <td>: an out-of-band swap
+   parses the fragment outside any table. -#}
+<div id="rf-status-{{ row.stored.dom_id }}"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for readout in row.readouts %}
+  <div class="text-sm">
+    <code>{{ readout.key }}</code> →
+    {% if readout.value is not none %}<code>{{ readout.value }}</code>{% else %}<span class="text-muted">-</span>{% endif %}
+  </div>
+  {% else %}
+  <span class="text-muted text-sm">used as entered</span>
+  {% endfor %}
+  {% if row.badge == "stored" %}
+  <span class="badge badge--success">stored</span>
+  {% elif row.badge == "override" %}
+  <span class="badge badge--warning" title="A stored _slug value replaces the derived one">override</span>
+  {% elif row.badge == "from_power_map" %}
+  <span class="badge badge--info">from Power Map</span>
+  {% elif row.badge == "slugs_to_nothing" %}
+  <span class="badge badge--danger">slugs to nothing</span>
+  <div class="text-danger text-sm">{{ row.reason }}</div>
+  {% else %}
+  <span class="badge badge--danger">missing</span>
+  {% endif %}
+</div>

@@ -23,8 +23,8 @@ load and are wired only by their `<script>` tag in `base.html`.
 
 | Component | File | Description |
 |---|---|---|
-| `sortableChips` | `main.js` | Chip strip for selector/rep-field suggestions with client-side sort. Uses JSON data island: `x-data="sortableChips('frequency')"` with `<script type="application/json">{{ chips \| tojson }}</script>` inside. Optional `value` field on each chip overrides the dispatch payload. Clicking dispatches `chip-insert` window event; caller listens with `@chip-insert.window`. |
-| `repFieldsEditor` | `main.js` | Wrapper for the rep_fields textarea + suggestion strip. Listens for `chip-insert` window events and merges the key into the existing JSON object. Usage: `x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)"`. |
+| `sortableChips` | `main.js` | Chip strip for selector suggestions with client-side sort. Uses JSON data island: `x-data="sortableChips('frequency')"` with `<script type="application/json">{{ chips \| tojson }}</script>` inside. Optional `value` field on each chip overrides the dispatch payload. Clicking dispatches `chip-insert` window event; caller listens with `@chip-insert.window`. |
+| `repFieldsForm` | `main.js` | The Replication section's Fields block (archiver#307): adds and removes whole Other-field rows, and fills the `info_item.name` suggestion as if typed, so the live readout re-slugs it. Usage: `x-data="repFieldsForm"` on `#ii-rep-fields`. |
 | `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
 | `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
 | `domainNotes` | `main.js` | Edit/view toggle for the notes row in the domain detail header panel (#176). Cancel resets the textarea to its `defaultValue`. |
@@ -170,7 +170,7 @@ Single-field document editor with client-side JSON parse validation on blur.
 
 ## `sortableChips`
 
-Chip strip for selector/rep-field suggestions with client-side re-sort.
+Chip strip for selector suggestions with client-side re-sort. Used by the registration wizard (`register/_spec_suggestions.html`) and the InfoSource Source Specification card; the InfoItem screen's rep-field chips retired with archiver#307.
 
 Uses the **JSON data island** pattern: chip data is placed in a `<script type="application/json">` child element so JSON never appears inside an HTML attribute (which would require escaping `"` and is fragile). `init()` reads and parses the script element on startup.
 
@@ -295,24 +295,37 @@ The parent `registerWizard` root element catches the event:
 
 **Note:** `init()` fires synchronously during Alpine component initialisation (triggered by the MutationObserver on HTMX swap). The event bubbles up the live DOM tree to the `registerWizard` listener. No listener is needed on `previewNameDispatch` itself.
 
-## `repFieldsEditor`
+## `repFieldsForm`
 
-Wrapper for the `rep_fields` textarea + sortableChips suggestion strip on the InfoItem detail hub page. Handles `chip-insert` window events by merging the clicked key into the existing JSON object (preserving other keys) rather than replacing the whole textarea value.
+The Replication section's **Fields** block on the InfoItem detail screen (`info_items/_rep_fields.html`, archiver#307). Replaced `repFieldsEditor`, which merged suggestion-chip keys into the JSON textarea; that textarea now sits inside an "Edit as JSON" `<details>` and needs no component.
+
+The form posts **parallel lists** - `field_key`, `field_type`, `field_value` - one entry per row, so a row is only ever added or removed whole: a stray input would shift every later value onto the wrong key. Rows carry `[data-field-row]`.
+
+**Refs:** `otherRows` (where added rows go), `blankRow` (a `<template>` holding one empty row), `addButton`.
 
 **Methods:**
-- `insertKey(key)` - finds `[name=rep_fields]` within `$el`, parses its current value as JSON, adds `key: ""` if absent, and writes back pretty-printed JSON. Falls back gracefully on parse errors.
+- `addField()` - clones `blankRow` into `otherRows` and focuses the new row's name input.
+- `removeField(button)` - removes the button's `[data-field-row]`, dispatches `fields-changed` on the form, and moves focus to `addButton` (the clicked button is gone).
+- `useSuggestion(inputId, value)` - writes `value` into the input and dispatches `input` on it, then focuses it.
+
+**Why the events.** The live slug readout is a hidden element with `hx-trigger="input delay:300ms from:#ii-rep-fields-form, fields-changed from:#ii-rep-fields-form"`. A change that is not typing raises nothing on its own, so each method raises the event the readout listens for; without it the readout would show the slug of a row that is no longer there.
 
 **Usage:**
 ```html
-<div x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)">
-  <!-- sortableChips suggestion strip (HTMX-loaded) -->
-  <div id="rep-fields-suggestions" hx-get="..." hx-trigger="load" hx-swap="innerHTML"></div>
-  <!-- rep_fields form -->
-  <form hx-patch="...">
-    <textarea name="rep_fields" ...></textarea>
+<div id="ii-rep-fields" x-data="repFieldsForm">
+  <form id="ii-rep-fields-form" hx-patch="…/rep-fields" …>
+    … required rows …
+    <div x-ref="otherRows">
+      <div data-field-row> <input name="field_key"> <input type="hidden" name="field_type"> <input name="field_value">
+        <button type="button" @click="removeField($el)">Remove</button></div>
+    </div>
+    <template x-ref="blankRow"> … one empty [data-field-row] … </template>
+    <button type="button" x-ref="addButton" @click="addField()">Add field</button>
   </form>
 </div>
 ```
+
+JS tests in `tests/js/rep-fields-form.test.js` (Vitest, real `main.js` + vendored Alpine).
 
 ---
 

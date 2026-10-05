@@ -1,14 +1,12 @@
-{#- The outcome of a Rep Fields save, swapped into #rep-fields-flash (archiver#302).
+{#- A Rep Fields save that did not store, swapped into #rep-fields-flash (archiver#302).
+  A save that did store re-renders the whole Fields block instead (archiver#307).
 
-  saved    - the bag was stored
   moves    - the bag is valid but moves where active assignments render; the
              confirm button re-sends exactly `bag_json`, not whatever the
-             textarea holds by the time the operator clicks
+             form holds by the time the operator clicks
   message  - a refusal; `problems` lists one line per assignment and key
 -#}
-{% if saved %}
-<p class="badge badge--success" style="margin-top:var(--space-1);">Saved.</p>
-{% elif moves %}
+{% if moves %}
 <div class="text-sm" style="margin-top:var(--space-2);">
   <p class="text-danger">Not saved yet: this changes where assigned RepSpecs replicate to. Later revisions will land at the new path; everything already published stays at the old one.</p>
   <ul>

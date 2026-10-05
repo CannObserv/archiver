@@ -44,7 +44,7 @@ import pytest
 from jinja2 import DictLoader, Environment, FileSystemLoader, meta, nodes
 from ulid import ULID
 
-from src.core.models import RepSpec
+from src.core.models import InfoItem, RepSpec
 from src.dashboard.routes import info_items as info_items_routes
 from src.dashboard.routes import rep_specs as rep_specs_routes
 
@@ -81,6 +81,14 @@ _CONTRACTS: dict[str, _Contract] = {
         builder=info_items_routes._rep_spec_assignments_context,
         empty_args=lambda: (ULID(),),
         behaviour=_POLLING,
+        optional={"swapped": _SWAPPED},
+    ),
+    # archiver#307: without `rows` the block says no spec requires anything, on
+    # an item whose specs do - a section that renders and is quietly wrong.
+    "info_items/_rep_fields.html": _Contract(
+        builder=info_items_routes._rep_fields_context,
+        empty_args=lambda: (InfoItem(info_item_id=ULID(), name="contract probe", rep_fields={}),),
+        behaviour=frozenset({"rows"}),
         optional={"swapped": _SWAPPED},
     ),
     "rep_specs/_assignments.html": _Contract(

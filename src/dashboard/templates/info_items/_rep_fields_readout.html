@@ -1,0 +1,7 @@
+{#- The live readout (GET .../rep-fields/readout, archiver#307): every row's
+   status cell for the unsaved input, swapped out of band by id. The trigger
+   element uses `hx-swap="none"`, so nothing else in the response lands. -#}
+{% for row in rows %}
+{% set oob = true %}
+{% include "info_items/_rep_fields_status.html" %}
+{% endfor %}

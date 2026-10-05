@@ -26,7 +26,10 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                replication_actions.py — the manual-replication outcome→flash
                                translation shared by both screens that offer the action, and
                                the one place that records why a refusal is a 200 rather than
-                               a 4xx, archiver#171)
+                               a 4xx, archiver#171;
+                               rep_fields_block.py — pure Replication Fields block view model:
+                               rows per required raw key, source badges, the form parse,
+                               archiver#307)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,

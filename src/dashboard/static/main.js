@@ -317,7 +317,7 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
-     * Sortable chip strip for selector / rep-field suggestions.
+     * Sortable chip strip for selector suggestions.
      *
      * Data island pattern: place a <script type="application/json"> child element
      * inside the component div containing the chip array.  init() reads and parses
@@ -444,28 +444,46 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
-     * Rep-fields JSON editor — wraps the rep_fields <textarea> + the
-     * sortableChips suggestion strip that lives above it.
+     * The Replication section's Fields block (archiver#307).
      *
-     * Listen for chip-insert window events and merge the key into the
-     * existing JSON object rather than replacing the whole textarea value.
-     * This lets operators build up a rep_fields object by clicking keys
-     * one at a time without losing previously typed values.
+     * The form posts parallel field_key / field_type / field_value lists, so a
+     * row is added or removed whole - a stray input would shift every later
+     * value onto the wrong key. Rows carry [data-field-row]; new ones clone
+     * the block's <template x-ref="blankRow">.
      *
-     * Usage: x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)"
+     * The live readout re-slugs on `input`; a change that is not typing (a
+     * removed row, a filled suggestion) has to raise one too, or the readout
+     * goes stale: removal dispatches `fields-changed`, a suggestion `input`.
+     *
+     * Usage: x-data="repFieldsForm" on #ii-rep-fields, with x-ref="otherRows",
+     * x-ref="blankRow" and x-ref="addButton" inside.
      */
-    window.Alpine.data("repFieldsEditor", function () {
+    window.Alpine.data("repFieldsForm", function () {
         return {
-            insertKey: function (key) {
-                var ta = this.$el.querySelector("[name=rep_fields]");
-                if (!ta) { return; }
-                try {
-                    var obj = JSON.parse(ta.value || "{}");
-                    if (obj[key] === undefined) { obj[key] = ""; }
-                    ta.value = JSON.stringify(obj, null, 2);
-                } catch (_e) {
-                    ta.value = JSON.stringify({ [key]: "" }, null, 2);
+            addField: function () {
+                var row = this.$refs.blankRow.content.firstElementChild.cloneNode(true);
+                this.$refs.otherRows.appendChild(row);
+                var key = row.querySelector("[name=field_key]");
+                if (key) { key.focus(); }
+            },
+
+            removeField: function (button) {
+                var form = button.closest("form");
+                var row = button.closest("[data-field-row]");
+                if (row) { row.remove(); }
+                if (form) {
+                    form.dispatchEvent(new CustomEvent("fields-changed", { bubbles: true }));
                 }
+                // The clicked button is gone; leave focus somewhere that survives.
+                if (this.$refs.addButton) { this.$refs.addButton.focus(); }
+            },
+
+            useSuggestion: function (inputId, value) {
+                var input = document.getElementById(inputId);
+                if (!input) { return; }
+                input.value = value;
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.focus();
             }
         };
     });

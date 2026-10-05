@@ -18,7 +18,6 @@ from src.core.models import (
     RepSpec,
     SourceRevision,
 )
-from src.core.models.domain import Domain
 from src.core.services.replication_issuance import ManualIssuanceError
 from tests.dashboard.conftest import poll_sync_violations, read_flash
 
@@ -1223,17 +1222,6 @@ async def test_hub_detail_sources_table_shows_spec_summary(client, session):
 
 
 @pytest.mark.asyncio
-async def test_hub_detail_shows_replicator_section(client, session):
-    item = _make_item("Hub Replicator Item")
-    session.add(item)
-    await session.flush()
-
-    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
-    assert r.status_code == 200
-    assert "Replicator" in r.text
-
-
-@pytest.mark.asyncio
 async def test_hub_detail_watcher_header_is_never_a_deeplink(client, session, monkeypatch):
     """The per-item Watcher deeplink retired with archiver#142.
 
@@ -1344,7 +1332,7 @@ async def test_rep_fields_inline_save(client, session):
         data={"rep_fields": '{"org": {"title": "WA LCB"}}'},
     )
     assert r.status_code == 200
-    assert "Saved." in r.text
+    assert read_flash(r)["showFlash"]["body"] == "Rep Fields saved."
 
     await session.refresh(item)
     assert item.rep_fields == {"org": {"title": "WA LCB"}}
@@ -1475,25 +1463,6 @@ async def test_rep_fields_save_invalid_json_is_422(client, session):
 
 
 @pytest.mark.asyncio
-async def test_rep_fields_form_swaps_refusals_into_its_flash(client, session):
-    """Without hx-target-4xx a 422 never reaches the operator: htmx-errors.js
-    toasts a bare "request failed" instead (archiver#302)."""
-    item = _make_item("Flash Target Item")
-    session.add(item)
-    await session.flush()
-
-    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
-    assert r.status_code == 200
-    form = r.text[
-        r.text.index(f'hx-patch="/dashboard/info-items/{item.info_item_id}/rep-fields"') :
-    ]
-    form = form[: form.index("</form>")]
-    assert 'hx-target-422="#rep-fields-flash"' in form
-    assert 'hx-target-409="#rep-fields-flash"' in form
-    assert 'id="rep-fields-flash" aria-live="polite" aria-atomic="true"' in form
-
-
-@pytest.mark.asyncio
 async def test_rep_fields_flash_fragments_add_no_nested_live_region(client, session):
     """The target is the live region (UI.md); an alert inside it can announce twice."""
     rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
@@ -1524,81 +1493,489 @@ async def test_create_refuses_a_bag_off_the_v1_shape(client, session):
 
 
 # ---------------------------------------------------------------------------
-# GET /{item_id}/suggest-rep-fields
+# The Replication section's Fields block  (archiver#307)
 # ---------------------------------------------------------------------------
+#
+# One row per raw key the assigned specs require, each with its live derived
+# slug and where the value comes from; stored keys no spec requires under
+# "Other fields"; the JSON textarea kept inside a <details>. Both forms save
+# through set_rep_fields (#302). The block is its own swap target, re-fetched on
+# `replicationChanged` from its siblings and never by the assignments poll.
+
+
+def _fields_block(html: str) -> str:
+    """The Fields block alone, from its root to the details that close it."""
+    start = html.index('id="ii-rep-fields"')
+    return html[start : html.index("<!-- /ii-rep-fields -->", start)]
+
+
+def _fields_form(**fields) -> dict:
+    """The structured form's body: parallel field_key/field_value/field_type lists."""
+    return {
+        "field_key": list(fields),
+        "field_value": [v if isinstance(v, str) else json.dumps(v) for v in fields.values()],
+        "field_type": ["string" if isinstance(v, str) else "json" for v in fields.values()],
+    }
+
+
+def _dotted(**fields) -> dict:
+    """``org__title="x"`` -> ``{"org.title": "x"}``: a keyword cannot hold a dot."""
+    return {k.replace("__", "."): v for k, v in fields.items()}
 
 
 @pytest.mark.asyncio
-async def test_suggest_rep_fields_no_domain_returns_empty(client, session):
-    """Item with no active source binding returns empty suggestions."""
-    item = _make_item("No Source Item")
+async def test_the_section_is_replication_and_keeps_its_anchor(client, session):
+    """#301's assign success redirects to #replication, so the id is a contract."""
+    item = _make_item("Hub Replication Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert '<section id="replication" aria-label="Replication"' in r.text
+    assert "Replicator" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_fields_block_has_a_row_per_required_raw_key(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "WSLCB - Board"}}, rs)
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    block = _fields_block(r.text)
+    assert 'id="ii-rep-fields-heading"' in block
+    assert 'name="field_key" value="org.title"' in block
+    assert 'value="WSLCB - Board"' in block
+    assert "Org Layout" in block
+    # The derived slug, through effective_rep_fields, and its source.
+    assert "org.title_slug" in block
+    assert "wslcb-board" in block
+    assert "stored" in block
+
+
+@pytest.mark.asyncio
+async def test_a_missing_required_key_says_so(client, session):
+    rs = _rep_spec_requiring(
+        "Name Layout", "info_item.name", path_template="n/{info_item.name}/{source_revision.id}"
+    )
+    item = await _item_assigned_to(session, {"org": {"title": "Board"}}, rs)
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert 'name="field_key" value="info_item.name"' in r.text
+    assert "missing" in r.text
+    # Stored but required by nothing: an Other field, removable.
+    assert 'name="field_key" value="org.title"' in r.text
+    assert "Other fields" in r.text
+    assert "Remove" in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_value_that_slugs_to_nothing_reads_as_such_not_missing(client, session):
+    """archiver#312: its own state, in the gate's wording."""
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "!!!"}}, rs)
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS)
+
+    assert "slugs to nothing" in r.text
+    assert "org.title &#34;!!!&#34; slugs to nothing (org.title_slug)" in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_stored_slug_reads_as_an_override(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Board", "title_slug": "custom"}}, rs)
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS)
+
+    assert "override" in r.text
+    assert 'name="field_key" value="org.title_slug"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_name_row_offers_the_item_name_without_its_acronym(client, session):
+    rs = _rep_spec_requiring(
+        "Name Layout", "info_item.name", path_template="n/{info_item.name}/{source_revision.id}"
+    )
+    item = await _item_assigned_to(session, {}, rs)
+    item.name = "WSLCB - Meeting Schedule"
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS)
+
+    assert 'data-suggestion="Meeting Schedule"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_an_item_with_no_assignments_has_no_required_rows(client, session):
+    item = _make_item("Unassigned Fields Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "No assigned Replication Spec requires any fields." in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_block_refetches_on_a_siblings_replication_change_only(client, session):
+    """The coordination pattern: siblings fire it, this block listens - but not
+    to its own save, which already swapped it."""
+    item = _make_item("Listening Fields Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    block = _fields_block(r.text)
+    root = block[: block.index(">")]
+    assert f'hx-get="/dashboard/info-items/{item.info_item_id}/rep-fields"' in root
+    assert "replicationChanged[detail.source!=='fields'] from:body" in root
+    assert 'hx-swap="outerHTML"' in root
+
+
+@pytest.mark.asyncio
+async def test_a_refetch_never_moves_focus(client, session):
+    item = _make_item("Refetch Focus Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert 'getElementById("ii-rep-fields-heading")' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_fields_form_routes_refusals_into_its_flash(client, session):
+    """Without hx-target-4xx a 422 never reaches the operator (archiver#302)."""
+    item = _make_item("Fields Flash Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    block = _fields_block(r.text)
+    for form_start in ('id="ii-rep-fields-form"', 'id="ii-rep-fields-json-form"'):
+        form = block[block.index(form_start) :]
+        form = form[: form.index(">")]
+        assert f'hx-patch="/dashboard/info-items/{item.info_item_id}/rep-fields"' in form
+        assert 'hx-target="#rep-fields-flash"' in form
+        assert 'hx-target-422="#rep-fields-flash"' in form
+        assert 'hx-target-409="#rep-fields-flash"' in form
+    assert 'id="rep-fields-flash" aria-live="polite" aria-atomic="true"' in block
+
+
+@pytest.mark.asyncio
+async def test_edit_as_json_survives_inside_a_details(client, session):
+    item = _make_item("JSON Details Item", rep_fields={"org": {"title": "Board"}})
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    block = _fields_block(r.text)
+    details = block[block.index("<details") :]
+    assert "Edit as JSON" in details
+    assert 'name="rep_fields"' in details
+    assert "&#34;title&#34;: &#34;Board&#34;" in details
+
+
+@pytest.mark.asyncio
+async def test_a_structured_save_stores_the_bag_and_swaps_the_block(client, session):
+    item = _make_item("Structured Save Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data=_fields_form(**_dotted(org__title="WA LCB", meta__year=2024)),
+    )
+
+    assert r.status_code == 200
+    await session.refresh(item)
+    assert item.rep_fields == {"org": {"title": "WA LCB"}, "meta": {"year": 2024}}
+    # The form targets the flash; success re-targets the whole block, which
+    # now reads from the stored bag.
+    assert r.headers["HX-Retarget"] == "#ii-rep-fields"
+    assert r.headers["HX-Reswap"] == "outerHTML"
+    assert 'id="ii-rep-fields"' in r.text
+    assert 'getElementById("ii-rep-fields-heading")' in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_save_fires_replication_changed_and_confirms(client, session):
+    item = _make_item("Save Trigger Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data=_fields_form(**_dotted(org__title="WA LCB")),
+    )
+
+    triggers = read_flash(r)
+    assert triggers["replicationChanged"] == {"source": "fields"}
+    assert triggers["showFlash"]["level"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_a_structured_save_drops_blank_values(client, session):
+    item = _make_item("Blank Drop Item", rep_fields={"org": {"title": "Board"}})
+    session.add(item)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data=_fields_form(**_dotted(org__title="")),
+    )
+
+    assert r.status_code == 200
+    await session.refresh(item)
+    assert item.rep_fields == {}
+
+
+@pytest.mark.asyncio
+async def test_a_structured_refusal_names_the_assignment_and_key(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "WA LCB"}}, rs)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data=_fields_form(**_dotted(org__title="")),
+    )
+
+    assert r.status_code == 422
+    assert "Org Layout" in r.text
+    assert "org.title_slug" in r.text
+    # A refusal stays in the flash: the operator's input is still on screen.
+    assert "HX-Retarget" not in r.headers
+    assert "HX-Trigger" not in r.headers
+    await session.refresh(item)
+    assert item.rep_fields == {"org": {"title": "WA LCB"}}
+
+
+@pytest.mark.asyncio
+async def test_a_form_that_cannot_build_a_bag_is_refused_by_name(client, session):
+    item = _make_item("Unbuildable Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={
+            "field_key": ["meta.year"],
+            "field_value": ["{nope"],
+            "field_type": ["json"],
+        },
+    )
+
+    assert r.status_code == 422
+    assert "meta.year" in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_structured_move_asks_first_and_confirms_with_that_bag(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Old Name"}}, rs)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data=_fields_form(**_dotted(org__title="New Name")),
+    )
+
+    assert r.status_code == 409
+    assert "organizations/new_name/" in r.text
+    # Save and move re-sends the bag that was warned about, as JSON.
+    assert "allow_destination_change" in r.text
+    assert "New Name" in r.text
+
+
+@pytest.mark.parametrize(
+    "bag",
+    [
+        {"org": {"title": "WA LCB"}, "meta": {"year": 2024, "draft": False}},
+        {"org": {"title": "WA LCB", "title_slug": "custom"}},
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_json_path_and_the_structured_path_store_the_same_bag(client, session, bag):
+    """Two forms, one gate: "Edit as JSON" is not a way around set_rep_fields."""
+    stored = []
+    for body in (
+        {"rep_fields": json.dumps(bag)},
+        _fields_form(**{f"{ns}.{k}": v for ns, fields in bag.items() for k, v in fields.items()}),
+    ):
+        item = _make_item("Parity Item")
+        session.add(item)
+        await session.flush()
+        r = await client.patch(
+            f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS, data=body
+        )
+        assert r.status_code == 200
+        assert r.headers["HX-Retarget"] == "#ii-rep-fields"
+        await session.refresh(item)
+        stored.append(item.rep_fields)
+
+    assert stored == [bag, bag]
+
+
+@pytest.mark.asyncio
+async def test_the_json_path_refuses_what_the_structured_path_refuses(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "WA LCB"}}, rs)
+    url = f"/dashboard/info-items/{item.info_item_id}/rep-fields"
+
+    as_json = await client.patch(url, headers=_HEADERS, data={"rep_fields": "{}"})
+    structured = await client.patch(url, headers=_HEADERS, data=_fields_form())
+
+    assert as_json.status_code == structured.status_code == 422
+    assert as_json.text == structured.text
+
+
+@pytest.mark.asyncio
+async def test_the_readout_reslugs_unsaved_input_out_of_band(client, session):
+    """The live slug: rendered by the server, through effective_rep_fields."""
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Board"}}, rs)
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields/readout",
+        headers=_HEADERS,
+        params=_fields_form(**_dotted(org__title="New Name")),
+    )
+
+    assert r.status_code == 200
+    assert 'id="rf-status-org-title" hx-swap-oob="true"' in r.text
+    assert "new_name" in r.text
+    assert "HX-Trigger" not in r.headers
+    await session.refresh(item)
+    assert item.rep_fields == {"org": {"title": "Board"}}
+
+
+@pytest.mark.asyncio
+async def test_the_readout_shows_an_empty_slug_as_it_is_typed(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Board"}}, rs)
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields/readout",
+        headers=_HEADERS,
+        params=_fields_form(**_dotted(org__title="!!!")),
+    )
+
+    assert "slugs to nothing" in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_readout_tolerates_input_the_save_would_refuse(client, session):
+    """Half-typed input is the readout's normal case; it reads what it can."""
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Board"}}, rs)
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields/readout",
+        headers=_HEADERS,
+        params={
+            "field_key": ["org.title", "org.title"],
+            "field_value": ["A", "B"],
+            "field_type": ["string", "string"],
+        },
+    )
+
+    assert r.status_code == 200
+    assert 'id="rf-status-org-title"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_deactivate_fires_replication_changed(client, session):
+    """The Fields rows come from the active assignments, so a deactivate changes them."""
+    item, assignment, _revision = await _assigned(
+        session, name="Deact Trigger", url="https://example.com/deact-trigger"
+    )
+
+    r = await client.delete(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert read_flash(r)["replicationChanged"] == {"source": "assignments"}
+
+
+@pytest.mark.asyncio
+async def test_replicate_now_leaves_the_fields_block_alone(client, session):
+    """It changes nothing a sibling renders, and a refetch would discard any
+    unsaved input in the Fields block."""
+    item, assignment, _revision = await _assigned(
+        session, name="Replicate Quiet", url="https://example.com/replicate-quiet"
+    )
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate",
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert "showFlash" in read_flash(r)
+    assert "replicationChanged" not in read_flash(r)
+
+
+@pytest.mark.asyncio
+async def test_the_assignments_poll_never_touches_the_fields_block(client, session):
+    """The poll swaps its own wrapper, carries no Fields markup and fires nothing."""
+    item, assignment, revision = await _assigned(
+        session, name="Poll Leaves Fields", url="https://example.com/poll-leaves-fields"
+    )
+    session.add(_command_for(assignment, revision, state="requested", issued_at=datetime.now(UTC)))
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    assert r.status_code == 200
+    assert 'hx-trigger="every 2s"' in r.text
+    assert "ii-rep-fields" not in r.text
+    assert "HX-Trigger" not in r.headers
+
+
+@pytest.mark.asyncio
+async def test_the_fields_block_sits_outside_the_polled_wrapper(client, session):
+    item, assignment, revision = await _assigned(
+        session, name="Fields Outside Poll", url="https://example.com/fields-outside-poll"
+    )
+    session.add(_command_for(assignment, revision, state="requested", issued_at=datetime.now(UTC)))
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    section = r.text[r.text.index('id="ii-rep-spec-assignments"') :]
+    assert section.index("<!-- /ii-rep-spec-assignments -->") < section.index('id="ii-rep-fields"')
+
+
+@pytest.mark.asyncio
+async def test_the_rep_fields_suggestion_route_is_retired(client, session):
+    item = _make_item("Retired Suggest Item")
     session.add(item)
     await session.flush()
 
     r = await client.get(
-        f"/dashboard/info-items/{item.info_item_id}/suggest-rep-fields",
-        headers=_HEADERS,
+        f"/dashboard/info-items/{item.info_item_id}/suggest-rep-fields", headers=_HEADERS
     )
-    assert r.status_code == 200
-    assert "No rep_fields suggestions" in r.text
 
-
-@pytest.mark.asyncio
-async def test_suggest_rep_fields_returns_domain_keys(client, session):
-    """Domain-scoped rep_fields keys appear as sortableChips data island."""
-    domain = Domain(name="repfields.example.com")
-    session.add(domain)
-    await session.flush()
-
-    # Peer item with rep_fields on the same domain
-    peer = _make_item("Peer Item")
-    peer.rep_fields = {"canonical_url": "", "headline": ""}
-    session.add(peer)
-    await session.flush()
-
-    peer_src = InfoSource(
-        url="https://repfields.example.com/peer",
-        source_specs=[_spec()],
-        domain_name="repfields.example.com",
-    )
-    session.add(peer_src)
-    await session.flush()
-
-    peer_binding = InfoItemSource(
-        info_item_id=peer.info_item_id,
-        info_source_id=peer_src.info_source_id,
-    )
-    session.add(peer_binding)
-    await session.flush()
-
-    # Target item bound to the same domain
-    target = _make_item("Target Item")
-    session.add(target)
-    await session.flush()
-
-    target_src = InfoSource(
-        url="https://repfields.example.com/target",
-        source_specs=[_spec()],
-        domain_name="repfields.example.com",
-    )
-    session.add(target_src)
-    await session.flush()
-
-    target_binding = InfoItemSource(
-        info_item_id=target.info_item_id,
-        info_source_id=target_src.info_source_id,
-    )
-    session.add(target_binding)
-    await session.flush()
-
-    r = await client.get(
-        f"/dashboard/info-items/{target.info_item_id}/suggest-rep-fields",
-        headers=_HEADERS,
-    )
-    assert r.status_code == 200
-    # Both keys from the peer item should appear in the JSON data island
-    assert "canonical_url" in r.text
-    assert "headline" in r.text
+    assert r.status_code == 404
 
 
 # ---------------------------------------------------------------------------

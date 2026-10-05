@@ -291,6 +291,32 @@ Rules:
 
 Used by `info_items/_rep_spec_assignments.html` and `rep_specs/_assignments.html`.
 
+### Blocks that share a section
+
+When one section holds several independently editable blocks - the InfoItem screen's **Replication** section: the assignments table, Fields, and (archiver#308) the spec picker - make **each block its own swap target** and coordinate them with one event rather than one big swap (archiver#307):
+
+```html
+<div id="ii-rep-fields"
+     hx-get="…/rep-fields"
+     hx-trigger="replicationChanged[detail.source!=='fields'] from:body"
+     hx-target="this" hx-swap="outerHTML" hx-disinherit="*">
+  <h3 id="ii-rep-fields-heading" tabindex="-1">Fields</h3>
+  …
+</div>
+```
+
+Rules:
+- **An action answers with its own block**, and moves focus to that block's heading (the `swapped` focus script) - never to a sibling's.
+- **An action that changes what a sibling renders also fires `HX-Trigger: {"replicationChanged": {"source": "<block>"}}`**; the siblings re-fetch on it. Deactivating an assignment changes the Fields rows, so it fires; *Replicate now* changes nothing a sibling shows, so it does not - a re-fetch would discard anything typed and not yet saved in the Fields block. Fire on a real change, not on every click.
+- **Each listener skips its own source** (`[detail.source!=='<block>']`). The action's response already swapped the block; re-fetching it as well renders twice and can land the stale read second. `HX-Trigger` fires on receipt, before the swap.
+- **A re-fetch never moves focus** (`swapped=False`): the operator acted in another block, and focus belongs there.
+- **A polling block stays out of the coordination.** The assignments table keeps its poll and `hx-sync` contract (§ *A section that polls and takes actions*) untouched; its poll response carries no `HX-Trigger`, and no other block sits inside its wrapper, so a two-second tick can never clobber a half-edited form. That separation is why Fields is a sibling of the table rather than part of it.
+- `hx-disinherit="*"` on each block root, so its `hx-target`/`hx-swap` do not leak to the forms inside it.
+
+A save whose form targets an inline flash (so a 422/409 leaves the operator's input on screen) but whose success should replace the whole block answers 200 with `HX-Retarget: #<block>` + `HX-Reswap: outerHTML` - the swap style and target belong to the outcome, not the form.
+
+The `watcherUpdated` event (§ *HTMX async partial pattern*) is the one-block form of the same idea.
+
 ### JSON data island pattern
 
 When an Alpine component needs server-rendered data at initialisation, place the data in a `<script type="application/json">` child element rather than embedding JSON inside the `x-data` attribute. Jinja2's `tojson` filter does **not** escape `"`, so JSON in a double-quoted attribute is silently truncated by the HTML parser; single-quoted attributes work but are fragile to copy. The data island avoids both problems:
