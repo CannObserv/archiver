@@ -15,7 +15,10 @@
 
    Readiness is the gate's (`check_bag_against_spec`), so the disabled Assign
    is a courtesy: the server re-checks. Select is an htmx GET of the Fields
-   block with this spec's keys added - it swaps Fields, not this block. -#}
+   block with this spec's keys added - it swaps Fields, not this block, and so
+   discards unsaved input there (CR 7). Accepted: Select is the operator's own
+   act, not a sibling's event, and keeping the input would mean rendering
+   unsaved values as the block renders stored ones, badges included. -#}
 <div id="ii-rep-spec-picker"
      hx-get="/dashboard/info-items/{{ item_id }}/rep-spec-picker"
      hx-trigger="replicationChanged[detail.source!=='picker'] from:body"
