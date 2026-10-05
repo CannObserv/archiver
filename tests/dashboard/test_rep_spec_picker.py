@@ -123,3 +123,13 @@ def test_the_example_occasion_renders_a_recognisable_revision():
     entry = _only({"org": {"title": "WSLCB"}}, _spec("org.title_slug"), occasion)
 
     assert entry.path == f"organizations/wslcb/{EXAMPLE_REVISION_ID}.html"
+
+
+def test_a_bag_off_the_v1_shape_cannot_render_rather_than_needing_its_bad_key():
+    """CR 3. The gate files shape errors under ``missing``; read as *Needs*, a
+    pre-#302 flat key would be a key to add, when it is one to fix."""
+    entry = _only({"flat": "x", "org": {"title": "WSLCB"}}, _spec("org.title_slug"))
+
+    assert entry.readiness == "unrenderable"
+    assert entry.needs == ()
+    assert entry.reason.startswith("Rep Fields are off the v1 shape: flat: ")

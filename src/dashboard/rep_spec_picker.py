@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 
 from src.core.models import RepSpec
 from src.core.rep_fields import OrgValues
+from src.core.rep_fields_schema.validator import validate_rep_fields
 from src.core.replication.destination import RenderOccasion, render_destination
 from src.core.replication.errors import ReplicationRenderError
 from src.core.tools.rep_fields_gate import check_bag_against_spec
@@ -96,6 +97,12 @@ def _entry(
 
     if spec.provider in UNWRITABLE_PROVIDERS:
         return entry("unwritable", reason=UNWRITABLE_PROVIDERS[spec.provider])
+    # The gate files shape errors under ``missing``; as *Needs* a pre-#302
+    # flat key would read as a key to add, when it is one to fix (CR 3).
+    _, shape_errors = validate_rep_fields(bag)
+    if shape_errors:
+        problems = "; ".join(f"{e['path'].strip('/') or '/'}: {e['message']}" for e in shape_errors)
+        return entry("unrenderable", reason=f"Rep Fields are off the v1 shape: {problems}")
     check = check_bag_against_spec(bag, document, org=org)
     if check.missing:
         needs = dict.fromkeys(_needs_label(m["path"]) for m in check.missing)
