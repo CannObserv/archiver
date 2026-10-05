@@ -307,15 +307,15 @@ When one section holds several independently editable blocks - the InfoItem scre
 
 Rules:
 - **An action answers with its own block**, and moves focus to that block's heading (the `swapped` focus script) - never to a sibling's.
-- **An action that changes what a sibling renders also fires `HX-Trigger: {"replicationChanged": {"source": "<block>"}}`**; the siblings re-fetch on it. Deactivating an assignment changes the Fields rows, so it fires; *Replicate now* changes nothing a sibling shows, so it does not - a re-fetch would discard anything typed and not yet saved in the Fields block. Fire on a real change, not on every click.
+- **An action that changes what a sibling renders also fires `HX-Trigger: {"replicationChanged": {"source": "<block>"}}`**; the siblings re-fetch on it. Deactivate fires (it changes the Fields rows); *Replicate now* does not, since a re-fetch would discard unsaved Fields input. Fire on a real change, not every click.
 - **Each listener skips its own source** (`[detail.source!=='<block>']`). The action's response already swapped the block; re-fetching it as well renders twice and can land the stale read second. `HX-Trigger` fires on receipt, before the swap.
 - **A re-fetch never moves focus** (`swapped=False`): the operator acted in another block, and focus belongs there.
-- **A polling block stays out of the coordination.** The assignments table keeps its poll and `hx-sync` contract (§ *A section that polls and takes actions*) untouched; its poll response carries no `HX-Trigger`, and no other block sits inside its wrapper, so a two-second tick can never clobber a half-edited form. That separation is why Fields is a sibling of the table rather than part of it.
-- `hx-disinherit="*"` on each block root, so its `hx-target`/`hx-swap` do not leak to the forms inside it.
+- **A polling block stays out of the coordination.** The assignments table keeps its poll and `hx-sync` contract (§ *A section that polls and takes actions*); its poll fires no `HX-Trigger` and wraps no other block, so a tick can never clobber a half-edited form - which is why Fields is its sibling, not part of it.
+- `hx-disinherit="*"` on a block root that declares its own `hx-target`/`hx-swap`, so they do not leak to the forms inside it. A polling block keeps its own section's `hx-sync` rules instead.
 
 A save whose form targets an inline flash (so a 422/409 leaves the operator's input on screen) but whose success should replace the whole block answers 200 with `HX-Retarget: #<block>` + `HX-Reswap: outerHTML` - the swap style and target belong to the outcome, not the form.
 
-The `watcherUpdated` event (§ *HTMX async partial pattern*) is the one-block form of the same idea.
+`watcherUpdated` (§ *HTMX async partial pattern*) is the one-block form.
 
 ### JSON data island pattern
 
