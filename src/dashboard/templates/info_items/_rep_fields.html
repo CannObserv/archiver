@@ -1,0 +1,158 @@
+{#- The Replication section's Fields block (archiver#307) - included by
+   info_items/detail.html and returned by GET .../rep-fields (the re-fetch) and
+   by a successful PATCH .../rep-fields (the save, re-targeted here).
+
+   Requires `item_id`, `rows`, `other_fields` and `bag_json`, from every render
+   site, by spreading `_rep_fields_context` (tests/dashboard/test_partial_contracts.py,
+   archiver#219). Without `rows` the block renders "nothing required" for an
+   item whose specs do require fields - a section that looks right and is not.
+   `swapped` is the caller's: the save sets it so focus moves to the heading;
+   a re-fetch on a sibling's event must not take focus from where the operator is.
+
+   **Its own swap target, outside the assignments table.** The table polls
+   every two seconds while a command is open; were this block inside it, a
+   tick would discard a half-typed value. It re-fetches itself instead on
+   `replicationChanged` from a sibling - the filter skips its own save, whose
+   response already swapped it (docs/UI.md § Blocks that share a section).
+
+   One row per raw key the specs require: the operator types `org.title`, the
+   spec requires `org.title_slug`, and the row shows the slug. Each row's
+   status cell (`_rep_fields_status.html`) is re-rendered out of band by the
+   live readout as the operator types. -#}
+<div id="ii-rep-fields"
+     hx-get="/dashboard/info-items/{{ item_id }}/rep-fields"
+     hx-trigger="replicationChanged[detail.source!=='fields'] from:body"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-disinherit="*"
+     x-data="repFieldsForm"
+     style="margin-bottom:var(--space-4);">
+  <h3 id="ii-rep-fields-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Fields</h3>
+
+  <form id="ii-rep-fields-form"
+        hx-patch="/dashboard/info-items/{{ item_id }}/rep-fields"
+        hx-target="#rep-fields-flash"
+        hx-target-422="#rep-fields-flash"
+        hx-target-409="#rep-fields-flash"
+        hx-swap="innerHTML">
+    {% if rows %}
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Fields the assigned Replication Specs require">
+      <table class="data-table" aria-label="Fields the assigned Replication Specs require">
+        <thead>
+          <tr>
+            <th class="data-table__th">Field</th>
+            <th class="data-table__th">Value</th>
+            <th class="data-table__th">Renders as</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>
+              <code>{{ row.key }}</code>
+              <div class="text-muted text-sm">Required by {{ row.required_by | join(", ") }}</div>
+            </td>
+            <td>
+              {% if row.badge == "from_power_map" %}
+              <span>{{ row.value }}</span>
+              <div class="text-muted text-sm">Set by the linked organization; edit it in Power Map.</div>
+              {% else %}
+              <input type="hidden" name="field_key" value="{{ row.key }}">
+              <input type="hidden" name="field_type" value="{{ row.input_type }}">
+              <input type="text" name="field_value" class="form-input"
+                     id="rf-input-{{ row.dom_id }}"
+                     aria-label="{{ row.key }}"
+                     value="{{ row.input_value }}">
+              {% if row.suggestion %}
+              <button type="button" class="btn btn--ghost btn--sm"
+                      data-target="rf-input-{{ row.dom_id }}"
+                      data-suggestion="{{ row.suggestion }}"
+                      @click="useSuggestion($el.dataset.target, $el.dataset.suggestion)">Use “{{ row.suggestion }}”</button>
+              {% endif %}
+              {% endif %}
+              {% for override in row.overrides %}
+              <div data-field-row style="margin-top:var(--space-1);">
+                <input type="hidden" name="field_key" value="{{ override.key }}">
+                <input type="hidden" name="field_type" value="{{ override.input_type }}">
+                <label class="text-sm" for="rf-input-{{ override.dom_id }}">Override <code>{{ override.key }}</code></label>
+                <input type="text" name="field_value" class="form-input"
+                       id="rf-input-{{ override.dom_id }}"
+                       value="{{ override.input_value }}">
+                <button type="button" class="btn btn--ghost btn--sm" @click="removeField($el)">Remove override</button>
+              </div>
+              {% endfor %}
+            </td>
+            <td>{% set oob = false %}{% include "info_items/_rep_fields_status.html" %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="margin-bottom:var(--space-3);">No assigned Replication Spec requires any fields.</p>
+    {% endif %}
+
+    <h4 style="margin:var(--space-3) 0 var(--space-1);font-size:0.9rem;">Other fields</h4>
+    <p class="text-muted text-sm" style="margin-bottom:var(--space-2);">Stored values no assigned spec requires, as <code>namespace.key</code>.</p>
+    <div x-ref="otherRows">
+      {% for field in other_fields %}
+      <div data-field-row class="field-pair-row">
+        <input type="text" name="field_key" value="{{ field.key }}" class="form-input" aria-label="Field name">
+        <input type="hidden" name="field_type" value="{{ field.input_type }}">
+        <input type="text" name="field_value" value="{{ field.input_value }}" class="form-input" aria-label="Value of {{ field.key }}">
+        <button type="button" class="btn btn--ghost btn--sm" @click="removeField($el)">Remove</button>
+      </div>
+      {% endfor %}
+    </div>
+    <template x-ref="blankRow">
+      <div data-field-row class="field-pair-row">
+        <input type="text" name="field_key" value="" class="form-input" aria-label="Field name" placeholder="namespace.key">
+        <input type="hidden" name="field_type" value="string">
+        <input type="text" name="field_value" value="" class="form-input" aria-label="Field value">
+        <button type="button" class="btn btn--ghost btn--sm" @click="removeField($el)">Remove</button>
+      </div>
+    </template>
+    <div style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
+      <button type="button" class="btn btn--secondary" x-ref="addButton" @click="addField()">Add field</button>
+      <button type="submit" class="btn btn--primary">Save fields</button>
+    </div>
+    {#- The live readout: re-slugs the unsaved input and swaps each row's status
+       cell out of band. `this:replace` so only the newest keystroke's answer lands. -#}
+    <div hidden
+         hx-get="/dashboard/info-items/{{ item_id }}/rep-fields/readout"
+         hx-include="#ii-rep-fields-form"
+         hx-trigger="input delay:300ms from:#ii-rep-fields-form, fields-changed from:#ii-rep-fields-form"
+         hx-sync="this:replace"
+         hx-swap="none"></div>
+  </form>
+
+  <div id="rep-fields-flash" aria-live="polite" aria-atomic="true"></div>
+
+  <details style="max-width:40rem;margin-top:var(--space-2);">
+    <summary class="text-sm" style="cursor:pointer;">Edit as JSON</summary>
+    <form id="ii-rep-fields-json-form"
+          hx-patch="/dashboard/info-items/{{ item_id }}/rep-fields"
+          hx-target="#rep-fields-flash"
+          hx-target-422="#rep-fields-flash"
+          hx-target-409="#rep-fields-flash"
+          hx-swap="innerHTML"
+          style="margin-top:var(--space-2);">
+      <textarea name="rep_fields" class="form-textarea" aria-label="Rep Fields as JSON"
+                rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;margin-bottom:var(--space-2);">{{ bag_json }}</textarea>
+      <button type="submit" class="btn btn--secondary">Save JSON</button>
+    </form>
+  </details>
+
+  {% if swapped %}
+  {# After a save swaps the block, focus its heading: the button that was
+     clicked is gone. Rendered only on the save's response, never the include
+     or a re-fetch. htmx runs scripts in swaps. #}
+  <script>
+    (function () {
+      var h = document.getElementById("ii-rep-fields-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>
+<!-- /ii-rep-fields -->

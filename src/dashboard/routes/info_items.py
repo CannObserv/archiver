@@ -1,13 +1,12 @@
 """Dashboard — Information Items (list, detail, create, sub-resource mutations)."""
 
 import json
-from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape as html_escape
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -82,6 +81,7 @@ from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
+from src.dashboard.rep_fields_block import FieldsFormError, build_fields, parse_fields_form
 from src.dashboard.replication_actions import (
     POLL_INTERVAL_SECONDS,
     live_poll,
@@ -424,6 +424,7 @@ async def detail_info_item(
     # Active rep_spec assignments + RepSpec rows, plus whether the section
     # should keep re-reading itself (CR 12).
     assignments_ctx = await _rep_spec_assignments_context(item.info_item_id, session)
+    fields_ctx = await _rep_fields_context(item, session)
 
     # Revision history (last 50). Sourced from source_revisions captured across
     # ALL of the item's InfoSource bindings — active primary plus previous
@@ -478,6 +479,7 @@ async def detail_info_item(
             "sources_by_id": sources_by_id,
             "spec_summary_by_source_id": spec_summary_by_source_id,
             **assignments_ctx,
+            **fields_ctx,
             "revisions": revisions,
             "rev_sources_by_id": rev_sources_by_id,
             "now": datetime.now(UTC),
@@ -486,88 +488,139 @@ async def detail_info_item(
 
 
 # ---------------------------------------------------------------------------
-# GET /{item_id}/suggest-rep-fields  (HTMX partial — #49)
+# The Replication section's Fields block  (archiver#307)
 # ---------------------------------------------------------------------------
+#
+# Its own swap target, `#ii-rep-fields`, beside the assignments table rather
+# than inside it: the table polls every two seconds while a command is open,
+# and a poll must never clobber a half-edited form. It re-fetches itself on a
+# sibling's `replicationChanged` instead (docs/UI.md § Blocks that share a
+# section).
+
+_FIELDS_SOURCE = "fields"
 
 
-@router.get("/{item_id}/suggest-rep-fields", response_class=HTMLResponse)
-async def suggest_rep_fields(
+async def _active_specs(item_id: ULID, session: AsyncSession) -> list[tuple[str, dict]]:
+    """``(name, document)`` for each active assignment's RepSpec, oldest assignment first."""
+    rows = await session.execute(
+        select(RepSpec.name, RepSpec.document)
+        .join(InfoItemRepSpec, InfoItemRepSpec.rep_spec_id == RepSpec.rep_spec_id)
+        .where(
+            InfoItemRepSpec.info_item_id == item_id,
+            InfoItemRepSpec.deactivated_at.is_(None),
+        )
+        .order_by(InfoItemRepSpec.id)
+    )
+    return [(name, document or {}) for name, document in rows]
+
+
+async def _rep_fields_context(item: InfoItem, session: AsyncSession) -> dict:
+    """The Fields block's context: one builder for the page, the re-fetch and the save.
+
+    Rows come from the active assignments' ``required_fields`` (archiver#308
+    adds the spec selected in the picker). ``org=None`` until archiver#304
+    links items to Power Map; every value already reads through
+    ``effective_rep_fields``, so the link changes the argument, not the block.
+    """
+    bag = dict(item.rep_fields or {})
+    view = build_fields(
+        bag, await _active_specs(item.info_item_id, session), org=None, item_name=item.name
+    )
+    return {
+        "item_id": item.info_item_id,
+        "rows": view.rows,
+        "other_fields": view.other_fields,
+        "bag_json": json.dumps(bag, indent=2),
+    }
+
+
+def _replication_changed(source: str, flash: tuple[str, str] | None = None) -> str:
+    """``HX-Trigger`` for a Replication action that changes what a sibling block renders.
+
+    ``source`` names the block that fired it, so that block's own listener can
+    skip the re-fetch: its response already swapped it.
+    """
+    triggers: dict[str, object] = {"replicationChanged": {"source": source}}
+    if flash is not None:
+        triggers["showFlash"] = {"level": flash[0], "body": flash[1]}
+    return json.dumps(triggers)
+
+
+@router.get("/{item_id}/rep-fields", response_class=HTMLResponse)
+async def rep_fields_block(
     item_id: str,
     request: Request,
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """HTMX partial: domain-scoped rep_fields key suggestions as sortableChips."""
+    """HTMX partial: the Fields block, re-read on a sibling's ``replicationChanged``.
+
+    ``swapped=False``: the operator acted in another block, and focus stays there.
+    """
     item = await _resolve_item(item_id, session)
-
-    # Query 1: derive domain_name from the item's active primary source.
-    domain_name: str | None = (
-        await session.execute(
-            select(InfoSource.domain_name).join(
-                InfoItemSource,
-                (InfoItemSource.info_source_id == InfoSource.info_source_id)
-                & (InfoItemSource.info_item_id == item.info_item_id)
-                & InfoItemSource.deactivated_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-
-    suggestions: list[dict] = []
-    if domain_name:
-        # Query 2: rep_fields of all actively-bound items sharing the same domain.
-        rep_fields_rows = list(
-            (
-                await session.execute(
-                    select(InfoItem.rep_fields)
-                    .join(
-                        InfoItemSource,
-                        (InfoItemSource.info_item_id == InfoItem.info_item_id)
-                        & InfoItemSource.deactivated_at.is_(None),
-                    )
-                    .join(
-                        InfoSource,
-                        (InfoSource.info_source_id == InfoItemSource.info_source_id)
-                        & (InfoSource.domain_name == domain_name),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        key_counter: Counter = Counter()
-        for rep_fields in rep_fields_rows:
-            for k in (rep_fields or {}).keys():
-                key_counter[k] += 1
-        for key, freq in key_counter.most_common():
-            suggestions.append({"label": key, "frequency": freq})
-
-    return _templates.TemplateResponse(
+    response = _templates.TemplateResponse(
         request,
-        "info_items/_rep_fields_suggestions.html",
-        {"user": user, "suggestions": suggestions},
+        "info_items/_rep_fields.html",
+        {"user": user, **await _rep_fields_context(item, session), "swapped": False},
     )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
-# ---------------------------------------------------------------------------
-# PATCH /{item_id}/rep-fields  (inline save — #49)
-# ---------------------------------------------------------------------------
+@router.get("/{item_id}/rep-fields/readout", response_class=HTMLResponse)
+async def rep_fields_readout(
+    item_id: str,
+    request: Request,
+    field_key: list[str] = Query(default=[]),
+    field_value: list[str] = Query(default=[]),
+    field_type: list[str] = Query(default=[]),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX: each row's derived slug and source for the *unsaved* input, out of band.
+
+    The live readout. Rendered here rather than in the browser so the slug is
+    the one render will produce (co-core's slugger, through
+    ``effective_rep_fields``). Writes nothing and fires nothing; the input is
+    read leniently, because half-typed is its normal state.
+    """
+    item = await _resolve_item(item_id, session)
+    bag = parse_fields_form(field_key, field_value, field_type, strict=False)
+    view = build_fields(
+        bag, await _active_specs(item.info_item_id, session), org=None, item_name=item.name
+    )
+    response = _templates.TemplateResponse(
+        request, "info_items/_rep_fields_readout.html", {"user": user, "rows": view.rows}
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.patch("/{item_id}/rep-fields", response_class=HTMLResponse)
 async def patch_rep_fields(
     item_id: str,
     request: Request,
-    rep_fields: str = Form(default="{}"),
+    rep_fields: str | None = Form(default=None),
+    field_key: list[str] = Form(default=[]),
+    field_value: list[str] = Form(default=[]),
+    field_type: list[str] = Form(default=[]),
     allow_destination_change: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """HTMX: save the rep_fields bag through ``set_rep_fields``; the outcome lands inline.
+    """HTMX: save the rep_fields bag through ``set_rep_fields``.
 
-    The same gate as ``PUT /info-items/{id}/rep-fields`` (archiver#302): a bag
-    off the v1 shape, or one that would break an active assignment, is a 422
-    naming the RepSpec and key; one that moves an assignment's destination is a
-    409 asking the operator to confirm.
+    Two bodies, one gate: the Fields form's rows (``field_key``/``field_value``/
+    ``field_type``) or "Edit as JSON"'s ``rep_fields`` string, which is also
+    what the 409's **Save and move** re-sends. The same gate as ``PUT
+    /info-items/{id}/rep-fields`` (archiver#302): a bag off the v1 shape, or
+    one that would break an active assignment, is a 422 naming the RepSpec and
+    key; one that moves an assignment's destination is a 409 asking the
+    operator to confirm. Both land in ``#rep-fields-flash`` and leave the
+    operator's input on screen.
+
+    Success re-renders the whole block from the stored bag (``HX-Retarget``:
+    the form targets the flash) and fires ``replicationChanged``.
     """
     item = await _resolve_item(item_id, session)
 
@@ -575,16 +628,22 @@ async def patch_rep_fields(
         return _templates.TemplateResponse(
             request,
             "info_items/_rep_fields_flash.html",
-            {"saved": False, "moves": [], "message": "", "problems": [], **context},
+            {"moves": [], "message": "", "problems": [], **context},
             status_code=status_code,
         )
 
-    try:
-        parsed = json.loads(rep_fields) if rep_fields.strip() else {}
-        if not isinstance(parsed, dict):
-            raise ValueError("rep_fields must be a JSON object")
-    except (json.JSONDecodeError, ValueError) as exc:
-        return flash(422, message=f"Invalid rep_fields: {exc}")
+    if rep_fields is not None:
+        try:
+            parsed = json.loads(rep_fields) if rep_fields.strip() else {}
+            if not isinstance(parsed, dict):
+                raise ValueError("rep_fields must be a JSON object")
+        except (json.JSONDecodeError, ValueError) as exc:
+            return flash(422, message=f"Invalid rep_fields: {exc}")
+    else:
+        try:
+            parsed = parse_fields_form(field_key, field_value, field_type)
+        except FieldsFormError as exc:
+            return flash(422, message=f"Not saved: {exc}")
 
     try:
         await set_rep_fields(
@@ -621,7 +680,17 @@ async def patch_rep_fields(
         )
 
     await session.commit()
-    return flash(200, saved=True)
+    response = _templates.TemplateResponse(
+        request,
+        "info_items/_rep_fields.html",
+        {"user": user, **await _rep_fields_context(item, session), "swapped": True},
+    )
+    response.headers["HX-Retarget"] = "#ii-rep-fields"
+    response.headers["HX-Reswap"] = "outerHTML"
+    response.headers["HX-Trigger"] = _replication_changed(
+        _FIELDS_SOURCE, ("success", "Rep Fields saved.")
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +975,8 @@ async def deactivate_rep_spec_assignment(
     response, _ = await _render_rep_spec_assignments(
         request, user=user, item_id=item_ulid, session=session, swapped=True
     )
+    # The Fields rows come from the active assignments, so this changed them.
+    response.headers["HX-Trigger"] = _replication_changed("assignments")
     return response
 
 
@@ -943,6 +1014,10 @@ async def replicate_assignment_now(
     Re-renders the whole section rather than the single row, matching the
     Deactivate beside it: the swap destroys the button that was clicked, so it
     has to move focus off it (CR #37).
+
+    **No ``replicationChanged``** (archiver#307), unlike Deactivate: an occasion
+    changes nothing a sibling block renders, and the Fields block's re-fetch
+    would discard whatever the operator had typed there and not yet saved.
     """
     try:
         item_ulid = ULID.from_str(item_id)

@@ -196,43 +196,24 @@
     {% endif %}
   </section>
 
-  {# ── Section 5: Replicator ─────────────────────────────────────────── #}
-  <section id="replication" aria-label="Replicator" style="margin-bottom:var(--space-5);">
+  {# ── Section 5: Replication ────────────────────────────────────────── #}
+  {#- Three blocks, each its own swap target (archiver#300 design §3): the
+     assignments table, Fields, and (archiver#308) the spec picker. Each action
+     answers with its own block; one that changes what a sibling renders also
+     fires `replicationChanged`, and the siblings re-fetch on it. `id="replication"`
+     is the assign route's redirect anchor (archiver#301) - keep it. -#}
+  <section id="replication" aria-label="Replication" style="margin-bottom:var(--space-5);">
     <h2 class="section-heading">
-      Replicator
+      Replication
     </h2>
-
-    {# Rep Fields sub-section #}
-    <h3 style="margin-bottom:var(--space-2);font-size:1rem;">Rep Fields</h3>
-    {# Chip listener: clicking a suggestion dispatches chip-insert on window; this div catches it
-       and writes the label into the textarea so the user can edit/save it. #}
-    <div x-data="repFieldsEditor()" @chip-insert.window="insertKey($event.detail.label)" style="margin-bottom:var(--space-4);">
-      {# Frequency-sorted domain key suggestions — loaded on section view #}
-      <div id="rep-fields-suggestions"
-           hx-get="/dashboard/info-items/{{ item.info_item_id }}/suggest-rep-fields"
-           hx-trigger="load"
-           hx-swap="innerHTML"
-           style="margin-bottom:var(--space-2);">
-        <p class="text-muted text-sm">Loading suggestions…</p>
-      </div>
-      <form hx-patch="/dashboard/info-items/{{ item.info_item_id }}/rep-fields"
-            hx-target="#rep-fields-flash"
-            hx-target-422="#rep-fields-flash"
-            hx-target-409="#rep-fields-flash"
-            hx-swap="innerHTML"
-            style="max-width:40rem;">
-        <textarea name="rep_fields" class="form-textarea"
-                  rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;margin-bottom:var(--space-2);"
-                  placeholder='{"key": "value"}'>{{ item.rep_fields | tojson(indent=2) if item.rep_fields else '{}' }}</textarea>
-        <button type="submit" class="btn btn--primary">Save Rep Fields</button>
-        <div id="rep-fields-flash" aria-live="polite" aria-atomic="true"></div>
-      </form>
-    </div>
 
     {# Replication Specs sub-section — extracted so deactivate re-renders it in
        place (count/empty-state + focus move). #}
     {% set item_id = item.info_item_id %}
     {% include "info_items/_rep_spec_assignments.html" %}
+    <!-- /ii-rep-spec-assignments -->
+
+    {% include "info_items/_rep_fields.html" %}
 
     <details style="max-width:30rem;margin-bottom:var(--space-3);">
       <summary class="text-sm" style="cursor:pointer;margin-bottom:var(--space-2);">+ Assign Replication Spec</summary>
