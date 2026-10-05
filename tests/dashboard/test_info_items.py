@@ -1785,6 +1785,27 @@ async def test_saving_the_form_unedited_leaves_the_bag_unchanged(client, session
 
 
 @pytest.mark.asyncio
+async def test_the_blocks_own_renders_carry_no_out_of_band_swap(client, session):
+    """CR 8. The status cell is shared with the readout, which marks it
+    hx-swap-oob. Leaked into the block, the save's outerHTML swap would pull
+    every status cell out of the response and swap it in by id instead."""
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Board"}}, rs)
+    url = f"/dashboard/info-items/{item.info_item_id}/rep-fields"
+
+    page = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+    refetch = await client.get(url, headers=_HEADERS)
+    saved = await client.patch(
+        url, headers=_HEADERS, data=_fields_form(**_dotted(org__title="Board"))
+    )
+
+    for r in (page, refetch, saved):
+        assert r.status_code == 200
+        assert 'id="rf-status-org-title"' in r.text
+        assert "hx-swap-oob" not in r.text
+
+
+@pytest.mark.asyncio
 async def test_a_save_fires_replication_changed_and_confirms(client, session):
     item = _make_item("Save Trigger Item")
     session.add(item)
