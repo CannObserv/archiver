@@ -297,7 +297,7 @@ The parent `registerWizard` root element catches the event:
 
 ## `repFieldsForm`
 
-The Replication section's **Fields** block on the InfoItem detail screen (`info_items/_rep_fields.html`, archiver#307). Replaced `repFieldsEditor`, which merged suggestion-chip keys into the JSON textarea; that textarea now sits inside an "Edit as JSON" `<details>` and needs no component.
+The Replication section's **Fields** block on the InfoItem detail screen (archiver#307). Replaced `repFieldsEditor` (chip keys merged into the JSON textarea, which now sits in an "Edit as JSON" `<details>`).
 
 The form posts **parallel lists** - `field_key`, `field_type`, `field_value` - one entry per row, so a row is only ever added or removed whole: a stray input would shift every later value onto the wrong key. Rows carry `[data-field-row]`.
 
@@ -308,22 +308,9 @@ The form posts **parallel lists** - `field_key`, `field_type`, `field_value` - o
 - `removeField(button)` - removes the button's `[data-field-row]`, dispatches `fields-changed` on the form, and moves focus to `addButton` (the clicked button is gone).
 - `useSuggestion(inputId, value)` - writes `value` into the input and dispatches `input` on it, then focuses it.
 
-**Why the events.** The live slug readout is a hidden element with `hx-trigger="input delay:300ms from:#ii-rep-fields-form, fields-changed from:#ii-rep-fields-form"`. A change that is not typing raises nothing on its own, so each method raises the event the readout listens for; without it the readout would show the slug of a row that is no longer there.
+**Why the events.** The live readout re-slugs on `input` and `fields-changed` from the form. A change that is not typing raises neither, so each method raises one; otherwise the readout shows the slug of a row that is gone.
 
-**Usage:**
-```html
-<div id="ii-rep-fields" x-data="repFieldsForm">
-  <form id="ii-rep-fields-form" hx-patch="…/rep-fields" …>
-    … required rows …
-    <div x-ref="otherRows">
-      <div data-field-row> <input name="field_key"> <input type="hidden" name="field_type"> <input name="field_value">
-        <button type="button" @click="removeField($el)">Remove</button></div>
-    </div>
-    <template x-ref="blankRow"> … one empty [data-field-row] … </template>
-    <button type="button" x-ref="addButton" @click="addField()">Add field</button>
-  </form>
-</div>
-```
+**Usage:** `info_items/_rep_fields.html` is the one caller and the reference markup.
 
 JS tests in `tests/js/rep-fields-form.test.js` (Vitest, real `main.js` + vendored Alpine).
 
