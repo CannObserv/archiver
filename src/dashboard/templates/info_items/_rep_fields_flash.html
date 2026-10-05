@@ -3,7 +3,8 @@
 
   moves    - the bag is valid but moves where active assignments render; the
              confirm button re-sends exactly `bag_json`, not whatever the
-             form holds by the time the operator clicks
+             form holds by the time the operator clicks, plus `selected_spec`
+             so the re-rendered block keeps the picker's selection (archiver#308)
   message  - a refusal; `problems` lists one line per assignment and key
 -#}
 {% if moves %}
@@ -17,7 +18,7 @@
   <p class="text-muted">Paths shown for an example revision; only the part that comes from Rep Fields changes.</p>
   <button type="button" class="btn btn--secondary"
           hx-patch="/dashboard/info-items/{{ item_id }}/rep-fields"
-          hx-vals='{{ {"rep_fields": bag_json, "allow_destination_change": "true"} | tojson }}'
+          hx-vals='{{ {"rep_fields": bag_json, "allow_destination_change": "true", "selected_spec": selected_spec} | tojson }}'
           hx-target="#rep-fields-flash"
           hx-target-422="#rep-fields-flash"
           hx-target-409="#rep-fields-flash"

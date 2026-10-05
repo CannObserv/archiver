@@ -1,11 +1,12 @@
 """Tests for /dashboard/info-items/ routes."""
 
 import json
+import re
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from ulid import ULID
 
 from src.api.main import app
@@ -20,7 +21,11 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.services.replication_issuance import ManualIssuanceError
-from tests.dashboard.conftest import poll_sync_violations, read_flash
+from tests.dashboard.conftest import (
+    outside_action_sync_violations,
+    poll_sync_violations,
+    read_flash,
+)
 
 _HEADERS = {"X-ExeDev-UserID": "ext-items", "X-ExeDev-Email": "items@example.com"}
 _LIST_URL = "/dashboard/info-items/"
@@ -565,79 +570,345 @@ async def test_deactivate_source_binding(client, session):
 
 
 # ---------------------------------------------------------------------------
-# POST /{item_id}/assign-rep-spec
+# The Replication section's Add-a-spec picker  (archiver#308)
 # ---------------------------------------------------------------------------
+#
+# Replaced the `<details>` ULID form and its full-page POST. Every spec not
+# actively assigned, each with its readiness and the path it would render;
+# Assign posts over HTMX, returns the picker and fires `replicationChanged`.
+# Refusals - #301's 422/409s - render inline at 200 (docs/STYLE.md).
+
+
+def _picker_block(html: str) -> str:
+    """The picker alone, from its root to its closing marker."""
+    start = html.index('id="ii-rep-spec-picker"')
+    return html[start : html.index("<!-- /ii-rep-spec-picker -->", start)]
+
+
+def _picker_entry(html: str, rs: RepSpec) -> str:
+    """One spec's row in the picker."""
+    start = html.index(f'id="picker-{rs.rep_spec_id}"')
+    return html[start : html.index("</tr>", start)]
+
+
+def _assign_disabled(entry: str) -> bool:
+    """Whether the entry's Assign button carries ``disabled`` (not ``hx-disabled-elt``)."""
+    tag = entry[entry.index('<button type="submit"') :]
+    tag = tag[: tag.index(">")]
+    return re.search(r"\sdisabled(\s|$)", tag) is not None
+
+
+def _rep_spec_requiring(name: str, *required: str, path_template: str, **kw) -> RepSpec:
+    rs = _make_rep_spec(name)
+    rs.document = {**rs.document, "required_fields": list(required), "path_template": path_template}
+    for key, value in kw.items():
+        setattr(rs, key, value)
+    return rs
+
+
+async def _bound_item(session, name: str, bag: dict, *, with_revision: bool = True):
+    """An InfoItem with an active source and, by default, one captured revision."""
+    item = _make_item(name, rep_fields=bag)
+    source = _make_source(f"https://example.com/{name.lower().replace(' ', '-')}")
+    session.add_all([item, source])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    revision = None
+    if with_revision:
+        revision = SourceRevision(
+            info_source_id=source.info_source_id,
+            content_fingerprint="sha256:" + "c" * 64,
+            captured_at=datetime(2026, 5, 2, tzinfo=UTC),
+            content_cache_uri="file:///blobs/c.bin",
+            source_media_type="text/html",
+        )
+        session.add(revision)
+    await session.flush()
+    return item, revision
+
+
+def _picker_url(item: InfoItem) -> str:
+    return f"/dashboard/info-items/{item.info_item_id}/rep-spec-picker"
+
+
+async def _assign(client, item: InfoItem, rs: RepSpec | str):
+    rep_spec_id = rs if isinstance(rs, str) else str(rs.rep_spec_id)
+    return await client.post(
+        f"{_picker_url(item)}/assign", data={"rep_spec_id": rep_spec_id}, headers=_HEADERS
+    )
+
+
+_ORG_PREVIEW_PATH = "organizations/{org.title_slug}/{source_revision.id}.{source_revision.ext}"
 
 
 @pytest.mark.asyncio
-async def test_assign_rep_spec_creates_assignment(client, session):
-    item = _make_item("Assign RS Item")
-    session.add(item)
+async def test_the_picker_lists_only_the_specs_not_actively_assigned(client, session):
+    assigned = _make_rep_spec("Already Here")
+    item = await _item_assigned_to(session, {}, assigned)
+    offered = _make_rep_spec("Offered Spec")
+    session.add(offered)
     await session.flush()
-    rs = _make_rep_spec()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    assert r.status_code == 200
+    entry = _picker_entry(r.text, offered)
+    assert f'href="/dashboard/rep-specs/{offered.rep_spec_id}"' in entry
+    assert "Offered Spec" in entry
+    assert '<span class="badge badge--sm">gcs</span>' in entry
+    assert f'id="picker-{assigned.rep_spec_id}"' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_ready_spec_previews_its_path_against_the_latest_revision(client, session):
+    item, revision = await _bound_item(session, "Ready Picker", {"org": {"title": "WSLCB"}})
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PREVIEW_PATH)
     session.add(rs)
     await session.flush()
 
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
-        data={"rep_spec_id": str(rs.rep_spec_id)},
-        headers=_HEADERS,
-        follow_redirects=False,
-    )
-    assert r.status_code == 303
-    # The Replication section, not ?tab=repspecs - a tab retired in #49 (archiver#301).
-    assert r.headers["location"] == f"/dashboard/info-items/{item.info_item_id}#replication"
+    r = await client.get(_picker_url(item), headers=_HEADERS)
 
-    result = await session.execute(
-        select(InfoItemRepSpec).where(
-            InfoItemRepSpec.info_item_id == item.info_item_id,
-        )
-    )
-    assert result.scalar_one_or_none() is not None
+    entry = _picker_entry(r.text, rs)
+    assert "Ready" in entry
+    assert f"organizations/wslcb/{revision.source_revision_id}.html" in entry
+    assert "latest revision" in _picker_block(r.text)
+    assert "Example occasion" not in _picker_block(r.text)
+    assert not _assign_disabled(entry)
 
 
 @pytest.mark.asyncio
-async def test_assign_rep_spec_under_htmx_redirects_client_side_to_keep_the_anchor(client, session):
-    """hx-boost follows a 303 inside the XHR and drops the fragment (CR 1).
+async def test_with_no_revision_the_preview_is_a_labelled_example(client, session):
+    item, _ = await _bound_item(
+        session, "Example Picker", {"org": {"title": "WSLCB"}}, with_revision=False
+    )
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PREVIEW_PATH)
+    session.add(rs)
+    await session.flush()
 
-    ``HX-Redirect`` makes htmx set ``location.href``, which keeps it.
-    """
-    item = _make_item("Boosted Assign Item")
-    rs = _make_rep_spec()
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    assert f"organizations/wslcb/{'0' * 26}.html" in _picker_entry(r.text, rs)
+    assert "Example occasion" in _picker_block(r.text)
+
+
+@pytest.mark.asyncio
+async def test_a_spec_missing_keys_names_them_and_offers_to_show_them(client, session):
+    item = _make_item("Needs Picker", rep_fields={})
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PREVIEW_PATH)
     session.add_all([item, rs])
     await session.flush()
 
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
-        data={"rep_spec_id": str(rs.rep_spec_id)},
-        headers={**_HEADERS, "HX-Request": "true", "HX-Boosted": "true"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 204
-    assert r.headers["HX-Redirect"] == f"/dashboard/info-items/{item.info_item_id}#replication"
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    entry = _picker_entry(r.text, rs)
+    assert "Needs" in entry
+    assert "<code>org.title</code>" in entry
+    # The template stands in for a path it cannot render yet.
+    assert _ORG_PREVIEW_PATH in entry
+    assert _assign_disabled(entry)
+    url = f"/dashboard/info-items/{item.info_item_id}/rep-fields?selected_spec={rs.rep_spec_id}"
+    assert f'hx-get="{url}&amp;focus=true"' in entry
+    assert 'hx-target="#ii-rep-fields"' in entry
 
 
 @pytest.mark.asyncio
-async def test_detail_page_carries_the_replication_anchor(client, session):
-    """The assign redirect's fragment has to land somewhere."""
-    item = _make_item("Anchor Item")
+async def test_a_spec_that_cannot_render_shows_the_gates_reason(client, session):
+    """archiver#312's wording, verbatim."""
+    item = _make_item("Slugless Picker", rep_fields={"org": {"title": "!!!"}})
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PREVIEW_PATH)
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    entry = _picker_entry(r.text, rs)
+    assert "Can’t render" in entry
+    assert "org.title &#34;!!!&#34; slugs to nothing (org.title_slug)" in entry
+    assert "selected_spec=" in entry
+
+
+@pytest.mark.asyncio
+async def test_an_unwritable_provider_is_disabled_with_its_reason(client, session):
+    item = _make_item("Unwritable Picker", rep_fields={})
+    rs = _make_rep_spec("Archive Spec")
+    rs.provider = "ia"
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    entry = _picker_entry(r.text, rs)
+    assert "Replicator has no Internet Archive writer yet" in entry
+    assert _assign_disabled(entry)
+    assert "selected_spec=" not in entry
+
+
+@pytest.mark.asyncio
+async def test_with_no_specs_at_all_the_picker_is_the_empty_state(client, session):
+    assert await session.scalar(select(func.count()).select_from(RepSpec)) == 0
+    item = _make_item("Empty Picker")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    block = _picker_block(r.text)
+    assert "No Replication Specs yet" in block
+    assert 'href="/dashboard/rep-specs/new"' in block
+
+
+@pytest.mark.asyncio
+async def test_with_every_spec_assigned_the_picker_says_so(client, session):
+    item = await _item_assigned_to(session, {}, _make_rep_spec("Only Spec"))
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    block = _picker_block(r.text)
+    assert "Every Replication Spec is assigned" in block
+    assert 'href="/dashboard/rep-specs/new"' in block
+
+
+@pytest.mark.asyncio
+async def test_the_picker_offers_a_new_spec_link_beside_its_list(client, session):
+    item = _make_item("New Link Picker")
+    session.add_all([item, _make_rep_spec("Some Spec")])
+    await session.flush()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    assert 'href="/dashboard/rep-specs/new"' in _picker_block(r.text)
+
+
+@pytest.mark.asyncio
+async def test_the_detail_page_carries_the_picker_and_not_the_ulid_form(client, session):
+    item = _make_item("Picker Detail")
     session.add(item)
     await session.flush()
 
     r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
     assert r.status_code == 200
-    assert 'id="replication"' in r.text
-
-
-def _rep_spec_requiring(name: str, *required: str, path_template: str) -> RepSpec:
-    rs = _make_rep_spec(name)
-    rs.document = {**rs.document, "required_fields": list(required), "path_template": path_template}
-    return rs
+    block = _picker_block(r.text)
+    assert 'id="ii-rep-spec-picker-heading"' in block
+    assert "RepSpec ULID" not in r.text
+    assert "assign-rep-spec" not in r.text
 
 
 @pytest.mark.asyncio
-async def test_assign_rep_spec_incomplete_names_the_missing_fields(client, session):
-    item = _make_item("Incomplete Item", rep_fields={})
+async def test_the_picker_refetches_on_a_siblings_replication_change_only(client, session):
+    item = _make_item("Listening Picker")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}", headers=_HEADERS)
+
+    block = _picker_block(r.text)
+    root = block[: block.index(">")]
+    assert f'hx-get="{_picker_url(item)}"' in root
+    assert "replicationChanged[detail.source!=='picker'] from:body" in root
+    assert 'hx-swap="outerHTML"' in root
+    assert 'hx-disinherit="*"' in root
+
+
+@pytest.mark.asyncio
+async def test_a_picker_refetch_never_moves_focus_and_is_never_cached(client, session):
+    item = _make_item("Refetch Picker")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "no-store"
+    assert 'getElementById("ii-rep-spec-picker-heading")' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_assign_creates_the_assignment_and_fires_replication_changed(client, session):
+    item, _ = await _bound_item(session, "Assign Picker", {})
+    rs = _make_rep_spec("Assign Me")
+    session.add(rs)
+    await session.flush()
+
+    r = await _assign(client, item, rs)
+
+    assert r.status_code == 200
+    triggers = read_flash(r)
+    assert triggers["replicationChanged"] == {"source": "picker"}
+    assert triggers["showFlash"] == {"level": "success", "body": "Assigned RepSpec 'Assign Me'."}
+    assignment = (
+        await session.execute(
+            select(InfoItemRepSpec).where(InfoItemRepSpec.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    assert assignment.rep_spec_id == rs.rep_spec_id
+    # The picker comes back without the spec it just assigned, focused.
+    assert 'id="ii-rep-spec-picker"' in r.text
+    assert f'id="picker-{rs.rep_spec_id}"' not in r.text
+    assert 'getElementById("ii-rep-spec-picker-heading")' in r.text
+
+
+@pytest.mark.asyncio
+async def test_assign_success_prompts_to_replicate_the_latest_revision(client, session):
+    item, _ = await _bound_item(session, "Prompt Picker", {})
+    rs = _make_rep_spec("Prompt Me")
+    session.add(rs)
+    await session.flush()
+
+    r = await _assign(client, item, rs)
+
+    assignment = (
+        await session.execute(
+            select(InfoItemRepSpec).where(InfoItemRepSpec.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    assert "Replicate latest revision now?" in r.text
+    url = (
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments/{assignment.id}/replicate"
+    )
+    prompt = r.text[r.text.index("data-replicate-prompt") :]
+    button = prompt[prompt.index("<button") : prompt.index(">", prompt.index("<button"))]
+    assert f'hx-post="{url}"' in button
+    assert "hx-confirm=" in button
+    assert 'hx-disabled-elt="this"' in button
+    assert 'hx-swap="outerHTML"' in button
+
+
+@pytest.mark.asyncio
+async def test_the_prompts_replicate_button_yields_to_nothing_but_drops_like_a_row_action(
+    client, session
+):
+    """It swaps the assignments table from outside it, so it races the table's
+    poll as a row action does (archiver#220) - and syncs the same way."""
+    item, _ = await _bound_item(session, "Prompt Sync Picker", {})
+    rs = _make_rep_spec("Sync Me")
+    session.add(rs)
+    await session.flush()
+
+    r = await _assign(client, item, rs)
+
+    assert outside_action_sync_violations(r.text, "ii-rep-spec-assignments") == []
+
+
+@pytest.mark.asyncio
+async def test_assign_with_no_revision_says_it_will_replicate_on_the_next(client, session):
+    item, _ = await _bound_item(session, "No Revision Picker", {}, with_revision=False)
+    rs = _make_rep_spec("Wait For It")
+    session.add(rs)
+    await session.flush()
+
+    r = await _assign(client, item, rs)
+
+    assert r.status_code == 200
+    assert "will replicate on the next revision" in r.text
+    assert "/replicate" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_assign_refusal_names_the_missing_fields_inline(client, session):
+    item = _make_item("Incomplete Picker", rep_fields={})
     rs = _rep_spec_requiring(
         "Needs org",
         "org.title",
@@ -647,98 +918,122 @@ async def test_assign_rep_spec_incomplete_names_the_missing_fields(client, sessi
     session.add_all([item, rs])
     await session.flush()
 
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
-        data={"rep_spec_id": str(rs.rep_spec_id)},
-        headers=_HEADERS,
-    )
-    assert r.status_code == 422
-    assert "text/html" in r.headers["content-type"]
-    assert "org.title" in r.text
-    assert "org.acronym" in r.text
+    r = await _assign(client, item, rs)
+
+    assert r.status_code == 200
+    assert "replicationChanged" not in r.headers.get("HX-Trigger", "")
+    refusal = r.text[r.text.index('id="picker-refusal"') :]
+    assert "Needs org" in refusal
+    assert "org.title" in refusal
+    assert "org.acronym" in refusal
+    assert await session.scalar(select(func.count()).select_from(InfoItemRepSpec)) == 0
 
 
 @pytest.mark.asyncio
-async def test_assign_rep_spec_unrenderable_returns_422_with_the_reason(client, session):
-    """Was an unhandled 500 (archiver#301)."""
-    item = _make_item("Unrenderable Item", rep_fields={"org": {"name": "WA LCB"}})
+async def test_assign_refusal_gives_the_render_reason_inline(client, session):
+    """Was an unhandled 500 before archiver#301."""
+    item = _make_item("Unrenderable Picker", rep_fields={"org": {"name": "WA LCB"}})
     rs = _rep_spec_requiring(
         "Raw name", "org.name", path_template="archive/{org.name}/{source_revision.id}.html"
     )
     session.add_all([item, rs])
     await session.flush()
 
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
-        data={"rep_spec_id": str(rs.rep_spec_id)},
-        headers=_HEADERS,
-    )
-    assert r.status_code == 422
-    assert "text/html" in r.headers["content-type"]
-    assert "cannot render" in r.text
-    assert "org.name" in r.text
-    assert "incident" not in r.text
+    r = await _assign(client, item, rs)
+
+    assert r.status_code == 200
+    refusal = r.text[r.text.index('id="picker-refusal"') :]
+    assert "cannot render" in refusal
+    assert "org.name" in refusal
 
 
 @pytest.mark.asyncio
-async def test_assign_rep_spec_names_the_raw_field_that_slugs_to_nothing(client, session):
-    """archiver#312: not "lack what ... requires: org.title_slug" - the operator typed org.title."""
-    item = _make_item("Slugless Item", rep_fields={"org": {"title": "!!!"}})
-    rs = _rep_spec_requiring(
-        "Slugged title",
-        "org.title_slug",
-        path_template="o/{org.title_slug}/{source_revision.id}.html",
-    )
+async def test_assign_refusal_names_the_raw_field_that_slugs_to_nothing(client, session):
+    """archiver#312: the operator typed org.title, so the refusal names it."""
+    item = _make_item("Slugless Assign Picker", rep_fields={"org": {"title": "!!!"}})
+    rs = _rep_spec_requiring("Slugged title", "org.title_slug", path_template=_ORG_PREVIEW_PATH)
     session.add_all([item, rs])
     await session.flush()
 
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
-        data={"rep_spec_id": str(rs.rep_spec_id)},
-        headers=_HEADERS,
-    )
-    assert r.status_code == 422
-    assert "cannot render" in r.text
-    assert "org.title &#34;!!!&#34; slugs to nothing (org.title_slug)" in r.text
-    assert "lack what" not in r.text
+    r = await _assign(client, item, rs)
+
+    refusal = r.text[r.text.index('id="picker-refusal"') :]
+    assert "cannot render" in refusal
+    assert "org.title &#34;!!!&#34; slugs to nothing (org.title_slug)" in refusal
+    assert "lack what" not in refusal
 
 
 @pytest.mark.asyncio
-async def test_assign_rep_spec_duplicate_returns_409(client, session):
-    item = _make_item("Duplicate Item")
+async def test_assign_refuses_a_duplicate_inline(client, session):
     rs = _make_rep_spec("Shared Spec")
-    session.add_all([item, rs])
-    await session.flush()
-    session.add(
-        InfoItemRepSpec(
-            info_item_id=item.info_item_id,
-            rep_spec_id=rs.rep_spec_id,
-            activated_at=datetime.now(UTC),
-        )
-    )
-    await session.flush()
+    item = await _item_assigned_to(session, {}, rs)
 
-    r = await client.post(
-        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
-        data={"rep_spec_id": str(rs.rep_spec_id)},
-        headers=_HEADERS,
-    )
-    assert r.status_code == 409
-    assert "text/html" in r.headers["content-type"]
-    assert "already" in r.text
-    assert "Shared Spec" in r.text
+    r = await _assign(client, item, rs)
+
+    assert r.status_code == 200
+    refusal = r.text[r.text.index('id="picker-refusal"') :]
+    assert "already assigned" in refusal
+    assert "Shared Spec" in refusal
+    assert await session.scalar(select(func.count()).select_from(InfoItemRepSpec)) == 1
 
 
 @pytest.mark.asyncio
-async def test_assign_rep_spec_unknown_item_returns_404(client):
-    fake_id = str(ULID())
+async def test_assign_refuses_an_unwritable_provider_server_side(client, session):
+    """The disabled button is a template gate; a direct POST must not bypass it (#167)."""
+    item = _make_item("Unwritable Assign Picker", rep_fields={})
+    rs = _make_rep_spec("Drive Spec")
+    rs.provider = "gdrive"
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await _assign(client, item, rs)
+
+    assert r.status_code == 200
+    refusal = r.text[r.text.index('id="picker-refusal"') :]
+    assert "Replicator has no Google Drive writer yet" in refusal
+    assert await session.scalar(select(func.count()).select_from(InfoItemRepSpec)) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rep_spec_id", ["not-a-ulid", str(ULID())])
+async def test_assign_refuses_a_spec_that_does_not_exist_inline(client, session, rep_spec_id):
+    item = _make_item("Ghost Picker")
+    session.add(item)
+    await session.flush()
+
+    r = await _assign(client, item, rep_spec_id)
+
+    assert r.status_code == 200
+    assert "no longer exists" in r.text[r.text.index('id="picker-refusal"') :]
+
+
+@pytest.mark.asyncio
+async def test_assign_on_an_unknown_item_is_404(client):
     r = await client.post(
-        f"/dashboard/info-items/{fake_id}/assign-rep-spec",
+        f"/dashboard/info-items/{ULID()}/rep-spec-picker/assign",
         data={"rep_spec_id": str(ULID())},
         headers=_HEADERS,
     )
+
     assert r.status_code == 404
     assert "text/html" in r.headers["content-type"]
+
+
+@pytest.mark.asyncio
+async def test_the_full_page_assign_route_is_retired(client, session):
+    item = _make_item("Retired Assign Item")
+    rs = _make_rep_spec()
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/assign-rep-spec",
+        data={"rep_spec_id": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+    )
+
+    assert r.status_code in (404, 405)
+    assert await session.scalar(select(func.count()).select_from(InfoItemRepSpec)) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1526,7 +1821,7 @@ def _dotted(**fields) -> dict:
 
 @pytest.mark.asyncio
 async def test_the_section_is_replication_and_keeps_its_anchor(client, session):
-    """#301's assign success redirects to #replication, so the id is a contract."""
+    """The section's deep link (archiver#301's redirect anchor, kept after #308 retired it)."""
     item = _make_item("Hub Replication Item")
     session.add(item)
     await session.flush()
@@ -2061,6 +2356,191 @@ async def test_the_fields_block_sits_outside_the_polled_wrapper(client, session)
     assert section.index("<!-- /ii-rep-spec-assignments -->") < section.index('id="ii-rep-fields"')
 
 
+# --- The spec selected in the picker joins the rows (archiver#308) ---
+
+
+@pytest.mark.asyncio
+async def test_a_selected_spec_adds_its_keys_to_the_fields_block(client, session):
+    item = _make_item("Selecting Item", rep_fields={})
+    rs = _rep_spec_requiring("Picked Spec", "org.title_slug", path_template=_ORG_PATH)
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        params={"selected_spec": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert 'name="field_key" value="org.title"' in r.text
+    assert "Required by Picked Spec" in r.text
+    assert "missing" in r.text
+    assert "Picked Spec" in r.text[: r.text.index("<form")]
+
+
+@pytest.mark.asyncio
+async def test_the_selection_survives_the_blocks_own_refetch_and_save(client, session):
+    item = _make_item("Sticky Selection Item", rep_fields={})
+    rs = _rep_spec_requiring("Sticky Spec", "org.title_slug", path_template=_ORG_PATH)
+    session.add_all([item, rs])
+    await session.flush()
+    url = f"/dashboard/info-items/{item.info_item_id}/rep-fields"
+
+    r = await client.get(url, params={"selected_spec": str(rs.rep_spec_id)}, headers=_HEADERS)
+
+    root = r.text[: r.text.index(">")]
+    assert f'hx-get="{url}?selected_spec={rs.rep_spec_id}"' in root
+    hidden = f'<input type="hidden" name="selected_spec" value="{rs.rep_spec_id}">'
+    assert r.text.count(hidden) == 2  # the row form and the JSON form
+
+    r = await client.patch(
+        url,
+        data={**_fields_form(**_dotted(org__title="WSLCB")), "selected_spec": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert "Required by Sticky Spec" in r.text
+    assert hidden in r.text
+
+
+@pytest.mark.asyncio
+async def test_selecting_focuses_the_first_key_the_spec_still_needs(client, session):
+    item = _make_item("Focus Selection Item", rep_fields={"org": {"title": "WSLCB"}})
+    rs = _rep_spec_requiring(
+        "Focus Spec",
+        "org.title_slug",
+        "info_item.name",
+        path_template="o/{org.title_slug}/{info_item.name}/{source_revision.id}.html",
+    )
+    session.add_all([item, rs])
+    await session.flush()
+    url = f"/dashboard/info-items/{item.info_item_id}/rep-fields"
+
+    r = await client.get(
+        url, params={"selected_spec": str(rs.rep_spec_id), "focus": "true"}, headers=_HEADERS
+    )
+
+    assert 'getElementById("rf-input-info_item-name")' in r.text
+    assert 'getElementById("ii-rep-fields-heading")' not in r.text
+
+    r = await client.get(url, params={"selected_spec": str(rs.rep_spec_id)}, headers=_HEADERS)
+
+    assert 'getElementById("rf-input-' not in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_selected_spec_already_assigned_adds_nothing(client, session):
+    rs = _rep_spec_requiring("Assigned Pick", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {}, rs)
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        params={"selected_spec": str(rs.rep_spec_id)},
+        headers=_HEADERS,
+    )
+
+    assert r.text.count('name="field_key" value="org.title"') == 1
+    assert 'name="selected_spec"' not in r.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selected", ["not-a-ulid", str(ULID())])
+async def test_an_unknown_selection_is_ignored(client, session, selected):
+    item = _make_item("Unknown Selection Item")
+    session.add(item)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        params={"selected_spec": selected},
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 200
+    assert "No assigned Replication Spec requires any fields." in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_selection_can_be_cleared(client, session):
+    item = _make_item("Clear Selection Item", rep_fields={})
+    rs = _rep_spec_requiring("Clear Spec", "org.title_slug", path_template=_ORG_PATH)
+    session.add_all([item, rs])
+    await session.flush()
+    url = f"/dashboard/info-items/{item.info_item_id}/rep-fields"
+
+    r = await client.get(url, params={"selected_spec": str(rs.rep_spec_id)}, headers=_HEADERS)
+
+    clear = r.text[: r.text.index(">Clear<")]
+    clear = clear[clear.rindex("<button") :]
+    assert f'hx-get="{url}"' in clear
+    assert 'hx-target="#ii-rep-fields"' in clear
+
+
+@pytest.mark.asyncio
+async def test_the_readout_covers_the_selected_spec(client, session):
+    item = _make_item("Readout Selection Item", rep_fields={})
+    rs = _rep_spec_requiring("Readout Spec", "org.title_slug", path_template=_ORG_PATH)
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields/readout",
+        params={
+            **_fields_form(**_dotted(org__title="WSLCB")),
+            "selected_spec": str(rs.rep_spec_id),
+        },
+        headers=_HEADERS,
+    )
+
+    assert 'id="rf-status-org-title"' in r.text
+    assert "wslcb" in r.text
+
+
+@pytest.mark.asyncio
+async def test_save_and_move_keeps_the_selection(client, session):
+    rs = _rep_spec_requiring("Moving Spec", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Old"}}, rs)
+    picked = _rep_spec_requiring("Picked Too", "info_item.name", path_template="x/{info_item.name}")
+    session.add(picked)
+    await session.flush()
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        data={
+            **_fields_form(**_dotted(org__title="New")),
+            "selected_spec": str(picked.rep_spec_id),
+        },
+        headers=_HEADERS,
+    )
+
+    assert r.status_code == 409
+    assert f'"selected_spec": "{picked.rep_spec_id}"' in r.text
+
+
+# --- The assignments table listens too (archiver#308) ---
+
+
+@pytest.mark.asyncio
+async def test_the_assignments_table_refetches_on_a_siblings_replication_change(client, session):
+    """The picker's assign adds a row; deactivate's own swap already shows its change."""
+    item, _assignment, _revision = await _assigned(
+        session, name="Table Listens", url="https://example.com/table-listens"
+    )
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-spec-assignments", headers=_HEADERS
+    )
+
+    listener = r.text[r.text.rindex("<div", 0, r.text.index("replicationChanged[")) :]
+    listener = listener[: listener.index(">")]
+    assert "replicationChanged[detail.source!=='assignments'] from:body" in listener
+    assert f'hx-get="/dashboard/info-items/{item.info_item_id}/rep-spec-assignments"' in listener
+    assert 'hx-target="#ii-rep-spec-assignments"' in listener
+    assert 'hx-sync="closest #ii-rep-spec-assignments:drop"' in listener
+
+
 @pytest.mark.asyncio
 async def test_the_rep_fields_suggestion_route_is_retired(client, session):
     item = _make_item("Retired Suggest Item")
@@ -2155,7 +2635,7 @@ async def test_the_swap_that_lands_a_terminal_state_is_the_one_that_stops_pollin
     )
 
     assert r.status_code == 200
-    assert "hx-trigger=" not in r.text
+    assert "every 2s" not in r.text
     assert "complete" in r.text
 
 
@@ -2181,7 +2661,7 @@ async def test_polling_stops_when_an_open_command_outruns_the_window(client, ses
     )
 
     assert r.status_code == 200
-    assert "hx-trigger=" not in r.text
+    assert "every 2s" not in r.text
     assert "still open" in r.text.lower()
 
 

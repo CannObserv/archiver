@@ -1,0 +1,150 @@
+{#- The Replication section's Add-a-spec picker (archiver#308) - included by
+   info_items/detail.html and returned by GET .../rep-spec-picker (the re-fetch)
+   and POST .../rep-spec-picker/assign (Assign, success or refusal).
+
+   Requires `item_id`, `entries`, `has_specs`, `preview_revision`, `assigned`
+   and `refusal`, from every render site, by spreading `_rep_spec_picker_context`
+   (tests/dashboard/test_partial_contracts.py, archiver#219). Without `entries`
+   the block renders "No Replication Specs yet" on a registry that holds some.
+   `swapped` is the caller's: Assign sets it so focus moves to the heading.
+
+   **Its own swap target**, a sibling of the polled assignments table and of
+   Fields (docs/UI.md § Blocks that share a section). Assign answers with this
+   block and fires `replicationChanged`; the block re-fetches itself on its
+   siblings' (a Fields save changes readiness, a deactivate frees a spec).
+
+   Readiness is the gate's (`check_bag_against_spec`), so the disabled Assign
+   is a courtesy: the server re-checks. Select is an htmx GET of the Fields
+   block with this spec's keys added - it swaps Fields, not this block. -#}
+<div id="ii-rep-spec-picker"
+     hx-get="/dashboard/info-items/{{ item_id }}/rep-spec-picker"
+     hx-trigger="replicationChanged[detail.source!=='picker'] from:body"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-disinherit="*"
+     style="margin-bottom:var(--space-4);">
+  <h3 id="ii-rep-spec-picker-heading" tabindex="-1" style="margin-bottom:var(--space-2);font-size:1rem;">Add a spec</h3>
+
+  <div aria-live="polite" aria-atomic="true">
+    {% if refusal %}
+    <p id="picker-refusal" class="text-danger text-sm" role="alert">Not assigned: {{ refusal }}</p>
+    {% endif %}
+    {% if assigned %}
+    <div data-replicate-prompt x-data="{ open: true }" x-show="open" class="text-sm"
+         style="margin-bottom:var(--space-3);">
+      {% if preview_revision %}
+      <p style="margin-bottom:var(--space-1);">Assigned RepSpec '{{ assigned.name }}'. Replicate latest revision now?</p>
+      {#- The row action's guards (archiver#171/#220): confirmed, because the
+         target is a permanent store; disabled in flight; and synced on the
+         assignments table with `drop`, so its poll yields. By id, not
+         `closest`: this button sits outside the table. It answers with the
+         table and fires nothing, like the row action (docs/UI.md). -#}
+      <button type="button" class="btn btn--sm btn--secondary"
+              hx-post="/dashboard/info-items/{{ item_id }}/rep-spec-assignments/{{ assigned.assignment_id }}/replicate"
+              hx-target="#ii-rep-spec-assignments"
+              hx-swap="outerHTML"
+              hx-sync="#ii-rep-spec-assignments:drop"
+              hx-disabled-elt="this"
+              hx-confirm="Issue a replication for this assignment against the latest revision?"
+              hx-on::after-request="if (event.detail.successful) { this.closest('[data-replicate-prompt]').remove(); }"
+              aria-label="Replicate assignment {{ assigned.assignment_id }} now">
+        Replicate now
+      </button>
+      <button type="button" class="btn btn--sm btn--ghost" @click="open = false">Not now</button>
+      {% else %}
+      <p style="margin-bottom:var(--space-1);">Assigned RepSpec '{{ assigned.name }}'. No revision captured yet: it will replicate on the next revision.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if entries %}
+  <p class="text-muted text-sm" style="margin-bottom:var(--space-2);">
+    {% if preview_revision %}
+    Paths rendered against the latest revision, captured {{ preview_revision.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}.
+    {% else %}
+    Example occasion: no revision captured yet, so paths use a placeholder revision id of zeros.
+    {% endif %}
+  </p>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Replication Specs not assigned to this item">
+    <table class="data-table" aria-label="Replication Specs not assigned to this item">
+      <thead>
+        <tr>
+          <th class="data-table__th">Spec</th>
+          <th class="data-table__th">Provider</th>
+          <th class="data-table__th">Readiness</th>
+          <th class="data-table__th">Path</th>
+          <th class="data-table__th">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr id="picker-{{ entry.rep_spec_id }}">
+          <td class="data-table__cell"><a href="/dashboard/rep-specs/{{ entry.rep_spec_id }}">{{ entry.name }}</a></td>
+          <td class="data-table__cell"><span class="badge badge--sm">{{ entry.provider }}</span></td>
+          <td class="data-table__cell text-sm">
+            {% if entry.readiness == "ready" %}
+            <span class="badge badge--success">Ready</span>
+            {% elif entry.readiness == "needs" %}
+            <span class="badge badge--warning">Needs</span>
+            {% for key in entry.needs %}<code>{{ key }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+            {% elif entry.readiness == "unrenderable" %}
+            <span class="badge badge--danger">Can’t render</span>
+            <div class="text-danger">{{ entry.reason }}</div>
+            {% else %}
+            <span class="badge badge--muted">Unavailable</span>
+            <div class="text-muted">{{ entry.reason }}</div>
+            {% endif %}
+          </td>
+          <td class="data-table__cell text-sm" style="word-break:break-all;">
+            {% if entry.path %}
+            <code>{{ entry.path }}</code>
+            {% elif entry.template %}
+            <code class="text-muted" title="The template: it renders once the spec is ready">{{ entry.template }}</code>
+            {% else %}
+            <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell">
+            {% if entry.readiness in ("needs", "unrenderable") %}
+            <button type="button" class="btn btn--sm btn--ghost"
+                    hx-get="/dashboard/info-items/{{ item_id }}/rep-fields?selected_spec={{ entry.rep_spec_id }}&amp;focus=true"
+                    hx-target="#ii-rep-fields"
+                    hx-swap="outerHTML"
+                    aria-label="Show the fields {{ entry.name }} needs">Select</button>
+            {% endif %}
+            <form hx-post="/dashboard/info-items/{{ item_id }}/rep-spec-picker/assign"
+                  hx-target="#ii-rep-spec-picker"
+                  hx-swap="outerHTML"
+                  style="display:inline;">
+              <input type="hidden" name="rep_spec_id" value="{{ entry.rep_spec_id }}">
+              <button type="submit" class="btn btn--sm btn--primary"
+                      hx-disabled-elt="this"
+                      aria-label="Assign {{ entry.name }}"{% if not entry.ready %}
+                      disabled title="{{ 'Unavailable' if entry.readiness == 'unwritable' else 'Not ready: select it to fill in its fields' }}"{% endif %}>Assign</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif has_specs %}
+  <p class="text-muted" style="margin-bottom:var(--space-2);">Every Replication Spec is assigned to this item.</p>
+  {% else %}
+  <p class="text-muted" style="margin-bottom:var(--space-2);">No Replication Specs yet. Create one to replicate this item.</p>
+  {% endif %}
+  <p class="text-sm" style="margin:var(--space-2) 0 0;"><a href="/dashboard/rep-specs/new">New spec ↗</a></p>
+
+  {% if swapped %}
+  {# Assign destroys the button that was clicked; focus the heading. Rendered
+     only on Assign's response, never the include or a re-fetch. #}
+  <script>
+    (function () {
+      var h = document.getElementById("ii-rep-spec-picker-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>
+<!-- /ii-rep-spec-picker -->

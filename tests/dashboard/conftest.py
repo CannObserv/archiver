@@ -44,6 +44,19 @@ class _SectionAttrs(HTMLParser):
             self.actions.append((tag, a))
 
 
+class _Actions(HTMLParser):
+    """Every request-issuing element in a fragment."""
+
+    def __init__(self):
+        super().__init__()
+        self.actions: list[tuple[str, dict]] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if any(verb in a for verb in _HX_VERBS):
+            self.actions.append((tag, a))
+
+
 def poll_sync_violations(fragment: str, wrapper_id: str) -> list[str]:
     """Every way a self-polling section's poll could beat a click (archiver#220).
 
@@ -79,17 +92,49 @@ def poll_sync_violations(fragment: str, wrapper_id: str) -> list[str]:
         violations.append(f"#{wrapper_id} must disinherit hx-sync")
     if not parsed.actions:
         violations.append(f"no request-issuing element inside #{wrapper_id}: a vacuous pass")
+    selectors = (f"closest #{wrapper_id}", f"#{wrapper_id}")
     for tag, a in parsed.actions:
-        label = a.get("aria-label") or next(a[v] for v in _HX_VERBS if v in a)
-        sync = a.get("hx-sync")
-        if sync is None:
-            violations.append(f"<{tag}> {label!r} declares no hx-sync")
-            continue
-        selector, _, strategy = sync.partition(":")
-        if selector.strip() not in (f"closest #{wrapper_id}", f"#{wrapper_id}"):
-            violations.append(f"<{tag}> {label!r} syncs on {selector!r}, not #{wrapper_id}")
-        if (strategy.strip() or "drop") != "drop":
-            violations.append(f"<{tag}> {label!r} uses {strategy.strip()!r}, not 'drop'")
+        violations += _action_sync_violations(tag, a, wrapper_id, selectors)
+    return violations
+
+
+def outside_action_sync_violations(fragment: str, wrapper_id: str) -> list[str]:
+    """``poll_sync_violations`` for actions *outside* the wrapper that swap it (archiver#308).
+
+    The Replication section's spec picker offers "Replicate latest revision
+    now?" from a sibling block, targeting the assignments table. It races the
+    table's poll exactly as a row action does, so it is held to the same rule -
+    sync on the wrapper, with ``drop`` - except that ``closest`` finds nothing
+    from outside the wrapper, so only the bare id passes.
+
+    ``fragment`` is the sibling block; every request-issuing element in it whose
+    ``hx-target`` is the wrapper is checked.
+    """
+    parsed = _Actions()
+    parsed.feed(fragment)
+    targeting = [(tag, a) for tag, a in parsed.actions if a.get("hx-target") == f"#{wrapper_id}"]
+    if not targeting:
+        return [f"nothing in this fragment swaps #{wrapper_id}, so there is nothing to check"]
+    violations: list[str] = []
+    for tag, a in targeting:
+        violations += _action_sync_violations(tag, a, wrapper_id, (f"#{wrapper_id}",))
+    return violations
+
+
+def _action_sync_violations(
+    tag: str, a: dict, wrapper_id: str, selectors: tuple[str, ...]
+) -> list[str]:
+    """How one action fails to sync on the wrapper with ``drop``, if it does."""
+    label = a.get("aria-label") or next(a[v] for v in _HX_VERBS if v in a)
+    sync = a.get("hx-sync")
+    if sync is None:
+        return [f"<{tag}> {label!r} declares no hx-sync"]
+    violations = []
+    selector, _, strategy = sync.partition(":")
+    if selector.strip() not in selectors:
+        violations.append(f"<{tag}> {label!r} syncs on {selector!r}, not #{wrapper_id}")
+    if (strategy.strip() or "drop") != "drop":
+        violations.append(f"<{tag}> {label!r} uses {strategy.strip()!r}, not 'drop'")
     return violations
 
 

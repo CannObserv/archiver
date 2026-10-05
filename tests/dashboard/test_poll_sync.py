@@ -7,7 +7,7 @@ empty list means the section is safe rather than that the checker saw nothing.
 
 import pytest
 
-from tests.dashboard.conftest import poll_sync_violations
+from tests.dashboard.conftest import outside_action_sync_violations, poll_sync_violations
 
 _FIXED_WRAPPER = 'hx-sync="this:abort" hx-disinherit="hx-sync"'
 
@@ -62,4 +62,49 @@ def test_a_render_that_does_not_poll_cannot_pass():
     """Asserted against an idle render, the check would pass vacuously."""
     assert poll_sync_violations(_section(polling=False), "s") == [
         "#s is not polling in this render, so there is nothing to check"
+    ]
+
+
+# ---------------------------------------------------------------------------
+# An action outside the wrapper that swaps it (archiver#308)
+# ---------------------------------------------------------------------------
+#
+# The picker's "Replicate latest revision now?" button sits in a sibling block
+# and swaps the assignments table, so it races the table's poll exactly as a
+# row action does - but ``closest`` cannot find a wrapper it is not inside.
+
+
+def _outside(action_sync: str = "", target: str = "#s") -> str:
+    return (
+        f'<div id="p"><button hx-post="/r" hx-target="{target}" aria-label="Replicate" '
+        f"{action_sync}>R</button></div>"
+    )
+
+
+def test_an_outside_action_syncing_on_the_wrapper_by_id_passes():
+    assert outside_action_sync_violations(_outside('hx-sync="#s:drop"'), "s") == []
+
+
+def test_an_outside_action_cannot_sync_on_closest():
+    """``closest #s`` from outside #s finds nothing, and htmx syncs on nothing."""
+    assert outside_action_sync_violations(_outside('hx-sync="closest #s:drop"'), "s") == [
+        "<button> 'Replicate' syncs on 'closest #s', not #s"
+    ]
+
+
+def test_an_unsynced_outside_action_fails():
+    assert outside_action_sync_violations(_outside(), "s") == [
+        "<button> 'Replicate' declares no hx-sync"
+    ]
+
+
+def test_an_outside_action_that_does_not_drop_fails():
+    assert outside_action_sync_violations(_outside('hx-sync="#s:replace"'), "s") == [
+        "<button> 'Replicate' uses 'replace', not 'drop'"
+    ]
+
+
+def test_a_fragment_with_no_action_targeting_the_wrapper_cannot_pass():
+    assert outside_action_sync_violations(_outside(target="#elsewhere"), "s") == [
+        "nothing in this fragment swaps #s, so there is nothing to check"
     ]

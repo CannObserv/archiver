@@ -244,4 +244,44 @@ describe("a self-polling section's sync rules, on the vendored htmx", function (
         expect(document.getElementById("sect").textContent).toBe("from the poll");
         expect(toasts).toEqual([]);
     });
+
+    it("lets an action outside the wrapper abort a poll, synced by bare id", function () {
+        // archiver#308: the spec picker's "Replicate now" prompt swaps the
+        // assignments table from a sibling block, where `closest` finds nothing.
+        mount(SHIPPED_WRAPPER, SHIPPED_ACTION);
+        var out = document.createElement("div");
+        out.innerHTML = "<button id=\"out\" hx-post=\"/out\" hx-target=\"#sect\" "
+            + "hx-swap=\"outerHTML\" hx-sync=\"#sect:drop\">Out</button>";
+        document.body.appendChild(out);
+        htmx.process(out);
+        tick();
+        click("out");
+
+        expect(requests()).toEqual(["GET /poll", "POST /out"]);
+        expect(sent[0].aborted).toBe(true);
+
+        respond(sent[1], "<div id=\"sect\">from outside</div>");
+
+        expect(document.getElementById("sect").textContent).toBe("from outside");
+    });
+
+    it("lets a hidden from:body listener inside the wrapper abort a poll", function () {
+        // archiver#308: the table's replicationChanged re-fetch is a hidden
+        // element synced like a row action, so the poll yields to it too.
+        mount(SHIPPED_WRAPPER, SHIPPED_ACTION);
+        var listener = document.createElement("div");
+        listener.setAttribute("hidden", "");
+        listener.setAttribute("hx-get", "/refetch");
+        listener.setAttribute("hx-trigger", "changed from:body");
+        listener.setAttribute("hx-target", "#sect");
+        listener.setAttribute("hx-swap", "outerHTML");
+        listener.setAttribute("hx-sync", "closest #sect:drop");
+        document.getElementById("sect").appendChild(listener);
+        htmx.process(listener);
+        tick();
+        htmx.trigger(document.body, "changed");
+
+        expect(requests()).toEqual(["GET /poll", "GET /refetch"]);
+        expect(sent[0].aborted).toBe(true);
+    });
 });
