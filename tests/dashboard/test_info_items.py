@@ -2422,6 +2422,8 @@ async def test_a_selected_spec_adds_its_keys_to_the_fields_block(client, session
     assert 'name="field_key" value="org.title"' in r.text
     assert "Required by Picked Spec" in r.text
     assert "missing" in r.text
+    # CR 6: the rows are no longer only the assigned specs'.
+    assert 'aria-label="Fields the Replication Specs require"' in r.text
     assert "Picked Spec" in r.text[: r.text.index("<form")]
 
 
