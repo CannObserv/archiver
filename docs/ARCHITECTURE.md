@@ -29,7 +29,11 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                a 4xx, archiver#171;
                                rep_fields_block.py — pure Replication Fields block view model:
                                rows per required raw key, source badges, the form parse,
-                               archiver#307)
+                               archiver#307;
+                               rep_spec_picker.py — pure Add-a-spec picker view model:
+                               readiness and path preview per unassigned spec, archiver#308;
+                               providers.py — UNWRITABLE_PROVIDERS, shared by the RepSpec form
+                               and the picker, archiver#202/#308)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,
