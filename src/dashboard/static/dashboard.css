@@ -1076,6 +1076,18 @@ p:last-child { margin-bottom: 0; }
   gap: var(--space-2);
   flex: 0 0 auto;
 }
+/* One key/value pair in an editable map - the Replication Fields block's
+   Other fields (#307): name, value, Remove on one line. A grid rather than
+   .field-row's flex so the stored rows and an added row line up column for
+   column. */
+.field-pair-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(8rem, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  max-width: 48rem;
+  margin-bottom: var(--space-1);
+}
 /* One editable field: its label stacked above the view/edit row, so the label
    does not move when the row flips. Same quiet treatment as .notes-heading. */
 .field-row-group { display: flex; flex-direction: column; gap: var(--space-1); }

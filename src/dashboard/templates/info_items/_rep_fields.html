@@ -96,7 +96,7 @@
     <p class="text-muted text-sm" style="margin-bottom:var(--space-2);">Stored values no assigned spec requires, as <code>namespace.key</code>.</p>
     <div x-ref="otherRows">
       {% for field in other_fields %}
-      <div data-field-row style="display:grid;grid-template-columns:minmax(8rem,14rem) minmax(8rem,1fr) auto;gap:var(--space-2);align-items:center;max-width:48rem;margin-bottom:var(--space-1);">
+      <div data-field-row class="field-pair-row">
         <input type="text" name="field_key" value="{{ field.key }}" class="form-input" aria-label="Field name">
         <input type="hidden" name="field_type" value="{{ field.input_type }}">
         <input type="text" name="field_value" value="{{ field.input_value }}" class="form-input" aria-label="Value of {{ field.key }}">
@@ -105,7 +105,7 @@
       {% endfor %}
     </div>
     <template x-ref="blankRow">
-      <div data-field-row style="display:grid;grid-template-columns:minmax(8rem,14rem) minmax(8rem,1fr) auto;gap:var(--space-2);align-items:center;max-width:48rem;margin-bottom:var(--space-1);">
+      <div data-field-row class="field-pair-row">
         <input type="text" name="field_key" value="" class="form-input" aria-label="Field name" placeholder="namespace.key">
         <input type="hidden" name="field_type" value="string">
         <input type="text" name="field_value" value="" class="form-input" aria-label="Field value">
