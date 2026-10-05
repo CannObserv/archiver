@@ -90,6 +90,7 @@ from src.dashboard.rep_fields_block import (
     FieldsFormError,
     build_fields,
     parse_fields_form,
+    raw_keys,
 )
 from src.dashboard.rep_spec_picker import build_picker, example_occasion
 from src.dashboard.replication_actions import (
@@ -564,13 +565,19 @@ async def _fields_specs(
     return specs, selected
 
 
-def _first_needed(rows: tuple[FieldRow, ...], spec_name: str) -> str | None:
+def _first_needed(rows: tuple[FieldRow, ...], document: dict) -> str | None:
     """The input focus moves to on selecting a spec: its first key still to fix.
 
     A missing or empty-slug key first; else the spec's first editable row,
     since a spec that cannot render on a stored value is fixed there too.
+    Matched by the spec's own raw keys, not its name: names are not unique (CR 4).
     """
-    editable = [r for r in rows if spec_name in r.required_by and r.badge != "from_power_map"]
+    keys: set[str] = set()
+    for required in document.get("required_fields") or []:
+        ns, _, key = str(required).partition(".")
+        if ns and key:
+            keys.update(f"{ns}.{raw}" for raw in raw_keys(key))
+    editable = [r for r in rows if r.key in keys and r.badge != "from_power_map"]
     needed = [r for r in editable if r.badge in ("missing", "slugs_to_nothing")]
     first = (needed or editable or [None])[0]
     return f"rf-input-{first.dom_id}" if first is not None else None
@@ -601,7 +608,9 @@ async def _rep_fields_context(
         "other_fields": view.other_fields,
         "bag_json": json.dumps(bag, indent=2),
         "selected": selected,
-        "focus_input": _first_needed(view.rows, selected.name) if focus and selected else None,
+        "focus_input": (
+            _first_needed(view.rows, selected.document or {}) if focus and selected else None
+        ),
     }
 
 

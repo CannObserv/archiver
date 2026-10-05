@@ -2477,6 +2477,28 @@ async def test_selecting_focuses_the_first_key_the_spec_still_needs(client, sess
 
 
 @pytest.mark.asyncio
+async def test_selecting_focuses_by_the_specs_keys_not_its_name(client, session):
+    """CR 4. RepSpec names are not unique: focus by name could land on a row
+    only an assigned namesake needs."""
+    assigned = _rep_spec_requiring("Same Name", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {}, assigned)
+    picked = _rep_spec_requiring(
+        "Same Name", "info_item.name", path_template="x/{info_item.name}/{source_revision.id}"
+    )
+    session.add(picked)
+    await session.flush()
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        params={"selected_spec": str(picked.rep_spec_id), "focus": "true"},
+        headers=_HEADERS,
+    )
+
+    assert 'getElementById("rf-input-info_item-name")' in r.text
+    assert 'getElementById("rf-input-org-title")' not in r.text
+
+
+@pytest.mark.asyncio
 async def test_a_selected_spec_already_assigned_adds_nothing(client, session):
     rs = _rep_spec_requiring("Assigned Pick", "org.title_slug", path_template=_ORG_PATH)
     item = await _item_assigned_to(session, {}, rs)
