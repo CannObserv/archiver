@@ -980,12 +980,21 @@ async def assign_from_picker(
         rs_ulid = ULID.from_str(rep_spec_id.strip())
     except ValueError:
         return await refused(_GONE_SPEC)
-    spec = await session.get(RepSpec, rs_ulid)
-    if spec is None:
+    # Columns, not the instance (CR 1): assign_rep_spec re-reads the spec FOR
+    # UPDATE without populate_existing, so an instance loaded here would keep
+    # its attributes - a draft edited in between would be gated on its old
+    # document and frozen on the new one (#83).
+    row = (
+        await session.execute(
+            select(RepSpec.name, RepSpec.provider).where(RepSpec.rep_spec_id == rs_ulid)
+        )
+    ).one_or_none()
+    if row is None:
         return await refused(_GONE_SPEC)
-    label = f"RepSpec '{spec.name}'"
-    if spec.provider in UNWRITABLE_PROVIDERS:
-        return await refused(f"{label} cannot be assigned: {UNWRITABLE_PROVIDERS[spec.provider]}.")
+    name, provider = row
+    label = f"RepSpec '{name}'"
+    if provider in UNWRITABLE_PROVIDERS:
+        return await refused(f"{label} cannot be assigned: {UNWRITABLE_PROVIDERS[provider]}.")
 
     try:
         assignment = await assign_rep_spec(
@@ -1018,7 +1027,7 @@ async def assign_from_picker(
         item=item,
         session=session,
         swapped=True,
-        assigned=_Assigned(assignment.id, spec.name),
+        assigned=_Assigned(assignment.id, name),
     )
     response.headers["HX-Trigger"] = _replication_changed(
         _PICKER_SOURCE, ("success", f"Assigned {label}.")

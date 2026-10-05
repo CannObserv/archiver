@@ -21,6 +21,8 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.services.replication_issuance import ManualIssuanceError
+from src.core.tools.assign_rep_spec import assign_rep_spec
+from src.dashboard.routes import info_items as info_items_routes
 from tests.dashboard.conftest import (
     outside_action_sync_violations,
     poll_sync_violations,
@@ -904,6 +906,33 @@ async def test_assign_with_no_revision_says_it_will_replicate_on_the_next(client
     assert r.status_code == 200
     assert "will replicate on the next revision" in r.text
     assert "/replicate" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_assign_leaves_the_spec_for_assign_rep_spec_to_load_under_its_lock(
+    client, session, monkeypatch
+):
+    """CR 1. A RepSpec instance the route loaded first keeps its attributes when
+    assign_rep_spec re-reads it FOR UPDATE (no populate_existing), so a draft
+    edited in between would be gated on its old document and frozen on the new."""
+    item, _ = await _bound_item(session, "Lock Order Picker", {})
+    rs = _make_rep_spec("Lock Me")
+    session.add(rs)
+    await session.flush()
+    session.expunge(rs)
+    seen = []
+
+    async def spy(db, **kw):
+        seen.append(any(isinstance(o, RepSpec) for o in db.identity_map.values()))
+        return await assign_rep_spec(db, **kw)
+
+    monkeypatch.setattr(info_items_routes, "assign_rep_spec", spy)
+
+    r = await _assign(client, item, rs)
+
+    assert r.status_code == 200
+    assert "replicationChanged" in read_flash(r)
+    assert seen == [False]
 
 
 @pytest.mark.asyncio
