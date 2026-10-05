@@ -58,14 +58,14 @@
               <div class="text-muted text-sm">Set by the linked organization; edit it in Power Map.</div>
               {% else %}
               <input type="hidden" name="field_key" value="{{ row.key }}">
-              <input type="hidden" name="field_type" value="{{ row.stored.input_type }}">
+              <input type="hidden" name="field_type" value="{{ row.input_type }}">
               <input type="text" name="field_value" class="form-input"
-                     id="rf-input-{{ row.stored.dom_id }}"
+                     id="rf-input-{{ row.dom_id }}"
                      aria-label="{{ row.key }}"
-                     value="{{ row.stored.input_value }}">
+                     value="{{ row.input_value }}">
               {% if row.suggestion %}
               <button type="button" class="btn btn--ghost btn--sm"
-                      data-target="rf-input-{{ row.stored.dom_id }}"
+                      data-target="rf-input-{{ row.dom_id }}"
                       data-suggestion="{{ row.suggestion }}"
                       @click="useSuggestion($el.dataset.target, $el.dataset.suggestion)">Use “{{ row.suggestion }}”</button>
               {% endif %}

@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 
 import pytest
 from sqlalchemy import select
@@ -1735,6 +1736,52 @@ async def test_a_structured_save_stores_the_bag_and_swaps_the_block(client, sess
     assert r.headers["HX-Reswap"] == "outerHTML"
     assert 'id="ii-rep-fields"' in r.text
     assert 'getElementById("ii-rep-fields-heading")' in r.text
+
+
+class _RenderedForm(HTMLParser):
+    """The Fields form's inputs in document order, as the browser would post them."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.body: dict[str, list[str]] = {"field_key": [], "field_value": [], "field_type": []}
+        self._in_form = self._in_template = False
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if a.get("id") == "ii-rep-fields-form":
+            self._in_form = True
+        elif tag == "template":
+            self._in_template = True
+        elif self._in_form and not self._in_template and a.get("name") in self.body:
+            self.body[a["name"]].append(a.get("value") or "")
+
+    def handle_endtag(self, tag):
+        if tag == "template":
+            self._in_template = False
+        elif tag == "form":
+            self._in_form = False
+
+
+@pytest.mark.asyncio
+async def test_saving_the_form_unedited_leaves_the_bag_unchanged(client, session):
+    """CR 5: a stored null or "" rendered blank, and blank means "not set", so a
+    no-op save deleted them."""
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    bag = {
+        "org": {"title": "Board", "title_slug": "custom", "note": ""},
+        "meta": {"year": 2024, "draft": False, "gone": None},
+    }
+    item = await _item_assigned_to(session, bag, rs)
+    url = f"/dashboard/info-items/{item.info_item_id}/rep-fields"
+
+    page = await client.get(url, headers=_HEADERS)
+    form = _RenderedForm()
+    form.feed(page.text)
+    r = await client.patch(url, headers=_HEADERS, data=form.body)
+
+    assert r.status_code == 200
+    await session.refresh(item)
+    assert item.rep_fields == bag
 
 
 @pytest.mark.asyncio

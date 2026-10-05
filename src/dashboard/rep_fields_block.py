@@ -34,15 +34,17 @@ class StoredField(NamedTuple):
 
     @property
     def input_type(self) -> str:
-        """``string`` posts verbatim; ``json`` parses it if it can, keeping 2024 a number."""
-        return "string" if isinstance(self.value, str) or self.value is None else "json"
+        """``string`` posts verbatim; ``json`` parses it if it can, keeping 2024 a number.
+
+        ``null`` and ``""`` are JSON too (CR 5): a blank input means "not set",
+        so either one rendered blank would be deleted by a save nobody edited.
+        """
+        return "string" if isinstance(self.value, str) and self.value else "json"
 
     @property
     def input_value(self) -> str:
         """The value as the input holds it."""
-        if self.value is None:
-            return ""
-        return self.value if isinstance(self.value, str) else json.dumps(self.value)
+        return self.value if self.input_type == "string" else json.dumps(self.value)
 
     @property
     def dom_id(self) -> str:
@@ -76,11 +78,22 @@ class FieldRow:
     badge: str
     reason: str | None
     suggestion: str | None
+    is_stored: bool = False
 
     @property
-    def stored(self) -> StoredField:
-        """The row's own value in the shape the form round-trips."""
-        return StoredField(self.key, self.value)
+    def dom_id(self) -> str:
+        """The id-safe form of the key, as ``StoredField.dom_id``."""
+        return StoredField(self.key, None).dom_id
+
+    @property
+    def input_type(self) -> str:
+        """An absent key is an empty text input; a stored one round-trips as stored (CR 5)."""
+        return StoredField(self.key, self.value).input_type if self.is_stored else "string"
+
+    @property
+    def input_value(self) -> str:
+        """The value as the row's input holds it."""
+        return StoredField(self.key, self.value).input_value if self.is_stored else ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +226,7 @@ def _row(
         badge=badge,
         reason=reason,
         suggestion=suggestion,
+        is_stored=key in stored_ns,
     )
 
 

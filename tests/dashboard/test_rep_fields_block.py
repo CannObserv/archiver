@@ -206,6 +206,33 @@ def test_a_non_string_value_round_trips_as_json():
     assert (field.input_type, field.input_value) == ("json", "2024")
 
 
+@pytest.mark.parametrize(("value", "rendered"), [(None, "null"), ("", '""')])
+def test_a_stored_null_or_empty_string_round_trips_as_json(value, rendered):
+    """A blank input means "not set", so these cannot render blank (CR 5)."""
+    field = build_fields({"meta": {"x": value}}, [], org=None, item_name="x").other_fields[0]
+
+    assert (field.input_type, field.input_value) == ("json", rendered)
+    assert parse_fields_form(["meta.x"], [rendered], ["json"]) == {"meta": {"x": value}}
+
+
+def test_an_absent_required_key_renders_an_empty_text_input():
+    row = _row(build_fields({}, [_ORG_SPEC], org=None, item_name="x"), "org.title")
+
+    assert (row.input_type, row.input_value) == ("string", "")
+
+
+def test_a_stored_null_required_key_renders_as_stored():
+    spec = ("Raw", {"required_fields": ["info_item.name"]})
+
+    row = _row(
+        build_fields({"info_item": {"name": None}}, [spec], org=None, item_name="x"),
+        "info_item.name",
+    )
+
+    assert row.badge == "missing"
+    assert (row.input_type, row.input_value) == ("json", "null")
+
+
 def test_a_string_value_round_trips_as_text():
     field = build_fields({"meta": {"label": "2024"}}, [], org=None, item_name="x").other_fields[0]
 
