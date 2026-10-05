@@ -1176,7 +1176,8 @@ async def deactivate_rep_spec_assignment(
     response, _ = await _render_rep_spec_assignments(
         request, user=user, item_id=item_ulid, session=session, swapped=True
     )
-    # The Fields rows come from the active assignments, so this changed them.
+    # The Fields rows come from the active assignments, and the picker lists the
+    # specs not assigned, so this changed both (archiver#307, #308).
     response.headers["HX-Trigger"] = _replication_changed("assignments")
     return response
 

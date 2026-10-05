@@ -1,7 +1,8 @@
 {# Replication Specs assignments section — included by info_items/detail.html and
    returned by three routes under /dashboard/info-items/{id}/rep-spec-assignments:
-   the poll (GET), deactivate (DELETE .../{aid}) and Replicate now (POST
-   .../{aid}/replicate). Each action re-renders the table + empty-state in one
+   the GET (the poll, and the re-fetch on a sibling's `replicationChanged`,
+   archiver#308), deactivate (DELETE .../{aid}) and Replicate now (POST
+   .../{aid}/replicate), which the picker's prompt also posts. Each action re-renders the table + empty-state in one
    swap and moves focus, because each destroys the clicked button (#81, #171
    CR #37). Requires
    `item_id`, `irs_rows`, `rep_specs_by_id`, `latest_commands`, `poll` and
