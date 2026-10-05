@@ -274,6 +274,13 @@ def test_parse_builds_a_namespaced_bag():
     assert bag == {"org": {"title": "Board"}, "meta": {"year": 2024}}
 
 
+def test_parse_keeps_text_typed_over_a_json_value():
+    """The type marker is invisible: retyping 2024 as text is an edit, not an error (CR 2)."""
+    bag = parse_fields_form(["meta.year", "meta.draft"], ["circa 2024", "true"], ["json", "json"])
+
+    assert bag == {"meta": {"year": "circa 2024", "draft": True}}
+
+
 def test_parse_drops_blank_values():
     assert parse_fields_form(["org.title", "org.acronym"], ["Board", "  "], ["string"] * 2) == {
         "org": {"title": "Board"}
@@ -301,7 +308,6 @@ def test_parse_trims_the_key_but_not_the_value():
     [
         (["", "x"], ["v", "y"], ["string"] * 2, "no name"),
         (["org.title", "org.title"], ["a", "b"], ["string"] * 2, "org.title"),
-        (["meta.year"], ["{nope"], ["json"], "meta.year"),
         (["org", "org.title"], ["a", "b"], ["string"] * 2, "org"),
         (["org.title"], ["a", "b"], ["string"], "mismatched"),
     ],
@@ -314,13 +320,13 @@ def test_parse_refuses_what_it_cannot_build(keys, values, types, fragment):
 def test_a_lenient_parse_reads_what_it_can():
     """The live readout reads half-typed input; only the save refuses it."""
     bag = parse_fields_form(
-        ["org.title", "org.title", "meta.year", "", "org"],
-        ["A", "B", "{nope", "orphan", "flat"],
-        ["string", "string", "json", "string", "string"],
+        ["org.title", "org.title", "", "org"],
+        ["A", "B", "orphan", "flat"],
+        ["string", "string", "string", "string"],
         strict=False,
     )
 
-    assert bag == {"org": {"title": "B"}, "meta": {"year": "{nope"}}
+    assert bag == {"org": {"title": "B"}}
 
 
 def test_a_lenient_parse_survives_mismatched_lists():

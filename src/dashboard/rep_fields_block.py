@@ -34,7 +34,7 @@ class StoredField(NamedTuple):
 
     @property
     def input_type(self) -> str:
-        """``string`` posts the input verbatim; ``json`` parses it, keeping 2024 a number."""
+        """``string`` posts verbatim; ``json`` parses it if it can, keeping 2024 a number."""
         return "string" if isinstance(self.value, str) or self.value is None else "json"
 
     @property
@@ -226,9 +226,12 @@ def parse_fields_form(
     bad namespace name passes through and is refused there, in the gate's
     words; this refuses only what cannot be built into a dict at all.
 
+    ``field_type=json`` parses the value if it parses and keeps the text if it
+    does not, so a stored number stays a number and a retyped one is not refused.
+
     ``strict=False`` is the live readout's reading of half-typed input: a row it
-    cannot use is skipped, unparseable JSON is read as text, a repeated key
-    keeps its last value, and a missing ``field_type`` means text.
+    cannot use is skipped, a repeated key keeps its last value, and a missing
+    ``field_type`` means text.
     """
     if strict and not len(keys) == len(values) == len(types):
         raise FieldsFormError("The form posted mismatched field lists; reload and try again.")
@@ -256,11 +259,12 @@ def _add_field(bag: dict, seen: set[str], key: str, raw_value: str, kind: str, *
     seen.add(key)
     value: object = raw_value
     if kind == "json":
+        # "Parse it if it parses": the marker is invisible to the operator, so
+        # retyping 2024 as "circa 2024" is an edit, not an error (CR 2).
         try:
             value = json.loads(raw_value)
-        except json.JSONDecodeError as e:
-            if strict:
-                raise FieldsFormError(f"{key}: {raw_value!r} is not valid JSON") from e
+        except json.JSONDecodeError:
+            value = raw_value
     ns, dot, sub = key.partition(".")
     if not dot:
         if isinstance(bag.get(key), dict):

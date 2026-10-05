@@ -1799,14 +1799,14 @@ async def test_a_form_that_cannot_build_a_bag_is_refused_by_name(client, session
         f"/dashboard/info-items/{item.info_item_id}/rep-fields",
         headers=_HEADERS,
         data={
-            "field_key": ["meta.year"],
-            "field_value": ["{nope"],
-            "field_type": ["json"],
+            "field_key": ["meta.year", "meta.year"],
+            "field_value": ["2024", "2025"],
+            "field_type": ["json", "json"],
         },
     )
 
     assert r.status_code == 422
-    assert "meta.year" in r.text
+    assert "meta.year appears twice" in r.text
 
 
 @pytest.mark.asyncio
