@@ -113,13 +113,15 @@
                     hx-swap="outerHTML"
                     aria-label="Show the fields {{ entry.name }} needs">Select</button>
             {% endif %}
+            {#- hx-disabled-elt on the form: htmx reads it from the element
+               that issues the request, never from a child (CR 2). -#}
             <form hx-post="/dashboard/info-items/{{ item_id }}/rep-spec-picker/assign"
                   hx-target="#ii-rep-spec-picker"
                   hx-swap="outerHTML"
+                  hx-disabled-elt="find button"
                   style="display:inline;">
               <input type="hidden" name="rep_spec_id" value="{{ entry.rep_spec_id }}">
               <button type="submit" class="btn btn--sm btn--primary"
-                      hx-disabled-elt="this"
                       aria-label="Assign {{ entry.name }}"{% if not entry.ready %}
                       disabled title="{{ 'Unavailable' if entry.readiness == 'unwritable' else 'Not ready: select it to fill in its fields' }}"{% endif %}>Assign</button>
             </form>

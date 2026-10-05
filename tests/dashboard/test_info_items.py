@@ -895,6 +895,23 @@ async def test_the_prompts_replicate_button_yields_to_nothing_but_drops_like_a_r
 
 
 @pytest.mark.asyncio
+async def test_assign_disables_its_button_in_flight(client, session):
+    """CR 2. htmx reads hx-disabled-elt from the element that issues the
+    request - the form - so on the button it guarded nothing, and a double
+    click answered a success with "already assigned"."""
+    item = _make_item("Double Click Picker")
+    rs = _make_rep_spec("Click Once")
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    entry = _picker_entry(r.text, rs)
+    form = entry[entry.index("<form") :]
+    assert 'hx-disabled-elt="find button"' in form[: form.index(">")]
+
+
+@pytest.mark.asyncio
 async def test_assign_with_no_revision_says_it_will_replicate_on_the_next(client, session):
     item, _ = await _bound_item(session, "No Revision Picker", {}, with_revision=False)
     rs = _make_rep_spec("Wait For It")
