@@ -1597,6 +1597,31 @@ async def test_a_stored_slug_reads_as_an_override(client, session):
 
 
 @pytest.mark.asyncio
+async def test_an_item_with_a_composite_override_can_still_be_saved(client, session):
+    """CR 1: the override's input was rendered on both raw rows, so the form
+    posted its key twice and every structured save was refused."""
+    rs = _rep_spec_requiring(
+        "Short Layout",
+        "org.acronym_or_title_slug",
+        path_template="o/{org.acronym_or_title_slug}/{source_revision.id}",
+    )
+    bag = {"org": {"acronym": "A", "title": "T", "acronym_or_title_slug": "x"}}
+    item = await _item_assigned_to(session, bag, rs)
+
+    page = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS
+    )
+    assert page.text.count('name="field_key" value="org.acronym_or_title_slug"') == 1
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data=_fields_form(**{f"org.{k}": v for k, v in bag["org"].items()}),
+    )
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_the_name_row_offers_the_item_name_without_its_acronym(client, session):
     rs = _rep_spec_requiring(
         "Name Layout", "info_item.name", path_template="n/{info_item.name}/{source_revision.id}"

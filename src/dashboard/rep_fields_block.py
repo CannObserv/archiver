@@ -62,7 +62,8 @@ class FieldRow:
     """One raw key some spec needs, and where its value comes from.
 
     ``badge`` is the source: ``stored``, ``override`` (a stored ``_slug`` stands
-    in for the derivation), ``from_power_map`` (the linked org supplies it,
+    in for the derivation; its input, in ``overrides``, sits on the first row
+    it feeds only), ``from_power_map`` (the linked org supplies it,
     archiver#304), ``slugs_to_nothing`` (``reason`` says which value, worded by
     the gate, archiver#312) or ``missing``.
     """
@@ -144,8 +145,11 @@ def build_fields(
                 if key != raw and required not in derived:
                     derived.append(required)
 
+    # A stored derived key gets one input, on the first row it feeds: the
+    # composite feeds two, and posting its key twice is refused (CR 1).
+    placed: set[str] = set()
     rows = tuple(
-        _row(full, names, derived, bag, resolved, org, item_name)
+        _row(full, names, derived, bag, resolved, org, item_name, placed)
         for full, (names, derived) in feeds.items()
     )
     claimed = {r.key for r in rows} | {o.key for r in rows for o in r.overrides}
@@ -168,19 +172,20 @@ def _row(
     resolved: dict,
     org: OrgValues | None,
     item_name: str,
+    placed: set[str],
 ) -> FieldRow:
     ns, _, key = full.partition(".")
     stored_ns = bag.get(ns) if isinstance(bag.get(ns), dict) else {}
     resolved_ns = resolved.get(ns) if isinstance(resolved.get(ns), dict) else {}
     readouts = tuple(Readout(d, resolved_ns.get(d.partition(".")[2])) for d in derived)
+    stored_derived = [d for d in derived if d.partition(".")[2] in stored_ns]
     overrides = tuple(
-        StoredField(d, stored_ns[d.partition(".")[2]])
-        for d in derived
-        if d.partition(".")[2] in stored_ns
+        StoredField(d, stored_ns[d.partition(".")[2]]) for d in stored_derived if d not in placed
     )
+    placed.update(stored_derived)
     value = stored_ns.get(key)
     reason = None
-    if overrides:
+    if stored_derived:
         badge = "override"
     elif value is not None:
         # The composite blames whichever raw field it took; keep only this row's.

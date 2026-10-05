@@ -147,6 +147,18 @@ def test_an_override_satisfies_a_row_whose_raw_field_is_absent():
     assert row.value is None
 
 
+def test_a_composite_override_gets_one_input_but_marks_both_rows():
+    """Both raw rows feed acronym_or_title_slug; two inputs for one key would make
+    the form post it twice, which the strict parse refuses on every save (CR 1)."""
+    spec = ("Short", {"required_fields": ["org.acronym_or_title_slug"]})
+    bag = {"org": {"acronym": "A", "title": "T", "acronym_or_title_slug": "x"}}
+
+    view = build_fields(bag, [spec], org=None, item_name="x")
+
+    assert [o.key for r in view.rows for o in r.overrides] == ["org.acronym_or_title_slug"]
+    assert [r.badge for r in view.rows] == ["override", "override"]
+
+
 def test_a_linked_org_supplies_its_fields_read_only():
     """Ready for archiver#304: the org comes in through effective_rep_fields."""
     row = _row(
