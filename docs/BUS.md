@@ -267,9 +267,10 @@ and MUST-7 *inverts* into a scheduling obligation on this side.
   check is manual, and not archiver's to run: archiver reads nothing on a
   stream it only produces (archiver#321), and CannObserv/broker#43 takes the
   root's `+xlen` off this key. Read the length with broker's operator
-  credential (`acladmin`, `+xlen` on every key) or from the probe's per-stream
-  length (`XINFO STREAM`, every tick). The probe sets no length threshold on an
-  uncapped stream, so its memory check is the only alarm on growth.
+  credential (`acladmin`, `+xlen` on every key) or from the per-stream length
+  `broker-bus-health.timer` reads with `XINFO STREAM` every tick. That probe
+  sets no length threshold on an uncapped stream, so its memory check is the
+  only alarm on growth.
 - **When the trigger fires, delete by id; do not trim.** None of this is built.
   The plan: record the `XADD` id on the `replication_commands` row (a
   migration), then `XDEL` the entry once `content.artifacts` closes that row as
