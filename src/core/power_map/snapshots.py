@@ -42,6 +42,11 @@ async def apply_org_snapshot(
     to the org renders the new path from its next occasion (Q4, no
     confirmation). An answer clears ``missing_since``. Flushes, does not commit.
 
+    **Never moves backwards** (CR 1): callers fetch outside any lock, so a
+    slower fetch can land after a newer one was stored. An incoming
+    ``pm_updated_at`` older than the row's leaves the values alone and only
+    records the check.
+
     Raises:
         OrgUnnamedError: ``org.name`` is ``None``; nothing is written.
     """
@@ -63,6 +68,15 @@ async def apply_org_snapshot(
     )
     row = await db.get(PmOrganization, org.pm_org_id, with_for_update=True, populate_existing=True)
     assert row is not None  # inserted above, and rows are never deleted while linked
+    row.checked_at = now
+    row.missing_since = None
+    if org.pm_updated_at < row.pm_updated_at:
+        logger.info(
+            "Ignored a Power Map org snapshot older than the stored one",
+            extra={"pm_org_id": org.pm_org_id},
+        )
+        await db.flush()
+        return row
     if (row.name, row.acronym) != (org.name, org.acronym):
         logger.warning(
             "pm_org_renamed",
@@ -76,8 +90,6 @@ async def apply_org_snapshot(
         row.renamed_at = now
     for column, value in values.items():
         setattr(row, column, value)
-    row.checked_at = now
-    row.missing_since = None
     await db.flush()
     return row
 

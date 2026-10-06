@@ -103,3 +103,21 @@ async def test_load_org_values_follows_the_items_link(session):
 
     assert await load_org_values(session, linked) == OrgValues(name=WSLCB_NAME, acronym="WSLCB")
     assert await load_org_values(session, unlinked) is None
+
+
+@pytest.mark.asyncio
+async def test_an_older_snapshot_never_overwrites_a_newer_one(session):
+    """CR 1: a fetch made before a newer write must not roll the row back.
+
+    The link fetches outside any lock, so a slower fetch can land after the
+    follower (or another link) stored a later version of the org.
+    """
+    newer = org(name="WA Cannabis Board", pm_updated_at=T1, etag='"v2"')
+    await apply_org_snapshot(session, newer, now=T0)
+
+    row = await apply_org_snapshot(session, org(pm_updated_at=T0), now=T1)
+
+    assert row.name == "WA Cannabis Board"
+    assert row.etag == '"v2"'
+    assert row.renamed_from is None
+    assert row.checked_at == T1
