@@ -264,9 +264,9 @@ and MUST-7 *inverts* into a scheduling obligation on this side.
   volume: 3 entries ever added, about 1 KB each (2026-09-24). **Trigger:**
   revisit when `XLEN content.replicate` passes **10k** (about 10 MB), or when
   replication fan-out moves to production scale, whichever comes first. The
-  check is manual, and not archiver's to run: archiver reads nothing on a
-  stream it only produces (archiver#321), and CannObserv/broker#43 takes the
-  root's `+xlen` off this key. Read the length with broker's operator
+  check is manual, and not archiver's to run: archiver issues no read on a
+  stream it only produces (archiver#321), so its credential holds no `+xlen`
+  here once CannObserv/broker#43 lands. Read the length with broker's operator
   credential (`acladmin`, `+xlen` on every key) or from the per-stream length
   `broker-bus-health.timer` reads with `XINFO STREAM` every tick. That probe
   sets no length threshold on an uncapped stream, so its memory check is the
