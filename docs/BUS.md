@@ -264,9 +264,12 @@ and MUST-7 *inverts* into a scheduling obligation on this side.
   volume: 3 entries ever added, about 1 KB each (2026-09-24). **Trigger:**
   revisit when `XLEN content.replicate` passes **10k** (about 10 MB), or when
   replication fan-out moves to production scale, whichever comes first. The
-  check is manual. Archiver's credential holds `+xlen` on the key. Broker's
-  probe sets no length threshold on an uncapped stream, so its memory check is
-  the only alarm on growth.
+  check is manual, and not archiver's to run: archiver reads nothing on a
+  stream it only produces (archiver#321), and CannObserv/broker#43 takes the
+  root's `+xlen` off this key. Read the length with broker's operator
+  credential (`acladmin`, `+xlen` on every key) or from the probe's per-stream
+  length (`XINFO STREAM`, every tick). The probe sets no length threshold on an
+  uncapped stream, so its memory check is the only alarm on growth.
 - **When the trigger fires, delete by id; do not trim.** None of this is built.
   The plan: record the `XADD` id on the `replication_commands` row (a
   migration), then `XDEL` the entry once `content.artifacts` closes that row as
