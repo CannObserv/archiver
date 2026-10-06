@@ -23,6 +23,7 @@ snapshot. See CLAUDE.md.
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -253,8 +254,16 @@ def _status_unavailable(status: int, headers: Mapping[str, str]) -> PowerMapUnav
 
 
 def _retry_after(value: str | None) -> float | None:
-    """``Retry-After`` as seconds; the HTTP-date form is not one Power Map sends."""
+    """``Retry-After`` as seconds; the HTTP-date form is not one Power Map sends.
+
+    Anything not a finite, non-negative number is ``None`` (CR 4): the link
+    route rounds this into its own ``Retry-After``, and ``nan``/``inf`` would
+    turn a 503 into a 500.
+    """
     try:
-        return float(value) if value is not None else None
+        seconds = float(value) if value is not None else None
     except ValueError:
         return None
+    if seconds is None or not math.isfinite(seconds) or seconds < 0:
+        return None
+    return seconds

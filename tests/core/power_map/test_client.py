@@ -259,3 +259,16 @@ def test_from_env_honours_a_base_url_override(monkeypatch):
     client = power_map_from_env()
     assert client is not None
     assert client.base_url == "https://pm.test"
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-5", "Wed, 21 Oct 2026 07:28:00 GMT"])
+async def test_a_malformed_retry_after_is_dropped(value):
+    """CR 4: the route rounds retry_after into a header; nan/inf would 500 it."""
+
+    def handler(request):
+        return httpx.Response(429, json={"detail": "slow"}, headers={"Retry-After": value})
+
+    with pytest.raises(PowerMapUnavailableError) as exc:
+        await _client(handler).get_org(ORG_ID)
+
+    assert exc.value.retry_after is None
