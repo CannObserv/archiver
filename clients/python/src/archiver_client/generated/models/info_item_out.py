@@ -30,7 +30,9 @@ class InfoItemOut:
         info_item_id (str): ULID identifying this InfoItem.
         name (str): Human-readable label for the InfoItem.
         owner (None | str): Optional owner identifier (team or individual) for this InfoItem.
-        rep_fields (InfoItemOutRepFields): Operator-defined JSONB bag of structured metadata fields for this item.
+        rep_fields (InfoItemOutRepFields): Operator-defined JSONB bag of structured metadata fields for this item, as
+            stored. While a Power Map org is linked (pm_org_id), org.title and org.acronym are never stored here: they come
+            from `org`.
         updated_at (datetime.datetime): UTC timestamp of the last update to the InfoItem.
         watch_spec (InfoItemOutWatchSpec): Cadence policy for this item (WatchSpec v1): '{"schema_version": 1,
             "interval": "1d"}'. `interval` is optional — when absent the consumer applies its own default, which may be a

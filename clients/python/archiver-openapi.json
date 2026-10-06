@@ -1018,7 +1018,7 @@
           },
           "rep_fields": {
             "additionalProperties": true,
-            "description": "Operator-defined JSONB bag of structured metadata fields for this item.",
+            "description": "Operator-defined JSONB bag of structured metadata fields for this item, as stored. While a Power Map org is linked (pm_org_id), org.title and org.acronym are never stored here: they come from `org`.",
             "title": "Rep Fields",
             "type": "object"
           },

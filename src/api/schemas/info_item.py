@@ -239,7 +239,11 @@ class InfoItemOut(BaseModel):
         description="Optional owner identifier (team or individual) for this InfoItem."
     )
     rep_fields: dict[str, Any] = Field(
-        description="Operator-defined JSONB bag of structured metadata fields for this item."
+        description=(
+            "Operator-defined JSONB bag of structured metadata fields for this item, as "
+            "stored. While a Power Map org is linked (pm_org_id), org.title and "
+            "org.acronym are never stored here: they come from `org`."
+        )
     )
     pm_org_id: str | None = Field(
         default=None,

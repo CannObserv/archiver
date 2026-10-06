@@ -11,7 +11,10 @@ T = TypeVar("T", bound="InfoItemOutRepFields")
 
 @_attrs_define
 class InfoItemOutRepFields:
-    """Operator-defined JSONB bag of structured metadata fields for this item."""
+    """Operator-defined JSONB bag of structured metadata fields for this item, as stored. While a Power Map org is linked
+    (pm_org_id), org.title and org.acronym are never stored here: they come from `org`.
+
+    """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
