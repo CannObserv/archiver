@@ -33,6 +33,8 @@ class InfoItemCreate:
             extraction, fingerprint).
         initial_url (None | str | Unset): Optional URL to atomically create an InfoSource binding for this item.
         owner (None | str | Unset):
+        pm_org_id (None | str | Unset): Optional Power Map org to link at create, fetched from Power Map. While linked,
+            rep_fields may not carry org.title or org.acronym: the org supplies them.
         rep_fields (InfoItemCreateRepFields | Unset):
     """
 
@@ -42,6 +44,7 @@ class InfoItemCreate:
     initial_source_specs: list[InfoItemCreateInitialSourceSpecsType0Item] | None | Unset = UNSET
     initial_url: None | str | Unset = UNSET
     owner: None | str | Unset = UNSET
+    pm_org_id: None | str | Unset = UNSET
     rep_fields: InfoItemCreateRepFields | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -85,6 +88,12 @@ class InfoItemCreate:
         else:
             owner = self.owner
 
+        pm_org_id: None | str | Unset
+        if isinstance(self.pm_org_id, Unset):
+            pm_org_id = UNSET
+        else:
+            pm_org_id = self.pm_org_id
+
         rep_fields: dict[str, Any] | Unset = UNSET
         if not isinstance(self.rep_fields, Unset):
             rep_fields = self.rep_fields.to_dict()
@@ -106,6 +115,8 @@ class InfoItemCreate:
             field_dict["initial_url"] = initial_url
         if owner is not UNSET:
             field_dict["owner"] = owner
+        if pm_org_id is not UNSET:
+            field_dict["pm_org_id"] = pm_org_id
         if rep_fields is not UNSET:
             field_dict["rep_fields"] = rep_fields
 
@@ -188,6 +199,15 @@ class InfoItemCreate:
 
         owner = _parse_owner(d.pop("owner", UNSET))
 
+        def _parse_pm_org_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        pm_org_id = _parse_pm_org_id(d.pop("pm_org_id", UNSET))
+
         _rep_fields = d.pop("rep_fields", UNSET)
         rep_fields: InfoItemCreateRepFields | Unset
         if isinstance(_rep_fields, Unset):
@@ -202,6 +222,7 @@ class InfoItemCreate:
             initial_source_specs=initial_source_specs,
             initial_url=initial_url,
             owner=owner,
+            pm_org_id=pm_org_id,
             rep_fields=rep_fields,
         )
 

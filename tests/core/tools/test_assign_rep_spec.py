@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from ulid import ULID
 
-from src.core.models import InfoItem, RepSpec
+from src.core.models import InfoItem, PmOrganization, RepSpec
 from src.core.tools.assign_rep_spec import (
     AssignmentError,
     DuplicateAssignmentError,
@@ -280,3 +280,36 @@ async def test_a_deactivated_assignment_does_not_block_reassignment(session):
         session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id
     )
     assert second.id != first.id
+
+
+@pytest.mark.asyncio
+async def test_a_linked_items_org_satisfies_the_spec(session):
+    """archiver#304: no stored org.title, but the linked org supplies it."""
+    org = PmOrganization(
+        pm_org_id="01JPM00000000000000000000A",
+        name="Washington State Liquor and Cannabis Board",
+        acronym="WSLCB",
+        active=True,
+        pm_updated_at=datetime.now(UTC),
+        checked_at=datetime.now(UTC),
+    )
+    session.add(org)
+    await session.flush()
+    item = InfoItem(name="linked", rep_fields={}, pm_org_id=org.pm_org_id)
+    spec = RepSpec(
+        provider="gcs",
+        name="org spec",
+        schema_version=1,
+        document={
+            "required_fields": ["org.title_slug"],
+            "path_template": "organizations/{org.title_slug}/{source_revision.id}.html",
+        },
+    )
+    session.add_all([item, spec])
+    await session.flush()
+
+    assignment = await assign_rep_spec(
+        session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id
+    )
+
+    assert assignment.deactivated_at is None

@@ -104,6 +104,9 @@ def sync_detailed(
     effective-dated RepSpec assignments). All writes are a single transaction; any
     validation or lookup failure rolls back the whole thing.
 
+    ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
+    anything is written: Power Map unreachable is a 503 and creates nothing.
+
     Args:
         body (InfoItemCreate):
 
@@ -140,6 +143,9 @@ def sync(
     effective-dated RepSpec assignments). All writes are a single transaction; any
     validation or lookup failure rolls back the whole thing.
 
+    ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
+    anything is written: Power Map unreachable is a 503 and creates nothing.
+
     Args:
         body (InfoItemCreate):
 
@@ -170,6 +176,9 @@ async def asyncio_detailed(
     a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
     effective-dated RepSpec assignments). All writes are a single transaction; any
     validation or lookup failure rolls back the whole thing.
+
+    ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
+    anything is written: Power Map unreachable is a 503 and creates nothing.
 
     Args:
         body (InfoItemCreate):
@@ -204,6 +213,9 @@ async def asyncio(
     a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
     effective-dated RepSpec assignments). All writes are a single transaction; any
     validation or lookup failure rolls back the whole thing.
+
+    ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
+    anything is written: Power Map unreachable is a 503 and creates nothing.
 
     Args:
         body (InfoItemCreate):

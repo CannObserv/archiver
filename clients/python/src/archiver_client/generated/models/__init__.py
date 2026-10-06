@@ -26,6 +26,8 @@ from .info_item_create_initial_source_specs_type_0_item import (
     InfoItemCreateInitialSourceSpecsType0Item,
 )
 from .info_item_create_rep_fields import InfoItemCreateRepFields
+from .info_item_org_out import InfoItemOrgOut
+from .info_item_org_put import InfoItemOrgPut
 from .info_item_out import InfoItemOut
 from .info_item_out_rep_fields import InfoItemOutRepFields
 from .info_item_out_watch_spec import InfoItemOutWatchSpec
@@ -117,6 +119,8 @@ __all__ = (
     "InfoItemCreate",
     "InfoItemCreateInitialSourceSpecsType0Item",
     "InfoItemCreateRepFields",
+    "InfoItemOrgOut",
+    "InfoItemOrgPut",
     "InfoItemOut",
     "InfoItemOutRepFields",
     "InfoItemOutWatchSpec",

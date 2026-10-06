@@ -43,10 +43,13 @@ from src.core.models import (
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
+    PmOrganization,
     ReplicationCommand,
     RepSpec,
     SourceRevision,
 )
+from src.core.power_map.snapshots import org_values
+from src.core.rep_fields import OrgValues
 from src.core.replication.destination import (
     RenderOccasion,
     find_collisions,
@@ -171,6 +174,11 @@ class _Target:
     assignment: InfoItemRepSpec
     document: dict
     rep_fields: dict
+    org: OrgValues | None
+    """The item's linked Power Map org, from the local snapshot (archiver#304).
+
+    Never fetched from Power Map: replication renders only what archiver holds.
+    """
 
 
 async def issue_for_revision(
@@ -336,7 +344,7 @@ def _issue_targets(
                 target.document.get("path_template", ""),
                 rep_fields=target.rep_fields,
                 occasion=occasion,
-                org=None,
+                org=target.org,
             )
         except ReplicationRenderError as e:
             # Only a *requested* target gets a skip row, and only a requested
@@ -552,9 +560,10 @@ async def _active_targets(session: AsyncSession, revision: SourceRevision) -> li
     to an item that no longer draws from this source.
     """
     result = await session.execute(
-        select(InfoItemRepSpec, RepSpec, InfoItem)
+        select(InfoItemRepSpec, RepSpec, InfoItem, PmOrganization)
         .join(InfoItem, InfoItem.info_item_id == InfoItemRepSpec.info_item_id)
         .join(RepSpec, RepSpec.rep_spec_id == InfoItemRepSpec.rep_spec_id)
+        .outerjoin(PmOrganization, PmOrganization.pm_org_id == InfoItem.pm_org_id)
         .join(InfoItemSource, InfoItemSource.info_item_id == InfoItemRepSpec.info_item_id)
         .where(
             InfoItemSource.info_source_id == revision.info_source_id,
@@ -565,7 +574,10 @@ async def _active_targets(session: AsyncSession, revision: SourceRevision) -> li
     )
     return [
         _Target(
-            assignment=assignment, document=spec.document or {}, rep_fields=item.rep_fields or {}
+            assignment=assignment,
+            document=spec.document or {},
+            rep_fields=item.rep_fields or {},
+            org=org_values(org),
         )
-        for assignment, spec, item in result.all()
+        for assignment, spec, item, org in result.all()
     ]

@@ -26,6 +26,19 @@ no `cannobserv`/`co-core-sync` (heavy google/trello deps). Archiver depends on
 (fetch) and `co_core.pure.extract` (extract + fingerprint); see "Content-acquisition
 via co-core".
 
+## Power Map SDK (git tag)
+
+`power-map-client` (archiver#304) is **not** a wheelhouse package: it resolves as a uv git
+source, `https://github.com/CannObserv/power-map.git`, `subdirectory = "clients/python"`, pinned
+to a release tag (`[tool.uv.sources]` in `pyproject.toml`). The repo is public, so no credential;
+`uv.lock` pins the tag's commit. **The CI and deploy hosts need outbound github.com** for
+`uv sync`. Client and server share one version; live Power Map reports it as `build` on `/health`.
+Only `src/core/power_map/client.py` imports it (a guard test enforces that).
+
+Upgrade: bump `tag` to the new release, read that release's diff of `clients/python/openapi.json`
+in Power Map for changed status codes or fields the adapter maps, `uv sync`, run the adapter tests
+(`tests/core/power_map/`).
+
 ## Why `scripts/dev_server.sh` exists
 
 **Never hand-roll the uvicorn invocation.** The recipe this replaced sourced
@@ -50,6 +63,8 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 | `ARCHIVER_DEV_REDIS_URL` | Dev change-bus broker. Unset → dev runs bus-dormant (prod's `ARCHIVER_REDIS_URL` is never inherited); refused if on prod's `host:port`, whatever the DB index |
 | `ARCHIVER_DEV_PORT` | Default 8001; 8000 is refused |
 | `ARCHIVER_DEV_SKIP_MIGRATE=1` | Skip the alembic upgrade |
+| `ARCHIVER_DEV_POWER_MAP_API_KEY` | Dev Power Map read key. Unset → Power Map dormant on dev (prod's `ARCHIVER_POWER_MAP_API_KEY` is never inherited) |
+| `ARCHIVER_DEV_POWER_MAP_BASE_URL` | Dev Power Map base URL; default production Power Map |
 
 > pytest teardown runs `DROP SCHEMA information CASCADE` against
 > `TEST_DATABASE_URL`. A dev server pointed at the same database therefore
@@ -108,6 +123,9 @@ made those columns authoritative (archiver#158), and the teardown followed.
 - `ARCHIVER_DEV_REDIS_URL` — *optional*. Dev change-bus broker for `scripts/dev_server.sh`. Unset → the dev server runs **bus-dormant** and never inherits prod's `ARCHIVER_REDIS_URL` from `/etc/archiver/.env` (the Redis analogue of the DB `_test`/`_dev` guard). The supported posture is **dormant, or a local throwaway broker** — `docker run --rm -p 127.0.0.1:6380:6379 redis:7` with `ARCHIVER_DEV_REDIS_URL=redis://127.0.0.1:6380/0` (≥ 7.0, the `check_redis_floor.sh` floor). A value on production's `host:port` is refused **whatever its DB index** (archiver#240).
 
   **Do not re-add a `.../1` recommendation: a logical DB index is not a boundary.** Redis ACLs cannot partition by index — any client that can reach db1 can `SELECT 0` — so isolation by index is isolation by good behaviour. The shared broker closes that axis with `databases 1` and no `+select` in archiver's ACL (after its 2026-09-10 incident, `docs/INCIDENT-2026-09-10.md` in [CannObserv/broker](https://github.com/CannObserv/broker)), so `.../1` there is `ERR DB index is out of range`. Nor is a scratch bus on the shared instance wanted: it shares `maxmemory` under `noeviction` instance-wide, so a dev run that fills it stalls every production publisher (the R5 lockstep, firing for a reason nobody would look for). A prefix-confined dev credential (`~archiver.dev.*`) is available from broker on request — not requested until a real need appears.
+- `ARCHIVER_POWER_MAP_API_KEY` — *optional*. Archiver's **read-only** Power Map key (archiver#304), sent as `X-API-Key`. **The switch**: unset → Power Map features are dormant, `PUT /info-items/{id}/org` and a create with `pm_org_id` answer 503 "Power Map not configured", and nothing else changes — rendering and replication read only the local `pm_organizations` snapshot, never Power Map. Set in `/etc/archiver/.env`; takes effect on restart. `scripts/dev_server.sh` never passes it through (see `ARCHIVER_DEV_POWER_MAP_API_KEY`); the test suite scrubs it.
+- `ARCHIVER_POWER_MAP_BASE_URL` — *optional*. Power Map's base URL, default `https://power-map.exe.xyz` (public HTTPS, no tailnet hop). Read only when the key is set.
+- `ARCHIVER_DEV_POWER_MAP_API_KEY` / `ARCHIVER_DEV_POWER_MAP_BASE_URL` — *optional*, dev only. What `scripts/dev_server.sh` exports as the two above; unset → the dev server runs Power Map-dormant. Unlike the Redis guard there is no same-target refusal: the key is read-only and dev writes only `archiver_dev`, so reading production Power Map from 8001 is the supported posture. Only inheriting the service's credential is refused. Set in the repo `.env`.
 - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance (e.g. `https://archiver.example.com`). When set, InfoItem API responses include `dashboard_url` pointing to the dashboard detail page (`{ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}`). Unset → `dashboard_url` is `null`. Set this to the URL end-users open in a browser, distinct from any internal service-to-service address. Set in `/etc/archiver/.env` on the VM.
 - `WATCHER_CACHE_DIR`, `WATCHER_CACHE_TTL_SECONDS`, `WATCHER_CACHE_SWEEP_INTERVAL_SECONDS` — Watcher-side, not Archiver-side; documented here because the `content_cache_uri` lifecycle protocol they govern is a registry contract (see design doc Section 2).
 

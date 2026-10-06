@@ -11,6 +11,8 @@ from src.core.rep_fields import (
     empty_slug_reason,
     resolve_rep_fields,
     slugify,
+    with_org_values,
+    without_org_owned_keys,
 )
 
 # ---------------------------------------------------------------------------
@@ -279,3 +281,43 @@ class TestEmptySlugReason:
     )
     def test_is_none_unless_a_raw_string_slugged_to_nothing(self, bag, key):
         assert empty_slug_reason(effective_rep_fields(bag, None), "org", key) is None
+
+
+# ---------------------------------------------------------------------------
+# The linked org's keys in the stored bag (archiver#304)
+# ---------------------------------------------------------------------------
+
+
+def test_without_org_owned_keys_drops_title_and_acronym_only():
+    bag = {"org": {"title": "T", "acronym": "A", "title_slug": "t"}, "info_item": {"name": "N"}}
+    assert without_org_owned_keys(bag) == {
+        "org": {"title_slug": "t"},
+        "info_item": {"name": "N"},
+    }
+    assert bag["org"]["title"] == "T"  # never mutated
+
+
+def test_without_org_owned_keys_drops_an_emptied_namespace():
+    assert without_org_owned_keys({"org": {"title": "T"}, "x": {"k": "v"}}) == {"x": {"k": "v"}}
+    assert without_org_owned_keys({}) == {}
+
+
+def test_with_org_values_materializes_the_org_into_the_bag():
+    bag = {"org": {"title_slug": "override"}}
+    org = OrgValues(name="Washington State Liquor and Cannabis Board", acronym="WSLCB")
+    assert with_org_values(bag, org) == {
+        "org": {
+            "title": "Washington State Liquor and Cannabis Board",
+            "acronym": "WSLCB",
+            "title_slug": "override",
+        }
+    }
+    assert with_org_values({}, OrgValues(name="N", acronym=None)) == {"org": {"title": "N"}}
+    assert with_org_values(bag, None) == bag
+
+
+def test_materializing_leaves_the_effective_bag_unchanged():
+    """Unlinking keeps every path where it was."""
+    bag = {"org": {"title_slug": "override"}, "info_item": {"name": "N"}}
+    org = OrgValues(name="Washington State Liquor and Cannabis Board", acronym="WSLCB")
+    assert effective_rep_fields(with_org_values(bag, org), None) == effective_rep_fields(bag, org)

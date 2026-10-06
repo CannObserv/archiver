@@ -1,6 +1,10 @@
 """Tests for GET /api/v1/tools/find-info-items."""
 
+from datetime import UTC, datetime
+
 import pytest
+
+from src.core.models import InfoItem, PmOrganization
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -91,3 +95,27 @@ async def test_find_info_items_no_matches_returns_empty_list(client):
 async def test_find_info_items_requires_api_key(client):
     response = await client.get("/api/v1/tools/find-info-items", params={"q": "x"})
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_find_info_items_carries_the_linked_org(client, session):
+    """archiver#304: the same InfoItemOut as GET /info-items, org included."""
+    org = PmOrganization(
+        pm_org_id="01JPM00000000000000000000A",
+        name="Washington State Liquor and Cannabis Board",
+        acronym="WSLCB",
+        active=True,
+        pm_updated_at=datetime.now(UTC),
+        checked_at=datetime.now(UTC),
+    )
+    session.add(org)
+    await session.flush()
+    session.add(InfoItem(name="Findable linked item", pm_org_id=org.pm_org_id))
+    await session.flush()
+
+    response = await client.get(
+        "/api/v1/tools/find-info-items", headers=HEADERS, params={"q": "findable linked"}
+    )
+
+    (hit,) = response.json()
+    assert hit["org"]["acronym"] == "WSLCB"

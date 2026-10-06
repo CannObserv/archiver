@@ -11,6 +11,7 @@ from dateutil.parser import isoparse
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
+    from ..models.info_item_org_out import InfoItemOrgOut
     from ..models.info_item_out_rep_fields import InfoItemOutRepFields
     from ..models.info_item_out_watch_spec import InfoItemOutWatchSpec
     from ..models.info_item_rep_spec_out import InfoItemRepSpecOut
@@ -42,6 +43,9 @@ class InfoItemOut:
             returned (is_active=true). Pass include_deactivated=true to also include previous primaries and other
             deactivated bindings. At most one active binding (is_active=true) exists — the current primary. Deactivated
             bindings (is_active=false) are previous primaries, preserved as succession history.
+        org (InfoItemOrgOut | None | Unset): The linked org's local snapshot, or null when unlinked.
+        pm_org_id (None | str | Unset): The linked Power Map org's id, or null when unlinked. Written via PUT /info-
+            items/{id}/org.
         watch_active (bool | None | Unset): Per-item pause state. True schedules, false is registered-but-paused, and
             null means the registry has no opinion yet (not imported from Watcher). A sibling of watch_spec rather than a
             key inside it: a policy document shared across items could not carry per-item pause state. Written via PUT
@@ -59,10 +63,14 @@ class InfoItemOut:
     dashboard_url: None | str | Unset = UNSET
     info_item_rep_specs: list[InfoItemRepSpecOut] | Unset = UNSET
     info_item_sources: list[InfoItemSourceOut] | Unset = UNSET
+    org: InfoItemOrgOut | None | Unset = UNSET
+    pm_org_id: None | str | Unset = UNSET
     watch_active: bool | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.info_item_org_out import InfoItemOrgOut
+
         created_at = self.created_at.isoformat()
 
         description: None | str
@@ -101,6 +109,20 @@ class InfoItemOut:
                 info_item_sources_item = info_item_sources_item_data.to_dict()
                 info_item_sources.append(info_item_sources_item)
 
+        org: dict[str, Any] | None | Unset
+        if isinstance(self.org, Unset):
+            org = UNSET
+        elif isinstance(self.org, InfoItemOrgOut):
+            org = self.org.to_dict()
+        else:
+            org = self.org
+
+        pm_org_id: None | str | Unset
+        if isinstance(self.pm_org_id, Unset):
+            pm_org_id = UNSET
+        else:
+            pm_org_id = self.pm_org_id
+
         watch_active: bool | None | Unset
         if isinstance(self.watch_active, Unset):
             watch_active = UNSET
@@ -127,6 +149,10 @@ class InfoItemOut:
             field_dict["info_item_rep_specs"] = info_item_rep_specs
         if info_item_sources is not UNSET:
             field_dict["info_item_sources"] = info_item_sources
+        if org is not UNSET:
+            field_dict["org"] = org
+        if pm_org_id is not UNSET:
+            field_dict["pm_org_id"] = pm_org_id
         if watch_active is not UNSET:
             field_dict["watch_active"] = watch_active
 
@@ -134,6 +160,7 @@ class InfoItemOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.info_item_org_out import InfoItemOrgOut
         from ..models.info_item_out_rep_fields import InfoItemOutRepFields
         from ..models.info_item_out_watch_spec import InfoItemOutWatchSpec
         from ..models.info_item_rep_spec_out import InfoItemRepSpecOut
@@ -195,6 +222,32 @@ class InfoItemOut:
 
                 info_item_sources.append(info_item_sources_item)
 
+        def _parse_org(data: object) -> InfoItemOrgOut | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                org_type_0 = InfoItemOrgOut.from_dict(data)
+
+                return org_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(InfoItemOrgOut | None | Unset, data)
+
+        org = _parse_org(d.pop("org", UNSET))
+
+        def _parse_pm_org_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        pm_org_id = _parse_pm_org_id(d.pop("pm_org_id", UNSET))
+
         def _parse_watch_active(data: object) -> bool | None | Unset:
             if data is None:
                 return data
@@ -216,6 +269,8 @@ class InfoItemOut:
             dashboard_url=dashboard_url,
             info_item_rep_specs=info_item_rep_specs,
             info_item_sources=info_item_sources,
+            org=org,
+            pm_org_id=pm_org_id,
             watch_active=watch_active,
         )
 

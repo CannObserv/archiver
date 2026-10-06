@@ -7,7 +7,13 @@ from typing import TypedDict
 
 from jsonschema import Draft202012Validator
 
-from src.core.rep_fields import OrgValues, effective_rep_fields, empty_slug_reason
+from src.core.rep_fields import (
+    ORG_NAMESPACE,
+    ORG_OWNED_KEYS,
+    OrgValues,
+    effective_rep_fields,
+    empty_slug_reason,
+)
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "v1.json"
 
@@ -33,6 +39,29 @@ def validate_rep_fields(bag: dict) -> tuple[bool, list[ValidationError]]:
             }
         )
     return (len(errors) == 0, errors)
+
+
+def linked_org_key_errors(bag: dict) -> list[ValidationError]:
+    """The stored ``org.title``/``org.acronym`` a linked item may not carry (archiver#304).
+
+    While an item is linked to a Power Map org those two come from the org; a
+    stored copy would silently shadow it. Other ``org`` keys stay overrides.
+    The caller decides whether the item is linked.
+    """
+    stored = bag.get(ORG_NAMESPACE)
+    if not isinstance(stored, dict):
+        return []
+    return [
+        {
+            "path": f"/{ORG_NAMESPACE}/{key}",
+            "message": (
+                f"{ORG_NAMESPACE}.{key} comes from the linked Power Map org; "
+                "unlink the org to hand-type it"
+            ),
+        }
+        for key in ORG_OWNED_KEYS
+        if key in stored
+    ]
 
 
 def validate_rep_fields_against_spec(

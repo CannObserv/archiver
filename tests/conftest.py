@@ -90,6 +90,11 @@ os.environ.pop("DATABASE_URL", None)
 # systemd-only gates (ARCHIVER_BUS_CONSUMER, ARCHIVER_ALLOW_PRODUCTION_DB)
 # must never be honoured in a test process at all.
 #
+# The Power Map pair (archiver#304) rides along for the HTTP half of that
+# reasoning: the lifespan builds a real client from ARCHIVER_POWER_MAP_API_KEY,
+# and a route test that forgot its fake would read production Power Map with
+# the service's credential. Tests use tests/core/power_map/fake.py.
+#
 # Same mechanism and reasoning as the DB pin: at import, before any fixture,
 # never restored. A test that needs one of these sets it explicitly
 # (monkeypatch.setenv), which restores itself on teardown.
@@ -98,6 +103,9 @@ _OUTBOUND_SERVICE_ENV_VARS = (
     "ARCHIVER_DEV_REDIS_URL",
     "ARCHIVER_BUS_CONSUMER",
     "ARCHIVER_ALLOW_PRODUCTION_DB",
+    "ARCHIVER_POWER_MAP_API_KEY",
+    "ARCHIVER_POWER_MAP_BASE_URL",
+    "ARCHIVER_DEV_POWER_MAP_API_KEY",
 )
 for _var in _OUTBOUND_SERVICE_ENV_VARS:
     os.environ.pop(_var, None)

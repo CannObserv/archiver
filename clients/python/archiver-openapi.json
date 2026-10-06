@@ -742,6 +742,18 @@
             ],
             "title": "Owner"
           },
+          "pm_org_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional Power Map org to link at create, fetched from Power Map. While linked, rep_fields may not carry org.title or org.acronym: the org supplies them.",
+            "title": "Pm Org Id"
+          },
           "rep_fields": {
             "additionalProperties": true,
             "title": "Rep Fields",
@@ -752,6 +764,163 @@
           "name"
         ],
         "title": "InfoItemCreate",
+        "type": "object"
+      },
+      "InfoItemOrgOut": {
+        "description": "The linked Power Map org, as archiver last saw it (archiver#304).\n\nA local snapshot, refreshed on link and by the follower. The nullable\nfields are notices; none of them stops replication.",
+        "properties": {
+          "acronym": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical acronym: the effective bag's org.acronym, absent when null.",
+            "title": "Acronym"
+          },
+          "active": {
+            "description": "Power Map's active flag.",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When Power Map archived the org, if it did.",
+            "title": "Archived At"
+          },
+          "checked_at": {
+            "description": "When archiver last got an answer about the org.",
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "merged_into": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when this org was merged into another.",
+            "title": "Merged Into"
+          },
+          "missing_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First check that found the org gone from Power Map; the snapshot still renders.",
+            "title": "Missing Since"
+          },
+          "name": {
+            "description": "Canonical name: the effective bag's org.title.",
+            "title": "Name",
+            "type": "string"
+          },
+          "pm_org_id": {
+            "description": "Power Map org id.",
+            "title": "Pm Org Id",
+            "type": "string"
+          },
+          "renamed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When archiver saw that change.",
+            "title": "Renamed At"
+          },
+          "renamed_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The previous canonical name, when a refresh saw the name or acronym change.",
+            "title": "Renamed From"
+          },
+          "succeeded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A re-key: the id of the *different* org that succeeds this one. Not followed.",
+            "title": "Succeeded By"
+          }
+        },
+        "required": [
+          "pm_org_id",
+          "name",
+          "acronym",
+          "active",
+          "archived_at",
+          "succeeded_by",
+          "merged_into",
+          "renamed_from",
+          "renamed_at",
+          "missing_since",
+          "checked_at"
+        ],
+        "title": "InfoItemOrgOut",
+        "type": "object"
+      },
+      "InfoItemOrgPut": {
+        "additionalProperties": false,
+        "description": "Request body for PUT /info-items/{id}/org (archiver#304).\n\n``pm_org_id`` is required, ``null`` included: unlinking is said, never\nimplied by an omitted field.",
+        "properties": {
+          "allow_destination_change": {
+            "default": false,
+            "description": "Store the link even though it changes the path an active assignment renders. Without it, such a link is refused with 409, exactly as PUT /rep-fields refuses a moving bag.",
+            "title": "Allow Destination Change",
+            "type": "boolean"
+          },
+          "pm_org_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Power Map org to link, fetched from Power Map now; null unlinks. A merged id links the org it was merged into.",
+            "title": "Pm Org Id"
+          }
+        },
+        "required": [
+          "pm_org_id"
+        ],
+        "title": "InfoItemOrgPut",
         "type": "object"
       },
       "InfoItemOut": {
@@ -812,6 +981,17 @@
             "title": "Name",
             "type": "string"
           },
+          "org": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InfoItemOrgOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The linked org's local snapshot, or null when unlinked."
+          },
           "owner": {
             "anyOf": [
               {
@@ -823,6 +1003,18 @@
             ],
             "description": "Optional owner identifier (team or individual) for this InfoItem.",
             "title": "Owner"
+          },
+          "pm_org_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The linked Power Map org's id, or null when unlinked. Written via PUT /info-items/{id}/org.",
+            "title": "Pm Org Id"
           },
           "rep_fields": {
             "additionalProperties": true,
@@ -2287,7 +2479,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.24.1"
+    "version": "4.25.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3112,7 +3304,7 @@
         ]
       },
       "post": {
-        "description": "Create an InfoItem.\n\nOptionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates\na primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates\neffective-dated RepSpec assignments). All writes are a single transaction; any\nvalidation or lookup failure rolls back the whole thing.",
+        "description": "Create an InfoItem.\n\nOptionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates\na primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates\neffective-dated RepSpec assignments). All writes are a single transaction; any\nvalidation or lookup failure rolls back the whole thing.\n\n``pm_org_id`` links a Power Map org at create (archiver#304), fetched before\nanything is written: Power Map unreachable is a 503 and creates nothing.",
         "operationId": "create_info_item_api_v1_info_items_post",
         "requestBody": {
           "content": {
@@ -3666,6 +3858,124 @@
           }
         ],
         "summary": "Deactivate Info Source Binding",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/org": {
+      "put": {
+        "description": "Link an InfoItem to a Power Map org, or unlink it with ``null`` (archiver#304).\n\nLinking fetches the org from Power Map now and snapshots it locally; the\neffective bag's ``org.title``/``org.acronym`` come from that snapshot, so\nany stored copies are dropped. Unlinking writes the org's values back into\nthe bag, so no path moves. A merged id links the org it was merged into.\n\n- **503**: Power Map not configured or unreachable; nothing is linked.\n  ``data.reason`` says which; a 429 upstream carries ``Retry-After``.\n- **422** ``pm_org_not_found`` / ``pm_org_unnamed``: Power Map has no such\n  org, or it has no canonical name to supply ``org.title``.\n- **422** ``rep_fields_incomplete`` / ``rep_fields_unrenderable``: the new\n  effective bag would break an active assignment; ``data.refusals``.\n- **409** ``rep_fields_moves_destination``: an active assignment would\n  render somewhere else; ``data.moves`` has each path before and after.\n  Resend with ``allow_destination_change: true`` to store it anyway.\n\nNothing is announced: org identity rides no bus stream.",
+        "operationId": "put_org_api_v1_info_items__info_item_id__org_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemOrgPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Org",
         "tags": [
           "info-items"
         ]

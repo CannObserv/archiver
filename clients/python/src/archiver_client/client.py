@@ -67,6 +67,9 @@ from archiver_client.generated.api.info_items import (
     patch_rep_spec_assignment_public_url_api_v1_info_items_info_item_id_rep_spec_assignments_assignment_id_patch as _patch_rep_spec_url,
 )
 from archiver_client.generated.api.info_items import (
+    put_org_api_v1_info_items_info_item_id_org_put as _put_org,
+)
+from archiver_client.generated.api.info_items import (
     put_rep_fields_api_v1_info_items_info_item_id_rep_fields_put as _put_rep_fields,
 )
 from archiver_client.generated.api.info_sources import (
@@ -107,6 +110,7 @@ from archiver_client.generated.models.info_item_create_initial_source_specs_type
     InfoItemCreateInitialSourceSpecsType0Item,
 )
 from archiver_client.generated.models.info_item_create_rep_fields import InfoItemCreateRepFields
+from archiver_client.generated.models.info_item_org_put import InfoItemOrgPut
 from archiver_client.generated.models.info_item_out import InfoItemOut
 from archiver_client.generated.models.info_item_rep_fields_put import InfoItemRepFieldsPut
 from archiver_client.generated.models.info_item_rep_fields_put_rep_fields import (
@@ -201,17 +205,22 @@ class ArchiverClient:
         initial_url: str | None = None,
         initial_source_specs: list[dict] | None = None,
         initial_rep_spec_assignments: list[dict] | None = None,
+        pm_org_id: str | None = None,
     ) -> InfoItemOut:
         """Create a new InfoItem.
 
         ``initial_url`` and ``initial_source_specs`` atomically create a primary
         InfoSource alongside the InfoItem. ``initial_rep_spec_assignments``
-        atomically creates RepSpec assignment rows. On validation failure, no rows
-        are persisted.
+        atomically creates RepSpec assignment rows. ``pm_org_id`` links a Power
+        Map org, fetched at create; ``rep_fields`` may then not carry
+        ``org.title``/``org.acronym``, and Power Map unreachable raises
+        ``ServerError`` (503). On validation failure, no rows are persisted.
         """
         body = InfoItemCreate(name=name, description=description, owner=owner)
         if rep_fields is not None:
             body.rep_fields = InfoItemCreateRepFields.from_dict(rep_fields)
+        if pm_org_id is not None:
+            body.pm_org_id = pm_org_id
         if initial_url is not None:
             body.initial_url = initial_url
         if initial_source_specs is not None:
@@ -300,6 +309,32 @@ class ArchiverClient:
             allow_destination_change=allow_destination_change,
         )
         response = await _put_rep_fields.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id, body=body
+        )
+        return _unwrap(response)
+
+    async def set_org(
+        self,
+        info_item_id: str,
+        pm_org_id: str | None,
+        *,
+        allow_destination_change: bool = False,
+    ) -> InfoItemOut:
+        """Link an InfoItem to a Power Map org, or unlink it with ``None``.
+
+        Linking fetches the org from Power Map and snapshots it; the item's
+        ``org.title``/``org.acronym`` then come from the org (stored copies are
+        dropped). Unlinking writes the org's values back into ``rep_fields`` so
+        no path moves. Raises ``NotFound``, ``ServerError`` (503: Power Map not
+        configured or unreachable; ``data.reason``), ``ValidationError`` (422:
+        ``pm_org_not_found`` / ``pm_org_unnamed``, or an assignment would break,
+        ``data.refusals``), or ``Conflict`` (409, ``rep_fields_moves_destination``;
+        ``data.moves`` - pass ``allow_destination_change=True`` to store it).
+        """
+        body = InfoItemOrgPut(
+            pm_org_id=pm_org_id, allow_destination_change=allow_destination_change
+        )
+        response = await _put_org.asyncio_detailed(
             client=self._gen_client, info_item_id=info_item_id, body=body
         )
         return _unwrap(response)

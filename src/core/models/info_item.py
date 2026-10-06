@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Index, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
@@ -27,6 +27,17 @@ class InfoItem(Base, TimestampMixin):
         server_default="{}",
         default=dict,
     )
+    pm_org_id: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("information.pm_organizations.pm_org_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    """The linked Power Map org (archiver#304), or ``NULL`` when unlinked.
+
+    Its snapshot supplies the effective bag's ``org.title``/``org.acronym``, and
+    while it is set the stored bag may not carry either. Written only by
+    ``link_org`` and the follower, under the InfoItem row lock.
+    """
     watch_spec: Mapped[dict] = mapped_column(
         JSONB,
         nullable=False,
@@ -93,6 +104,7 @@ class InfoItem(Base, TimestampMixin):
             postgresql_using="gin",
             postgresql_ops={"name": "gin_trgm_ops"},
         ),
+        Index("ix_info_items_pm_org_id", "pm_org_id"),
         Index(
             "ix_info_items_description_trgm",
             "description",

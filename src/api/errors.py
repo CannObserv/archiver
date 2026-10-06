@@ -86,12 +86,14 @@ def raise_envelope(
     errors: list[dict[str, Any]] | list[FieldError] | None = None,
     data: dict[str, Any] | None = None,
     source_exc: BaseException | None = None,
+    headers: dict[str, str] | None = None,
 ) -> NoReturn:
     """Raise an HTTPException whose ``detail`` is a serialized ErrorEnvelope.
 
     Pass ``source_exc`` (typically the ``e`` from an ``except X as e`` block)
     to preserve exception chaining (ruff B904).  Construct ``errors`` as either
     dicts or ``FieldError`` instances - both round-trip through Pydantic.
+    ``headers`` ride on the response (a 503's ``Retry-After``).
     """
     field_errors: list[FieldError] = []
     if errors:
@@ -102,8 +104,8 @@ def raise_envelope(
     detail = env.model_dump(exclude_none=True)
 
     if source_exc is not None:
-        raise HTTPException(status_code=status_code, detail=detail) from source_exc
-    raise HTTPException(status_code=status_code, detail=detail)
+        raise HTTPException(status_code=status_code, detail=detail, headers=headers) from source_exc
+    raise HTTPException(status_code=status_code, detail=detail, headers=headers)
 
 
 def raise_422(
@@ -185,7 +187,9 @@ async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSO
     detail = exc.detail
     if isinstance(detail, dict) and "kind" in detail and "message" in detail:
         # Already envelope-shaped - pass through verbatim.
-        return JSONResponse(status_code=exc.status_code, content={"detail": detail})
+        return JSONResponse(
+            status_code=exc.status_code, content={"detail": detail}, headers=exc.headers
+        )
 
     if isinstance(detail, str):
         message = detail

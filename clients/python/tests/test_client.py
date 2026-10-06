@@ -10,6 +10,7 @@ from archiver_client import (
     AuthError,
     Conflict,
     NotFound,
+    ServerError,
     ValidationError,
 )
 from archiver_client.generated.models.domain_out import DomainOut
@@ -808,3 +809,87 @@ async def test_restore_domain_returns_typed_model(client):
         out = await client.restore_domain("example.com")
     assert isinstance(out, DomainOut)
     assert out.archived_at is None
+
+
+# --- Power Map org link (archiver#304) ---
+
+_ORG_URL = f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/org"
+_PM_ORG_ID = "01JPM00000000000000000000A"
+
+
+def _org_payload() -> dict:
+    return {
+        "pm_org_id": _PM_ORG_ID,
+        "name": "Washington State Liquor and Cannabis Board",
+        "acronym": "WSLCB",
+        "active": True,
+        "archived_at": None,
+        "succeeded_by": None,
+        "merged_into": None,
+        "renamed_from": None,
+        "renamed_at": None,
+        "missing_since": None,
+        "checked_at": _TS,
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_org_links_and_returns_the_org(client):
+    with respx.mock:
+        route = respx.put(_ORG_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={**_info_item_payload(), "pm_org_id": _PM_ORG_ID, "org": _org_payload()},
+            )
+        )
+        out = await client.set_org("01HZZ00000000000000000000A", _PM_ORG_ID)
+    assert json.loads(route.calls.last.request.content) == {
+        "pm_org_id": _PM_ORG_ID,
+        "allow_destination_change": False,
+    }
+    assert out.pm_org_id == _PM_ORG_ID
+    assert out.org.name == "Washington State Liquor and Cannabis Board"
+
+
+@pytest.mark.asyncio
+async def test_set_org_none_unlinks_with_an_explicit_null(client):
+    with respx.mock:
+        route = respx.put(_ORG_URL).mock(
+            return_value=httpx.Response(200, json=_info_item_payload())
+        )
+        await client.set_org("01HZZ00000000000000000000A", None, allow_destination_change=True)
+    assert json.loads(route.calls.last.request.content) == {
+        "pm_org_id": None,
+        "allow_destination_change": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_org_power_map_down_raises_server_error(client):
+    with respx.mock:
+        respx.put(_ORG_URL).mock(
+            return_value=httpx.Response(
+                503,
+                json={
+                    "detail": {
+                        "kind": "server",
+                        "message": "Power Map unavailable: request timed out",
+                        "errors": [],
+                        "data": {"reason": "request timed out", "retry_after": None},
+                    }
+                },
+            )
+        )
+        with pytest.raises(ServerError) as exc_info:
+            await client.set_org("01HZZ00000000000000000000A", _PM_ORG_ID)
+    assert exc_info.value.data["reason"] == "request timed out"
+
+
+@pytest.mark.asyncio
+async def test_create_info_item_sends_pm_org_id(client):
+    with respx.mock:
+        route = respx.post(f"{BASE_URL}/api/v1/info-items").mock(
+            return_value=httpx.Response(201, json=_info_item_payload())
+        )
+        await client.create_info_item(name="X", pm_org_id=_PM_ORG_ID)
+    assert json.loads(route.calls.last.request.content)["pm_org_id"] == _PM_ORG_ID

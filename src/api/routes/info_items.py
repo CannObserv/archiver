@@ -2,6 +2,7 @@
 
 import os
 from datetime import UTC, datetime
+from typing import NoReturn
 
 from co_core.pure.models.changes import InfoItemPrimaryChangedEmit
 from fastapi import APIRouter, Depends, Query
@@ -9,10 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.api.deps import get_db_session, require_api_key
+from src.api.deps import get_db_session, get_power_map, require_api_key
 from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.info_item import (
     InfoItemCreate,
+    InfoItemOrgPut,
     InfoItemOut,
     InfoItemRepFieldsPut,
     InfoItemRepSpecCreate,
@@ -37,10 +39,22 @@ from src.core.models import (
     InfoItemRepSpec,
     InfoItemSource,
     InfoSource,
+    PmOrganization,
     RepSpec,
     WatchStatus,
 )
-from src.core.rep_fields_schema.validator import ValidationError, validate_rep_fields
+from src.core.power_map import OrgSnapshot, PowerMapClient, PowerMapUnavailableError
+from src.core.power_map.snapshots import (
+    OrgUnnamedError,
+    apply_org_snapshot,
+    load_orgs,
+    org_values,
+)
+from src.core.rep_fields_schema.validator import (
+    ValidationError,
+    linked_org_key_errors,
+    validate_rep_fields,
+)
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_info_item_revoked,
@@ -78,6 +92,12 @@ from src.core.tools.deactivate_info_item_source_binding import (
     BindingNotFoundError,
     deactivate_info_item_source_binding,
 )
+from src.core.tools.link_org import (
+    OrgNotFoundError,
+    PowerMapNotConfiguredError,
+    fetch_linkable_org,
+    link_org,
+)
 from src.core.tools.rep_fields_gate import check_bag_against_spec
 from src.core.tools.set_rep_fields import (
     CODE_INCOMPLETE,
@@ -100,6 +120,7 @@ logger = get_logger(__name__)
 async def create_info_item(
     body: InfoItemCreate,
     session: AsyncSession = Depends(get_db_session),
+    power_map: PowerMapClient | None = Depends(get_power_map),
 ) -> InfoItemOut:
     """Create an InfoItem.
 
@@ -107,14 +128,35 @@ async def create_info_item(
     a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
     effective-dated RepSpec assignments). All writes are a single transaction; any
     validation or lookup failure rolls back the whole thing.
+
+    ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
+    anything is written: Power Map unreachable is a 503 and creates nothing.
     """
-    # --- 0. The bag's shape, assignments or not (archiver#302) ---
-    ok, shape_errors = validate_rep_fields(body.rep_fields)
-    if not ok:
+    # --- 0. The bag's shape, assignments or not (archiver#302), and with an
+    # org, none of the keys it supplies (archiver#304) ---
+    _, shape_errors = validate_rep_fields(body.rep_fields)
+    if body.pm_org_id is not None:
+        shape_errors += linked_org_key_errors(body.rep_fields)
+    if shape_errors:
         raise_422(
             "rep_fields failed schema validation",
             errors=_rep_fields_errors(shape_errors, code=CODE_INVALID),
         )
+
+    # --- 0b. The org, before any lock or write: an HTTP round trip ---
+    fetched_org = None
+    if body.pm_org_id is not None:
+        fetched_org = await _fetch_org_or_raise(power_map, body.pm_org_id)
+
+    # The snapshot goes in before the gate reads it, inside this transaction,
+    # and before the RepSpec locks below.
+    org_row: PmOrganization | None = None
+    if fetched_org is not None:
+        try:
+            org_row = await apply_org_snapshot(session, fetched_org, now=datetime.now(UTC))
+        except OrgUnnamedError as e:
+            _raise_org_unnamed(e)
+    org_values_for_create = org_values(org_row)
 
     # --- 1. Look up RepSpecs + validate rep_fields against required_fields ---
     # Locked FOR UPDATE: step 4 below inserts InfoItemRepSpec rows directly
@@ -157,7 +199,9 @@ async def create_info_item(
         # directly rather than calling assign_rep_spec, so it asks the same gate
         # (archiver#168 CR #5, #302). Refusing now keeps the fix synchronous:
         # the document freezes on assignment (#83).
-        check = check_bag_against_spec(body.rep_fields, rep_spec.document or {}, org=None)
+        check = check_bag_against_spec(
+            body.rep_fields, rep_spec.document or {}, org=org_values_for_create
+        )
         if check.missing:
             raise_422(
                 f"rep_fields does not satisfy RepSpec {assignment.rep_spec_id!r}",
@@ -207,6 +251,7 @@ async def create_info_item(
         description=body.description,
         owner=body.owner,
         rep_fields=body.rep_fields,
+        pm_org_id=org_row.pm_org_id if org_row is not None else None,
     )
     session.add(item)
     await session.flush()  # populate item.info_item_id
@@ -245,6 +290,7 @@ async def create_info_item(
         sources=new_sources,
         rep_specs=new_rep_specs,
         base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+        org=org_row,
     )
 
 
@@ -304,6 +350,8 @@ async def list_info_items(
     for r in rep_specs_rows:
         rep_specs_by_item.setdefault(r.info_item_id, []).append(r)
 
+    orgs = await load_orgs(session, rows)
+
     return Page[InfoItemOut](
         items=[
             info_item_to_out(
@@ -311,6 +359,7 @@ async def list_info_items(
                 sources=sources_by_item.get(item.info_item_id, []),
                 rep_specs=rep_specs_by_item.get(item.info_item_id, []),
                 base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+                org=orgs.get(item.pm_org_id) if item.pm_org_id else None,
             )
             for item in rows
         ],
@@ -365,6 +414,7 @@ async def get_info_item(
         sources=sources,
         rep_specs=rep_specs,
         base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+        org=await _org_row(session, item),
     )
 
 
@@ -750,7 +800,15 @@ async def _item_out_with_active_relations(session: AsyncSession, item: InfoItem)
         sources=sources,
         rep_specs=rep_specs,
         base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+        org=await _org_row(session, item),
     )
+
+
+async def _org_row(session: AsyncSession, item: InfoItem) -> PmOrganization | None:
+    """The item's ``pm_organizations`` row, or ``None`` when unlinked."""
+    if item.pm_org_id is None:
+        return None
+    return await session.get(PmOrganization, item.pm_org_id)
 
 
 async def _resolve_or_404(session: AsyncSession, info_item_id: str) -> InfoItem:
@@ -954,72 +1012,192 @@ async def put_rep_fields(
             source_exc=e,
         )
     except RepFieldsRefusedError as e:
-        names = ", ".join(f"'{r.rep_spec_name}'" for r in e.refusals)
-        what = (
-            "the active assignment of RepSpec"
-            if len(e.refusals) == 1
-            else "the active assignments of RepSpecs"
-        )
-        raise_422(
-            f"rep_fields would break {what} {names}",
-            kind="domain",
-            errors=[
-                FieldError(
-                    path=f"/rep_fields{err['path']}",
-                    message=f"RepSpec '{r.rep_spec_name}' ({r.rep_spec_id!s}): {err['message']}",
-                    code=r.code,
-                )
-                for r in e.refusals
-                for err in r.errors
-            ],
-            data={
-                "refusals": [
-                    {
-                        "assignment_id": str(r.assignment_id),
-                        "rep_spec_id": str(r.rep_spec_id),
-                        "rep_spec_name": r.rep_spec_name,
-                        "code": r.code,
-                        "errors": _rep_fields_errors(r.errors, code=r.code),
-                    }
-                    for r in e.refusals
-                ]
-            },
-            source_exc=e,
-        )
+        _raise_refused(e)
     except RepFieldsMoveError as e:
-        raise_envelope(
-            409,
-            "conflict",
-            "rep_fields would move where active assignments render; "
-            "resend with allow_destination_change to store it",
-            errors=[
-                FieldError(
-                    path="/rep_fields",
-                    message=(
-                        f"RepSpec '{m.rep_spec_name}' ({m.rep_spec_id!s}): {m.before} -> {m.after}"
-                    ),
-                    code=CODE_MOVES_DESTINATION,
-                )
-                for m in e.moves
-            ],
-            data={
-                "moves": [
-                    {
-                        "assignment_id": str(m.assignment_id),
-                        "rep_spec_id": str(m.rep_spec_id),
-                        "rep_spec_name": m.rep_spec_name,
-                        "before": m.before,
-                        "after": m.after,
-                    }
-                    for m in e.moves
-                ]
-            },
-            source_exc=e,
-        )
+        _raise_moves(e)
 
     await session.commit()
     await session.refresh(item)
     return await _item_out_with_active_relations(session, item)
+
+
+@router.put(
+    "/{info_item_id}/org",
+    response_model=InfoItemOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def put_org(
+    info_item_id: ULIDStr,
+    body: InfoItemOrgPut,
+    session: AsyncSession = Depends(get_db_session),
+    power_map: PowerMapClient | None = Depends(get_power_map),
+) -> InfoItemOut:
+    """Link an InfoItem to a Power Map org, or unlink it with ``null`` (archiver#304).
+
+    Linking fetches the org from Power Map now and snapshots it locally; the
+    effective bag's ``org.title``/``org.acronym`` come from that snapshot, so
+    any stored copies are dropped. Unlinking writes the org's values back into
+    the bag, so no path moves. A merged id links the org it was merged into.
+
+    - **503**: Power Map not configured or unreachable; nothing is linked.
+      ``data.reason`` says which; a 429 upstream carries ``Retry-After``.
+    - **422** ``pm_org_not_found`` / ``pm_org_unnamed``: Power Map has no such
+      org, or it has no canonical name to supply ``org.title``.
+    - **422** ``rep_fields_incomplete`` / ``rep_fields_unrenderable``: the new
+      effective bag would break an active assignment; ``data.refusals``.
+    - **409** ``rep_fields_moves_destination``: an active assignment would
+      render somewhere else; ``data.moves`` has each path before and after.
+      Resend with ``allow_destination_change: true`` to store it anyway.
+
+    Nothing is announced: org identity rides no bus stream.
+    """
+    try:
+        item = await link_org(
+            session,
+            info_item_id=ULID.from_str(info_item_id),
+            pm_org_id=body.pm_org_id,
+            power_map=power_map,
+            allow_destination_change=body.allow_destination_change,
+        )
+    except AssignInfoItemNotFoundError as e:
+        raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
+    except (PowerMapNotConfiguredError, PowerMapUnavailableError, OrgNotFoundError) as e:
+        _raise_fetch_error(e)
+    except OrgUnnamedError as e:
+        _raise_org_unnamed(e)
+    except RepFieldsRefusedError as e:
+        _raise_refused(e)
+    except RepFieldsMoveError as e:
+        _raise_moves(e)
+
+    await session.commit()
+    await session.refresh(item)
+    return await _item_out_with_active_relations(session, item)
+
+
+async def _fetch_org_or_raise(power_map: PowerMapClient | None, pm_org_id: str) -> OrgSnapshot:
+    """``fetch_linkable_org`` with its refusals as envelopes."""
+    try:
+        return await fetch_linkable_org(power_map, pm_org_id)
+    except (PowerMapNotConfiguredError, PowerMapUnavailableError, OrgNotFoundError) as e:
+        _raise_fetch_error(e)
+
+
+def _raise_fetch_error(
+    e: PowerMapNotConfiguredError | PowerMapUnavailableError | OrgNotFoundError,
+) -> NoReturn:
+    if isinstance(e, OrgNotFoundError):
+        raise_422(
+            f"Power Map has no org {e.pm_org_id!r}",
+            kind="domain",
+            errors=[
+                FieldError(
+                    path="/pm_org_id", message="not found in Power Map", code="pm_org_not_found"
+                )
+            ],
+            source_exc=e,
+        )
+    if isinstance(e, PowerMapNotConfiguredError):
+        raise_envelope(
+            503,
+            "server",
+            "Power Map not configured: ARCHIVER_POWER_MAP_API_KEY is unset",
+            data={"reason": "not configured"},
+            source_exc=e,
+        )
+    headers = (
+        {"Retry-After": str(max(1, round(e.retry_after)))} if e.retry_after is not None else None
+    )
+    raise_envelope(
+        503,
+        "server",
+        f"Power Map unavailable: {e.reason}",
+        data={"reason": e.reason, "retry_after": e.retry_after},
+        headers=headers,
+        source_exc=e,
+    )
+
+
+def _raise_org_unnamed(e: OrgUnnamedError) -> NoReturn:
+    raise_422(
+        f"Power Map org {e.pm_org_id!r} has no canonical name to supply org.title",
+        kind="domain",
+        errors=[
+            FieldError(
+                path="/pm_org_id", message="org has no canonical name", code="pm_org_unnamed"
+            )
+        ],
+        source_exc=e,
+    )
+
+
+def _raise_refused(e: RepFieldsRefusedError) -> NoReturn:
+    """422: the effective bag would break active assignments, every one named."""
+    names = ", ".join(f"'{r.rep_spec_name}'" for r in e.refusals)
+    what = (
+        "the active assignment of RepSpec"
+        if len(e.refusals) == 1
+        else "the active assignments of RepSpecs"
+    )
+    raise_422(
+        f"rep_fields would break {what} {names}",
+        kind="domain",
+        errors=[
+            FieldError(
+                path=f"/rep_fields{err['path']}",
+                message=f"RepSpec '{r.rep_spec_name}' ({r.rep_spec_id!s}): {err['message']}",
+                code=r.code,
+            )
+            for r in e.refusals
+            for err in r.errors
+        ],
+        data={
+            "refusals": [
+                {
+                    "assignment_id": str(r.assignment_id),
+                    "rep_spec_id": str(r.rep_spec_id),
+                    "rep_spec_name": r.rep_spec_name,
+                    "code": r.code,
+                    "errors": _rep_fields_errors(r.errors, code=r.code),
+                }
+                for r in e.refusals
+            ]
+        },
+        source_exc=e,
+    )
+
+
+def _raise_moves(e: RepFieldsMoveError) -> NoReturn:
+    """409: the one move-confirmation contract, shared by the bag save and the org link."""
+    raise_envelope(
+        409,
+        "conflict",
+        "rep_fields would move where active assignments render; "
+        "resend with allow_destination_change to store it",
+        errors=[
+            FieldError(
+                path="/rep_fields",
+                message=(
+                    f"RepSpec '{m.rep_spec_name}' ({m.rep_spec_id!s}): {m.before} -> {m.after}"
+                ),
+                code=CODE_MOVES_DESTINATION,
+            )
+            for m in e.moves
+        ],
+        data={
+            "moves": [
+                {
+                    "assignment_id": str(m.assignment_id),
+                    "rep_spec_id": str(m.rep_spec_id),
+                    "rep_spec_name": m.rep_spec_name,
+                    "before": m.before,
+                    "after": m.after,
+                }
+                for m in e.moves
+            ]
+        },
+        source_exc=e,
+    )
 
 
 def _rep_fields_errors(errors: list[ValidationError], *, code: str) -> list[FieldError]:

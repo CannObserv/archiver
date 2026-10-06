@@ -50,7 +50,7 @@ Those take production action on 8000 and run only when the operator asks.
 
 | Endpoint | HTTP | SDK method |
 |---|---|---|
-| Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_url=None, initial_source_specs=None, initial_rep_spec_assignments=None, rep_fields=None)` |
+| Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_url=None, initial_source_specs=None, initial_rep_spec_assignments=None, rep_fields=None, pm_org_id=None)` |
 | Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id)` |
 | Deactivate a source binding | `DELETE /info-items/{id}/info-sources/{source_id}` | `deactivate_info_source_binding(info_item_id, info_source_id)` |
 | Delete an InfoItem | `DELETE /info-items/{id}` | `delete_info_item(info_item_id)` |
@@ -66,6 +66,7 @@ Those take production action on 8000 and run only when the operator asks.
 | Deactivate an assignment | `DELETE /info-items/{id}/rep-spec-assignments/{aid}` | `deactivate_rep_spec_assignment(info_item_id, assignment_id)` |
 | Public-URL writeback | `PATCH /info-items/{id}/rep-spec-assignments/{aid}` | `set_public_url(info_item_id, assignment_id, public_url)` |
 | Replace an item's rep_fields bag | `PUT /info-items/{id}/rep-fields` | `set_rep_fields(info_item_id, rep_fields, allow_destination_change=False)` |
+| Link / unlink a Power Map org | `PUT /info-items/{id}/org` | `set_org(info_item_id, pm_org_id, allow_destination_change=False)` |
 | Replace an item's cadence policy | `PUT /info-items/{id}/watch-spec` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Pause / resume an item | `PUT /info-items/{id}/watch-active` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
@@ -108,6 +109,30 @@ Error paths point into the request body (`/rep_fields/org/title_slug`). Nothing 
 `rep_fields_invalid` paths are body-relative like these, but its `rep_fields_incomplete` paths
 stay bag-relative (`/org/title_slug`), as they were before #302. Changing them would break
 existing callers.
+
+`PUT /info-items/{id}/org` accepts `{pm_org_id, allow_destination_change=false}` (archiver#304);
+`pm_org_id` is required, and `null` unlinks. Linking fetches the org from Power Map **now**, upserts
+its local `pm_organizations` snapshot and sets `info_items.pm_org_id`; a merged id links the org it
+was merged into. The effective bag's `org.title`/`org.acronym` then come from the snapshot, so the
+link drops any stored copies; other `org.*` keys stay as overrides. Unlinking writes the org's
+values back into the bag, so nothing moves. Same InfoItem row lock as the save. Refusals link nothing:
+
+- **503** `kind="server"`: Power Map not configured (`data.reason="not configured"`) or unreachable
+  (timeout, 429, 5xx, rejected key; `data.reason`, `data.retry_after`, and `Retry-After` when Power
+  Map sent one). Unlinking never calls Power Map.
+- **422** `kind="domain"`, path `/pm_org_id`: `code="pm_org_not_found"` (unknown, deleted, or merged
+  into an org that is gone) or `code="pm_org_unnamed"` (no canonical name to supply `org.title`).
+- **422** `rep_fields_incomplete` / `rep_fields_unrenderable` with `data.refusals`, and **409**
+  `rep_fields_moves_destination` with `data.moves`, exactly as `PUT …/rep-fields`: one
+  move-confirmation contract. Linking over a hand-typed `org.title` that differs from Power Map's is
+  a move whenever an active assignment renders from it.
+
+**While linked**, `PUT …/rep-fields` refuses a stored `org.title` or `org.acronym` (**422**
+`rep_fields_invalid`, path `/rep_fields/org/title`). `POST /info-items` takes an optional
+`pm_org_id` with the same fetch, refusals and 503, before anything is written. `InfoItemOut` carries
+`pm_org_id` and `org` - the snapshot: `name`, `acronym`, `active`, and the notices `archived_at`,
+`succeeded_by`, `merged_into`, `renamed_from`/`renamed_at`, `missing_since`, plus `checked_at` -
+or `null` when unlinked.
 
 `DELETE /info-items/{id}` returns 204 and cascades the item's source bindings and rep-spec
 assignments; the InfoSource and its SourceRevisions survive (the physical layer is shared). 404 on
