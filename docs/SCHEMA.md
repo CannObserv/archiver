@@ -20,20 +20,9 @@ see the never-rename rule in `AGENTS.md`.
   `src/core/tools/rep_fields_gate.py` that assign and create share; writers serialize on the
   InfoItem row. Enforced on write only, no backfill (prod clean 2026-10-02). Codes and the
   destination-move 409: [API.md](API.md).
-  `pm_org_id TEXT NULL` (archiver#304) — FK → `pm_organizations` (`RESTRICT`), indexed
-  (`ix_info_items_pm_org_id`). The linked Power Map org; its snapshot is the `org` that
-  `effective_rep_fields` overlays. **While set, the stored bag holds no `org.title`/`org.acronym`**:
-  linking drops them, `set_rep_fields` and `POST /info-items` refuse them, unlinking writes the
-  org's values back. Written only by `link_org` (and the follower, #305) under the InfoItem row
-  lock.
-- **`PmOrganization`** (`pm_organizations`, archiver#304) — local snapshot of one linked Power Map
-  org, keyed by Power Map's id (`pm_org_id TEXT` PK). `name` (NOT NULL) and `acronym` are the
-  canonical values at the last check; `archived_at`, `active`, `succeeded_by` are mirrored notices;
-  `merged_into` marks a merge loser (row kept for provenance); `renamed_from`/`renamed_at` record a
-  name or acronym change seen on refresh; `etag`, `pm_updated_at`, `checked_at`, `missing_since` are
-  follower bookkeeping. Written only through `apply_org_snapshot` (link and follower), never edited
-  in archiver. **Rendering reads this row and never Power Map**, so replication has no Power Map
-  dependency. A row outlives its last link.
+  `pm_org_id TEXT NULL` (archiver#304) — FK → `pm_organizations` (`RESTRICT`, indexed). **While
+  set, the stored bag holds no `org.title`/`org.acronym`**: link drops them, writers refuse them,
+  unlink writes the org's values back. Written by `link_org` under the InfoItem row lock.
   `watcher_item_id` — **dropped** (archiver#142). It held *Watcher's* primary key on an *Archiver*
   row, which is the coupling artifact the decoupling epic set out to remove. Announcements key on
   Archiver's own `info_item_id` and Watcher reconciles against that, so nothing allocates a
@@ -123,6 +112,9 @@ see the never-rename rule in `AGENTS.md`.
   removing there by hand. The route logs a WARNING naming the InfoItem when the
   deleted item had a `watch_status` row, so the pending cleanup shows up in journald.
 
+- **`PmOrganization`** (`pm_organizations`, archiver#304) — snapshot of one linked Power Map org,
+  PK Power Map's id; columns documented on the model. Written only by `apply_org_snapshot`, which
+  never moves a row backwards in `pm_updated_at`. **Rendering reads this row, never Power Map.**
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are
