@@ -87,11 +87,21 @@ class RepFieldsWriteError(Exception):
 
 
 class RepFieldsInvalidError(RepFieldsWriteError):
-    """The bag is not v1-shaped, or carries a key the linked Power Map org owns."""
+    """The bag is not v1-shaped, or carries a key the linked Power Map org owns.
 
-    def __init__(self, errors: list[ValidationError]) -> None:
+    ``linked_org`` tells the two apart (CR 6): the second is a valid bag, and a
+    message about its shape would send the author looking for the wrong fault.
+    """
+
+    def __init__(self, errors: list[ValidationError], *, linked_org: bool = False) -> None:
         self.errors = errors
-        super().__init__(f"rep_fields failed schema validation: {errors}")
+        self.linked_org = linked_org
+        what = (
+            "carries keys the linked Power Map org supplies"
+            if linked_org
+            else "failed schema validation"
+        )
+        super().__init__(f"rep_fields {what}: {errors}")
 
 
 class RepFieldsRefusedError(RepFieldsWriteError):
@@ -134,12 +144,12 @@ async def set_rep_fields(
     if item is None:
         raise InfoItemNotFoundError(str(info_item_id))
 
-    _, errors = validate_rep_fields(rep_fields)
-    org = await load_org_values(db, item)
-    if org is not None:
-        errors += linked_org_key_errors(rep_fields)
-    if errors:
+    ok, errors = validate_rep_fields(rep_fields)
+    if not ok:
         raise RepFieldsInvalidError(errors)
+    org = await load_org_values(db, item)
+    if org is not None and (owned := linked_org_key_errors(rep_fields)):
+        raise RepFieldsInvalidError(owned, linked_org=True)
 
     assignments = await active_assignments(db, info_item_id)
     refusals = assignment_refusals(assignments, rep_fields, org=org)

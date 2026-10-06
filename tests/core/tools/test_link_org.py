@@ -342,6 +342,22 @@ async def test_a_linked_item_refuses_a_stored_org_owned_key(session, key):
         )
 
     assert [e["path"] for e in exc.value.errors] == [f"/org/{key}"]
+    assert exc.value.linked_org is True
+
+
+@pytest.mark.asyncio
+async def test_a_linked_items_malformed_bag_is_a_shape_refusal_first(session):
+    """CR 6: shape is judged before the org's keys, as before #304."""
+    item = await _linked(session, {})
+
+    with pytest.raises(RepFieldsInvalidError) as exc:
+        await set_rep_fields(
+            session,
+            info_item_id=item.info_item_id,
+            rep_fields={"org": {"title": "X", "nested": {"no": "objects"}}},
+        )
+
+    assert exc.value.linked_org is False
 
 
 @pytest.mark.asyncio

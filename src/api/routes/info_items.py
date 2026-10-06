@@ -115,6 +115,8 @@ router = APIRouter(prefix="/info-items", tags=["info-items"])
 
 logger = get_logger(__name__)
 
+LINKED_ORG_KEYS_MESSAGE = "rep_fields carries keys the linked Power Map org supplies"
+
 
 @router.post("", response_model=InfoItemOut, status_code=201)
 async def create_info_item(
@@ -134,14 +136,14 @@ async def create_info_item(
     """
     # --- 0. The bag's shape, assignments or not (archiver#302), and with an
     # org, none of the keys it supplies (archiver#304) ---
-    _, shape_errors = validate_rep_fields(body.rep_fields)
-    if body.pm_org_id is not None:
-        shape_errors += linked_org_key_errors(body.rep_fields)
-    if shape_errors:
+    ok, shape_errors = validate_rep_fields(body.rep_fields)
+    if not ok:
         raise_422(
             "rep_fields failed schema validation",
             errors=_rep_fields_errors(shape_errors, code=CODE_INVALID),
         )
+    if body.pm_org_id is not None and (owned := linked_org_key_errors(body.rep_fields)):
+        raise_422(LINKED_ORG_KEYS_MESSAGE, errors=_rep_fields_errors(owned, code=CODE_INVALID))
 
     # --- 0b. The org, before any lock or write: an HTTP round trip ---
     fetched_org = None
@@ -1007,7 +1009,7 @@ async def put_rep_fields(
         raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
     except RepFieldsInvalidError as e:
         raise_422(
-            "rep_fields failed schema validation",
+            LINKED_ORG_KEYS_MESSAGE if e.linked_org else "rep_fields failed schema validation",
             errors=_rep_fields_errors(e.errors, code=CODE_INVALID),
             source_exc=e,
         )

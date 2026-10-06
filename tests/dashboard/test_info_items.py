@@ -2911,3 +2911,22 @@ async def test_the_picker_judges_a_linked_item_through_its_org(client, session):
     entry = _picker_entry(r.text, rs)
     assert "Ready" in entry
     assert f"organizations/wslcb/{revision.source_revision_id}.html" in entry
+
+
+@pytest.mark.asyncio
+async def test_saving_an_org_owned_key_on_a_linked_item_says_why(client, session):
+    """CR 6: the refusal names the linked org, not the v1 shape the bag satisfies."""
+    item = _make_item("Linked Save", rep_fields={})
+    session.add(item)
+    await session.flush()
+    await _linked_snapshot(session, item)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": '{"org": {"title": "Hand Typed"}}'},
+    )
+
+    assert r.status_code == 422
+    assert "linked Power Map organization" in r.text
+    assert "plain values" not in r.text

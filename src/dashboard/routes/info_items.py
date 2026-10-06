@@ -748,7 +748,11 @@ async def patch_rep_fields(
     except RepFieldsInvalidError as e:
         return flash(
             422,
-            message="Not saved: Rep Fields must map each namespace to an object of plain values.",
+            message=(
+                "Not saved: the linked Power Map organization sets these; unlink it to type them."
+                if e.linked_org
+                else "Not saved: Rep Fields must map each namespace to an object of plain values."
+            ),
             problems=[f"{err['path']}: {err['message']}" for err in e.errors],
         )
     except RepFieldsRefusedError as e:

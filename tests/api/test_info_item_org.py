@@ -289,10 +289,12 @@ async def test_put_rep_fields_refuses_org_title_while_linked(client, session, po
     )
 
     assert response.status_code == 422, response.text
-    errors = response.json()["detail"]["errors"]
-    assert [(e["path"], e["code"]) for e in errors] == [
+    detail = response.json()["detail"]
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [
         ("/rep_fields/org/title", "rep_fields_invalid")
     ]
+    # CR 6: the bag is valid v1; the message says what is actually wrong.
+    assert detail["message"] == "rep_fields carries keys the linked Power Map org supplies"
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +345,9 @@ async def test_create_refuses_an_org_owned_key_alongside_an_org(client, power_ma
     )
 
     assert response.status_code == 422, response.text
-    assert response.json()["detail"]["errors"][0]["path"] == f"/rep_fields/org/{key}"
+    detail = response.json()["detail"]
+    assert detail["errors"][0]["path"] == f"/rep_fields/org/{key}"
+    assert detail["message"] == "rep_fields carries keys the linked Power Map org supplies"
 
 
 @pytest.mark.asyncio
