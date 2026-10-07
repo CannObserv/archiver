@@ -2,7 +2,9 @@
 
 ``client`` is the only module that imports the Power Map SDK. ``snapshots`` owns
 ``pm_organizations``: written by the link and the follower, read by every
-consumer of the effective bag.
+consumer of the effective bag. ``follower`` is the hourly refresh of every
+linked org (archiver#305) and its timer entrypoint; it is not imported here, so
+``python -m src.core.power_map.follower`` runs it without a double import.
 """
 
 from src.core.power_map.client import (
