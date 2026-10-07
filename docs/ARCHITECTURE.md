@@ -300,7 +300,7 @@ docs/                          Live reference docs — ARCHITECTURE.md, API.md,
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
 skills-vendor/                 Git submodules for external skill repos
 .skills/doctor.sh              Committed skill-symlink doctor (real file, not a
-                               symlink) — see "SessionStart Hooks"
+                               symlink) — see SKILLS.md "SessionStart Hooks"
 .claude/skills/                Claude Code skill discovery (symlinks → ../../skills/<name>)
 .github/workflows/             CI (ci.yml) — lint job (ruff check + ruff format --check
                                + check_version_lockstep.py),
@@ -324,8 +324,8 @@ skills-vendor/                 Git submodules for external skill repos
 ```
 
 Quoted section names in the tree above ("Server Lifecycle", "Dashboard living
-docs", "SessionStart Hooks", "Content-acquisition via co-core", "No cross-repo
-mirror discipline") refer to sections of [AGENTS.md](../AGENTS.md).
+docs", "Content-acquisition via co-core", "No cross-repo mirror discipline")
+refer to sections of [AGENTS.md](../AGENTS.md), unless a doc is named.
 
 ## Content acquisition via co-core
 

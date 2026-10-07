@@ -155,6 +155,13 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 
 ## SessionStart Hooks
 
+Wired in `.claude/settings.json`; each script is a symlink into `skills-vendor/`.
+Never re-copy one, never symlink the committed `.skills/doctor.sh`, and never
+un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
+`tests/scripts/test_claude_hooks_registered.py` fails when a script and
+`settings.json` disagree, and when the refresh or health hook loses its 120s
+`timeout`. Each hook and its logs: below.
+
 > **The 2026-08-06 suspension is over (archiver#163).** The hook's
 > `.claude/settings.json` entry was removed under archiver#131, which asked this
 > repo to hold `skills-vendor/gregoryfoster-skills` at `curating-context` v1.2

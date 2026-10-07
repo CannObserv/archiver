@@ -332,3 +332,11 @@ absolute paths in `.claude/settings.local.json` - a per-host value that only
 worked while all four services shared one box.
 
 Upstream reference: [giancarloerra/socraticode#agent-instructions](https://github.com/giancarloerra/socraticode#agent-instructions)
+
+### Code Exploration Notes (repo-specific)
+
+Indexed into the cohort's **shared store on `co-index`**, not on this VM
+(`.socraticode.json`, archiver#226). `includeLinked: true` fans a search out
+over broker, notifier, replicator and watcher - use it before changing a public
+schema or the API contract. The server is pinned on this small host
+(archiver#237): "Two launch paths, pinned separately" above.
