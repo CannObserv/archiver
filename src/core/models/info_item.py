@@ -48,8 +48,8 @@ class InfoItem(Base, TimestampMixin):
     """Per-item pause state — deliberately *not* a key in ``watch_spec``.
 
     ``NULL`` means "the registry has no opinion yet, keep doing what you are
-    doing", which is what ``scripts/import_watch_specs.py`` fills in from
-    Watcher. It is a sibling column because a policy *document* shared across
+    doing", which is what the one-time Watcher import (archiver#150, since
+    retired) filled in. It is a sibling column because a policy *document* shared across
     items could not carry per-item pause state, and because co-core types
     ``active`` on the announcement envelope beside ``revoked`` rather than
     inside the untyped policy dict.

@@ -9,9 +9,6 @@ docs/BUS_CONSUMERS.md :: Change-bus consumer - `content.revisions` (archiver#139
 docs/BUS_CONSUMERS.md :: Change-bus consumer - `content.artifacts` (archiver#170)
 docs/BUS_CONSUMERS.md :: Change-bus tail - `info.watch-status` (archiver#151)
 
-# Predates this run and is unrelated to it: a retirement note whose issue
-# numbers are the record, not a pointer at moved content.
-docs/DEPLOYMENT.md :: retired (archiver#150
 
 # doc-check.sh:37 is the one entry here that is NOT accurate: DOC_SECTIONS says
 # AGENTS.md carries a route table and a skill inventory, and neither is true -
@@ -196,3 +193,16 @@ src/api/routes/info_items.py :: in ``docs/SCHEMA.md``. Rejected: it does not sto
 src/api/routes/info_items.py :: removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
 src/core/spec_match.py :: # set can grow without a migration; the column is documented in docs/SCHEMA.md.
 tests/api/test_delete_info_item.py :: alternative (declaring InfoItems undeletable in docs/SCHEMA.md) does not actually
+
+# 2026-10-07 curation (#305 branch): DEPLOYMENT.md's retired one-time-import
+# history moved to docs/archive/watch-spec-import.md. Each of these points at a
+# section that stayed - the doc list, ARCHIVER_PERSIST_ISSUANCE, the tailnet
+# companion, the SDK upgrade path, the dev scratch bus, the broker-note
+# obligation, the outbound-env allowlist - and none at the import history.
+docs/ARCHITECTURE.md :: DEPLOYMENT.md, CONVENTIONS.md, SKILLS.md,
+docs/BUS.md :: - **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([DEPLOYMENT.md](DEPLOYMENT.md)).
+docs/reference/tailscale.md :: with the other (#193). Companion to [DEPLOYMENT.md](../DEPLOYMENT.md).
+pyproject.toml :: # Client and server share one version; upgrade path in docs/DEPLOYMENT.md.
+scripts/dev_server.sh :: # throwaway, see docs/DEPLOYMENT.md) or runs bus-dormant. And a dev override
+src/core/changes/registry_snapshot.py :: env var can move it with no commit in either repo. ``docs/DEPLOYMENT.md`` carries
+tests/test_conftest_guard.py :: docs/DEPLOYMENT.md and the failure message both advertise.
