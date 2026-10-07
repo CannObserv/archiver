@@ -401,6 +401,21 @@ async def test_requests_are_paced_for_the_read_bucket(session):
 
 
 @pytest.mark.asyncio
+async def test_the_order_is_shuffled_each_run(session, monkeypatch):
+    """CR 1: a failure never advances ``checked_at``, so oldest-first would put
+    the same failing orgs first every run and end every sweep before the rest."""
+    for pm_org_id in (WSLCB_ID, OTHER_ID):
+        await _snapshot(session, org(pm_org_id, name=pm_org_id))
+        await _linked_item(session, pm_org_id)
+    pm = FakePowerMap(org(), org(OTHER_ID, name=OTHER_ID))
+    monkeypatch.setattr(follower, "_shuffle", lambda rows: rows.reverse())
+
+    await _refresh(session, pm)
+
+    assert [c[1] for c in pm.calls] == sorted([WSLCB_ID, OTHER_ID], reverse=True)
+
+
+@pytest.mark.asyncio
 async def test_the_sweep_stops_after_consecutive_failures(session):
     ids = [f"01JPM0000000000000000000{n:02d}" for n in range(5)]
     for pm_org_id in ids:

@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import random
 import sys
 from collections import Counter
 from collections.abc import Awaitable, Callable
@@ -80,6 +81,12 @@ MAX_CONSECUTIVE_FAILURES = 3
 
 Sleep = Callable[[float], Awaitable[None]]
 
+#: The sweep order (CR 1). Random rather than oldest-``checked_at``-first: an
+#: org with no answer keeps its old ``checked_at``, so a fixed order would put
+#: the same failing orgs first every hour and let them end every sweep
+#: (``MAX_CONSECUTIVE_FAILURES``) before the rest were ever checked.
+_shuffle = random.shuffle
+
 
 async def refresh_linked_orgs(
     db: AsyncSession,
@@ -88,12 +95,12 @@ async def refresh_linked_orgs(
     pace_seconds: float = PACE_SECONDS,
     sleep: Sleep = asyncio.sleep,
 ) -> dict[str, str]:
-    """Check every linked org once; returns each checked id's outcome.
+    """Check every linked org once, in random order; returns each checked id's outcome.
 
     Commits once per org. Power Map is asked outside any transaction, so no
     lock is held across an HTTP round trip.
     """
-    rows = (
+    rows = list(
         await db.execute(
             select(PmOrganization.pm_org_id, PmOrganization.etag)
             .where(
@@ -101,10 +108,11 @@ async def refresh_linked_orgs(
                     select(InfoItem.pm_org_id).where(InfoItem.pm_org_id.is_not(None))
                 )
             )
-            .order_by(PmOrganization.checked_at, PmOrganization.pm_org_id)
+            .order_by(PmOrganization.pm_org_id)
         )
-    ).all()
+    )
     await db.commit()
+    _shuffle(rows)
 
     fetch = _Fetcher(power_map, pace_seconds=pace_seconds, sleep=sleep)
     outcomes: dict[str, str] = {}
