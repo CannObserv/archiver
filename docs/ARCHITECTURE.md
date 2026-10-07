@@ -285,8 +285,9 @@ deploy/                        README.md (install instructions) + systemd units:
                                repos: the cap is in CannObserv/broker's drop-in,
                                the transient classification in publisher.py
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
-                               BUS.md, BUS_CONSUMERS.md, SCHEMA.md, DEPLOYMENT.md,
-                               CONVENTIONS.md, SKILLS.md, SOCRATICODE.md, plus the
+                               BUS.md, BUS_CONSUMERS.md, SCHEMA.md, SCHEMA_BUS.md,
+                               DEPLOYMENT.md, CONVENTIONS.md, SKILLS.md,
+                               SOCRATICODE.md, plus the
                                dashboard living docs
                                UI.md + SCREENS.md + PAGES.md +
                                INFO_ITEM_DETAIL.md + REGISTER.md + HEALTH_ROW.md +
