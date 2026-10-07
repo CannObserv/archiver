@@ -455,6 +455,26 @@ async def test_a_retry_after_too_long_to_wait_ends_the_sweep(session):
 
 
 @pytest.mark.asyncio
+async def test_a_long_retry_after_on_the_retry_still_ends_the_sweep(session):
+    """CR 12: the retry goes through the same rule as the first attempt."""
+    for pm_org_id in (WSLCB_ID, OTHER_ID, WINNER_ID):
+        await _snapshot(session, org(pm_org_id, name=pm_org_id))
+        await _linked_item(session, pm_org_id)
+    pm = FakePowerMap(org(), org(OTHER_ID, name=OTHER_ID), org(WINNER_ID, name=WINNER_ID))
+    pm.failures += [
+        PowerMapUnavailableError("rate limited (HTTP 429)", retry_after=5),
+        PowerMapUnavailableError("rate limited (HTTP 429)", retry_after=600),
+    ]
+    sleeps = _Sleeps()
+
+    outcomes = await _refresh(session, pm, sleep=sleeps)
+
+    assert list(outcomes.values()) == [UNAVAILABLE]
+    assert len(pm.calls) == 2
+    assert sleeps.calls == [5]
+
+
+@pytest.mark.asyncio
 async def test_the_order_is_shuffled_each_run(session, monkeypatch):
     """CR 1: a failure never advances ``checked_at``, so oldest-first would put
     the same failing orgs first every run and end every sweep before the rest."""

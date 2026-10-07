@@ -157,16 +157,16 @@ class _Fetcher:
         self.halted = False
 
     async def get_org(self, pm_org_id: str, etag: str | None = None) -> OrgResult:
-        try:
-            return await self._get(pm_org_id, etag)
-        except PowerMapUnavailableError as e:
-            if e.retry_after is None:
-                raise
-            if e.retry_after > MAX_RETRY_AFTER_SECONDS:
-                self.halted = True
-                raise
-            await self._sleep(e.retry_after)
-            return await self._get(pm_org_id, etag)
+        for attempt in range(2):  # the first try, and one retry after a short wait
+            try:
+                return await self._get(pm_org_id, etag)
+            except PowerMapUnavailableError as e:
+                if e.retry_after is not None and e.retry_after > MAX_RETRY_AFTER_SECONDS:
+                    self.halted = True  # on the retry too (CR 12)
+                if e.retry_after is None or self.halted or attempt:
+                    raise
+                await self._sleep(e.retry_after)
+        raise AssertionError("unreachable: the second attempt returns or raises")
 
     async def _get(self, pm_org_id: str, etag: str | None) -> OrgResult:
         if self._sent and self._pace_seconds > 0:
