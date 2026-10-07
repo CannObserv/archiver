@@ -2,7 +2,8 @@
 
 Duck-types ``src.core.power_map.PowerMapClient``: ``get_org`` and ``search_orgs``
 answer from what the test planted, and ``unavailable`` makes both raise the
-adapter's typed error, as a timeout or a 5xx would.
+adapter's typed error, as a timeout or a 5xx would. ``failures`` queues one-shot
+errors: each ``get_org`` raises the next before answering (a 429, then success).
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ class FakePowerMap:
         self.orgs: dict[str, OrgSnapshot] = {o.pm_org_id: o for o in orgs}
         self.merged: dict[str, str] = {}
         self.unavailable: PowerMapUnavailableError | None = None
+        self.failures: list[PowerMapUnavailableError] = []
         self.calls: list[tuple] = []
 
     def plant(self, snapshot: OrgSnapshot) -> None:
@@ -60,6 +62,8 @@ class FakePowerMap:
         self.calls.append(("get_org", pm_org_id, etag))
         if self.unavailable is not None:
             raise self.unavailable
+        if self.failures:
+            raise self.failures.pop(0)
         if pm_org_id in self.merged:
             return Merged(winner=self.merged[pm_org_id])
         snapshot = self.orgs.get(pm_org_id)

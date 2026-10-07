@@ -7,6 +7,8 @@ Systemd units for the Archiver VM.
 | `archiver.service` | service | The live API on port 8000 (see CLAUDE.md -> Server Lifecycle). Its `ExecStartPre` mirrors the cannobserv wheelhouse (see below) and asserts the Redis >=7.0 floor when the bus is active. |
 | `archiver-bus-health.service` | service (oneshot) | One WARN-only tick of the **outbox** probe: depth, oldest-unpublished age, dead-lettered count (#130, reduced by #193). Never blocks anything; see *Outbox health timer* below. |
 | `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
+| `archiver-pm-org-refresh.service` | service (oneshot) | One sweep of the Power Map org follower: a conditional GET per linked org, applying renames, merges and misses to `pm_organizations` (#305). Exits 0 with no database access when `ARCHIVER_POWER_MAP_API_KEY` is unset. See *Power Map org follower* below. |
+| `archiver-pm-org-refresh.timer` | timer | Runs the follower hourly. Enable with `systemctl enable --now archiver-pm-org-refresh.timer`. |
 | `needrestart.conf.d/archiver.conf` | needrestart drop-in | `$nrconf{restart} = 'l'`: apt's hook lists restarts and never performs them, so a security update cannot restart Postgres or archiver mid-apply (#278). Install with `sudo install -m 644 deploy/needrestart.conf.d/archiver.conf /etc/needrestart/conf.d/`. |
 | `99-archiver-memory.conf` | sysctl drop-in | `vm.min_free_kbytes = 65536`: the atomic-allocation reserve no cgroup setting can provide (#237). `vm.swappiness = 10`: the 4 G swapfile is a last resort (#286). See *Host memory posture*. |
 | `system.slice.d/10-memory-protection.conf`, `system-postgresql.slice.d/10-memory-protection.conf` | slice drop-ins | The `MemoryLow=` grants without which a unit's own floor is inert (#237). |
@@ -226,6 +228,30 @@ guard's rule - units, never env files - is unchanged) and must never set
 `ARCHIVER_BUS_CONSUMER`. Since the reduction it opens no Redis connection at
 all. `tests/deploy/test_bus_health_units.py` pins all of that, plus
 installed-copy parity.
+
+### Power Map org follower (#305)
+
+`archiver-pm-org-refresh.{service,timer}` - an hourly oneshot running
+`python -m src.core.power_map.follower`. It re-checks every Power Map org an
+item links and writes the answer to `pm_organizations`; a merge also re-points
+`info_items.pm_org_id`. Semantics live in `docs/SCHEMA.md`, the timer roster in
+`docs/DEPLOYMENT.md`.
+
+Each run checks the linked orgs in random order, one conditional
+`GET /orgs/{id}` at a time, paced at 2 req/s for Power Map's read bucket. A
+429's `Retry-After` of up to 60 s is waited out once, and a longer one ends the
+run; so do three unanswered orgs in a row. The next hour retries. It logs
+`Power Map org refresh finished` with outcome counts, and `pm_org_renamed`,
+`pm_org_merged` and `pm_org_missing` at WARNING
+(`sudo journalctl -u archiver-pm-org-refresh`).
+
+The service holds the third sanctioned `Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1`,
+and the first write-capable one outside `archiver.service`; it must never set
+`ARCHIVER_BUS_CONSUMER`. The Power Map key is the switch: with none in
+`/etc/archiver/.env` the run logs one line and exits 0 before opening a
+database connection. `TimeoutStartSec=900` bounds a sweep well inside the
+hourly cadence. `tests/deploy/test_pm_org_refresh_units.py` pins all of that,
+plus installed-copy parity.
 
 ### `archiver.service`'s Redis floor check
 

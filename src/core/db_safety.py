@@ -31,8 +31,9 @@ database is reachable as ``postgresql://…/archiver`` and
 database *name* is the boundary that actually holds: it must carry a ``_test``
 or ``_dev`` suffix, or the caller must opt in explicitly via
 ``ARCHIVER_ALLOW_PRODUCTION_DB=1`` — which only units under ``deploy/`` do:
-``archiver.service`` and ``archiver-bus-health.service`` (a read-only
-``changes_outbox`` query), and nothing else. Never an ``EnvironmentFile``,
+``archiver.service``, ``archiver-bus-health.service`` (a read-only
+``changes_outbox`` query) and ``archiver-pm-org-refresh.service`` (the Power
+Map org follower, archiver#305), and nothing else. Never an ``EnvironmentFile``,
 which is sourced by every process that loads it.
 """
 

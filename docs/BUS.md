@@ -36,6 +36,14 @@ loses - the outbox is the durable buffer. The URL, the measured path, and the
 Consumer loops need no transient/poison classification of their own; what they do
 on a dropped connection is pinned by `tests/core/changes/test_bus_reconnect.py`.
 
+**The broker is not operated from this repo (#193 D6).** Its tuning, health
+probe, and stream inventory live in
+[CannObserv/broker](https://github.com/CannObserv/broker); archiver is a client.
+One seam survives that split with no test spanning it: the broker config's
+`maxmemory` cap and `OutOfMemoryError` being transient in
+`_TRANSIENT_PUBLISH_ERRORS` are **one decision**, and each repo names the other
+in a comment (R5).
+
 ## Producing - the outbox, the envelope, and the four published streams
 
 **Change-bus producer (co-core bus, archiver#106):** Writes rows to

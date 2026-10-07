@@ -187,7 +187,9 @@ src/core/                      Domain logic
                                get_org -> Snapshot | NotModified | Merged | Gone,
                                search_orgs, PowerMapUnavailableError for every
                                non-answer. snapshots.py owns pm_organizations
-                               (apply_org_snapshot, load_org_values). Edge rule:
+                               (apply_org_snapshot, load_org_values).
+                               follower.py is the hourly refresh (archiver#305):
+                               refresh_linked_orgs + the timer's main. Edge rule:
                                Power Map is called on the authoring path and by
                                the follower, NEVER during replication - render
                                reads the snapshot. Beside the no-HTTP-to-Watcher
@@ -234,7 +236,8 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                test_db_guard_parity.py, which keeps dev_server.sh in step
                                with db_safety.py);
                                tests/deploy/ asserts the installed systemd artifacts match
-                               deploy/ — archiver.service and the bus-health pair
+                               deploy/ — archiver.service, the bus-health pair and
+                               the pm-org-refresh pair
                                (each skips when absent, so CI passes) — and the
                                needrestart drop-in against the live config chain
                                (archiver#278; asserts only on the archiver host),
@@ -281,7 +284,9 @@ deploy/                        README.md (install instructions) + systemd units:
                                tailscaled.service.d/, postgresql/16/main/environment +
                                archiver-bus-health.service/.timer (the OUTBOX probe;
                                the broker-side half is CannObserv/broker's since
-                               archiver#193 D6). The #128 OOM lockstep now spans two
+                               archiver#193 D6) +
+                               archiver-pm-org-refresh.service/.timer (the
+                               Power Map org follower, archiver#305). The #128 OOM lockstep now spans two
                                repos: the cap is in CannObserv/broker's drop-in,
                                the transient classification in publisher.py
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
@@ -297,7 +302,8 @@ docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                about the code: tailscale.md (this node, the
                                ACL, why there is no tailnet-only bind).
                                Indexed by the Detail Docs section of AGENTS.md.
-                               Archival subtrees: plans/ + research/
+                               Archival subtrees: plans/ + research/ + archive/
+                               (retired operational history)
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
 skills-vendor/                 Git submodules for external skill repos
 .skills/doctor.sh              Committed skill-symlink doctor (real file, not a

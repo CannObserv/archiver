@@ -8,7 +8,7 @@ Central registry + authoring service for the Cannabis Observer information layer
 
 **Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one - a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
 
-**Power Map (identity for `org.*`) is called on the authoring path only, never during replication (#304)**: rendering reads the `pm_organizations` snapshot ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
+**Power Map (identity for `org.*`) is called on the authoring path and by the hourly follower (#305), never during replication (#304)**: rendering reads the `pm_organizations` snapshot ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
 
 ## Development Methodology
 
@@ -73,13 +73,8 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
 
 Fetch, extract, and the content fingerprint come from **co-core**. Wiring: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**The broker is not operated from this repo (#193 D6).** Its tuning, health
-probe, and stream inventory live in
-[CannObserv/broker](https://github.com/CannObserv/broker); archiver is a client.
-One seam survives that split with no test spanning it: the broker config's
-`maxmemory` cap and `OutOfMemoryError` being transient in
-`_TRANSIENT_PUBLISH_ERRORS` are **one decision**, and each repo names the other
-in a comment (R5).
+**The broker is CannObserv/broker's, not this repo's (#193 D6)**; the one seam
+that split left untested: [docs/BUS.md](docs/BUS.md).
 
 **No cross-repo mirror discipline (CannObserv/watcher#159, #236).** Content
 acquisition is co-core's (above) and the change-bus contracts + driver are too
@@ -141,7 +136,7 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
   `_test`.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
-  (`archiver.service`; the outbox probe, #130). **Never in an env file** - it
+  (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305). **Never in an env file** - it
   reopens the hole for every sourcing process.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.
@@ -221,7 +216,7 @@ must tolerate that.
 **General:**
 - No inline module imports; all at file top. Ruff `PLC0415` enforces this in CI
   (archiver#97).
-- Translated exceptions chain via `raise HTTPException(...) from e` (capture the source with `as e`). Ruff `B904` enforces this in CI.
+- Translated exceptions chain with `from e` (capture the source with `as e`). Ruff `B904` enforces this in CI.
 - Docstrings for public modules, classes, functions; explicit imports only; small, focused functions. Test structure mirrors source (`src/foo.py` → `tests/test_foo.py`).
 
 **Error envelope:** Every non-2xx **API** response uses one shape

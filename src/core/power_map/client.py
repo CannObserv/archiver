@@ -28,7 +28,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 import power_map_client
@@ -110,6 +110,12 @@ class PowerMapUnavailableError(Exception):
         self.reason = reason
         self.retry_after = retry_after
         super().__init__(f"Power Map unavailable: {reason}")
+
+
+class PowerMapReader(Protocol):
+    """What the link and the follower need from Power Map: ``PowerMapClient``, or a test's fake."""
+
+    async def get_org(self, pm_org_id: str, etag: str | None = None) -> OrgResult: ...
 
 
 class PowerMapClient:

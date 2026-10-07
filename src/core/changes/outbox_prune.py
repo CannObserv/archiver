@@ -22,7 +22,7 @@ Two states are never prunable:
 
 **Where this runs.** Inside ``publisher.run``, on its own cadence, alongside the
 periodic XTRIM and the stats line - not on a systemd timer. A timer would need
-``ARCHIVER_ALLOW_PRODUCTION_DB``, and a third sanctioned holder of a
+``ARCHIVER_ALLOW_PRODUCTION_DB``, and another sanctioned holder of a
 write-capable production-DB opt-in is a real cost to weigh against deleting
 delivered rows.
 
