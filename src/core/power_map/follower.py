@@ -48,13 +48,13 @@ from src.core.power_map.client import (
     NotModified,
     OrgResult,
     OrgSnapshot,
+    PowerMapReader,
     PowerMapUnavailableError,
     Snapshot,
     power_map_from_env,
 )
 from src.core.power_map.snapshots import OrgUnnamedError, apply_org_snapshot, org_values
 from src.core.rep_fields import OrgValues
-from src.core.tools.link_org import PowerMapReader
 from src.core.tools.set_rep_fields import (
     active_assignments,
     assignment_refusals,

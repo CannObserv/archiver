@@ -21,14 +21,13 @@ called during replication; rendering reads the snapshot written in step 1.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.logging import get_logger
 from src.core.models import InfoItem
-from src.core.power_map import Merged, OrgResult, OrgSnapshot, Snapshot
+from src.core.power_map import Merged, OrgSnapshot, PowerMapReader, Snapshot
 from src.core.power_map.snapshots import apply_org_snapshot, load_org_values, org_values
 from src.core.rep_fields import with_org_values, without_org_owned_keys
 from src.core.tools.assign_rep_spec import InfoItemNotFoundError
@@ -43,12 +42,6 @@ from src.core.tools.set_rep_fields import (
 )
 
 logger = get_logger(__name__)
-
-
-class PowerMapReader(Protocol):
-    """What linking needs from Power Map: ``PowerMapClient``, or a test's fake."""
-
-    async def get_org(self, pm_org_id: str, etag: str | None = None) -> OrgResult: ...
 
 
 class PowerMapNotConfiguredError(Exception):
