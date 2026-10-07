@@ -55,7 +55,12 @@ from src.core.power_map.client import (
 from src.core.power_map.snapshots import OrgUnnamedError, apply_org_snapshot, org_values
 from src.core.rep_fields import OrgValues
 from src.core.tools.link_org import PowerMapReader
-from src.core.tools.set_rep_fields import active_assignments, destination_moves, log_moves
+from src.core.tools.set_rep_fields import (
+    active_assignments,
+    assignment_refusals,
+    destination_moves,
+    log_moves,
+)
 
 # Literal rather than __name__: the timer runs this module via ``python -m``,
 # where __name__ is "__main__" - a useless journald filter key.
@@ -298,10 +303,30 @@ async def _log_moves(
     after: OrgValues | None,
     message: str,
 ) -> None:
+    """Log each item's moves, and its assignments the new org cannot render (CR 5).
+
+    Power Map's change applies either way (Q4). An assignment that no longer
+    renders is warned about now - its next occasion is skipped - and kept out
+    of ``destination_moves``, which raises on an unrenderable new bag.
+    """
     for item in items:
         bag = item.rep_fields or {}
         assignments = await active_assignments(db, item.info_item_id)
-        moves = destination_moves(assignments, bag, bag, old_org=before, new_org=after)
+        refusals = assignment_refusals(assignments, bag, org=after)
+        if refusals:
+            logger.warning(
+                "Power Map org change leaves assignments that cannot render",
+                extra={
+                    "info_item_id": str(item.info_item_id),
+                    "refusals": [
+                        {"assignment_id": str(r.assignment_id), "code": r.code, "errors": r.errors}
+                        for r in refusals
+                    ],
+                },
+            )
+        refused = {r.assignment_id for r in refusals}
+        renderable = [(a, spec) for a, spec in assignments if a.id not in refused]
+        moves = destination_moves(renderable, bag, bag, old_org=before, new_org=after)
         log_moves(message, item.info_item_id, moves)
 
 

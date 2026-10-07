@@ -215,6 +215,24 @@ async def test_a_rename_records_renamed_from_and_logs_each_move(session, move_wa
 
 
 @pytest.mark.asyncio
+async def test_a_rename_that_cannot_render_still_applies_and_warns(session, warnings):
+    """CR 5: applied without confirmation (Q4), but said out loud now rather
+    than at the next occasion's skip - and never a crash of the sweep."""
+    await _snapshot(session)
+    item = await _linked_item(session, assigned=True)
+    pm = FakePowerMap(org(name="!!!", pm_updated_at=T1, etag='"v2"'))
+
+    outcomes = await _refresh(session, pm)
+
+    assert outcomes == {WSLCB_ID: RENAMED}
+    assert (await _row(session)).name == "!!!"
+    (extra,) = [e for m, e in warnings.records if "cannot render" in m]
+    assert extra["info_item_id"] == str(item.info_item_id)
+    (refusal,) = extra["refusals"]
+    assert refusal["code"] == "rep_fields_unrenderable"
+
+
+@pytest.mark.asyncio
 async def test_a_merge_repoints_items_and_keeps_the_loser(session, warnings, move_warnings):
     await _snapshot(session)
     first = await _linked_item(session, assigned=True)

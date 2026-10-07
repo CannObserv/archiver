@@ -119,7 +119,8 @@ see the never-rename rule in `AGENTS.md`.
   item links with the stored `etag`:
   - **304** → `checked_at` only. **200** → `apply_org_snapshot`; a `name`/`acronym` change sets
     `renamed_from`/`renamed_at` and moves every linked item's paths from its next occasion with
-    no confirmation (logged per assignment, before → after).
+    no confirmation (logged per assignment, before → after; an assignment the new name cannot
+    render is warned about, and its next occasion is skipped).
   - **Merged** (410 + `merged_into`, already the chain's live end) → the winner is upserted, the
     loser's items are re-pointed at it (FK is `RESTRICT`, so items move first), and the loser
     row is **kept** with `merged_into` set. No item links a loser, so it is never re-checked.
