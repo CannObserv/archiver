@@ -73,7 +73,7 @@ UNAVAILABLE = "unavailable"
 #: never drains it, however many orgs are linked.
 PACE_SECONDS = 0.5
 #: A 429's ``Retry-After`` up to this long is waited out and the org retried
-#: once; longer, and the next hourly run is the retry.
+#: once; longer ends the sweep, and the next hourly run is the retry (CR 4).
 MAX_RETRY_AFTER_SECONDS = 60.0
 #: No answer this many orgs in a row means Power Map is down (or rejecting the
 #: key), not that one org is bad: stop rather than time out on every org.
@@ -121,7 +121,7 @@ async def refresh_linked_orgs(
         outcome = await _refresh_one(db, fetch, pm_org_id, etag)
         outcomes[pm_org_id] = outcome
         failures = failures + 1 if outcome == UNAVAILABLE else 0
-        if failures >= MAX_CONSECUTIVE_FAILURES:
+        if fetch.halted or failures >= MAX_CONSECUTIVE_FAILURES:
             logger.warning(
                 "Power Map org refresh stopped: Power Map unavailable",
                 extra={"checked": len(outcomes), "linked": len(rows)},
@@ -138,19 +138,27 @@ async def refresh_linked_orgs(
 
 
 class _Fetcher:
-    """``get_org`` paced for the read bucket, waiting out one short ``Retry-After``."""
+    """``get_org`` paced for the read bucket, waiting out one short ``Retry-After``.
+
+    ``halted`` is set by a ``Retry-After`` too long to wait out: the sweep stops
+    rather than send more requests into the rate limit.
+    """
 
     def __init__(self, power_map: PowerMapReader, *, pace_seconds: float, sleep: Sleep) -> None:
         self._power_map = power_map
         self._pace_seconds = pace_seconds
         self._sleep = sleep
         self._sent = False
+        self.halted = False
 
     async def get_org(self, pm_org_id: str, etag: str | None = None) -> OrgResult:
         try:
             return await self._get(pm_org_id, etag)
         except PowerMapUnavailableError as e:
-            if e.retry_after is None or e.retry_after > MAX_RETRY_AFTER_SECONDS:
+            if e.retry_after is None:
+                raise
+            if e.retry_after > MAX_RETRY_AFTER_SECONDS:
+                self.halted = True
                 raise
             await self._sleep(e.retry_after)
             return await self._get(pm_org_id, etag)

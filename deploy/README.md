@@ -239,8 +239,8 @@ item links and writes the answer to `pm_organizations`; a merge also re-points
 
 Each run checks the linked orgs in random order, one conditional
 `GET /orgs/{id}` at a time, paced at 2 req/s for Power Map's read bucket. A
-429's `Retry-After` of up to 60 s is waited out once; three unanswered orgs in a
-row end the run, and the next hour retries. It logs
+429's `Retry-After` of up to 60 s is waited out once, and a longer one ends the
+run; so do three unanswered orgs in a row. The next hour retries. It logs
 `Power Map org refresh finished` with outcome counts, and `pm_org_renamed`,
 `pm_org_merged` and `pm_org_missing` at WARNING
 (`sudo journalctl -u archiver-pm-org-refresh`).

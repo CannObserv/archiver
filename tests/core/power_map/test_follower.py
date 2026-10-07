@@ -404,6 +404,23 @@ async def test_requests_are_paced_for_the_read_bucket(session):
 
 
 @pytest.mark.asyncio
+async def test_a_retry_after_too_long_to_wait_ends_the_sweep(session):
+    """CR 4: Power Map asked for a long pause; the next hour is the retry."""
+    for pm_org_id in (WSLCB_ID, OTHER_ID, WINNER_ID):
+        await _snapshot(session, org(pm_org_id, name=pm_org_id))
+        await _linked_item(session, pm_org_id)
+    pm = FakePowerMap()
+    pm.unavailable = PowerMapUnavailableError("rate limited (HTTP 429)", retry_after=600)
+    sleeps = _Sleeps()
+
+    outcomes = await _refresh(session, pm, sleep=sleeps)
+
+    assert list(outcomes.values()) == [UNAVAILABLE]
+    assert len(pm.calls) == 1
+    assert sleeps.calls == []
+
+
+@pytest.mark.asyncio
 async def test_the_order_is_shuffled_each_run(session, monkeypatch):
     """CR 1: a failure never advances ``checked_at``, so oldest-first would put
     the same failing orgs first every run and end every sweep before the rest."""
