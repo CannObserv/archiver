@@ -115,6 +115,18 @@ see the never-rename rule in `AGENTS.md`.
 - **`PmOrganization`** (`pm_organizations`, archiver#304) — snapshot of one linked Power Map org,
   PK Power Map's id; columns documented on the model. Written only by `apply_org_snapshot`, which
   never moves a row backwards in `pm_updated_at`. **Rendering reads this row, never Power Map.**
+  The hourly follower (archiver#305, `src/core/power_map/follower.py`) re-checks every row an
+  item links with the stored `etag`:
+  - **304** → `checked_at` only. **200** → `apply_org_snapshot`; a `name`/`acronym` change sets
+    `renamed_from`/`renamed_at` and moves every linked item's paths from its next occasion with
+    no confirmation (logged per assignment, before → after).
+  - **Merged** (410 + `merged_into`, already the chain's live end) → the winner is upserted, the
+    loser's items are re-pointed at it (FK is `RESTRICT`, so items move first), and the loser
+    row is **kept** with `merged_into` set. No item links a loser, so it is never re-checked.
+  - **Gone** (404, or 410 without `merged_into`) → `missing_since = coalesce(missing_since,
+    now)`; the last snapshot keeps rendering. Any later answer clears `missing_since`.
+  - **No answer** → nothing changes. `succeeded_by`, `archived_at` and `active` are mirrored,
+    never followed: re-linking to a successor is a human decision.
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are

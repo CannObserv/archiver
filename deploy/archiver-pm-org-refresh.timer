@@ -1,0 +1,13 @@
+[Unit]
+Description=Hourly Power Map org follower (archiver#305)
+
+[Timer]
+# Hourly conditional GETs, the operator's choice over Power Map's /changes
+# feed (power-map#490 retires it). A Power Map bus stream of org changes will
+# call the same apply_org_snapshot seam; this timer stays as the backstop.
+OnBootSec=5min
+OnUnitActiveSec=1h
+AccuracySec=5min
+
+[Install]
+WantedBy=timers.target

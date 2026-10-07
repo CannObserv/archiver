@@ -141,7 +141,7 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
   `_test`.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
-  (`archiver.service`; the outbox probe, #130). **Never in an env file** - it
+  (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305). **Never in an env file** - it
   reopens the hole for every sourcing process.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.

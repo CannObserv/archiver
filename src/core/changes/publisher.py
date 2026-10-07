@@ -181,7 +181,7 @@ STATS_LOG_INTERVAL_SECONDS = 300.0
 # side-job on this loop, and deliberately the slowest: a published row's only
 # residual value is forensic, so nothing is served by deleting it promptly. The
 # pass rides here rather than a systemd timer because a timer would need
-# ARCHIVER_ALLOW_PRODUCTION_DB, and a third sanctioned holder of a write-capable
+# ARCHIVER_ALLOW_PRODUCTION_DB, and another sanctioned holder of a write-capable
 # production-DB opt-in is too high a price for deleting delivered rows. There is
 # no coverage hole: a published row can only exist if this loop ran. Like the
 # stats line, the first pass fires immediately, so a restart is not a way to

@@ -38,8 +38,8 @@ and serves on 8001.
 `verify79.example.com` Domain, two InfoSources, and an AppUser into the live
 registry. The application now also refuses to serve a production database
 unless `ARCHIVER_ALLOW_PRODUCTION_DB=1` is set, which only units in `deploy/`
-do - `archiver.service`, and the read-only `archiver-bus-health.service` probe
-(#130). Never an env file: those are sourced by every process that loads them,
+do - `archiver.service`, the read-only `archiver-bus-health.service` probe
+(#130), and the `archiver-pm-org-refresh.service` Power Map org follower (#305). Never an env file: those are sourced by every process that loads them,
 which is the hole the guard closes.
 
 Production listens on **port 8000** under `archiver.service`. The dev server uses 8001 to leave 8000 alone for systemd.
