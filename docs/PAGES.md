@@ -105,7 +105,7 @@ The entries below stay the inventory line for each route.
 
 **DELETE `/dashboard/info-items/{id}/info-sources/{source_id}`** - HTMX delete (form POST + route handler); sets `deactivated_at = now()`. Response triggers an HTMX redirect to detail.
 
-**GET `/dashboard/info-items/{id}/rep-spec-picker`** - the *Add a spec* picker (`#ii-rep-spec-picker`), re-fetched on a sibling's `replicationChanged`; `no-store`, never moves focus (archiver#308).
+**GET `/dashboard/info-items/{id}/rep-spec-picker`** - the *Add a spec* picker (`#ii-rep-spec-picker`), re-fetched on a sibling's `replicationChanged`; `no-store`, never moves focus (archiver#308). Readiness and path read the linked Power Map org (archiver#304).
 
 **POST `/dashboard/info-items/{id}/rep-spec-picker/assign`** - assigns a RepSpec (`rep_spec_id`) through `assign_rep_spec`; answers with the picker. Success fires `replicationChanged` + a toast and prompts to replicate; a refusal is a 200 naming the reason in `#picker-refusal` (archiver#301, #312). Replaced the full-page `POST …/assign-rep-spec` (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
 
@@ -113,11 +113,11 @@ The entries below stay the inventory line for each route.
 
 **POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** - issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading - the swap destroys the clicked button, exactly as the Deactivate beside it does. Double guard: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**. Both buttons `hx-sync` on the section so its poll yields to them (archiver#220, [UI.md](UI.md) § *A section that polls and takes actions*). Fires no `replicationChanged`: an occasion changes nothing a sibling block renders, and the Fields block's re-fetch would discard unsaved input there (archiver#307).
 
-**GET `/dashboard/info-items/{id}/rep-fields`** - the Fields block (`#ii-rep-fields`), re-fetched on a sibling's `replicationChanged`; `no-store`, never moves focus (archiver#307). `selected_spec` adds an unassigned spec's keys; `focus=true` (the picker's Select) focuses the first one it needs (archiver#308).
+**GET `/dashboard/info-items/{id}/rep-fields`** - the Fields block (`#ii-rep-fields`), re-fetched on a sibling's `replicationChanged`; `no-store`, never moves focus (archiver#307). `selected_spec` adds an unassigned spec's keys; `focus=true` (the picker's Select) focuses the first one it needs (archiver#308). A linked Power Map org's keys render read-only as *from Power Map* (archiver#304).
 
 **GET `/dashboard/info-items/{id}/rep-fields/readout`** - the Fields block's live readout: unsaved `field_*` lists (and `selected_spec`) in, each row's status cell out of band. Writes and fires nothing (archiver#307).
 
-**PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 render `_rep_fields_flash.html` into `#rep-fields-flash` (archiver#302, #307). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
+**PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 render `_rep_fields_flash.html` into `#rep-fields-flash` (archiver#302, #307); a linked item's `org.title`/`org.acronym` is a 422 naming the org (archiver#304). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
 
 
 ## Information Sources (`/dashboard/info-sources/`)
