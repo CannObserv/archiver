@@ -8,7 +8,10 @@ missing and keeps rendering. No answer changes nothing.
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -496,8 +499,58 @@ async def test_an_occasion_issued_after_a_rename_renders_the_new_path(session):
 # ---------------------------------------------------------------------------
 
 
-def test_main_is_dormant_without_a_key(monkeypatch):
-    monkeypatch.delenv("ARCHIVER_POWER_MAP_API_KEY", raising=False)
+@pytest.fixture
+def stub_main_deps(monkeypatch):
+    """Neutralise everything ``main`` touches outside the sweep (CR 2); hand back
+    the spies its contracts are asserted on."""
+    monkeypatch.setattr(follower, "configure_logging", lambda: None)
+    monkeypatch.setattr(follower, "get_database_url", lambda: "postgresql://db/archiver")
+    gate = MagicMock()
+    monkeypatch.setattr(follower, "assert_production_db_allowed", gate)
+    client = SimpleNamespace(aclose=AsyncMock())
+    monkeypatch.setattr(follower, "power_map_from_env", lambda: client)
+    session = object()
+
+    @asynccontextmanager
+    async def _session():
+        yield session
+
+    monkeypatch.setattr(follower, "get_session_factory", lambda: _session)
+    engine = AsyncMock()
+    monkeypatch.setattr(follower, "get_engine", MagicMock(return_value=engine))
+    sweep = AsyncMock(return_value={})
+    monkeypatch.setattr(follower, "refresh_linked_orgs", sweep)
+    return SimpleNamespace(gate=gate, client=client, session=session, engine=engine, sweep=sweep)
+
+
+def test_main_sweeps_then_releases_the_client_and_engine(stub_main_deps):
+    assert main([]) == 0
+
+    stub_main_deps.sweep.assert_awaited_once_with(stub_main_deps.session, stub_main_deps.client)
+    stub_main_deps.client.aclose.assert_awaited_once()
+    stub_main_deps.engine.dispose.assert_awaited_once()
+
+
+def test_main_releases_both_when_the_sweep_crashes(stub_main_deps):
+    stub_main_deps.sweep.side_effect = RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        main([])
+
+    stub_main_deps.client.aclose.assert_awaited_once()
+    stub_main_deps.engine.dispose.assert_awaited_once()
+
+
+def test_main_gates_the_production_database_on_the_units_flag(stub_main_deps, monkeypatch):
+    monkeypatch.setenv("ARCHIVER_ALLOW_PRODUCTION_DB", "1")
+
+    main([])
+
+    stub_main_deps.gate.assert_called_once_with("postgresql://db/archiver", allow_flag="1")
+
+
+def test_main_is_dormant_without_a_key(stub_main_deps, monkeypatch):
+    monkeypatch.setattr(follower, "power_map_from_env", lambda: None)
 
     def _no_database(*_args, **_kwargs):
         raise AssertionError("a dormant follower must not touch the database")
@@ -506,3 +559,4 @@ def test_main_is_dormant_without_a_key(monkeypatch):
     monkeypatch.setattr(follower, "assert_production_db_allowed", _no_database)
 
     assert main([]) == 0
+    stub_main_deps.sweep.assert_not_awaited()
