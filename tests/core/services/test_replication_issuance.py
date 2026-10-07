@@ -25,6 +25,7 @@ from src.core.models import (
     InfoItemRepSpec,
     InfoItemSource,
     InfoSource,
+    PmOrganization,
     ReplicationCommand,
     RepSpec,
     SourceRevision,
@@ -789,3 +790,59 @@ async def test_a_new_revision_of_kept_bytes_replicates_from_the_permanent_store(
 
     [command] = await _commands(session)
     assert command.blob_uri == PERMANENT_URI
+
+
+# --- the linked Power Map org (archiver#304) ---
+
+_ORG_DOC = {
+    "path_template": "organizations/{org.title_slug}/{source_revision.fingerprint}.html",
+    "required_fields": ["org.title_slug"],
+}
+
+
+async def _link_snapshot(session, assignment: InfoItemRepSpec, name: str) -> PmOrganization:
+    """Link the assignment's item to a snapshot directly: issuance reads only the row."""
+    org = PmOrganization(
+        pm_org_id="01JPM00000000000000000000A",
+        name=name,
+        acronym=None,
+        active=True,
+        pm_updated_at=CAPTURED_AT,
+        checked_at=CAPTURED_AT,
+    )
+    session.add(org)
+    await session.flush()
+    item = await session.get(InfoItem, assignment.info_item_id)
+    item.pm_org_id = org.pm_org_id
+    item.rep_fields = {}
+    await session.flush()
+    return org
+
+
+@pytest.mark.asyncio
+async def test_issuance_renders_org_values_from_the_snapshot(session, info_source):
+    assignment = await _assigned_item(session, info_source, document=_document(**_ORG_DOC))
+    await _link_snapshot(session, assignment, "Washington State Liquor and Cannabis Board")
+    revision = await _revision(session, info_source)
+
+    (command,) = await issue_for_revision(session, revision)
+
+    assert command.destination.startswith(
+        "organizations/washington_state_liquor_and_cannabis_board/"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_occasion_after_a_rename_renders_the_new_path(session, info_source):
+    assignment = await _assigned_item(session, info_source, document=_document(**_ORG_DOC))
+    org = await _link_snapshot(session, assignment, "WA LCB")
+    first = await _revision(session, info_source)
+    (before,) = await issue_for_revision(session, first)
+
+    org.name = "WA Cannabis Board"
+    await session.flush()
+    second = await _revision(session, info_source, fingerprint=FP_B, captured_at=CAPTURED_AT_LATER)
+    (after,) = await issue_for_revision(session, second)
+
+    assert before.destination.startswith("organizations/wa_lcb/")
+    assert after.destination.startswith("organizations/wa_cannabis_board/")

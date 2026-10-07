@@ -158,3 +158,43 @@ def effective_rep_fields(bag: dict, org: OrgValues | None) -> dict:
     if isinstance(stored_org, dict):
         stored_org = {**org_ns, **stored_org}
     return resolve_rep_fields({**bag, "org": stored_org})
+
+
+ORG_NAMESPACE = "org"
+ORG_OWNED_KEYS = ("title", "acronym")
+"""The ``org`` keys a linked Power Map org supplies, and the stored bag may not (archiver#304)."""
+
+
+def without_org_owned_keys(bag: dict) -> dict:
+    """``bag`` minus ``org.title``/``org.acronym``; an ``org`` left empty goes too.
+
+    What linking does to the stored bag: those keys now come from the org, and
+    a stored copy would shadow it. Other ``org`` keys (a ``title_slug``
+    override) stay. ``bag`` is never mutated.
+    """
+    stored = bag.get(ORG_NAMESPACE)
+    if not isinstance(stored, dict):
+        return dict(bag)
+    kept = {k: v for k, v in stored.items() if k not in ORG_OWNED_KEYS}
+    out = {k: v for k, v in bag.items() if k != ORG_NAMESPACE}
+    if kept:
+        out[ORG_NAMESPACE] = kept
+    return out
+
+
+def with_org_values(bag: dict, org: OrgValues | None) -> dict:
+    """``bag`` with the org's values written in as ``org.title``/``org.acronym``.
+
+    What unlinking does to the stored bag, so the effective bag - and every
+    active assignment's path - is the same after as before. The org's values
+    win over stored ones, which a linked item cannot hold anyway. ``bag`` is
+    never mutated; ``org=None`` returns a copy.
+    """
+    if org is None:
+        return dict(bag)
+    stored = bag.get(ORG_NAMESPACE)
+    org_ns = dict(stored) if isinstance(stored, dict) else {}
+    org_ns["title"] = org.name
+    if org.acronym is not None:
+        org_ns["acronym"] = org.acronym
+    return {**bag, ORG_NAMESPACE: org_ns}

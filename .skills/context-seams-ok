@@ -149,3 +149,50 @@ tests/scripts/test_skill_required_fragments.py :: The main CI workflow does not 
 # Predates this run: a DLQ heading nothing links by anchor. Renaming it here would
 # widen a docs split into an unrelated doc.
 docs/BUS_CONSUMERS.md :: Triaging the two DLQs (archiver#238)
+
+# archiver#304 curation (2026-10-07). Back-references to what AGENTS.md still
+# holds: the Code Exploration Policy block (SOCRATICODE.md, the health hook) and
+# the content.blobs role boundary and Power Map edge rule (source comments).
+docs/SOCRATICODE.md :: Detail doc for the `## Code Exploration Policy` block in `AGENTS.md`: that
+docs/SOCRATICODE.md :: after it, not in `AGENTS.md`.
+docs/SOCRATICODE.md :: dependency questions go to `grep`; the `AGENTS.md` bloc
+docs/SOCRATICODE.md :: `AGENTS.md` → Code Exploration Policy carries the rule; the
+.claude/hooks/socraticode-health.sh :: repo's AGENTS.md. The graph is judged against the server answering the
+.claude/hooks/socraticode-health.sh :: them was told by AGENTS.md to prefer codebase_search over grep.
+skills/shipping-work-python-fastapi/scripts/doc-check.sh :: told, on every hit from then on, to check AGENTS.md and README.md, never the
+src/core/bus_health.py :: appeared in the probe - the role boundary is unqualified (CLAUDE.md): it does
+src/core/power_map/client.py :: snapshot. See CLAUDE.md.
+tests/core/test_bus_health.py :: (CLAUDE.md). The list must never grow a row for it.
+tests/scripts/test_doc_sections.py :: so every hit named the python-fastapi defaults - AGENTS.md's "route table" and a
+tests/scripts/test_doc_sensitive_paths.py :: # Derived below from the gate's own regex, not from prose - AGENTS.md describes
+tests/scripts/test_doc_sensitive_paths.py :: """AGENTS.md documents the trigger verbatim; drift there misleads every agent."""
+tests/scripts/test_doc_sensitive_paths.py :: assert _changelog_trigger_re() in (REPO_ROOT / "AGENTS.md").read_text(), (
+tests/scripts/test_doc_sensitive_paths.py :: f"AGENTS.md does not quote {CHANGELOG_LIB.name}'s CHANGELOG_TRIGGER_RE "
+# The demoted SessionStart rules now live in SKILLS.md under the title these
+# name: the inventory row and the artifact description both mean that section.
+docs/SKILLS.md :: | `init-socraticode` | install/re-index SocratiCode; owns its two SessionStart hooks |
+.socraticodecontextartifacts.json :: "description": "Agent skills index. Catalogues the skills under skills/ (agentskills.io) and .claude
+# Predates this run: the issue number was in the slug before it; nothing links
+# the anchor (grepped "two-launch-paths" 2026-10-07).
+docs/SOCRATICODE.md :: Two launch paths, pinned separately (archiver#237)
+# Corrected this run to name SKILLS.md, where "SessionStart Hooks" now lives;
+# the caveat names the exception for the rest of the quoted titles.
+docs/ARCHITECTURE.md :: refer to sections of [AGENTS.md](../AGENTS.md), unless a doc is named.
+docs/ARCHITECTURE.md :: symlink) — see SKILLS.md "SessionStart Hooks"
+# SCHEMA.md split (bus-state tables -> SCHEMA_BUS.md). Every pointer into
+# SCHEMA.md below means content that stayed: InfoItemRepSpec, the InfoItemOut
+# columns, RepSpec's template contract, SourceRevision.spec_match, InfoSource's
+# last_observed_at guards, and the InfoItem delete exit with its tombstone gap.
+docs/API.md :: `(item, spec)` is a database invariant ([SCHEMA.md](SCHEMA.md) § `InfoItemRepSpec`).
+docs/API.md :: on `InfoItemOut`. Contract and rationale: [SCHEMA.md](SCHEMA.md).
+docs/BUS.md :: `path_template` never travels. See `docs/SCHEMA.md` for the template contract
+docs/BUS_CONSUMERS.md :: in `spec_match` / `spec_position` (see [docs/SCHEMA.md](SCHEMA.md) - they track the *most recent*
+docs/BUS_CONSUMERS.md :: ([docs/SCHEMA.md](SCHEMA.md)). Consumer rules the panel enforces: `health ==
+docs/SCHEMA_BUS.md :: outbox, and the watch-status cache with its tail cursor. Split from [SCHEMA.md](SCHEMA.md), which
+clients/python/archiver-openapi.json :: "description": "Delete an InfoItem. The registry's only exit for one (archiver#141).
+clients/python/src/archiver_client/generated/api/info_items/delete_info_item_api_v1_info_items_info_item_id_delete.py :: in ``docs/SCHEMA.md``. Rejected: it does not stop anyone reaching for psql,
+clients/python/src/archiver_client/generated/api/info_items/delete_info_item_api_v1_info_items_info_item_id_delete.py :: removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
+src/api/routes/info_items.py :: in ``docs/SCHEMA.md``. Rejected: it does not stop anyone reaching for psql,
+src/api/routes/info_items.py :: removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
+src/core/spec_match.py :: # set can grow without a migration; the column is documented in docs/SCHEMA.md.
+tests/api/test_delete_info_item.py :: alternative (declaring InfoItems undeletable in docs/SCHEMA.md) does not actually

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import InfoItemRepSpec, RepSpec
+from src.core.power_map.snapshots import load_org_values
 from src.core.tools.rep_fields_gate import check_bag_against_spec, lock_info_item
 
 
@@ -137,7 +138,9 @@ async def assign_rep_spec(
 
     # Presence is not renderability, and this is the last synchronous chance to
     # say so (archiver#168 CR #5): the gate checks both.
-    check = check_bag_against_spec(item.rep_fields or {}, spec.document or {}, org=None)
+    check = check_bag_against_spec(
+        item.rep_fields or {}, spec.document or {}, org=await load_org_values(db, item)
+    )
     if check.missing:
         raise RepFieldsIncompleteError(check.missing)
     if check.unrenderable is not None:

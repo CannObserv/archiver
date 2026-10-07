@@ -4,9 +4,11 @@ Be terse. Prefer fragments over full sentences; sacrifice grammar for density. S
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by the (forthcoming) Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate` and `content.persist` via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](docs/BUS.md) and [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate` and `content.persist` via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](docs/BUS.md) and [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 **Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one - a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
+
+**Power Map (identity for `org.*`) is called on the authoring path only, never during replication (#304)**: rendering reads the `pm_organizations` snapshot ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
 
 ## Development Methodology
 
@@ -48,14 +50,6 @@ semantic search.
 
 Full tool table, prefetch hook, per-tool guidance: [`docs/SOCRATICODE.md`](docs/SOCRATICODE.md).
 <!-- END socraticode-policy -->
-
-## Code Exploration Notes (repo-specific)
-
-Indexed into the cohort's **shared store on `co-index`**, not on this VM
-(`.socraticode.json`, archiver#226). `includeLinked: true` fans a search out
-over broker, notifier, replicator and watcher - use it before changing a public
-schema or the API contract. The server is pinned on this small host
-(archiver#237): [docs/SOCRATICODE.md](docs/SOCRATICODE.md#repo-specific-notes).
 
 ## Architecture
 
@@ -103,13 +97,6 @@ reintroduce a mirror obligation for anything under `src/`.
 The exe.dev proxy forwards 3000-9999 and maps the bare hostname to 8000:
 dashboard `https://co-registrar.exe.xyz/`, dev server
 `https://co-registrar.exe.xyz:8001/`.
-
-**The broker is a network hop.** Archiver reaches it over the tailnet as
-`redis://default:<password>@broker:6379/0`. This host answers to two names,
-`co-registrar` and `archiver`, both on port 8000, so **an HTTP 200 on a short
-name proves nothing about the tailnet**. Node identity, the ACL, the bind
-decision, and the MagicDNS failure that took down three services:
-[docs/reference/tailscale.md](docs/reference/tailscale.md).
 
 ## Server Lifecycle
 
@@ -248,16 +235,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 
 ## Agent Skills
 
-Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout and triggers: [docs/SKILLS.md](docs/SKILLS.md).
-
-## SessionStart Hooks
-
-Wired in `.claude/settings.json`; each script is a symlink into `skills-vendor/`.
-Never re-copy one, never symlink the committed `.skills/doctor.sh`, and never
-un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
-`tests/scripts/test_claude_hooks_registered.py` fails when a script and
-`settings.json` disagree, and when the refresh or health hook loses its 120s
-`timeout`. Each hook and its logs: [docs/SKILLS.md](docs/SKILLS.md).
+Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers and the SessionStart hook rules: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## Detail Docs
 
@@ -265,7 +243,7 @@ un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
 - [docs/API.md](docs/API.md) - every HTTP route, its SDK wrapper, pagination
 - [docs/BUS.md](docs/BUS.md) - the outbox producer; the four streams published
 - [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the three streams consumed; consumer naming
-- [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants
+- [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev-server internals, full env-var reference
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald contract, error envelope, living-docs rule, `PLC0415` scope
 - [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, overrides, trigger table, SessionStart hook mechanics

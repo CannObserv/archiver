@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from src.api.schemas.types import ULIDStr
+
 
 class RepSpecAssignmentCreate(BaseModel):
     """One rep_spec assignment to atomically attach to a new InfoItem."""
@@ -90,6 +92,30 @@ class InfoItemRepFieldsPut(BaseModel):
     )
 
 
+class InfoItemOrgPut(BaseModel):
+    """Request body for PUT /info-items/{id}/org (archiver#304).
+
+    ``pm_org_id`` is required, ``null`` included: unlinking is said, never
+    implied by an omitted field.
+    """
+
+    model_config = {"extra": "forbid"}
+    pm_org_id: ULIDStr | None = Field(
+        description=(
+            "The Power Map org to link, fetched from Power Map now; null unlinks. "
+            "A merged id links the org it was merged into."
+        )
+    )
+    allow_destination_change: bool = Field(
+        default=False,
+        description=(
+            "Store the link even though it changes the path an active assignment "
+            "renders. Without it, such a link is refused with 409, exactly as "
+            "PUT /rep-fields refuses a moving bag."
+        ),
+    )
+
+
 class InfoItemWatchActivePut(BaseModel):
     """Request body for PUT /info-items/{id}/watch-active.
 
@@ -112,6 +138,14 @@ class InfoItemCreate(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     owner: str | None = Field(default=None, max_length=200)
     rep_fields: dict[str, Any] = Field(default_factory=dict)
+    pm_org_id: ULIDStr | None = Field(
+        default=None,
+        description=(
+            "Optional Power Map org to link at create, fetched from Power Map. "
+            "While linked, rep_fields may not carry org.title or org.acronym: "
+            "the org supplies them."
+        ),
+    )
     initial_url: str | None = Field(
         default=None,
         description="Optional URL to atomically create an InfoSource binding for this item.",
@@ -165,6 +199,36 @@ class InfoItemRepSpecOut(BaseModel):
     public_url: str | None
 
 
+class InfoItemOrgOut(BaseModel):
+    """The linked Power Map org, as archiver last saw it (archiver#304).
+
+    A local snapshot, refreshed on link and by the follower. The nullable
+    fields are notices; none of them stops replication.
+    """
+
+    pm_org_id: str = Field(description="Power Map org id.")
+    name: str = Field(description="Canonical name: the effective bag's org.title.")
+    acronym: str | None = Field(
+        description="Canonical acronym: the effective bag's org.acronym, absent when null."
+    )
+    active: bool = Field(description="Power Map's active flag.")
+    archived_at: datetime | None = Field(description="When Power Map archived the org, if it did.")
+    succeeded_by: str | None = Field(
+        description="A re-key: the id of the *different* org that succeeds this one. Not followed."
+    )
+    merged_into: str | None = Field(description="Set when this org was merged into another.")
+    renamed_from: str | None = Field(
+        description="The previous canonical name, when a refresh saw the name or acronym change."
+    )
+    renamed_at: datetime | None = Field(description="When archiver saw that change.")
+    missing_since: datetime | None = Field(
+        description=(
+            "First check that found the org gone from Power Map; the snapshot still renders."
+        )
+    )
+    checked_at: datetime = Field(description="When archiver last got an answer about the org.")
+
+
 class InfoItemOut(BaseModel):
     info_item_id: str = Field(description="ULID identifying this InfoItem.")
     name: str = Field(description="Human-readable label for the InfoItem.")
@@ -175,7 +239,22 @@ class InfoItemOut(BaseModel):
         description="Optional owner identifier (team or individual) for this InfoItem."
     )
     rep_fields: dict[str, Any] = Field(
-        description="Operator-defined JSONB bag of structured metadata fields for this item."
+        description=(
+            "Operator-defined JSONB bag of structured metadata fields for this item, as "
+            "stored. While a Power Map org is linked (pm_org_id), org.title and "
+            "org.acronym are never stored here: they come from `org`."
+        )
+    )
+    pm_org_id: str | None = Field(
+        default=None,
+        description=(
+            "The linked Power Map org's id, or null when unlinked. "
+            "Written via PUT /info-items/{id}/org."
+        ),
+    )
+    org: InfoItemOrgOut | None = Field(
+        default=None,
+        description="The linked org's local snapshot, or null when unlinked.",
     )
     watch_spec: dict[str, Any] = Field(
         description=(

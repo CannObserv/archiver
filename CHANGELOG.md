@@ -18,6 +18,22 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.25.0 (2026-10-06)
+
+[both] **Power Map org link: `PUT /info-items/{id}/org`, `pm_organizations`, and `org.*` from the linked org** (archiver#304). `archiver-client` 5.9.0 adds `set_org` and `create_info_item(pm_org_id=)`.
+
+- **Migration `43c76bf61952`:** creates `pm_organizations` (a local snapshot of each linked Power Map org) and adds `info_items.pm_org_id`, a nullable FK (`RESTRICT`) with `ix_info_items_pm_org_id`. Additive: every existing item stays unlinked and renders exactly as before. Run `uv run alembic upgrade head`, then restart. Old code ignores the new column.
+- **`PUT /info-items/{id}/org`** (new): `{pm_org_id, allow_destination_change=false}` → 200 `InfoItemOut`. `pm_org_id` is required, and `null` unlinks. Linking fetches the org from Power Map, snapshots it and sets the FK; a merged id links the org it was merged into. The linked org supplies `org.title`/`org.acronym`, so a stored copy is dropped. Unlinking writes the org's values back into the bag, so no path moves. Refusals link nothing:
+  - **503**: Power Map not configured or unreachable. `data.reason` says which; a rate limit adds `data.retry_after` and `Retry-After`.
+  - **422** `pm_org_not_found` / `pm_org_unnamed` (path `/pm_org_id`).
+  - **422** `rep_fields_incomplete` / `rep_fields_unrenderable` (`data.refusals`) and **409** `rep_fields_moves_destination` (`data.moves`), the same contract as `PUT …/rep-fields`. A hand-typed `org.title` that differs from Power Map's is a move whenever an active assignment renders from it.
+- **`InfoItemOut`** gains `pm_org_id` and `org` (the snapshot: `name`, `acronym`, `active`, `checked_at`, and the notice fields `archived_at`, `succeeded_by`, `merged_into`, `renamed_from`, `renamed_at`, `missing_since`), or `null` when unlinked. This applies to every route returning an InfoItem, `GET /tools/find-info-items` included.
+- **`POST /info-items`** takes an optional `pm_org_id`, fetched before anything is written (503 if Power Map is unreachable). With it, `rep_fields` may not carry `org.title`/`org.acronym` (**422** `rep_fields_invalid`).
+- **`PUT /info-items/{id}/rep-fields`** refuses a stored `org.title` or `org.acronym` while the item is linked (**422** `rep_fields_invalid`, path `/rep_fields/org/<key>`). Other `org.*` keys, a stored `org.title_slug` included, stay overrides.
+- **Effective bag:** assignment, the rep_fields save, issuance and the dashboard's Fields block, readout and picker now read the linked org's snapshot. Rendering never calls Power Map.
+- **Config:** `ARCHIVER_POWER_MAP_API_KEY` (read-only key; unset → dormant) and `ARCHIVER_POWER_MAP_BASE_URL` (default `https://power-map.exe.xyz`). `scripts/dev_server.sh` never inherits the key: it uses `ARCHIVER_DEV_POWER_MAP_API_KEY` or runs dormant. The SDK resolves as a git tag from github.com, so CI and deploy hosts need outbound github.com ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
+- **SDK:** `set_org(info_item_id, pm_org_id, *, allow_destination_change=False)`. The 503 raises `ServerError`, the 422s `ValidationError`, the 409 `Conflict`.
+
 ## v4.24.1 (2026-10-04)
 
 [service] **Drop the redundant `ix_iirs_item_active` index** (archiver#311). No route, schema or SDK surface change, so `archiver-client` stays at 5.8.0. The OpenAPI snapshot changes only in `info.version`.

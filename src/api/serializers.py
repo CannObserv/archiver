@@ -5,6 +5,7 @@ mapping (e.g. ``tools.find-info-items`` reuses ``info-items``' serialiser).
 """
 
 from src.api.schemas.info_item import (
+    InfoItemOrgOut,
     InfoItemOut,
     InfoItemRepSpecOut,
     InfoItemSourceOut,
@@ -17,6 +18,7 @@ from src.core.models import (
     InfoItemRepSpec,
     InfoItemSource,
     InfoSource,
+    PmOrganization,
     RepSpec,
     SourceRevision,
 )
@@ -86,13 +88,34 @@ def rep_spec_to_out(spec: RepSpec) -> RepSpecOut:
     )
 
 
+def pm_organization_to_out(org: PmOrganization) -> InfoItemOrgOut:
+    """Serialise a ``pm_organizations`` snapshot row."""
+    return InfoItemOrgOut(
+        pm_org_id=org.pm_org_id,
+        name=org.name,
+        acronym=org.acronym,
+        active=org.active,
+        archived_at=org.archived_at,
+        succeeded_by=org.succeeded_by,
+        merged_into=org.merged_into,
+        renamed_from=org.renamed_from,
+        renamed_at=org.renamed_at,
+        missing_since=org.missing_since,
+        checked_at=org.checked_at,
+    )
+
+
 def info_item_to_out(
     item: InfoItem,
     sources: list[InfoItemSource] | None = None,
     rep_specs: list[InfoItemRepSpec] | None = None,
     base_url: str | None = None,
+    org: PmOrganization | None = None,
 ) -> InfoItemOut:
-    """Serialise an InfoItem ORM row with optional related rows."""
+    """Serialise an InfoItem ORM row with optional related rows.
+
+    ``org`` is the item's ``pm_organizations`` row; the caller loads it.
+    """
     item_id = str(item.info_item_id)
     dashboard_url = f"{base_url.rstrip('/')}/info-items/{item_id}" if base_url else None
     return InfoItemOut(
@@ -101,6 +124,8 @@ def info_item_to_out(
         description=item.description,
         owner=item.owner,
         rep_fields=item.rep_fields or {},
+        pm_org_id=item.pm_org_id,
+        org=pm_organization_to_out(org) if org is not None else None,
         watch_spec=item.watch_spec,
         watch_active=item.watch_active,
         created_at=item.created_at,

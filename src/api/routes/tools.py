@@ -71,6 +71,7 @@ from src.core.changes.outbox_triage import (
     list_dead_lettered,
     rearm_dead_lettered,
 )
+from src.core.power_map.snapshots import load_orgs
 from src.core.rep_fields import effective_rep_fields
 from src.core.rep_fields_schema.validator import (
     validate_rep_fields,
@@ -192,7 +193,13 @@ async def find_info_items_route(
     """
     items = await find_info_item(session, q, limit=limit)
     base_url = os.environ.get("ARCHIVER_PUBLIC_BASE_URL")
-    return [info_item_to_out(item, base_url=base_url) for item in items]
+    orgs = await load_orgs(session, items)
+    return [
+        info_item_to_out(
+            item, base_url=base_url, org=orgs.get(item.pm_org_id) if item.pm_org_id else None
+        )
+        for item in items
+    ]
 
 
 @router.post("/fetch-and-render", response_model=FetchAndRenderResult)

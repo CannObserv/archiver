@@ -1,6 +1,6 @@
 [project]
 name = "archiver"
-version = "4.24.1"
+version = "4.25.0"
 description = "Cannabis Observer Archiver service — central registry for Information Items, Information Sources, Source Revisions, and Replication Specifications."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,6 +23,7 @@ dependencies = [
     "co-core[extract]>=0.19.6,<0.20",
     "co-core-aio[bus]>=0.19.6,<0.20",
     "archiver-client",
+    "power-map-client",
 ]
 
 [dependency-groups]
@@ -114,3 +115,6 @@ find-links = ["./.wheelhouse"]
 
 [tool.uv.sources]
 archiver-client = { path = "clients/python", editable = true }
+# Power Map's SDK (archiver#304): a git tag on a public repo, not the wheelhouse.
+# Client and server share one version; upgrade path in docs/DEPLOYMENT.md.
+power-map-client = { git = "https://github.com/CannObserv/power-map.git", subdirectory = "clients/python", tag = "v0.59.0" }

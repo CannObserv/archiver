@@ -27,6 +27,7 @@ from src.core.models import (
     SourceRevision,
     WatchStatus,
 )
+from src.core.power_map.snapshots import load_org_values
 from src.core.rep_fields_schema.validator import validate_rep_fields
 from src.core.services.registry_announcement import (
     announce_info_item,
@@ -595,13 +596,13 @@ async def _rep_fields_context(
     Rows come from the active assignments' ``required_fields`` and the spec
     selected in the picker (archiver#308), which the block then carries in its
     re-fetch URL and both forms so a save or a sibling's re-fetch keeps it.
-    ``focus`` (the picker's Select) names the input to focus. ``org=None``
-    until archiver#304 links items to Power Map; every value already reads
-    through ``effective_rep_fields``, so the link changes the argument, not the block.
+    ``focus`` (the picker's Select) names the input to focus. Values read
+    through ``effective_rep_fields`` over the item's linked Power Map org
+    (archiver#304), so its ``org.*`` keys show as *from Power Map*.
     """
     bag = dict(item.rep_fields or {})
     specs, selected = await _fields_specs(item.info_item_id, selected_spec, session)
-    view = build_fields(bag, specs, org=None, item_name=item.name)
+    view = build_fields(bag, specs, org=await load_org_values(session, item), item_name=item.name)
     return {
         "item_id": item.info_item_id,
         "rows": view.rows,
@@ -676,7 +677,7 @@ async def rep_fields_readout(
     item = await _resolve_item(item_id, session)
     bag = parse_fields_form(field_key, field_value, field_type, strict=False)
     specs, _selected = await _fields_specs(item.info_item_id, selected_spec, session)
-    view = build_fields(bag, specs, org=None, item_name=item.name)
+    view = build_fields(bag, specs, org=await load_org_values(session, item), item_name=item.name)
     response = _templates.TemplateResponse(
         request, "info_items/_rep_fields_readout.html", {"user": user, "rows": view.rows}
     )
@@ -747,7 +748,11 @@ async def patch_rep_fields(
     except RepFieldsInvalidError as e:
         return flash(
             422,
-            message="Not saved: Rep Fields must map each namespace to an object of plain values.",
+            message=(
+                "Not saved: the linked Power Map organization sets these; unlink it to type them."
+                if e.linked_org
+                else "Not saved: Rep Fields must map each namespace to an object of plain values."
+            ),
             problems=[f"{err['path']}: {err['message']}" for err in e.errors],
         )
     except RepFieldsRefusedError as e:
@@ -912,7 +917,12 @@ async def _rep_spec_picker_context(
     )
     revision = await latest_revision_for_item(session, item.info_item_id)
     occasion = occasion_for(revision) if revision is not None else example_occasion()
-    entries = build_picker(dict(item.rep_fields or {}), specs, occasion=occasion, org=None)
+    entries = build_picker(
+        dict(item.rep_fields or {}),
+        specs,
+        occasion=occasion,
+        org=await load_org_values(session, item),
+    )
     has_specs = bool(entries) or bool(await session.scalar(select(func.count(RepSpec.rep_spec_id))))
     return {
         "item_id": item.info_item_id,

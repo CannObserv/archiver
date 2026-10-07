@@ -38,6 +38,7 @@ from src.core.db_safety import (
     assert_production_db_allowed,
 )
 from src.core.logging import configure_logging, get_logger
+from src.core.power_map import power_map_from_env
 from src.dashboard.main import register_dashboard
 
 configure_logging()
@@ -112,6 +113,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise
 
     app.state.fetch_driver = AsyncFetchDriver()
+
+    # --- Optional Power Map client (archiver#304) ---
+    # ARCHIVER_POWER_MAP_API_KEY unset means dormant: linking an org answers
+    # 503 "Power Map not configured" and rendering is unaffected, since it reads
+    # only the local pm_organizations snapshot.
+    app.state.power_map = power_map_from_env()
+    logger.info(
+        "Power Map %s",
+        f"configured at {app.state.power_map.base_url}"
+        if app.state.power_map
+        else "not configured",
+    )
 
     # --- Optional outbox publisher ---
     redis_url = os.environ.get("ARCHIVER_REDIS_URL")
@@ -434,8 +447,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 pass
         if client_to_close is not None:
             await client_to_close.aclose()
-        # Then close the fetch driver
+        # Then close the fetch driver and the Power Map pool
         await app.state.fetch_driver.aclose()
+        if app.state.power_map is not None:
+            await app.state.power_map.aclose()
 
 
 app = FastAPI(title="archiver", version=_package_version("archiver"), lifespan=lifespan)

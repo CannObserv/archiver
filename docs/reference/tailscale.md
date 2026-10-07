@@ -15,6 +15,13 @@ specific to archiver.
 
 ## This deployment
 
+**The broker is a network hop.** Archiver reaches it over the tailnet as
+`redis://default:<password>@broker:6379/0`. This host answers to two names,
+`co-registrar` and `archiver`, both on port 8000, so **an HTTP 200 on a short
+name proves nothing about the tailnet**. Node identity, the ACL, the bind
+decision, and the MagicDNS failure that took down three services:
+the sections below.
+
 - **Tailnet:** `cannobserv.org.github`, tied to the CannObserv GitHub org - so
   nodes are org-owned rather than owned by one person's login.
 - **This node:** MagicDNS name `archiver`, tag `tag:archiver`, address

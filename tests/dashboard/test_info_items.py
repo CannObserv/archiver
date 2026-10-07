@@ -16,6 +16,7 @@ from src.core.models import (
     InfoItemRepSpec,
     InfoItemSource,
     InfoSource,
+    PmOrganization,
     ReplicationCommand,
     RepSpec,
     SourceRevision,
@@ -2847,3 +2848,85 @@ async def test_a_poll_always_yields_to_a_row_action(client, session):
 
     assert r.status_code == 200
     assert poll_sync_violations(r.text, "ii-rep-spec-assignments") == []
+
+
+# --- The linked Power Map org (archiver#304) ---------------------------------
+# The Fields block, its readout and the picker read the item's snapshot, so a
+# linked item's org.* keys show as "from Power Map" and satisfy a spec.
+
+
+async def _linked_snapshot(session, item: InfoItem, name: str = "WSLCB - Board") -> None:
+    org = PmOrganization(
+        pm_org_id="01JPM00000000000000000000A",
+        name=name,
+        acronym="WSLCB",
+        active=True,
+        pm_updated_at=datetime.now(UTC),
+        checked_at=datetime.now(UTC),
+    )
+    session.add(org)
+    await session.flush()
+    item.pm_org_id = org.pm_org_id
+    await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_a_linked_items_org_keys_come_from_power_map(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "WSLCB - Board"}}, rs)
+    item.rep_fields = {}
+    await _linked_snapshot(session, item)
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/rep-fields", headers=_HEADERS)
+
+    assert "from Power Map" in r.text
+    assert "wslcb-board" in r.text
+    assert "missing" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_linked_items_readout_reads_the_org(client, session):
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "WSLCB - Board"}}, rs)
+    item.rep_fields = {}
+    await _linked_snapshot(session, item)
+
+    r = await client.get(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields/readout", headers=_HEADERS
+    )
+
+    assert "from Power Map" in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_picker_judges_a_linked_item_through_its_org(client, session):
+    item, revision = await _bound_item(session, "Linked Picker", {})
+    await _linked_snapshot(session, item, name="WSLCB")
+    rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PREVIEW_PATH)
+    session.add(rs)
+    await session.flush()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    entry = _picker_entry(r.text, rs)
+    assert "Ready" in entry
+    assert f"organizations/wslcb/{revision.source_revision_id}.html" in entry
+
+
+@pytest.mark.asyncio
+async def test_saving_an_org_owned_key_on_a_linked_item_says_why(client, session):
+    """CR 6: the refusal names the linked org, not the v1 shape the bag satisfies."""
+    item = _make_item("Linked Save", rep_fields={})
+    session.add(item)
+    await session.flush()
+    await _linked_snapshot(session, item)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": '{"org": {"title": "Hand Typed"}}'},
+    )
+
+    assert r.status_code == 422
+    assert "linked Power Map organization" in r.text
+    assert "plain values" not in r.text

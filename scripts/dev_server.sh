@@ -31,6 +31,8 @@
 #   ARCHIVER_DEV_SKIP_MIGRATE=1           skip the alembic upgrade
 #   ARCHIVER_DEV_SERVER_DRY_RUN=1         print resolution, do not exec uvicorn
 #   ARCHIVER_DEV_SERVER_SKIP_ENV_FILES=1  skip sourcing env files (tests)
+#   ARCHIVER_DEV_POWER_MAP_API_KEY        Power Map read key for dev; unset → dormant
+#   ARCHIVER_DEV_POWER_MAP_BASE_URL       Power Map base URL for dev (default: production)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -193,6 +195,27 @@ else
   REDIS_REPORT="(dormant)"
 fi
 
+# --- Power Map credential isolation (archiver#304) ---
+# /etc/archiver/.env carries the live service's ARCHIVER_POWER_MAP_API_KEY. The
+# dev server never inherits it: it uses ARCHIVER_DEV_POWER_MAP_API_KEY (and
+# ARCHIVER_DEV_POWER_MAP_BASE_URL, if set) or runs with Power Map dormant. No
+# same-target refusal, unlike Redis: the key is read-only, so reading production
+# Power Map from dev is the supported posture; only the inheritance is refused.
+DEV_PM_KEY="${ARCHIVER_DEV_POWER_MAP_API_KEY:-}"
+DEV_PM_URL="${ARCHIVER_DEV_POWER_MAP_BASE_URL:-}"
+unset ARCHIVER_POWER_MAP_API_KEY ARCHIVER_POWER_MAP_BASE_URL
+if [[ -n "$DEV_PM_KEY" ]]; then
+  export ARCHIVER_POWER_MAP_API_KEY="$DEV_PM_KEY"
+  if [[ -n "$DEV_PM_URL" ]]; then
+    export ARCHIVER_POWER_MAP_BASE_URL="$DEV_PM_URL"
+    POWER_MAP_REPORT="$DEV_PM_URL (dev key)"
+  else
+    POWER_MAP_REPORT="(default base URL, dev key)"
+  fi
+else
+  POWER_MAP_REPORT="(dormant)"
+fi
+
 # pytest teardown drops the `information` schema from TEST_DATABASE_URL, so the
 # dev database is frequently schema-less at launch. Migrating here keeps the
 # safe path usable; an operator who finds it broken tends to reach for the old
@@ -214,6 +237,7 @@ if [[ "${ARCHIVER_DEV_SERVER_DRY_RUN:-}" == "1" ]]; then
   echo "PORT=$PORT"
   echo "MIGRATE=$MIGRATE_REPORT"
   echo "REDIS=$REDIS_REPORT"
+  echo "POWER_MAP=$POWER_MAP_REPORT"
   exit 0
 fi
 

@@ -38,7 +38,7 @@ src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,
                                changes_outbox, replication_command,
-                               persist_command)
+                               persist_command, pm_organization)
   source_spec_schema/          SourceSpec JSON Schema v1 + validator
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
@@ -182,9 +182,20 @@ src/core/                      Domain logic
                                resolution point (archiver#303): the stored bag
                                over the linked org, then derived. A guard test
                                refuses any other resolve_rep_fields reference.
+  power_map/                   Power Map integration (archiver#304). client.py is
+                               the ONLY importer of the power-map-client SDK:
+                               get_org -> Snapshot | NotModified | Merged | Gone,
+                               search_orgs, PowerMapUnavailableError for every
+                               non-answer. snapshots.py owns pm_organizations
+                               (apply_org_snapshot, load_org_values). Edge rule:
+                               Power Map is called on the authoring path and by
+                               the follower, NEVER during replication - render
+                               reads the snapshot. Beside the no-HTTP-to-Watcher
+                               rule (#142); Power Map is an identity source, not
+                               a sibling in the content pipeline.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
                                set_rep_fields + the rep_fields_gate they share,
-                               update_rep_spec, preview_extraction, etc.)
+                               link_org, update_rep_spec, preview_extraction, etc.)
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
                                own copy and there is NO parity requirement; see
@@ -274,8 +285,9 @@ deploy/                        README.md (install instructions) + systemd units:
                                repos: the cap is in CannObserv/broker's drop-in,
                                the transient classification in publisher.py
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
-                               BUS.md, BUS_CONSUMERS.md, SCHEMA.md, DEPLOYMENT.md,
-                               CONVENTIONS.md, SKILLS.md, SOCRATICODE.md, plus the
+                               BUS.md, BUS_CONSUMERS.md, SCHEMA.md, SCHEMA_BUS.md,
+                               DEPLOYMENT.md, CONVENTIONS.md, SKILLS.md,
+                               SOCRATICODE.md, plus the
                                dashboard living docs
                                UI.md + SCREENS.md + PAGES.md +
                                INFO_ITEM_DETAIL.md + REGISTER.md + HEALTH_ROW.md +
@@ -289,7 +301,7 @@ docs/                          Live reference docs — ARCHITECTURE.md, API.md,
 skills/                        Agent skills (committed overrides + symlinks → skills-vendor/)
 skills-vendor/                 Git submodules for external skill repos
 .skills/doctor.sh              Committed skill-symlink doctor (real file, not a
-                               symlink) — see "SessionStart Hooks"
+                               symlink) — see SKILLS.md "SessionStart Hooks"
 .claude/skills/                Claude Code skill discovery (symlinks → ../../skills/<name>)
 .github/workflows/             CI (ci.yml) — lint job (ruff check + ruff format --check
                                + check_version_lockstep.py),
@@ -313,8 +325,8 @@ skills-vendor/                 Git submodules for external skill repos
 ```
 
 Quoted section names in the tree above ("Server Lifecycle", "Dashboard living
-docs", "SessionStart Hooks", "Content-acquisition via co-core", "No cross-repo
-mirror discipline") refer to sections of [AGENTS.md](../AGENTS.md).
+docs", "Content-acquisition via co-core", "No cross-repo mirror discipline")
+refer to sections of [AGENTS.md](../AGENTS.md), unless a doc is named.
 
 ## Content acquisition via co-core
 
