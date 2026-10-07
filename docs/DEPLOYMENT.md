@@ -96,25 +96,14 @@ made those columns authoritative (archiver#158), and the teardown followed.
 
 ## Timers
 
-Periodic oneshots under `deploy/`. Each is a `.service` + `.timer` pair, loads
-the same env files as `archiver.service`, and holds its own
-`ARCHIVER_ALLOW_PRODUCTION_DB=1` (never an env file). Install with
-`sudo cp deploy/<unit> /etc/systemd/system/ && sudo systemctl daemon-reload`,
-then `sudo systemctl enable --now <name>.timer`; `tests/deploy/` pins each
-installed copy against the repo.
+Periodic oneshots under `deploy/`, each holding its own
+`ARCHIVER_ALLOW_PRODUCTION_DB=1`. Install, behaviour and logs:
+[deploy/README.md](../deploy/README.md).
 
 | Timer | Cadence | Runs | Writes | Dormant when |
 |---|---|---|---|---|
 | `archiver-bus-health` | 10 min | `python -m src.core.bus_health` | nothing (WARN-only outbox probe, #130) | never |
 | `archiver-pm-org-refresh` | 1 h | `python -m src.core.power_map.follower` | `pm_organizations`; `info_items.pm_org_id` on a merge (#305) | `ARCHIVER_POWER_MAP_API_KEY` unset: exits 0, no database |
-
-The follower sends one conditional `GET /orgs/{id}` per org an item links,
-paced at 2 req/s for Power Map's read bucket; a 429's `Retry-After` up to 60 s
-is waited out once, and three unanswered orgs in a row end the sweep. Each run
-logs `Power Map org refresh finished` with its outcome counts; renames, merges
-and misses log `pm_org_renamed`, `pm_org_merged` and `pm_org_missing` at
-WARNING (`sudo journalctl -u archiver-pm-org-refresh`). Semantics:
-[SCHEMA.md](SCHEMA.md) (`PmOrganization`).
 
 ## Environment variable reference
 

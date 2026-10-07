@@ -237,6 +237,14 @@ item links and writes the answer to `pm_organizations`; a merge also re-points
 `info_items.pm_org_id`. Semantics live in `docs/SCHEMA.md`, the timer roster in
 `docs/DEPLOYMENT.md`.
 
+Each run checks the linked orgs in random order, one conditional
+`GET /orgs/{id}` at a time, paced at 2 req/s for Power Map's read bucket. A
+429's `Retry-After` of up to 60 s is waited out once; three unanswered orgs in a
+row end the run, and the next hour retries. It logs
+`Power Map org refresh finished` with outcome counts, and `pm_org_renamed`,
+`pm_org_merged` and `pm_org_missing` at WARNING
+(`sudo journalctl -u archiver-pm-org-refresh`).
+
 The service holds the third sanctioned `Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1`,
 and the first write-capable one outside `archiver.service`; it must never set
 `ARCHIVER_BUS_CONSUMER`. The Power Map key is the switch: with none in
