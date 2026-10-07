@@ -233,6 +233,22 @@ async def test_a_rename_that_cannot_render_still_applies_and_warns(session, warn
 
 
 @pytest.mark.asyncio
+async def test_an_assignment_broken_before_the_change_is_not_blamed_on_it(session, warnings):
+    """CR 10: only an assignment the org change broke is warned about."""
+    await _snapshot(session)
+    item = await _linked_item(session, assigned=True)
+    item.rep_fields = {"info_item": {"name": "!!!"}}
+    ((_, spec),) = await set_rep_fields.active_assignments(session, item.info_item_id)
+    spec.document = {**spec.document, "required_fields": ["org.title_slug", "info_item.name_slug"]}
+    await session.flush()
+    pm = FakePowerMap(org(name="WA Cannabis Board", pm_updated_at=T1, etag='"v2"'))
+
+    assert await _refresh(session, pm) == {WSLCB_ID: RENAMED}
+
+    assert not [m for m in warnings.messages if "cannot render" in m]
+
+
+@pytest.mark.asyncio
 async def test_a_merge_repoints_items_and_keeps_the_loser(session, warnings, move_warnings):
     await _snapshot(session)
     first = await _linked_item(session, assigned=True)

@@ -303,24 +303,28 @@ async def _log_moves(
     after: OrgValues | None,
     message: str,
 ) -> None:
-    """Log each item's moves, and its assignments the new org cannot render (CR 5).
+    """Log each item's moves, and the assignments the change stopped rendering (CR 5).
 
-    Power Map's change applies either way (Q4). An assignment that no longer
-    renders is warned about now - its next occasion is skipped - and kept out
-    of ``destination_moves``, which raises on an unrenderable new bag.
+    Power Map's change applies either way (Q4). An assignment that rendered
+    under the old org and does not under the new one is warned about now - its
+    next occasion is skipped. One that was already broken is not the change's
+    doing and is not blamed on it (CR 10). Neither reaches
+    ``destination_moves``, which raises on an unrenderable new bag.
     """
     for item in items:
         bag = item.rep_fields or {}
         assignments = await active_assignments(db, item.info_item_id)
         refusals = assignment_refusals(assignments, bag, org=after)
-        if refusals:
+        already = {r.assignment_id for r in assignment_refusals(assignments, bag, org=before)}
+        broken = [r for r in refusals if r.assignment_id not in already]
+        if broken:
             logger.warning(
                 "Power Map org change leaves assignments that cannot render",
                 extra={
                     "info_item_id": str(item.info_item_id),
                     "refusals": [
                         {"assignment_id": str(r.assignment_id), "code": r.code, "errors": r.errors}
-                        for r in refusals
+                        for r in broken
                     ],
                 },
             )
