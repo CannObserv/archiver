@@ -452,3 +452,15 @@ async def test_the_combobox_has_one_persistent_live_region(client, session, powe
     results = results[: results.index("</div>")]
     assert 'role="status"' not in results
     assert '<p role="status" class="sr-only" x-ref="live"></p>' in form
+
+
+@pytest.mark.asyncio
+async def test_link_names_why_power_map_is_unavailable(client, session, power_map):
+    """CR 8: the adapter's reason, once, with no promise a retry helps."""
+    power_map.unavailable = PowerMapUnavailableError("rate limited (HTTP 429)")
+    item = await _item(session)
+
+    r = await client.put(_org_url(item), headers=_HEADERS, data={"pm_org_id": WSLCB_ID})
+
+    assert "Not linked: Power Map unavailable: rate limited (HTTP 429)." in r.text
+    assert "Try again" not in r.text

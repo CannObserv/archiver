@@ -31,7 +31,6 @@ MIN_QUERY = 2
 SEARCH_LIMIT = 10
 
 NOT_CONFIGURED = "Power Map not configured: search is unavailable."
-UNAVAILABLE = "Power Map unavailable: try again shortly."
 
 
 async def _local_options(session: AsyncSession, item_id: str) -> list[OrgOption]:
@@ -64,8 +63,9 @@ async def search_orgs(
     else:
         try:
             options = [option_from_hit(h) for h in await power_map.search_orgs(query, SEARCH_LIMIT)]
-        except PowerMapUnavailableError:
-            status = UNAVAILABLE
+        except PowerMapUnavailableError as e:
+            # The adapter's reason: a rejected key will not fix itself (CR 8).
+            status = f"Power Map unavailable: {e.reason}."
         else:
             if not options:
                 status = f"No Power Map organization matches “{query}”."

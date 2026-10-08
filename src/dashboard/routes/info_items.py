@@ -631,7 +631,7 @@ async def put_org(
     except PowerMapNotConfiguredError:
         return flash(503, "Not linked: Power Map not configured.")
     except PowerMapUnavailableError as e:
-        return flash(503, f"Not linked: Power Map unavailable ({e.reason}). Try again shortly.")
+        return flash(503, f"Not linked: Power Map unavailable: {e.reason}.")
     except OrgNotFoundError:
         return flash(422, "Not linked: Power Map has no such organization.")
     except OrgUnnamedError:

@@ -182,3 +182,14 @@ async def test_a_hit_label_is_escaped(client, power_map):
 
     assert "<b>Bad</b>" not in r.text
     assert "&lt;b&gt;Bad&lt;/b&gt; Board" in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_status_line_names_why_power_map_is_unavailable(client, power_map):
+    """CR 8: a rejected key will not fix itself; "try again shortly" said it would."""
+    power_map.unavailable = PowerMapUnavailableError("Power Map rejected archiver's API key")
+
+    r = await client.get(_URL, params={"q": "wslcb"}, headers=_HEADERS)
+
+    assert "Power Map unavailable: Power Map rejected archiver&#39;s API key." in r.text
+    assert "try again" not in r.text
