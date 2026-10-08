@@ -33,4 +33,4 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # beats hanging.
 TimeoutStartSec=900
 
-ExecStart=/usr/local/bin/uv run python -m src.core.power_map.follower
+ExecStart=/usr/local/bin/uv run python -m src.core.tools.refresh_orgs

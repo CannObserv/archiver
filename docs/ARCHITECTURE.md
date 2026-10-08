@@ -187,17 +187,21 @@ src/core/                      Domain logic
                                get_org -> Snapshot | NotModified | Merged | Gone,
                                search_orgs, PowerMapUnavailableError for every
                                non-answer. snapshots.py owns pm_organizations
-                               (apply_org_snapshot, load_org_values).
-                               follower.py is the hourly refresh (archiver#305):
-                               refresh_linked_orgs + the timer's main. Edge rule:
-                               Power Map is called on the authoring path and by
-                               the follower, NEVER during replication - render
-                               reads the snapshot. Beside the no-HTTP-to-Watcher
-                               rule (#142); Power Map is an identity source, not
-                               a sibling in the content pipeline.
+                               (apply_org_snapshot, load_org_values). Imports
+                               nothing from tools/ (archiver#327, guard test).
+                               Edge rule: Power Map is called on the authoring
+                               path and by the follower, NEVER during
+                               replication - render reads the snapshot. Beside
+                               the no-HTTP-to-Watcher rule (#142); Power Map is
+                               an identity source, not a sibling in the content
+                               pipeline.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
                                set_rep_fields + the rep_fields_gate they share,
                                link_org, update_rep_spec, preview_extraction, etc.)
+                               refresh_orgs.py is the hourly Power Map org
+                               follower (archiver#305, moved here by #327):
+                               refresh_linked_orgs + the timer's main, beside
+                               the other writers of the effective bag.
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
                                own copy and there is NO parity requirement; see

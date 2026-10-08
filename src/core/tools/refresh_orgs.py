@@ -64,7 +64,7 @@ from src.core.tools.set_rep_fields import (
 
 # Literal rather than __name__: the timer runs this module via ``python -m``,
 # where __name__ is "__main__" - a useless journald filter key.
-logger = get_logger("src.core.power_map.follower")
+logger = get_logger("src.core.tools.refresh_orgs")
 
 NOT_MODIFIED = "not_modified"
 UPDATED = "updated"
