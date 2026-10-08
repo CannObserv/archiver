@@ -172,9 +172,10 @@ enhancement). Emit a focus-move `<script>` in the swap response only (gated on a
 
 *One builder per behaviour-bearing partial.* A partial whose missing context key
 changes behaviour rather than omitting text - today the two replication
-assignment sections, whose `poll` drives the self-refresh (#212), and the
+assignment sections, whose `poll` drives the self-refresh (#212), the
 InfoItem Fields block, whose `rows` an omission turns into "nothing required"
-(#307) - takes its
+(#307), the picker (`entries`, #308) and the Organization row (`org_row`,
+`power_map_configured`, #306) - takes its
 whole context from one builder, and every render site spreads it: the swaps, the
 poll, and the full page that includes it. Jinja's default `Undefined` is falsy
 and renders empty, so a site that forgets a key does not fail - it renders a

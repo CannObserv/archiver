@@ -78,16 +78,12 @@ each route.
 
 **POST `/dashboard/info-items/new`** - legacy direct-create, still live. Form fields: `name`, `description`, `owner`, `rep_fields` (JSON), `initial_url` (string), `initial_source_specs` (JSON array). 303 to detail on success; 422 re-rendering `info_items/new.html` on validation error, including a `rep_fields` bag that is not Rep Fields v1 (archiver#302). Interactive registration goes through `/dashboard/register`.
 
-**GET `/dashboard/info-items/{id}`** - the 5-section vertical-scroll hub page
-(`info_items/detail.html`). Its section anatomy, partial templates, and swap
-targets are [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), needed only when
-working on that screen.
-
-**The hub screen's action-route contracts** - the shared Watcher-POST contract,
-the three routes that retired with the SDK, and the always-200 always-flash
-replication outcome rule - are in
-[docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
-The entries below stay the inventory line for each route.
+**GET `/dashboard/info-items/{id}`** - the 5-section hub page
+(`info_items/detail.html`). Its anatomy, partials, swap targets and **Action-route
+contracts** (the shared Watcher-POST contract, the three routes retired with the
+SDK, the always-200 always-flash replication outcome rule) are
+[docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), needed only when working on
+that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** - HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the two action POSTs.
 
@@ -117,8 +113,10 @@ The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-items/{id}/rep-fields/readout`** - the Fields block's live readout: unsaved `field_*` lists (and `selected_spec`) in, each row's status cell out of band. Writes and fires nothing (archiver#307).
 
-**PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 render `_rep_fields_flash.html` into `#rep-fields-flash` (archiver#302, #307); a linked item's `org.title`/`org.acronym` is a 422 naming the org (archiver#304). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
+**PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 render `_move_flash.html` into `#rep-fields-flash` (archiver#302, #307); a linked item's `org.title`/`org.acronym` is a 422 naming the org (archiver#304). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
 
+
+**PUT `…/{id}/org`**, **GET `/dashboard/power-map/orgs`** - Organization row Link / Unlink and type-ahead: [ORG_ROW.md](ORG_ROW.md) (archiver#306).
 
 ## Information Sources (`/dashboard/info-sources/`)
 

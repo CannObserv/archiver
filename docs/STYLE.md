@@ -117,7 +117,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 ### Navigation
 - `.pagination`, `.pagination__btn`. Carries its own `margin-top`; templates must not add an inline one (see `.data-table` above).
 - `.tabs`, `.tabs__list`, `.tabs__btn`, `.tabs__btn--active`, `.tabs__panel`.
-- `.typeahead-results`, `.typeahead-results__item`, `.typeahead-results__item--focused`.
+- `.typeahead-results`, `.typeahead-results__item`, `.typeahead-results__item--focused`. The list is absolute, so it drops from a `.typeahead` wrapper (archiver#306, the InfoItem Organization row): `position: relative`, the `.field-row__readout`'s flex share inside a `.field-row`, and a `.form-input` inside sized to `.btn--sm` like `.form-select--sm`. A `[hidden]` list (no options) is `display: none`.
 
 ### Modals
 - `.modal-backdrop` - fixed overlay.

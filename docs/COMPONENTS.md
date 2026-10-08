@@ -25,6 +25,7 @@ load and are wired only by their `<script>` tag in `base.html`.
 |---|---|---|
 | `sortableChips` | `main.js` | Chip strip for selector suggestions with client-side sort. Uses JSON data island: `x-data="sortableChips('frequency')"` with `<script type="application/json">{{ chips \| tojson }}</script>` inside. Optional `value` field on each chip overrides the dispatch payload. Clicking dispatches `chip-insert` window event; caller listens with `@chip-insert.window`. |
 | `repFieldsForm` | `main.js` | The Replication section's Fields block (archiver#307): adds and removes whole Other-field rows, and fills the `info_item.name` suggestion as if typed, so the live readout re-slugs it. Usage: `x-data="repFieldsForm"` on `#ii-rep-fields`. |
+| `orgCombobox` | `main.js` | The InfoItem Organization row's type-ahead (archiver#306): an ARIA combobox over a server-rendered listbox. Keyboard model and invariants: [ORG_ROW.md](ORG_ROW.md). |
 | `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
 | `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
 | `domainNotes` | `main.js` | Edit/view toggle for the notes row in the domain detail header panel (#176). Cancel resets the textarea to its `defaultValue`. |

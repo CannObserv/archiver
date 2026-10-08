@@ -489,6 +489,177 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
+     * The InfoItem Organization row's type-ahead (archiver#306): an ARIA
+     * combobox over a listbox the server renders.
+     *
+     * The options are server HTML - the item's local suggestions at first,
+     * Power Map's hits once htmx swaps GET /dashboard/power-map/orgs into
+     * $refs.results - so the component never builds an option. It owns the
+     * keyboard model (ArrowDown/ArrowUp move and wrap, Enter chooses, Escape
+     * closes then clears, Tab closes) and one invariant: the hidden
+     * `pm_org_id` ($refs.choice) holds an org only while the input still shows
+     * that org's label, so Link never sends an org the operator typed over.
+     *
+     * Changing or abandoning the choice also empties the flash the form's
+     * `data-flash` names: a 409's "Link and move" left there would link the
+     * org it warned about, not the one the input now shows.
+     *
+     * Usage: x-data="orgCombobox" data-flash="<flash id>" on the row's form,
+     * around a [role=combobox] input, $refs.choice, $refs.results (the swap
+     * target), <template x-ref="local"> holding the suggestions Cancel restores,
+     * and $refs.live, the persistent role="status" region announce() writes.
+     */
+    window.Alpine.data("orgCombobox", function () {
+        return {
+            open: false,
+            chosen: false,
+            active: -1,
+
+            input: function () {
+                return this.$root.querySelector("[role=combobox]");
+            },
+
+            options: function () {
+                return Array.prototype.slice.call(
+                    this.$refs.results.querySelectorAll("[role=option]")
+                );
+            },
+
+            // Something worth showing: an option, or a line saying why none.
+            hasContent: function () {
+                return this.options().length > 0 || this.statusLine() !== null;
+            },
+
+            statusLine: function () {
+                return this.$refs.results.querySelector("[data-org-status]");
+            },
+
+            // Say what the swap brought: its status line, else how many orgs.
+            // Written into the row's persistent region ($refs.live) because a
+            // live region swapped in already holding its text is usually not
+            // announced (CR 7).
+            announce: function () {
+                if (!this.$refs.live) { return; }
+                var status = this.statusLine();
+                var count = this.options().length;
+                var text = "";
+                if (status) {
+                    text = status.textContent.trim();
+                } else if (count) {
+                    text = count + (count === 1 ? " organization" : " organizations");
+                }
+                this.$refs.live.textContent = text;
+            },
+
+            openList: function () {
+                this.open = this.hasContent();
+            },
+
+            close: function () {
+                this.open = false;
+                this.setActive(-1);
+            },
+
+            setActive: function (index) {
+                var options = this.options();
+                var input = this.input();
+                this.active = index;
+                options.forEach(function (option, i) {
+                    option.setAttribute("aria-selected", i === index ? "true" : "false");
+                    option.classList.toggle("typeahead-results__item--focused", i === index);
+                });
+                if (index >= 0 && options[index]) {
+                    input.setAttribute("aria-activedescendant", options[index].id);
+                    if (options[index].scrollIntoView) {
+                        options[index].scrollIntoView({ block: "nearest" });
+                    }
+                } else {
+                    input.removeAttribute("aria-activedescendant");
+                }
+            },
+
+            move: function (delta) {
+                var count = this.options().length;
+                if (!count) { return; }
+                if (this.active < 0) {
+                    this.setActive(delta > 0 ? 0 : count - 1);
+                } else {
+                    this.setActive((this.active + delta + count) % count);
+                }
+            },
+
+            // A 409's "Link and move" re-sends the org it warned about; once the
+            // choice changes, or the edit is cancelled, it would link an org
+            // the input no longer shows. The form's data-flash names the target.
+            clearFlash: function () {
+                var flash = document.getElementById(this.$root.dataset.flash || "");
+                if (flash) { flash.innerHTML = ""; }
+            },
+
+            choose: function (option) {
+                this.clearFlash();
+                this.input().value = option.dataset.label;
+                this.$refs.choice.value = option.dataset.pmOrgId;
+                this.chosen = true;
+                this.close();
+            },
+
+            chooseFrom: function (target) {
+                var option = target.closest ? target.closest("[role=option]") : null;
+                if (option) { this.choose(option); }
+            },
+
+            clearChoice: function () {
+                this.clearFlash();
+                this.chosen = false;
+                this.$refs.choice.value = "";
+            },
+
+            onKeydown: function (event) {
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    if (!this.open) { this.openList(); }
+                    this.move(event.key === "ArrowDown" ? 1 : -1);
+                } else if (event.key === "Enter") {
+                    var option = this.open ? this.options()[this.active] : null;
+                    if (option) {
+                        event.preventDefault();
+                        this.choose(option);
+                    } else if (!this.chosen) {
+                        // Nothing to link: an implicit submit would send a blank
+                        // pm_org_id, which is Unlink.
+                        event.preventDefault();
+                    }
+                } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    if (this.open) {
+                        this.close();
+                    } else {
+                        this.input().value = "";
+                        this.clearChoice();
+                    }
+                } else if (event.key === "Tab") {
+                    this.close();
+                }
+            },
+
+            // htmx swapped new options in: nothing is active among them yet.
+            onResults: function () {
+                this.setActive(-1);
+                this.openList();
+                this.announce();
+            },
+
+            reset: function () {
+                this.input().value = "";
+                this.clearChoice();
+                this.$refs.results.innerHTML = this.$refs.local.innerHTML;
+                this.close();
+            }
+        };
+    });
+
+    /**
      * Multi-step Information Item registration wizard.
      *
      * Manages step navigation, URL, sourceSpecs, itemName, and description.

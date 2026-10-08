@@ -99,6 +99,18 @@ _CONTRACTS: dict[str, _Contract] = {
         behaviour=frozenset({"entries"}),
         optional={"swapped": _SWAPPED},
     ),
+    # archiver#306: without `org_row` a linked item reads "Not linked", and
+    # without `power_map_configured` the row says Power Map is not configured
+    # on a server where it is.
+    "info_items/_org_row.html": _Contract(
+        builder=info_items_routes._org_row_context,
+        empty_args=lambda: (
+            InfoItem(info_item_id=ULID(), name="contract probe", rep_fields={}),
+            None,
+        ),
+        behaviour=frozenset({"org_row", "power_map_configured"}),
+        optional={"swapped": _SWAPPED},
+    ),
     "rep_specs/_assignments.html": _Contract(
         builder=rep_specs_routes._assignments_context,
         empty_args=lambda: (
