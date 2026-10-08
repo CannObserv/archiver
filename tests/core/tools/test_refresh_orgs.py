@@ -308,6 +308,22 @@ async def test_a_gone_org_is_missing_and_keeps_its_snapshot(session, warnings):
     assert row.name == WSLCB_NAME
     assert row.etag == '"v1"'
     assert "pm_org_missing" in warnings.messages
+    (extra,) = [e for m, e in warnings.records if m == "pm_org_missing"]
+    assert extra == {"pm_org_id": WSLCB_ID, "org_name": WSLCB_NAME}
+
+
+@pytest.mark.asyncio
+async def test_a_missing_org_logs_through_a_real_logger(session, monkeypatch):
+    """No spy: ``extra`` must not collide with a ``LogRecord`` attribute (``name``),
+    which raises ``KeyError`` and ends the sweep (archiver#327). Enabled
+    explicitly - a config load earlier in the session can leave it disabled."""
+    monkeypatch.setattr(refresh_orgs.logger, "disabled", False)
+    await _snapshot(session)
+    await _linked_item(session)
+
+    outcomes = await _refresh(session, FakePowerMap())
+
+    assert outcomes == {WSLCB_ID: MISSING}
 
 
 @pytest.mark.asyncio

@@ -271,7 +271,7 @@ async def _missing(db: AsyncSession, pm_org_id: str, now: datetime) -> str:
         row.missing_since = now
         logger.warning(
             "pm_org_missing",
-            extra={"pm_org_id": pm_org_id, "name": row.name},
+            extra={"pm_org_id": pm_org_id, "org_name": row.name},
         )
     row.checked_at = now
     await db.flush()
