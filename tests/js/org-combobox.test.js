@@ -21,7 +21,8 @@ const OPTIONS = `
   </ul>`;
 
 const ROW = `
-  <form id="f" x-data="orgCombobox">
+  <div id="flash"></div>
+  <form id="f" x-data="orgCombobox" data-flash="flash">
     <input id="ii-org-input" role="combobox" aria-controls="ii-org-listbox"
            @keydown="onKeydown($event)" @focus="openList()" @input="clearChoice()">
     <input type="hidden" name="pm_org_id" value="" x-ref="choice">
@@ -35,6 +36,16 @@ async function boot(html) {
     await import("../../src/dashboard/static/vendor/alpine.min.js");
     await new Promise(function (resolve) { setTimeout(resolve, 100); });
     return window.Alpine.$data(document.querySelector("[x-data]"));
+}
+
+const STALE = '<button id="link-and-move">Link and move</button>';
+
+function staleFlash() {
+    document.getElementById("flash").innerHTML = STALE;
+}
+
+function flashHtml() {
+    return document.getElementById("flash").innerHTML;
 }
 
 function key(name) {
@@ -222,5 +233,43 @@ describe("orgCombobox — choosing and changing", function () {
         expect(choice()).toBe("");
         expect(data.open).toBe(false);
         expect(document.getElementById("ii-org-option-0")).not.toBeNull();
+    });
+});
+
+describe("orgCombobox — a confirmation never outlives its choice", function () {
+    beforeEach(function () {
+        document.body.innerHTML = "";
+    });
+
+    // A 409's "Link and move" re-sends the org it warned about. Left on screen
+    // once the operator has chosen another org - or cancelled - it links an
+    // org the input no longer shows.
+    it("choosing another org clears the flash", async function () {
+        await boot(ROW);
+        staleFlash();
+
+        document.getElementById("ii-org-option-1").click();
+
+        expect(flashHtml()).toBe("");
+    });
+
+    it("typing over the choice clears the flash", async function () {
+        await boot(ROW);
+        document.getElementById("ii-org-option-0").click();
+        staleFlash();
+
+        input().value = "Alp";
+        input().dispatchEvent(new Event("input", { bubbles: true }));
+
+        expect(flashHtml()).toBe("");
+    });
+
+    it("reset (Cancel) clears the flash", async function () {
+        const data = await boot(ROW);
+        staleFlash();
+
+        data.reset();
+
+        expect(flashHtml()).toBe("");
     });
 });

@@ -309,9 +309,12 @@ async def test_unlink_works_with_power_map_dormant(client, session, no_power_map
 async def test_a_link_that_moves_paths_shows_the_diff_and_waits(client, session, power_map):
     item = await _item(session, {"org": {"title": "WA LCB"}}, spec=_spec())
 
-    r = await client.put(_org_url(item), headers=_HEADERS, data={"pm_org_id": WSLCB_ID})
+    r = await client.put(
+        _org_url(item), headers=_HEADERS, data={"pm_org_id": WSLCB_ID, "q": "WSLCB label"}
+    )
 
     assert r.status_code == 409
+    assert "Not linked yet: linking WSLCB label changes" in r.text
     assert "organizations/wa_lcb/" in r.text
     assert f"organizations/{_WSLCB_SLUG}/" in r.text
     assert "Org Layout" in r.text
@@ -328,7 +331,7 @@ async def test_link_and_move_resends_the_org_it_warned_about(client, session, po
     warned = await client.put(_org_url(item), headers=_HEADERS, data={"pm_org_id": WSLCB_ID})
 
     vals = json.loads(_attr(warned.text, "hx-vals"))
-    assert vals == {"pm_org_id": WSLCB_ID, "allow_destination_change": "true"}
+    assert vals == {"pm_org_id": WSLCB_ID, "allow_destination_change": "true", "q": WSLCB_ID}
     assert _attr(warned.text, "hx-put") == _org_url(item)
 
     r = await client.put(_org_url(item), headers=_HEADERS, data=vals)
@@ -423,3 +426,14 @@ def _attr(html: str, name: str) -> str:
         .replace("&#39;", "'")
         .replace("&amp;", "&")
     )
+
+
+@pytest.mark.asyncio
+async def test_the_rows_flash_is_named_to_the_combobox(client, session, power_map):
+    """CR 1: the component clears this flash when the choice changes or Cancel."""
+    item = await _item(session)
+
+    r = await client.get(_detail(item), headers=_HEADERS)
+
+    form = r.text[r.text.index('id="ii-org-form"') :]
+    assert 'data-flash="ii-org-flash"' in form[: form.index(">")]

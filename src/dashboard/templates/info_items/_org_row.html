@@ -56,7 +56,8 @@
             hx-target-422="#ii-org-flash"
             hx-target-503="#ii-org-flash"
             hx-swap="innerHTML"
-            x-data="orgCombobox">
+            x-data="orgCombobox"
+            data-flash="ii-org-flash">
         <div class="typeahead" @click.outside="close()">
           <input id="ii-org-input" type="text" class="form-input"
                  role="combobox"
@@ -95,7 +96,7 @@
       <div class="field-row">
         <p class="text-muted text-sm" role="status" style="margin:0;">Power Map not configured: linking is unavailable.</p>
         <div class="field-row__actions">
-          <button type="button" class="btn btn--sm btn--secondary" @click="cancelEdit()">Cancel</button>
+          <button type="button" class="btn btn--sm btn--secondary" @click="cancelEdit(); document.getElementById('ii-org-flash').innerHTML = ''">Cancel</button>
         </div>
       </div>
       {% endif %}

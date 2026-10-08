@@ -588,11 +588,16 @@ async def put_org(
     request: Request,
     pm_org_id: str = Form(default=""),
     allow_destination_change: str = Form(default=""),
+    q: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
     power_map: PowerMapClient | None = Depends(get_power_map),
 ) -> HTMLResponse:
     """HTMX: link the item to a Power Map org, or unlink it with a blank ``pm_org_id``.
+
+    ``q`` is the combobox input, which holds the chosen org's label while
+    ``pm_org_id`` is set; a 409 names the org with it, so a confirmation reads
+    as being about that org.
 
     Through ``link_org``, so the API's refusals hold here: Power Map dormant or
     down is a 503 and links nothing; an org Power Map lacks, or one that would
@@ -606,6 +611,7 @@ async def put_org(
     """
     item = await _resolve_item(item_id, session)
     chosen = pm_org_id.strip() or None
+    label = q.strip() or chosen
 
     def flash(status_code: int, message: str, problems: list[str] | None = None) -> HTMLResponse:
         return _move_flash(request, status_code, message=message, problems=problems or [])
@@ -644,11 +650,11 @@ async def put_org(
             request,
             409,
             moves=e.moves,
-            lead="Not linked yet: Power Map's name changes where assigned RepSpecs replicate to.",
+            lead=(f"Not linked yet: linking {label} changes where assigned RepSpecs replicate to."),
             confirm={
                 "verb": "put",
                 "url": f"/dashboard/info-items/{item.info_item_id}/org",
-                "vals": {"pm_org_id": chosen, "allow_destination_change": "true"},
+                "vals": {"pm_org_id": chosen, "allow_destination_change": "true", "q": label},
                 "target": "#ii-org-flash",
                 "label": "Link and move",
             },

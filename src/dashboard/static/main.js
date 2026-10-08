@@ -500,9 +500,13 @@ document.addEventListener("alpine:init", function () {
      * `pm_org_id` ($refs.choice) holds an org only while the input still shows
      * that org's label, so Link never sends an org the operator typed over.
      *
-     * Usage: x-data="orgCombobox" on the row's form, around a [role=combobox]
-     * input, $refs.choice, $refs.results (the swap target) and
-     * <template x-ref="local"> holding the suggestions Cancel restores.
+     * Changing or abandoning the choice also empties the flash the form's
+     * `data-flash` names: a 409's "Link and move" left there would link the
+     * org it warned about, not the one the input now shows.
+     *
+     * Usage: x-data="orgCombobox" data-flash="<flash id>" on the row's form,
+     * around a [role=combobox] input, $refs.choice, $refs.results (the swap
+     * target) and <template x-ref="local"> holding the suggestions Cancel restores.
      */
     window.Alpine.data("orgCombobox", function () {
         return {
@@ -563,7 +567,16 @@ document.addEventListener("alpine:init", function () {
                 }
             },
 
+            // A 409's "Link and move" re-sends the org it warned about; once the
+            // choice changes, or the edit is cancelled, it would link an org
+            // the input no longer shows. The form's data-flash names the target.
+            clearFlash: function () {
+                var flash = document.getElementById(this.$root.dataset.flash || "");
+                if (flash) { flash.innerHTML = ""; }
+            },
+
             choose: function (option) {
+                this.clearFlash();
                 this.input().value = option.dataset.label;
                 this.$refs.choice.value = option.dataset.pmOrgId;
                 this.chosen = true;
@@ -576,6 +589,7 @@ document.addEventListener("alpine:init", function () {
             },
 
             clearChoice: function () {
+                this.clearFlash();
                 this.chosen = false;
                 this.$refs.choice.value = "";
             },
