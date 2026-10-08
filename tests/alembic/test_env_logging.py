@@ -24,11 +24,17 @@ def _upgrade() -> None:
 async def test_an_upgrade_leaves_existing_loggers_enabled(test_engine):
     """``test_engine`` has already migrated, so this upgrade is a no-op on the schema.
 
-    In a thread: ``env.py`` calls ``asyncio.run`` itself.
+    In a thread: ``env.py`` calls ``asyncio.run`` itself. ``fileConfig`` also
+    resets the root logger from ``alembic.ini``; restored, so later tests do not
+    inherit logging state from where this one ran (CR 9).
     """
     probe = logging.getLogger("src.archiver327.probe")
     probe.disabled = False
-
-    await asyncio.get_running_loop().run_in_executor(None, _upgrade)
+    root = logging.getLogger()
+    saved_handlers, saved_level = root.handlers[:], root.level
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, _upgrade)
+    finally:
+        root.handlers, root.level = saved_handlers, saved_level
 
     assert not probe.disabled
