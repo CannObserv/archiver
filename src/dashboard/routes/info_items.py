@@ -575,9 +575,10 @@ async def _org_row_context(
             merged_from=merged_from,
         ),
         # What the type-ahead opens on: the shape GET /dashboard/power-map/orgs
-        # answers with, so the row includes the same options partial.
-        "options": await local_org_options(session, item),
-        "status": None,
+        # answers with, so the row includes the same options partial. Prefixed
+        # because the hub page spreads this whole dict (CR 2).
+        "org_options": await local_org_options(session, item),
+        "org_status": None,
         "power_map_configured": power_map is not None,
     }
 

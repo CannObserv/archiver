@@ -2,7 +2,7 @@
    info_items/detail.html inside its .detail-grid, and returned by a successful
    PUT .../org (re-targeted here from the form's flash).
 
-   Requires `item_id`, `org_row`, `options`, `status` and
+   Requires `item_id`, `org_row`, `org_options`, `org_status` and
    `power_map_configured`, from every render site, by spreading `_org_row_context`
    (tests/dashboard/test_partial_contracts.py, archiver#219). Without
    `org_row` a linked item reads "Not linked"; without `power_map_configured`
@@ -12,8 +12,8 @@
    A view/edit row on the `editableField` pattern (COMPONENTS.md): the org and
    its notices beside Edit, flipping to the type-ahead beside Cancel + Link.
    The type-ahead is the `orgCombobox` component (main.js, COMPONENTS.md): it
-   opens on `options` - orgs already linked on the item's domains, no Power Map
-   call; `status` is none - through the same `power_map/_org_options.html` that
+   opens on `org_options` - orgs already linked on the item's domains, no Power
+   Map call; `org_status` is none - through the same `power_map/_org_options.html` that
    GET /dashboard/power-map/orgs answers with from two characters.
    Choosing an option fills the hidden `pm_org_id`; Link sends it.
 

@@ -71,7 +71,7 @@ async def search_orgs(
     response = _templates.TemplateResponse(
         request,
         "power_map/_org_options.html",
-        {"user": user, "options": options, "status": status},
+        {"user": user, "org_options": options, "org_status": status},
     )
     response.headers["Cache-Control"] = "no-store"
     return response

@@ -1,14 +1,15 @@
 {#- The Organization row's type-ahead options (archiver#306): swapped into
    #ii-org-results by GET /dashboard/power-map/orgs, and included by
-   info_items/_org_row.html with the item's local suggestions.
+   info_items/_org_row.html with the item's local suggestions. Keys carry an
+   `org_` prefix: the row's builder spreads them into the whole hub page.
 
-   `options` - OrgOption rows; each <li> carries its id and label as data, which
+   `org_options` - OrgOption rows; each <li> carries its id and label as data, which
                the orgCombobox component (main.js) reads when one is chosen
-   `status`  - why there are no options (dormant, unavailable, no match), or none
+   `org_status`  - why there are no options (dormant, unavailable, no match), or none
 
    The listbox keeps its id across swaps, so the input's aria-controls holds. -#}
-<ul class="typeahead-results" role="listbox" id="ii-org-listbox" aria-label="Power Map organizations"{% if not options %} hidden{% endif %}>
-  {% for option in options %}
+<ul class="typeahead-results" role="listbox" id="ii-org-listbox" aria-label="Power Map organizations"{% if not org_options %} hidden{% endif %}>
+  {% for option in org_options %}
   <li class="typeahead-results__item" role="option" id="ii-org-option-{{ loop.index0 }}"
       aria-selected="false"
       data-pm-org-id="{{ option.pm_org_id }}"
@@ -20,6 +21,6 @@
   </li>
   {% endfor %}
 </ul>
-{% if status %}
-<p class="text-muted text-sm" role="status" style="margin:var(--space-1) 0 0;">{{ status }}</p>
+{% if org_status %}
+<p class="text-muted text-sm" role="status" style="margin:var(--space-1) 0 0;">{{ org_status }}</p>
 {% endif %}
