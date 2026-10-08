@@ -313,11 +313,9 @@ async def test_a_gone_org_is_missing_and_keeps_its_snapshot(session, warnings):
 
 
 @pytest.mark.asyncio
-async def test_a_missing_org_logs_through_a_real_logger(session, monkeypatch):
+async def test_a_missing_org_logs_through_a_real_logger(session):
     """No spy: ``extra`` must not collide with a ``LogRecord`` attribute (``name``),
-    which raises ``KeyError`` and ends the sweep (archiver#327). Enabled
-    explicitly - a config load earlier in the session can leave it disabled."""
-    monkeypatch.setattr(refresh_orgs.logger, "disabled", False)
+    which raises ``KeyError`` and ends the sweep (archiver#327)."""
     await _snapshot(session)
     await _linked_item(session)
 
