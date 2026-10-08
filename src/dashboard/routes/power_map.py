@@ -4,8 +4,9 @@
 its options. Under ``MIN_QUERY`` characters it lists the orgs already linked on
 the item's domains (``local_org_options``) and never calls Power Map; from
 there it searches Power Map, archived orgs excluded. Power Map dormant or
-unavailable is a ``role="status"`` line in a 200: the type-ahead degrades, and
-nothing else on the page notices.
+unavailable is a status line (``data-org-status``) in a 200, spoken by the
+row's own live region: the type-ahead degrades, and nothing else on the page
+notices.
 """
 
 from pathlib import Path

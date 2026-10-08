@@ -86,6 +86,9 @@
             {% include "power_map/_org_options.html" %}
           </div>
           <template x-ref="local">{% include "power_map/_org_options.html" %}</template>
+          {# The one live region: outside the swap, so it exists before anything
+             is said in it. onResults() writes the status line or the count. #}
+          <p role="status" class="sr-only" x-ref="live"></p>
         </div>
         <div class="field-row__actions">
           <button type="button" class="btn btn--sm btn--secondary" @click="reset(); cancelEdit()">Cancel</button>

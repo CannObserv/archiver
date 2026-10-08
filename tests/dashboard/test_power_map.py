@@ -2,8 +2,8 @@
 
 Under two characters it answers from orgs already linked on the item's
 domains, with no Power Map call; from two up it searches Power Map. Power Map
-dormant or down is a ``role="status"`` line in a 200, so the rest of the page
-never notices.
+dormant or down is a status line (``data-org-status``) in a 200, so the rest
+of the page never notices. The row's own live region speaks it (CR 7).
 """
 
 from datetime import UTC, datetime
@@ -98,7 +98,8 @@ async def test_power_map_down_is_a_status_line_not_an_error(client, power_map):
     r = await client.get(_URL, params={"q": "wslcb"}, headers=_HEADERS)
 
     assert r.status_code == 200
-    assert 'role="status"' in r.text
+    assert "data-org-status" in r.text
+    assert 'role="status"' not in r.text  # the row's region speaks it (CR 7)
     assert "Power Map unavailable" in r.text
     assert 'role="option"' not in r.text
 
@@ -108,7 +109,7 @@ async def test_dormant_power_map_is_a_status_line(client, no_power_map):
     r = await client.get(_URL, params={"q": "wslcb"}, headers=_HEADERS)
 
     assert r.status_code == 200
-    assert 'role="status"' in r.text
+    assert "data-org-status" in r.text
     assert "Power Map not configured" in r.text
 
 

@@ -506,7 +506,8 @@ document.addEventListener("alpine:init", function () {
      *
      * Usage: x-data="orgCombobox" data-flash="<flash id>" on the row's form,
      * around a [role=combobox] input, $refs.choice, $refs.results (the swap
-     * target) and <template x-ref="local"> holding the suggestions Cancel restores.
+     * target), <template x-ref="local"> holding the suggestions Cancel restores,
+     * and $refs.live, the persistent role="status" region announce() writes.
      */
     window.Alpine.data("orgCombobox", function () {
         return {
@@ -526,8 +527,28 @@ document.addEventListener("alpine:init", function () {
 
             // Something worth showing: an option, or a line saying why none.
             hasContent: function () {
-                return this.options().length > 0
-                    || this.$refs.results.querySelector("[role=status]") !== null;
+                return this.options().length > 0 || this.statusLine() !== null;
+            },
+
+            statusLine: function () {
+                return this.$refs.results.querySelector("[data-org-status]");
+            },
+
+            // Say what the swap brought: its status line, else how many orgs.
+            // Written into the row's persistent region ($refs.live) because a
+            // live region swapped in already holding its text is usually not
+            // announced (CR 7).
+            announce: function () {
+                if (!this.$refs.live) { return; }
+                var status = this.statusLine();
+                var count = this.options().length;
+                var text = "";
+                if (status) {
+                    text = status.textContent.trim();
+                } else if (count) {
+                    text = count + (count === 1 ? " organization" : " organizations");
+                }
+                this.$refs.live.textContent = text;
             },
 
             openList: function () {
@@ -626,6 +647,7 @@ document.addEventListener("alpine:init", function () {
             onResults: function () {
                 this.setActive(-1);
                 this.openList();
+                this.announce();
             },
 
             reset: function () {

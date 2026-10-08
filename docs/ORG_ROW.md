@@ -41,15 +41,19 @@ domains (active bindings' `domain_name`), most-linked first, the item's own org
 left out, no Power Map call. From two characters `GET /dashboard/power-map/orgs`
 (300ms debounce, `hx-sync="this:replace"`) searches Power Map, limit 10,
 archived excluded; under two it answers with the local suggestions again.
-Dormant, unavailable or no match is a `role="status"` line in a **200**, so only
-the type-ahead degrades. Options render from `power_map/_org_options.html`,
-swapped into `#ii-org-results`.
+Dormant, unavailable or no match is a status line (`data-org-status`) in a
+**200**, so only the type-ahead degrades. Options render from
+`power_map/_org_options.html`, swapped into `#ii-org-results`.
 
 `orgCombobox` (`main.js`) is an ARIA 1.2 combobox with list autocomplete: the
 input keeps focus throughout and announces the active option through
 `aria-activedescendant`. **It never builds an option** - it reads
 `[role=option]` and its `data-pm-org-id`/`data-label` each time, so an htmx swap
-needs only `onResults()`, wired to `@htmx:after-swap`.
+needs only `onResults()`, wired to `@htmx:after-swap`. That also speaks the
+swap - its status line, else "N organizations" - through the row's one
+persistent `role="status"` region (`$refs.live`, `.sr-only`), outside the swap
+target: a live region swapped in already holding its text is usually not
+announced (CR 7).
 
 | Key | Effect |
 |---|---|

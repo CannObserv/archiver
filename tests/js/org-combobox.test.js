@@ -27,6 +27,7 @@ const ROW = `
            @keydown="onKeydown($event)" @focus="openList()" @input="clearChoice()">
     <input type="hidden" name="pm_org_id" value="" x-ref="choice">
     <div id="ii-org-results" x-ref="results" x-show="open" @click="chooseFrom($event.target)">${OPTIONS}</div>
+    <p role="status" class="sr-only" x-ref="live"></p>
     <template x-ref="local">${OPTIONS}</template>
   </form>`;
 
@@ -215,7 +216,7 @@ describe("orgCombobox — choosing and changing", function () {
         const data = await boot(ROW);
 
         document.getElementById("ii-org-results").innerHTML =
-            '<ul role="listbox" hidden></ul><p role="status">Power Map unavailable</p>';
+            '<ul role="listbox" hidden></ul><p data-org-status>Power Map unavailable</p>';
         data.onResults();
 
         expect(data.open).toBe(true);
@@ -223,7 +224,7 @@ describe("orgCombobox — choosing and changing", function () {
 
     it("reset restores the local suggestions and forgets the choice", async function () {
         const data = await boot(ROW);
-        document.getElementById("ii-org-results").innerHTML = "<p role=\"status\">x</p>";
+        document.getElementById("ii-org-results").innerHTML = "<p data-org-status>x</p>";
         data.onResults();
         input().value = "Some";
 
@@ -271,5 +272,50 @@ describe("orgCombobox — a confirmation never outlives its choice", function ()
         data.reset();
 
         expect(flashHtml()).toBe("");
+    });
+});
+
+describe("orgCombobox — what a screen reader hears", function () {
+    beforeEach(function () {
+        document.body.innerHTML = "";
+    });
+
+    function live() {
+        return document.querySelector("[x-ref=live]").textContent;
+    }
+
+    // A live region inserted with its text already in it is usually not
+    // announced (CR 7), so the row keeps one region and the component writes it.
+    it("a status line is spoken through the row's one live region", async function () {
+        const data = await boot(ROW);
+
+        document.getElementById("ii-org-results").innerHTML =
+            '<ul role="listbox" hidden></ul><p data-org-status>Power Map unavailable: timed out.</p>';
+        data.onResults();
+
+        expect(live()).toBe("Power Map unavailable: timed out.");
+    });
+
+    it("results are counted", async function () {
+        const data = await boot(ROW);
+
+        data.onResults();
+        expect(live()).toBe("2 organizations");
+
+        document.getElementById("ii-org-results").innerHTML =
+            '<ul role="listbox"><li role="option" id="ii-org-option-0" '
+            + 'data-pm-org-id="ORG-A" data-label="Alpha">Alpha</li></ul>';
+        data.onResults();
+        expect(live()).toBe("1 organization");
+    });
+
+    it("an empty answer clears what was last said", async function () {
+        const data = await boot(ROW);
+        data.onResults();
+
+        document.getElementById("ii-org-results").innerHTML = '<ul role="listbox" hidden></ul>';
+        data.onResults();
+
+        expect(live()).toBe("");
     });
 });

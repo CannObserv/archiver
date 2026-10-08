@@ -7,7 +7,10 @@
                the orgCombobox component (main.js) reads when one is chosen
    `org_status`  - why there are no options (dormant, unavailable, no match), or none
 
-   The listbox keeps its id across swaps, so the input's aria-controls holds. -#}
+   The listbox keeps its id across swaps, so the input's aria-controls holds.
+   The status line carries no role: a live region swapped in already holding
+   its text is usually not announced, so orgCombobox copies it into the row's
+   one persistent region instead (CR 7). -#}
 <ul class="typeahead-results" role="listbox" id="ii-org-listbox" aria-label="Power Map organizations"{% if not org_options %} hidden{% endif %}>
   {% for option in org_options %}
   <li class="typeahead-results__item" role="option" id="ii-org-option-{{ loop.index0 }}"
@@ -22,5 +25,5 @@
   {% endfor %}
 </ul>
 {% if org_status %}
-<p class="text-muted text-sm" role="status" style="margin:var(--space-1) 0 0;">{{ org_status }}</p>
+<p class="text-muted text-sm" data-org-status style="margin:var(--space-1) 0 0;">{{ org_status }}</p>
 {% endif %}
