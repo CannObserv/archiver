@@ -58,6 +58,20 @@ splits it and hands the secret over by environment, as a prefix assignment (neve
 this with `REDISCLI_AUTH`, and its test asserts no probe argument contains the
 password (archiver#253).
 
+## Logging - a log call must not crash its caller
+
+**No `extra` key may name a `LogRecord` attribute** (`name`, `msg`, `module`,
+`message`, ...): `makeRecord` raises `KeyError` and the exception surfaces at
+the call site. Prefix the domain instead (`org_name`, not `name`).
+`tests/core/test_logging_extra_keys.py` scans every literal `extra=` in `src/`.
+archiver#327: the Power Map follower's `pm_org_missing` carried `name` and would
+have failed every hourly sweep from the first missing org on.
+
+**Tests run with module loggers enabled.** `alembic/env.py` calls `fileConfig`
+with `disable_existing_loggers=False`; the default `True` silenced every `src`
+logger after the session's start-of-run migration, so no record was built and
+the crash above passed. `tests/alembic/test_env_logging.py` pins it.
+
 ## Error envelope
 
 **Error envelope:** Every non-2xx response uses one shape, defined by
