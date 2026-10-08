@@ -18,7 +18,9 @@ from src.core.models.base import ULIDType
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Not the default True: the test session migrates after importing every
+    # src module, and disabling their loggers hid logging-time crashes (#327).
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
