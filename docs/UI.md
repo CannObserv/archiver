@@ -308,7 +308,7 @@ When one section holds several independently editable blocks (the InfoItem **Rep
 
 Rules:
 - **An action answers with its own block**, and moves focus to that block's heading (the `swapped` focus script) - never to a sibling's.
-- **An action that changes what a sibling renders also fires `HX-Trigger: {"replicationChanged": {"source": "<block>"}}`**; the siblings re-fetch on it. Sources: `assignments` (Deactivate), `fields` (a save), `picker` (Assign). *Replicate now* fires nothing, anywhere: a re-fetch would discard unsaved Fields input. Fire on a real change, not on a click or a refusal.
+- **An action that changes what a sibling renders also fires `HX-Trigger: {"replicationChanged": {"source": "<block>"}}`**; the siblings re-fetch on it. Sources: `assignments` (Deactivate), `fields` (a save), `picker` (Assign), `org` (the Overview's Organization row: Link / Unlink, archiver#306 - outside the section, but it changes the effective bag every block renders). *Replicate now* fires nothing, anywhere: a re-fetch would discard unsaved Fields input. Fire on a real change, not on a click or a refusal.
 - **Each listener skips its own source** (`[detail.source!=='<block>']`): the response already swapped the block, and a re-fetch too renders twice and can land the stale read second (`HX-Trigger` fires on receipt, before the swap).
 - **A re-fetch never moves focus** (`swapped=False`): the operator acted in another block, and focus belongs there.
 - **A polling block keeps its poll contract** (§ *A section that polls and takes actions*): its poll fires nothing and wraps no other block, so a tick never clobbers a half-edited form. It listens through a hidden element inside the wrapper, synced like a row action.

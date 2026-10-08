@@ -1,0 +1,129 @@
+{#- The Overview's Organization row (archiver#306) - included by
+   info_items/detail.html inside its .detail-grid, and returned by a successful
+   PUT .../org (re-targeted here from the form's flash).
+
+   Requires `item_id`, `org_row`, `options`, `status` and
+   `power_map_configured`, from every render site, by spreading `_org_row_context`
+   (tests/dashboard/test_partial_contracts.py, archiver#219). Without
+   `org_row` a linked item reads "Not linked"; without `power_map_configured`
+   the row says Power Map is not configured on a server where it is. `swapped`
+   is the caller's: the link sets it so focus moves to the row's label.
+
+   A view/edit row on the `editableField` pattern (COMPONENTS.md): the org and
+   its notices beside Edit, flipping to the type-ahead beside Cancel + Link.
+   The type-ahead is the `orgCombobox` component (main.js, COMPONENTS.md): it
+   opens on `options` - orgs already linked on the item's domains, no Power Map
+   call; `status` is none - through the same `power_map/_org_options.html` that
+   GET /dashboard/power-map/orgs answers with from two characters.
+   Choosing an option fills the hidden `pm_org_id`; Link sends it.
+
+   Every refusal lands in #ii-org-flash and leaves the choice on screen: a link
+   that moves an active assignment's path shows before → after with **Link and
+   move** (`_move_flash.html`, #302's move contract). Unlink needs no
+   confirmation: the org's values are written back as stored, so no path moves.
+   Each notice badge carries a word, never colour alone. -#}
+<div id="ii-org" class="detail-grid__item detail-grid__item--full">
+  <div class="field-row-group" x-data="editableField">
+    <span class="field-row__label" id="ii-org-heading" tabindex="-1">Organization</span>
+
+    <div class="field-row" x-show="!editing">
+      <div class="field-row__readout">
+        {% if org_row.linked %}
+        <span>
+          {{ org_row.label }}
+          {% for notice in org_row.notices %}
+          <span class="badge badge--{{ notice.level }} badge--sm" style="margin-left:var(--space-1);">{{ notice.label }}</span>
+          <span class="text-muted">{{ notice.text }}</span>
+          {% endfor %}
+        </span>
+        {% else %}
+        <span class="text-muted">Not linked</span>
+        {% endif %}
+      </div>
+      <div class="field-row__actions">
+        <button type="button" class="btn btn--sm btn--secondary"
+                @click="editing = true; $nextTick(function () { var i = document.getElementById('ii-org-input'); if (i) { i.focus(); } })"
+                aria-label="Edit organization">Edit</button>
+      </div>
+    </div>
+
+    <div x-show="editing" style="display:none;">
+      {% if power_map_configured %}
+      <form id="ii-org-form" class="field-row"
+            hx-put="/dashboard/info-items/{{ item_id }}/org"
+            hx-target="#ii-org-flash"
+            hx-target-409="#ii-org-flash"
+            hx-target-422="#ii-org-flash"
+            hx-target-503="#ii-org-flash"
+            hx-swap="innerHTML"
+            x-data="orgCombobox">
+        <div class="typeahead" @click.outside="close()">
+          <input id="ii-org-input" type="text" class="form-input"
+                 role="combobox"
+                 aria-labelledby="ii-org-heading"
+                 aria-autocomplete="list"
+                 aria-controls="ii-org-listbox"
+                 aria-expanded="false"
+                 :aria-expanded="open ? 'true' : 'false'"
+                 autocomplete="off"
+                 placeholder="Search Power Map"
+                 name="q"
+                 hx-get="/dashboard/power-map/orgs"
+                 hx-trigger="input changed delay:300ms"
+                 hx-vals='{{ {"item_id": item_id | string} | tojson }}'
+                 hx-target="#ii-org-results"
+                 hx-swap="innerHTML"
+                 hx-sync="this:replace"
+                 @keydown="onKeydown($event)"
+                 @focus="openList()"
+                 @input="clearChoice()">
+          <input type="hidden" name="pm_org_id" value="" x-ref="choice">
+          <div id="ii-org-results" x-ref="results" x-show="open"
+               @htmx:after-swap="onResults()"
+               @mousedown.prevent
+               @click="chooseFrom($event.target)">
+            {% include "power_map/_org_options.html" %}
+          </div>
+          <template x-ref="local">{% include "power_map/_org_options.html" %}</template>
+        </div>
+        <div class="field-row__actions">
+          <button type="button" class="btn btn--sm btn--secondary" @click="reset(); cancelEdit()">Cancel</button>
+          <button type="submit" class="btn btn--sm btn--primary" :disabled="!chosen" disabled>Link</button>
+        </div>
+      </form>
+      {% else %}
+      <div class="field-row">
+        <p class="text-muted text-sm" role="status" style="margin:0;">Power Map not configured: linking is unavailable.</p>
+        <div class="field-row__actions">
+          <button type="button" class="btn btn--sm btn--secondary" @click="cancelEdit()">Cancel</button>
+        </div>
+      </div>
+      {% endif %}
+      {% if org_row.linked %}
+      <p class="text-sm" style="margin:var(--space-2) 0 0;">
+        <button type="button" class="btn btn--sm btn--danger"
+                hx-put="/dashboard/info-items/{{ item_id }}/org"
+                hx-vals='{"pm_org_id": ""}'
+                hx-target="#ii-org-flash"
+                hx-target-409="#ii-org-flash"
+                hx-target-422="#ii-org-flash"
+                hx-target-503="#ii-org-flash"
+                hx-swap="innerHTML"
+                aria-label="Unlink {{ org_row.label }}">Unlink</button>
+        <span class="text-muted">Unlink keeps current paths; the values become hand-typed.</span>
+      </p>
+      {% endif %}
+    </div>
+  </div>
+  <div id="ii-org-flash" aria-live="polite" aria-atomic="true"></div>
+  {% if swapped %}
+  {# After a link or unlink swaps the row, focus its label: the button that was
+     clicked is gone. Rendered only on that response, never the include. #}
+  <script>
+    (function () {
+      var h = document.getElementById("ii-org-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>

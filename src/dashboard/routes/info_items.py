@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from html import escape as html_escape
 from pathlib import Path
 from typing import NamedTuple
@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.api.deps import get_db_session
+from src.api.deps import get_db_session, get_power_map
 from src.api.errors import raise_envelope
 from src.core.logging import get_logger
 from src.core.models import (
@@ -22,12 +22,14 @@ from src.core.models import (
     InfoItemRepSpec,
     InfoItemSource,
     InfoSource,
+    PmOrganization,
     ReplicationCommand,
     RepSpec,
     SourceRevision,
     WatchStatus,
 )
-from src.core.power_map.snapshots import load_org_values
+from src.core.power_map import PowerMapClient, PowerMapUnavailableError
+from src.core.power_map.snapshots import OrgUnnamedError, load_org_values
 from src.core.rep_fields_schema.validator import validate_rep_fields
 from src.core.services.registry_announcement import (
     announce_info_item,
@@ -73,6 +75,11 @@ from src.core.tools.deactivate_info_item_source_binding import (
     BindingNotFoundError,
     deactivate_info_item_source_binding,
 )
+from src.core.tools.link_org import (
+    OrgNotFoundError,
+    PowerMapNotConfiguredError,
+    link_org,
+)
 from src.core.tools.set_rep_fields import (
     RepFieldsInvalidError,
     RepFieldsMoveError,
@@ -84,6 +91,8 @@ from src.core.watch_spec_schema.validator import validate_watch_spec
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
+from src.dashboard.org_row import RECENT_DAYS as ORG_RECENT_DAYS
+from src.dashboard.org_row import build_org_row, local_org_options
 from src.dashboard.pagination import Pagination, pagination
 from src.dashboard.providers import UNWRITABLE_PROVIDERS
 from src.dashboard.rep_fields_block import (
@@ -402,6 +411,7 @@ async def detail_info_item(
     item_id: str,
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
+    power_map: PowerMapClient | None = Depends(get_power_map),
 ) -> HTMLResponse:
     """InfoItem hub page — 5-section vertical scroll."""
     item = await _resolve_item(item_id, session)
@@ -436,6 +446,7 @@ async def detail_info_item(
     # Active rep_spec assignments + RepSpec rows, plus whether the section
     # should keep re-reading itself (CR 12).
     assignments_ctx = await _rep_spec_assignments_context(item.info_item_id, session)
+    org_ctx = await _org_row_context(item, power_map, session)
     fields_ctx = await _rep_fields_context(item, session)
     picker_ctx = await _rep_spec_picker_context(item, session)
 
@@ -491,6 +502,7 @@ async def detail_info_item(
             "iis_rows": iis_rows,
             "sources_by_id": sources_by_id,
             "spec_summary_by_source_id": spec_summary_by_source_id,
+            **org_ctx,
             **assignments_ctx,
             **fields_ctx,
             **picker_ctx,
@@ -499,6 +511,169 @@ async def detail_info_item(
             "now": datetime.now(UTC),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# The Overview's Organization row  (archiver#306)
+# ---------------------------------------------------------------------------
+#
+# The linked Power Map org, its notices, and a type-ahead to link or unlink one
+# through `link_org` - the write `PUT /info-items/{id}/org` shares. Its own
+# swap target, `#ii-org`. Rendering reads the local snapshot only; the
+# type-ahead's search is GET /dashboard/power-map/orgs (routes/power_map.py).
+
+_ORG_SOURCE = "org"
+
+
+def _move_flash(request: Request, status_code: int, **context) -> HTMLResponse:
+    """A write that did not store: a move to confirm, or a refusal (``_move_flash.html``)."""
+    return _templates.TemplateResponse(
+        request,
+        "info_items/_move_flash.html",
+        {"moves": [], "lead": "", "confirm": {}, "message": "", "problems": [], **context},
+        status_code=status_code,
+    )
+
+
+async def _org_row_context(
+    item: InfoItem, power_map: PowerMapClient | None, session: AsyncSession
+) -> dict:
+    """The Organization row's context: one builder for the page and the link's swap.
+
+    ``power_map`` only says whether linking is possible: the row itself reads
+    the ``pm_organizations`` snapshot, never Power Map. The successor's name
+    and the merges come from local rows too; a successor archiver holds no
+    snapshot of is named by its id.
+    """
+    org = await session.get(PmOrganization, item.pm_org_id) if item.pm_org_id else None
+    successor_name = None
+    merged_from: list[str] = []
+    if org is not None:
+        if org.succeeded_by:
+            successor = await session.get(PmOrganization, org.succeeded_by)
+            successor_name = successor.name if successor is not None else None
+        recent = datetime.now(UTC) - timedelta(days=ORG_RECENT_DAYS)
+        merged_from = list(
+            (
+                await session.execute(
+                    select(PmOrganization.name)
+                    .where(
+                        PmOrganization.merged_into == org.pm_org_id,
+                        PmOrganization.checked_at >= recent,
+                    )
+                    .order_by(PmOrganization.name)
+                )
+            ).scalars()
+        )
+    return {
+        "item_id": item.info_item_id,
+        "org_row": build_org_row(
+            org,
+            bag=item.rep_fields or {},
+            now=datetime.now(UTC),
+            successor_name=successor_name,
+            merged_from=merged_from,
+        ),
+        # What the type-ahead opens on: the shape GET /dashboard/power-map/orgs
+        # answers with, so the row includes the same options partial.
+        "options": await local_org_options(session, item),
+        "status": None,
+        "power_map_configured": power_map is not None,
+    }
+
+
+@router.put("/{item_id}/org", response_class=HTMLResponse)
+async def put_org(
+    item_id: str,
+    request: Request,
+    pm_org_id: str = Form(default=""),
+    allow_destination_change: str = Form(default=""),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+    power_map: PowerMapClient | None = Depends(get_power_map),
+) -> HTMLResponse:
+    """HTMX: link the item to a Power Map org, or unlink it with a blank ``pm_org_id``.
+
+    Through ``link_org``, so the API's refusals hold here: Power Map dormant or
+    down is a 503 and links nothing; an org Power Map lacks, or one that would
+    break an active assignment, is a 422; one that moves an assignment's path
+    is a 409 showing before → after, whose **Link and move** re-sends this org
+    with ``allow_destination_change``. All land in ``#ii-org-flash``. Unlink
+    never calls Power Map and moves nothing: the org's values become stored.
+
+    Success re-renders the row (``HX-Retarget``: the form targets the flash)
+    and fires ``replicationChanged`` from ``org``.
+    """
+    item = await _resolve_item(item_id, session)
+    chosen = pm_org_id.strip() or None
+
+    def flash(status_code: int, message: str, problems: list[str] | None = None) -> HTMLResponse:
+        return _move_flash(request, status_code, message=message, problems=problems or [])
+
+    try:
+        await link_org(
+            session,
+            info_item_id=item.info_item_id,
+            pm_org_id=chosen,
+            power_map=power_map,
+            # A str parsed by hand: FastAPI's bool coercion fails as JSON (#86).
+            allow_destination_change=allow_destination_change.strip().lower() == "true",
+        )
+    except AssignItemNotFoundError as e:
+        raise DashboardNotFound("Information Item not found") from e
+    except PowerMapNotConfiguredError:
+        return flash(503, "Not linked: Power Map not configured.")
+    except PowerMapUnavailableError as e:
+        return flash(503, f"Not linked: Power Map unavailable ({e.reason}). Try again shortly.")
+    except OrgNotFoundError:
+        return flash(422, "Not linked: Power Map has no such organization.")
+    except OrgUnnamedError:
+        return flash(422, "Not linked: that Power Map organization has no name to use.")
+    except RepFieldsRefusedError as e:
+        return flash(
+            422,
+            "Not linked: this would break assigned RepSpecs.",
+            [
+                f"RepSpec '{r.rep_spec_name}': {err['message']}"
+                for r in e.refusals
+                for err in r.errors
+            ],
+        )
+    except RepFieldsMoveError as e:
+        return _move_flash(
+            request,
+            409,
+            moves=e.moves,
+            lead="Not linked yet: Power Map's name changes where assigned RepSpecs replicate to.",
+            confirm={
+                "verb": "put",
+                "url": f"/dashboard/info-items/{item.info_item_id}/org",
+                "vals": {"pm_org_id": chosen, "allow_destination_change": "true"},
+                "target": "#ii-org-flash",
+                "label": "Link and move",
+            },
+        )
+
+    await session.commit()
+    context = await _org_row_context(item, power_map, session)
+    row = context["org_row"]
+    response = _templates.TemplateResponse(
+        request,
+        "info_items/_org_row.html",
+        {"user": user, **context, "swapped": True},
+    )
+    response.headers["HX-Retarget"] = "#ii-org"
+    response.headers["HX-Reswap"] = "outerHTML"
+    response.headers["HX-Trigger"] = _replication_changed(
+        _ORG_SOURCE,
+        (
+            "success",
+            f"Linked to {row.label}."
+            if row.linked
+            else "Unlinked. Paths are unchanged; the organization's values are now stored.",
+        ),
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -715,12 +890,7 @@ async def patch_rep_fields(
     item = await _resolve_item(item_id, session)
 
     def flash(status_code: int, **context) -> HTMLResponse:
-        return _templates.TemplateResponse(
-            request,
-            "info_items/_rep_fields_flash.html",
-            {"moves": [], "message": "", "problems": [], "selected_spec": "", **context},
-            status_code=status_code,
-        )
+        return _move_flash(request, status_code, **context)
 
     if rep_fields is not None:
         try:
@@ -769,9 +939,18 @@ async def patch_rep_fields(
         return flash(
             409,
             moves=e.moves,
-            item_id=str(item.info_item_id),
-            bag_json=json.dumps(parsed),
-            selected_spec=selected_spec.strip(),
+            lead="Not saved yet: this changes where assigned RepSpecs replicate to.",
+            confirm={
+                "verb": "patch",
+                "url": f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+                "vals": {
+                    "rep_fields": json.dumps(parsed),
+                    "allow_destination_change": "true",
+                    "selected_spec": selected_spec.strip(),
+                },
+                "target": "#rep-fields-flash",
+                "label": "Save and move",
+            },
         )
 
     await session.commit()

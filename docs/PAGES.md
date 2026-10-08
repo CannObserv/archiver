@@ -117,8 +117,14 @@ The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-items/{id}/rep-fields/readout`** - the Fields block's live readout: unsaved `field_*` lists (and `selected_spec`) in, each row's status cell out of band. Writes and fires nothing (archiver#307).
 
-**PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 render `_rep_fields_flash.html` into `#rep-fields-flash` (archiver#302, #307); a linked item's `org.title`/`org.acronym` is a 422 naming the org (archiver#304). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
+**PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 render `_move_flash.html` into `#rep-fields-flash` (archiver#302, #307); a linked item's `org.title`/`org.acronym` is a 422 naming the org (archiver#304). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
 
+
+**PUT `/dashboard/info-items/{id}/org`** - the Overview's Organization row: links the Power Map org `pm_org_id` names, or unlinks on a blank one, through `link_org` - the write `PUT /info-items/{id}/org` shares (archiver#306). 200 re-renders `_org_row.html` (`HX-Retarget: #ii-org`) and fires `replicationChanged` (`{"source": "org"}`) + a toast. Refusals render `_move_flash.html` into `#ii-org-flash`: 409 a path move to confirm (**Link and move** re-sends with `allow_destination_change=true`), 422 an org Power Map lacks or one that breaks an assignment, 503 Power Map dormant or down. Unlink never calls Power Map. Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 1.
+
+### Power Map type-ahead (`/dashboard/power-map/`)
+
+**GET `/dashboard/power-map/orgs?q=&item_id=`** - the Organization row's options, `power_map/_org_options.html` (archiver#306, `src/dashboard/routes/power_map.py`). Under two characters: orgs already linked on `item_id`'s domains, no Power Map call (an unknown or blank `item_id` has none). From two: Power Map's search, limit 10, archived excluded. Dormant, unavailable or no match is a `role="status"` line in a **200** - never an error, so only the type-ahead degrades. `no-store`.
 
 ## Information Sources (`/dashboard/info-sources/`)
 

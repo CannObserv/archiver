@@ -25,6 +25,7 @@ load and are wired only by their `<script>` tag in `base.html`.
 |---|---|---|
 | `sortableChips` | `main.js` | Chip strip for selector suggestions with client-side sort. Uses JSON data island: `x-data="sortableChips('frequency')"` with `<script type="application/json">{{ chips \| tojson }}</script>` inside. Optional `value` field on each chip overrides the dispatch payload. Clicking dispatches `chip-insert` window event; caller listens with `@chip-insert.window`. |
 | `repFieldsForm` | `main.js` | The Replication section's Fields block (archiver#307): adds and removes whole Other-field rows, and fills the `info_item.name` suggestion as if typed, so the live readout re-slugs it. Usage: `x-data="repFieldsForm"` on `#ii-rep-fields`. |
+| `orgCombobox` | `main.js` | The InfoItem Organization row's type-ahead (archiver#306): an ARIA combobox over a server-rendered listbox. Owns the keyboard model and keeps the hidden `pm_org_id` in step with the input's label. Usage: `x-data="orgCombobox"` on `#ii-org-form`. |
 | `repSpecEditor` | `main.js` | JSON editor for RepSpec documents on the create form. |
 | `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
 | `domainNotes` | `main.js` | Edit/view toggle for the notes row in the domain detail header panel (#176). Cancel resets the textarea to its `defaultValue`. |
@@ -313,6 +314,35 @@ The form posts **parallel lists** - `field_key`, `field_type`, `field_value` - o
 **Usage:** `info_items/_rep_fields.html` is the one caller and the reference markup.
 
 JS tests in `tests/js/rep-fields-form.test.js` (Vitest, real `main.js` + vendored Alpine).
+
+## `orgCombobox`
+
+The **Organization** row's type-ahead on the InfoItem detail screen (archiver#306), nested inside the row's `editableField`. An ARIA 1.2 combobox with list autocomplete: the `<input role="combobox" aria-autocomplete="list" aria-controls="ii-org-listbox">` owns focus throughout, and the active option is announced through `aria-activedescendant`, never by moving focus into the list.
+
+**The options are server HTML** (`power_map/_org_options.html`): the item's local suggestions at first, Power Map's hits once htmx swaps `GET /dashboard/power-map/orgs` into `$refs.results` (the input carries the `hx-get`, `input changed delay:300ms`). The component never builds an option; it reads `[role=option]` and its `data-pm-org-id`/`data-label` each time, so a swap needs no hand-off beyond `onResults()`, wired to `@htmx:after-swap`.
+
+**State:** `open` (the list is shown), `chosen` (the hidden `pm_org_id` holds an org), `active` (the active option's index, `-1` for none).
+
+**Refs:** `choice` (the hidden `pm_org_id`), `results` (the swap target), `local` (a `<template>` holding the suggestions the row opened with).
+
+**Keyboard model:**
+
+| Key | Effect |
+|---|---|
+| ArrowDown / ArrowUp | Open if closed; move the active option, wrapping. From none active, Down starts at the first and Up at the last. |
+| Enter | Choose the active option. With none active and nothing chosen, swallowed: an implicit submit would send a blank `pm_org_id`, which is Unlink. With a choice, it submits like Link. |
+| Escape | Close an open list; on a closed one, clear the input and the choice. |
+| Tab | Close, and let focus move on. |
+
+A click on an option chooses it (`@mousedown.prevent` on the list keeps focus in the input); a click outside closes. Focus opens the list when it has an option or a status line to show.
+
+**The invariant Link rests on:** `@input` calls `clearChoice()`, so typing over a chosen label forgets the org - `pm_org_id` is non-blank only while the input still shows the label it came with. Link is `:disabled="!chosen"`.
+
+**Methods:** `openList()`, `close()`, `setActive(i)` (marks `aria-selected` and `.typeahead-results__item--focused`, sets or removes `aria-activedescendant`), `move(delta)`, `choose(option)`, `chooseFrom(target)`, `clearChoice()`, `onKeydown(event)`, `onResults()`, `reset()` (clears the input and choice and restores `$refs.local` - Cancel calls it before `editableField`'s `cancelEdit()`; neither component can see the other's refs).
+
+**Usage:** `info_items/_org_row.html` is the one caller and the reference markup.
+
+JS tests in `tests/js/org-combobox.test.js` (Vitest, real `main.js` + vendored Alpine).
 
 ---
 

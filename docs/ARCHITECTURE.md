@@ -32,6 +32,9 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                archiver#307;
                                rep_spec_picker.py — pure Add-a-spec picker view model:
                                readiness and path preview per unassigned spec, archiver#308;
+                               org_row.py — the Overview's Organization row: the linked
+                               Power Map org's notices (pure) and the type-ahead's local
+                               suggestions; routes/power_map.py serves its search, archiver#306;
                                providers.py — UNWRITABLE_PROVIDERS, shared by the RepSpec form
                                and the picker, archiver#202/#308)
 src/core/                      Domain logic

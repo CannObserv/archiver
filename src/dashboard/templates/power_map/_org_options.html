@@ -1,0 +1,25 @@
+{#- The Organization row's type-ahead options (archiver#306): swapped into
+   #ii-org-results by GET /dashboard/power-map/orgs, and included by
+   info_items/_org_row.html with the item's local suggestions.
+
+   `options` - OrgOption rows; each <li> carries its id and label as data, which
+               the orgCombobox component (main.js) reads when one is chosen
+   `status`  - why there are no options (dormant, unavailable, no match), or none
+
+   The listbox keeps its id across swaps, so the input's aria-controls holds. -#}
+<ul class="typeahead-results" role="listbox" id="ii-org-listbox" aria-label="Power Map organizations"{% if not options %} hidden{% endif %}>
+  {% for option in options %}
+  <li class="typeahead-results__item" role="option" id="ii-org-option-{{ loop.index0 }}"
+      aria-selected="false"
+      data-pm-org-id="{{ option.pm_org_id }}"
+      data-label="{{ option.label }}">
+    <span>
+      {{ option.label }}
+      {% if option.hint %}<br><span class="text-muted text-xs">{{ option.hint }}</span>{% endif %}
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% if status %}
+<p class="text-muted text-sm" role="status" style="margin:var(--space-1) 0 0;">{{ status }}</p>
+{% endif %}

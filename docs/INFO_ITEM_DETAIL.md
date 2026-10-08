@@ -18,6 +18,12 @@ Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
 
 1. **Overview** - `.entity-card` header (canonical detail-screen pattern, #81): `.eyebrow` "Information Item" kicker → `<h1 class="entity-card__title" id="info-item-heading" tabindex="-1">` name → copyable ULID (shared `copyable` macro) → domain badge linking to `/dashboard/domains/{name}`, or a muted "No primary source" when unbound; `.detail-grid` with description, owner (if set), created_at. Watcher status is deliberately absent here - the status and its controls live in section 3 (#62).
 
+   **Organization** (archiver#306) - `info_items/_org_row.html` (`#ii-org`, label `#ii-org-heading`), a full-width `.detail-grid` cell on the `editableField` view/edit pattern. **View:** the linked Power Map org's name (acronym), read from the `pm_organizations` snapshot - never Power Map - plus one notice per state, each a `badge--sm` *word* beside its sentence so no state rides on colour alone: *Renamed* for `RECENT_DAYS` (30) after `renamed_at` ("was X; paths now `organizations/<org.title_slug>/…`", the slug from the effective bag, so a stored override shows), *Merged* for 30 days after a merge folded another org in (a loser row whose `merged_into` is this org, dated by its `checked_at`), *Succeeded* (the successor's name when archiver holds its snapshot, else its id; never followed), *Archived*, *Inactive*, *Missing* (since `missing_since`; the last snapshot still renders) - or a muted "Not linked". Pure in `src/dashboard/org_row.py`; `_org_row_context` loads it.
+
+   **Edit** is the `orgCombobox` type-ahead (COMPONENTS.md). It opens on **local suggestions** - orgs linked to other items on this item's domains (active bindings' `domain_name`), most-linked first, the item's own org left out, no Power Map call. From two characters, `GET /dashboard/power-map/orgs` (300ms debounce, `hx-sync="this:replace"`) searches Power Map, limit 10, archived excluded; under two it answers with the local suggestions again. Power Map dormant, unavailable or matching nothing is a `role="status"` line in a 200, so only the type-ahead degrades. Choosing fills a hidden `pm_org_id`; **Link** stays disabled until then, and typing over a choice forgets it. With Power Map not configured the edit half is a "linking is unavailable" status line instead. **Unlink** (linked only) needs no confirmation - "Unlink keeps current paths; the values become hand-typed" - and works with Power Map dormant, since `link_org` never asks Power Map to unlink.
+
+   Link and Unlink `PUT …/org` through `link_org`, the write `PUT /info-items/{id}/org` shares. Refusals land in `#ii-org-flash` (`aria-live="polite"`) via `hx-target-409`/`-422`/`-503`: **409** is #302's move contract - the stored hand-typed `org.title`/`org.acronym` differ from Power Map's, so an active assignment's path moves - rendered by `_move_flash.html` as before → after per assignment with **Link and move**, which re-sends the warned-about `pm_org_id` with `allow_destination_change`; **422** an org Power Map lacks or one that breaks an assignment (naming the RepSpec and key); **503** Power Map dormant or down, nothing linked. **200** re-renders the row (`HX-Retarget: #ii-org`, focus to its label) and fires `replicationChanged` from `org`, so Fields and the picker re-read the effective bag.
+
 2. **Information Sources** - `x-data="{swapOpen:false}"` wrapper around a `data-table` of active `info_item_sources` bindings (columns: URL, Domain, Spec, Bound, Actions); the first row carries a brand left-border marking it primary. The **Spec** column summarises the InfoSource's primary `source_specs` entry (`_format_spec_summary`, e.g. `css · 2 specs`) out of `spec_summary_by_source_id`, computed by the detail route - the spec belongs here, not in the Watcher section (#62). The Actions cell on the primary row holds a "Swap primary" / "Cancel" toggle (`@click="swapOpen=!swapOpen"`) that reveals `info_items/_swap_primary.html` inside `<div x-show="swapOpen" x-cloak>`; with no active bindings that panel (`id="swap-panel"`) renders unconditionally, titled "Add primary source". Its "author new source" form posts with `hx-target-422="#swap-error"` and succeeds with 204 + `HX-Redirect`; the "bind by ID" `<details>` sub-form does the same against `#swap-by-id-error`.
 
 3. **Watcher** - a plain `<h2>` heading. It used to be a deeplink ("Watcher ↗") built from `WATCHER_PUBLIC_BASE_URL` + `item.watcher_item_id` (#62); archiver#142 retired it, because announcements never hand Watcher's primary key back and Watcher exposes no lookup by `info_item_id`, so there is no per-item URL left to build. Body: `<div id="watcher-section">` loaded async via `hx-trigger="load"` + `hx-get="…/watcher-section"` + `hx-swap="outerHTML"`; the root element also carries `hx-trigger="watcherUpdated from:body"` so the panel self-refreshes whenever an action fires that event. Template `info_items/_watcher_section.html`.
@@ -64,7 +70,7 @@ Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
 
 ## Partial templates and swap targets
 
-Partial templates under `info_items/`:
+Partial templates under `info_items/` (and `power_map/_org_options.html`, the type-ahead's options, swapped into `#ii-org-results`):
 
 | Template | Swap target (`outerHTML`) | States |
 |---|---|---|
@@ -74,10 +80,11 @@ Partial templates under `info_items/`:
 | `_watcher_status.html` | `#watcher-status-strip` | `not_watching`, `no_status`, `degraded`, `watching` |
 | `_watcher_section.html` | `#watcher-section` | `not_watching`, `no_status`, `degraded`, `watching` |
 | `_cadence_editor.html` | - (included, `hx-swap="none"`) | view / edit (`editableField`) |
+| `_org_row.html` | `#ii-org` (Link / Unlink's 200 via `HX-Retarget`) | not linked / linked, with notices; view / edit (`editableField` + `orgCombobox`); edit dormant without Power Map |
 | `_rep_fields.html` | `#ii-rep-fields` (the re-fetch; a save's 200 via `HX-Retarget`) | rows / no rows; per row via `_rep_fields_status.html` |
 | `_rep_fields_status.html` | `#rf-status-<ns>-<key>` (included; out of band from the readout) | `stored`, `override`, `from_power_map`, `slugs_to_nothing`, `missing` |
 | `_rep_fields_readout.html` | - (`hx-swap="none"`; out-of-band status cells only) | - |
-| `_rep_fields_flash.html` | `#rep-fields-flash` (`innerHTML`; the save's 409 and 422) | move to confirm (`moves`) / refused (`message`, `problems`) |
+| `_move_flash.html` | `#rep-fields-flash` (the Fields save's 409 and 422) and `#ii-org-flash` (Link's 409, 422 and 503); `innerHTML` | move to confirm (`moves`, `lead`, `confirm` - the re-send's verb, url, vals, target, label) / refused (`message`, `problems`) |
 | `_rep_spec_picker.html` | `#ii-rep-spec-picker` (re-fetch, Assign) | entries / all assigned / none; `assigned` prompt / `refusal` |
 
 Each root element carries its own `id`, so it survives the swap that replaces it;

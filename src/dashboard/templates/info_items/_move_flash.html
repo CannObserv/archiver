@@ -1,0 +1,43 @@
+{#- A write that did not store, swapped into its form's flash: the Rep Fields
+  save (#rep-fields-flash, archiver#302) and the Organization row's link
+  (#ii-org-flash, archiver#306). Both go through #302's one move contract, so
+  both confirm a move here. A write that did store re-renders its block instead.
+
+  moves    - the change is valid but moves where active assignments render
+  lead     - the sentence above the moves: what has not happened yet
+  confirm  - the button that re-sends exactly what was warned about, not
+             whatever the form holds by the time the operator clicks:
+             `verb` (htmx's), `url`, `vals` (allow_destination_change included),
+             `target` (the flash it came from) and `label`
+  message  - a refusal; `problems` lists one line per assignment and key
+-#}
+{% if moves %}
+<div class="text-sm" style="margin-top:var(--space-2);">
+  <p class="text-danger">{{ lead }} Later revisions will land at the new path; everything already published stays at the old one.</p>
+  <ul>
+    {% for m in moves %}
+    <li>RepSpec '{{ m.rep_spec_name }}': <code>{{ m.before }}</code> → <code>{{ m.after }}</code></li>
+    {% endfor %}
+  </ul>
+  <p class="text-muted">Paths shown for an example revision; only the part that comes from Rep Fields changes.</p>
+  <button type="button" class="btn btn--secondary"
+          hx-{{ confirm.verb }}="{{ confirm.url }}"
+          hx-vals='{{ confirm.vals | tojson }}'
+          hx-target="{{ confirm.target }}"
+          hx-target-422="{{ confirm.target }}"
+          hx-target-409="{{ confirm.target }}"
+          hx-target-503="{{ confirm.target }}"
+          hx-swap="innerHTML">{{ confirm.label }}</button>
+</div>
+{% else %}
+<div class="text-danger text-sm" style="margin-top:var(--space-2);">
+  <p>{{ message }}</p>
+  {% if problems %}
+  <ul>
+    {% for p in problems %}
+    <li>{{ p }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}

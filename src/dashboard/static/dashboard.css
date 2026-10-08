@@ -1229,6 +1229,20 @@ p:last-child { margin-bottom: 0; }
   align-items: center;
 }
 .typeahead-results__item:last-child { border-bottom: none; }
+/* The anchor a .typeahead-results drops from (archiver#306, the InfoItem
+   Organization row): the absolute list needs a positioned containing block,
+   and inside a .field-row the wrapper takes the readout's share of the row so
+   the view/edit flip does not move the actions. Input sized to .btn--sm, like
+   the .form-select--sm the cadence row swaps in. */
+.typeahead { position: relative; flex: 1 1 14rem; min-width: 0; }
+.typeahead > .form-input {
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+}
+.typeahead .typeahead-results { top: 100%; left: 0; right: 0; margin-top: var(--space-1); }
+.typeahead .typeahead-results[hidden] { display: none; }
 .typeahead-results__item:hover,
 .typeahead-results__item--focused {
   background: var(--color-brand-subtle);
