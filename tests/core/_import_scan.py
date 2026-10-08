@@ -1,11 +1,14 @@
 """Static import scanning, shared by the layering and delegation guards (CR 7).
 
-Extracted from ``test_layering``, which owned it while it had one caller. A
-second guard — ``test_destination``'s check that the ``mimetypes`` fallback has
-not come back — needs the same answer, and importing a *test* module for a
-private helper made one guard's collection depend on another's.
+Extracted from replication's ``test_layering``, which owned it while it had one
+caller. A second guard — ``test_destination``'s check that the ``mimetypes``
+fallback has not come back — needs the same answer, and importing a *test*
+module for a private helper made one guard's collection depend on another's.
+Power Map's layering guard (archiver#327) is the third caller, from outside
+``replication``, so the helper lives at ``tests/core/`` rather than under one
+caller's package.
 
-**Both callers ask the same question**: what does this file reach, however the
+**Every caller asks the same question**: what does this file reach, however the
 author spelled it. A grep answers a different and weaker one, which is the
 distinction CR 9-11 and CR 3 were each filed about.
 
@@ -21,7 +24,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def package_of(path: Path) -> str:
