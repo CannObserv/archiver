@@ -151,6 +151,9 @@ applicable doc is a CR blocker.
   screen itself: its five sections, a partial's swap target, or one of the
   action-route contracts that moved there in archiver#176. PAGES.md keeps the
   inventory line for those routes, so a behaviour change updates both.
+- `docs/ORG_ROW.md` - required when the change alters the InfoItem
+  Organization row: its notices, the `orgCombobox` keyboard model, or the link
+  flow's refusals.
 - `docs/HEALTH_ROW.md` and `docs/REGISTER.md` - required when the change alters
   the health row (a badge added or removed, its states, or the lag-probe bound),
   or the register wizard's summary bar or Step 3 controls. PAGES.md keeps only

@@ -78,16 +78,12 @@ each route.
 
 **POST `/dashboard/info-items/new`** - legacy direct-create, still live. Form fields: `name`, `description`, `owner`, `rep_fields` (JSON), `initial_url` (string), `initial_source_specs` (JSON array). 303 to detail on success; 422 re-rendering `info_items/new.html` on validation error, including a `rep_fields` bag that is not Rep Fields v1 (archiver#302). Interactive registration goes through `/dashboard/register`.
 
-**GET `/dashboard/info-items/{id}`** - the 5-section vertical-scroll hub page
-(`info_items/detail.html`). Its section anatomy, partial templates, and swap
-targets are [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), needed only when
-working on that screen.
-
-**The hub screen's action-route contracts** - the shared Watcher-POST contract,
-the three routes that retired with the SDK, and the always-200 always-flash
-replication outcome rule - are in
-[docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
-The entries below stay the inventory line for each route.
+**GET `/dashboard/info-items/{id}`** - the 5-section hub page
+(`info_items/detail.html`). Its anatomy, partials, swap targets and **Action-route
+contracts** (the shared Watcher-POST contract, the three routes retired with the
+SDK, the always-200 always-flash replication outcome rule) are
+[docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), needed only when working on
+that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** - HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the two action POSTs.
 
@@ -120,11 +116,7 @@ The entries below stay the inventory line for each route.
 **PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 render `_move_flash.html` into `#rep-fields-flash` (archiver#302, #307); a linked item's `org.title`/`org.acronym` is a 422 naming the org (archiver#304). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
 
 
-**PUT `/dashboard/info-items/{id}/org`** - the Overview's Organization row: links the Power Map org `pm_org_id` names, or unlinks on a blank one, through `link_org` - the write `PUT /info-items/{id}/org` shares (archiver#306). 200 re-renders `_org_row.html` (`HX-Retarget: #ii-org`) and fires `replicationChanged` (`{"source": "org"}`) + a toast. Refusals render `_move_flash.html` into `#ii-org-flash`: 409 a path move to confirm (**Link and move** re-sends with `allow_destination_change=true`), 422 an org Power Map lacks or one that breaks an assignment, 503 Power Map dormant or down. Unlink never calls Power Map. Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 1.
-
-### Power Map type-ahead (`/dashboard/power-map/`)
-
-**GET `/dashboard/power-map/orgs?q=&item_id=`** - the Organization row's options, `power_map/_org_options.html` (archiver#306, `src/dashboard/routes/power_map.py`). Under two characters: orgs already linked on `item_id`'s domains, no Power Map call (an unknown or blank `item_id` has none). From two: Power Map's search, limit 10, archived excluded. Dormant, unavailable or no match is a `role="status"` line in a **200** - never an error, so only the type-ahead degrades. `no-store`.
+**PUT `…/{id}/org`**, **GET `/dashboard/power-map/orgs`** - Organization row Link / Unlink and type-ahead: [ORG_ROW.md](ORG_ROW.md) (archiver#306).
 
 ## Information Sources (`/dashboard/info-sources/`)
 

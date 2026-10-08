@@ -303,7 +303,8 @@ docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                SOCRATICODE.md, plus the
                                dashboard living docs
                                UI.md + SCREENS.md + PAGES.md +
-                               INFO_ITEM_DETAIL.md + REGISTER.md + HEALTH_ROW.md +
+                               INFO_ITEM_DETAIL.md + ORG_ROW.md + REGISTER.md +
+                               HEALTH_ROW.md +
                                COMPONENTS.md + STYLE.md
                                (see "Dashboard living docs").
                                reference/ holds host-shaped facts that are not
