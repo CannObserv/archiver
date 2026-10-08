@@ -23,7 +23,7 @@ in `src/dashboard/org_row.py`:
 
 | Notice | When | Says |
 |---|---|---|
-| Renamed | `RECENT_DAYS` (30) after `renamed_at` | "was X; paths now `organizations/<org.title_slug>/…`" - the slug from the effective bag, so a stored override shows |
+| Renamed | `RECENT_DAYS` (30) after `renamed_at` | "was X; paths now `organizations/<org.title_slug>/…`" - the slug from the effective bag, so a stored override shows; none when the name slugs to nothing |
 | Merged | 30 days after a merge folded another org in | the loser's name: a row whose `merged_into` is this org, dated by its `checked_at` (set at the merge; the follower never checks an unlinked loser again) |
 | Succeeded | `succeeded_by` set | the successor's name when archiver holds its snapshot, else its id; never followed |
 | Archived / Inactive | `archived_at` / `not active` | as named |

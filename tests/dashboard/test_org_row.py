@@ -86,6 +86,18 @@ def test_the_renamed_path_honours_a_stored_title_slug_override():
     assert "organizations/wslcb/…" in row.notices[0].text
 
 
+def test_a_rename_to_a_name_with_no_slug_states_no_path():
+    """CR 4: was "paths now organizations/None/…" - a path that does not exist."""
+    row = build_org_row(
+        _org(name="!!!", renamed_from="WA LCB", renamed_at=_NOW - timedelta(days=1)),
+        bag={},
+        now=_NOW,
+    )
+
+    (notice,) = row.notices
+    assert notice.text == "was WA LCB"
+
+
 def test_a_rename_older_than_the_window_is_no_longer_news():
     row = build_org_row(
         _org(renamed_from="WA LCB", renamed_at=_NOW - timedelta(days=RECENT_DAYS, seconds=1)),

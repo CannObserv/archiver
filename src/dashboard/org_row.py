@@ -88,14 +88,11 @@ def build_org_row(
     notices: list[OrgNotice] = []
     if org.renamed_from and org.renamed_at is not None and org.renamed_at >= recent:
         slug = effective_rep_fields(bag, org_values(org)).get("org", {}).get("title_slug")
-        notices.append(
-            OrgNotice(
-                "renamed",
-                "Renamed",
-                f"was {org.renamed_from}; paths now organizations/{slug}/…",
-                "info",
-            )
-        )
+        # A name that slugs to nothing has no title_slug: no path to state (CR 4).
+        text = f"was {org.renamed_from}"
+        if slug:
+            text += f"; paths now organizations/{slug}/…"
+        notices.append(OrgNotice("renamed", "Renamed", text, "info"))
     for loser in merged_from:
         notices.append(OrgNotice("merged", "Merged", f"{loser} was merged into this org", "info"))
     if org.succeeded_by:
