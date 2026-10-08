@@ -115,7 +115,7 @@ see the never-rename rule in `AGENTS.md`.
 - **`PmOrganization`** (`pm_organizations`, archiver#304) — snapshot of one linked Power Map org,
   PK Power Map's id; columns documented on the model. Written only by `apply_org_snapshot`, which
   never moves a row backwards in `pm_updated_at`. **Rendering reads this row, never Power Map.**
-  The hourly follower (archiver#305, `src/core/power_map/follower.py`) re-checks every row an
+  The hourly follower (archiver#305, `src/core/tools/refresh_orgs.py`) re-checks every row an
   item links with the stored `etag`:
   - **304** → `checked_at` only. **200** → `apply_org_snapshot`; a `name`/`acronym` change sets
     `renamed_from`/`renamed_at` and moves every linked item's paths from its next occasion with

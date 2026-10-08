@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.core.replication._import_scan import ROOT, imported_modules, package_of
+from tests.core._import_scan import ROOT, imported_modules, package_of
 
 _ROOT = ROOT
 _REPLICATION = _ROOT / "src" / "core" / "replication"

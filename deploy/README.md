@@ -232,7 +232,7 @@ installed-copy parity.
 ### Power Map org follower (#305)
 
 `archiver-pm-org-refresh.{service,timer}` - an hourly oneshot running
-`python -m src.core.power_map.follower`. It re-checks every Power Map org an
+`python -m src.core.tools.refresh_orgs`. It re-checks every Power Map org an
 item links and writes the answer to `pm_organizations`; a merge also re-points
 `info_items.pm_org_id`. Semantics live in `docs/SCHEMA.md`, the timer roster in
 `docs/DEPLOYMENT.md`.

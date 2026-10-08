@@ -97,7 +97,7 @@ This is the upstream-documented case where linking is wrong: the main checkout i
 
 - `deploy/archiver.service` — `WorkingDirectory=/home/exedev/archiver`, `ExecStart=uv run uvicorn …`. `uv run` reinstalls the project, restamping the `importlib.metadata.version(...)` that `src/api/main.py` reads to *main's* version.
 - `deploy/archiver-bus-health.service`, fired by `archiver-bus-health.timer` — `uv run python -m src.core.bus_health` from that same directory, on a schedule. It restamps the shared environment *while a worktree suite is running*, so the failure appears in a full run and vanishes in isolation.
-- `deploy/archiver-pm-org-refresh.service`, fired hourly by `archiver-pm-org-refresh.timer` — `uv run python -m src.core.power_map.follower`, the same directory and the same hazard (archiver#305).
+- `deploy/archiver-pm-org-refresh.service`, fired hourly by `archiver-pm-org-refresh.timer` — `uv run python -m src.core.tools.refresh_orgs`, the same directory and the same hazard (archiver#305).
 
 The hazard runs both ways: a worktree's own `uv sync` mutates what the live workers import from — the live site, on this host. With `none`, `worktree-create.sh` creates no `.venv` and says so on stderr; provision one in Phase 3.
 

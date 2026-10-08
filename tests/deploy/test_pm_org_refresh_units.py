@@ -30,7 +30,7 @@ def _directives(path: Path, key: str) -> list[str]:
 def test_service_is_a_oneshot_running_the_follower() -> None:
     assert _directives(REPO_SERVICE, "Type") == ["oneshot"]
     (execstart,) = _directives(REPO_SERVICE, "ExecStart")
-    assert execstart.endswith("python -m src.core.power_map.follower")
+    assert execstart.endswith("python -m src.core.tools.refresh_orgs")
 
 
 def test_service_loads_the_production_env_file() -> None:

@@ -26,8 +26,11 @@ from src.core.models import (
     RepSpec,
     SourceRevision,
 )
-from src.core.power_map import PowerMapUnavailableError, follower
-from src.core.power_map.follower import (
+from src.core.power_map import PowerMapUnavailableError
+from src.core.power_map.snapshots import apply_org_snapshot
+from src.core.services.replication_issuance import issue_for_revision
+from src.core.tools import refresh_orgs, set_rep_fields
+from src.core.tools.refresh_orgs import (
     MERGED,
     MISSING,
     NOT_MODIFIED,
@@ -38,9 +41,6 @@ from src.core.power_map.follower import (
     main,
     refresh_linked_orgs,
 )
-from src.core.power_map.snapshots import apply_org_snapshot
-from src.core.services.replication_issuance import issue_for_revision
-from src.core.tools import set_rep_fields
 from src.core.tools.rep_fields_gate import lock_info_item
 from tests.core.power_map.fake import WSLCB_ID, WSLCB_NAME, FakePowerMap, org
 
@@ -77,7 +77,7 @@ class _Sleeps:
 @pytest.fixture
 def warnings(monkeypatch) -> _Spy:
     spy = _Spy()
-    monkeypatch.setattr(follower.logger, "warning", spy)
+    monkeypatch.setattr(refresh_orgs.logger, "warning", spy)
     return spy
 
 
@@ -131,6 +131,11 @@ async def _row(session, pm_org_id: str = WSLCB_ID) -> PmOrganization:
     row = await session.get(PmOrganization, pm_org_id, populate_existing=True)
     assert row is not None
     return row
+
+
+def test_the_logger_is_named_for_the_module_not_main():
+    """A journald filter key: ``python -m`` would otherwise name it ``__main__`` (archiver#327)."""
+    assert refresh_orgs.logger.name == "src.core.tools.refresh_orgs"
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +308,20 @@ async def test_a_gone_org_is_missing_and_keeps_its_snapshot(session, warnings):
     assert row.name == WSLCB_NAME
     assert row.etag == '"v1"'
     assert "pm_org_missing" in warnings.messages
+    (extra,) = [e for m, e in warnings.records if m == "pm_org_missing"]
+    assert extra == {"pm_org_id": WSLCB_ID, "org_name": WSLCB_NAME}
+
+
+@pytest.mark.asyncio
+async def test_a_missing_org_logs_through_a_real_logger(session):
+    """No spy: ``extra`` must not collide with a ``LogRecord`` attribute (``name``),
+    which raises ``KeyError`` and ends the sweep (archiver#327)."""
+    await _snapshot(session)
+    await _linked_item(session)
+
+    outcomes = await _refresh(session, FakePowerMap())
+
+    assert outcomes == {WSLCB_ID: MISSING}
 
 
 @pytest.mark.asyncio
@@ -482,7 +501,7 @@ async def test_the_order_is_shuffled_each_run(session, monkeypatch):
         await _snapshot(session, org(pm_org_id, name=pm_org_id))
         await _linked_item(session, pm_org_id)
     pm = FakePowerMap(org(), org(OTHER_ID, name=OTHER_ID))
-    monkeypatch.setattr(follower, "_shuffle", lambda rows: rows.reverse())
+    monkeypatch.setattr(refresh_orgs, "_shuffle", lambda rows: rows.reverse())
 
     await _refresh(session, pm)
 
@@ -500,8 +519,8 @@ async def test_the_sweep_stops_after_consecutive_failures(session):
 
     outcomes = await _refresh(session, pm)
 
-    assert len(pm.calls) == follower.MAX_CONSECUTIVE_FAILURES
-    assert list(outcomes.values()) == [UNAVAILABLE] * follower.MAX_CONSECUTIVE_FAILURES
+    assert len(pm.calls) == refresh_orgs.MAX_CONSECUTIVE_FAILURES
+    assert list(outcomes.values()) == [UNAVAILABLE] * refresh_orgs.MAX_CONSECUTIVE_FAILURES
 
 
 @pytest.mark.asyncio
@@ -574,23 +593,23 @@ async def test_an_occasion_issued_after_a_rename_renders_the_new_path(session):
 def stub_main_deps(monkeypatch):
     """Neutralise everything ``main`` touches outside the sweep (CR 2); hand back
     the spies its contracts are asserted on."""
-    monkeypatch.setattr(follower, "configure_logging", lambda: None)
-    monkeypatch.setattr(follower, "get_database_url", lambda: "postgresql://db/archiver")
+    monkeypatch.setattr(refresh_orgs, "configure_logging", lambda: None)
+    monkeypatch.setattr(refresh_orgs, "get_database_url", lambda: "postgresql://db/archiver")
     gate = MagicMock()
-    monkeypatch.setattr(follower, "assert_production_db_allowed", gate)
+    monkeypatch.setattr(refresh_orgs, "assert_production_db_allowed", gate)
     client = SimpleNamespace(aclose=AsyncMock())
-    monkeypatch.setattr(follower, "power_map_from_env", lambda: client)
+    monkeypatch.setattr(refresh_orgs, "power_map_from_env", lambda: client)
     session = object()
 
     @asynccontextmanager
     async def _session():
         yield session
 
-    monkeypatch.setattr(follower, "get_session_factory", lambda: _session)
+    monkeypatch.setattr(refresh_orgs, "get_session_factory", lambda: _session)
     engine = AsyncMock()
-    monkeypatch.setattr(follower, "get_engine", MagicMock(return_value=engine))
+    monkeypatch.setattr(refresh_orgs, "get_engine", MagicMock(return_value=engine))
     sweep = AsyncMock(return_value={})
-    monkeypatch.setattr(follower, "refresh_linked_orgs", sweep)
+    monkeypatch.setattr(refresh_orgs, "refresh_linked_orgs", sweep)
     return SimpleNamespace(gate=gate, client=client, session=session, engine=engine, sweep=sweep)
 
 
@@ -621,13 +640,13 @@ def test_main_gates_the_production_database_on_the_units_flag(stub_main_deps, mo
 
 
 def test_main_is_dormant_without_a_key(stub_main_deps, monkeypatch):
-    monkeypatch.setattr(follower, "power_map_from_env", lambda: None)
+    monkeypatch.setattr(refresh_orgs, "power_map_from_env", lambda: None)
 
     def _no_database(*_args, **_kwargs):
         raise AssertionError("a dormant follower must not touch the database")
 
-    monkeypatch.setattr(follower, "get_database_url", _no_database)
-    monkeypatch.setattr(follower, "assert_production_db_allowed", _no_database)
+    monkeypatch.setattr(refresh_orgs, "get_database_url", _no_database)
+    monkeypatch.setattr(refresh_orgs, "assert_production_db_allowed", _no_database)
 
     assert main([]) == 0
     stub_main_deps.sweep.assert_not_awaited()

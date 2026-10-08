@@ -33,7 +33,7 @@ from src.core.replication.destination import (
     render_destination,
 )
 from src.core.replication.errors import ReplicationRenderError
-from tests.core.replication._import_scan import assigned_names, imported_modules
+from tests.core._import_scan import assigned_names, imported_modules
 
 FINGERPRINT = "sha256:" + "ab" * 32
 

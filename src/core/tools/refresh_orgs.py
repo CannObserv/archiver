@@ -64,7 +64,7 @@ from src.core.tools.set_rep_fields import (
 
 # Literal rather than __name__: the timer runs this module via ``python -m``,
 # where __name__ is "__main__" - a useless journald filter key.
-logger = get_logger("src.core.power_map.follower")
+logger = get_logger("src.core.tools.refresh_orgs")
 
 NOT_MODIFIED = "not_modified"
 UPDATED = "updated"
@@ -271,7 +271,7 @@ async def _missing(db: AsyncSession, pm_org_id: str, now: datetime) -> str:
         row.missing_since = now
         logger.warning(
             "pm_org_missing",
-            extra={"pm_org_id": pm_org_id, "name": row.name},
+            extra={"pm_org_id": pm_org_id, "org_name": row.name},
         )
     row.checked_at = now
     await db.flush()
