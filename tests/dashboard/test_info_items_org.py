@@ -464,3 +464,17 @@ async def test_link_names_why_power_map_is_unavailable(client, session, power_ma
 
     assert "Not linked: Power Map unavailable: rate limited (HTTP 429)." in r.text
     assert "Try again" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_an_org_with_no_name_is_refused(client, session, power_map):
+    """CR 9: it cannot supply org.title, so link_org refuses before writing."""
+    power_map.plant(org(name=None))
+    item = await _item(session)
+
+    r = await client.put(_org_url(item), headers=_HEADERS, data={"pm_org_id": WSLCB_ID})
+
+    assert r.status_code == 422
+    assert "has no name to use" in r.text
+    await session.refresh(item)
+    assert item.pm_org_id is None
