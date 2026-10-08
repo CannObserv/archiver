@@ -188,7 +188,8 @@ src/core/                      Domain logic
                                search_orgs, PowerMapUnavailableError for every
                                non-answer. snapshots.py owns pm_organizations
                                (apply_org_snapshot, load_org_values). Imports
-                               nothing from tools/ (archiver#327, guard test).
+                               no package that imports it - tools, services,
+                               api, dashboard routes (archiver#327, guard test).
                                Edge rule: Power Map is called on the authoring
                                path and by the follower, NEVER during
                                replication - render reads the snapshot. Beside

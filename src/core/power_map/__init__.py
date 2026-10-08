@@ -3,8 +3,8 @@
 ``client`` is the only module that imports the Power Map SDK. ``snapshots`` owns
 ``pm_organizations``: written by the link and the follower, read by every
 consumer of the effective bag. Both writers (``link_org``, ``refresh_orgs``)
-live in the ``tools`` package beside the other writers of the bag; this package
-imports nothing from there (archiver#327).
+live in the ``tools`` package beside the other writers of the bag. This package
+imports no package that imports it, ``tools`` included (archiver#327).
 """
 
 from src.core.power_map.client import (
