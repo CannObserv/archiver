@@ -22,7 +22,7 @@ Python ≥3.12, uv, pytest, ruff. **Postgres 16 on archiver's own VM** (#193 D5)
 gitignored), not PyPI. Populate it before `uv sync`/`uv run` or resolution fails:
 
 ```bash
-set -a; . /etc/archiver/.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS=co-pypi-reader key
+set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS=co-pypi-reader key (#341)
 uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 ```
 

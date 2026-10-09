@@ -11,16 +11,16 @@ deps are what the wheelhouse provides), so invoke it in an isolated env:
     uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 
 Authentication is Application Default Credentials. On the VM/deploy that is the
-service-account key at ``GOOGLE_APPLICATION_CREDENTIALS`` (set in
-``/etc/archiver/.env``); in CI it is the ADC file written by
+service-account key at ``GOOGLE_APPLICATION_CREDENTIALS``, set in
+``/etc/archiver/deploy.env`` only (#341): no unit needs it. In CI it is the ADC file written by
 ``google-github-actions/auth`` (keyless Workload Identity Federation). Either
 way the identity needs only ``roles/storage.objectViewer`` on the bucket.
 
 Exit codes: ``0`` success (including a no-op re-run) · ``1`` failure (auth,
-network, or a missing bucket). The unit runs this as a non-fatal
-``ExecStartPre`` (``-`` prefix): a transient failure is surfaced to the journal,
-and if the wheelhouse is already populated the service still starts — only a
-genuinely missing wheel surfaces later as a hard ``uv`` resolution error.
+network, or a missing bucket). No unit runs it (archiver#330 D10):
+``scripts/deploy.sh`` runs the release's own copy into the release before
+``uv sync``, and a failure there refuses the deploy before anything switches.
+A checkout runs it by hand (AGENTS.md, Environment & Tooling).
 """
 
 from __future__ import annotations
