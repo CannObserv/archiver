@@ -153,6 +153,16 @@ env_value() { # <file> <name>
 # --- which commit ----------------------------------------------------------
 
 git -C "$SRC" fetch --quiet --prune origin
+
+# The deploy logic is reviewed code too (CR 10). What goes live must be on
+# origin/main, and so must the script deciding how it goes live: run from a
+# branch, or with an uncommitted edit, it would put unreviewed logic between
+# production and every check below. Byte-for-byte, so nothing slips past.
+git -C "$SRC" cat-file -e origin/main:scripts/deploy.sh 2>/dev/null ||
+  die "origin/main has no scripts/deploy.sh, so this copy is not reviewed logic; nothing was built"
+cmp -s <(git -C "$SRC" show origin/main:scripts/deploy.sh) "${BASH_SOURCE[0]}" ||
+  die "${BASH_SOURCE[0]} differs from origin/main's scripts/deploy.sh: only merged deploy logic" \
+    "deploys. From the checkout: git switch main && git pull --ff-only, then run it again."
 sha="$(git -C "$SRC" rev-parse --verify --quiet "${ref}^{commit}")" || die "cannot resolve $ref"
 git -C "$SRC" merge-base --is-ancestor "$sha" origin/main ||
   die "$ref ($sha) is not on origin/main; only a pushed main commit goes live"

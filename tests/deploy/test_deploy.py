@@ -308,6 +308,12 @@ class World:
         git(tmp, "clone", "-q", str(self.origin), str(self.checkout))
         git(self.checkout, "config", "user.email", "t@example.com")
         git(self.checkout, "config", "user.name", "t")
+        # As in production: the deploy logic is itself a commit on origin/main,
+        # and the checkout runs that copy (CR 10).
+        scripts = self.checkout / "scripts"
+        scripts.mkdir()
+        shutil.copy(DEPLOY, scripts / "deploy.sh")
+        git(self.checkout, "add", "scripts/deploy.sh")
         self.main = [commit(self.checkout, f"main-{i}") for i in range(3)]
         git(self.checkout, "push", "-q", "origin", "main")
         git(self.checkout, "switch", "-q", "-c", "feature")
@@ -315,10 +321,6 @@ class World:
         git(self.checkout, "push", "-q", "origin", "feature")
         git(self.checkout, "switch", "-q", "main")
         self.unpushed = commit(self.checkout, "unpushed")
-
-        scripts = self.checkout / "scripts"
-        scripts.mkdir()
-        shutil.copy(DEPLOY, scripts / "deploy.sh")
 
         (self.etc / ".env").write_text(f"ARCHIVER_DATABASE_URL={LIVE_URL}\n")
         (self.etc / "dev.env").write_text(f"ARCHIVER_DEV_DATABASE_URL={DEV_URL}\n")
@@ -379,7 +381,8 @@ class World:
         git(pusher, "fetch", "-q", "origin")
         git(pusher, "switch", "-q", "-C", branch, f"origin/{branch}")
         for name, body in files.items():
-            path = pusher / "deploy" / name
+            # Normalized: "../scripts/x" must not need deploy/ to exist first.
+            path = Path(os.path.normpath(pusher / "deploy" / name))
             if body is None:
                 path.unlink()
                 continue
@@ -658,6 +661,42 @@ class TestEntryPaths:
 
     def test_paths_outside_the_release_are_not_its_business(self, world):
         world.push_deploy({"archiver.service": "[Service]\nExecStart=/usr/local/bin/uv run x\n"})
+        assert_ok(world.run())
+
+
+class TestTheDeployLogic:
+    """CR 10: the script that deploys is reviewed code too.
+
+    The commit it deploys must be on origin/main; so must the logic deploying
+    it. A checkout on a branch, or with an uncommitted edit to deploy.sh, would
+    otherwise decide how production deploys: #330's failure, one level up.
+    """
+
+    def test_an_edited_script_is_refused_before_anything_happens(self, world):
+        script = world.checkout / "scripts" / "deploy.sh"
+        script.write_text(script.read_text() + "# an uncommitted edit\n")
+        result = world.run()
+        assert result.returncode == 1
+        assert "origin/main" in result.stderr and "git switch main" in result.stderr
+        assert not world.github_calls()
+        assert_nothing_happened(world)
+
+    def test_a_script_main_has_since_changed_is_refused(self, world):
+        """A stale checkout: main reviewed a newer deploy.sh than the one running."""
+        world.push_deploy({"../scripts/deploy.sh": DEPLOY.read_text() + "# newer\n"})
+        result = world.run()
+        assert result.returncode == 1
+        assert "git pull --ff-only" in result.stderr
+        assert_nothing_happened(world)
+
+    def test_main_without_the_script_is_refused(self, world):
+        world.push_deploy({"../scripts/deploy.sh": None})
+        result = world.run()
+        assert result.returncode == 1
+        assert "origin/main" in result.stderr
+        assert_nothing_happened(world)
+
+    def test_the_script_main_holds_deploys(self, world):
         assert_ok(world.run())
 
 
