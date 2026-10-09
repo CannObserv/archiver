@@ -39,7 +39,7 @@ def test_the_expected_copy_is_the_live_releases_not_the_working_trees(tmp_path):
 
 
 def test_an_unreadable_unit_is_an_error_not_a_skip(tmp_path):
-    """A drift check that cannot fail is worse than none (CR 13)."""
+    """A drift check that cannot fail is worse than none (#98)."""
     unit = tmp_path / "archiver.service"
     unit.write_text("x")
     unit.chmod(0o000)
