@@ -421,8 +421,11 @@ migrate() { # <live|rehearsal>
       if [[ "$target" == live ]]; then
         note "live: database is ahead of $build; not migrating. Expected for a rollback."
       else
-        note "rehearsal: archiver_dev is ahead of $build, so it rehearses nothing. It holds a" \
-          "branch migration that never merged (dev_server.sh from a worktree): downgrade it."
+        # Two causes, one remedy each (CR 16): a newer build's rehearsal left it
+        # there, or a worktree's dev_server.sh migrated it to a branch head.
+        note "rehearsal: archiver_dev is ahead of $build, so it rehearses nothing. In a rollback" \
+          "that is the newer build's migration: nothing to do. Otherwise it holds a branch" \
+          "migration that never merged (dev_server.sh from a worktree): downgrade it."
       fi
       return
       ;;

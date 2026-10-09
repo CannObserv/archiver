@@ -60,9 +60,10 @@ In order, each step refusing before anything switches:
    `ExecStart` module imports** (D11, the 2026-10-08 failure); read-only; root's; `REVISION`.
    The release `live` runs is never rebuilt in place.
 3. **Rehearse** (D2): `python -m src.core.schema_state`, then `alembic upgrade head`, against
-   `ARCHIVER_DEV_DATABASE_URL` from `/etc/archiver/dev.env`. `ahead` there means a branch
-   migration from a worktree's `dev_server.sh` that never merged: downgrade it, or the
-   rehearsal rehearses nothing. **A rehearsal that cannot read `archiver_dev` at all (unreachable,
+   `ARCHIVER_DEV_DATABASE_URL` from `/etc/archiver/dev.env`. `ahead` there is expected in a
+   rollback (the newer build's rehearsal migrated it). Otherwise it is a branch migration from
+   a worktree's `dev_server.sh` that never merged: downgrade it, or the rehearsal rehearses
+   nothing. **A rehearsal that cannot read `archiver_dev` at all (unreachable,
    refused by `db_safety`, crashed) refuses the production deploy**, exit 1, nothing switched:
    bring `archiver_dev` back or fix `dev.env`. A production fix does not wait on it through
    a flag, by design: the rehearsal is what proves the migration first.

@@ -1065,13 +1065,16 @@ class TestMigrations:
         assert not uv_calls(world, "alembic upgrade")
         assert "ahead" in result.stderr
 
-    def test_a_dev_database_ahead_is_named_as_a_branch_migration(self, world):
-        """dev_server.sh from a worktree migrates archiver_dev to a branch head."""
+    def test_a_dev_database_ahead_names_both_causes(self, world):
+        """dev_server.sh from a worktree migrates archiver_dev to a branch head; a
+        rollback finds it where the newer build's rehearsal left it (CR 16). Only
+        the first wants a downgrade, so the message must not prescribe it alone."""
         result = world.run(FAKE_DEV_SCHEMA="ahead", FAKE_SCHEMA="behind")
         assert_ok(result)
         (upgrade,) = uv_calls(world, "alembic upgrade")
         assert "URL=" + LIVE_URL + " " in upgrade
-        assert "branch" in result.stderr
+        assert "rollback" in result.stderr and "nothing to do" in result.stderr
+        assert "branch" in result.stderr and "downgrade" in result.stderr
 
     @pytest.mark.parametrize("state", ["behind", "unmigrated"])
     def test_a_database_behind_is_migrated(self, world, state):
