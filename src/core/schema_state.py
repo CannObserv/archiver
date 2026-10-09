@@ -45,6 +45,10 @@ ROOT = Path(__file__).resolve().parents[2]
 #: ``alembic/env.py`` keeps its version table in the ``information`` schema.
 VERSION_SCHEMA = "information"
 
+#: asyncpg's connect waits 60 s by default; a Postgres that hangs rather than
+#: refuses would stall each of the deploy's checks for that long (CR 6).
+CONNECT_TIMEOUT_SECONDS = 10
+
 EXIT_OK = 0
 EXIT_ERROR = 2
 EXIT_BEHIND = 3
@@ -116,7 +120,7 @@ def classify(db_revision: str | None, *, head: str, known: frozenset[str]) -> Sc
 async def probe(url: str) -> tuple[SchemaState, str | None, str]:
     """Connect once, read the revision, classify. Returns (state, db revision, code head)."""
     head = code_head()
-    engine = create_async_engine(url)
+    engine = create_async_engine(url, connect_args={"timeout": CONNECT_TIMEOUT_SECONDS})
     try:
         async with engine.connect() as conn:
             rev = await database_revision(conn)
