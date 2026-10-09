@@ -42,6 +42,12 @@ scripts/deploy.sh --skip-ci [<build>]   # without asking CI: an emergency, logge
 journalctl -t archiver-deploy -n 20     # "CI passed for <build>", "live -> <build> (was ...)"
 ```
 
+**A commit from before releases is refused**, before CI is asked (CR 14): one whose
+`deploy/*.service` runs anywhere but `/srv/archiver/live`, or that has no `src/core/build.py`.
+Its units would put production on the checkout, and its `/health` cannot name a release, so
+verification would always fail after the checkout had served. So no rollback reaches past the
+cutover: for older code, revert it on `main` and deploy that.
+
 In order, each step refusing before anything switches:
 
 1. **CI gate** (D6): the newest `push` run of `ci.yml` on `main` for exactly that commit,

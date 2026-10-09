@@ -57,6 +57,8 @@ UNIT_DIR="$ETC/systemd/system"
 API=archiver
 PROBE=archiver-bus-health.service
 HEALTH_URL="http://127.0.0.1:8000/health"
+# Where every unit runs from: the link, never a checkout.
+UNIT_ROOT=/srv/archiver/live
 # deploy/<file>=<path under /etc>, as deploy/README.md installs each. Compared
 # after a deploy, never installed: installing one means sysctl --system, a slice
 # reload or a Postgres restart, by hand.
@@ -169,6 +171,26 @@ git -C "$SRC" merge-base --is-ancestor "$sha" origin/main ||
 build="$(git -C "$SRC" rev-parse --short=12 "$sha")"
 release="$ROOT/releases/$build"
 
+# A commit from before releases cannot run as one (CR 14): its units run the
+# checkout, and its /health cannot name a release. Deployed, it would put
+# production on whatever the checkout holds until verification failed, as it
+# always would. Both marks are needed for any deploy to verify.
+predates_releases() {
+  local unit
+  git -C "$SRC" cat-file -e "$sha:src/core/build.py" 2>/dev/null || return 0
+  while read -r unit; do
+    [[ "$unit" == *.service ]] || continue
+    # awk reads to the end: no SIGPIPE for pipefail to mistake for an answer.
+    git -C "$SRC" show "$sha:$unit" | awk -v want="WorkingDirectory=$UNIT_ROOT" \
+      '/^WorkingDirectory=/ && $0 != want { bad = 1 } END { exit !bad }' && return 0
+  done < <(git -C "$SRC" ls-tree --name-only "$sha" deploy/)
+  return 1
+}
+! predates_releases ||
+  die "$build predates releases (archiver#330): its units run the checkout and its /health cannot" \
+    "name a release, so it would fail verification after running the checkout. Nothing was built." \
+    "For older code, revert it on main and deploy that."
+
 # --- CI (status#11) --------------------------------------------------------
 
 # Unauthenticated: the repo is public, and 60 requests an hour per address
@@ -272,8 +294,7 @@ entry_modules() {
 }
 
 # The executables each unit runs from inside the release, as release-relative
-# paths: units name the production path, /srv/archiver/live/... (CR 7).
-UNIT_ROOT=/srv/archiver/live
+# paths: units name the production path, $UNIT_ROOT/... (CR 7).
 entry_paths() {
   local unit
   for unit in "$release"/deploy/*.service; do

@@ -313,7 +313,11 @@ class World:
         scripts = self.checkout / "scripts"
         scripts.mkdir()
         shutil.copy(DEPLOY, scripts / "deploy.sh")
-        git(self.checkout, "add", "scripts/deploy.sh")
+        # And the code that names its release on /health: without it no commit
+        # can pass verification, so none may be deployed (CR 14).
+        (self.checkout / "src" / "core").mkdir(parents=True)
+        (self.checkout / "src" / "core" / "build.py").write_text("# reads REVISION\n")
+        git(self.checkout, "add", "scripts/deploy.sh", "src/core/build.py")
         self.main = [commit(self.checkout, f"main-{i}") for i in range(3)]
         git(self.checkout, "push", "-q", "origin", "main")
         git(self.checkout, "switch", "-q", "-c", "feature")
@@ -716,6 +720,30 @@ class TestWhatMayBeDeployed:
         """How a rollback is spelled: deploy the previous build again."""
         assert_ok(world.run(world.main[0]))
         assert world.live() == f"releases/{world.build(world.main[0])}"
+
+    def test_a_commit_whose_units_run_the_checkout_is_refused(self, world):
+        """CR 14: a commit from before releases. Its units would put production on
+        the checkout, and its /health could never name the build, so it would
+        fail verification every time, after running whatever is checked out."""
+        world.push_deploy(
+            {"archiver.service": "[Service]\nWorkingDirectory=/home/exedev/archiver\n"}
+        )
+        result = world.run()
+        assert result.returncode == 1
+        assert "predates releases" in result.stderr
+        assert not world.github_calls()
+        assert_nothing_happened(world)
+
+    def test_a_commit_that_cannot_name_its_release_is_refused(self, world):
+        world.push_deploy({"../src/core/build.py": None})
+        result = world.run("--skip-ci")
+        assert result.returncode == 1
+        assert "predates releases" in result.stderr
+        assert_nothing_happened(world)
+
+    def test_a_commit_whose_units_run_the_release_passes(self, world):
+        world.push_deploy({"archiver.service": "[Service]\nWorkingDirectory=/srv/archiver/live\n"})
+        assert_ok(world.run())
 
     def test_an_unknown_ref_is_refused(self, world):
         result = world.run("no-such-ref")
