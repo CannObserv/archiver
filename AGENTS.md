@@ -65,9 +65,9 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
   `generated/`.
 - `src/core/db_safety.py` is mirrored by `scripts/dev_server.sh`, kept in step by
   `tests/scripts/test_db_guard_parity.py`.
-- `tests/` mirrors `src/`; `tests/deploy/` pins host contracts - installed
-  systemd artifacts, the needrestart drop-in and the memory reservation
-  against `deploy/`, and the SocratiCode client config and server pin.
+- `tests/` mirrors `src/`; `tests/deploy/` pins host contracts - `deploy.sh`
+  end to end, installed units against the live release, the needrestart drop-in
+  and the memory reservation, and the SocratiCode client config and server pin.
 
 ## Content-acquisition via co-core
 
@@ -97,7 +97,12 @@ dashboard `https://co-registrar.exe.xyz/`, dev server
 
 **Port 8000 belongs to systemd. Never start uvicorn manually on 8000.**
 
-After committing to `main`: `sudo systemctl restart archiver`. After DB model changes: `ARCHIVER_ALLOW_PRODUCTION_DB=1 uv run alembic upgrade head`, then restart - `alembic/env.py` refuses production without the opt-in (#330; `scripts/deploy.sh` takes this over). Logs: `sudo journalctl -u archiver -f`.
+**Production runs a release, never this checkout (#330):** `/srv/archiver/live` →
+`releases/<build>`. Ship = merge, then `scripts/deploy.sh` (CI gate, rehearse on
+`archiver_dev`, migrate, switch, restart, verify, switch back on failure).
+`systemctl restart archiver` restarts the *current* release - it deploys nothing; hand
+alembic against production is refused without the opt-in. Logs: `sudo journalctl -u
+archiver -f`; deploys `-t archiver-deploy`. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Dev server (port 8001) - **always** via the launch script:
 
@@ -118,7 +123,7 @@ broker, so they go to 8000, and only when the operator asks
 Two env files load in order (later overrides earlier):
 
 1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`); managed manually on the VM.
-2. `.env` (repo root, git-ignored) - dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit.
+2. `.env` (repo root, git-ignored) - dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit; no unit reads it (#330).
 
 ```bash
 set -a
@@ -136,7 +141,8 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
   `_test`.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
-  (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305). **Never in an env file** - it
+  (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305) and
+  `scripts/deploy.sh`'s migration (#330). **Never in an env file** - it
   reopens the hole for every sourcing process.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.

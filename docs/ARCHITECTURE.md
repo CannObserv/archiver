@@ -257,9 +257,12 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                drop-in and its parity test left with the broker
                                (archiver#193 D6 → CannObserv/broker); the LIVE broker
                                config is still checked here by check_redis_floor.sh
-scripts/                       sync_wheelhouse.py (mirror co-core wheels from the private
-                               GCS index into ./.wheelhouse; run before uv sync, and in the
-                               archiver.service ExecStartPre) +
+scripts/                       deploy.sh (build a release from a pushed main commit,
+                               rehearse + migrate, switch /srv/archiver/live, verify,
+                               switch back on failure; archiver#330, DEPLOYMENT.md) +
+                               sync_wheelhouse.py (mirror co-core wheels from the private
+                               GCS index into ./.wheelhouse; run before uv sync, and by
+                               deploy.sh into each release) +
                                dump_openapi.py +
                                check_client_drift.py (regen vendored clients from
                                committed OpenAPI snapshots; diff vs generated/;
@@ -279,7 +282,8 @@ scripts/                       sync_wheelhouse.py (mirror co-core wheels from th
                                dev_server.sh (ONLY sanctioned way to start the
                                8001 dev server; refuses to resolve onto the
                                production DB — see "Server Lifecycle")
-deploy/                        README.md (install instructions) + systemd units:
+deploy/                        README.md (install instructions) + systemd units, all
+                               running /srv/archiver/live and installed by deploy.sh:
                                archiver.service +
                                needrestart.conf.d/archiver.conf (list restarts, never
                                perform them; archiver#278) +

@@ -1,10 +1,15 @@
 # deploy/
 
-Systemd units for the Archiver VM.
+Systemd units for the Archiver VM. **Every unit runs `/srv/archiver/live`, a
+release `scripts/deploy.sh` built from a pushed main commit, never this
+checkout, and the deploy installs the units from that release** (archiver#330;
+[docs/DEPLOYMENT.md § Releases](../docs/DEPLOYMENT.md#releases-archiver330)). A
+unit edit ships like code: merge it, run `scripts/deploy.sh`. The host configs
+below are compared by each deploy and installed by hand.
 
 | Unit / file | Type | Purpose |
 |---|---|---|
-| `archiver.service` | service | The live API on port 8000 (see CLAUDE.md -> Server Lifecycle). Its `ExecStartPre` mirrors the cannobserv wheelhouse (see below) and asserts the Redis >=7.0 floor when the bus is active. |
+| `archiver.service` | service | The live API on port 8000 (see CLAUDE.md -> Server Lifecycle). Its `ExecStartPre` asserts the Redis >=7.0 floor when the bus is active. |
 | `archiver-bus-health.service` | service (oneshot) | One WARN-only tick of the **outbox** probe: depth, oldest-unpublished age, dead-lettered count (#130, reduced by #193). Never blocks anything; see *Outbox health timer* below. |
 | `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
 | `archiver-pm-org-refresh.service` | service (oneshot) | One sweep of the Power Map org follower: a conditional GET per linked org, applying renames, merges and misses to `pm_organizations` (#305). Exits 0 with no database access when `ARCHIVER_POWER_MAP_API_KEY` is unset. See *Power Map org follower* below. |
@@ -90,9 +95,8 @@ sudo sysctl --system
 for d in system.slice.d system-postgresql.slice.d postgresql@16-main.service.d tailscaled.service.d; do
   sudo install -D -m 644 "deploy/$d/"*.conf -t "/etc/systemd/system/$d/"
 done
-sudo cp deploy/archiver.service /etc/systemd/system/
 sudo systemctl daemon-reload          # applies every MemoryLow=, restarts nothing
-sudo systemctl restart archiver       # OOMScoreAdjust= applies at start
+scripts/deploy.sh                     # installs the units; OOMScoreAdjust= applies at its restart
 sudo choom -p "$(systemctl show tailscaled -p MainPID --value)" -n -400   # or restart tailscaled
 sudo install -m 644 -o postgres -g postgres deploy/postgresql/16/main/environment /etc/postgresql/16/main/
 sudo systemctl restart postgresql@16-main   # the postmaster reads it at start
@@ -109,25 +113,21 @@ sum of its children's.
 
 `co-core` / `co-core-aio` resolve from `./.wheelhouse` (gitignored), mirrored
 from the private GCS index `gs://co-gcs-pypi` by `scripts/sync_wheelhouse.py`.
-The service's `ExecStartPre` runs that sync before `uv run`, so a restart always
-resolves against a current wheelhouse.
+**No unit syncs it any more** (archiver#330 D10): `scripts/deploy.sh` runs the
+release's own copy into the release before `uv sync`, so a start never depends
+on GCS, and removes the wheels once the venv is built.
 
 Requirements on the VM:
 
 - A read-only credential at `GOOGLE_APPLICATION_CREDENTIALS` (the
-  `co-pypi-reader@co-gcs` service-account key, referenced from
-  `/etc/archiver/.env`). Needs only `roles/storage.objectViewer` on the bucket.
+  `co-pypi-reader@co-gcs` service-account key), named in
+  `/etc/archiver/deploy.env`, which only the deploy reads. Needs only
+  `roles/storage.objectViewer` on the bucket.
 - `uv` (already required) - the sync runs via `uv run --no-project --with
   'google-cloud-storage>=2,<4'`, so no system Cloud SDK is needed.
 
-**Deploy step for the co-core adoption (one-time).** The unit gained an
-`ExecStartPre`; reinstall it before the next restart or the parity test
-(`tests/deploy/test_installed_unit_matches_repo.py`) flags drift:
-
-```bash
-sudo cp deploy/archiver.service /etc/systemd/system/ && sudo systemctl daemon-reload
-# then, when safe: sudo systemctl restart archiver
-```
+A checkout or worktree still syncs its own `.wheelhouse` by hand (CLAUDE.md,
+Environment & Tooling).
 
 (CI is keyless instead - the `lint`/`test` jobs authenticate via Workload
 Identity Federation; see `.github/workflows/ci.yml`.)
@@ -274,9 +274,8 @@ to one parameter on Redis 7.0 and also reads `requirepass` (archiver#257,
 CannObserv/broker#50). The probes are `timeout`-bounded (`ARCHIVER_REDIS_FLOOR_TIMEOUT`, default 5s)
 so it can never hang startup, and warns when `redis-cli` lacks TLS support for a
 `rediss://` URL; it soft-skips (never blocks) on a dormant or unreachable broker
-and blocks only a genuinely-<7.0 reachable one. Reinstall the unit after any edit
-(see the parity note under the wheelhouse section) -
-`tests/deploy/test_installed_unit_matches_repo.py` flags drift.
+and blocks only a genuinely-<7.0 reachable one. It runs from the live release
+(`/srv/archiver/live/scripts/`), so an edit ships with `scripts/deploy.sh`.
 
 
 
