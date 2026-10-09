@@ -33,7 +33,9 @@ or ``_dev`` suffix, or the caller must opt in explicitly via
 ``ARCHIVER_ALLOW_PRODUCTION_DB=1`` — which only units under ``deploy/`` do:
 ``archiver.service``, ``archiver-bus-health.service`` (a read-only
 ``changes_outbox`` query) and ``archiver-pm-org-refresh.service`` (the Power
-Map org follower, archiver#305), and nothing else. Never an ``EnvironmentFile``,
+Map org follower, archiver#305) - plus ``scripts/deploy.sh``, for the
+production schema check and migration it runs (archiver#330). ``alembic/env.py``
+and ``src/core/schema_state.py`` honour it too. Never an ``EnvironmentFile``,
 which is sourced by every process that loads it.
 """
 
