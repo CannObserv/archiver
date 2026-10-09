@@ -11,8 +11,8 @@ deps are what the wheelhouse provides), so invoke it in an isolated env:
     uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 
 Authentication is Application Default Credentials. On the VM/deploy that is the
-service-account key at ``GOOGLE_APPLICATION_CREDENTIALS``, set in
-``/etc/archiver/deploy.env`` only (#341): no unit needs it. In CI it is the ADC file written by
+service-account key at ``GOOGLE_APPLICATION_CREDENTIALS``, which belongs in
+``/etc/archiver/deploy.env`` alone (#341): no unit needs it. In CI it is the ADC file written by
 ``google-github-actions/auth`` (keyless Workload Identity Federation). Either
 way the identity needs only ``roles/storage.objectViewer`` on the bucket.
 
