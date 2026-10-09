@@ -16,6 +16,10 @@ What is left is what could not move:
   state the operator most needs told about. That is why ``archiver-bus-health``
   is **reduced** rather than retired in favour of the dashboard panel: a
   journald line fires whether or not anyone is looking at a page.
+- ``collect_schema_findings`` (archiver#330 D3) WARNs when the database is
+  behind the deployed code. Here, not on ``/ready``: only ``/health`` and
+  ``/openapi.json`` may be open, and this probe already runs from outside the
+  API process.
 - ``collect_group_lag`` feeds the archiver#147 dashboard bus panel.
   ``XPENDING`` against a remote broker is an ordinary client call.
 
@@ -52,6 +56,13 @@ from src.core.changes.outbox_stats import (
 from src.core.database import get_database_url, get_engine, get_session_factory
 from src.core.db_safety import ALLOW_PRODUCTION_DB_ENV, assert_production_db_allowed
 from src.core.logging import configure_logging, get_logger
+from src.core.schema_state import (
+    SchemaState,
+    classify,
+    code_head,
+    database_revision,
+    known_revisions,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only
     # Type-only: this module builds no Redis client. The one that used to live
@@ -192,6 +203,27 @@ def evaluate_outbox(stats: OutboxStats) -> list[Finding]:
     return findings
 
 
+def evaluate_schema(
+    state: SchemaState, *, database_revision: str | None, head: str
+) -> list[Finding]:
+    """WARN when the database is behind the deployed code (archiver#330 D3).
+
+    ``ahead`` is silent: older code on a newer schema is what a rollback looks
+    like, and the expand-only rule makes it safe to serve.
+    """
+    if state.can_serve:
+        return []
+    return [
+        Finding(
+            check="schema",
+            subject="alembic_version",
+            message=f"database schema is {state.value} (database {database_revision or '-'}, "
+            f"code {head}) - the release was switched without its migration; "
+            "run scripts/deploy.sh",
+        )
+    ]
+
+
 # --- collectors ---
 
 
@@ -249,17 +281,38 @@ async def collect_outbox_findings(
     return evaluate_outbox(stats)
 
 
+async def collect_schema_findings(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> list[Finding]:
+    """The schema check from outside the API process, on the probe's cadence."""
+    try:
+        async with session_factory() as session:
+            rev = await database_revision(await session.connection())
+        head = code_head()
+        state = classify(rev, head=head, known=known_revisions())
+    except Exception as e:  # noqa: BLE001 - any failure is the finding
+        return [
+            Finding(
+                check="schema",
+                subject="alembic_version",
+                message=f"schema check failed: {e!r}",
+            )
+        ]
+    return evaluate_schema(state, database_revision=rev, head=head)
+
+
 # --- orchestration ---
 
 
 async def run_once(*, session_factory: async_sessionmaker[AsyncSession]) -> list[Finding]:
-    """One probe tick: query the outbox, WARN per finding, one summary line.
+    """One probe tick: query the outbox and the schema, WARN per finding, one summary line.
 
     Stateless since archiver#193 Phase 3. The state file existed to carry the
     two-tick ``XPENDING`` rule between oneshot runs, and that rule went to the
     broker repo with the groups it debounced.
     """
     findings = await collect_outbox_findings(session_factory)
+    findings += await collect_schema_findings(session_factory)
 
     for finding in findings:
         logger.warning(
