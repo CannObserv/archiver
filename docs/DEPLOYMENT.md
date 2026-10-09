@@ -30,7 +30,10 @@ tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
 
 ### `scripts/deploy.sh`
 
-Run as `exedev`, from the checkout, after the PR merges. It fetches `origin` itself.
+Run as `exedev`, from the checkout, after the PR merges. It fetches `origin` itself, then
+**refuses unless it is itself byte-identical to `origin/main:scripts/deploy.sh`** (CR 10): the
+deploy logic is reviewed code like what it deploys, so a branch or an uncommitted edit to the
+script cannot decide how production deploys. `git switch main && git pull --ff-only` first.
 
 ```bash
 scripts/deploy.sh                       # origin/main, once its CI passed
