@@ -3,6 +3,12 @@
 Per-table contracts and invariants for the registry. Identifiers are verbatim —
 see the never-rename rule in `AGENTS.md`.
 
+**Migrations are expand-only** (archiver#330 D3). `scripts/deploy.sh` migrates
+before it switches releases, and a rollback never downgrades, so the previous
+release must run on the new schema. Add tables and columns nullable or with a
+default; a drop, a rename or a new `NOT NULL` without a default ships as two
+deploys: stop using it, then remove it.
+
 ## Entities
 
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.

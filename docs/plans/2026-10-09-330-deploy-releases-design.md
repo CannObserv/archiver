@@ -41,7 +41,7 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
 | D2 | No deployed `dev` target. `dev_server.sh` stays the 8001 loop; the deploy's rehearsal is migrate + `schema_state` against `archiver_dev` from the new release (`/etc/archiver/dev.env`) | Differs from R12: CLAUDE.md routes agent writes to 8001 through `dev_server.sh`, and nothing consumes a stable 8001 |
 | D3 | Migrate → swap → units → restart → verify → switch back; expand-only; skip on `ahead`; never block a start | R6, R7, R8, R9 unchanged. The runtime check is a CLI plus a bus-health WARN, not `/ready` (only `/health` and `/openapi.json` may be open) |
 | D4 | Both timers run `live`. Verify forces one `archiver-bus-health` pass (waiting out one in flight); never forces `pm-org-refresh` | R6's forced pass, applied to the read-only probe only |
-| D5 | Keep 5 releases plus the linked one | R13 (~250 MB each; 9 GB free) |
+| D5 | Keep the 5 newest releases; never prune the linked one | R13 (~250 MB each; 9 GB free) |
 | D6 | CI gate: newest `push` run of `ci.yml` on `main`, every job `success`, floor `lint test client-drift changelog`; `--skip-ci` logged | status#11 / processor#34 unchanged; the repo is public, no token |
 | D7 | Drift check reporting to co-status `co-archiver-drift` | processor#35's shape; **separate issue** (operator prerequisites) |
 | D8 | `/health` `build_id` comes from the release's `REVISION`; `null` outside a release | R10, but `null` not `"dev"`: the field is already nullable, so the contract change is description-only |
@@ -71,8 +71,8 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
    crosses `db_safety` online (D9); `src/core/schema_state.py` with `classify()` and a CLI
    exiting 0 `current`/`ahead`, 3 `behind`/`unmigrated`, 2 otherwise (D3); `archiver-bus-health`
    WARNs on `behind`/`unmigrated`; `src/core/build.py` reads `REVISION` and `/health` uses it
-   (D8), with CHANGELOG, OpenAPI snapshot and SDK regenerated. The unit keeps writing
-   `BUILD_ID` until PR B, so the build path falls back to it there.
+   (D8), with CHANGELOG, OpenAPI snapshot and SDK regenerated. The checkout units keep
+   writing `BUILD_ID` until the cutover, so the build path falls back to it there.
 2. **PR B - the deploy**: `scripts/deploy.sh` (D1-D6, D10-D12) and `tests/deploy/test_deploy.py`
    on status's stub harness; units moved to `/srv/archiver/live` with `--frozen --no-sync`, no
    repo `.env`, no git stamp, no wheelhouse `ExecStartPre`; unit invariant tests (no
@@ -87,14 +87,17 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
    `readlink /srv/archiver/live`; switch the checkout to a branch, restart and start both
    timers' services, and show `build_id` unchanged.
 4. **Cleanup**: delete `.skills/worktree_venv`; drop the hand-run `alembic upgrade head` from
-   docs; set `.skills/deploy_command` when gregoryfoster/skills#345 ships.
+   docs (the shipping override's Step 8 moved with PR B, CR 15); set `.skills/deploy_command` when gregoryfoster/skills#345 ships.
 5. **Follow-ups filed**: drift check (D7), dedicated service user (D1), the skills issue
    (filed as gregoryfoster/skills#372).
 
 ## Open questions / risks
 
 - **`BUILD_ID` fallback lifetime.** PR A keeps reading the unit's `BUILD_ID` when no `REVISION`
-  exists, so `/health` does not go `null` between PR A and the cutover. PR B removes it.
+  exists, so `/health` does not go `null` before the cutover. PR B's units stamp nothing, but
+  the installed (checkout) units keep stamping until the cutover deploy replaces them, and a
+  failed first deploy restores them - so the fallback stays until after the cutover. Dropping
+  it then is a description-only contract change (CHANGELOG + SDK docstring).
 - **Restart budget.** `archiver.service` has the default `TimeoutStopSec` (90 s); the verify
   window is derived from it plus start time, not a fixed 60 s.
 - **First deploy rollback.** With nothing to switch back to, a failed first deploy restores the

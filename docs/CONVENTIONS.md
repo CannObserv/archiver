@@ -18,11 +18,12 @@ changelog there. On a PR, the `no-changelog` label opts out.
 ## Logging - plain-text `ExecStartPre` lines in journald
 
 The app's own records - including uvicorn's access/error lines via `--log-config`
-- are JSON. `ExecStartPre` steps in `deploy/archiver.service` (wheelhouse sync,
-redis floor check) write **plain text** to journald by design: they run
-outside the app process, before the Python logging config exists, so they
+- are JSON. The `ExecStartPre` step in `deploy/archiver.service` (the redis floor
+check; the wheelhouse sync moved to deploy time, #330) and `scripts/deploy.sh`'s
+`archiver-deploy` journal lines write **plain text** to journald by design: they run
+outside the app process, or before the Python logging config exists, so they
 cannot use `build_json_formatter()`. A journald consumer that blindly `json.loads` every
-`MESSAGE` must tolerate these lines (the failure-path `error: could not sync gs://…`
+`MESSAGE` must tolerate these lines (`check_redis_floor: …` and `live -> <build> (was …)`
 in particular); native field-based readers are unaffected. See archiver#124,
 gregoryfoster/skills#83.
 

@@ -3,27 +3,19 @@
 Same failure class as ``test_installed_unit_matches_repo``: the deployed thing
 quietly diverging from the documented thing. Both units are asserted for
 content in the repo copy (runs everywhere) and for byte-parity against
-``/etc/systemd/system/`` (skips on hosts that do not run the timer).
+``/etc/systemd/system/`` against the live release's copy (skips on hosts that do
+not run the timer, or are not cut over yet; archiver#330).
 """
 
 from pathlib import Path
 
 import pytest
 
+from tests.deploy.live_release import drift_message, installed_and_expected
+
 _DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 REPO_SERVICE = _DEPLOY / "archiver-bus-health.service"
 REPO_TIMER = _DEPLOY / "archiver-bus-health.timer"
-INSTALLED_SERVICE = Path("/etc/systemd/system/archiver-bus-health.service")
-INSTALLED_TIMER = Path("/etc/systemd/system/archiver-bus-health.timer")
-
-
-def _read_if_installed(path: Path) -> str | None:
-    """Only ``FileNotFoundError`` means "not installed" - a ``PermissionError``
-    propagates rather than silently passing (see the archiver.service test)."""
-    try:
-        return path.read_text()
-    except FileNotFoundError:
-        return None
 
 
 def test_service_is_a_oneshot_probe() -> None:
@@ -91,23 +83,8 @@ def test_timer_ticks_periodically() -> None:
     assert "OnBootSec=" in text
 
 
-def test_installed_service_matches_repo() -> None:
-    installed = _read_if_installed(INSTALLED_SERVICE)
-    if installed is None:
-        pytest.skip(f"{INSTALLED_SERVICE} not present - not a host running the timer")
-    assert installed == REPO_SERVICE.read_text(), (
-        f"{INSTALLED_SERVICE} has drifted from {REPO_SERVICE}.\n"
-        "Reinstall with:\n"
-        f"  sudo cp {REPO_SERVICE} {INSTALLED_SERVICE} && sudo systemctl daemon-reload"
-    )
-
-
-def test_installed_timer_matches_repo() -> None:
-    installed = _read_if_installed(INSTALLED_TIMER)
-    if installed is None:
-        pytest.skip(f"{INSTALLED_TIMER} not present - not a host running the timer")
-    assert installed == REPO_TIMER.read_text(), (
-        f"{INSTALLED_TIMER} has drifted from {REPO_TIMER}.\n"
-        "Reinstall with:\n"
-        f"  sudo cp {REPO_TIMER} {INSTALLED_TIMER} && sudo systemctl daemon-reload"
-    )
+@pytest.mark.parametrize("name", ["archiver-bus-health.service", "archiver-bus-health.timer"])
+def test_installed_unit_matches_the_live_release(name: str) -> None:
+    """archiver#330 D12: what a host should hold is the live release's copy."""
+    installed, expected = installed_and_expected(name)
+    assert installed == expected, drift_message(name)

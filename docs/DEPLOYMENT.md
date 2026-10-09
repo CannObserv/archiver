@@ -1,9 +1,131 @@
 # archiver — Deployment & Configuration
 
-Wheelhouse reproducibility, dev-server internals, and the full environment
-variable reference. `AGENTS.md` keeps the safety rules; the reference lives here.
+Releases and `scripts/deploy.sh`, wheelhouse reproducibility, dev-server internals,
+and the full environment variable reference. `AGENTS.md` keeps the safety rules; the reference lives here.
 The host's place on the tailnet - node identity, the ACL, why there is no
 tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
+
+## Releases (archiver#330)
+
+**Production runs a release, never a checkout.** Design and reasons:
+[plans/2026-10-09-330-deploy-releases-design.md](plans/2026-10-09-330-deploy-releases-design.md)
+(D1-D12), adopted from CannObserv/status's R1-R13.
+
+```
+/srv/archiver/                 root:root 0755
+  releases/<build>/            git archive of one origin/main commit + its own .venv;
+                               root's, read-only; REVISION (12-char SHA) written last
+  live -> releases/<build>     archiver.service, archiver-bus-health, archiver-pm-org-refresh
+```
+
+- **Nothing done in `/home/exedev/archiver` reaches a unit**: branch switches, uncommitted
+  edits, `uv sync`, hook commits. Units run `uv run --frozen --no-sync` from
+  `/srv/archiver/live`, read `/etc/archiver/.env` only, and stamp nothing: `/health`'s
+  `build_id` is the release's `REVISION`.
+- **Root owns the root, `releases/` and each finished release** (status#14): changing what a
+  unit runs takes `sudo`, which journals the command. Not a boundary against `exedev`.
+- **The venv is copied** (`--link-mode copy`), not hardlinked to `~/.cache/uv`, on
+  `/usr/bin/python3.12`; the private wheels are fetched into the release and removed once
+  the venv is built (D10).
+
+### `scripts/deploy.sh`
+
+Run as `exedev`, from the checkout, after the PR merges. It fetches `origin` itself, then
+**refuses unless it is itself byte-identical to `origin/main:scripts/deploy.sh`** (CR 10): the
+deploy logic is reviewed code like what it deploys, so a branch or an uncommitted edit to the
+script cannot decide how production deploys. `git switch main && git pull --ff-only` first.
+
+```bash
+scripts/deploy.sh                       # origin/main, once its CI passed
+scripts/deploy.sh <build>               # an earlier build since the cutover, green CI: a rollback
+scripts/deploy.sh --skip-ci [<build>]   # without asking CI: an emergency, logged
+journalctl -t archiver-deploy -n 20     # "CI passed for <build>", "live -> <build> (was ...)"
+```
+
+**A commit from before releases is refused**, before CI is asked (CR 14): one whose
+`deploy/*.service` runs anywhere but `/srv/archiver/live`, or that has no `src/core/build.py`.
+Its units would put production on the checkout, and its `/health` cannot name a release, so
+verification would always fail after the checkout had served. So no rollback reaches past the
+cutover: for older code, revert it on `main` and deploy that.
+
+In order, each step refusing before anything switches:
+
+1. **CI gate** (D6): the newest `push` run of `ci.yml` on `main` for exactly that commit,
+   every job `success`, `lint test client-drift changelog` among them. Pending waits up to
+   10 min; a commit with no run (not the tip of its push) is refused. Unauthenticated: the
+   repo is public.
+2. **Build** `releases/<build>`, or reuse a finished one whose venv imports: `git archive`;
+   the release's `scripts/sync_wheelhouse.py` with `GOOGLE_APPLICATION_CREDENTIALS` from
+   `/etc/archiver/deploy.env`; `uv sync --locked --no-dev`; one Alembic head; **every unit's
+   `ExecStart` module imports** (D11, the 2026-10-08 failure); read-only; root's; `REVISION`.
+   The release `live` runs is never rebuilt in place.
+3. **Rehearse** (D2): `python -m src.core.schema_state`, then `alembic upgrade head`, against
+   `ARCHIVER_DEV_DATABASE_URL` from `/etc/archiver/dev.env`. `ahead` there is expected in a
+   rollback (the newer build's rehearsal migrated it). Otherwise it is a branch migration from
+   a worktree's `dev_server.sh` that never merged: downgrade it, or the rehearsal rehearses
+   nothing. **A rehearsal that cannot read `archiver_dev` at all (unreachable,
+   refused by `db_safety`, crashed) refuses the production deploy**, exit 1, nothing switched:
+   bring `archiver_dev` back or fix `dev.env`. A production fix does not wait on it through
+   a flag, by design: the rehearsal is what proves the migration first.
+4. **Migrate** `archiver` the same way, with `ARCHIVER_ALLOW_PRODUCTION_DB=1`; skipped when
+   the schema is `ahead` (a rollback). Migrations are **expand-only** (D3): the old release
+   runs on the new schema between this step and the switch, and after any rollback.
+5. **Switch** `live` (rename(2)), then **install the units that differ** from the release,
+   one `daemon-reload`, `try-restart` for a changed timer. A new unit is installed, never
+   enabled: the deploy prints the `enable --now` it needs.
+6. **Restart** `archiver`, wait out a running `archiver-bus-health` pass, force one, and
+   **verify**: `/health` `build_id` is `<build>` and `schema_state` can serve, within
+   `ARCHIVER_DEPLOY_VERIFY_SECONDS` (120). `archiver-pm-org-refresh` is never forced (D4).
+7. **On failure**, switch back - link and units - `reset-failed`, restart, prove the old
+   build. Exit 1 when it answers, 4 when it does not. The migration stays.
+
+Then host configs under `deploy/` are compared with their installed copies (a difference is a
+note, never an install), and releases beyond the 5 newest are pruned, never the linked one.
+
+| Variable | Default | What |
+|---|---|---|
+| `ARCHIVER_DEPLOY_ROOT` | `/srv/archiver` | releases and the `live` link |
+| `ARCHIVER_DEPLOY_ENV_DIR` | `/etc/archiver` | `.env` (units), `dev.env` (rehearsal), `deploy.env` (wheel fetch) |
+| `ARCHIVER_DEPLOY_ETC` | `/etc` | units in `systemd/system/`; host configs compared there |
+| `ARCHIVER_DEPLOY_KEEP` | `5` | the newest releases kept (by last deploy); the linked one is never pruned |
+| `ARCHIVER_DEPLOY_VERIFY_SECONDS` | `120` | `/health` and the schema must answer within it |
+| `ARCHIVER_DEPLOY_PROBE_WAIT_SECONDS` | `90` | how long to wait out a running bus-health pass |
+| `ARCHIVER_DEPLOY_CI_WAIT_SECONDS` / `_POLL_SECONDS` | `600` / `30` | the CI gate's wait |
+| `ARCHIVER_DEPLOY_PYTHON` | `/usr/bin/python3.12` | the interpreter each venv is built on |
+
+**Hand-run alembic against production is refused** unless `ARCHIVER_ALLOW_PRODUCTION_DB=1`
+(D9); against dev, unset `ARCHIVER_DATABASE_URL` and set `DATABASE_URL` to the dev URL.
+**A hand edit of an installed unit lasts until the next deploy**, which replaces it and says
+so; put the fix in `deploy/`. `tests/deploy/` compares installed units with the live release.
+
+### First deploy (the cutover, once per VM)
+
+Operator-present. The first deploy has no release to switch back to: on a failed verify it
+puts back the checkout-backed units it replaced, removes `live` and restarts on them (exit 1
+when archiver answers, 4 when not).
+
+```bash
+sudo install -d -m 755 -o root -g root /srv/archiver
+# 0640 before anything is written: tee keeps an existing file's mode, and a file
+# it creates would hold the dev password world-readable until a later chmod (CR 3).
+for f in dev.env deploy.env; do sudo install -m 640 -o root -g exedev /dev/null "/etc/archiver/$f"; done
+# The rehearsal URL, copied from the repo .env: never typed, so never in history.
+grep '^ARCHIVER_DEV_DATABASE_URL=' /home/exedev/archiver/.env | sudo tee /etc/archiver/dev.env >/dev/null
+printf 'GOOGLE_APPLICATION_CREDENTIALS=/etc/archiver/co-pypi-reader.json\n' \
+    | sudo tee /etc/archiver/deploy.env >/dev/null
+cd /home/exedev/archiver && git switch main && git pull --ff-only
+scripts/deploy.sh
+curl -s http://127.0.0.1:8000/health; readlink /srv/archiver/live
+```
+
+Then prove the point: `git switch` the checkout to any branch, `sudo systemctl restart
+archiver` and start both timers' services; `build_id` is unchanged. Then delete
+`.skills/worktree_venv` (the checkout's `.venv` is no longer production's).
+
+**Leave `GOOGLE_APPLICATION_CREDENTIALS` in `/etc/archiver/.env` for now.** No unit needs it,
+but the checkout's wheelhouse recipe (CLAUDE.md § Environment & Tooling) and the
+`using-git-worktrees` override source it from there (CR 4). Moving it to `deploy.env` alone
+is one post-cutover change: repoint both recipes, then delete the line.
 
 ## cannobserv substrate
 
@@ -20,7 +142,7 @@ wheelhouse before `uv sync`/`uv run`:
 Reproducibility is `uv.lock` (pinned version + wheelhouse artifact), not the
 wheelhouse contents. Upgrade: re-sync, then `uv lock --upgrade-package co-core`
 (bump the floor if the minor moved). CI resolves the wheelhouse keyless via Workload
-Identity Federation; the deploy unit syncs it in `ExecStartPre`. No git sources and
+Identity Federation; `scripts/deploy.sh` fetches it into each release (§ Releases). No git sources and
 no `cannobserv`/`co-core-sync` (heavy google/trello deps). Archiver depends on
 **`co-core[extract]`** + `co-core-aio` — the authoring tools use `co_core_aio.fetch`
 (fetch) and `co_core.pure.extract` (extract + fingerprint); see "Content-acquisition

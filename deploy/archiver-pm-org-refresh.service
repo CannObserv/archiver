@@ -8,13 +8,13 @@ After=network.target postgresql.service
 [Service]
 Type=oneshot
 User=exedev
-WorkingDirectory=/home/exedev/archiver
+# The live release, as archiver.service (archiver#330).
+WorkingDirectory=/srv/archiver/live
 
-# Same env layering as archiver.service. /etc/archiver/.env carries
+# Same env as archiver.service, /etc/archiver/.env only. It carries
 # ARCHIVER_POWER_MAP_API_KEY; with no key the follower exits 0 without
 # touching the database (dormant).
 EnvironmentFile=/etc/archiver/.env
-EnvironmentFile=-/home/exedev/archiver/.env
 
 # The follower writes pm_organizations (snapshots, missing_since, merged_into)
 # and re-points info_items.pm_org_id on a merge, on the production database.
@@ -33,4 +33,4 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # beats hanging.
 TimeoutStartSec=900
 
-ExecStart=/usr/local/bin/uv run python -m src.core.tools.refresh_orgs
+ExecStart=/usr/local/bin/uv run --frozen --no-sync python -m src.core.tools.refresh_orgs
