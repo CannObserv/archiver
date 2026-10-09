@@ -534,7 +534,7 @@ first_deploy_failed() {
   sudo systemctl restart "$API" || true
   if verify_health "*"; then
     journal "live failed on $build; the units it replaced are back, answering"
-    die "live failed on $build; the units it replaced are back and archiver is answering on them, which is answering"
+    die "live failed on $build; the units it replaced are back, and archiver is answering on them"
   fi
   journal "live failed on $build; the units it replaced are back, NOT answering"
   dead "live failed on $build; the units it replaced are back, and archiver is NOT answering:" \

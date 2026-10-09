@@ -1114,8 +1114,8 @@ class TestTheFirstDeploy:
         assert result.returncode == 1, result.stderr
         assert world.installed("archiver.service") == CHECKOUT_UNITS["archiver.service"]
         assert world.live() is None, "nothing runs the release: no link to mislead"
-        assert "units it replaced are back" in result.stderr
-        assert "which is answering" in result.stderr
+        assert "the units it replaced are back, and archiver is answering on them" in result.stderr
+        assert "which is answering" not in result.stderr, "CR 5: said once, plainly"
         assert world.calls().count("sudo systemctl restart archiver") == 2
 
     def test_a_failed_first_deploy_whose_old_units_do_not_answer_either_is_dead(self, world):
