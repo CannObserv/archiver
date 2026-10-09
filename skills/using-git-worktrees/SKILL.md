@@ -137,7 +137,7 @@ ln -s "$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd)")/.venv" .ven
 On a branch that changes `pyproject.toml` or `uv.lock`, replace the link with the worktree's own environment instead (`rm .venv && uv sync`). `uv sync` resolves co-core from `./.wheelhouse`, which is gitignored and does not come with the worktree:
 
 ```bash
-set -a; . /etc/archiver/.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS
+set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS, and nothing else (#341)
 uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 ```
 

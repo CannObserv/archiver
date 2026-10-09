@@ -123,10 +123,12 @@ archiver` and start both timers' services; `build_id` is unchanged. Done on this
 2026-10-09 (`e68f1389771b`); `.skills/worktree_venv` went with it, since the checkout's
 `.venv` is no longer production's.
 
-**Leave `GOOGLE_APPLICATION_CREDENTIALS` in `/etc/archiver/.env` for now.** No unit needs it,
-but the checkout's wheelhouse recipe (CLAUDE.md § Environment & Tooling) and the
-`using-git-worktrees` override source it from there (CR 4). Moving it to `deploy.env` alone
-is one post-cutover change: repoint both recipes, then delete the line.
+**`GOOGLE_APPLICATION_CREDENTIALS` belongs in `/etc/archiver/deploy.env` alone** (#341). No
+unit needs it: `deploy.sh` reads it from there, and so do the checkout's wheelhouse recipes
+(CLAUDE.md § Environment & Tooling, the `using-git-worktrees` override). Until #341 it was in
+`/etc/archiver/.env` too, which put it in every unit's environment. On a VM that still has it
+there, delete the line, then restart: `sudo sed -i '/^GOOGLE_APPLICATION_CREDENTIALS=/d'
+/etc/archiver/.env`, then `scripts/deploy.sh` or `sudo systemctl restart archiver`.
 
 ## cannobserv substrate
 
