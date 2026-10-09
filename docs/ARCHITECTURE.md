@@ -229,9 +229,17 @@ src/core/                      Domain logic
   db_safety.py                 Production-DB startup guard — refuses to serve a
                                database whose name lacks a _test/_dev suffix
                                unless ARCHIVER_ALLOW_PRODUCTION_DB=1 (set only
-                               by deploy/archiver.service). Called from the
-                               FastAPI lifespan; mirrored in scripts/dev_server.sh
-                               and kept in step by tests/scripts/test_db_guard_parity.py
+                               by the deploy/ units and scripts/deploy.sh's
+                               migration). Called from the FastAPI lifespan,
+                               alembic/env.py and schema_state.py; mirrored in
+                               scripts/dev_server.sh and kept in step by
+                               tests/scripts/test_db_guard_parity.py
+  schema_state.py              The database's Alembic revision against the code's
+                               head: current / behind / ahead / unmigrated
+                               (archiver#330 D3). CLI exits 0/3/2 for the deploy;
+                               archiver-bus-health WARNs on a state that cannot serve
+  build.py                     /health's build_id: the serving release's REVISION,
+                               else the unit's BUILD_ID stamp (archiver#330 D8)
 clients/python/                archiver_client SDK v5.x (generated + hand-written wrappers).
                                Version lives in clients/python/pyproject.toml and
                                bumps only when the SDK surface changes

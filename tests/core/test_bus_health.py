@@ -28,6 +28,7 @@ from co_core.pure.adapters.bus.streams import (
     stream_kind,
 )
 from fakeredis import aioredis as fakeredis_aio
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core import bus_health
 from src.core.bus_health import (
@@ -37,6 +38,7 @@ from src.core.bus_health import (
 )
 from src.core.changes.consumer import CONSUMER_GROUP as REVISIONS_GROUP
 from src.core.changes.outbox_stats import OutboxStats
+from src.core.schema_state import SchemaState
 
 
 @pytest.fixture
@@ -169,6 +171,47 @@ async def test_group_lag_propagates_an_unreachable_broker() -> None:
         await bus_health.collect_group_lag(DownRedis())
 
 
+# --- schema (archiver#330 D3) ---
+
+
+@pytest.mark.parametrize("state", [SchemaState.BEHIND, SchemaState.UNMIGRATED])
+def test_schema_that_cannot_serve_is_a_finding(state) -> None:
+    findings = bus_health.evaluate_schema(state, database_revision="dbrev", head="codehead")
+    assert [(f.check, f.subject) for f in findings] == [("schema", "alembic_version")]
+    assert state.value in findings[0].message
+    assert "scripts/deploy.sh" in findings[0].message
+
+
+@pytest.mark.parametrize("state", [SchemaState.CURRENT, SchemaState.AHEAD])
+def test_schema_that_can_serve_is_healthy(state) -> None:
+    """``ahead`` is a rollback under the expand-only rule, not a fault."""
+    assert bus_health.evaluate_schema(state, database_revision="x", head="y") == []
+
+
+async def test_collect_schema_findings_reads_the_migrated_test_database(test_engine) -> None:
+    assert await bus_health.collect_schema_findings(async_sessionmaker(test_engine)) == []
+
+
+async def test_collect_schema_findings_turns_a_db_failure_into_a_finding() -> None:
+    def _explode():
+        raise RuntimeError("db down")
+
+    findings = await bus_health.collect_schema_findings(_explode)
+    assert [(f.check, f.subject) for f in findings] == [("schema", "alembic_version")]
+    assert "db down" in findings[0].message
+
+
+async def test_run_once_reports_schema_findings_beside_the_outbox(monkeypatch) -> None:
+    schema_finding = bus_health.Finding(check="schema", subject="alembic_version", message="m")
+    monkeypatch.setattr(bus_health, "collect_outbox_findings", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        bus_health, "collect_schema_findings", AsyncMock(return_value=[schema_finding])
+    )
+    monkeypatch.setattr(bus_health.logger, "warning", MagicMock())
+
+    assert await bus_health.run_once(session_factory=MagicMock()) == [schema_finding]
+
+
 # --- logging surface ---
 
 
@@ -200,6 +243,7 @@ async def test_run_once_healthy_logs_info_summary(monkeypatch) -> None:
         "collect_outbox_findings",
         AsyncMock(return_value=[]),
     )
+    monkeypatch.setattr(bus_health, "collect_schema_findings", AsyncMock(return_value=[]))
 
     findings = await bus_health.run_once(session_factory=MagicMock())
 

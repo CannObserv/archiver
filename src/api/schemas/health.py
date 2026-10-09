@@ -9,7 +9,9 @@ class HealthOut(BaseModel):
     status: str = Field(description="Liveness indicator; always 'ok' when the process is up.")
     build_id: str | None = Field(
         description=(
-            "Deployed build identifier from the BUILD_ID environment variable "
-            "(git describe --always --dirty at service start). Null when unset."
+            "Deployed build identifier: the serving release's REVISION, the "
+            "12-character commit SHA scripts/deploy.sh writes into each release "
+            "(archiver#330). Before the units run releases, the unit's BUILD_ID "
+            "stamp. Null when neither exists (a dev server, the test suite)."
         ),
     )

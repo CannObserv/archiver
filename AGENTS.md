@@ -97,7 +97,7 @@ dashboard `https://co-registrar.exe.xyz/`, dev server
 
 **Port 8000 belongs to systemd. Never start uvicorn manually on 8000.**
 
-After committing to `main`: `sudo systemctl restart archiver`. After DB model changes: `uv run alembic upgrade head` then restart. Logs: `sudo journalctl -u archiver -f`.
+After committing to `main`: `sudo systemctl restart archiver`. After DB model changes: `ARCHIVER_ALLOW_PRODUCTION_DB=1 uv run alembic upgrade head`, then restart - `alembic/env.py` refuses production without the opt-in (#330; `scripts/deploy.sh` takes this over). Logs: `sudo journalctl -u archiver -f`.
 
 Dev server (port 8001) - **always** via the launch script:
 
@@ -149,7 +149,7 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
 uv sync                                      # deps; resolves co-core from ./.wheelhouse (populate it first)
 uv run pytest                                # tests
 uv run ruff check .                          # lint (also ruff format .)
-uv run alembic upgrade head                  # apply migrations
+uv run alembic upgrade head                  # apply migrations (_test/_dev DBs; production: Server Lifecycle)
 uv run alembic revision --autogenerate -m "description"
 
 # Pre-commit: install once per clone, then it runs on each git commit.

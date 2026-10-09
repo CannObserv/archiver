@@ -12,6 +12,11 @@ from alembic import context
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from src.core.db_safety import (
+    ProductionDatabaseRefused,
+    assert_production_db_allowed,
+    production_opt_in,
+)
 from src.core.models import Base
 from src.core.models.base import ULIDType
 
@@ -96,8 +101,29 @@ async def _ensure_schema(engine) -> None:
         await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {INFORMATION_SCHEMA}"))
 
 
+def assert_migration_target_allowed(url: str) -> None:
+    """Refuse an un-opted-in production database before connecting (archiver#330 D9).
+
+    ``scripts/deploy.sh`` is the one sanctioned migrator of production: it alone
+    passes ``ARCHIVER_ALLOW_PRODUCTION_DB=1``. A shell that sourced
+    ``/etc/archiver/.env`` holds the production URL, so without this an
+    ``upgrade`` or ``downgrade`` from it reaches the live registry. Offline
+    (``--sql``) runs connect to nothing and are not checked (status#15).
+    """
+    try:
+        assert_production_db_allowed(url, allow_flag=production_opt_in())
+    except ProductionDatabaseRefused as e:
+        raise ProductionDatabaseRefused(
+            f"{e}\n  alembic: production migrates only through scripts/deploy.sh. "
+            'Against the dev database: DATABASE_URL="$ARCHIVER_DEV_DATABASE_URL" '
+            "with ARCHIVER_DATABASE_URL unset."
+        ) from e
+
+
 async def run_migrations_online() -> None:
-    connectable = create_async_engine(get_url())
+    url = get_url()
+    assert_migration_target_allowed(url)
+    connectable = create_async_engine(url)
     await _ensure_schema(connectable)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
