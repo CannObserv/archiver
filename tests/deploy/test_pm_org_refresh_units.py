@@ -1,26 +1,19 @@
 """The Power Map org follower's timer units (archiver#305): content, gating, parity.
 
 Modelled on ``test_bus_health_units``: the repo copy is asserted everywhere,
-byte-parity against ``/etc/systemd/system/`` only where the timer is installed.
+byte-parity of ``/etc/systemd/system/`` with the live release's copy only where
+the timer is installed and the host is cut over (archiver#330).
 """
 
 from pathlib import Path
 
 import pytest
 
+from tests.deploy.live_release import drift_message, installed_and_expected
+
 _DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 REPO_SERVICE = _DEPLOY / "archiver-pm-org-refresh.service"
 REPO_TIMER = _DEPLOY / "archiver-pm-org-refresh.timer"
-INSTALLED_SERVICE = Path("/etc/systemd/system/archiver-pm-org-refresh.service")
-INSTALLED_TIMER = Path("/etc/systemd/system/archiver-pm-org-refresh.timer")
-
-
-def _read_if_installed(path: Path) -> str | None:
-    """Only ``FileNotFoundError`` means "not installed"; anything else propagates."""
-    try:
-        return path.read_text()
-    except FileNotFoundError:
-        return None
 
 
 def _directives(path: Path, key: str) -> list[str]:
@@ -64,14 +57,9 @@ def test_timer_ticks_hourly() -> None:
 
 
 @pytest.mark.parametrize(
-    ("repo", "installed"), [(REPO_SERVICE, INSTALLED_SERVICE), (REPO_TIMER, INSTALLED_TIMER)]
+    "name", ["archiver-pm-org-refresh.service", "archiver-pm-org-refresh.timer"]
 )
-def test_installed_unit_matches_repo(repo: Path, installed: Path) -> None:
-    text = _read_if_installed(installed)
-    if text is None:
-        pytest.skip(f"{installed} not present - not a host running the timer")
-    assert text == repo.read_text(), (
-        f"{installed} has drifted from {repo}.\n"
-        "Reinstall with:\n"
-        f"  sudo cp {repo} {installed} && sudo systemctl daemon-reload"
-    )
+def test_installed_unit_matches_the_live_release(name: str) -> None:
+    """archiver#330 D12: what a host should hold is the live release's copy."""
+    installed, expected = installed_and_expected(name)
+    assert installed == expected, drift_message(name)

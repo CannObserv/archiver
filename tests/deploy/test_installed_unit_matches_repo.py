@@ -13,29 +13,18 @@ apply a needed setting or, worse, leave the service unable to start on its
 next restart.
 
 Skips when the unit is not installed, so CI and dev clones pass; it only
-asserts on a host that actually runs the service.
+asserts on a host that actually runs the service. Since archiver#330 the copy a
+host should hold is the live release's, which ``scripts/deploy.sh`` installs:
+a merged unit edit is not drift until it is deployed, and a difference from the
+live release is a hand edit. Before the cutover there is no ``live`` link, and
+the test skips.
 """
 
 from pathlib import Path
 
-import pytest
+from tests.deploy.live_release import drift_message, installed_and_expected
 
 REPO_UNIT = Path(__file__).resolve().parents[2] / "deploy" / "archiver.service"
-INSTALLED_UNIT = Path("/etc/systemd/system/archiver.service")
-
-
-def _read_if_installed(path: Path) -> str | None:
-    """Return the unit's text, or None when it is genuinely not installed.
-
-    Only ``FileNotFoundError`` means "not installed". A ``PermissionError`` is
-    deliberately allowed to propagate: swallowing it would turn an unreadable
-    unit into a silent pass, and a drift check that cannot fail is worse than
-    no check at all — it reads as coverage while asserting nothing.
-    """
-    try:
-        return path.read_text()
-    except FileNotFoundError:
-        return None
 
 
 def test_repo_unit_declares_the_production_opt_in() -> None:
@@ -49,13 +38,6 @@ def test_repo_unit_declares_the_production_opt_in() -> None:
     assert "Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1" in text
 
 
-def test_installed_unit_matches_repo() -> None:
-    installed = _read_if_installed(INSTALLED_UNIT)
-    if installed is None:
-        pytest.skip(f"{INSTALLED_UNIT} not present — not a host running the service")
-    assert installed == REPO_UNIT.read_text(), (
-        f"{INSTALLED_UNIT} has drifted from {REPO_UNIT}.\n"
-        "Reinstall with:\n"
-        f"  sudo cp {REPO_UNIT} {INSTALLED_UNIT} && sudo systemctl daemon-reload\n"
-        "Then restart the service when it is safe to do so."
-    )
+def test_installed_unit_matches_the_live_release() -> None:
+    installed, expected = installed_and_expected("archiver.service")
+    assert installed == expected, drift_message("archiver.service")

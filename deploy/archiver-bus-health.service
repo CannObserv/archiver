@@ -8,12 +8,11 @@ After=network.target
 [Service]
 Type=oneshot
 User=exedev
-WorkingDirectory=/home/exedev/archiver
+# The live release, as archiver.service (archiver#330).
+WorkingDirectory=/srv/archiver/live
 
-# Same env layering as archiver.service: production secrets, then optional
-# repo-local overrides.
+# Same env as archiver.service: production secrets only, never a repo .env.
 EnvironmentFile=/etc/archiver/.env
-EnvironmentFile=-/home/exedev/archiver/.env
 
 # The probe runs one read-only query against the production changes_outbox
 # (the same stats query as the #112 badge, from outside the publisher process
@@ -50,4 +49,4 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # visibly killed beats hanging the unit.
 TimeoutStartSec=60
 
-ExecStart=/usr/local/bin/uv run python -m src.core.bus_health
+ExecStart=/usr/local/bin/uv run --frozen --no-sync python -m src.core.bus_health

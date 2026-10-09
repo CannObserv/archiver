@@ -17,18 +17,16 @@ After=network.target postgresql.service
 [Service]
 Type=simple
 User=exedev
-WorkingDirectory=/home/exedev/archiver
+# A release, never the checkout (archiver#330): scripts/deploy.sh builds
+# releases/<build> from a pushed main commit and points `live` at it. A branch
+# switch, an uncommitted edit or a `uv sync` in /home/exedev/archiver changes
+# nothing this unit runs. systemd resolves the link once, at start, so a later
+# swap never hands a running process another release's modules.
+WorkingDirectory=/srv/archiver/live
 
-# Create runtime dir (runs as root before User= takes effect with + prefix)
-ExecStartPre=+/bin/bash -c 'mkdir -p /run/archiver && chown exedev:exedev /run/archiver'
-
-# Write current build id (<sha>, or <sha>-dirty for an uncommitted tree) before starting
-ExecStartPre=/bin/bash -c 'echo BUILD_ID=$(git describe --always --dirty) > /run/archiver/build-id'
-
-# Load BUILD_ID, then service-specific secrets, then optional repo-local overrides
-EnvironmentFile=-/run/archiver/build-id
+# Production secrets only. No repo .env (the agents' PATs), and no BUILD_ID
+# stamp: /health's build_id is the release's REVISION (src/core/build.py).
 EnvironmentFile=/etc/archiver/.env
-EnvironmentFile=-/home/exedev/archiver/.env
 
 # This unit is the ONLY sanctioned writer of the production registry.
 # src/core/db_safety.py refuses to serve a database whose name lacks a
@@ -46,26 +44,21 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # file, or the hole reopens for every process that sources them.
 Environment=ARCHIVER_BUS_CONSUMER=1
 
-# co-core / co-core-aio resolve from the local wheelhouse (archiver#72/#75).
-# Refresh it from the private GCS index before ExecStart, so `uv run` (which
-# auto-syncs from uv.lock) can resolve them. Auth is the co-pypi-reader SA key
-# at GOOGLE_APPLICATION_CREDENTIALS (loaded from /etc/archiver/.env above).
-# Non-fatal (`-`): a transient GCS/network failure is logged and an already-
-# populated wheelhouse still starts; only a genuinely missing wheel surfaces
-# as a hard `uv` resolution error at ExecStart.
-ExecStartPre=-/usr/local/bin/uv run --no-project --with 'google-cloud-storage>=2,<4' python /home/exedev/archiver/scripts/sync_wheelhouse.py
+# No wheelhouse sync here any more: the private wheels are fetched into the
+# release at deploy time (archiver#330 D10), so a start never depends on GCS.
 
 # Assert the Redis change-bus server floor (>=7.0) when the bus is active.
 # NOT prefixed with `-`: a genuinely-too-old *reachable* broker must block the
 # producer (the consumer path's XAUTOCLAIM needs 7.0). The script is itself soft
 # on the dormant/unreachable cases — it exits 0 when ARCHIVER_REDIS_URL is unset
 # or the broker cannot be reached, so it only fails start on a real downgrade.
-ExecStartPre=/home/exedev/archiver/scripts/check_redis_floor.sh
+ExecStartPre=/srv/archiver/live/scripts/check_redis_floor.sh
 
 # --log-config routes uvicorn's own loggers (uvicorn/.access/.error) through the
 # same JSON formatter as app logs (archiver#122) — without it journald gets
 # mixed plain-text + JSON lines. Path is relative to WorkingDirectory.
-ExecStart=/usr/local/bin/uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --log-config src/core/log_config.json
+# --frozen --no-sync: run the venv the deploy built; syncing is a build step.
+ExecStart=/usr/local/bin/uv run --frozen --no-sync uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --log-config src/core/log_config.json
 Restart=on-failure
 RestartSec=5
 
