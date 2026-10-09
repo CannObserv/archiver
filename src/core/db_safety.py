@@ -37,6 +37,7 @@ Map org follower, archiver#305), and nothing else. Never an ``EnvironmentFile``,
 which is sourced by every process that loads it.
 """
 
+import os
 from urllib.parse import urlsplit
 
 #: Suffixes that mark a database as disposable. AGENTS.md already documents the
@@ -87,6 +88,15 @@ def is_non_production_database(url: str) -> bool:
     if name is None:
         return False
     return name.endswith(NON_PRODUCTION_SUFFIXES)
+
+
+def production_opt_in() -> str | None:
+    """The raw ``ARCHIVER_ALLOW_PRODUCTION_DB`` value, for callers outside ``src/``.
+
+    ``alembic/env.py`` uses it (archiver#330 D9), so its read stays where the
+    env-read audit (``tests/outbound_env_audit.py``) can resolve the name.
+    """
+    return os.environ.get(ALLOW_PRODUCTION_DB_ENV)
 
 
 def assert_production_db_allowed(url: str, *, allow_flag: str | None) -> None:

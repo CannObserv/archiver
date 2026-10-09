@@ -18,10 +18,12 @@ the systemd unit does.
 import pytest
 
 from src.core.db_safety import (
+    ALLOW_PRODUCTION_DB_ENV,
     ProductionDatabaseRefused,
     assert_production_db_allowed,
     database_name,
     is_non_production_database,
+    production_opt_in,
 )
 
 PROD = "postgresql+asyncpg://archiver:archiver@localhost:5432/archiver"
@@ -120,3 +122,15 @@ class TestAssertProductionDbAllowed:
     def test_refuses_unparseable_url_without_opt_in(self) -> None:
         with pytest.raises(ProductionDatabaseRefused):
             assert_production_db_allowed("not-a-url", allow_flag=None)
+
+
+class TestProductionOptIn:
+    """The raw opt-in, read where the env-read audit can resolve its name (archiver#330)."""
+
+    def test_reads_the_flag(self, monkeypatch) -> None:
+        monkeypatch.setenv(ALLOW_PRODUCTION_DB_ENV, "1")
+        assert production_opt_in() == "1"
+
+    def test_unset_is_none(self, monkeypatch) -> None:
+        monkeypatch.delenv(ALLOW_PRODUCTION_DB_ENV, raising=False)
+        assert production_opt_in() is None

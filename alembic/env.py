@@ -13,9 +13,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from src.core.db_safety import (
-    ALLOW_PRODUCTION_DB_ENV,
     ProductionDatabaseRefused,
     assert_production_db_allowed,
+    production_opt_in,
 )
 from src.core.models import Base
 from src.core.models.base import ULIDType
@@ -111,7 +111,7 @@ def assert_migration_target_allowed(url: str) -> None:
     (``--sql``) runs connect to nothing and are not checked (status#15).
     """
     try:
-        assert_production_db_allowed(url, allow_flag=os.environ.get(ALLOW_PRODUCTION_DB_ENV))
+        assert_production_db_allowed(url, allow_flag=production_opt_in())
     except ProductionDatabaseRefused as e:
         raise ProductionDatabaseRefused(
             f"{e}\n  alembic: production migrates only through scripts/deploy.sh. "
