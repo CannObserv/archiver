@@ -93,12 +93,13 @@ when archiver answers, 4 when not).
 
 ```bash
 sudo install -d -m 755 -o root -g root /srv/archiver
+# 0640 before anything is written: tee keeps an existing file's mode, and a file
+# it creates would hold the dev password world-readable until a later chmod (CR 3).
+for f in dev.env deploy.env; do sudo install -m 640 -o root -g exedev /dev/null "/etc/archiver/$f"; done
 # The rehearsal URL, copied from the repo .env: never typed, so never in history.
 grep '^ARCHIVER_DEV_DATABASE_URL=' /home/exedev/archiver/.env | sudo tee /etc/archiver/dev.env >/dev/null
 printf 'GOOGLE_APPLICATION_CREDENTIALS=/etc/archiver/co-pypi-reader.json\n' \
     | sudo tee /etc/archiver/deploy.env >/dev/null
-sudo chown root:exedev /etc/archiver/dev.env /etc/archiver/deploy.env
-sudo chmod 640 /etc/archiver/dev.env /etc/archiver/deploy.env
 cd /home/exedev/archiver && git switch main && git pull --ff-only
 scripts/deploy.sh
 curl -s http://127.0.0.1:8000/health; readlink /srv/archiver/live
