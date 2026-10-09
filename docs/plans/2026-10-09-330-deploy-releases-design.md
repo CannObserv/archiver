@@ -87,7 +87,7 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
    `readlink /srv/archiver/live`; switch the checkout to a branch, restart and start both
    timers' services, and show `build_id` unchanged.
 4. **Cleanup**: delete `.skills/worktree_venv`; drop the hand-run `alembic upgrade head` from
-   docs; set `.skills/deploy_command` when gregoryfoster/skills#345 ships.
+   docs (the shipping override's Step 8 moved with PR B, CR 15); set `.skills/deploy_command` when gregoryfoster/skills#345 ships.
 5. **Follow-ups filed**: drift check (D7), dedicated service user (D1), the skills issue
    (filed as gregoryfoster/skills#372).
 

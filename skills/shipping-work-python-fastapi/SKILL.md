@@ -227,8 +227,7 @@ After the summary table, review commits and changes shipped to identify any post
 
 | Category | Trigger | Example action |
 |---|---|---|
-| DB migration | New file under `alembic/versions/` | `uv run alembic upgrade head && sudo systemctl restart archiver` |
-| Service restart | Code change touched a non-reload path | `sudo systemctl restart archiver` (port 8000) |
+| Deploy | Any merge to `main` that changes what runs | Operator: `scripts/deploy.sh` from an up-to-date `main` checkout. It rehearses and runs any migration, switches, restarts and verifies (#330, [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)). Before the cutover: § First deploy. `systemctl restart archiver` deploys nothing, and hand-run `alembic` against production is refused |
 | Integration tests | New `@pytest.mark.integration` tests | `uv run pytest -m integration` on a real env (or wait for CI) |
 | Env var / secret | New config key | Add to `/etc/archiver/.env` and `sudo systemctl restart archiver` |
 | Dev-server cleanup | Worktree shutdown | `fuser -k 8001/tcp` for the dev port |
