@@ -297,6 +297,11 @@ build_release() {
       "${modules[@]}" ||
       die "a unit's entry point does not import from $build (${modules[*]}); nothing switched"
   fi
+  # --compile-bytecode covers site-packages only; src/ is the editable project.
+  # Compiled now, while it can be written: a read-only release would recompile
+  # it in memory on every start (CR 1).
+  in_release python -m compileall -q src scripts alembic >/dev/null ||
+    die "compileall failed for $build; nothing switched"
   chmod -R a-w "$release" || die "cannot make $build read-only; nothing switched"
   sudo chown -R root:root "$release" || die "cannot hand $build to root; nothing switched"
   # REVISION last, by root: a release without one is an interrupted build (R4).

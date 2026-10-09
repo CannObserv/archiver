@@ -78,6 +78,8 @@ case "$*" in
     [[ "$db" == *_dev ]] && rc="${FAKE_DEV_MIGRATE_RC:-$rc}"
     [[ "$rc" == 0 ]] && touch "$state_dir/migrated-$db"
     exit "$rc" ;;
+  *compileall*)
+    [[ -n "${FAKE_COMPILE_FAIL:-}" ]] && { echo "SyntaxError" >&2; exit 1; } ;;
   *import_module*)
     if [[ -n "${FAKE_IMPORT_FAIL:-}" && " $* " == *" $FAKE_IMPORT_FAIL "* ]]; then
       echo "ModuleNotFoundError: No module named '$FAKE_IMPORT_FAIL'" >&2
@@ -588,6 +590,25 @@ UNITS_V1 = {
     ),
     "archiver-bus-health.timer": "[Timer]\n# v1\n",
 }
+
+
+class TestBytecode:
+    """CR 1: --compile-bytecode covers site-packages, not the editable src/."""
+
+    def test_the_project_is_compiled_before_the_release_goes_read_only(self, world):
+        assert_ok(world.run())
+        release = world.release(world.main[-1])
+        calls = world.calls()
+        (compiled,) = uv_calls(world, "compileall")
+        assert compiled.startswith(f"uv {release} ")
+        assert "python -m compileall -q src scripts alembic" in compiled
+        assert calls.index(compiled) < calls.index(f"sudo chown -R root:root {release}")
+
+    def test_code_that_does_not_compile_switches_nothing(self, world):
+        result = world.run(FAKE_COMPILE_FAIL="1")
+        assert result.returncode == 1
+        assert "compile" in result.stderr and "nothing switched" in result.stderr
+        assert world.live() is None
 
 
 class TestEntryPoints:
