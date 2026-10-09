@@ -385,7 +385,9 @@ class World:
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body)
-        git(pusher, "add", "-A", "deploy")
+            if name.endswith(".sh"):
+                path.chmod(0o755)
+        git(pusher, "add", "-A")
         git(pusher, "commit", "-q", "--allow-empty", "-m", f"deploy/ on {branch}")
         git(pusher, "push", "-q", "origin", branch)
         git(self.checkout, "fetch", "-q", "origin")
@@ -628,6 +630,35 @@ class TestEntryPoints:
         assert "src.core.bus_health" in result.stderr and "nothing switched" in result.stderr
         assert not (world.release(world.main[-1]) / "REVISION").exists()
         assert world.live() is None
+
+
+UNIT_WITH_SCRIPT = {
+    "archiver.service": (
+        "[Service]\n"
+        "ExecStartPre=/srv/archiver/live/scripts/check_redis_floor.sh\n"
+        "ExecStart=/usr/local/bin/uv run --frozen --no-sync uvicorn src.api.main:app\n"
+    ),
+}
+
+
+class TestEntryPaths:
+    """CR 7: D11 for the executables a unit names inside the release."""
+
+    def test_a_script_a_unit_runs_from_the_release_must_be_in_it(self, world):
+        world.push_deploy(UNIT_WITH_SCRIPT)
+        result = world.run()
+        assert result.returncode == 1
+        assert "scripts/check_redis_floor.sh" in result.stderr
+        assert "nothing switched" in result.stderr
+        assert not (world.release(world.main[-1]) / "REVISION").exists()
+
+    def test_a_script_that_is_there_and_executable_passes(self, world):
+        world.push_deploy({**UNIT_WITH_SCRIPT, "../scripts/check_redis_floor.sh": "#!/bin/sh\n"})
+        assert_ok(world.run())
+
+    def test_paths_outside_the_release_are_not_its_business(self, world):
+        world.push_deploy({"archiver.service": "[Service]\nExecStart=/usr/local/bin/uv run x\n"})
+        assert_ok(world.run())
 
 
 class TestWhatMayBeDeployed:
@@ -1338,6 +1369,17 @@ class TestTheRepoUnits:
                 if line.startswith("EnvironmentFile="):
                     assert line.split("=", 1)[1].lstrip("-").startswith("/etc/archiver/"), line
                 assert not (line.startswith("ExecStartPre") and "git " in line), unit.name
+
+    def test_every_release_path_a_unit_runs_is_an_executable_in_the_repo(self):
+        """CR 7, at the source: what deploy.sh refuses a release for."""
+        for unit in sorted(self.REPO_DEPLOY.glob("*.service")):
+            for line in unit.read_text().splitlines():
+                if not re.match(r"Exec[A-Za-z]*=", line):
+                    continue
+                exe = line.split("=", 1)[1].lstrip("-+@!:").split()[0]
+                if exe.startswith("/srv/archiver/live/"):
+                    path = REPO_ROOT / exe.removeprefix("/srv/archiver/live/")
+                    assert path.is_file() and os.access(path, os.X_OK), (unit.name, exe)
 
     def test_each_timer_triggers_a_service_in_deploy(self):
         for timer in sorted(self.REPO_DEPLOY.glob("*.timer")):

@@ -261,8 +261,20 @@ entry_modules() {
   done | sort -u
 }
 
+# The executables each unit runs from inside the release, as release-relative
+# paths: units name the production path, /srv/archiver/live/... (CR 7).
+UNIT_ROOT=/srv/archiver/live
+entry_paths() {
+  local unit
+  for unit in "$release"/deploy/*.service; do
+    [[ -f "$unit" ]] || continue
+    grep -hE '^Exec[A-Za-z]*=' "$unit" | sed -E 's/^Exec[A-Za-z]*=[-+@!:]*//' | awk '{print $1}' |
+      grep "^$UNIT_ROOT/" | sed "s|^$UNIT_ROOT/||" || true
+  done | sort -u
+}
+
 build_release() {
-  local creds modules heads
+  local creds modules heads path
   [[ ! -e "$release" ]] || sudo rm -rf "$release"
   note "building $build"
   [[ -d "$ROOT/releases" ]] || sudo install -d -m 755 "$ROOT/releases" ||
@@ -297,6 +309,10 @@ build_release() {
       "${modules[@]}" ||
       die "a unit's entry point does not import from $build (${modules[*]}); nothing switched"
   fi
+  while read -r path; do
+    [[ -z "$path" || -x "$release/$path" ]] ||
+      die "a unit runs $UNIT_ROOT/$path, which $build lacks or cannot execute; nothing switched"
+  done < <(entry_paths)
   # --compile-bytecode covers site-packages only; src/ is the editable project.
   # Compiled now, while it can be written: a read-only release would recompile
   # it in memory on every start (CR 1).
