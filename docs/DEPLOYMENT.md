@@ -107,8 +107,12 @@ curl -s http://127.0.0.1:8000/health; readlink /srv/archiver/live
 
 Then prove the point: `git switch` the checkout to any branch, `sudo systemctl restart
 archiver` and start both timers' services; `build_id` is unchanged. Then delete
-`.skills/worktree_venv` (the checkout's `.venv` is no longer production's) and remove
-`GOOGLE_APPLICATION_CREDENTIALS` from `/etc/archiver/.env`: no unit needs it.
+`.skills/worktree_venv` (the checkout's `.venv` is no longer production's).
+
+**Leave `GOOGLE_APPLICATION_CREDENTIALS` in `/etc/archiver/.env` for now.** No unit needs it,
+but the checkout's wheelhouse recipe (CLAUDE.md § Environment & Tooling) and the
+`using-git-worktrees` override source it from there (CR 4). Moving it to `deploy.env` alone
+is one post-cutover change: repoint both recipes, then delete the line.
 
 ## cannobserv substrate
 
