@@ -119,8 +119,9 @@ curl -s http://127.0.0.1:8000/health; readlink /srv/archiver/live
 ```
 
 Then prove the point: `git switch` the checkout to any branch, `sudo systemctl restart
-archiver` and start both timers' services; `build_id` is unchanged. Then delete
-`.skills/worktree_venv` (the checkout's `.venv` is no longer production's).
+archiver` and start both timers' services; `build_id` is unchanged. Done on this VM
+2026-10-09 (`e68f1389771b`); `.skills/worktree_venv` went with it, since the checkout's
+`.venv` is no longer production's.
 
 **Leave `GOOGLE_APPLICATION_CREDENTIALS` in `/etc/archiver/.env` for now.** No unit needs it,
 but the checkout's wheelhouse recipe (CLAUDE.md § Environment & Tooling) and the

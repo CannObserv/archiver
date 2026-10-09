@@ -2,8 +2,8 @@
 
 ``scripts/deploy.sh`` writes ``REVISION`` last into each release, so the code
 that runs reports itself - no ``ExecStartPre`` git stamp, no git in a release.
-Until the units move to releases, the unit's ``BUILD_ID`` stamp is the
-fallback, so ``/health`` does not go null between the two PRs.
+The units' ``BUILD_ID`` stamp was a fallback until the cutover (2026-10-09);
+nothing sets it now, and nothing reads it.
 """
 
 from src.core import build
@@ -15,9 +15,10 @@ def test_the_release_revision_is_the_build_id(tmp_path, monkeypatch):
     assert build.build_id(tmp_path) == "0123456789ab"
 
 
-def test_without_a_revision_the_unit_stamp_is_the_fallback(tmp_path, monkeypatch):
+def test_a_build_id_variable_is_not_a_build(tmp_path, monkeypatch):
+    """The pre-cutover stamp is retired: only a release names its build."""
     monkeypatch.setenv("BUILD_ID", "abc1234-dirty")
-    assert build.build_id(tmp_path) == "abc1234-dirty"
+    assert build.build_id(tmp_path) is None
 
 
 def test_outside_a_release_and_unstamped_it_is_none(tmp_path, monkeypatch):

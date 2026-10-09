@@ -6,12 +6,11 @@ code reads it from the tree it runs from, so ``/health`` names the code that
 is actually serving - not ``git describe --dirty`` of whatever the dev
 checkout had checked out when the unit started.
 
-``BUILD_ID`` is a transitional fallback: until the units run releases, the
-unit's ``ExecStartPre`` stamp is the only id there is. ``None`` outside a
-release and unstamped (a dev server, the test suite).
+``None`` outside a release (a dev server, the test suite). The units' old
+``BUILD_ID`` stamp was a fallback until the cutover (2026-10-09) and is no
+longer read: no unit sets it, and a stray one must not pose as a build.
 """
 
-import os
 from functools import cache
 from pathlib import Path
 
@@ -35,5 +34,5 @@ def _revision(root: Path) -> str:
 
 
 def build_id(root: Path | None = None) -> str | None:
-    """The release's ``REVISION``, else the unit's ``BUILD_ID``, else None."""
-    return _revision(root or ROOT) or os.environ.get("BUILD_ID") or None
+    """The release's ``REVISION``, else None."""
+    return _revision(root or ROOT) or None
