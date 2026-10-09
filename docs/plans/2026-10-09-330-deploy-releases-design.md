@@ -47,8 +47,10 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
 | D8 | `/health` `build_id` comes from the release's `REVISION`; `null` outside a release | R10, but `null` not `"dev"`: the field is already nullable, so the contract change is description-only |
 | D9 | `alembic/env.py` refuses an un-opted-in production DB when online; only `deploy.sh` passes `ARCHIVER_ALLOW_PRODUCTION_DB=1` to it | status#15 |
 | D10 | Wheels are fetched into the release by the release's own `sync_wheelhouse.py`, at build time, with the co-pypi-reader key from a deploy-only `/etc/archiver/deploy.env` | broker#22 Q5. Not processor's copy of the dev `.wheelhouse`: find-links locks by filename without a hash. The fetch must carry every file `uv.lock` names for co-core - sdists too - or `--locked` fails (seen building PR A's worktree) |
-| D11 | Before `REVISION`, every `ExecStart` module under the release's `deploy/*.service` must import from the release venv | New: the 2026-10-08 failure mode, caught at deploy time |
+| D11 | Before `REVISION`, every `ExecStart` module under the release's `deploy/*.service` must import from the release venv, and every executable a unit runs from `/srv/archiver/live/` must exist in the release (CR 7) | New: the 2026-10-08 failure mode, caught at deploy time |
 | D12 | Units are installed from the release (only those that differ); new units installed, never enabled; host configs compared, never installed | status#18 |
+| D13 | A failed **first** deploy has no release to return to: it puts back the units it replaced (the checkout-backed ones), removes `live`, restarts on them, and exits 1 when archiver answers, 4 when not. The cutover is one `scripts/deploy.sh`; there is no `--no-restart` | processor's first-deploy rule. status's `--no-restart` existed because its units went in by hand before status#18 |
+| D14 | The deploy runs only merged logic: `scripts/deploy.sh` refuses unless it is byte-identical to `origin/main:scripts/deploy.sh` (CR 10) | New. The commit must be on `origin/main`; so must the logic deploying it |
 
 ## Tradeoffs / alternatives
 
@@ -77,11 +79,13 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
    `/home/exedev`, no unit syncs); `test_installed_unit_matches_repo.py` compares with the live
    release; CLAUDE.md § Server Lifecycle and § Infrastructure, `docs/DEPLOYMENT.md`,
    `docs/CONVENTIONS.md`, `docs/SCHEMA.md` (expand-only), `deploy/README.md`.
-3. **Cutover - operator present; merging PR B and running its first deploy are one window**
-   (docs/DEPLOYMENT.md § First deploy): create root-owned `/srv/archiver` and
-   `/etc/archiver/{dev,deploy}.env`; `deploy.sh --no-restart`; install units; restart; verify
-   `/health` `build_id` == `readlink /srv/archiver/live`; switch the checkout to a branch,
-   restart and start both timers, and show `build_id` unchanged.
+3. **Cutover - operator present.** Merging PR B changes nothing that runs: the installed units
+   stay checkout-backed until a deploy replaces them. The cutover is PR B's first
+   `scripts/deploy.sh` (D13; docs/DEPLOYMENT.md § First deploy): create root-owned
+   `/srv/archiver` and `/etc/archiver/{dev,deploy}.env` (0640 before writing), switch the
+   checkout to an up-to-date `main` (D14), run it; verify `/health` `build_id` ==
+   `readlink /srv/archiver/live`; switch the checkout to a branch, restart and start both
+   timers' services, and show `build_id` unchanged.
 4. **Cleanup**: delete `.skills/worktree_venv`; drop the hand-run `alembic upgrade head` from
    docs; set `.skills/deploy_command` when gregoryfoster/skills#345 ships.
 5. **Follow-ups filed**: drift check (D7), dedicated service user (D1), the skills issue
