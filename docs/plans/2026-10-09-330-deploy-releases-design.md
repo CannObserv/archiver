@@ -69,15 +69,16 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
    crosses `db_safety` online (D9); `src/core/schema_state.py` with `classify()` and a CLI
    exiting 0 `current`/`ahead`, 3 `behind`/`unmigrated`, 2 otherwise (D3); `archiver-bus-health`
    WARNs on `behind`/`unmigrated`; `src/core/build.py` reads `REVISION` and `/health` uses it
-   (D8), with CHANGELOG, OpenAPI snapshot and SDK regenerated. The unit keeps writing
-   `BUILD_ID` until PR B, so the build path falls back to it there.
+   (D8), with CHANGELOG, OpenAPI snapshot and SDK regenerated. The checkout units keep
+   writing `BUILD_ID` until the cutover, so the build path falls back to it there.
 2. **PR B - the deploy**: `scripts/deploy.sh` (D1-D6, D10-D12) and `tests/deploy/test_deploy.py`
    on status's stub harness; units moved to `/srv/archiver/live` with `--frozen --no-sync`, no
    repo `.env`, no git stamp, no wheelhouse `ExecStartPre`; unit invariant tests (no
    `/home/exedev`, no unit syncs); `test_installed_unit_matches_repo.py` compares with the live
    release; CLAUDE.md § Server Lifecycle and § Infrastructure, `docs/DEPLOYMENT.md`,
    `docs/CONVENTIONS.md`, `docs/SCHEMA.md` (expand-only), `deploy/README.md`.
-3. **Cutover - operator present**: create root-owned `/srv/archiver` and
+3. **Cutover - operator present; merging PR B and running its first deploy are one window**
+   (docs/DEPLOYMENT.md § First deploy): create root-owned `/srv/archiver` and
    `/etc/archiver/{dev,deploy}.env`; `deploy.sh --no-restart`; install units; restart; verify
    `/health` `build_id` == `readlink /srv/archiver/live`; switch the checkout to a branch,
    restart and start both timers, and show `build_id` unchanged.
@@ -89,7 +90,10 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
 ## Open questions / risks
 
 - **`BUILD_ID` fallback lifetime.** PR A keeps reading the unit's `BUILD_ID` when no `REVISION`
-  exists, so `/health` does not go `null` between PR A and the cutover. PR B removes it.
+  exists, so `/health` does not go `null` before the cutover. PR B's units stamp nothing, but
+  the installed (checkout) units keep stamping until the cutover deploy replaces them, and a
+  failed first deploy restores them - so the fallback stays until after the cutover. Dropping
+  it then is a description-only contract change (CHANGELOG + SDK docstring).
 - **Restart budget.** `archiver.service` has the default `TimeoutStopSec` (90 s); the verify
   window is derived from it plus start time, not a fixed 60 s.
 - **First deploy rollback.** With nothing to switch back to, a failed first deploy restores the
