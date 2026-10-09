@@ -18,6 +18,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.25.1 (2026-10-09)
+
+[service] **`/health` `build_id` reads the serving release's `REVISION`** (archiver#330). The field's type is unchanged (`string | null`), so `archiver-client` stays at 5.9.0; its generated `HealthOut` docstring and the OpenAPI snapshot change with the description.
+
+- **Source:** `REVISION` in the release root, the 12-character commit SHA `scripts/deploy.sh` writes into each release. Until the units run releases, the unit's `BUILD_ID` stamp (`git describe --always --dirty`, 7 characters, possibly `-dirty`) is the fallback. Expect the value's format to change at the cutover.
+- **Alembic refuses production without `ARCHIVER_ALLOW_PRODUCTION_DB=1`** (online runs; `--sql` is unchecked). Hand migrations of production take the opt-in until `scripts/deploy.sh` owns them.
+- **`python -m src.core.schema_state`** prints `current`/`behind`/`ahead`/`unmigrated` and exits 0, 3 or 2; `archiver-bus-health` WARNs when the schema is `behind` or `unmigrated`.
+
 ## v4.25.0 (2026-10-06)
 
 [both] **Power Map org link: `PUT /info-items/{id}/org`, `pm_organizations`, and `org.*` from the linked org** (archiver#304). `archiver-client` 5.9.0 adds `set_org` and `create_info_item(pm_org_id=)`.

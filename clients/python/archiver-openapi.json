@@ -658,7 +658,7 @@
                 "type": "null"
               }
             ],
-            "description": "Deployed build identifier from the BUILD_ID environment variable (git describe --always --dirty at service start). Null when unset.",
+            "description": "Deployed build identifier: the serving release's REVISION, the 12-character commit SHA scripts/deploy.sh writes into each release (archiver#330). Before the units run releases, the unit's BUILD_ID stamp. Null when neither exists (a dev server, the test suite).",
             "title": "Build Id"
           },
           "status": {
@@ -2479,7 +2479,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.25.0"
+    "version": "4.25.1"
   },
   "openapi": "3.1.0",
   "paths": {
