@@ -12,6 +12,7 @@ release and unstamped (a dev server, the test suite).
 """
 
 import os
+from functools import cache
 from pathlib import Path
 
 #: The release (or checkout) root: the project is installed editable, so this
@@ -20,10 +21,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@cache
+def _revision(root: Path) -> str:
+    """``root``'s ``REVISION``, read once: a process's release never changes under it.
+
+    Cached because ``/health`` is an async handler, and a file read per request
+    would block its event loop.
+    """
+    try:
+        return (root / "REVISION").read_text().strip()
+    except FileNotFoundError:
+        return ""
+
+
 def build_id(root: Path | None = None) -> str | None:
     """The release's ``REVISION``, else the unit's ``BUILD_ID``, else None."""
-    try:
-        revision = ((root or ROOT) / "REVISION").read_text().strip()
-    except FileNotFoundError:
-        revision = ""
-    return revision or os.environ.get("BUILD_ID") or None
+    return _revision(root or ROOT) or os.environ.get("BUILD_ID") or None

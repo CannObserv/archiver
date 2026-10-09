@@ -33,3 +33,15 @@ def test_an_empty_revision_is_not_a_build(tmp_path, monkeypatch):
 
 def test_the_default_root_is_the_tree_this_code_runs_from():
     assert (build.ROOT / "src" / "core" / "build.py").is_file()
+
+
+def test_the_revision_is_read_once_not_per_request(tmp_path, monkeypatch):
+    """CR 2: /health is an async handler; a file read per call blocks its loop.
+
+    A process's release never changes under it, so one read is the truth.
+    """
+    monkeypatch.delenv("BUILD_ID", raising=False)
+    (tmp_path / "REVISION").write_text("0123456789ab\n")
+    assert build.build_id(tmp_path) == "0123456789ab"
+    (tmp_path / "REVISION").write_text("ffffffffffff\n")
+    assert build.build_id(tmp_path) == "0123456789ab"

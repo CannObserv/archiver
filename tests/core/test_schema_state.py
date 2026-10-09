@@ -146,3 +146,21 @@ async def test_the_cli_reads_the_real_test_database_as_current(test_engine, caps
     code = await asyncio.get_running_loop().run_in_executor(None, schema_state.main, [])
     out, _ = capsys.readouterr()
     assert (code, out.split()[0]) == (EXIT_OK, "current")
+
+
+async def test_the_probe_bounds_its_connect(monkeypatch):
+    """CR 6: asyncpg waits 60 s by default; a hung Postgres would stall a deploy."""
+    seen = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_engine(url, **kwargs):
+        seen.update(kwargs)
+        raise Stop
+
+    monkeypatch.setattr(schema_state, "create_async_engine", fake_engine)
+    with pytest.raises(Stop):
+        await schema_state.probe("postgresql+asyncpg://u:p@127.0.0.1:1/archiver_dev")
+    assert seen["connect_args"] == {"timeout": schema_state.CONNECT_TIMEOUT_SECONDS}
+    assert schema_state.CONNECT_TIMEOUT_SECONDS <= 10

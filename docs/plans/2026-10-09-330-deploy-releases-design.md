@@ -7,7 +7,7 @@ status: draft
 # Deploy releases - design
 
 **Issue:** archiver#330 ([review comment](https://github.com/CannObserv/archiver/issues/330#issuecomment-6081843731),
-[skills commentary](https://github.com/CannObserv/archiver/issues/330#issuecomment-6081844264)) ·
+[skills proposal: gregoryfoster/skills#372](https://github.com/gregoryfoster/skills/issues/372)) ·
 **Cohort design:** CannObserv/broker#22 · **Adopted from:** CannObserv/status
 `docs/specs/2026-09-30-deploy-releases-design.md` (R1-R13, plus status#11, #12, #14, #15, #18)
 and CannObserv/processor `docs/DEPLOYMENT.md` (CR 11, the cohort-skill feedback list).
@@ -85,7 +85,7 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
 4. **Cleanup**: delete `.skills/worktree_venv`; drop the hand-run `alembic upgrade head` from
    docs; set `.skills/deploy_command` when gregoryfoster/skills#345 ships.
 5. **Follow-ups filed**: drift check (D7), dedicated service user (D1), the skills issue
-   (comment 6081844264).
+   (filed as gregoryfoster/skills#372).
 
 ## Open questions / risks
 
