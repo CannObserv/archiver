@@ -120,8 +120,9 @@ curl -s http://127.0.0.1:8000/health; readlink /srv/archiver/live
 
 Then prove the point: `git switch` the checkout to any branch, `sudo systemctl restart
 archiver` and start both timers' services; `build_id` is unchanged. Done on this VM
-2026-10-09 (`e68f1389771b`); `.skills/worktree_venv` went with it, since the checkout's
-`.venv` is no longer production's.
+2026-10-09 (`e68f1389771b`). `.skills/worktree_venv` stays `none`: the checkout's `.venv` is
+no longer production's, but it holds editable installs bound to the checkout's path, which a
+linked worktree would re-point (the `using-git-worktrees` override, CR 20).
 
 **`GOOGLE_APPLICATION_CREDENTIALS` belongs in `/etc/archiver/deploy.env` alone** (#341). No
 unit needs it: `deploy.sh` reads it from there, and so do the checkout's wheelhouse recipes

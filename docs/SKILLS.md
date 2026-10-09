@@ -77,7 +77,7 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 |---|---|
 | `shipping-work-python-fastapi` | Thin override - sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor. Step 1.5 documents archiver's `.skills/doc-sensitive-paths` and `.skills/doc-sections` (below) |
 | `brainstorming` | Project conventions (docs/plans/ path, commit format); invokes using-git-worktrees after design approval; FastAPI stack context; proactive-suggestion mode |
-| `using-git-worktrees` | Archiver-specific Phase 3 only; scripts and `references/` symlinked back to vendor. Own `ARCHIVER_DEV_PORT` per worktree recorded in `.port` (8001 is *main's*, 8000 systemd's) via `scripts/dev_server.sh`, never hand-rolled uvicorn; main's `.venv` is linked (the vendor default since the #330 cutover), except on a branch that changes dependencies |
+| `using-git-worktrees` | Archiver-specific Phase 3 only; scripts and `references/` symlinked back to vendor. Own `ARCHIVER_DEV_PORT` per worktree recorded in `.port` (8001 is *main's*, 8000 systemd's) via `scripts/dev_server.sh`, never hand-rolled uvicorn; `.skills/worktree_venv` is `none` (main's `.venv` holds editable installs bound to the main checkout's path) |
 
 `reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) - no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
 

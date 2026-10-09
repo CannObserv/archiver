@@ -1,14 +1,14 @@
 ---
 name: using-git-worktrees
 description: A workflow for parallel branch checkouts via `git worktree`. Standardizes creation, lifecycle, and cleanup so multiple branches can be worked on simultaneously without colliding. Use when the user says "create worktree", "new worktree", "destroy worktree", "merge worktree", or "wt".
-compatibility: Designed for the archiver service. Requires git, uv, and `lsof` for port cleanup in Phase 5. Worktree provisioning is the vendor's; Phase 3 is archiver-specific (dev server on a per-worktree port, env sourcing, a linked `.venv`).
+compatibility: Designed for the archiver service. Requires git, uv, and `lsof` for port cleanup in Phase 5. Worktree provisioning is the vendor's; Phase 3 is archiver-specific (dev server on a per-worktree port, env sourcing, `.venv` opt-out).
 metadata:
   author: gregoryfoster
   version: "1.1"
   triggers: create worktree, new worktree, destroy worktree, merge worktree, wt
   overrides: gregoryfoster-skills/using-git-worktrees
   synced-from: "gregoryfoster-skills 1.1 (75ee33a)"
-  override-reason: "Archiver-specific Phase 3 — the main checkout's `.venv` is linked (the vendor default) since production runs releases, not this checkout (archiver#330), except on a branch that changes dependencies; the dev server runs on a per-worktree ARCHIVER_DEV_PORT via scripts/dev_server.sh (never hand-rolled uvicorn, see the 2026-07-18 production-write incident); env files load via `set -a; . <file>; set +a`, not the broken `export $(cat … | xargs)` pattern. Phase 5 names when --force is actually required here: once the SessionStart doctor has checked out submodule content inside the worktree, not merely because the repo has submodules."
+  override-reason: "Archiver-specific Phase 3 — `.skills/worktree_venv` is `none` here because the main checkout's `.venv` holds editable installs of archiver and archiver-client bound to the main checkout's path; the dev server runs on a per-worktree ARCHIVER_DEV_PORT via scripts/dev_server.sh (never hand-rolled uvicorn, see the 2026-07-18 production-write incident); env files load via `set -a; . <file>; set +a`, not the broken `export $(cat … | xargs)` pattern. Phase 5 names when --force is actually required here: once the SessionStart doctor has checked out submodule content inside the worktree, not merely because the repo has submodules."
 ---
 
 # Using Git Worktrees
@@ -35,6 +35,7 @@ If the target branch is already checked out in another worktree (visible in `git
 | "Same branch in two worktrees is fine, I'll be careful" | Git refuses for a reason — divergent commits race. Use a different branch or a separate clone. |
 | "The dev server is still running, but I want to destroy now" | Free the port first. A live process pinning files in the worktree blocks cleanup and leaks state. |
 | "Every branch needs a worktree" | Short patches don't. Phase 1 exists to filter; skip it and you pay the overhead for nothing. |
+| "I'll link the main `.venv` like every other project" | Not here: it holds editable installs bound to the main checkout's path — see **Venv linking** below. |
 | "The project has no wrapper, I'll just `cd ~/wherever`" | Resolution order is explicit: env var → `.skills/worktree_root` → default. Ad-hoc paths defeat reproducibility. |
 
 ## Parameterized invocation
@@ -84,11 +85,20 @@ esac
 
 `.gitignore` already carries `.worktrees/`, so the default root passes. The check is not therefore redundant: it is the only guard on the two paths that *override* that default, `WORKTREE_ROOT` and `.skills/worktree_root`, and an unignored root commits an entire second checkout into the repo. The `case` matters — `git check-ignore` exits non-zero for *any* unmatched path, so a root outside the repo (where no rule is needed or possible) would otherwise report a false `NOT IGNORED` and teach you to skip the one check with no upstream substitute.
 
-## Venv linking — the vendor default, since #330
+## Venv linking — `.skills/worktree_venv` is `none` here
 
-`.skills/worktree_venv` is absent, so `worktree-create.sh` symlinks the main checkout's `.venv` into each worktree. Until the archiver#330 cutover (2026-10-09) it was `none`: the main checkout was the installed units' `WorkingDirectory=`, and their `uv run` - the API, and two timers firing mid-suite - restamped the one shared environment, so a worktree suite failed in full runs and passed in isolation. Production now runs `/srv/archiver/live`, a release with its own venv, and nothing on a schedule touches this checkout's.
+A worktree inherits no virtualenv, so `worktree-create.sh` normally symlinks the main checkout's `.venv` into it. **Archiver turns that off**, and the file recording it is **committed**: uncommitted, a fresh clone silently reinstates the corruption below.
 
-What is still shared is between checkouts: **a branch that changes `pyproject.toml` or `uv.lock` takes its own environment** (`rm .venv && uv sync`, Phase 3), or its `uv run` rewrites main's for every checkout linked to it.
+```bash
+cat .skills/worktree_venv    # none
+```
+
+The main checkout's `.venv` holds two **path-bound editable installs**: `archiver` (`_editable_impl_archiver.pth` → `/home/exedev/archiver`) and `archiver-client` (→ `/home/exedev/archiver/clients/python/src`). A worktree linked to it shares them:
+
+- **Without a sync**, the worktree imports the main checkout's `archiver_client`: a branch that changes the SDK tests main's, and passes.
+- **`uv run` syncs first**, and from a worktree that re-points both installs at the worktree (`uv sync --dry-run` in one: `- archiver (from file:///home/exedev/archiver)`, `+ archiver @ file:///…/<worktree>`). From then on the main checkout, its dev server and every other worktree import that branch's code - and once the worktree is destroyed, `import archiver_client` fails everywhere until the next `uv sync`.
+
+That holds on every branch, not only one that changes dependencies, and it held before archiver#330: production running this checkout (until the 2026-10-09 cutover) only added a victim. With `none`, `worktree-create.sh` creates no `.venv` and says so on stderr; provision one in Phase 3.
 
 ## Procedure
 
@@ -122,19 +132,21 @@ The script:
 - Prints the absolute worktree path on stdout
 - Exits 0 on success, 1 on Iron Law violation (double checkout), 2 on tooling failure
 
-It links the main checkout's `.venv` (see **Venv linking**).
+It will **not** link a `.venv` here — `.skills/worktree_venv` is `none`. That is expected; Phase 3 provisions one.
 
 ### Phase 3 — Work inside the worktree
 
 `cd` into the worktree path printed by Phase 2. Upstream leaves three responsibilities to the project; archiver's answers follow, and they are not optional.
 
-**Interpreter environment.** `worktree-create.sh` linked main's `.venv`. A worktree provisioned by something else — notably the Claude Code Agent tool's `isolation: "worktree"`, which calls `git worktree add` directly — arrives without one; link it before the first test run:
+**Interpreter environment.** Provision a real venv — do not link main's:
 
 ```bash
-ln -s "$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd)")/.venv" .venv
+uv sync    # resolves co-core from ./.wheelhouse; populate it first if resolution fails
 ```
 
-On a branch that changes `pyproject.toml` or `uv.lock`, replace the link with the worktree's own environment instead (`rm .venv && uv sync`). `uv sync` resolves co-core from `./.wheelhouse`, which is gitignored and does not come with the worktree:
+A worktree provisioned by something *other* than `worktree-create.sh` — notably the Claude Code Agent tool's `isolation: "worktree"`, which calls `git worktree add` directly — also arrives without a `.venv`. The upstream remedy there is to symlink main's; **in this repo, run `uv sync` instead**, for the reason in **Venv linking** above.
+
+The wheelhouse is gitignored and does not come with the worktree:
 
 ```bash
 set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS, and nothing else (#341)
@@ -236,7 +248,7 @@ Detection-only — it does not kill anything. The operator decides whether to ki
 
 | Mistake | Consequence | Fix |
 |---|---|---|
-| `uv run` through a linked `.venv` on a branch that changes dependencies | Rewrites main's environment for every checkout linked to it | `rm .venv && uv sync` — that branch takes its own |
+| Linking main's `.venv` into the worktree | The worktree tests main's SDK; its first `uv run` re-points the shared editable installs, so every checkout imports the branch | `uv sync` in the worktree — `.skills/worktree_venv` is `none` for this reason |
 | Starting the dev server on 8000 | Collides with the live site's systemd unit | `dev_server.sh` refuses 8000; pass `ARCHIVER_DEV_PORT` |
 | Serving a worktree on 8001 | Collides with the main checkout's dev server | Pick a distinct port and record it in `.port` |
 | No `.env` in the worktree | `RuntimeError: TEST_DATABASE_URL not set` | Copy it from the main checkout (Phase 3) |
