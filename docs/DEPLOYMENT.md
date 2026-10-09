@@ -37,7 +37,7 @@ script cannot decide how production deploys. `git switch main && git pull --ff-o
 
 ```bash
 scripts/deploy.sh                       # origin/main, once its CI passed
-scripts/deploy.sh <build>               # any origin/main commit with green CI: a rollback
+scripts/deploy.sh <build>               # an earlier build since the cutover, green CI: a rollback
 scripts/deploy.sh --skip-ci [<build>]   # without asking CI: an emergency, logged
 journalctl -t archiver-deploy -n 20     # "CI passed for <build>", "live -> <build> (was ...)"
 ```
@@ -87,7 +87,7 @@ note, never an install), and releases beyond the 5 newest are pruned, never the 
 | `ARCHIVER_DEPLOY_ROOT` | `/srv/archiver` | releases and the `live` link |
 | `ARCHIVER_DEPLOY_ENV_DIR` | `/etc/archiver` | `.env` (units), `dev.env` (rehearsal), `deploy.env` (wheel fetch) |
 | `ARCHIVER_DEPLOY_ETC` | `/etc` | units in `systemd/system/`; host configs compared there |
-| `ARCHIVER_DEPLOY_KEEP` | `5` | releases kept besides the linked one |
+| `ARCHIVER_DEPLOY_KEEP` | `5` | the newest releases kept (by last deploy); the linked one is never pruned |
 | `ARCHIVER_DEPLOY_VERIFY_SECONDS` | `120` | `/health` and the schema must answer within it |
 | `ARCHIVER_DEPLOY_PROBE_WAIT_SECONDS` | `90` | how long to wait out a running bus-health pass |
 | `ARCHIVER_DEPLOY_CI_WAIT_SECONDS` / `_POLL_SECONDS` | `600` / `30` | the CI gate's wait |

@@ -41,7 +41,7 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
 | D2 | No deployed `dev` target. `dev_server.sh` stays the 8001 loop; the deploy's rehearsal is migrate + `schema_state` against `archiver_dev` from the new release (`/etc/archiver/dev.env`) | Differs from R12: CLAUDE.md routes agent writes to 8001 through `dev_server.sh`, and nothing consumes a stable 8001 |
 | D3 | Migrate → swap → units → restart → verify → switch back; expand-only; skip on `ahead`; never block a start | R6, R7, R8, R9 unchanged. The runtime check is a CLI plus a bus-health WARN, not `/ready` (only `/health` and `/openapi.json` may be open) |
 | D4 | Both timers run `live`. Verify forces one `archiver-bus-health` pass (waiting out one in flight); never forces `pm-org-refresh` | R6's forced pass, applied to the read-only probe only |
-| D5 | Keep 5 releases plus the linked one | R13 (~250 MB each; 9 GB free) |
+| D5 | Keep the 5 newest releases; never prune the linked one | R13 (~250 MB each; 9 GB free) |
 | D6 | CI gate: newest `push` run of `ci.yml` on `main`, every job `success`, floor `lint test client-drift changelog`; `--skip-ci` logged | status#11 / processor#34 unchanged; the repo is public, no token |
 | D7 | Drift check reporting to co-status `co-archiver-drift` | processor#35's shape; **separate issue** (operator prerequisites) |
 | D8 | `/health` `build_id` comes from the release's `REVISION`; `null` outside a release | R10, but `null` not `"dev"`: the field is already nullable, so the contract change is description-only |
