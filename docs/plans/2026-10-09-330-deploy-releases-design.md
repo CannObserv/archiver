@@ -46,7 +46,7 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
 | D7 | Drift check reporting to co-status `co-archiver-drift` | processor#35's shape; **separate issue** (operator prerequisites) |
 | D8 | `/health` `build_id` comes from the release's `REVISION`; `null` outside a release | R10, but `null` not `"dev"`: the field is already nullable, so the contract change is description-only |
 | D9 | `alembic/env.py` refuses an un-opted-in production DB when online; only `deploy.sh` passes `ARCHIVER_ALLOW_PRODUCTION_DB=1` to it | status#15 |
-| D10 | Wheels are fetched into the release by the release's own `sync_wheelhouse.py`, at build time, with the co-pypi-reader key from a deploy-only `/etc/archiver/deploy.env` | broker#22 Q5. Not processor's copy of the dev `.wheelhouse`: find-links locks by filename without a hash |
+| D10 | Wheels are fetched into the release by the release's own `sync_wheelhouse.py`, at build time, with the co-pypi-reader key from a deploy-only `/etc/archiver/deploy.env` | broker#22 Q5. Not processor's copy of the dev `.wheelhouse`: find-links locks by filename without a hash. The fetch must carry every file `uv.lock` names for co-core - sdists too - or `--locked` fails (seen building PR A's worktree) |
 | D11 | Before `REVISION`, every `ExecStart` module under the release's `deploy/*.service` must import from the release venv | New: the 2026-10-08 failure mode, caught at deploy time |
 | D12 | Units are installed from the release (only those that differ); new units installed, never enabled; host configs compared, never installed | status#18 |
 

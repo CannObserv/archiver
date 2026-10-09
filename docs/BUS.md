@@ -167,11 +167,13 @@ they go, so a mid-pass failure still deleted something real.
 
 **Outbox observability (archiver#130, reduced by #193)** - the
 `archiver-bus-health` systemd timer runs `src/core/bus_health.py` every 10
-minutes and re-runs the #112 outbox query from outside the publisher process.
-That is the whole tick: the drain-loop stats line above stops exactly when the
-publisher does, which is the state most worth reporting, and a journald line
-fires whether or not an operator is looking at the dashboard. WARN-only lines
-from logger `src.core.bus_health`.
+minutes and re-runs the #112 outbox query from outside the publisher process:
+the drain-loop stats line above stops exactly when the publisher does, which is
+the state most worth reporting, and a journald line fires whether or not an
+operator is looking at the dashboard. The same tick runs the schema check
+(`src/core/schema_state.py`, archiver#330 D3) and WARNs when the database is
+`behind` or `unmigrated` against the deployed code; `ahead` (a rollback) is
+silent. WARN-only lines from logger `src.core.bus_health`.
 
 **Broker-side observability moved out of this repo (archiver#193 D6).** Memory
 headroom, per-stream `XLEN` and last-entry age, the two-tick `XPENDING` rule,

@@ -85,7 +85,7 @@ Periodic oneshots under `deploy/`, each holding its own
 
 | Timer | Cadence | Runs | Writes | Dormant when |
 |---|---|---|---|---|
-| `archiver-bus-health` | 10 min | `python -m src.core.bus_health` | nothing (WARN-only outbox probe, #130) | never |
+| `archiver-bus-health` | 10 min | `python -m src.core.bus_health` | nothing (WARN-only outbox and schema probe, #130, #330) | never |
 | `archiver-pm-org-refresh` | 1 h | `python -m src.core.tools.refresh_orgs` | `pm_organizations`; `info_items.pm_org_id` on a merge (#305) | `ARCHIVER_POWER_MAP_API_KEY` unset: exits 0, no database |
 
 ## Environment variable reference
