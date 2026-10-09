@@ -239,7 +239,7 @@ src/core/                      Domain logic
                                (archiver#330 D3). CLI exits 0/3/2 for the deploy;
                                archiver-bus-health WARNs on a state that cannot serve
   build.py                     /health's build_id: the serving release's REVISION,
-                               else the unit's BUILD_ID stamp (archiver#330 D8)
+                               else null (archiver#330 D8)
 clients/python/                archiver_client SDK v5.x (generated + hand-written wrappers).
                                Version lives in clients/python/pyproject.toml and
                                bumps only when the SDK surface changes

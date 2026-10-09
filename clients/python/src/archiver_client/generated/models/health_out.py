@@ -15,8 +15,8 @@ class HealthOut:
 
     Attributes:
         build_id (None | str): Deployed build identifier: the serving release's REVISION, the 12-character commit SHA
-            scripts/deploy.sh writes into each release (archiver#330). Before the units run releases, the unit's BUILD_ID
-            stamp. Null when neither exists (a dev server, the test suite).
+            scripts/deploy.sh writes into each release (archiver#330). Null outside a release (a dev server, the test
+            suite).
         status (str): Liveness indicator; always 'ok' when the process is up.
     """
 

@@ -18,6 +18,10 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.25.2 (2026-10-09)
+
+[service] **`/health` `build_id` no longer falls back to `BUILD_ID`** (archiver#330). Production runs releases since the cutover (2026-10-09), so the value is always the serving release's `REVISION` (12-character commit SHA); outside a release it is `null`, whatever the environment holds. Type unchanged (`string | null`): `archiver-client` stays at 5.9.0; its generated `HealthOut` docstring and the OpenAPI snapshot change with the description.
+
 ## v4.25.1 (2026-10-09)
 
 [service] **`/health` `build_id` reads the serving release's `REVISION`** (archiver#330). The field's type is unchanged (`string | null`), so `archiver-client` stays at 5.9.0; its generated `HealthOut` docstring and the OpenAPI snapshot change with the description.
