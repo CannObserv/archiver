@@ -1,0 +1,86 @@
+"""One check-in to a co-status monitor (archiver#338, CannObserv/status#32).
+
+Status's contract: ``POST /api/v1/monitors/{id}/checkin`` with ``{"status":
+"ok"|"alert", "variables": {...}}`` and an ``X-API-Key``, answered 202. An
+``ok`` records the check-in; an ``alert`` renders the monitor's templates
+against ``variables`` and reports. Since status#28 a run of alerts is one
+fault, and ``metadata.fault`` names it so a change of fault reports at once.
+Silence past the interval and grace goes ``missing``.
+
+**One attempt, never a loop:** the next run is the retry, and the monitor's
+grace absorbs one missed check-in. A failure raises :class:`CheckinFailed`,
+whose message names Status's answer and never the key.
+
+**The key is a systemd credential** (``LoadCredential=``), read from
+``$CREDENTIALS_DIRECTORY``: in no process environment, never logged. Ported
+from CannObserv/processor's ``checkin.py`` (processor#35).
+"""
+
+import re
+from pathlib import Path
+from typing import Literal
+
+import httpx
+
+#: The ``LoadCredential=`` name ``archiver-drift.service`` gives the key.
+CREDENTIAL_NAME = "status-checkin-key"
+TIMEOUT_SECONDS = 10.0
+#: One token of printable ASCII: what Status mints. Anything else is a bad
+#: paste, refused before httpx sees it, since a header error can quote it.
+_KEY = re.compile(r"[\x21-\x7e]+")
+
+
+class CheckinFailed(Exception):
+    """Status did not take the check-in: its answer, or why there was none."""
+
+
+def read_key(directory: Path | None) -> str:
+    """The key credential under *directory*, stripped; ``""`` when there is none.
+
+    Absent, empty and the unit's lone-newline ``SetCredential=`` fallback all
+    read as ``""``; outside a unit there is no directory at all.
+    """
+    if directory is None:
+        return ""
+    try:
+        return (directory / CREDENTIAL_NAME).read_text().strip()
+    except FileNotFoundError:
+        return ""
+
+
+def post_checkin(
+    base_url: str,
+    monitor_id: str,
+    key: str,
+    status: Literal["ok", "alert"],
+    variables: dict[str, str],
+    *,
+    metadata: dict[str, str] | None = None,
+    timeout: float = TIMEOUT_SECONDS,
+) -> int:
+    """Check in once; return Status's answer code (202), or raise :class:`CheckinFailed`."""
+    if not _KEY.fullmatch(key):
+        raise CheckinFailed(
+            f"the {CREDENTIAL_NAME} credential is not one token of printable ASCII; "
+            "reinstall it (docs/DEPLOYMENT.md § The drift check)"
+        )
+    payload: dict[str, object] = {"status": status, "variables": variables}
+    if metadata:
+        payload["metadata"] = metadata
+    url = f"{base_url.rstrip('/')}/api/v1/monitors/{monitor_id}/checkin"
+    try:
+        response = httpx.post(url, json=payload, headers={"X-API-Key": key}, timeout=timeout)
+    except httpx.HTTPError as e:
+        # By type and httpx's own text, which names the URL, never a header.
+        raise CheckinFailed(f"{type(e).__name__}: {e}") from e
+    if response.status_code != 202:
+        raise CheckinFailed(f"{response.status_code} {_detail(response)}".strip())
+    return response.status_code
+
+
+def _detail(response: httpx.Response) -> str:
+    try:
+        detail = response.json().get("detail", "")
+    except (ValueError, AttributeError):
+        return ""
+    return detail if isinstance(detail, str) else str(detail)

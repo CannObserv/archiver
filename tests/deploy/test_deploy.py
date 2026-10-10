@@ -1356,6 +1356,30 @@ class TestUnits:
         assert "sudo systemctl enable --now archiver-drift.timer" in result.stderr
         assert not [c for c in world.calls() if " enable " in c]
 
+    def test_an_installed_unit_the_release_lacks_is_named_never_removed(self, world):
+        """archiver#338, processor#35 CR 7: after a rollback past the drift check its
+        timer keeps running a build with no ``src.core.drift``, and co-archiver-drift
+        goes missing. Retiring a unit is the operator's: a note, never a removal."""
+        world.push_deploy({**UNITS_V1, "archiver-drift.timer": "[Timer]\n"})
+        assert_ok(world.run())
+        world.push_deploy({"archiver-drift.timer": None})
+        world.reset_log()
+        result = world.run()
+        assert_ok(result)
+        assert world.installed("archiver-drift.timer") == "[Timer]\n"
+        assert (
+            "archiver-drift.timer is installed but not in this release's deploy/; it keeps "
+            "running. If it should not: sudo systemctl disable --now archiver-drift.timer"
+        ) in result.stderr
+        assert not [c for c in world.calls() if "disable" in c or "archiver-drift" in c]
+
+    def test_a_unit_that_is_not_archivers_is_not_its_business(self, world):
+        world.push_deploy(UNITS_V1)
+        (world.units / "postgresql.service").write_text("[Service]\n")
+        result = world.run()
+        assert_ok(result)
+        assert "postgresql.service" not in result.stderr
+
     def test_a_failed_verify_puts_back_exactly_the_units_it_replaced(self, world):
         world.push_deploy(UNITS_V1)
         assert_ok(world.run())

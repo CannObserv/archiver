@@ -505,6 +505,23 @@ restore_units() {
   journal "live units restored"
 }
 
+# A unit installed here that this release's deploy/ lacks: deploy.sh never
+# removes one, so it keeps running. After a rollback past archiver#338 the
+# drift timer runs a build with no src.core.drift, and co-archiver-drift goes
+# missing (processor#35 CR 7). A note, never a removal: retiring a unit is the
+# operator's. Only archiver's own units: the host's others are not its business.
+note_units_not_in_release() {
+  local path name
+  for path in "$UNIT_DIR"/archiver.service "$UNIT_DIR"/archiver-*.service "$UNIT_DIR"/archiver-*.timer; do
+    [[ -f "$path" ]] || continue
+    name="$(basename "$path")"
+    [[ -f "$release/deploy/$name" ]] && continue
+    note "$name is installed but not in this release's deploy/; it keeps running." \
+      "If it should not: sudo systemctl disable --now $name (docs/DEPLOYMENT.md § The drift check)"
+  done
+  return 0
+}
+
 compare_host_configs() {
   local entry rel dest
   for entry in "${HOST_CONFIGS[@]}"; do
@@ -624,6 +641,7 @@ else
   dead "live failed on $build; $back, which is NOT answering: journalctl -u $API -u ${PROBE%.service} -n 50"
 fi
 compare_host_configs
+note_units_not_in_release
 
 # --- prune -----------------------------------------------------------------
 

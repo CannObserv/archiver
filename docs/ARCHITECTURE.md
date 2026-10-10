@@ -240,6 +240,12 @@ src/core/                      Domain logic
                                archiver-bus-health WARNs on a state that cannot serve
   build.py                     /health's build_id: the serving release's REVISION,
                                else null (archiver#330 D8)
+  drift.py                     The drift check (archiver#338): does live's REVISION
+                               lag origin/main in code that runs, past an 8 h grace?
+                               Hourly from archiver-drift.timer; asks GitHub,
+                               reports ok/alert to co-status's co-archiver-drift
+  status_checkin.py            One check-in to a co-status monitor; the key is a
+                               systemd credential, never in the environment
 clients/python/                archiver_client SDK v5.x (generated + hand-written wrappers).
                                Version lives in clients/python/pyproject.toml and
                                bumps only when the SDK surface changes
@@ -252,8 +258,8 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                test_db_guard_parity.py, which keeps dev_server.sh in step
                                with db_safety.py);
                                tests/deploy/ asserts the installed systemd artifacts match
-                               deploy/ — archiver.service, the bus-health pair and
-                               the pm-org-refresh pair
+                               deploy/ — archiver.service, the bus-health pair,
+                               the pm-org-refresh pair and the drift pair
                                (each skips when absent, so CI passes) — and the
                                needrestart drop-in against the live config chain
                                (archiver#278; asserts only on the archiver host),

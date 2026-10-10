@@ -15,13 +15,15 @@ tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
 /srv/archiver/                 root:root 0755
   releases/<build>/            git archive of one origin/main commit + its own .venv;
                                root's, read-only; REVISION (12-char SHA) written last
-  live -> releases/<build>     archiver.service, archiver-bus-health, archiver-pm-org-refresh
+  live -> releases/<build>     archiver.service, archiver-bus-health, archiver-pm-org-refresh,
+                               archiver-drift
 ```
 
 - **Nothing done in `/home/exedev/archiver` reaches a unit**: branch switches, uncommitted
   edits, `uv sync`, hook commits. Units run `uv run --frozen --no-sync` from
   `/srv/archiver/live`, read `/etc/archiver/.env` only, and stamp nothing: `/health`'s
-  `build_id` is the release's `REVISION`.
+  `build_id` is the release's `REVISION`. The drift check runs the release's
+  `.venv/bin/python` instead and reads no env file at all (§ The drift check).
 - **Root owns the root, `releases/` and each finished release** (status#14): changing what a
   unit runs takes `sudo`, which journals the command. Not a boundary against `exedev`.
 - **The venv is copied** (`--link-mode copy`), not hardlinked to `~/.cache/uv`, on
@@ -131,6 +133,86 @@ unit needs it: `deploy.sh` reads it from there, and so do the checkout's wheelho
 there, delete the line, then restart: `sudo sed -i '/^GOOGLE_APPLICATION_CREDENTIALS=/d'
 /etc/archiver/.env`, then `scripts/deploy.sh` or `sudo systemctl restart archiver`.
 
+## The drift check (archiver#338)
+
+**A merge is not a deploy.** Since releases, nothing that runs changes until
+`scripts/deploy.sh`, and nothing else reports a merge that was never deployed.
+`archiver-drift.timer` runs `python -m src.core.drift` hourly: it asks GitHub how far
+live's `REVISION` is behind `main`, and checks in to Status's **`co-archiver-drift`**
+monitor (`01M4KMDDN3XWJR0GCECTAYMVTV`, tenant `co-archiver`, CannObserv/status#32).
+Ported from processor#35, itself from status#12; the rules are in `src/core/drift.py`.
+
+| Verdict | When | Status sees |
+|---|---|---|
+| `ok` | live is `main`; or behind only in paths that never run; or behind in code for 8 h or less | `ok` |
+| `lag` | behind in code for more than 8 h since the push that brought it | `alert`, naming `main`'s CI result and the remedy |
+| `off_main` | live is not an ancestor of `main` (or GitHub doesn't know it) | `alert` at once |
+| `unstamped` | the release has no `REVISION` | `alert` at once |
+| `test` | `--test-alert`, by hand | `alert` |
+| silent | GitHub can't answer (rate limit, 5xx, timeout) | **nothing**: never a false `ok`; two silent runs go `missing` |
+
+**What runs** is an allowlist, `RUNTIME_DIRS`/`RUNTIME_FILES` in `src/core/drift.py`:
+`src/`, `alembic/`, `alembic.ini`, `deploy/`, `scripts/deploy.sh`,
+`scripts/check_redis_floor.sh`, `pyproject.toml`, `uv.lock`. A docs, tests, skills or
+SDK lag is `ok` however old. `tests/core/test_drift.py` holds every path and module a unit
+executes to that list, so a new `ExecStart` cannot slip out of it.
+
+**Each alert carries `metadata.fault`** = its kind (status#28): a run of `lag` alerts is
+one fault, reported when it opens, reminded daily (`renotify_seconds` 86400) and *cleared*
+by the next `ok`; a change of kind reports at once. The monitor is 3600 s / grace 5400 s:
+one missed run is absorbed, two alarm. Unauthenticated GitHub, 60 requests an hour shared
+with `deploy.sh`'s CI gate; a run costs 1-2, at most 10.
+
+**The unit** has no `EnvironmentFile=` (`/etc/archiver/.env` holds credentials it has no
+use for), no database, no production opt-in, and is sandboxed (`ProtectSystem=strict`,
+`ProtectHome=yes`, hence `.venv/bin/python`, not `uv run`, which wants `$HOME`). The key is
+`/etc/archiver/status-checkin.key` (`root:root 0600`), handed over as the
+`status-checkin-key` credential; installed 2026-10-10. The tailnet path
+`tag:archiver → tag:status:9000` is in.
+
+**Never run it with the real key or monitor id outside the unit.** A disabled monitor
+still reports every alert to both channels, and a stray `ok` resets the dead-man clock, so
+it can hide real silence (status#32). Tests stub GitHub and Status (respx);
+`tests/conftest.py` scrubs `ARCHIVER_STATUS_URL` and `CO_ARCHIVER_DRIFT_MONITOR_ID`.
+
+### Turning it on (once)
+
+`scripts/deploy.sh` installs both units and never enables a new one (D12). After the
+deploy that ships #338:
+
+```bash
+sudo systemctl enable --now archiver-drift.timer   # first run fires at once
+journalctl -u archiver-drift -n 5 -o cat            # "drift check", kind ok, checkin 202
+```
+
+Then on status#32: post the first `ok` (`kind`, `live`, `main`), and Status enables the
+monitor (it was created disabled). Then prove the channels with one test alert, as a
+transient unit holding the same credential (checked 2026-10-10: it reaches an `exedev`
+process), and have the operator confirm email and Slack:
+
+```bash
+sudo systemd-run --quiet --pipe --wait \
+  -p LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key \
+  -p Environment=CO_ARCHIVER_DRIFT_MONITOR_ID=01M4KMDDN3XWJR0GCECTAYMVTV \
+  -p WorkingDirectory=/srv/archiver/live -p User=exedev \
+  /srv/archiver/live/.venv/bin/python -m src.core.drift --test-alert
+sudo systemctl start archiver-drift.service   # its ok clears the test fault: "has cleared"
+```
+
+### When it alerts
+
+| Kind | Remedy |
+|---|---|
+| `lag` | `scripts/deploy.sh` from an up-to-date `main`. If the body says CI isn't `success`, fix `main` first: the gate refuses it |
+| `off_main` | live runs a commit `main` doesn't contain: a branch, or history rewritten since. Deploy `main` |
+| `unstamped` | the release is broken; redeploy |
+| `missing` | the check isn't reporting: `systemctl status archiver-drift.timer`, `journalctl -u archiver-drift`; the tailnet path (`curl http://status:9000/health`), the key file, or GitHub silent two runs running |
+
+**After a rollback past #338** the timer keeps running a release with no
+`src.core.drift`, fails, and the monitor goes `missing`. `deploy.sh` names any installed
+`archiver*` unit the release lacks; it never removes one. Stop it with `sudo systemctl
+disable --now archiver-drift.timer` if that is the intent.
+
 ## cannobserv substrate
 
 **cannobserv substrate (archiver#72/#75).** `co-core` + `co-core-aio` (the shared
@@ -205,14 +287,15 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 
 ## Timers
 
-Periodic oneshots under `deploy/`, each holding its own
-`ARCHIVER_ALLOW_PRODUCTION_DB=1`. Install, behaviour and logs:
-[deploy/README.md](../deploy/README.md).
+Periodic oneshots under `deploy/`. Those touching the database hold their own
+`ARCHIVER_ALLOW_PRODUCTION_DB=1`; the drift check touches none. Install, behaviour and
+logs: [deploy/README.md](../deploy/README.md).
 
 | Timer | Cadence | Runs | Writes | Dormant when |
 |---|---|---|---|---|
 | `archiver-bus-health` | 10 min | `python -m src.core.bus_health` | nothing (WARN-only outbox and schema probe, #130, #330) | never |
 | `archiver-pm-org-refresh` | 1 h | `python -m src.core.tools.refresh_orgs` | `pm_organizations`; `info_items.pm_org_id` on a merge (#305) | `ARCHIVER_POWER_MAP_API_KEY` unset: exits 0, no database |
+| `archiver-drift` | 1 h | `python -m src.core.drift` | nothing local; one check-in to co-status (#338) | never; no key or monitor id: logs it, exits 1 |
 
 ## Environment variable reference
 
@@ -246,6 +329,8 @@ Periodic oneshots under `deploy/`, each holding its own
 - `ARCHIVER_POWER_MAP_API_KEY` — *optional*. Archiver's **read-only** Power Map key (archiver#304), sent as `X-API-Key`. **The switch**: unset → Power Map features are dormant, `PUT /info-items/{id}/org` and a create with `pm_org_id` answer 503 "Power Map not configured", and nothing else changes — rendering and replication read only the local `pm_organizations` snapshot, never Power Map. Set in `/etc/archiver/.env`; takes effect on restart. It is also the follower's switch: `archiver-pm-org-refresh.service` exits 0 without touching the database when it is unset (see *Timers* below). `scripts/dev_server.sh` never passes it through (see `ARCHIVER_DEV_POWER_MAP_API_KEY`); the test suite scrubs it.
 - `ARCHIVER_POWER_MAP_BASE_URL` — *optional*. Power Map's base URL, default `https://power-map.exe.xyz` (public HTTPS, no tailnet hop). Read only when the key is set.
 - `ARCHIVER_DEV_POWER_MAP_API_KEY` / `ARCHIVER_DEV_POWER_MAP_BASE_URL` — *optional*, dev only. What `scripts/dev_server.sh` exports as the two above; unset → the dev server runs Power Map-dormant. Unlike the Redis guard there is no same-target refusal: the key is read-only and dev writes only `archiver_dev`, so reading production Power Map from 8001 is the supported posture. Only inheriting the service's credential is refused. Set in the repo `.env`.
+- `CO_ARCHIVER_DRIFT_MONITOR_ID` — the drift check's co-status monitor, `co-archiver-drift` (archiver#338). Not a secret: set in `deploy/archiver-drift.service`, never an env file. Must be a ULID (it lands in a URL path); anything else exits 2. Unset → the check runs, logs that nothing was sent, exits 1. Scrubbed by `tests/conftest.py`: no test may hold the real one (§ The drift check).
+- `ARCHIVER_STATUS_URL` — *optional*. co-status's base URL for the drift check, default `http://status:9000` (MagicDNS over the tailnet). Its key is never an env var: the unit's `status-checkin-key` credential.
 - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance (e.g. `https://archiver.example.com`). When set, InfoItem API responses include `dashboard_url` pointing to the dashboard detail page (`{ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}`). Unset → `dashboard_url` is `null`. Set this to the URL end-users open in a browser, distinct from any internal service-to-service address. Set in `/etc/archiver/.env` on the VM.
 - `WATCHER_CACHE_DIR`, `WATCHER_CACHE_TTL_SECONDS`, `WATCHER_CACHE_SWEEP_INTERVAL_SECONDS` — Watcher-side, not Archiver-side; documented here because the `content_cache_uri` lifecycle protocol they govern is a registry contract (see design doc Section 2).
 

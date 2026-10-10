@@ -103,6 +103,9 @@ dashboard `https://co-registrar.exe.xyz/`, dev server
 `systemctl restart archiver` restarts the *current* release - it deploys nothing; hand
 alembic against production is refused without the opt-in. Logs: `sudo journalctl -u
 archiver -f`; deploys `-t archiver-deploy`. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+`archiver-drift.timer` alerts co-status when live lags `main` in code that runs for over
+8 h (#338); never run it with the real key or monitor id outside its unit, bar the
+DEPLOYMENT.md `--test-alert`.
 
 Dev server (port 8001) - **always** via the launch script:
 
