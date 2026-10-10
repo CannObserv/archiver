@@ -40,7 +40,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ "${ARCHIVER_DEV_SERVER_SKIP_ENV_FILES:-}" != "1" ]]; then
   set -a
   # shellcheck disable=SC1091
-  [ -f /etc/archiver/.env ] && . /etc/archiver/.env
+  [ -r /etc/archiver/.env ] && . /etc/archiver/.env
   # shellcheck disable=SC1091
   [ -f "$REPO_ROOT/.env" ] && . "$REPO_ROOT/.env"
   set +a
@@ -187,6 +187,20 @@ if [[ -n "$DEV_REDIS_URL" ]]; then
     echo "    ARCHIVER_DEV_REDIS_URL=redis://127.0.0.1:6380/0" >&2
     exit 1
   fi
+  # Positive, as the database name rule is (archiver#339): /etc/archiver/.env is
+  # root's alone, so this shell rarely holds prod's URL for the comparison
+  # above. A dev broker is a local one; the shared broker never is.
+  case "$DEV_REDIS_ID" in
+    127.0.0.1:* | unix:*) ;; # redis_identity folds every loopback spelling
+    *)
+      echo "dev_server: refusing — ARCHIVER_DEV_REDIS_URL ($DEV_REDIS_ID) is" >&2
+      echo "  not a local broker. A dev server runs bus-dormant (leave it unset)" >&2
+      echo "  or on a local throwaway, never the shared broker:" >&2
+      echo "    docker run --rm -p 127.0.0.1:6380:6379 redis:7" >&2
+      echo "    ARCHIVER_DEV_REDIS_URL=redis://127.0.0.1:6380/0" >&2
+      exit 1
+      ;;
+  esac
   export ARCHIVER_REDIS_URL="$DEV_REDIS_URL"
   REDIS_REPORT="$ARCHIVER_REDIS_URL"
 else

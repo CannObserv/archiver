@@ -204,3 +204,36 @@ def test_unix_socket_refusal_does_not_claim_host_port() -> None:
     assert result.returncode == 1
     assert "unix:/run/redis/redis.sock" in result.stderr
     assert "host:port" not in result.stderr
+
+
+# --- Positive rule (archiver#339) -----------------------------------------
+#
+# Since #339 /etc/archiver/.env is root's alone, so the shell that runs this
+# script never holds prod's ARCHIVER_REDIS_URL and the comparison above has
+# nothing to compare against. The rule that still holds is positive: a dev
+# broker is a local one (DEPLOYMENT.md: dormant, or a local throwaway).
+
+
+def test_a_remote_broker_is_refused_with_no_prod_url_to_compare() -> None:
+    """The shared broker, named with prod's URL out of sight, is still refused."""
+    result = _run({"ARCHIVER_DEV_REDIS_URL": "redis://default:s3cret@broker:6379/0"})
+    assert result.returncode == 1
+    assert "not a local broker" in result.stderr
+    assert "s3cret" not in result.stderr
+
+
+def test_a_remote_broker_by_address_is_refused() -> None:
+    result = _run({"ARCHIVER_DEV_REDIS_URL": "redis://100.64.0.7:6379/0"})
+    assert result.returncode == 1
+    assert "not a local broker" in result.stderr
+
+
+def test_a_tls_remote_broker_is_refused() -> None:
+    result = _run({"ARCHIVER_DEV_REDIS_URL": "rediss://broker.example.ts.net:6380/0"})
+    assert result.returncode == 1
+    assert "not a local broker" in result.stderr
+
+
+def test_a_local_socket_is_a_local_broker() -> None:
+    result = _run({"ARCHIVER_DEV_REDIS_URL": "unix:///tmp/archiver-dev-redis.sock"})
+    assert result.returncode == 0, result.stderr

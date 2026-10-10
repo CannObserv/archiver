@@ -47,6 +47,33 @@ def test_guard_passes_when_no_prod_urls_set(monkeypatch):
     _check_test_url_safety("postgresql+asyncpg://host/archiver_test")  # no exception
 
 
+# --- The name rule (archiver#339) ---------------------------------------------
+#
+# Since #339 /etc/archiver/.env is root's alone, so a shell that runs pytest
+# holds no ARCHIVER_DATABASE_URL and the comparisons above pass vacuously. The
+# name is what still holds, as src/core/db_safety.py and dev_server.sh decide.
+
+
+def test_guard_raises_for_the_production_name_with_no_prod_urls_set(monkeypatch):
+    monkeypatch.delenv("ARCHIVER_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="must end in '_test'"):
+        _check_test_url_safety("postgresql+asyncpg://u:p@localhost:5432/archiver")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["archiver_dev", "archiver_testing", "test_archiver", ""],
+    ids=["dev", "near-miss suffix", "prefix", "no name"],
+)
+def test_guard_raises_for_a_name_without_the_test_suffix(monkeypatch, name):
+    """``_dev`` too: teardown drops the schema, and archiver_dev keeps data."""
+    monkeypatch.delenv("ARCHIVER_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="must end in '_test'"):
+        _check_test_url_safety(f"postgresql+asyncpg://u:p@localhost:5432/{name}")
+
+
 def test_outbound_service_env_is_scrubbed():
     """The test process must never hold a live outbound-service address (#157).
 

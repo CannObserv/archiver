@@ -29,9 +29,10 @@
 # the build and the schema can serve. On failure, switch back, units too,
 # restart, and prove the old build. The migration stays (expand-only).
 #
-# Runs as exedev, the units' user, and builds as exedev. Root owns the deploy
-# root, releases/ and every finished release, so the link too (status#14):
-# sudo for every write under the root, for systemctl, and for unit files.
+# Runs as exedev and builds as exedev; the units run as archiver (archiver#339),
+# which owns nothing in a release. Root owns the deploy root, releases/ and every
+# finished release, so the link too (status#14): sudo for every write under the
+# root, for systemctl, for unit files, and to read .env, which is root's alone.
 # Exits 0 when live verified, 4 when live is left on a build that did not
 # answer, 1 otherwise.
 set -euo pipefail
@@ -134,9 +135,16 @@ flock -n 9 || die "another deploy is running (it holds the lock on $ROOT)"
 backup="$(mktemp -d "${TMPDIR:-/tmp}/archiver-deploy.XXXXXX")"
 trap 'rm -rf "$backup" || :' EXIT
 
-# .env is what the units read; dev.env names the rehearsal database (D2);
-# deploy.env holds the wheelhouse credential no unit needs (D10).
-for name in .env dev.env deploy.env; do
+# .env is what the units read, root:root 0600: systemd reads it before it drops
+# to the units' user, and exedev reads it only through sudo (archiver#339).
+# dev.env names the rehearsal database (D2); deploy.env holds the wheelhouse
+# credential no unit needs (D10). Both stay exedev's to read.
+read_env() { # <file>
+  if [[ "$1" == .env ]]; then sudo cat "$ENV_DIR/$1"; else cat "$ENV_DIR/$1"; fi
+}
+# Only that it is there: nothing runs as root before the CI gate.
+[[ -f "$ENV_DIR/.env" ]] || die "$ENV_DIR/.env is missing (docs/DEPLOYMENT.md § Releases)"
+for name in dev.env deploy.env; do
   [[ -r "$ENV_DIR/$name" ]] || die "$ENV_DIR/$name is missing or unreadable (docs/DEPLOYMENT.md § Releases)"
 done
 
@@ -147,7 +155,7 @@ env_value() { # <file> <name>
     unset "$2"
     set -a
     # shellcheck disable=SC1090
-    . "$ENV_DIR/$1"
+    . <(read_env "$1")
     printf '%s' "${!2:-}"
   )
 }
@@ -387,6 +395,30 @@ else
   build_release
 fi
 sudo touch "$release" # prune by last deploy, not first build
+
+# Each unit's User= and Group= must exist here, or the unit fails at its next
+# start, after the switch (archiver#339). The host's, not the release's: checked
+# on every deploy, a reused release too.
+unit_identities() {
+  local unit
+  for unit in "$release"/deploy/*.service; do
+    [[ -f "$unit" ]] || continue
+    sed -nE 's/^(User|Group)=(.+)$/\1 \2/p' "$unit"
+  done | sort -u
+}
+while read -r kind name; do
+  [[ -n "$name" ]] || continue
+  if [[ "$kind" == User ]]; then
+    getent passwd "$name" >/dev/null ||
+      die "a unit runs as user $name, which this host lacks. Once: sudo useradd --system" \
+        "--no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin $name" \
+        "(docs/DEPLOYMENT.md § The service user); nothing switched"
+  else
+    getent group "$name" >/dev/null ||
+      die "a unit runs as group $name, which this host lacks: sudo useradd creates it" \
+        "(docs/DEPLOYMENT.md § The service user); nothing switched"
+  fi
+done < <(unit_identities)
 
 # --- the databases ---------------------------------------------------------
 

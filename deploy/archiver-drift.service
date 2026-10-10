@@ -20,11 +20,14 @@ After=network-online.target tailscaled.service
 
 [Service]
 Type=oneshot
-User=exedev
+# archiver#339, as archiver.service.
+User=archiver
+Group=archiver
 # A release, never a checkout (archiver#330). Its REVISION is what this checks.
 WorkingDirectory=/srv/archiver/live
-# The release's interpreter, not `uv run`: uv wants $HOME, which ProtectHome=
-# hides. The venv's python is the system's, and its .pth files name the release.
+# The release's interpreter, not `uv run`: uv wants $HOME, which this user lacks
+# and ProtectHome= hides. The venv's python is the system's, and its .pth files
+# name the release.
 ExecStart=/srv/archiver/live/.venv/bin/python -m src.core.drift
 # co-archiver-drift, tenant co-archiver (CannObserv/status#32). Not a secret;
 # the base URL defaults to http://status:9000 (src/core/drift.py).
