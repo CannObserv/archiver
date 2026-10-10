@@ -43,7 +43,7 @@ failure. Units run `uv run --frozen --no-sync` from `/srv/archiver/live` and rea
 | D4 | Both timers run `live`. Verify forces one `archiver-bus-health` pass (waiting out one in flight); never forces `pm-org-refresh` | R6's forced pass, applied to the read-only probe only |
 | D5 | Keep the 5 newest releases; never prune the linked one | R13 (~250 MB each; 9 GB free) |
 | D6 | CI gate: newest `push` run of `ci.yml` on `main`, every job `success`, floor `lint test client-drift changelog`; `--skip-ci` logged | status#11 / processor#34 unchanged; the repo is public, no token |
-| D7 | Drift check reporting to co-status `co-archiver-drift` | processor#35's shape; **separate issue** (operator prerequisites) |
+| D7 | Drift check reporting to co-status `co-archiver-drift` | processor#35's shape; **separate issue** (operator prerequisites): shipped by #338, `docs/DEPLOYMENT.md` § The drift check |
 | D8 | `/health` `build_id` comes from the release's `REVISION`; `null` outside a release | R10, but `null` not `"dev"`: the field is already nullable, so the contract change is description-only |
 | D9 | `alembic/env.py` refuses an un-opted-in production DB when online; only `deploy.sh` passes `ARCHIVER_ALLOW_PRODUCTION_DB=1` to it | status#15 |
 | D10 | Wheels are fetched into the release by the release's own `sync_wheelhouse.py`, at build time, with the co-pypi-reader key from a deploy-only `/etc/archiver/deploy.env` | broker#22 Q5. Not processor's copy of the dev `.wheelhouse`: find-links locks by filename without a hash. The fetch must carry every file `uv.lock` names for co-core - sdists too - or `--locked` fails (seen building PR A's worktree) |

@@ -1,0 +1,48 @@
+# Archiver's drift check (archiver#338): does live lag origin/main? Started
+# hourly by archiver-drift.timer. scripts/deploy.sh installs both from the
+# release, but never enables a new unit (archiver#330 D12): enable the timer
+# once by hand (docs/DEPLOYMENT.md § The drift check).
+#
+# Compares the live release's REVISION with main on GitHub and checks in to
+# Status's co-archiver-drift monitor (CannObserv/status#32): ok while live is
+# main, behind only in what never runs, or behind in code for 8 h or less;
+# alert past that, and at once when live is off main or unstamped. No check-in
+# when GitHub cannot say, so a long outage ends in the monitor going missing.
+# src/core/drift.py has the rules.
+#
+# Apart from archiver.service on purpose: a Status or GitHub outage costs this
+# unit its exit code and nothing else.
+[Unit]
+Description=Archiver: does live lag origin/main? Check in to Status (archiver#338)
+Documentation=https://github.com/CannObserv/archiver/blob/main/docs/DEPLOYMENT.md
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+User=exedev
+# A release, never a checkout (archiver#330). Its REVISION is what this checks.
+WorkingDirectory=/srv/archiver/live
+# The release's interpreter, not `uv run`: uv wants $HOME, which ProtectHome=
+# hides. The venv's python is the system's, and its .pth files name the release.
+ExecStart=/srv/archiver/live/.venv/bin/python -m src.core.drift
+# co-archiver-drift, tenant co-archiver (CannObserv/status#32). Not a secret;
+# the base URL defaults to http://status:9000 (src/core/drift.py).
+Environment=CO_ARCHIVER_DRIFT_MONITOR_ID=01M4KMDDN3XWJR0GCECTAYMVTV
+# The hard stop. No GitHub call starts past 60 s, but each is bounded per read,
+# not in total, then one check-in (10 s). Killed here, the run sends nothing:
+# silence, never a false ok. No Restart=: the next hour is the retry, and the
+# monitor's grace absorbs one missed run.
+TimeoutStartSec=90
+
+# No EnvironmentFile=: /etc/archiver/.env holds the database and Power Map
+# credentials, which a drift check has no use for. Only the Status key, root
+# 600 on disk, handed over at start. SetCredential= is the fallback when the
+# file is missing: the check then runs, logs that it has no key, and exits 1.
+LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key
+SetCredential=status-checkin-key:\n
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes

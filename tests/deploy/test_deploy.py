@@ -1356,6 +1356,30 @@ class TestUnits:
         assert "sudo systemctl enable --now archiver-drift.timer" in result.stderr
         assert not [c for c in world.calls() if " enable " in c]
 
+    def test_an_installed_unit_the_release_lacks_is_named_never_removed(self, world):
+        """archiver#338, processor#35 CR 7: after a rollback past the drift check its
+        timer keeps running a build with no ``src.core.drift``, and co-archiver-drift
+        goes missing. Retiring a unit is the operator's: a note, never a removal."""
+        world.push_deploy({**UNITS_V1, "archiver-drift.timer": "[Timer]\n"})
+        assert_ok(world.run())
+        world.push_deploy({"archiver-drift.timer": None})
+        world.reset_log()
+        result = world.run()
+        assert_ok(result)
+        assert world.installed("archiver-drift.timer") == "[Timer]\n"
+        assert (
+            "archiver-drift.timer is installed but not in this release's deploy/; it keeps "
+            "running. If it should not: sudo systemctl disable --now archiver-drift.timer"
+        ) in result.stderr
+        assert not [c for c in world.calls() if "disable" in c or "archiver-drift" in c]
+
+    def test_a_unit_that_is_not_archivers_is_not_its_business(self, world):
+        world.push_deploy(UNITS_V1)
+        (world.units / "postgresql.service").write_text("[Service]\n")
+        result = world.run()
+        assert_ok(result)
+        assert "postgresql.service" not in result.stderr
+
     def test_a_failed_verify_puts_back_exactly_the_units_it_replaced(self, world):
         world.push_deploy(UNITS_V1)
         assert_ok(world.run())
@@ -1440,16 +1464,33 @@ class TestTheRepoUnits:
                     assert line.split("=", 1)[1].lstrip("-").startswith("/etc/archiver/"), line
                 assert not (line.startswith("ExecStartPre") and "git " in line), unit.name
 
-    def test_every_release_path_a_unit_runs_is_an_executable_in_the_repo(self):
-        """CR 7, at the source: what deploy.sh refuses a release for."""
+    def release_paths(self) -> list[tuple[str, str]]:
+        """``(unit, release-relative path)`` for each ``Exec*=`` run from the release."""
+        found = []
         for unit in sorted(self.REPO_DEPLOY.glob("*.service")):
             for line in unit.read_text().splitlines():
                 if not re.match(r"Exec[A-Za-z]*=", line):
                     continue
                 exe = line.split("=", 1)[1].lstrip("-+@!:").split()[0]
                 if exe.startswith("/srv/archiver/live/"):
-                    path = REPO_ROOT / exe.removeprefix("/srv/archiver/live/")
-                    assert path.is_file() and os.access(path, os.X_OK), (unit.name, exe)
+                    found.append((unit.name, exe.removeprefix("/srv/archiver/live/")))
+        return found
+
+    def test_every_release_path_a_unit_runs_is_an_executable_in_the_repo(self):
+        """CR 7, at the source: what deploy.sh refuses a release for. ``.venv/`` is
+        not the repo's: the deploy builds it (the next test)."""
+        for unit, rel in self.release_paths():
+            if rel.startswith(".venv/"):
+                continue
+            path = REPO_ROOT / rel
+            assert path.is_file() and os.access(path, os.X_OK), (unit, rel)
+
+    def test_the_only_built_path_a_unit_runs_is_the_release_interpreter(self):
+        """#338 CR 2: the drift check runs ``.venv/bin/python``, which no checkout
+        tracks. deploy.sh builds it on ``$PYTHON`` and refuses a release that lacks
+        it, after ``uv sync``; anything else under ``.venv/`` is unchecked here."""
+        built = {rel for _, rel in self.release_paths() if rel.startswith(".venv/")}
+        assert built <= {".venv/bin/python"}, built
 
     def test_each_timer_triggers_a_service_in_deploy(self):
         for timer in sorted(self.REPO_DEPLOY.glob("*.timer")):

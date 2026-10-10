@@ -106,6 +106,10 @@ _OUTBOUND_SERVICE_ENV_VARS = (
     "ARCHIVER_POWER_MAP_API_KEY",
     "ARCHIVER_POWER_MAP_BASE_URL",
     "ARCHIVER_DEV_POWER_MAP_API_KEY",
+    # The drift check's Status monitor (#338): a disabled monitor still pages on
+    # an alert, and a stray ok masks real silence, so no test holds the real one.
+    "ARCHIVER_STATUS_URL",
+    "CO_ARCHIVER_DRIFT_MONITOR_ID",
 )
 for _var in _OUTBOUND_SERVICE_ENV_VARS:
     os.environ.pop(_var, None)
