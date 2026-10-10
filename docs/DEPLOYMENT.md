@@ -185,8 +185,9 @@ sudo systemctl enable --now archiver-drift.timer   # first run fires at once
 journalctl -u archiver-drift -n 5 -o cat            # "drift check", kind ok, checkin 202
 ```
 
-Then on status#32: post the first `ok` (`kind`, `live`, `main`), and Status enables the
-monitor (it was created disabled). Then prove the channels with one test alert, as a
+Then **whoever ran the deploy** posts that first `ok` (`kind`, `live`, `main`) on
+status#32, and status-agent enables the monitor (it was created disabled) once it sees the
+check-in on its side. Then prove the channels with one test alert, as a
 transient unit holding the same credential (checked 2026-10-10: it reaches an `exedev`
 process), and have the operator confirm email and Slack:
 
