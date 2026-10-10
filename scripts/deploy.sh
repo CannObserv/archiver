@@ -152,10 +152,13 @@ done
 # may have sourced another file (status CR 5).
 env_value() { # <file> <name>
   (
+    local text
+    # Said here, or a sudo that cannot read .env reads as a missing variable.
+    text="$(read_env "$1")" || { note "cannot read $ENV_DIR/$1"; exit 1; }
     unset "$2"
     set -a
     # shellcheck disable=SC1090
-    . <(read_env "$1")
+    . <(printf '%s\n' "$text")
     printf '%s' "${!2:-}"
   )
 }

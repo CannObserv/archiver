@@ -137,6 +137,7 @@ case "$1" in
   ln | mv | chmod | touch | tee) as_root "$@"; exit ;;
   # Reads what only root can (archiver#339): the world keeps .env unreadable.
   cat)
+    [[ -n "${FAKE_SUDO_CAT_FAIL:-}" ]] && { echo "sudo: a password is required" >&2; exit 1; }
     path="${@: -1}" rc=0
     [[ -f "$path" && ! -r "$path" ]] && chmod u+r "$path" && closed=1
     "$@" || rc=$?
@@ -702,6 +703,13 @@ class TestTheServiceUser:
         calls = world.calls()
         assert f"sudo cat {world.etc}/.env" in calls
         assert any(f"URL={LIVE_URL} " in c and "alembic upgrade" in c for c in calls), calls
+
+    def test_a_sudo_that_cannot_read_env_says_so(self, world):
+        """Not "no database URL": the file may be fine, and sudo the problem."""
+        result = world.run(FAKE_SUDO_CAT_FAIL="1")
+        assert result.returncode == 1
+        assert f"cannot read {world.etc}/.env" in result.stderr
+        assert world.live() is None
 
     def test_dev_and_deploy_env_are_read_without_sudo(self, world):
         """exedev keeps those two (root:exedev 0640): no sudo where none is needed."""
