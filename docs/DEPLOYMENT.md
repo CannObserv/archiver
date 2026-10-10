@@ -318,8 +318,10 @@ SQL
 done                                                                       # 0, 0
 url_to_agent='s#^((TEST_DATABASE_URL|ARCHIVER_DEV_DATABASE_URL)=[^:]+://)archiver:[^@]*@#\1archiver_agent:'"$pw"'@#'
 sed -E -i "$url_to_agent" /home/exedev/archiver/.env
-sudo sed -E -i "$url_to_agent" /etc/archiver/dev.env && stat -c '%U:%G %a' /etc/archiver/dev.env  # root:exedev 640
-unset pw url_to_agent
+# sed as exedev, never under sudo: sudo journals its argv, and this one holds the password.
+tmp="$(umask 077 && mktemp)" && sed -E "$url_to_agent" /etc/archiver/dev.env >"$tmp" &&
+  sudo install -m 640 -o root -g exedev "$tmp" /etc/archiver/dev.env; rm -f "$tmp"
+unset pw url_to_agent tmp
 set -a; . /home/exedev/archiver/.env; set +a; uv run pytest -q             # the suite, on archiver_agent
 ```
 
