@@ -7,7 +7,9 @@ After=network.target postgresql.service
 
 [Service]
 Type=oneshot
-User=exedev
+# archiver#339, as archiver.service.
+User=archiver
+Group=archiver
 # The live release, as archiver.service (archiver#330).
 WorkingDirectory=/srv/archiver/live
 
@@ -33,4 +35,11 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # beats hanging.
 TimeoutStartSec=900
 
-ExecStart=/usr/local/bin/uv run --frozen --no-sync python -m src.core.tools.refresh_orgs
+# The release's interpreter, not `uv run`: uv wants $HOME (archiver#339).
+ExecStart=/srv/archiver/live/.venv/bin/python -m src.core.tools.refresh_orgs
+
+# As archiver.service: nothing writes outside PrivateTmp, nothing reads /home.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes

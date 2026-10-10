@@ -153,7 +153,7 @@ set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS, a
 uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 ```
 
-**Env separation.** `/etc/archiver/.env` is machine-global and reaches the worktree already. `.env` is gitignored, so a fresh worktree has none — and without it `TEST_DATABASE_URL` is unset:
+**Env separation.** `/etc/archiver/.env` is root's alone (archiver#339): nothing in it reaches a worktree, or any agent shell. `.env` is gitignored, so a fresh worktree has none — and without it `TEST_DATABASE_URL` is unset:
 
 ```bash
 MAIN=$(git rev-parse --path-format=absolute --git-common-dir | sed 's|/\.git$||')
@@ -185,7 +185,7 @@ Before doing substantial work:
 - The baseline suite passes:
 
   ```bash
-  set -a; [ -f /etc/archiver/.env ] && . /etc/archiver/.env; [ -f .env ] && . .env; set +a
+  set -a; [ -r /etc/archiver/.env ] && . /etc/archiver/.env; [ -f .env ] && . .env; set +a
   uv run pytest --no-cov
   ```
 

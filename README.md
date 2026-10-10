@@ -20,7 +20,7 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 ```bash
 # co-core / co-core-aio resolve from a wheelhouse mirrored from the private GCS
 # index (see AGENTS.md → Environment & Tooling); populate it before uv sync:
-set -a; . /etc/archiver/.env; set +a
+set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS (#341)
 uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
 uv sync
 bash scripts/dev_server.sh
@@ -48,7 +48,7 @@ Production listens on **port 8000** under `archiver.service`. The dev server use
 
 ```bash
 set -a
-[ -f /etc/archiver/.env ] && . /etc/archiver/.env
+[ -r /etc/archiver/.env ] && . /etc/archiver/.env
 [ -f .env ] && . .env
 set +a
 uv run pytest

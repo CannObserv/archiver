@@ -27,7 +27,7 @@ def get_database_url() -> str:
         raise RuntimeError(
             "Neither ARCHIVER_DATABASE_URL nor DATABASE_URL is set. "
             "Load env: set -a; "
-            "[ -f /etc/archiver/.env ] && . /etc/archiver/.env; "
+            "[ -r /etc/archiver/.env ] && . /etc/archiver/.env; "
             "[ -f .env ] && . .env; set +a"
         )
     return url

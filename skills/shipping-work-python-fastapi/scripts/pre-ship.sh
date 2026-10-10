@@ -7,9 +7,10 @@ set -euo pipefail
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 
 # Use `set -a; . <file>; set +a` instead of `export $(cat | xargs)` to handle
-# values containing spaces, quotes, newlines, or `=` correctly. Existence
-# guards prevent failure when only one (or neither) env file is present.
-if [[ -f /etc/archiver/.env ]]; then
+# values containing spaces, quotes, newlines, or `=` correctly. The guards
+# prevent failure when either file is absent, or unreadable: /etc/archiver/.env
+# is root's alone since archiver#339, so an agent shell skips it.
+if [[ -r /etc/archiver/.env ]]; then
   set -a; . /etc/archiver/.env; set +a
 fi
 if [[ -f "$PROJECT_ROOT/.env" ]]; then

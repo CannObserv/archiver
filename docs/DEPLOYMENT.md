@@ -20,19 +20,22 @@ tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
 ```
 
 - **Nothing done in `/home/exedev/archiver` reaches a unit**: branch switches, uncommitted
-  edits, `uv sync`, hook commits. Units run `uv run --frozen --no-sync` from
-  `/srv/archiver/live`, read `/etc/archiver/.env` only, and stamp nothing: `/health`'s
-  `build_id` is the release's `REVISION`. The drift check runs the release's
-  `.venv/bin/python` instead and reads no env file at all (§ The drift check).
+  edits, `uv sync`, hook commits. Units run the release venv's own entry points
+  (`.venv/bin/uvicorn`, `.venv/bin/python -m`) from `/srv/archiver/live`, never `uv run`,
+  read `/etc/archiver/.env` only, and stamp nothing: `/health`'s `build_id` is the
+  release's `REVISION`. The drift check reads no env file at all (§ The drift check).
 - **Root owns the root, `releases/` and each finished release** (status#14): changing what a
-  unit runs takes `sudo`, which journals the command. Not a boundary against `exedev`.
+  unit runs takes `sudo`, which journals the command.
+- **The units run as `archiver`, not `exedev`** (#339): reading their secrets, or signalling
+  or tracing their processes, takes `sudo` too (§ The service user).
 - **The venv is copied** (`--link-mode copy`), not hardlinked to `~/.cache/uv`, on
   `/usr/bin/python3.12`; the private wheels are fetched into the release and removed once
   the venv is built (D10).
 
 ### `scripts/deploy.sh`
 
-Run as `exedev`, from the checkout, after the PR merges. It fetches `origin` itself, then
+Run as `exedev`, from the checkout, after the PR merges. It reads `/etc/archiver/.env`
+through `sudo` (root's alone, #339), `dev.env` and `deploy.env` without. It fetches `origin` itself, then
 **refuses unless it is itself byte-identical to `origin/main:scripts/deploy.sh`** (CR 10): the
 deploy logic is reviewed code like what it deploys, so a branch or an uncommitted edit to the
 script cannot decide how production deploys. `git switch main && git pull --ff-only` first.
@@ -49,6 +52,10 @@ journalctl -t archiver-deploy -n 20     # "CI passed for <build>", "live -> <bui
 Its units would put production on the checkout, and its `/health` cannot name a release, so
 verification would always fail after the checkout had served. So no rollback reaches past the
 cutover: for older code, revert it on `main` and deploy that.
+
+**So is a commit whose units name a `User=` or `Group=` this host lacks** (#339), read from
+the commit itself, also before CI is asked or anything is built, a reused release too. The
+refusal prints the `useradd` it needs.
 
 In order, each step refusing before anything switches:
 
@@ -188,14 +195,14 @@ journalctl -u archiver-drift -n 5 -o cat            # "drift check", kind ok, ch
 Then **whoever ran the deploy** posts that first `ok` (`kind`, `live`, `main`) on
 status#32, and status-agent enables the monitor (it was created disabled) once it sees the
 check-in on its side. Then prove the channels with one test alert, as a
-transient unit holding the same credential (checked 2026-10-10: it reaches an `exedev`
-process), and have the operator confirm email and Slack:
+transient unit holding the same credential (checked 2026-10-10: systemd hands it to any
+`User=`), and have the operator confirm email and Slack:
 
 ```bash
 sudo systemd-run --quiet --pipe --wait \
   -p LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key \
   -p Environment=CO_ARCHIVER_DRIFT_MONITOR_ID=01M4KMDDN3XWJR0GCECTAYMVTV \
-  -p WorkingDirectory=/srv/archiver/live -p User=exedev \
+  -p WorkingDirectory=/srv/archiver/live -p User=archiver \
   /srv/archiver/live/.venv/bin/python -m src.core.drift --test-alert
 sudo systemctl start archiver-drift.service   # its ok clears the test fault: "has cleared"
 ```
@@ -213,6 +220,44 @@ sudo systemctl start archiver-drift.service   # its ok clears the test fault: "h
 `src.core.drift`, fails, and the monitor goes `missing`. `deploy.sh` names any installed
 `archiver*` unit the release lacks; it never removes one. Stop it with `sudo systemctl
 disable --now archiver-drift.timer` if that is the intent.
+
+## The service user (archiver#339)
+
+**The units run as `archiver`**, a system user with no login, no home and no `sudo`, not
+as `exedev`, the account agents and humans use. Processor's shape (processor#2). Nothing in
+a release is `archiver`'s: `deploy.sh` still builds as `exedev` and hands each release to
+root. What `exedev` can no longer do without `sudo`:
+
+| What | How it is closed |
+|---|---|
+| Read the production secrets | `/etc/archiver/.env` is `root:root 0600`. systemd reads an `EnvironmentFile=` before it drops to `User=`, so not even `archiver` can read the file; `deploy.sh` reads it through `sudo` |
+| Reach the production database | role `archiver` connects only to `archiver`, with a password only that file holds. Agents get `archiver_agent`, which owns `archiver_dev` and `archiver_test` and has no `CONNECT` on `archiver` |
+| Signal or trace the service | another uid |
+
+The units can't read `~exedev` either (`ProtectHome=yes`; the repo `.env` holds the PATs).
+`exedev` keeps `dev.env`, `deploy.env` and `co-pypi-reader.json` (`root:exedev 0640`): the
+deploy's rehearsal and wheel fetch run as `exedev`. `status-checkin.key` was already
+`root:root 0600`. `exedev` still has passwordless `sudo`, so this is a boundary that
+journals, not one that cannot be crossed.
+
+**The guards stop depending on the production URL.** An agent shell no longer holds
+`ARCHIVER_DATABASE_URL` or `ARCHIVER_REDIS_URL`, so comparing against them would always
+pass. The rules that still hold are positive, as `src/core/db_safety.py`'s always was:
+`tests/conftest.py` refuses a `TEST_DATABASE_URL` whose name doesn't end in `_test`, and
+`scripts/dev_server.sh` refuses an `ARCHIVER_DEV_REDIS_URL` that isn't loopback or a socket.
+The recipes source `/etc/archiver/.env` only when it is readable (`[ -r … ]`).
+
+**No `uv` at run time.** `uv run`, even `--no-sync`, wants a writable cache under `$HOME`,
+and `archiver` has none, so every unit runs the release venv's own `uvicorn` or `python`.
+Checked 2026-10-10 as a transient `DynamicUser=` with the units' sandbox: every entry
+module imports, and `/home/exedev` is out of sight.
+
+### Cutover (once per VM)
+
+Seven operator-present steps after the PR merges, each one undone before the next:
+[plans/2026-10-10-339-service-user-cutover.md](plans/2026-10-10-339-service-user-cutover.md).
+The user, a deploy, the file closed, a rollback proved, the agents' role, production
+closed to everyone but its owner, then `archiver`'s password rotated.
 
 ## cannobserv substrate
 
@@ -302,9 +347,9 @@ logs: [deploy/README.md](../deploy/README.md).
 
 **Key variables:**
 - `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
-- `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name **must** end in `_test` (e.g. `archiver_test`) — `scripts/dev_server.sh` enforces the suffix, and `conftest.py` asserts non-equality at collection time and fails fast if violated.
+- `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name **must** end in `_test` (e.g. `archiver_test`) — `scripts/dev_server.sh` enforces the suffix, and `conftest.py` asserts both non-equality and the `_test` suffix at collection time, failing fast. The suffix is the rule that holds in an agent shell, which cannot read the production URL to compare (#339). Role `archiver_agent`.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` — *optional*. `1` permits the process to serve a database whose name lacks a `_test`/`_dev` suffix. **Only `deploy/` units set it**: `archiver.service`, `archiver-bus-health.service` (read-only) and `archiver-pm-org-refresh.service` (the Power Map org follower, archiver#305) - **and `scripts/deploy.sh`**, for the production `schema_state` check and `alembic upgrade head` it runs (archiver#330). `alembic/env.py` and `src/core/schema_state.py` refuse production without it, as the API does. Without it `src/core/db_safety.py` refuses to start at lifespan, so a hand-rolled `uvicorn` cannot reach the production registry no matter which env files it sourced (2026-07-18 incident). Never set this in `/etc/archiver/.env` or `.env` — putting it in an env file would re-open the hole for every process that sources them.
-- `ARCHIVER_DEV_DATABASE_URL` — *optional in code, set in practice*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Points at `archiver_dev` on this host (#193 D5). Leaving it unset falls back to the test database, where pytest's `DROP SCHEMA` teardown wipes dev data mid-session. Name must end in `_test`/`_dev`. `scripts/deploy.sh` reads it from `/etc/archiver/dev.env` (never the shell) to rehearse each migration before production sees it (archiver#330 D2).
+- `ARCHIVER_DEV_DATABASE_URL` — *optional in code, set in practice*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Points at `archiver_dev` on this host (#193 D5), as role `archiver_agent`, like `TEST_DATABASE_URL` (#339). Leaving it unset falls back to the test database, where pytest's `DROP SCHEMA` teardown wipes dev data mid-session. Name must end in `_test`/`_dev`. `scripts/deploy.sh` reads it from `/etc/archiver/dev.env` (never the shell) to rehearse each migration before production sees it (archiver#330 D2).
 - `ARCHIVER_DEV_PORT` — *optional*. Dev server port, default `8001`. `8000` is refused (systemd's). See **Server Lifecycle**.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis). **Archiver no longer operates the broker** — archiver#193 D6 moved it to a neutral node and its operational code to [CannObserv/broker](https://github.com/CannObserv/broker); the cluster stream inventory is that repo's `docs/STREAMS.md`. The connection string is the only switch — write it as `redis://default:<password>@broker:6379/0`, with `default:` explicit: the empty-username form authenticates for redis-py and fails for `redis-cli`, so the service comes up green while `scripts/check_redis_floor.sh` goes silently blind on the floor (archiver#195). `archiver.service` declares **no** `redis-server` ordering — it was removed, not loosened, when the broker left the host (CannObserv/broker#1 Phase 3) — and an `ExecStartPre` (`scripts/check_redis_floor.sh`) asserts the ≥7.0 server floor when the bus is active, plus a warn-only check that the live `maxmemory` is non-zero.
 
@@ -324,7 +369,7 @@ logs: [deploy/README.md](../deploy/README.md).
   Note the fourth mover: the repo-root `.env` loads **after** `/etc/archiver/.env` and overrides it, is gitignored, and is agent-owned — the likeliest place for a scratch value to be set and forgotten.
 - `ARCHIVER_REDIS_FLOOR_TIMEOUT` — *optional*. Seconds (default `5`) bounding **each** broker probe in `scripts/check_redis_floor.sh` — the version floor and the live-`maxmemory` check — at the `archiver.service` `ExecStartPre`. `redis-cli` has no connect-timeout flag, so each probe is wrapped in `timeout`; this prevents a `rediss://`-vs-plaintext (or unreachable) endpoint from hanging archiver startup — a timeout yields a soft-skip, never a block.
 - `ARCHIVER_BUS_CONSUMER` — *optional*. `1` opts this process into the `archiver.revisions` consumer group on `content.revisions` (archiver#139). **Only `deploy/archiver.service` sets it**, and — like `ARCHIVER_ALLOW_PRODUCTION_DB` — it must **never** appear in `/etc/archiver/.env` or `.env`, or every process that sources them joins the group. The asymmetry with the publisher is the point: producing from a stray process is noisy, whereas *consuming* removes messages from the group, so a second member silently takes half the revisions and writes them into whatever database it happens to hold. Unset (or with `ARCHIVER_REDIS_URL` unset) → the consumer is dormant and the service starts with no bus-read dependency. Setting it does not affect the publisher, and a consumer that fails to start leaves the publisher running. **The `info.watch-status` tail (archiver#151) is deliberately *not* behind this gate** — it is groupless, and a stray tail removes nothing from any PEL, so `ARCHIVER_REDIS_URL` alone starts it. Do not "fix" that by adding the gate: the gate's entire meaning is group membership.
-- `ARCHIVER_DEV_REDIS_URL` — *optional*. Dev change-bus broker for `scripts/dev_server.sh`. Unset → the dev server runs **bus-dormant** and never inherits prod's `ARCHIVER_REDIS_URL` from `/etc/archiver/.env` (the Redis analogue of the DB `_test`/`_dev` guard). The supported posture is **dormant, or a local throwaway broker** — `docker run --rm -p 127.0.0.1:6380:6379 redis:7` with `ARCHIVER_DEV_REDIS_URL=redis://127.0.0.1:6380/0` (≥ 7.0, the `check_redis_floor.sh` floor). A value on production's `host:port` is refused **whatever its DB index** (archiver#240).
+- `ARCHIVER_DEV_REDIS_URL` — *optional*. Dev change-bus broker for `scripts/dev_server.sh`. Unset → the dev server runs **bus-dormant** and never inherits prod's `ARCHIVER_REDIS_URL` from `/etc/archiver/.env` (the Redis analogue of the DB `_test`/`_dev` guard). The supported posture is **dormant, or a local throwaway broker** — `docker run --rm -p 127.0.0.1:6380:6379 redis:7` with `ARCHIVER_DEV_REDIS_URL=redis://127.0.0.1:6380/0` (≥ 7.0, the `check_redis_floor.sh` floor). A value on production's `host:port` is refused **whatever its DB index** (archiver#240), and so is any broker that isn't loopback or a unix socket (#339): an agent shell no longer holds production's URL to compare against.
 
   **Do not re-add a `.../1` recommendation: a logical DB index is not a boundary.** Redis ACLs cannot partition by index — any client that can reach db1 can `SELECT 0` — so isolation by index is isolation by good behaviour. The shared broker closes that axis with `databases 1` and no `+select` in archiver's ACL (after its 2026-09-10 incident, `docs/INCIDENT-2026-09-10.md` in [CannObserv/broker](https://github.com/CannObserv/broker)), so `.../1` there is `ERR DB index is out of range`. Nor is a scratch bus on the shared instance wanted: it shares `maxmemory` under `noeviction` instance-wide, so a dev run that fills it stalls every production publisher (the R5 lockstep, firing for a reason nobody would look for). A prefix-confined dev credential (`~archiver.dev.*`) is available from broker on request — not requested until a real need appears.
 - `ARCHIVER_POWER_MAP_API_KEY` — *optional*. Archiver's **read-only** Power Map key (archiver#304), sent as `X-API-Key`. **The switch**: unset → Power Map features are dormant, `PUT /info-items/{id}/org` and a create with `pm_org_id` answer 503 "Power Map not configured", and nothing else changes — rendering and replication read only the local `pm_organizations` snapshot, never Power Map. Set in `/etc/archiver/.env`; takes effect on restart. It is also the follower's switch: `archiver-pm-org-refresh.service` exits 0 without touching the database when it is unset (see *Timers* below). `scripts/dev_server.sh` never passes it through (see `ARCHIVER_DEV_POWER_MAP_API_KEY`); the test suite scrubs it.

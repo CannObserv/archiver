@@ -126,16 +126,18 @@ broker, so they go to 8000, and only when the operator asks
 Two env files load in order (later overrides earlier):
 
 1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`); managed manually on the VM.
+   `root:root 0600`: read by systemd for the units and by `deploy.sh` via sudo, never by an agent shell (#339).
 2. `.env` (repo root, git-ignored) - dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit; no unit reads it (#330).
 
 ```bash
 set -a
-[ -f /etc/archiver/.env ] && . /etc/archiver/.env
+[ -r /etc/archiver/.env ] && . /etc/archiver/.env
 [ -f .env ] && . .env
 set +a
 ```
 
-Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
+Source exactly that way - `export $(cat … | xargs)` silently corrupts values. Boundary:
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § The service user.
 
 **Four variables carry safety rules; the rest are reference
 ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).**

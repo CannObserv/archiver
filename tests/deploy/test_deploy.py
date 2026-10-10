@@ -62,7 +62,9 @@ case "$*" in
     mkdir -p .wheelhouse && echo wheel > .wheelhouse/co_core-0.19.6-py3-none-any.whl ;;
   sync*)
     [[ -n "${FAKE_SYNC_FAIL:-}" ]] && exit 1
-    mkdir -p .venv ;;
+    # The entry points units run (archiver#339), as a real sync installs them.
+    mkdir -p .venv/bin && printf '#!/bin/sh\n' | tee .venv/bin/python .venv/bin/uvicorn >/dev/null
+    chmod 755 .venv/bin/python .venv/bin/uvicorn ;;
   *schema_state*)
     [[ -n "${FAKE_SCHEMA_CRASH:-}" ]] && exit "$FAKE_SCHEMA_CRASH"
     state="${FAKE_SCHEMA:-current}"
@@ -133,6 +135,14 @@ case "$1" in
     done
     exit 0 ;;
   ln | mv | chmod | touch | tee) as_root "$@"; exit ;;
+  # Reads what only root can (archiver#339): the world keeps .env unreadable.
+  cat)
+    [[ -n "${FAKE_SUDO_CAT_FAIL:-}" ]] && { echo "sudo: a password is required" >&2; exit 1; }
+    path="${@: -1}" rc=0
+    [[ -f "$path" && ! -r "$path" ]] && chmod u+r "$path" && closed=1
+    "$@" || rc=$?
+    [[ -n "${closed:-}" ]] && chmod u-r "$path"
+    exit $rc ;;
 esac
 # FAKE_PROBE_FAIL fails the forced bus-health pass, only while live runs
 # FAKE_PROBE_FAIL_BUILD when that is set: a broken build, not a broken unit.
@@ -222,6 +232,18 @@ fi
 STUB_RM = r"""#!/usr/bin/env bash
 [[ -n "${FAKE_RM_FAIL:-}" && "$1" == -rf ]] && exit 1
 exec /bin/rm "$@"
+"""
+
+# The host's users and groups (archiver#339): FAKE_USERS, space-separated, and
+# FAKE_GROUPS, which defaults to them, as useradd's own group does.
+STUB_GETENT = r"""#!/usr/bin/env bash
+case "$1" in
+  passwd) known="${FAKE_USERS:-}" ;;
+  group) known="${FAKE_GROUPS-${FAKE_USERS:-}}" ;;
+  *) exit 2 ;;
+esac
+[[ " $known " == *" $2 "* ]] || exit 2
+echo "$2:x:999:999::/nonexistent:/usr/sbin/nologin"
 """
 
 STUB_LOGGER = r"""#!/usr/bin/env bash
@@ -329,6 +351,8 @@ class World:
         (self.etc / ".env").write_text(f"ARCHIVER_DATABASE_URL={LIVE_URL}\n")
         (self.etc / "dev.env").write_text(f"ARCHIVER_DEV_DATABASE_URL={DEV_URL}\n")
         (self.etc / "deploy.env").write_text(f"GOOGLE_APPLICATION_CREDENTIALS={GAC}\n")
+        # root:root 0600 on the host (archiver#339): only sudo reads it.
+        (self.etc / ".env").chmod(0o000)
 
         for name, body in (
             ("uv", STUB_UV),
@@ -337,6 +361,7 @@ class World:
             ("logger", STUB_LOGGER),
             ("systemctl", STUB_SYSTEMCTL),
             ("rm", STUB_RM),
+            ("getent", STUB_GETENT),
             ("stat", STUB_STAT.replace("@STAT@", shutil.which("stat") or "/usr/bin/stat")),
         ):
             stub = self.stubs / name
@@ -666,6 +691,76 @@ class TestEntryPaths:
     def test_paths_outside_the_release_are_not_its_business(self, world):
         world.push_deploy({"archiver.service": "[Service]\nExecStart=/usr/local/bin/uv run x\n"})
         assert_ok(world.run())
+
+
+UNITS_AS_ARCHIVER = {
+    "archiver.service": (
+        "[Service]\nUser=archiver\nGroup=archiver\nWorkingDirectory=/srv/archiver/live\n"
+        "ExecStart=/srv/archiver/live/.venv/bin/uvicorn src.api.main:app --port 8000\n"
+    ),
+}
+
+
+class TestTheServiceUser:
+    """archiver#339: the units run as ``archiver``, and only root reads ``.env``."""
+
+    def test_the_production_url_is_read_through_sudo(self, world):
+        assert_ok(world.run())
+        calls = world.calls()
+        assert f"sudo cat {world.etc}/.env" in calls
+        assert any(f"URL={LIVE_URL} " in c and "alembic upgrade" in c for c in calls), calls
+
+    def test_a_sudo_that_cannot_read_env_says_so(self, world):
+        """Not "no database URL": the file may be fine, and sudo the problem."""
+        result = world.run(FAKE_SUDO_CAT_FAIL="1")
+        assert result.returncode == 1
+        assert f"cannot read {world.etc}/.env" in result.stderr
+        assert world.live() is None
+
+    def test_dev_and_deploy_env_are_read_without_sudo(self, world):
+        """exedev keeps those two (root:exedev 0640): no sudo where none is needed."""
+        assert_ok(world.run())
+        for name in ("dev.env", "deploy.env"):
+            assert not [c for c in world.calls() if c.startswith("sudo") and name in c], name
+
+    def test_a_unit_user_the_host_lacks_is_refused_before_anything_switches(self, world):
+        world.push_deploy(UNITS_AS_ARCHIVER)
+        result = world.run()
+        assert result.returncode == 1
+        assert "archiver" in result.stderr and "useradd" in result.stderr
+        assert "nothing switched" in result.stderr
+        assert world.live() is None
+        assert not world.github_calls(), "before CI is asked"
+        assert not world.release(world.main[-1]).exists(), "before anything is built"
+
+    def test_a_unit_group_the_host_lacks_is_refused_too(self, world):
+        world.push_deploy(UNITS_AS_ARCHIVER)
+        result = world.run(FAKE_USERS="archiver", FAKE_GROUPS="")
+        assert result.returncode == 1
+        assert "group archiver" in result.stderr and "nothing switched" in result.stderr
+        assert not world.github_calls()
+
+    def test_spaces_around_the_equals_sign_are_still_a_user(self, world):
+        """systemd reads ``User = archiver`` as ``User=archiver``; so must the check."""
+        world.push_deploy({"archiver.service": "[Service]\nUser = archiver\n"})
+        result = world.run()
+        assert result.returncode == 1
+        assert "useradd" in result.stderr
+
+    def test_a_unit_user_the_host_has_deploys(self, world):
+        world.push_deploy(UNITS_AS_ARCHIVER)
+        assert_ok(world.run(FAKE_USERS="archiver"))
+        assert world.installed("archiver.service") == UNITS_AS_ARCHIVER["archiver.service"]
+
+    def test_a_reused_release_is_checked_again(self, world):
+        """The user is the host's, not the release's: removed since, it is missing now."""
+        world.push_deploy(UNITS_AS_ARCHIVER)
+        assert_ok(world.run(FAKE_USERS="archiver"))
+        world.reset_log()
+        result = world.run()
+        assert result.returncode == 1
+        assert "useradd" in result.stderr
+        assert (world.release(world.main[-1]) / "REVISION").exists(), "the built release stays"
 
 
 class TestTheDeployLogic:
@@ -1490,7 +1585,30 @@ class TestTheRepoUnits:
         tracks. deploy.sh builds it on ``$PYTHON`` and refuses a release that lacks
         it, after ``uv sync``; anything else under ``.venv/`` is unchecked here."""
         built = {rel for _, rel in self.release_paths() if rel.startswith(".venv/")}
-        assert built <= {".venv/bin/python"}, built
+        assert built <= {".venv/bin/python", ".venv/bin/uvicorn"}, built
+
+    def test_every_service_runs_as_the_service_user(self):
+        """archiver#339: never exedev, the account agents and humans use."""
+        for unit in sorted(self.REPO_DEPLOY.glob("*.service")):
+            lines = unit.read_text().splitlines()
+            assert "User=archiver" in lines and "Group=archiver" in lines, unit.name
+
+    def test_no_unit_runs_uv(self):
+        """uv wants a cache under $HOME, and the service user has none (archiver#339):
+        every unit runs the release venv's own entry points."""
+        for unit in sorted(self.REPO_DEPLOY.glob("*.service")):
+            for line in unit.read_text().splitlines():
+                if re.match(r"Exec[A-Za-z]*=", line):
+                    assert "/uv " not in line and " uv " not in line, (unit.name, line)
+
+    @pytest.mark.parametrize(
+        "directive",
+        ["NoNewPrivileges=yes", "PrivateTmp=yes", "ProtectSystem=strict", "ProtectHome=yes"],
+    )
+    def test_every_service_is_sandboxed(self, directive):
+        """ProtectHome= keeps the service user out of ~exedev (its PATs), as processor."""
+        for unit in sorted(self.REPO_DEPLOY.glob("*.service")):
+            assert directive in unit.read_text().splitlines(), (unit.name, directive)
 
     def test_each_timer_triggers_a_service_in_deploy(self):
         for timer in sorted(self.REPO_DEPLOY.glob("*.timer")):

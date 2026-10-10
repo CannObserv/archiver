@@ -16,6 +16,7 @@ from ulid import ULID
 
 from src.api.deps import get_db_session
 from src.api.main import app
+from src.core.db_safety import database_name
 
 # ---------------------------------------------------------------------------
 # Test API key — seeded once per session; all existing tests send this value.
@@ -29,16 +30,19 @@ if not TEST_DATABASE_URL:
     raise RuntimeError(
         "TEST_DATABASE_URL is not set. "
         "Load env: set -a; "
-        "[ -f /etc/archiver/.env ] && . /etc/archiver/.env; "
+        "[ -r /etc/archiver/.env ] && . /etc/archiver/.env; "
         "[ -f .env ] && . .env; set +a"
     )
 
 
 def _check_test_url_safety(test_url: str) -> None:
-    """Raise if test_url matches any known production database URL.
+    """Raise unless test_url names a ``_test`` database other than production's.
 
     Prevents DROP SCHEMA ... CASCADE teardown from destroying production data
     when TEST_DATABASE_URL is accidentally set to a production connection string.
+    The comparisons catch the URL a sourced env file supplies; the name rule
+    holds without one, as it must since archiver#339 made ``/etc/archiver/.env``
+    root's alone. ``_test`` only, not ``_dev``: archiver_dev keeps its data.
     """
     for var in ("ARCHIVER_DATABASE_URL", "DATABASE_URL"):
         prod_url = os.environ.get(var)
@@ -50,6 +54,13 @@ def _check_test_url_safety(test_url: str) -> None:
                 "Set TEST_DATABASE_URL to a dedicated test database "
                 "(database name should include '_test')."
             )
+    name = database_name(test_url)
+    if not (name and name.endswith("_test")):
+        raise RuntimeError(
+            f"TEST_DATABASE_URL names database {name or '<unparseable>'!r}; the name "
+            "must end in '_test'. Teardown runs DROP SCHEMA IF EXISTS information "
+            "CASCADE against it, so anything else is refused (archiver#339)."
+        )
 
 
 _check_test_url_safety(TEST_DATABASE_URL)

@@ -7,7 +7,9 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=exedev
+# archiver#339, as archiver.service.
+User=archiver
+Group=archiver
 # The live release, as archiver.service (archiver#330).
 WorkingDirectory=/srv/archiver/live
 
@@ -49,4 +51,11 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # visibly killed beats hanging the unit.
 TimeoutStartSec=60
 
-ExecStart=/usr/local/bin/uv run --frozen --no-sync python -m src.core.bus_health
+# The release's interpreter, not `uv run`: uv wants $HOME (archiver#339).
+ExecStart=/srv/archiver/live/.venv/bin/python -m src.core.bus_health
+
+# As archiver.service: nothing writes outside PrivateTmp, nothing reads /home.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes

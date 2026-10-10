@@ -72,7 +72,8 @@ NO CONTINUATION IF CHECKS FAIL
 ```
 
 The archiver wrapper (`skills/shipping-work-python-fastapi/scripts/pre-ship.sh`, the one
-non-symlinked script here) sources `/etc/archiver/.env` (system secrets) and
+non-symlinked script here) sources `/etc/archiver/.env` (system secrets; only when
+readable, which an agent shell is not since archiver#339) and
 `$PROJECT_ROOT/.env` (repo-local overrides) before delegating to the upstream variant's
 pre-ship.sh. The upstream script handles lint (`ruff check`), the per-SHA stamp
 (auto-derived as `archiver-tests-clean-<sha>`), and `uv run pytest -x` with

@@ -23,6 +23,7 @@ in CannObserv/notifier, tracked by CannObserv/notifier#57.
 """
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -228,6 +229,10 @@ def test_namespace_guards_are_not_set_anywhere(variable: str, path: Path):
     """
     if not path.exists():
         pytest.skip(f"{path} not present on this machine")
+    if not os.access(path, os.R_OK):
+        # /etc/archiver/.env since archiver#339: root's alone, so no exedev
+        # process (the MCP server included) can source it either.
+        pytest.skip(f"{path} unreadable to this user, so it cannot reach the MCP server")
     declares = variable in path.read_text()
     assert not declares, f"{path.name} sets {variable}"
 
