@@ -716,7 +716,15 @@ class TestTheServiceUser:
         assert "archiver" in result.stderr and "useradd" in result.stderr
         assert "nothing switched" in result.stderr
         assert world.live() is None
-        assert not [c for c in world.calls() if "alembic upgrade" in c], "before any migration"
+        assert not world.github_calls(), "before CI is asked"
+        assert not world.release(world.main[-1]).exists(), "before anything is built"
+
+    def test_spaces_around_the_equals_sign_are_still_a_user(self, world):
+        """systemd reads ``User = archiver`` as ``User=archiver``; so must the check."""
+        world.push_deploy({"archiver.service": "[Service]\nUser = archiver\n"})
+        result = world.run()
+        assert result.returncode == 1
+        assert "useradd" in result.stderr
 
     def test_a_unit_user_the_host_has_deploys(self, world):
         world.push_deploy(UNITS_AS_ARCHIVER)
@@ -730,7 +738,8 @@ class TestTheServiceUser:
         world.reset_log()
         result = world.run()
         assert result.returncode == 1
-        assert "reusing release" in result.stderr and "useradd" in result.stderr
+        assert "useradd" in result.stderr
+        assert (world.release(world.main[-1]) / "REVISION").exists(), "the built release stays"
 
 
 class TestTheDeployLogic:

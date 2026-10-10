@@ -199,6 +199,31 @@ predates_releases() {
     "name a release, so it would fail verification after running the checkout. Nothing was built." \
     "For older code, revert it on main and deploy that."
 
+# Each unit's User= and Group= must exist here, or the unit fails at its next
+# start, after the switch (archiver#339). The host's, not the release's: asked
+# of the commit on every deploy, a reused release too, and before CI or a build.
+unit_identities() {
+  local unit
+  while read -r unit; do
+    [[ "$unit" == *.service ]] || continue
+    git -C "$SRC" show "$sha:$unit" |
+      sed -nE 's/^[[:space:]]*(User|Group)[[:space:]]*=[[:space:]]*([^[:space:]]+)[[:space:]]*$/\1 \2/p'
+  done < <(git -C "$SRC" ls-tree --name-only "$sha" deploy/) | sort -u
+}
+while read -r kind name; do
+  [[ -n "$name" ]] || continue
+  if [[ "$kind" == User ]]; then
+    getent passwd "$name" >/dev/null ||
+      die "a unit runs as user $name, which this host lacks. Once: sudo useradd --system" \
+        "--no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin $name" \
+        "(docs/DEPLOYMENT.md § The service user); nothing was built, nothing switched"
+  else
+    getent group "$name" >/dev/null ||
+      die "a unit runs as group $name, which this host lacks: sudo useradd creates it" \
+        "(docs/DEPLOYMENT.md § The service user); nothing was built, nothing switched"
+  fi
+done < <(unit_identities)
+
 # --- CI (status#11) --------------------------------------------------------
 
 # Unauthenticated: the repo is public, and 60 requests an hour per address
@@ -395,30 +420,6 @@ else
   build_release
 fi
 sudo touch "$release" # prune by last deploy, not first build
-
-# Each unit's User= and Group= must exist here, or the unit fails at its next
-# start, after the switch (archiver#339). The host's, not the release's: checked
-# on every deploy, a reused release too.
-unit_identities() {
-  local unit
-  for unit in "$release"/deploy/*.service; do
-    [[ -f "$unit" ]] || continue
-    sed -nE 's/^(User|Group)=(.+)$/\1 \2/p' "$unit"
-  done | sort -u
-}
-while read -r kind name; do
-  [[ -n "$name" ]] || continue
-  if [[ "$kind" == User ]]; then
-    getent passwd "$name" >/dev/null ||
-      die "a unit runs as user $name, which this host lacks. Once: sudo useradd --system" \
-        "--no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin $name" \
-        "(docs/DEPLOYMENT.md § The service user); nothing switched"
-  else
-    getent group "$name" >/dev/null ||
-      die "a unit runs as group $name, which this host lacks: sudo useradd creates it" \
-        "(docs/DEPLOYMENT.md § The service user); nothing switched"
-  fi
-done < <(unit_identities)
 
 # --- the databases ---------------------------------------------------------
 
