@@ -53,6 +53,10 @@ Its units would put production on the checkout, and its `/health` cannot name a 
 verification would always fail after the checkout had served. So no rollback reaches past the
 cutover: for older code, revert it on `main` and deploy that.
 
+**So is a commit whose units name a `User=` or `Group=` this host lacks** (#339), read from
+the commit itself, also before CI is asked or anything is built, a reused release too. The
+refusal prints the `useradd` it needs.
+
 In order, each step refusing before anything switches:
 
 1. **CI gate** (D6): the newest `push` run of `ci.yml` on `main` for exactly that commit,
@@ -63,8 +67,7 @@ In order, each step refusing before anything switches:
    the release's `scripts/sync_wheelhouse.py` with `GOOGLE_APPLICATION_CREDENTIALS` from
    `/etc/archiver/deploy.env`; `uv sync --locked --no-dev`; one Alembic head; **every unit's
    `ExecStart` module imports** (D11, the 2026-10-08 failure); read-only; root's; `REVISION`.
-   The release `live` runs is never rebuilt in place. Then, built or reused, **every unit's
-   `User=` and `Group=` must exist on the host** (#339), or nothing switches.
+   The release `live` runs is never rebuilt in place.
 3. **Rehearse** (D2): `python -m src.core.schema_state`, then `alembic upgrade head`, against
    `ARCHIVER_DEV_DATABASE_URL` from `/etc/archiver/dev.env`. `ahead` there is expected in a
    rollback (the newer build's rehearsal migrated it). Otherwise it is a branch migration from
