@@ -536,6 +536,16 @@ class TestTheGetter:
         assert "Authorization" not in request.headers
 
     @respx.mock
+    def test_a_moved_repo_is_followed(self):
+        """CR 1: GitHub answers 301 after a rename or transfer. The GET carries no
+        credential, so following it leaks nothing; not following it goes silent
+        every run, and the monitor reads missing for the wrong reason."""
+        moved = "https://api.github.com/repositories/1/compare/a...main"
+        respx.get(f"{GITHUB_API}/compare/a...main").respond(301, headers={"Location": moved})
+        respx.get(moved).respond(json={"status": "identical"})
+        assert drift.github()("compare/a...main") == {"status": "identical"}
+
+    @respx.mock
     def test_a_refusal_names_githubs_message(self):
         respx.get(f"{GITHUB_API}/x").respond(403, json={"message": "API rate limit exceeded."})
         with pytest.raises(GitHubSilent, match="^403 API rate limit exceeded.$"):

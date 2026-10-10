@@ -306,10 +306,13 @@ def github() -> Get:
         if left <= 0:
             raise GitHubSilent(f"Timeout: no GitHub call starts past {CHECK_TIMEOUT_SECONDS:.0f} s")
         try:
+            # Redirects followed: a renamed or transferred repo answers 301 (CR 1).
+            # Safe here, unlike the Status POST: this request carries no credential.
             response = httpx.get(
                 f"{base}/{path}",
                 headers={"Accept": "application/vnd.github+json"},
                 timeout=min(REQUEST_TIMEOUT_SECONDS, left),
+                follow_redirects=True,
             )
         except httpx.HTTPError as e:
             raise GitHubSilent(f"{type(e).__name__}: {e}" if str(e) else type(e).__name__) from e
