@@ -234,9 +234,15 @@ STUB_RM = r"""#!/usr/bin/env bash
 exec /bin/rm "$@"
 """
 
-# The host's users (archiver#339): FAKE_USERS, space-separated; no one else exists.
+# The host's users and groups (archiver#339): FAKE_USERS, space-separated, and
+# FAKE_GROUPS, which defaults to them, as useradd's own group does.
 STUB_GETENT = r"""#!/usr/bin/env bash
-[[ ("$1" == passwd || "$1" == group) && " ${FAKE_USERS:-} " == *" $2 "* ]] || exit 2
+case "$1" in
+  passwd) known="${FAKE_USERS:-}" ;;
+  group) known="${FAKE_GROUPS-${FAKE_USERS:-}}" ;;
+  *) exit 2 ;;
+esac
+[[ " $known " == *" $2 "* ]] || exit 2
 echo "$2:x:999:999::/nonexistent:/usr/sbin/nologin"
 """
 
@@ -726,6 +732,13 @@ class TestTheServiceUser:
         assert world.live() is None
         assert not world.github_calls(), "before CI is asked"
         assert not world.release(world.main[-1]).exists(), "before anything is built"
+
+    def test_a_unit_group_the_host_lacks_is_refused_too(self, world):
+        world.push_deploy(UNITS_AS_ARCHIVER)
+        result = world.run(FAKE_USERS="archiver", FAKE_GROUPS="")
+        assert result.returncode == 1
+        assert "group archiver" in result.stderr and "nothing switched" in result.stderr
+        assert not world.github_calls()
 
     def test_spaces_around_the_equals_sign_are_still_a_user(self, world):
         """systemd reads ``User = archiver`` as ``User=archiver``; so must the check."""
