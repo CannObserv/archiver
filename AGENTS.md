@@ -126,23 +126,28 @@ broker, so they go to 8000, and only when the operator asks
 Two env files load in order (later overrides earlier):
 
 1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`); managed manually on the VM.
+   **`root:root 0600`: an `exedev` shell can't read it** (#339). systemd reads it for the
+   units, which run as `archiver`; `scripts/deploy.sh` reads it through `sudo`.
 2. `.env` (repo root, git-ignored) - dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit; no unit reads it (#330).
+   Its database URLs use role `archiver_agent`, which can't connect to `archiver`.
 
 ```bash
 set -a
-[ -f /etc/archiver/.env ] && . /etc/archiver/.env
+[ -r /etc/archiver/.env ] && . /etc/archiver/.env
 [ -f .env ] && . .env
 set +a
 ```
 
-Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
+Source exactly that way - `export $(cat … | xargs)` silently corrupts values. `-r`, not
+`-f`: the file exists but is unreadable, and `.` on it fails. Never `sudo` it into a shell.
+The boundary and the cutover: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § The service user.
 
 **Four variables carry safety rules; the rest are reference
 ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).**
 
 - `TEST_DATABASE_URL` - **must not equal** `ARCHIVER_DATABASE_URL` or
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
-  `_test`.
+  `_test`; `tests/conftest.py` refuses anything else (#339).
 - `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
   (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305) and
   `scripts/deploy.sh`'s migration (#330). **Never in an env file** - it
@@ -150,7 +155,8 @@ Source exactly that way - `export $(cat … | xargs)` silently corrupts values.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.
 - `ARCHIVER_DEV_REDIS_URL` - unset means bus-dormant; prod's URL is never
-  inherited. A scratch bus is a local throwaway broker, never a DB index (#240).
+  inherited. A scratch bus is a local throwaway broker, never a DB index (#240);
+  `scripts/dev_server.sh` refuses any broker that isn't loopback or a socket (#339).
 
 ## Common Commands
 

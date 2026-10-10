@@ -20,19 +20,22 @@ tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
 ```
 
 - **Nothing done in `/home/exedev/archiver` reaches a unit**: branch switches, uncommitted
-  edits, `uv sync`, hook commits. Units run `uv run --frozen --no-sync` from
-  `/srv/archiver/live`, read `/etc/archiver/.env` only, and stamp nothing: `/health`'s
-  `build_id` is the release's `REVISION`. The drift check runs the release's
-  `.venv/bin/python` instead and reads no env file at all (§ The drift check).
+  edits, `uv sync`, hook commits. Units run the release venv's own entry points
+  (`.venv/bin/uvicorn`, `.venv/bin/python -m`) from `/srv/archiver/live`, never `uv run`,
+  read `/etc/archiver/.env` only, and stamp nothing: `/health`'s `build_id` is the
+  release's `REVISION`. The drift check reads no env file at all (§ The drift check).
 - **Root owns the root, `releases/` and each finished release** (status#14): changing what a
-  unit runs takes `sudo`, which journals the command. Not a boundary against `exedev`.
+  unit runs takes `sudo`, which journals the command.
+- **The units run as `archiver`, not `exedev`** (#339): reading their secrets, or signalling
+  or tracing their processes, takes `sudo` too (§ The service user).
 - **The venv is copied** (`--link-mode copy`), not hardlinked to `~/.cache/uv`, on
   `/usr/bin/python3.12`; the private wheels are fetched into the release and removed once
   the venv is built (D10).
 
 ### `scripts/deploy.sh`
 
-Run as `exedev`, from the checkout, after the PR merges. It fetches `origin` itself, then
+Run as `exedev`, from the checkout, after the PR merges. It reads `/etc/archiver/.env`
+through `sudo` (root's alone, #339), `dev.env` and `deploy.env` without. It fetches `origin` itself, then
 **refuses unless it is itself byte-identical to `origin/main:scripts/deploy.sh`** (CR 10): the
 deploy logic is reviewed code like what it deploys, so a branch or an uncommitted edit to the
 script cannot decide how production deploys. `git switch main && git pull --ff-only` first.
@@ -60,7 +63,8 @@ In order, each step refusing before anything switches:
    the release's `scripts/sync_wheelhouse.py` with `GOOGLE_APPLICATION_CREDENTIALS` from
    `/etc/archiver/deploy.env`; `uv sync --locked --no-dev`; one Alembic head; **every unit's
    `ExecStart` module imports** (D11, the 2026-10-08 failure); read-only; root's; `REVISION`.
-   The release `live` runs is never rebuilt in place.
+   The release `live` runs is never rebuilt in place. Then, built or reused, **every unit's
+   `User=` and `Group=` must exist on the host** (#339), or nothing switches.
 3. **Rehearse** (D2): `python -m src.core.schema_state`, then `alembic upgrade head`, against
    `ARCHIVER_DEV_DATABASE_URL` from `/etc/archiver/dev.env`. `ahead` there is expected in a
    rollback (the newer build's rehearsal migrated it). Otherwise it is a branch migration from
@@ -188,14 +192,14 @@ journalctl -u archiver-drift -n 5 -o cat            # "drift check", kind ok, ch
 Then **whoever ran the deploy** posts that first `ok` (`kind`, `live`, `main`) on
 status#32, and status-agent enables the monitor (it was created disabled) once it sees the
 check-in on its side. Then prove the channels with one test alert, as a
-transient unit holding the same credential (checked 2026-10-10: it reaches an `exedev`
-process), and have the operator confirm email and Slack:
+transient unit holding the same credential (checked 2026-10-10: systemd hands it to any
+`User=`), and have the operator confirm email and Slack:
 
 ```bash
 sudo systemd-run --quiet --pipe --wait \
   -p LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key \
   -p Environment=CO_ARCHIVER_DRIFT_MONITOR_ID=01M4KMDDN3XWJR0GCECTAYMVTV \
-  -p WorkingDirectory=/srv/archiver/live -p User=exedev \
+  -p WorkingDirectory=/srv/archiver/live -p User=archiver \
   /srv/archiver/live/.venv/bin/python -m src.core.drift --test-alert
 sudo systemctl start archiver-drift.service   # its ok clears the test fault: "has cleared"
 ```
@@ -213,6 +217,154 @@ sudo systemctl start archiver-drift.service   # its ok clears the test fault: "h
 `src.core.drift`, fails, and the monitor goes `missing`. `deploy.sh` names any installed
 `archiver*` unit the release lacks; it never removes one. Stop it with `sudo systemctl
 disable --now archiver-drift.timer` if that is the intent.
+
+## The service user (archiver#339)
+
+**The units run as `archiver`**, a system user with no login, no home and no `sudo`, not
+as `exedev`, the account agents and humans use. Processor's shape (processor#2). Nothing in
+a release is `archiver`'s: `deploy.sh` still builds as `exedev` and hands each release to
+root. What `exedev` can no longer do without `sudo`:
+
+| What | How it is closed |
+|---|---|
+| Read the production secrets | `/etc/archiver/.env` is `root:root 0600`. systemd reads an `EnvironmentFile=` before it drops to `User=`, so not even `archiver` can read the file; `deploy.sh` reads it through `sudo` |
+| Reach the production database | role `archiver` connects only to `archiver`, with a password only that file holds. Agents get `archiver_agent`, which owns `archiver_dev` and `archiver_test` and has no `CONNECT` on `archiver` |
+| Signal or trace the service | another uid |
+
+The units can't read `~exedev` either (`ProtectHome=yes`; the repo `.env` holds the PATs).
+`exedev` keeps `dev.env`, `deploy.env` and `co-pypi-reader.json` (`root:exedev 0640`): the
+deploy's rehearsal and wheel fetch run as `exedev`. `status-checkin.key` was already
+`root:root 0600`. `exedev` still has passwordless `sudo`, so this is a boundary that
+journals, not one that cannot be crossed.
+
+**The guards stop depending on the production URL.** An agent shell no longer holds
+`ARCHIVER_DATABASE_URL` or `ARCHIVER_REDIS_URL`, so comparing against them would always
+pass. The rules that still hold are positive, as `src/core/db_safety.py`'s always was:
+`tests/conftest.py` refuses a `TEST_DATABASE_URL` whose name doesn't end in `_test`, and
+`scripts/dev_server.sh` refuses an `ARCHIVER_DEV_REDIS_URL` that isn't loopback or a socket.
+The recipes source `/etc/archiver/.env` only when it is readable (`[ -r … ]`).
+
+**No `uv` at run time.** `uv run`, even `--no-sync`, wants a writable cache under `$HOME`,
+and `archiver` has none, so every unit runs the release venv's own `uvicorn` or `python`.
+Checked 2026-10-10 as a transient `DynamicUser=` with the units' sandbox: every entry
+module imports, and `/home/exedev` is out of sight.
+
+### Cutover (once per VM)
+
+Operator-present, after the PR merges. Steps run in order, and each one can be undone
+before the next. `sudo systemctl` is the operator's.
+
+**1. The user.** `deploy.sh` refuses a release whose units name a user the host lacks.
+
+```bash
+sudo useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin archiver
+getent passwd archiver; getent group archiver
+```
+
+**2. Deploy.** Installs the four units with `User=archiver`, restarts the API and forces a
+bus-health pass.
+
+```bash
+cd /home/exedev/archiver && git switch main && git pull --ff-only && scripts/deploy.sh
+systemctl show -p User --value archiver archiver-bus-health archiver-pm-org-refresh archiver-drift
+ps -o user= -p "$(systemctl show -p MainPID --value archiver)"          # archiver
+sudo systemctl start archiver-pm-org-refresh.service archiver-drift.service
+journalctl -u archiver-pm-org-refresh -u archiver-drift -n 10 -o cat
+```
+
+**3. Close the file.** systemd keeps reading it as root. The `.env.bak-*` copies hold the
+same secrets.
+
+```bash
+sudo chown root:root /etc/archiver/.env /etc/archiver/.env.bak-*
+sudo chmod 600 /etc/archiver/.env /etc/archiver/.env.bak-*
+sudo systemctl restart archiver && curl -s http://127.0.0.1:8000/health    # read as root
+cat /etc/archiver/.env                                                     # Permission denied
+```
+
+Undo: `sudo chown root:exedev …; sudo chmod 640 …`.
+
+**4. Prove a rollback, then come back.** Deploy the build before #339: its units run as
+`exedev` with `uv run`, and still start, because systemd reads the file. Then deploy `main`
+again.
+
+```bash
+scripts/deploy.sh <the build before #339>    # releases are listed in /srv/archiver/releases
+scripts/deploy.sh
+```
+
+**5. The agents' role.** `exedev` keeps its password, which goes into the repo `.env` and
+`dev.env`. Never use `REASSIGN OWNED`: it also reassigns the databases a role owns, so it
+would hand over production's. pg_trgm stays `archiver`'s, because `ALTER EXTENSION` has no
+`OWNER TO`. That matters only to a migration that drops the extension.
+
+```bash
+pw="$(openssl rand -hex 24)"
+sudo -u postgres psql -qv ON_ERROR_STOP=1 <<<"CREATE ROLE archiver_agent LOGIN PASSWORD '$pw';"
+for db in archiver_dev archiver_test; do
+  sudo -u postgres psql -qv ON_ERROR_STOP=1 -d "$db" <<SQL
+ALTER DATABASE $db OWNER TO archiver_agent;
+DO \$\$ DECLARE t regclass; BEGIN
+  IF to_regnamespace('information') IS NOT NULL THEN
+    ALTER SCHEMA information OWNER TO archiver_agent;
+    FOR t IN SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'information' AND c.relkind IN ('r', 'p')
+    LOOP EXECUTE format('ALTER TABLE %s OWNER TO archiver_agent', t); END LOOP;
+  END IF;
+END \$\$;
+SQL
+  sudo -u postgres psql -Atd "$db" -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n
+    ON n.oid = c.relnamespace WHERE n.nspname = 'information' AND c.relowner = 'archiver'::regrole"
+done                                                                       # 0, 0
+url_to_agent='s#^((TEST_DATABASE_URL|ARCHIVER_DEV_DATABASE_URL)=[^:]+://)archiver:[^@]*@#\1archiver_agent:'"$pw"'@#'
+sed -E -i "$url_to_agent" /home/exedev/archiver/.env
+sudo sed -E -i "$url_to_agent" /etc/archiver/dev.env && stat -c '%U:%G %a' /etc/archiver/dev.env  # root:exedev 640
+unset pw url_to_agent
+set -a; . /home/exedev/archiver/.env; set +a; uv run pytest -q             # the suite, on archiver_agent
+```
+
+Copy the new `.env` into any live worktree. Undo: point the URLs back at `archiver`, whose
+password is unchanged until step 7.
+
+**6. Close production to everyone but its owner.**
+
+```bash
+sudo -u postgres psql -qv ON_ERROR_STOP=1 -c 'REVOKE CONNECT, TEMPORARY ON DATABASE archiver FROM PUBLIC'
+set -a; . /home/exedev/archiver/.env; set +a
+uv run python -c 'import asyncio, os, asyncpg; u = os.environ["TEST_DATABASE_URL"]
+u = u.replace("+asyncpg", "").rsplit("/", 1)[0] + "/archiver"
+asyncio.run(asyncpg.connect(u))'                                           # permission denied for database
+```
+
+Undo: `GRANT CONNECT, TEMPORARY ON DATABASE archiver TO PUBLIC`.
+
+**7. Rotate `archiver`'s password**, which `exedev` has held. Root generates the new
+password, so it never reaches an `exedev` process's argv (`/proc/*/cmdline` is
+world-readable) or its shell. Python gets it in its environment and psql on stdin.
+`log_statement` is `none`.
+
+```bash
+sudo bash -s <<'ROOT'
+set -euo pipefail
+f=/etc/archiver/.env
+cp -p "$f" "$f.bak-339-$(date -u +%Y%m%dT%H%M%SZ)"
+pw="$(openssl rand -hex 24)"
+PW="$pw" python3 -c 'import os, re, sys
+p = sys.argv[1]
+s, n = re.subn(r"^(ARCHIVER_DATABASE_URL=[^:\n]+://archiver:)[^@\n]*@",
+               lambda m: m.group(1) + os.environ["PW"] + "@", open(p).read(), flags=re.M)
+assert n == 1, f"{n} ARCHIVER_DATABASE_URL lines for role archiver"
+open(p, "w").write(s)' "$f"
+printf "ALTER ROLE archiver PASSWORD '%s';\n" "$pw" | runuser -u postgres -- psql -qv ON_ERROR_STOP=1
+systemctl restart archiver
+ROOT
+curl -s http://127.0.0.1:8000/health
+sudo systemctl start archiver-bus-health.service archiver-pm-org-refresh.service
+journalctl -u archiver -u archiver-bus-health -u archiver-pm-org-refresh -n 20 -o cat
+```
+
+Undo: put the `.env.bak-339-*` copy back, then restart. The role keeps its new password
+until it is set again.
 
 ## cannobserv substrate
 
@@ -304,7 +456,7 @@ logs: [deploy/README.md](../deploy/README.md).
 - `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
 - `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name **must** end in `_test` (e.g. `archiver_test`) — `scripts/dev_server.sh` enforces the suffix, and `conftest.py` asserts non-equality at collection time and fails fast if violated.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` — *optional*. `1` permits the process to serve a database whose name lacks a `_test`/`_dev` suffix. **Only `deploy/` units set it**: `archiver.service`, `archiver-bus-health.service` (read-only) and `archiver-pm-org-refresh.service` (the Power Map org follower, archiver#305) - **and `scripts/deploy.sh`**, for the production `schema_state` check and `alembic upgrade head` it runs (archiver#330). `alembic/env.py` and `src/core/schema_state.py` refuse production without it, as the API does. Without it `src/core/db_safety.py` refuses to start at lifespan, so a hand-rolled `uvicorn` cannot reach the production registry no matter which env files it sourced (2026-07-18 incident). Never set this in `/etc/archiver/.env` or `.env` — putting it in an env file would re-open the hole for every process that sources them.
-- `ARCHIVER_DEV_DATABASE_URL` — *optional in code, set in practice*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Points at `archiver_dev` on this host (#193 D5). Leaving it unset falls back to the test database, where pytest's `DROP SCHEMA` teardown wipes dev data mid-session. Name must end in `_test`/`_dev`. `scripts/deploy.sh` reads it from `/etc/archiver/dev.env` (never the shell) to rehearse each migration before production sees it (archiver#330 D2).
+- `ARCHIVER_DEV_DATABASE_URL` — *optional in code, set in practice*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Points at `archiver_dev` on this host (#193 D5), as role `archiver_agent`, like `TEST_DATABASE_URL` (#339). Leaving it unset falls back to the test database, where pytest's `DROP SCHEMA` teardown wipes dev data mid-session. Name must end in `_test`/`_dev`. `scripts/deploy.sh` reads it from `/etc/archiver/dev.env` (never the shell) to rehearse each migration before production sees it (archiver#330 D2).
 - `ARCHIVER_DEV_PORT` — *optional*. Dev server port, default `8001`. `8000` is refused (systemd's). See **Server Lifecycle**.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis). **Archiver no longer operates the broker** — archiver#193 D6 moved it to a neutral node and its operational code to [CannObserv/broker](https://github.com/CannObserv/broker); the cluster stream inventory is that repo's `docs/STREAMS.md`. The connection string is the only switch — write it as `redis://default:<password>@broker:6379/0`, with `default:` explicit: the empty-username form authenticates for redis-py and fails for `redis-cli`, so the service comes up green while `scripts/check_redis_floor.sh` goes silently blind on the floor (archiver#195). `archiver.service` declares **no** `redis-server` ordering — it was removed, not loosened, when the broker left the host (CannObserv/broker#1 Phase 3) — and an `ExecStartPre` (`scripts/check_redis_floor.sh`) asserts the ≥7.0 server floor when the bus is active, plus a warn-only check that the live `maxmemory` is non-zero.
 

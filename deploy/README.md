@@ -7,6 +7,12 @@ checkout, and the deploy installs the units from that release** (archiver#330;
 unit edit ships like code: merge it, run `scripts/deploy.sh`. The host configs
 below are compared by each deploy and installed by hand.
 
+**Every service runs as `archiver`**, a system user with no login and no home, and
+is sandboxed (`ProtectSystem=strict`, `ProtectHome=yes`), running the release venv's own
+entry points, never `uv run` (archiver#339; [docs/DEPLOYMENT.md § The service
+user](../docs/DEPLOYMENT.md#the-service-user-archiver339)). `/etc/archiver/.env` is
+`root:root 0600`: systemd reads it before it drops to `User=`.
+
 | Unit / file | Type | Purpose |
 |---|---|---|
 | `archiver.service` | service | The live API on port 8000 (see CLAUDE.md -> Server Lifecycle). Its `ExecStartPre` asserts the Redis >=7.0 floor when the bus is active. |

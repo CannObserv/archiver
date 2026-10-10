@@ -185,7 +185,7 @@ Before doing substantial work:
 - The baseline suite passes:
 
   ```bash
-  set -a; [ -f /etc/archiver/.env ] && . /etc/archiver/.env; [ -f .env ] && . .env; set +a
+  set -a; [ -r /etc/archiver/.env ] && . /etc/archiver/.env; [ -f .env ] && . .env; set +a
   uv run pytest --no-cov
   ```
 
