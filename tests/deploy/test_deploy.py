@@ -1498,6 +1498,21 @@ class TestUnits:
             result.stderr
         )
 
+    def test_a_timers_unit_key_overrides_its_same_name_service(self, world):
+        """A timer whose ``Unit=`` names another service does not trigger its namesake."""
+        world.push_deploy(UNITS_V1)
+        assert_ok(world.run())
+        world.push_deploy(
+            {
+                "archiver-x.service": "[Service]\n\n[Install]\nWantedBy=multi-user.target\n",
+                "archiver-x.timer": "[Timer]\nUnit=archiver-bus-health.service\n",
+            }
+        )
+        result = world.run()
+        assert_ok(result)
+        assert "archiver-x.timer triggers it" not in result.stderr
+        assert "sudo systemctl enable --now archiver-x.service" in result.stderr
+
     def test_a_new_unit_with_no_install_section_is_named_as_having_nothing_to_enable(self, world):
         """A timer with no [Install] never arms: say so rather than go quiet."""
         world.push_deploy(UNITS_V1)
