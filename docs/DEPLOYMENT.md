@@ -83,7 +83,8 @@ In order, each step refusing before anything switches:
    switches: an open reader delays a deploy, never the API. After each database's
    migration, rehearsal and live, `python -m src.core.reader_grants` re-applies the read
    role's grants ([§ Reading production](#reading-production-archiver348)); a failure
-   there switches nothing either.
+   there switches nothing either. A rollback leaves the newer build's grants in place: the
+   older set would reopen anything a later build withheld.
 5. **Switch** `live` (rename(2)), then **install the units that differ** from the release,
    one `daemon-reload`, `try-restart` for a changed timer. A new unit is installed, never
    enabled: the deploy prints `enable --now` for a unit with `[Install]`; a timer's

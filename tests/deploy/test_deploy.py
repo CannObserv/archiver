@@ -1245,6 +1245,22 @@ class TestTheReadRole:
         assert not [c for c in uv_calls(world, "reader_grants") if "URL=" + LIVE_URL + " " in c]
         assert world.live() is None
 
+    def test_a_rollback_leaves_the_newer_builds_grants(self, world):
+        """CR 6: the older build's set starts GRANT SELECT ON ALL TABLES and narrows
+        only what it knew, so a table or column a newer build withheld would reopen."""
+        assert_ok(world.run())
+        applied = len(uv_calls(world, "reader_grants"))
+        result = world.run(world.main[0])
+        assert_ok(result)
+        assert len(uv_calls(world, "reader_grants")) == applied
+        assert "rollback" in result.stderr and "grants" in result.stderr
+
+    def test_redeploying_the_live_build_applies_them(self, world):
+        assert_ok(world.run())
+        applied = len(uv_calls(world, "reader_grants"))
+        assert_ok(world.run())
+        assert len(uv_calls(world, "reader_grants")) == 2 * applied
+
     def test_a_build_from_before_the_grants_applies_none(self, world):
         world.push_deploy({"../src/core/reader_grants.py": None})
         assert_ok(world.run())

@@ -475,8 +475,16 @@ migrate() { # <live|rehearsal>
 # tables' owner: a migration that recreates a restricted table leaves it whole-
 # table readable through the default privileges until this runs. A build from
 # before them has none to apply; a host without the role is a no-op inside it.
+# Nor does a rollback (CR 6): the older set grants SELECT on every table and
+# narrows only what that build knew, so a table or column a newer build withheld
+# would reopen. The newer build's grants already fit a schema at least as new.
 grant_readers() { # <live|rehearsal>
   [[ -f "$release/src/core/reader_grants.py" ]] || return 0
+  if [[ -n "$previous" && "$previous" != "$build" ]] &&
+    git -C "$SRC" merge-base --is-ancestor "$sha" "$previous" 2>/dev/null; then
+    note "$1: a rollback from $previous; its read-role grants stay, $build's are not applied"
+    return 0
+  fi
   against "$1" python -m src.core.reader_grants ||
     die "$1: the read role's grants failed; nothing switched"
 }
