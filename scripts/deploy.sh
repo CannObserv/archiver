@@ -494,9 +494,9 @@ timer_of() {
   return 1
 }
 
-# archiver#345: `enable --now` only where it means something. A timer's service has
-# no [Install], and --now would start it off schedule (a real Status check-in, for
-# the drift check); a unit with no [Install] has nothing to enable.
+# archiver#345: `enable --now` only where it means something. A service a timer starts
+# is the timer's to start, and --now would start it off schedule (a real Status
+# check-in, for the drift check); a unit with no [Install] has nothing to enable.
 note_new_unit() {
   local timer
   if [[ "$1" == *.service ]] && timer="$(timer_of "$1")"; then
