@@ -503,6 +503,9 @@ note_new_unit() {
     note "$1 is new here; $timer triggers it, so there is nothing to enable"
   elif grep -q '^[[:space:]]*\[Install\]' "$release/deploy/$1"; then
     note "$1 is new here and not enabled. If it should run: sudo systemctl enable --now $1"
+  else
+    note "$1 is new here and has no [Install], so there is nothing to enable;" \
+      "it runs only when another unit starts it"
   fi
 }
 

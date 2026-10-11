@@ -1498,7 +1498,8 @@ class TestUnits:
             result.stderr
         )
 
-    def test_a_new_unit_with_no_install_section_gets_no_enable_hint(self, world):
+    def test_a_new_unit_with_no_install_section_is_named_as_having_nothing_to_enable(self, world):
+        """A timer with no [Install] never arms: say so rather than go quiet."""
         world.push_deploy(UNITS_V1)
         assert_ok(world.run())
         world.push_deploy({"archiver-drift.timer": "[Timer]\n"})
@@ -1506,7 +1507,10 @@ class TestUnits:
         assert_ok(result)
         assert world.installed("archiver-drift.timer") == "[Timer]\n"
         assert "enable --now archiver-drift.timer" not in result.stderr
-        assert "archiver-drift.timer (new)" in result.stderr
+        assert (
+            "archiver-drift.timer is new here and has no [Install], so there is nothing to "
+            "enable; it runs only when another unit starts it"
+        ) in result.stderr
 
     def test_an_installed_unit_the_release_lacks_is_named_never_removed(self, world):
         """archiver#338, processor#35 CR 7: after a rollback past the drift check its
