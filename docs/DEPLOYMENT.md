@@ -80,7 +80,8 @@ In order, each step refusing before anything switches:
    the schema is `ahead` (a rollback). Migrations are **expand-only** (D3): the old release
    runs on the new schema between this step and the switch, and after any rollback. A
    migration waits at most 5 s for any lock (`lock_timeout`, #348), then fails and nothing
-   switches: an open reader delays a deploy, never the API. After each database's
+   switches: an open reader stalls the API's queries (queued behind the waiting migration)
+   for at most 5 s, not until the reader finishes. After each database's
    migration, rehearsal and live, `python -m src.core.reader_grants` re-applies the read
    role's grants ([§ Reading production](#reading-production-archiver348)); a failure
    there switches nothing either. A rollback leaves the newer build's grants in place: the
