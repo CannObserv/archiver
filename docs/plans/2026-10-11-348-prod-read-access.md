@@ -49,8 +49,10 @@ password, so TCP (`scram-sha-256`) is closed to it. It is read-only because it h
 
 Each step can be undone before the next.
 
-**1. The role.** Before step 2 it can reach nothing: `archiver` grants `CONNECT` to its
-owner alone.
+**1. The role.** Before step 2 it can't connect to `archiver`, which grants `CONNECT` to
+its owner alone. It can connect to `archiver_dev`, `archiver_test` and `postgres`, which
+keep the default `PUBLIC` `CONNECT`, and every deploy's rehearsal grants it the same reads
+on `archiver_dev`. That's harmless: agents already own both databases as `archiver_agent`.
 
 ```bash
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 <<'SQL'
