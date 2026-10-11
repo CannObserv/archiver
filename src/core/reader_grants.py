@@ -67,6 +67,8 @@ RESTRICTED: dict[str, Restriction] = {
 
 
 def _identifier(name: str, what: str) -> str:
+    # PUBLIC is for the tests alone: archiver_agent cannot create a role, so they
+    # grant to PUBLIC and roll back. Production always passes READER_ROLE.
     if name != "PUBLIC" and not _IDENTIFIER.match(name):
         raise ValueError(f"{what} {name!r} is not a plain identifier")
     return name
