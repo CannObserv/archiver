@@ -1444,12 +1444,64 @@ class TestUnits:
     def test_a_new_unit_is_installed_and_named_with_how_to_enable_it(self, world):
         world.push_deploy(UNITS_V1)
         assert_ok(world.run())
+        timer = "[Timer]\n\n[Install]\nWantedBy=timers.target\n"
+        world.push_deploy({"archiver-drift.timer": timer})
+        result = world.run()
+        assert_ok(result)
+        assert world.installed("archiver-drift.timer") == timer
+        assert "sudo systemctl enable --now archiver-drift.timer" in result.stderr
+        assert not [c for c in world.calls() if " enable " in c]
+
+    @pytest.mark.parametrize(
+        "timer",
+        ["[Timer]\nUnit=archiver-drift.service\n", "[Timer]\n"],
+        ids=["unit-key", "same-name"],
+    )
+    def test_a_new_service_a_timer_triggers_is_named_with_its_timer(self, world, timer):
+        """archiver#345: ``enable --now`` on a timer's oneshot starts it, which for the
+        drift check is a real check-in to Status off the timer's schedule."""
+        world.push_deploy(UNITS_V1)
+        assert_ok(world.run())
+        world.push_deploy(
+            {
+                "archiver-drift.service": "[Service]\nType=oneshot\n",
+                "archiver-drift.timer": timer + "\n[Install]\nWantedBy=timers.target\n",
+            }
+        )
+        result = world.run()
+        assert_ok(result)
+        assert "enable --now archiver-drift.service" not in result.stderr
+        assert (
+            "archiver-drift.service is new here; archiver-drift.timer triggers it, "
+            "so there is nothing to enable"
+        ) in result.stderr
+        assert "sudo systemctl enable --now archiver-drift.timer" in result.stderr
+
+    def test_a_new_service_another_timer_triggers_is_named_with_that_timer(self, world):
+        world.push_deploy(UNITS_V1)
+        assert_ok(world.run())
+        world.push_deploy(
+            {
+                "archiver-check.service": "[Service]\nType=oneshot\n",
+                "archiver-bus-health.timer": "[Timer]\nUnit=archiver-check.service\n",
+            }
+        )
+        result = world.run()
+        assert_ok(result)
+        assert "enable --now archiver-check.service" not in result.stderr
+        assert "archiver-check.service is new here; archiver-bus-health.timer triggers it" in (
+            result.stderr
+        )
+
+    def test_a_new_unit_with_no_install_section_gets_no_enable_hint(self, world):
+        world.push_deploy(UNITS_V1)
+        assert_ok(world.run())
         world.push_deploy({"archiver-drift.timer": "[Timer]\n"})
         result = world.run()
         assert_ok(result)
         assert world.installed("archiver-drift.timer") == "[Timer]\n"
-        assert "sudo systemctl enable --now archiver-drift.timer" in result.stderr
-        assert not [c for c in world.calls() if " enable " in c]
+        assert "enable --now archiver-drift.timer" not in result.stderr
+        assert "archiver-drift.timer (new)" in result.stderr
 
     def test_an_installed_unit_the_release_lacks_is_named_never_removed(self, world):
         """archiver#338, processor#35 CR 7: after a rollback past the drift check its
