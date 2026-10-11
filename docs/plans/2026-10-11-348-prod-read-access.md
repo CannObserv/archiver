@@ -105,7 +105,7 @@ The question: does any actively assigned production RepSpec fail `validate_rep_s
 the documents over the socket, one JSON object per line, then validate them with no database at all:
 
 ```bash
-out=/tmp/claude-1000/specs-334.jsonl  # or the session scratchpad
+out="$(mktemp --suffix=.jsonl)"
 psql -X -At -d archiver -c "SELECT json_build_object('rep_spec_id', s.rep_spec_id, 'document', s.document)
   FROM information.rep_specs s WHERE EXISTS (SELECT 1 FROM information.info_item_rep_specs a
   WHERE a.rep_spec_id = s.rep_spec_id AND a.deactivated_at IS NULL)" > "$out"
