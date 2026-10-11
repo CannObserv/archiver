@@ -1454,8 +1454,13 @@ class TestUnits:
 
     @pytest.mark.parametrize(
         "timer",
-        ["[Timer]\nUnit=archiver-drift.service\n", "[Timer]\n"],
-        ids=["unit-key", "same-name"],
+        [
+            "[Timer]\nUnit=archiver-drift.service\n",
+            # systemd strips whitespace around the line, the key and the value.
+            "[Timer]\n  Unit = archiver-drift.service \n",
+            "[Timer]\n",
+        ],
+        ids=["unit-key", "unit-key-spaced", "same-name"],
     )
     def test_a_new_service_a_timer_triggers_is_named_with_its_timer(self, world, timer):
         """archiver#345: ``enable --now`` on a timer's oneshot starts it, which for the
@@ -1465,7 +1470,7 @@ class TestUnits:
         world.push_deploy(
             {
                 "archiver-drift.service": "[Service]\nType=oneshot\n",
-                "archiver-drift.timer": timer + "\n[Install]\nWantedBy=timers.target\n",
+                "archiver-drift.timer": timer + "\n  [Install]\nWantedBy=timers.target\n",
             }
         )
         result = world.run()

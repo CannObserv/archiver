@@ -481,11 +481,13 @@ units_of_release() {
 }
 
 # The release's timer that starts service $1: its Unit=, else the timer of the same name.
+# Whitespace around the line, key and value is stripped, as systemd does.
 timer_of() {
   local path unit
   for path in "$release"/deploy/*.timer; do
     [[ -f "$path" ]] || continue
-    unit="$(sed -n 's/^Unit=[[:space:]]*//p' "$path" | tail -n 1)"
+    unit="$(sed -n 's/^[[:space:]]*Unit[[:space:]]*=[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' \
+      "$path" | tail -n 1)"
     [[ -n "$unit" ]] || unit="$(basename "$path" .timer).service"
     [[ "$unit" == "$1" ]] && { basename "$path"; return 0; }
   done
@@ -499,7 +501,7 @@ note_new_unit() {
   local timer
   if [[ "$1" == *.service ]] && timer="$(timer_of "$1")"; then
     note "$1 is new here; $timer triggers it, so there is nothing to enable"
-  elif grep -q '^\[Install\]' "$release/deploy/$1"; then
+  elif grep -q '^[[:space:]]*\[Install\]' "$release/deploy/$1"; then
     note "$1 is new here and not enabled. If it should run: sudo systemctl enable --now $1"
   fi
 }
