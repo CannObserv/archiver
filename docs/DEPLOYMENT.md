@@ -81,8 +81,8 @@ In order, each step refusing before anything switches:
    runs on the new schema between this step and the switch, and after any rollback.
 5. **Switch** `live` (rename(2)), then **install the units that differ** from the release,
    one `daemon-reload`, `try-restart` for a changed timer. A new unit is installed, never
-   enabled: the deploy prints the `enable --now` one with `[Install]` needs, and names
-   a timer's service with its timer instead (#345).
+   enabled: the deploy prints `enable --now` for a unit with `[Install]`; a timer's
+   service is named with its timer instead (#345).
 6. **Restart** `archiver`, wait out a running `archiver-bus-health` pass, force one, and
    **verify**: `/health` `build_id` is `<build>` and `schema_state` can serve, within
    `ARCHIVER_DEPLOY_VERIFY_SECONDS` (120). `archiver-pm-org-refresh` is never forced (D4).
