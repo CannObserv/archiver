@@ -3,8 +3,8 @@
 Agents read production as role ``exedev`` over the Unix socket, peer-
 authenticated, with no password anywhere. These tests connect exactly as an
 agent does - ``psql -d archiver`` with no ``PG*`` variables - and prove the
-properties the role claims: it reads, it cannot write even with the session's
-read-only default switched off, the withheld columns stay withheld, and the
+properties the role claims: it reads, it cannot write even in a transaction
+opened READ WRITE, the withheld columns stay withheld, and the
 limits are in place. A host without the role (CI, a VM before the runbook)
 skips; any other failure to connect is an error, not a skip.
 """
@@ -60,8 +60,11 @@ def test_it_reads_the_schema_revision():
     assert result.returncode == 0 and result.stdout.strip(), result.stderr
 
 
-# Each statement runs with the read-only default switched off first, so what
-# refuses it is the missing privilege, not the session setting (#348 req. 1).
+# Each statement runs in a transaction opened READ WRITE, so what refuses it is
+# the missing privilege, not the session setting (#348 req. 1). Not `SET
+# default_transaction_read_only = off`: in one -c string that SET shares the
+# implicit transaction already begun read-only, and changes only later ones;
+# and the read-only check runs before the privilege check (CR 1).
 @pytest.mark.parametrize(
     "statement",
     [
@@ -76,7 +79,7 @@ def test_it_reads_the_schema_revision():
     ids=["insert", "update", "delete", "truncate", "ddl", "ddl-public", "temp"],
 )
 def test_it_cannot_write_even_with_read_only_off(statement):
-    result = psql(f"SET default_transaction_read_only = off; {statement}")
+    result = psql(f"START TRANSACTION READ WRITE; {statement}")
     assert denied(result), result.stderr
 
 
