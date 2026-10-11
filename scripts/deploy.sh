@@ -24,7 +24,7 @@
 #
 # In order: CI gate; build (or reuse) the release; rehearse the migration on
 # archiver_dev; migrate archiver (skipped when the database is ahead: a
-# rollback, D3); switch `live` (rename(2), atomic); install the units that
+# rollback, D3), re-applying the read role's grants after each (#348); switch `live` (rename(2), atomic); install the units that
 # differ; restart archiver; force one bus-health pass; verify /health names
 # the build and the schema can serve. On failure, switch back, units too,
 # restart, and prove the old build. The migration stays (expand-only).
@@ -470,6 +470,16 @@ migrate() { # <live|rehearsal>
   against "$target" alembic upgrade head || die "$target: migration failed; nothing switched"
 }
 
+# The read role's grants (archiver#348), after every migration and as the
+# tables' owner: a migration that recreates a restricted table leaves it whole-
+# table readable through the default privileges until this runs. A build from
+# before them has none to apply; a host without the role is a no-op inside it.
+grant_readers() { # <live|rehearsal>
+  [[ -f "$release/src/core/reader_grants.py" ]] || return 0
+  against "$1" python -m src.core.reader_grants ||
+    die "$1: the read role's grants failed; nothing switched"
+}
+
 # --- units (status#18) -----------------------------------------------------
 
 units_of_release() {
@@ -675,7 +685,9 @@ previous_link="$(readlink "$ROOT/live" 2>/dev/null || true)"
 previous="$(release_of live)"
 
 migrate rehearsal || die "rehearsal on archiver_dev failed; nothing switched"
+grant_readers rehearsal
 migrate live
+grant_readers live
 swap "releases/$build"
 journal "live -> $build (was ${previous_link:-nothing})"
 units_ok=1

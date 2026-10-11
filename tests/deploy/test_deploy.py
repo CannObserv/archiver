@@ -80,6 +80,10 @@ case "$*" in
     [[ "$db" == *_dev ]] && rc="${FAKE_DEV_MIGRATE_RC:-$rc}"
     [[ "$rc" == 0 ]] && touch "$state_dir/migrated-$db"
     exit "$rc" ;;
+  *reader_grants*)
+    rc="${FAKE_GRANTS_RC:-0}"
+    [[ "$db" == *_dev ]] && rc="${FAKE_DEV_GRANTS_RC:-$rc}"
+    exit "$rc" ;;
   *compileall*)
     [[ -n "${FAKE_COMPILE_FAIL:-}" ]] && { echo "SyntaxError" >&2; exit 1; } ;;
   *import_module*)
@@ -339,7 +343,15 @@ class World:
         # can pass verification, so none may be deployed (CR 14).
         (self.checkout / "src" / "core").mkdir(parents=True)
         (self.checkout / "src" / "core" / "build.py").write_text("# reads REVISION\n")
-        git(self.checkout, "add", "scripts/deploy.sh", "src/core/build.py")
+        # And the read role's grants (archiver#348), which every deploy re-applies.
+        (self.checkout / "src" / "core" / "reader_grants.py").write_text("# grants\n")
+        git(
+            self.checkout,
+            "add",
+            "scripts/deploy.sh",
+            "src/core/build.py",
+            "src/core/reader_grants.py",
+        )
         self.main = [commit(self.checkout, f"main-{i}") for i in range(3)]
         git(self.checkout, "push", "-q", "origin", "main")
         git(self.checkout, "switch", "-q", "-c", "feature")
@@ -1196,6 +1208,47 @@ class TestMigrations:
         assert world.live() is None
         switched = ("sudo ln ", "sudo mv ", "sudo systemctl ", "sudo install -m 644 ")
         assert not [c for c in world.calls() if c.startswith(switched)]
+
+
+class TestTheReadRole:
+    """archiver#348: the read role's grants follow every migration, on each database.
+
+    A migration can recreate a restricted table, and default privileges then make
+    it readable whole; re-applying takes that back before anything switches.
+    """
+
+    def test_grants_follow_each_migration_on_its_own_database(self, world):
+        assert_ok(world.run(FAKE_SCHEMA="behind"))
+        calls = world.calls()
+        upgrades = [i for i, c in enumerate(calls) if "alembic upgrade head" in c]
+        grants = [i for i, c in enumerate(calls) if "python -m src.core.reader_grants" in c]
+        assert len(grants) == 2
+        assert upgrades[0] < grants[0] < upgrades[1] < grants[1]
+        assert "ALLOW= URL=" + DEV_URL + " " in calls[grants[0]]
+        assert "ALLOW=1 URL=" + LIVE_URL + " " in calls[grants[1]]
+        assert grants[1] < index_of(calls, "logger -t archiver-deploy live -> ")
+
+    @pytest.mark.parametrize("state", ["current", "ahead"])
+    def test_grants_are_applied_when_nothing_migrates(self, world, state):
+        assert_ok(world.run(FAKE_SCHEMA=state))
+        assert len(uv_calls(world, "src.core.reader_grants")) == 2
+
+    def test_a_failed_grant_switches_nothing(self, world):
+        result = world.run(FAKE_GRANTS_RC="2")
+        assert result.returncode == 1
+        assert "grants" in result.stderr and "nothing switched" in result.stderr
+        assert world.live() is None
+
+    def test_a_failed_rehearsal_grant_never_reaches_production(self, world):
+        result = world.run(FAKE_DEV_GRANTS_RC="2")
+        assert result.returncode == 1
+        assert not [c for c in uv_calls(world, "reader_grants") if "URL=" + LIVE_URL + " " in c]
+        assert world.live() is None
+
+    def test_a_build_from_before_the_grants_applies_none(self, world):
+        world.push_deploy({"../src/core/reader_grants.py": None})
+        assert_ok(world.run())
+        assert not uv_calls(world, "reader_grants")
 
 
 class TestVerification:
