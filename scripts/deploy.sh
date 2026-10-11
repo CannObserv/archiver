@@ -24,10 +24,11 @@
 #
 # In order: CI gate; build (or reuse) the release; rehearse the migration on
 # archiver_dev; migrate archiver (skipped when the database is ahead: a
-# rollback, D3), re-applying the read role's grants after each (#348); switch `live` (rename(2), atomic); install the units that
-# differ; restart archiver; force one bus-health pass; verify /health names
-# the build and the schema can serve. On failure, switch back, units too,
-# restart, and prove the old build. The migration stays (expand-only).
+# rollback, D3), re-applying the read role's grants after each (#348); switch
+# `live` (rename(2), atomic); install the units that differ; restart archiver;
+# force one bus-health pass; verify /health names the build and the schema
+# can serve. On failure, switch back, units too, restart, and prove the old
+# build. The migration stays (expand-only).
 #
 # Runs as exedev and builds as exedev; the units run as archiver (archiver#339),
 # which owns nothing in a release. Root owns the deploy root, releases/ and every
