@@ -171,7 +171,9 @@ async def test_applying_twice_changes_nothing(granted):
 async def test_an_absent_role_is_reported_absent(test_engine):
     async with test_engine.connect() as conn:
         assert await role_exists(conn, "no_such_role_348") is False
-        assert await role_exists(conn, "archiver_agent") is True
+        # The connecting role, not a named one: CI connects as postgres (CR 8).
+        me = (await conn.execute(text("SELECT current_user"))).scalar()
+        assert await role_exists(conn, me) is True
 
 
 # --- the CLI ---
