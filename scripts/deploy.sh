@@ -480,6 +480,35 @@ units_of_release() {
   return 0
 }
 
+# The release's timer that starts service $1: its Unit=, else the timer of the same name.
+# Whitespace around the line, key and value is stripped, as systemd does.
+timer_of() {
+  local path unit
+  for path in "$release"/deploy/*.timer; do
+    [[ -f "$path" ]] || continue
+    unit="$(sed -n 's/^[[:space:]]*Unit[[:space:]]*=[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' \
+      "$path" | tail -n 1)"
+    [[ -n "$unit" ]] || unit="$(basename "$path" .timer).service"
+    [[ "$unit" == "$1" ]] && { basename "$path"; return 0; }
+  done
+  return 1
+}
+
+# archiver#345: `enable --now` only where it means something. A service a timer starts
+# is the timer's to start, and --now would start it off schedule (a real Status
+# check-in, for the drift check); a unit with no [Install] has nothing to enable.
+note_new_unit() {
+  local timer
+  if [[ "$1" == *.service ]] && timer="$(timer_of "$1")"; then
+    note "$1 is new here; $timer triggers it, so there is nothing to enable"
+  elif grep -q '^[[:space:]]*\[Install\]' "$release/deploy/$1"; then
+    note "$1 is new here and not enabled. If it should run: sudo systemctl enable --now $1"
+  else
+    note "$1 is new here and has no [Install], so there is nothing to enable;" \
+      "it runs only when another unit starts it"
+  fi
+}
+
 install_units() {
   local name unit changed=() added=() timers=()
   { mkdir -p "$backup/units" && : >"$backup/added"; } ||
@@ -509,9 +538,7 @@ install_units() {
   for name in "${added[@]}"; do list+=" $name (new)"; done
   note "units installed from $build: ${list# }"
   journal "live units from $build: ${list# }"
-  for name in "${added[@]}"; do
-    note "$name is new here and not enabled. If it should run: sudo systemctl enable --now $name"
-  done
+  for name in "${added[@]}"; do note_new_unit "$name"; done
 }
 
 units_replaced() {
