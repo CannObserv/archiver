@@ -67,7 +67,8 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
   `tests/scripts/test_db_guard_parity.py`.
 - `tests/` mirrors `src/`; `tests/deploy/` pins host contracts - `deploy.sh`
   end to end, installed units against the live release, the needrestart drop-in
-  and the memory reservation, and the SocratiCode client config and server pin.
+  and the memory reservation, the production read role (#348), and the SocratiCode
+  client config and server pin.
 
 ## Content-acquisition via co-core
 
@@ -138,6 +139,11 @@ set +a
 
 Source exactly that way - `export $(cat … | xargs)` silently corrupts values. Boundary:
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § The service user.
+
+**Reading production:** `psql -d archiver`, which logs in as role `exedev` over the socket.
+It is `SELECT`-only, withholds the PII columns, and logs every query (#348). Don't hold a
+transaction open: it blocks deploy migrations. Never give Python a production URL; export
+with `psql -At` instead. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Reading production.
 
 **Four variables carry safety rules; the rest are reference
 ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).**

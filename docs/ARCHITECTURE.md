@@ -238,6 +238,10 @@ src/core/                      Domain logic
                                head: current / behind / ahead / unmigrated
                                (archiver#330 D3). CLI exits 0/3/2 for the deploy;
                                archiver-bus-health WARNs on a state that cannot serve
+  reader_grants.py             The production read role's grants (archiver#348): SELECT
+                               on information, column allowlists for app_users and
+                               api_keys, default privileges. deploy.sh re-applies them
+                               after every migration; --sql prints them for the runbook
   build.py                     /health's build_id: the serving release's REVISION,
                                else null (archiver#330 D8)
   drift.py                     The drift check (archiver#338): does live's REVISION
