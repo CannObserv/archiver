@@ -375,10 +375,12 @@ Phase 1b landed — **no more mirror discipline for the acquisition pipeline.**
 - **Fetch** — `co_core_aio.fetch.AsyncFetchDriver` executes the `co_core.effects.fetch.FetchContent`
   effect (raw bytes, captures non-2xx as `FetchResult`). Wired into `app.state.fetch_driver`
   at the FastAPI composition root (`main.lifespan`), injected via `deps.get_fetch_driver`.
-- **Extract + fingerprint** — `co_core.pure.extract.*` (`html`/`csv_excel`/`pdf` extractors,
-  now **synchronous**; `sha256` + `simhash` per `Chunk`). Requires the **`co-core[extract]`**
+- **Extract + fingerprint** — `co_core.pure.extract.*` (`html`/`csv_excel`/`pdf`/`xml_feed`
+  extractors, **synchronous**; `sha256` + `simhash` per `Chunk`). Requires the **`co-core[extract]`**
   extra; import parsers from their submodules (`co_core.pure.extract.html`, …) — they are not
-  re-exported from `__init__`.
+  re-exported from `__init__`. `preview_extraction` dispatches as Processor does (#317):
+  `resolve_dispatch_essence` → `extractor_for_essence` (`co_core.pure.extract.dispatch`) →
+  `canonical_text_fingerprint`, in a worker thread.
 
 ## Retired model (Phase 1–3a)
 
