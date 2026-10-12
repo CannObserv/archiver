@@ -24,7 +24,7 @@ from src.core.models import (
 from src.core.services.replication_issuance import ManualIssuanceError
 from src.core.tools.assign_rep_spec import assign_rep_spec
 from src.dashboard.routes import info_items as info_items_routes
-from tests.core.tools._revision import REVISION_PATH, capture_revision, revision_path
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 from tests.dashboard.conftest import (
     outside_action_sync_violations,
     poll_sync_violations,

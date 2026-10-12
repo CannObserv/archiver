@@ -42,8 +42,8 @@ from src.core.tools.refresh_orgs import (
     refresh_linked_orgs,
 )
 from src.core.tools.rep_fields_gate import lock_info_item
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 from tests.core.power_map.fake import WSLCB_ID, WSLCB_NAME, FakePowerMap, org
-from tests.core.tools._revision import REVISION_PATH, capture_revision, revision_path
 
 WINNER_ID = "01JPM00000000000000000000W"
 OTHER_ID = "01JPM00000000000000000000C"

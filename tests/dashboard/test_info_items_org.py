@@ -24,8 +24,8 @@ from src.core.models import (
     RepSpec,
 )
 from src.core.power_map import PowerMapUnavailableError
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 from tests.core.power_map.fake import WSLCB_ID, WSLCB_NAME, FakePowerMap, org
-from tests.core.tools._revision import REVISION_PATH, capture_revision, revision_path
 from tests.dashboard.conftest import read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-org", "X-ExeDev-Email": "org@example.com"}

@@ -26,7 +26,7 @@ from src.core.tools.set_rep_fields import (
     RepFieldsWriteError,
     set_rep_fields,
 )
-from tests.core.tools._revision import REVISION_PATH, capture_revision, revision_path
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 
 _ORG_PATH = "organizations/{org.title_slug}/{source_revision.id}.html"
 

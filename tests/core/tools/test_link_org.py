@@ -29,8 +29,8 @@ from src.core.tools.set_rep_fields import (
     RepFieldsRefusedError,
     set_rep_fields,
 )
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 from tests.core.power_map.fake import WSLCB_ID, WSLCB_NAME, FakePowerMap, org
-from tests.core.tools._revision import REVISION_PATH, capture_revision, revision_path
 
 OTHER_ID = "01JPM00000000000000000000C"
 _ORG_PATH = "organizations/{org.title_slug}/{source_revision.id}.html"

@@ -10,7 +10,7 @@ import pytest
 from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
-from tests.core.tools._revision import REVISION_PATH, capture_revision, revision_path
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 

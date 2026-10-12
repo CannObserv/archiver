@@ -1,8 +1,9 @@
 """A captured revision behind an item, for the move-preview tests (archiver#333).
 
 The save 409, the link 409 and the follower's move log all render against the
-item's latest revision; each test file needs the same bound, captured item, so
-the helper lives beside them rather than in one of them.
+item's latest revision, and the tools, API and dashboard tests each need the
+same bound, captured item. Shared across packages, so it lives at
+``tests/core/`` as ``_import_scan`` does, not under one caller's package (CR 3).
 """
 
 from datetime import UTC, datetime
