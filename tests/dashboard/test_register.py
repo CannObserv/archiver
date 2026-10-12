@@ -675,3 +675,25 @@ async def test_preview_returns_error_partial_on_invalid_spec(client):
     )
     assert r.status_code == 200
     assert "Invalid source_specs" in r.text
+
+
+@pytest.mark.asyncio
+async def test_preview_renders_a_spec_refusal_as_path_and_message(client):
+    """xpath on HTML is refused (#317); the operator sees co-core's message, not a dict repr."""
+    original = app.state.fetch_driver
+    app.state.fetch_driver = _StubFetcher(_PREVIEW_HTML)
+    spec = (
+        '[{"schema_version":1,"extraction":{"algorithm":"xpath","selector":"//div"},'
+        '"fingerprint":{}}]'
+    )
+    try:
+        r = await client.post(
+            "/dashboard/register/preview",
+            headers=_HEADERS,
+            data={"url": "https://example.com/page", "source_specs": spec},
+        )
+    finally:
+        app.state.fetch_driver = original
+    assert r.status_code == 200
+    assert "/extraction: " in r.text
+    assert "{&#39;path&#39;" not in r.text and "{'path'" not in r.text
