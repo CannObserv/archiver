@@ -1,20 +1,32 @@
 """Dry-run extraction against a target URL with a candidate SourceSpec document.
 
-Composes ``fetch_and_render`` + ``HtmlExtractor`` + ``extraction_config_from_spec``
-+ a SHA-256 fingerprint. Returns chunks + total chars + the computed fingerprint
-so an authoring agent can verify the spec yields the expected content before
+Extracts as Processor does (#317): ``resolve_dispatch_essence`` picks the media
+type from the response's ``Content-Type`` (the URL's extension breaking an
+ambiguous one), ``extractor_for_essence`` picks the parser, and
+``canonical_text_fingerprint`` hashes the chunks. So a feed previews one line per
+item, a PDF previews through the PDF extractor, and the fingerprint is the one
+Processor will store. Returns chunks + total chars + the computed fingerprint so
+an authoring agent can verify the spec yields the expected content before
 persisting.
 """
 
-import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
 from co_core.effects.fetch import FetchContent
-from co_core.pure.extract import UnsupportedExtractionError, extraction_config_from_spec
+from co_core.pure.extract import (
+    UnsupportedExtractionError,
+    canonical_text_fingerprint,
+    extraction_config_from_spec,
+    extraction_overrides_for_essence,
+    resolve_dispatch_essence,
+)
+from co_core.pure.extract.dispatch import extractor_for_essence
 from co_core.pure.extract.html import HtmlExtractor
+from co_core.pure.extract.xml_feed import XmlExtractor
 from co_core_aio.fetch import AsyncFetchDriver
 
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
@@ -46,6 +58,10 @@ class TargetUnreachableError(Exception):
     """Raised when the fetch leg of preview_extraction can't reach the target."""
 
 
+class ExtractionFailedError(Exception):
+    """Raised when the dispatched extractor can't parse the fetched body."""
+
+
 class SourceSpecValidationError(Exception):
     """Raised when the SourceSpec document fails validation."""
 
@@ -54,10 +70,24 @@ class SourceSpecValidationError(Exception):
         self.errors = errors
 
 
-def _compute_fingerprint(text: str) -> str:
-    """Compute SHA-256 over ``text`` and return as ``sha256:<hex>``."""
-    hex_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return f"sha256:{hex_digest}"
+def _content_type(headers: Mapping[str, str]) -> str | None:
+    """The response's ``Content-Type``, whatever the header name's case."""
+    return next((v for k, v in headers.items() if k.lower() == "content-type"), None)
+
+
+def _page_title(content: bytes, extractor: object) -> str:
+    """The first ``<title>`` of an HTML page or XML document (a feed's channel title).
+
+    Empty for a PDF or spreadsheet, whose bytes the HTML parser would only misread.
+    """
+    if isinstance(extractor, XmlExtractor):
+        parser = "lxml-xml"
+    elif isinstance(extractor, HtmlExtractor):
+        parser = "lxml"
+    else:
+        return ""
+    title_tag = BeautifulSoup(content, parser).find("title")
+    return title_tag.get_text(strip=True) if title_tag else ""
 
 
 async def preview_extraction(
@@ -65,13 +95,14 @@ async def preview_extraction(
     url: str,
     source_spec: dict[str, Any],
 ) -> PreviewExtractionResult:
-    """Validate the SourceSpec, fetch ``url``, extract, and fingerprint.
+    """Validate the SourceSpec, fetch ``url``, extract as Processor does, and fingerprint.
 
     Raises:
         SourceSpecValidationError: if the document fails schema validation, or
-            co-core refuses its algorithm (``UnsupportedExtractionError``: no
-            extractor honours it, cannobserv#523).
+            co-core refuses it for this body (``UnsupportedExtractionError``:
+            ``css`` on XML, ``xpath`` on HTML, cannobserv#523).
         TargetUnreachableError: if the HTTP fetch fails (route layer → 422).
+        ExtractionFailedError: if the extractor can't parse the body (route layer → 422).
     """
     ok, errors = validate_source_spec(source_spec)
     if not ok:
@@ -82,21 +113,19 @@ async def preview_extraction(
     except httpx.HTTPError as e:
         raise TargetUnreachableError(str(e)) from e
 
-    # Extract <title> from the full document before the selector narrows scope.
-    soup = BeautifulSoup(fetch_result.content, "lxml")
-    title_tag = soup.find("title")
-    page_title = title_tag.get_text(strip=True) if title_tag else ""
-
+    essence = resolve_dispatch_essence(_content_type(fetch_result.headers), url)
+    extractor = extractor_for_essence(essence)
     try:
-        config = extraction_config_from_spec(source_spec)
-        extraction = HtmlExtractor().extract(fetch_result.content, config=config)
+        config = extraction_config_from_spec(source_spec) | extraction_overrides_for_essence(
+            essence
+        )
+        extraction = extractor.extract(fetch_result.content, config=config)
     except UnsupportedExtractionError as e:
         raise SourceSpecValidationError(
             [{"path": "/extraction/algorithm", "message": str(e)}]
         ) from e
-
-    joined_text = "\n".join(c.text for c in extraction.chunks)
-    computed_fingerprint = _compute_fingerprint(joined_text)
+    except ValueError as e:
+        raise ExtractionFailedError(str(e)) from e
 
     return PreviewExtractionResult(
         chunks=[
@@ -111,6 +140,6 @@ async def preview_extraction(
         ],
         total_chars=extraction.total_chars,
         fingerprint_algorithm="sha256",
-        computed_fingerprint=computed_fingerprint,
-        page_title=page_title,
+        computed_fingerprint=canonical_text_fingerprint(extraction.chunks),
+        page_title=_page_title(fetch_result.content, extractor),
     )

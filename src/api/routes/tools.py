@@ -82,6 +82,7 @@ from src.core.source_spec_schema.validator import validate_source_spec
 from src.core.tools.fetch_and_render import fetch_and_render
 from src.core.tools.find_info_item import find_info_item
 from src.core.tools.preview_extraction import (
+    ExtractionFailedError,
     SourceSpecValidationError,
     TargetUnreachableError,
     preview_extraction,
@@ -235,12 +236,15 @@ async def preview_extraction_route(
 ) -> PreviewExtractionResult:
     """Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
-    + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting.
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Processor would dispatch for the response's media type (RSS/Atom: one line
+    per item) + the canonical-text fingerprint, so an authoring agent can verify
+    the spec yields the expected content before persisting.
 
-    Returns 422 with the standard error envelope; ``code`` on each FieldError
-    disambiguates (``target_unreachable``, etc.).
+    Returns 422 with the standard error envelope: ``kind="schema"`` when the spec
+    fails validation or no extractor honours it on this body (``css`` on XML,
+    ``xpath`` on HTML), ``kind="domain"`` with ``code`` ``target_unreachable`` or
+    ``extraction_failed`` (the body would not parse).
     """
     try:
         result = await preview_extraction(driver, body.url, body.source_spec)
@@ -257,6 +261,13 @@ async def preview_extraction_route(
             str(e),
             kind="domain",
             errors=[FieldError(path="/url", message=str(e), code="target_unreachable")],
+            source_exc=e,
+        )
+    except ExtractionFailedError as e:
+        raise_422(
+            str(e),
+            kind="domain",
+            errors=[FieldError(path="/url", message=str(e), code="extraction_failed")],
             source_exc=e,
         )
 

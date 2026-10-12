@@ -37,13 +37,31 @@ def test_css_spec_valid(validator):
     validator.validate(doc)
 
 
-def test_jsonpath_spec_valid(validator):
+def test_xpath_spec_valid(validator):
     doc = {
         "schema_version": 1,
-        "extraction": {"algorithm": "jsonpath", "selector": "$.data[*].value"},
+        "extraction": {"algorithm": "xpath", "selector": "//item/title"},
         "fingerprint": {},
     }
     validator.validate(doc)
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "selector"), [("jsonpath", "$.data[*].value"), ("regex", "Agenda.*")]
+)
+def test_algorithm_no_extractor_honours_rejected(validator, algorithm, selector):
+    """co-core 0.32 refuses ``regex`` and ``jsonpath`` (cannobserv#523, #317).
+
+    A spec that validates here must reach an extractor that honours it; ``jsonpath``
+    returns with cannobserv#354.
+    """
+    doc = {
+        "schema_version": 1,
+        "extraction": {"algorithm": algorithm, "selector": selector},
+        "fingerprint": {},
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(doc)
 
 
 def test_css_missing_selector_rejected(validator):

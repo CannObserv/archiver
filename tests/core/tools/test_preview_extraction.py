@@ -5,8 +5,12 @@ import hashlib
 import httpx
 import pytest
 from co_core.effects.fetch import FetchResult
+from co_core.pure.extract import canonical_text_fingerprint
+from co_core.pure.extract.base import ExtractionResult
+from co_core.pure.extract.pdf import PdfExtractor
 
 from src.core.tools.preview_extraction import (
+    ExtractionFailedError,
     PreviewExtractionResult,
     SourceSpecValidationError,
     TargetUnreachableError,
@@ -15,6 +19,15 @@ from src.core.tools.preview_extraction import (
 
 HTML_FIXTURE = (
     b"<html><body><div class='target'>kept content</div><div>dropped content</div></body></html>"
+)
+
+RSS_FIXTURE = (
+    b'<?xml version="1.0"?><rss version="2.0"><channel><title>Security Bulletins</title>'
+    b"<link>https://example.com/</link>"
+    b"<item><guid>ts-1</guid><title>First</title><link>https://example.com/1</link>"
+    b"<pubDate>Mon, 05 Oct 2026 12:00:00 GMT</pubDate></item>"
+    b"<item><guid>ts-2</guid><title>Second</title><link>https://example.com/2</link></item>"
+    b"</channel></rss>"
 )
 
 HTML_WITH_TITLE = (
@@ -37,8 +50,14 @@ VALID_CSS_SPEC = {
 DEFAULT_URL = "https://example.com"
 
 
-def _stub_fetcher(content: bytes = HTML_FIXTURE, *, raise_exc: Exception | None = None):
+def _stub_fetcher(
+    content: bytes = HTML_FIXTURE,
+    *,
+    raise_exc: Exception | None = None,
+    content_type: str | None = "text/html",
+):
     """Return a minimal fetch-driver stub."""
+    headers = {"Content-Type": content_type} if content_type is not None else {}
 
     class _Stub:
         async def execute(self, effect) -> FetchResult:
@@ -47,7 +66,7 @@ def _stub_fetcher(content: bytes = HTML_FIXTURE, *, raise_exc: Exception | None 
             return FetchResult(
                 content=content,
                 status_code=200,
-                headers={"content-type": "text/html"},
+                headers=headers,
                 duration_ms=5,
                 fetcher_used="http",
             )
@@ -212,3 +231,112 @@ class TestPreviewExtractionRefusedAlgorithm:
             await preview_extraction(_stub_fetcher(), DEFAULT_URL, spec)
         assert [e["path"] for e in exc_info.value.errors] == ["/extraction/algorithm"]
         assert exc_info.value.errors[0]["message"]
+
+
+class TestPreviewExtractionDispatch:
+    """The preview extracts as Processor does: essence -> extractor (#317)."""
+
+    @pytest.mark.asyncio
+    async def test_rss_full_page_gives_one_chunk_per_item(self):
+        result = await preview_extraction(
+            _stub_fetcher(RSS_FIXTURE, content_type="application/rss+xml"),
+            DEFAULT_URL,
+            VALID_FULL_PAGE_SPEC,
+        )
+        assert [c.text for c in result.chunks] == [
+            "ts-1\t2026-10-05T12:00:00Z\tFirst\thttps://example.com/1",
+            "ts-2\t\tSecond\thttps://example.com/2",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_content_type_falls_back_to_url_extension(self):
+        result = await preview_extraction(
+            _stub_fetcher(RSS_FIXTURE, content_type="text/plain"),
+            "https://example.com/security-bulletins/index.xml",
+            VALID_FULL_PAGE_SPEC,
+        )
+        assert result.chunks[0].text.startswith("ts-1\t")
+
+    @pytest.mark.asyncio
+    async def test_xpath_honoured_on_xml(self):
+        spec = {
+            "schema_version": 1,
+            "extraction": {"algorithm": "xpath", "selector": "//item/title"},
+            "fingerprint": {},
+        }
+        result = await preview_extraction(
+            _stub_fetcher(RSS_FIXTURE, content_type="text/xml"), DEFAULT_URL, spec
+        )
+        assert [c.text for c in result.chunks] == ["First", "Second"]
+
+    @pytest.mark.asyncio
+    async def test_css_on_xml_refused_as_validation_error(self):
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(RSS_FIXTURE, content_type="application/xml"),
+                DEFAULT_URL,
+                VALID_CSS_SPEC,
+            )
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction/algorithm"]
+
+    @pytest.mark.asyncio
+    async def test_missing_content_type_dispatches_html(self):
+        result = await preview_extraction(
+            _stub_fetcher(content_type=None), DEFAULT_URL, VALID_CSS_SPEC
+        )
+        assert [c.text for c in result.chunks] == ["kept content"]
+
+    @pytest.mark.asyncio
+    async def test_fingerprint_is_canonical_text_fingerprint(self):
+        result = await preview_extraction(
+            _stub_fetcher(RSS_FIXTURE, content_type="application/rss+xml"),
+            DEFAULT_URL,
+            VALID_FULL_PAGE_SPEC,
+        )
+        chunks = [type("C", (), {"text": c.text})() for c in result.chunks]
+        assert result.computed_fingerprint == canonical_text_fingerprint(chunks)
+
+    @pytest.mark.asyncio
+    async def test_feed_title_is_channel_title(self):
+        result = await preview_extraction(
+            _stub_fetcher(RSS_FIXTURE, content_type="application/rss+xml"),
+            DEFAULT_URL,
+            VALID_FULL_PAGE_SPEC,
+        )
+        assert result.page_title == "Security Bulletins"
+
+    @pytest.mark.asyncio
+    async def test_unparseable_body_raises_extraction_failed(self):
+        with pytest.raises(ExtractionFailedError):
+            await preview_extraction(
+                _stub_fetcher(b"<rss><unclosed>", content_type="application/rss+xml"),
+                DEFAULT_URL,
+                VALID_FULL_PAGE_SPEC,
+            )
+
+    @pytest.mark.asyncio
+    async def test_atom_title_is_feed_title(self):
+        atom = (
+            b'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">'
+            b"<title>Atom Feed</title><entry><id>a-1</id><title>One</title></entry></feed>"
+        )
+        result = await preview_extraction(
+            _stub_fetcher(atom, content_type="application/atom+xml"),
+            DEFAULT_URL,
+            VALID_FULL_PAGE_SPEC,
+        )
+        assert result.page_title == "Atom Feed"
+
+    @pytest.mark.asyncio
+    async def test_pdf_has_no_page_title(self, monkeypatch):
+        monkeypatch.setattr(
+            PdfExtractor,
+            "extract",
+            lambda self, content, config=None: ExtractionResult(chunks=[]),
+        )
+        result = await preview_extraction(
+            _stub_fetcher(b"<title>not a title</title>", content_type="application/pdf"),
+            DEFAULT_URL,
+            VALID_FULL_PAGE_SPEC,
+        )
+        assert result.page_title == ""

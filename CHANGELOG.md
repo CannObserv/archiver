@@ -18,6 +18,22 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.27.0 (2026-10-12)
+
+[service] **Source specs reach an extractor that honours them; the preview extracts as Processor does** (archiver#317, on co-core 0.32's cannobserv#523). `archiver-client` stays at 5.9.0: no type changes. The `preview_extraction` docstrings, the `InfoSourceCreate.source_specs` description, the generated route docstring and the OpenAPI snapshot change.
+
+- **SourceSpec v1 drops `regex` and `jsonpath`.** `extraction.algorithm` is now `css | xpath | full_page`. co-core 0.32 refuses the other two, where it used to watch the whole page. `POST /info-sources`, `PATCH /info-sources/{id}/source-specs` and `POST /info-items` answer them with a **422** `kind="schema"` at `/source_specs/<i>/extraction/algorithm` (`POST /info-items`: the same path, for its `initial_source_specs`). One family is left (`html_text`). `jsonpath` and its `json` family come back with cannobserv#354. **Production exposure:** none, since all 4 specs are `css` (checked 2026-10-12).
+- **What each algorithm honours** is the dispatched extractor's to say, not the schema's:
+  - `css`: HTML only;
+  - `xpath`: XML only (HTML after cannobserv#557);
+  - `full_page`: anything, with one `id<TAB>date<TAB>title<TAB>link` line per item on an RSS or Atom root.
+  
+  A `text/xml` feed needs no new algorithm. `include_description` is not exposed (#353).
+- **`POST /tools/preview-extraction` dispatches on media type.** It resolves the essence from the response's `Content-Type`, with the URL extension breaking an ambiguous one, and runs the extractor Processor would: XML, PDF, CSV/XLSX or HTML. `computed_fingerprint` is co-core's `canonical_text_fingerprint`, byte-identical to before for HTML. `page_title` is a feed's channel title on XML, and empty for PDF and spreadsheets.
+  - A spec the extractor refuses for that body (`css` on XML, `xpath` on HTML) is a **422** `kind="schema"` at `/extraction/algorithm`.
+  - A body the extractor can't parse is a **422** `kind="domain"`, `code="extraction_failed"` at `/url`. It used to always parse as HTML.
+- **Floor:** `co-core[extract]` and `co-core-aio[bus]` `>=0.32,<0.33` (#352).
+
 ## v4.26.1 (2026-10-12)
 
 [service] **The 409 `rep_fields_moves_destination` shows real paths** (archiver#333). `data.moves[].before`/`after` on `PUT /info-items/{id}/rep-fields` and `PUT /info-items/{id}/org` now render against the item's latest revision, the one *Replicate now* would use, so they can be compared with the item's published `public_url`s. They used to render against a placeholder revision (an id of zeros, the current time). An item with no revision still gets that example, now as `text/html`. Shape unchanged; whether a change is a move is unchanged. `archiver-client` stays at 5.9.0; only the OpenAPI snapshot's `info.version` changes.

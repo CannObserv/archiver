@@ -232,9 +232,11 @@ async def preview_extraction(
     """Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
     ``url`` is the URL to fetch. ``source_spec`` is the extraction spec document
-    (schema_version, extraction, fingerprint — no target section). On schema
-    validation failure or target unreachability, the underlying HTTPException is
-    surfaced as an ``ArchiverClientError`` subclass.
+    (schema_version, extraction, fingerprint — no target section). The body is
+    extracted as Processor would for its media type (an RSS/Atom feed gives one
+    chunk per item). A 422 (schema validation failure, a spec the dispatched
+    extractor refuses, target unreachability, or an unparseable body) is surfaced
+    as an ``ArchiverClientError`` subclass.
     """
     body = await _post_json(
         client_facade,

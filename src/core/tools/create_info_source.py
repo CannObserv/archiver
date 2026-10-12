@@ -36,8 +36,8 @@ class InvalidSourceSpecError(CreateInfoSourceError):
 class MixedAlgorithmFamilyError(CreateInfoSourceError):
     """The source_specs list contains algorithms from different content-kind families.
 
-    All specs must use the same family (html_text: css/xpath/regex/full_page;
-    json: jsonpath) because they are evaluated against the same fetched bytes.
+    All specs must use the same family (see ``source_spec_schema/families.py``)
+    because they are evaluated against the same fetched bytes.
     """
 
 
@@ -81,7 +81,7 @@ async def create_info_source(
     if len(families) > 1:
         raise MixedAlgorithmFamilyError(
             f"source_specs mix content-kind families: {families!r}. "
-            "All specs must use the same family (html_text or json)."
+            "All specs must use the same family."
         )
 
     hostname = urlparse(canonical_url).hostname
