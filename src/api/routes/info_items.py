@@ -64,8 +64,10 @@ from src.core.tools.assign_rep_spec import (
     DuplicateAssignmentError,
     RepFieldsIncompleteError,
     RepFieldsUnrenderableError,
+    RepSpecInvalidError,
     RepSpecNotFoundError,
     assign_rep_spec,
+    check_document_assignable,
     lock_rep_specs,
 )
 from src.core.tools.assign_rep_spec import (
@@ -133,6 +135,10 @@ async def create_info_item(
 
     ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
     anything is written: Power Map unreachable is a 503 and creates nothing.
+
+    A listed RepSpec whose document fails validation is a 422
+    (``code="rep_spec_invalid"``, paths under ``/document``, ``data.rep_spec_id``):
+    assigning would freeze it (archiver#334).
     """
     # --- 0. The bag's shape, assignments or not (archiver#302), and with an
     # org, none of the keys it supplies (archiver#304) ---
@@ -180,6 +186,12 @@ async def create_info_item(
                 "lookup",
                 f"RepSpec {assignment.rep_spec_id!r} not found",
             )
+        # Before the duplicate and bag checks, as assign_rep_spec orders them:
+        # no bag can fix a bad document (archiver#334).
+        try:
+            check_document_assignable(rep_spec)
+        except RepSpecInvalidError as e:
+            _raise_rep_spec_invalid(e)
         # Two active rows for one spec collide on one destination; refused here
         # rather than left to uq_iirs_item_spec_active as a 500 (archiver#301).
         if rep_spec in rep_spec_rows:
@@ -585,16 +597,18 @@ async def add_rep_spec_assignment(
 ) -> InfoItemRepSpecOut:
     """Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists and is not already
-    actively assigned to it, and the InfoItem's rep_fields satisfies the
-    RepSpec's required_fields and renders its path_template. Returns 201 on
-    success.
+    Validates that the InfoItem exists, the RepSpec exists, its document
+    passes RepSpec validation, it is not already actively assigned to the item,
+    and the InfoItem's rep_fields satisfies the RepSpec's required_fields and
+    renders its path_template. Returns 201 on success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: rep_fields incomplete (``code="rep_fields_incomplete"``, one error per
+    - 422: the RepSpec's document fails validation (``code="rep_spec_invalid"``,
+      one error per problem, paths under ``/document``; assignment would freeze
+      it), rep_fields incomplete (``code="rep_fields_incomplete"``, one error per
       missing field) or unrenderable (``code="rep_fields_unrenderable"``, path
       ``/rep_fields``)
     """
@@ -643,6 +657,8 @@ async def add_rep_spec_assignment(
         raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
     except RepSpecNotFoundError as e:
         raise_envelope(404, "lookup", "RepSpec not found", source_exc=e)
+    except RepSpecInvalidError as e:
+        _raise_rep_spec_invalid(e)
     except RepFieldsIncompleteError as e:
         raise_422(
             "rep_fields incomplete",
@@ -1129,6 +1145,28 @@ def _raise_org_unnamed(e: OrgUnnamedError) -> NoReturn:
                 path="/pm_org_id", message="org has no canonical name", code="pm_org_unnamed"
             )
         ],
+        source_exc=e,
+    )
+
+
+def _raise_rep_spec_invalid(e: RepSpecInvalidError) -> NoReturn:
+    """422 ``rep_spec_invalid``: assigning would freeze a document no save accepts (archiver#334).
+
+    Paths are the validator's, under ``/document``: the fault is the RepSpec's,
+    not the request's or the bag's.
+    """
+    raise_422(
+        f"RepSpec {e.rep_spec_id!r} document fails validation; assigning would freeze it",
+        kind="domain",
+        errors=[
+            FieldError(
+                path="/document" + err["path"].rstrip("/"),
+                message=err["message"],
+                code="rep_spec_invalid",
+            )
+            for err in e.errors
+        ],
+        data={"rep_spec_id": e.rep_spec_id},
         source_exc=e,
     )
 

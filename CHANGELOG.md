@@ -18,6 +18,13 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.26.0 (2026-10-12)
+
+[service] **New assignments refuse an invalid RepSpec document: 422 `rep_spec_invalid`** (archiver#334). A new assignment is where a draft document freezes (#83), so it is now judged by the whole of `validate_rep_spec` (the v1 envelope, the provider sub-schema, the `path_template` contract, the `credentials_alias` rule) before anything is written. Existing assignments and issuance are never re-judged. `archiver-client` stays at 5.9.0: no type changes; the `assign_rep_spec` and `create_info_item` docstrings, the generated route docstrings and the OpenAPI snapshot change with the descriptions.
+
+- **`POST /info-items/{id}/rep-spec-assignments`** and **`POST /info-items`** with `initial_rep_spec_assignments`: **422** `kind="domain"`, one error per validator problem with `code="rep_spec_invalid"` and its path under `/document` (`/document` itself for a top-level fault such as an unexpected key), and `data.rep_spec_id`. Both used to accept the document. It is checked before the duplicate and `rep_fields` checks, since no bag can fix it, and on `POST /info-items` nothing is created.
+- **Who can hit it:** only a document saved before a rule it now fails. Production's one RepSpec validates (checked 2026-10-12). The dashboard's Add-a-spec picker shows such a spec as *Invalid*, Assign disabled.
+
 ## v4.25.2 (2026-10-09)
 
 [service] **`/health` `build_id` no longer falls back to `BUILD_ID`** (archiver#330). Production runs releases since the cutover (2026-10-09), so the value is always the serving release's `REVISION` (12-character commit SHA); outside a release it is `null`, whatever the environment holds. Type unchanged (`string | null`): `archiver-client` stays at 5.9.0; its generated `HealthOut` docstring and the OpenAPI snapshot change with the description.

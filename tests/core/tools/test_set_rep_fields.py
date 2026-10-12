@@ -32,7 +32,12 @@ def _spec(name: str, *required: str, path_template: str = _ORG_PATH) -> RepSpec:
         provider="gcs",
         name=name,
         schema_version=1,
-        document={"required_fields": list(required), "path_template": path_template},
+        document={
+            "provider": "gcs",
+            "credentials_alias": "gcs-publication",
+            "required_fields": list(required),
+            "path_template": path_template,
+        },
     )
 
 

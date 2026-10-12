@@ -10,6 +10,7 @@ Covers:
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import func, select
 
 from src.core.models import (
     InfoItem,
@@ -67,7 +68,7 @@ async def rep_spec(session) -> RepSpec:
         schema_version=1,
         document={
             "provider": "gcs",
-            "credentials_alias": "default",
+            "credentials_alias": "gcs-publication",
             "path_template": "bucket/{gcs.object_name}/{source_revision.id}",
             "required_fields": ["gcs.object_name"],
         },
@@ -248,7 +249,7 @@ async def test_add_rep_spec_assignment_unrenderable_rep_fields_returns_422(clien
         schema_version=1,
         document={
             "provider": "gcs",
-            "credentials_alias": "default",
+            "credentials_alias": "gcs-publication",
             "path_template": "archive/{org.name}/{source_revision.id}",
             "required_fields": ["org.name"],
         },
@@ -281,7 +282,7 @@ async def test_add_rep_spec_assignment_names_the_raw_field_that_slugs_to_nothing
         schema_version=1,
         document={
             "provider": "gcs",
-            "credentials_alias": "default",
+            "credentials_alias": "gcs-publication",
             "path_template": "archive/{org.title_slug}/{source_revision.id}",
             "required_fields": ["org.title_slug"],
         },
@@ -302,6 +303,48 @@ async def test_add_rep_spec_assignment_names_the_raw_field_that_slugs_to_nothing
             "code": "rep_fields_unrenderable",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_add_rep_spec_assignment_invalid_document_returns_422(client, session, info_item):
+    """archiver#334: a new assignment freezes the document, so one no save route
+    would accept is refused, with every validator error under ``/document``."""
+    spec = RepSpec(
+        provider="gcs",
+        name="307 Org Layout",
+        schema_version=1,
+        document={
+            "provider": "gcs",
+            "version": 1,
+            "credentials_alias": "gcs-publication",
+            "path_template": "archive/latest.html",
+            "required_fields": [],
+        },
+    )
+    session.add(spec)
+    await session.flush()
+
+    response = await client.post(
+        f"/api/v1/info-items/{info_item.info_item_id}/rep-spec-assignments",
+        headers=HEADERS,
+        json={"rep_spec_id": str(spec.rep_spec_id)},
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [
+        ("/document", "rep_spec_invalid"),
+        ("/document/path_template", "rep_spec_invalid"),
+    ]
+    assert "'version' was unexpected" in detail["errors"][0]["message"]
+    assert detail["data"] == {"rep_spec_id": str(spec.rep_spec_id)}
+    count = await session.scalar(
+        select(func.count())
+        .select_from(InfoItemRepSpec)
+        .where(InfoItemRepSpec.rep_spec_id == spec.rep_spec_id)
+    )
+    assert count == 0
 
 
 @pytest.mark.asyncio

@@ -35,7 +35,7 @@ async def rep_spec_row(session) -> RepSpec:
         schema_version=1,
         document={
             "provider": "gcs",
-            "credentials_alias": "default",
+            "credentials_alias": "gcs-publication",
             "path_template": "bucket/{gcs.object_name}/{source_revision.id}",
             "required_fields": ["gcs.object_name"],
         },
@@ -307,5 +307,47 @@ async def test_create_with_rep_fields_missing_required_returns_422_no_rows(
 
     item_count = await session.scalar(
         select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "should-not-exist-3")
+    )
+    assert item_count == 0
+
+
+@pytest.mark.asyncio
+async def test_create_with_an_invalid_rep_spec_document_returns_422_no_rows(client, session):
+    """archiver#334: the same refusal as POST …/rep-spec-assignments, before the bag is judged."""
+    spec = RepSpec(
+        provider="gcs",
+        name="307 Org Layout",
+        schema_version=1,
+        document={
+            "provider": "gcs",
+            "credentials_alias": "gcs-publication",
+            "bucket": "test-bucket",
+            "path_template": "archive/{gcs.object_name}/{source_revision.id}",
+            "required_fields": ["gcs.object_name"],
+        },
+    )
+    session.add(spec)
+    await session.flush()
+    rep_spec_id = str(spec.rep_spec_id)
+
+    response = await client.post(
+        "/api/v1/info-items",
+        headers=HEADERS,
+        json={
+            "name": "should-not-exist-invalid-spec",
+            "rep_fields": {},
+            "initial_rep_spec_assignments": [{"rep_spec_id": rep_spec_id}],
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [("/document", "rep_spec_invalid")]
+    assert detail["data"] == {"rep_spec_id": rep_spec_id}
+    item_count = await session.scalar(
+        select(func.count(InfoItem.info_item_id)).where(
+            InfoItem.name == "should-not-exist-invalid-spec"
+        )
     )
     assert item_count == 0

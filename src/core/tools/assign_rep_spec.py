@@ -10,6 +10,7 @@ from ulid import ULID
 
 from src.core.models import InfoItemRepSpec, RepSpec
 from src.core.power_map.snapshots import load_org_values
+from src.core.rep_spec_schema.validator import ValidationError, validate_rep_spec
 from src.core.tools.rep_fields_gate import check_bag_against_spec, lock_info_item
 
 
@@ -23,6 +24,32 @@ class InfoItemNotFoundError(AssignmentError):
 
 class RepSpecNotFoundError(AssignmentError):
     """The given rep_spec_id does not exist."""
+
+
+class RepSpecInvalidError(AssignmentError):
+    """The RepSpec's document fails ``validate_rep_spec`` (archiver#334).
+
+    Documents are checked on save only, so a frozen assigned one is never
+    re-judged (#276). A *new* assignment is where a draft document freezes
+    (#83), so it is judged there too: the last moment it can still be fixed.
+    Existing assignments and issuance never are.
+    """
+
+    def __init__(self, rep_spec_id: str, errors: list[ValidationError]) -> None:
+        self.rep_spec_id = rep_spec_id
+        self.errors = errors
+        super().__init__(f"RepSpec {rep_spec_id} document is invalid: {errors}")
+
+
+def check_document_assignable(spec: RepSpec) -> None:
+    """Raise :class:`RepSpecInvalidError` if a new assignment would freeze an invalid document.
+
+    One check for both writers that create assignments: :func:`assign_rep_spec`
+    and the atomic ``POST /info-items`` path.
+    """
+    ok, errors = validate_rep_spec(spec.document or {})
+    if not ok:
+        raise RepSpecInvalidError(str(spec.rep_spec_id), errors)
 
 
 class RepFieldsIncompleteError(AssignmentError):
@@ -102,6 +129,7 @@ async def assign_rep_spec(
     Validates that:
     - the InfoItem exists
     - the RepSpec exists
+    - the RepSpec's document passes ``validate_rep_spec`` (archiver#334)
     - the RepSpec is not already actively assigned to this InfoItem
     - the InfoItem.rep_fields satisfies the RepSpec.document.required_fields list
       and renders its path_template (per src.core.tools.rep_fields_gate)
@@ -123,6 +151,10 @@ async def assign_rep_spec(
     spec = await db.get(RepSpec, rep_spec_id, with_for_update=True)
     if spec is None:
         raise RepSpecNotFoundError(str(rep_spec_id))
+
+    # The locked document, the one this assignment freezes, and before the
+    # rep_fields gate: no bag can fix a bad document (archiver#334).
+    check_document_assignable(spec)
 
     # Race-free under the spec lock above: a concurrent assign of this spec
     # waits on it, then sees this row once we commit.

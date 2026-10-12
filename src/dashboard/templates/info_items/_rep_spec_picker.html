@@ -94,6 +94,9 @@
             {% elif entry.readiness == "unrenderable" %}
             <span class="badge badge--danger">Can’t render</span>
             <div class="text-danger">{{ entry.reason }}</div>
+            {% elif entry.readiness == "invalid" %}
+            <span class="badge badge--danger">Invalid</span>
+            <div class="text-danger">{{ entry.reason }}</div>
             {% else %}
             <span class="badge badge--muted">Unavailable</span>
             <div class="text-muted">{{ entry.reason }}</div>
@@ -126,7 +129,7 @@
               <input type="hidden" name="rep_spec_id" value="{{ entry.rep_spec_id }}">
               <button type="submit" class="btn btn--sm btn--primary"
                       aria-label="Assign {{ entry.name }}"{% if not entry.ready %}
-                      disabled title="{{ 'Unavailable' if entry.readiness == 'unwritable' else 'Not ready: select it to fill in its fields' }}"{% endif %}>Assign</button>
+                      disabled title="{{ {'unwritable': 'Unavailable', 'invalid': 'Invalid: its document fails validation'}.get(entry.readiness, 'Not ready: select it to fill in its fields') }}"{% endif %}>Assign</button>
             </form>
           </td>
         </tr>

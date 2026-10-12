@@ -2479,7 +2479,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.25.2"
+    "version": "4.26.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3304,7 +3304,7 @@
         ]
       },
       "post": {
-        "description": "Create an InfoItem.\n\nOptionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates\na primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates\neffective-dated RepSpec assignments). All writes are a single transaction; any\nvalidation or lookup failure rolls back the whole thing.\n\n``pm_org_id`` links a Power Map org at create (archiver#304), fetched before\nanything is written: Power Map unreachable is a 503 and creates nothing.",
+        "description": "Create an InfoItem.\n\nOptionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates\na primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates\neffective-dated RepSpec assignments). All writes are a single transaction; any\nvalidation or lookup failure rolls back the whole thing.\n\n``pm_org_id`` links a Power Map org at create (archiver#304), fetched before\nanything is written: Power Map unreachable is a 503 and creates nothing.\n\nA listed RepSpec whose document fails validation is a 422\n(``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):\nassigning would freeze it (archiver#334).",
         "operationId": "create_info_item_api_v1_info_items_post",
         "requestBody": {
           "content": {
@@ -4101,7 +4101,7 @@
     },
     "/api/v1/info-items/{info_item_id}/rep-spec-assignments": {
       "post": {
-        "description": "Assign a RepSpec to an InfoItem with effective dating.\n\nValidates that the InfoItem exists, the RepSpec exists and is not already\nactively assigned to it, and the InfoItem's rep_fields satisfies the\nRepSpec's required_fields and renders its path_template. Returns 201 on\nsuccess.\n\nError responses:\n- 404: InfoItem or RepSpec not found\n- 409: the RepSpec is already actively assigned to this InfoItem\n  (``data.existing_assignment_id``)\n- 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per\n  missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path\n  ``/rep_fields``)",
+        "description": "Assign a RepSpec to an InfoItem with effective dating.\n\nValidates that the InfoItem exists, the RepSpec exists, its document\npasses RepSpec validation, it is not already actively assigned to the item,\nand the InfoItem's rep_fields satisfies the RepSpec's required_fields and\nrenders its path_template. Returns 201 on success.\n\nError responses:\n- 404: InfoItem or RepSpec not found\n- 409: the RepSpec is already actively assigned to this InfoItem\n  (``data.existing_assignment_id``)\n- 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,\n  one error per problem, paths under ``/document``; assignment would freeze\n  it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per\n  missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path\n  ``/rep_fields``)",
         "operationId": "add_rep_spec_assignment_api_v1_info_items__info_item_id__rep_spec_assignments_post",
         "parameters": [
           {

@@ -6,6 +6,8 @@ is the rep_fields gate's own answer (``check_bag_against_spec``, the check
 *Can't render* carries the gate's words verbatim (archiver#312). The path is
 rendered through ``render_destination`` against the occasion the route hands in:
 the item's latest revision, or ``example_occasion()`` when it has none.
+Before any of that, the document itself: one that fails ``validate_rep_spec`` is
+*Invalid*, since ``assign_rep_spec`` refuses it whatever the bag (archiver#334).
 
 Pure: the route loads the bag, the specs, the revision and the org. Kept out of
 the route module the way ``rep_fields_block.py`` is, so readiness has unit tests
@@ -19,6 +21,7 @@ from datetime import UTC, datetime
 from src.core.models import RepSpec
 from src.core.rep_fields import OrgValues
 from src.core.rep_fields_schema.validator import validate_rep_fields
+from src.core.rep_spec_schema.validator import ValidationError, validate_rep_spec
 from src.core.replication.destination import RenderOccasion, render_destination
 from src.core.replication.errors import ReplicationRenderError
 from src.core.tools.rep_fields_gate import check_bag_against_spec
@@ -37,7 +40,8 @@ class PickerEntry:
     """One unassigned spec, as the picker lists it.
 
     ``readiness`` is ``ready``, ``needs`` (``needs`` lists the raw keys to
-    enter), ``unrenderable`` (``reason`` is the gate's) or ``unwritable``
+    enter), ``unrenderable`` (``reason`` is the gate's), ``invalid`` (``reason``
+    is the document's first validation error, archiver#334) or ``unwritable``
     (``reason`` says which writer Replicator lacks, archiver#202). ``path`` is
     the rendered destination when ready; ``template`` is shown when it is not.
     """
@@ -97,6 +101,10 @@ def _entry(
 
     if spec.provider in UNWRITABLE_PROVIDERS:
         return entry("unwritable", reason=UNWRITABLE_PROVIDERS[spec.provider])
+    # The spec's fault, so ahead of the bag's: no Fields edit fixes it.
+    ok, document_errors = validate_rep_spec(document)
+    if not ok:
+        return entry("invalid", reason=first_document_error(document_errors))
     # The gate files shape errors under ``missing``; as *Needs* a pre-#302
     # flat key would read as a key to add, when it is one to fix (CR 3).
     _, shape_errors = validate_rep_fields(bag)
@@ -117,6 +125,14 @@ def _entry(
         # The gate probes a placeholder occasion; the real one can still fail.
         return entry("unrenderable", reason=str(e))
     return entry("ready", path=path)
+
+
+def first_document_error(errors: Sequence[ValidationError]) -> str:
+    """The first validator error verbatim, prefixed by its field, counting the rest."""
+    first, rest = errors[0], len(errors) - 1
+    field = first["path"].strip("/")
+    reason = f"{field}: {first['message']}" if field else first["message"]
+    return f"{reason} (and {rest} more)" if rest else reason
 
 
 def _needs_label(path: str) -> str:
