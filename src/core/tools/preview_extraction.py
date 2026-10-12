@@ -123,9 +123,9 @@ async def preview_extraction(
         )
         extraction = extractor.extract(fetch_result.content, config=config)
     except UnsupportedExtractionError as e:
-        raise SourceSpecValidationError(
-            [{"path": "/extraction/algorithm", "message": str(e)}]
-        ) from e
+        # The algorithm's fault for this body (css on XML) or the selector's (an
+        # invalid xpath); co-core's message says which.
+        raise SourceSpecValidationError([{"path": "/extraction", "message": str(e)}]) from e
     except SelectorSyntaxError as e:
         raise SourceSpecValidationError(
             [{"path": "/extraction/selector", "message": str(e)}]

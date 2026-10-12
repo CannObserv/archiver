@@ -217,11 +217,8 @@ class TestPreviewExtractionRefusedAlgorithm:
     """co-core 0.32 refuses a spec no extractor honours (cannobserv#523, #317)."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        ("algorithm", "selector"),
-        [("xpath", "//div"), ("regex", "kept"), ("jsonpath", "$.a")],
-    )
-    async def test_refused_spec_raises_source_spec_validation_error(self, algorithm, selector):
+    @pytest.mark.parametrize(("algorithm", "selector"), [("regex", "kept"), ("jsonpath", "$.a")])
+    async def test_refused_algorithm_fails_schema(self, algorithm, selector):
         spec = {
             "schema_version": 1,
             "extraction": {"algorithm": algorithm, "selector": selector},
@@ -230,6 +227,27 @@ class TestPreviewExtractionRefusedAlgorithm:
         with pytest.raises(SourceSpecValidationError) as exc_info:
             await preview_extraction(_stub_fetcher(), DEFAULT_URL, spec)
         assert [e["path"] for e in exc_info.value.errors] == ["/extraction/algorithm"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("content", "content_type", "selector"),
+        [
+            (HTML_FIXTURE, "text/html", "//div"),  # xpath on HTML, until cannobserv#557
+            (RSS_FIXTURE, "application/rss+xml", "//item["),  # an invalid expression
+        ],
+    )
+    async def test_extractor_refusal_reported_at_extraction(self, content, content_type, selector):
+        """The refusal is the algorithm's or the selector's; ``/extraction`` fits both."""
+        spec = {
+            "schema_version": 1,
+            "extraction": {"algorithm": "xpath", "selector": selector},
+            "fingerprint": {},
+        }
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(content, content_type=content_type), DEFAULT_URL, spec
+            )
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
         assert exc_info.value.errors[0]["message"]
 
 
@@ -277,7 +295,7 @@ class TestPreviewExtractionDispatch:
                 DEFAULT_URL,
                 VALID_CSS_SPEC,
             )
-        assert [e["path"] for e in exc_info.value.errors] == ["/extraction/algorithm"]
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
 
     @pytest.mark.asyncio
     async def test_missing_content_type_dispatches_html(self):
@@ -345,7 +363,7 @@ class TestPreviewExtractionDispatch:
 class TestPreviewExtractionBadSelector:
     @pytest.mark.asyncio
     async def test_malformed_css_selector_raises_source_spec_validation_error(self):
-        """soupsieve's SelectorSyntaxError is no ValueError; it must not reach the route as a 500."""
+        """soupsieve's SelectorSyntaxError is no ValueError; it must not surface as a 500."""
         spec = {
             "schema_version": 1,
             "extraction": {"algorithm": "css", "selector": "div[["},

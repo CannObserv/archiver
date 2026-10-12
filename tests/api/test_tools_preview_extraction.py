@@ -139,7 +139,7 @@ async def test_preview_extraction_refused_algorithm_returns_422_schema(client):
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert detail["kind"] == "schema"
-    assert [e["path"] for e in detail["errors"]] == ["/extraction/algorithm"]
+    assert [e["path"] for e in detail["errors"]] == ["/extraction"]
 
 
 @pytest.mark.asyncio
