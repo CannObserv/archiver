@@ -1077,6 +1077,8 @@ async def test_assign_refuses_an_invalid_document_server_side(client, session):
     refusal = r.text[r.text.index('id="picker-refusal"') :]
     assert "RepSpec &#39;307 Org Layout&#39; cannot be assigned" in refusal
     assert "Additional properties are not allowed" in refusal
+    # Only a never-assigned spec can be edited (update_rep_spec's draft tier).
+    assert "Edit it if it has never been assigned; otherwise create a corrected spec." in refusal
     assert await session.scalar(select(func.count()).select_from(InfoItemRepSpec)) == 0
 
 

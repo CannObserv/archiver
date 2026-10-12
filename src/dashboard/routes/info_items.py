@@ -1213,7 +1213,8 @@ async def assign_from_picker(
     except RepSpecInvalidError as e:
         return await refused(
             f"{label} cannot be assigned: its document fails validation: "
-            f"{first_document_error(e.errors)}. Fix the spec, or create a corrected one."
+            f"{first_document_error(e.errors)}. "
+            "Edit it if it has never been assigned; otherwise create a corrected spec."
         )
     except RepFieldsIncompleteError as e:
         missing = ", ".join(m.get("path", "").strip("/").replace("/", ".") for m in e.missing)
