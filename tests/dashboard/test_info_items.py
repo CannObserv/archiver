@@ -768,6 +768,7 @@ async def test_an_invalid_document_is_disabled_with_its_first_error(client, sess
     assert "Ready" not in entry
     assert "Additional properties are not allowed" in entry
     assert _assign_disabled(entry)
+    assert 'title="Invalid: its document fails validation"' in entry
     assert "selected_spec=" not in entry
 
 
