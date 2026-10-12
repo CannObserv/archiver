@@ -95,3 +95,23 @@ def test_extra_top_level_property_rejected(validator):
     }
     with pytest.raises(jsonschema.ValidationError):
         validator.validate(doc)
+
+
+def test_xpath_empty_selector_rejected(validator):
+    """co-core refuses an empty xpath (cannobserv#523); an empty css selector is the whole page."""
+    doc = {
+        "schema_version": 1,
+        "extraction": {"algorithm": "xpath", "selector": ""},
+        "fingerprint": {},
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(doc)
+
+
+def test_css_empty_selector_still_valid(validator):
+    doc = {
+        "schema_version": 1,
+        "extraction": {"algorithm": "css", "selector": ""},
+        "fingerprint": {},
+    }
+    validator.validate(doc)

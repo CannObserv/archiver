@@ -21,6 +21,10 @@
           "if": {"properties": {"algorithm": {"const": "full_page"}}},
           "then": {"not": {"required": ["selector"]}},
           "else": {"required": ["selector"]}
+        },
+        {
+          "if": {"properties": {"algorithm": {"const": "xpath"}}},
+          "then": {"properties": {"selector": {"minLength": 1}}}
         }
       ]
     },
