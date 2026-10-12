@@ -254,18 +254,24 @@ async def destination_moves_for_item(
     share it, so only the bag's segments differ - so the example finds the
     moves and only a move pays for the revision lookup. The follower calls this
     per item under its locks (archiver#305); it reads, and takes no lock.
+
+    A revision occasion that renders fewer moves than the example found keeps
+    the example's (CR 1): one it cannot render would otherwise turn a move into
+    an unconfirmed write.
     """
-    occasion = example_occasion()
+    example = example_occasion()
     moves = destination_moves(
-        assignments, old_bag, new_bag, old_org=old_org, new_org=new_org, occasion=occasion
+        assignments, old_bag, new_bag, old_org=old_org, new_org=new_org, occasion=example
     )
     if not moves:
-        return moves, occasion
+        return moves, example
     occasion = await preview_occasion(db, info_item_id)
-    moves = destination_moves(
+    shown = destination_moves(
         assignments, old_bag, new_bag, old_org=old_org, new_org=new_org, occasion=occasion
     )
-    return moves, occasion
+    if {m.assignment_id for m in shown} != {m.assignment_id for m in moves}:
+        return moves, example
+    return shown, occasion
 
 
 def destination_moves(

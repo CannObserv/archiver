@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
-from src.core.replication.destination import EXAMPLE_REVISION_ID
+from src.core.replication.destination import EXAMPLE_REVISION_ID, RenderOccasion
 from src.core.services.replication_issuance import occasion_for
+from src.core.tools import set_rep_fields as set_rep_fields_module
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError,
     RepFieldsIncompleteError,
@@ -237,6 +238,31 @@ async def test_with_no_revision_a_move_is_shown_against_the_example(session):
 
     [move] = exc_info.value.moves
     assert move.before == f"organizations/old_name/{EXAMPLE_REVISION_ID}.html"
+    assert exc_info.value.occasion.is_example
+
+
+@pytest.mark.asyncio
+async def test_a_preview_occasion_that_cannot_render_still_refuses_the_move(session, monkeypatch):
+    """CR 1: the example found the move, so a revision occasion that fails to
+    render must not turn it into an unconfirmed write. The example's paths stand."""
+
+    async def unrenderable(db, info_item_id):
+        return RenderOccasion(
+            source_revision_id="01JZZZZZZZZZZZZZZZZZZZZZZZ",
+            content_fingerprint="sha256:" + "c" * 64,
+            captured_at=datetime(2025, 5, 2),  # naive: InvalidOccasionError
+        )
+
+    monkeypatch.setattr(set_rep_fields_module, "preview_occasion", unrenderable)
+    item = await _assigned(session, {"org": {"title": "Old Name"}}, _spec("s", "org.title_slug"))
+
+    with pytest.raises(RepFieldsMoveError) as exc_info:
+        await set_rep_fields(
+            session, info_item_id=item.info_item_id, rep_fields={"org": {"title": "New Name"}}
+        )
+
+    [move] = exc_info.value.moves
+    assert move.after == f"organizations/new_name/{EXAMPLE_REVISION_ID}.html"
     assert exc_info.value.occasion.is_example
 
 
