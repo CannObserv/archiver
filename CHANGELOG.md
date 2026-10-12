@@ -32,6 +32,7 @@ service-only patch does not require an SDK bump.
 - **`POST /tools/preview-extraction` dispatches on media type.** It resolves the essence from the response's `Content-Type`, with the URL extension breaking an ambiguous one, and runs the extractor Processor would: XML, PDF, CSV/XLSX or HTML. `computed_fingerprint` is co-core's `canonical_text_fingerprint`, byte-identical to before for HTML. `page_title` is a feed's channel title on XML, and empty for PDF and spreadsheets.
   - A spec the extractor refuses for that body (`css` on XML, `xpath` on HTML) is a **422** `kind="schema"` at `/extraction/algorithm`.
   - A body the extractor can't parse is a **422** `kind="domain"`, `code="extraction_failed"` at `/url`. It used to always parse as HTML.
+  - A CSS selector that doesn't parse is a **422** `kind="schema"` at `/extraction/selector`. It used to be a 500.
 - **Floor:** `co-core[extract]` and `co-core-aio[bus]` `>=0.32,<0.33` (#352).
 
 ## v4.26.1 (2026-10-12)

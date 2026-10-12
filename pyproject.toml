@@ -13,6 +13,7 @@ dependencies = [
     "alembic>=1.15.0,<2",
     "python-ulid>=3.0.0,<4",
     "beautifulsoup4>=4.12.0,<5",
+    "soupsieve>=2.5,<3",  # imported directly: preview_extraction catches its SelectorSyntaxError
     "lxml>=5.0,<7",
     "jsonschema>=4.21.0,<5",
     "httpx>=0.28.0,<1",

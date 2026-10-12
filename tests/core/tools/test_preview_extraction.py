@@ -340,3 +340,17 @@ class TestPreviewExtractionDispatch:
             VALID_FULL_PAGE_SPEC,
         )
         assert result.page_title == ""
+
+
+class TestPreviewExtractionBadSelector:
+    @pytest.mark.asyncio
+    async def test_malformed_css_selector_raises_source_spec_validation_error(self):
+        """soupsieve's SelectorSyntaxError is no ValueError; it must not reach the route as a 500."""
+        spec = {
+            "schema_version": 1,
+            "extraction": {"algorithm": "css", "selector": "div[["},
+            "fingerprint": {},
+        }
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(_stub_fetcher(), DEFAULT_URL, spec)
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction/selector"]
