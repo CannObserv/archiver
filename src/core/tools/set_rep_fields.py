@@ -16,7 +16,8 @@ In order, under the InfoItem row lock (``rep_fields_gate``):
    against one occasion: a valid edit can still move each later occasion to a
    new path in a permanent public bucket, so it is refused unless the caller
    says the move is meant. The paths shown are the item's latest revision's,
-   the picker's occasion, or the example's when it has none (archiver#333)
+   the picker's occasion, or the example's when it has none or one that
+   cannot render (archiver#333)
 
 Every check reads the effective bag: the stored bag over the linked org's
 snapshot. ``link_org`` reuses steps 2 and 3 (``assignment_refusals``,
@@ -118,7 +119,8 @@ class RepFieldsMoveError(RepFieldsWriteError):
     """The bag is valid but moves where active assignments render, and that was not allowed.
 
     ``occasion`` is the one every move's paths render against: the item's latest
-    revision's, or ``example_occasion()``'s when it has none (archiver#333).
+    revision's, or ``example_occasion()``'s when it has none or one that cannot
+    render (archiver#333).
     """
 
     def __init__(self, moves: list[DestinationMove], occasion: RenderOccasion) -> None:
