@@ -10,6 +10,7 @@ import pytest
 from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -174,6 +175,26 @@ async def test_put_that_moves_a_destination_is_409_with_both_paths(client, sessi
     assert move["after"].startswith("organizations/new_name/")
     await session.refresh(item)
     assert item.rep_fields == {"org": {"title": "Old Name"}}
+
+
+@pytest.mark.asyncio
+async def test_a_409s_paths_render_against_the_items_latest_revision(client, session):
+    """archiver#333: same shape, real paths - comparable with the published ``public_url``s."""
+    item = await _assigned(
+        session,
+        {"org": {"title": "Old Name"}},
+        _spec("Org spec", "org.title_slug", path_template=REVISION_PATH),
+    )
+    revision = await capture_revision(session, item)
+
+    response = await client.put(
+        _url(item), headers=HEADERS, json={"rep_fields": {"org": {"title": "New Name"}}}
+    )
+
+    assert response.status_code == 409
+    [move] = response.json()["detail"]["data"]["moves"]
+    assert move["before"] == revision_path("old_name", revision)
+    assert move["after"] == revision_path("new_name", revision)
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@
    info_items/detail.html and returned by GET .../rep-spec-picker (the re-fetch)
    and POST .../rep-spec-picker/assign (Assign, success or refusal).
 
-   Requires `item_id`, `entries`, `has_specs`, `preview_revision`, `assigned`
+   Requires `item_id`, `entries`, `has_specs`, `preview_occasion`, `assigned`
    and `refusal`, from every render site, by spreading `_rep_spec_picker_context`
    (tests/dashboard/test_partial_contracts.py, archiver#219). Without `entries`
    the block renders "No Replication Specs yet" on a registry that holds some.
@@ -35,7 +35,7 @@
     {% if assigned %}
     <div data-replicate-prompt x-data="{ open: true }" x-show="open" class="text-sm"
          style="margin-bottom:var(--space-3);">
-      {% if preview_revision %}
+      {% if not preview_occasion.is_example %}
       <p style="margin-bottom:var(--space-1);">Assigned RepSpec '{{ assigned.name }}'. Replicate latest revision now?</p>
       {#- The row action's guards (archiver#171/#220): confirmed, because the
          target is a permanent store; disabled in flight; and synced on the
@@ -63,8 +63,8 @@
 
   {% if entries %}
   <p class="text-muted text-sm" style="margin-bottom:var(--space-2);">
-    {% if preview_revision %}
-    Paths rendered against the latest revision, captured {{ preview_revision.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}.
+    {% if not preview_occasion.is_example %}
+    Paths rendered against the latest revision, captured {{ preview_occasion.captured_at.strftime('%Y-%m-%d %H:%M UTC') }}.
     {% else %}
     Example occasion: no revision captured yet, so paths use a placeholder revision id of zeros.
     {% endif %}

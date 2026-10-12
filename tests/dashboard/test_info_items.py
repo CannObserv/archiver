@@ -24,6 +24,7 @@ from src.core.models import (
 from src.core.services.replication_issuance import ManualIssuanceError
 from src.core.tools.assign_rep_spec import assign_rep_spec
 from src.dashboard.routes import info_items as info_items_routes
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 from tests.dashboard.conftest import (
     outside_action_sync_violations,
     poll_sync_violations,
@@ -1807,7 +1808,8 @@ async def test_rep_fields_save_that_moves_a_destination_asks_first(client, sessi
     assert "Org Layout" in r.text
     assert "organizations/old_name/" in r.text
     assert "organizations/new_name/" in r.text
-    # The probe's placeholder revision id is in both paths; say so (CR 3).
+    # No revision yet: the example's zeros id is in both paths; say so (CR 3, #333).
+    assert f"organizations/old_name/{'0' * 26}.html" in r.text
     assert "example revision" in r.text
     # The confirmation re-sends exactly the bag it warned about, not whatever
     # the textarea holds by the time the operator clicks.
@@ -1815,6 +1817,32 @@ async def test_rep_fields_save_that_moves_a_destination_asks_first(client, sessi
     assert "New Name" in r.text
     await session.refresh(item)
     assert item.rep_fields == {"org": {"title": "Old Name"}}
+
+
+@pytest.mark.asyncio
+async def test_the_move_flash_and_the_picker_preview_one_path(client, session):
+    """archiver#333: both say where a spec writes, so for one bag, template and
+    revision they show the same path - the item's latest revision's, not an example's."""
+    assigned = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=REVISION_PATH)
+    item = await _item_assigned_to(session, {"org": {"title": "Old Name"}}, assigned)
+    revision = await capture_revision(session, item)
+    offered = _rep_spec_requiring("Same Layout", "org.title_slug", path_template=REVISION_PATH)
+    session.add(offered)
+    await session.flush()
+    expected = revision_path("old_name", revision)
+
+    picker = await client.get(_picker_url(item), headers=_HEADERS)
+    assert expected in _picker_entry(picker.text, offered)
+
+    r = await client.patch(
+        f"/dashboard/info-items/{item.info_item_id}/rep-fields",
+        headers=_HEADERS,
+        data={"rep_fields": '{"org": {"title": "New Name"}}'},
+    )
+    assert r.status_code == 409
+    assert f"<code>{expected}</code> → <code>{revision_path('new_name', revision)}</code>" in r.text
+    assert "latest revision, captured 2025-05-02 10:11 UTC" in r.text
+    assert "example revision" not in r.text
 
 
 @pytest.mark.asyncio

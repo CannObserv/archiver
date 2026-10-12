@@ -24,6 +24,7 @@ from src.core.models import (
     RepSpec,
 )
 from src.core.power_map import PowerMapUnavailableError
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 from tests.core.power_map.fake import WSLCB_ID, WSLCB_NAME, FakePowerMap, org
 from tests.dashboard.conftest import read_flash
 
@@ -323,6 +324,23 @@ async def test_a_link_that_moves_paths_shows_the_diff_and_waits(client, session,
     await session.refresh(item)
     assert item.pm_org_id is None
     assert item.rep_fields == {"org": {"title": "WA LCB"}}
+
+
+@pytest.mark.asyncio
+async def test_a_link_move_shows_the_latest_revisions_paths(client, session, power_map):
+    """archiver#333 (#309's third observation): not the example's, once there is a revision."""
+    spec = _spec()
+    spec.document = {**spec.document, "path_template": REVISION_PATH}
+    item = await _item(session, {"org": {"title": "WA LCB"}}, spec=spec)
+    revision = await capture_revision(session, item)
+
+    r = await client.put(_org_url(item), headers=_HEADERS, data={"pm_org_id": WSLCB_ID})
+
+    assert r.status_code == 409
+    assert revision_path("wa_lcb", revision) in r.text
+    assert revision_path(_WSLCB_SLUG, revision) in r.text
+    assert "latest revision" in r.text
+    assert "example revision" not in r.text
 
 
 @pytest.mark.asyncio

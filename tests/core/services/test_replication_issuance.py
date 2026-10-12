@@ -45,6 +45,8 @@ from src.core.services.replication_issuance import (
     issue_for_assignment,
     issue_for_revision,
     latest_revision_for_item,
+    occasion_for,
+    preview_occasion,
 )
 from src.core.services.source_revision import RevisionFacts, record_revision
 
@@ -626,6 +628,29 @@ async def test_latest_revision_for_item_ignores_a_deactivated_binding(session, i
     await session.flush()
 
     assert await latest_revision_for_item(session, assignment.info_item_id) is None
+
+
+@pytest.mark.asyncio
+async def test_preview_occasion_is_the_latest_revisions(session, info_source):
+    """Every "where this will write" preview - the picker, the move 409 - renders
+    against this one occasion, so they agree on one screen (archiver#333)."""
+    assignment = await _assigned_item(session, info_source)
+    await _revision(session, info_source, fingerprint=FP_A)
+    newest = await _revision(session, info_source, fingerprint=FP_B, captured_at=CAPTURED_AT_LATER)
+
+    occasion = await preview_occasion(session, assignment.info_item_id)
+
+    assert occasion == occasion_for(newest)
+    assert not occasion.is_example
+
+
+@pytest.mark.asyncio
+async def test_preview_occasion_is_the_example_with_no_capture(session, info_source):
+    assignment = await _assigned_item(session, info_source)
+
+    occasion = await preview_occasion(session, assignment.info_item_id)
+
+    assert occasion.is_example
 
 
 @pytest.mark.asyncio

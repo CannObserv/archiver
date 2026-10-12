@@ -19,6 +19,7 @@ from co_core.pure.util.files import (
 from src.core.rep_fields import OrgValues
 from src.core.replication import destination
 from src.core.replication.destination import (
+    EXAMPLE_REVISION_ID,
     DestinationCollisionError,
     DestinationRenderError,
     InvalidFieldValueError,
@@ -27,6 +28,7 @@ from src.core.replication.destination import (
     RenderOccasion,
     UnsafeDestinationError,
     assert_distinct_destinations,
+    example_occasion,
     extension_for,
     find_collisions,
     probe_destination,
@@ -311,20 +313,41 @@ def test_probe_returns_the_path_it_rendered():
     path = probe_destination(
         {"path_template": "archive/{info_item.slug}/{source_revision.year}.html"},
         rep_fields={"info_item": {"slug": "notices"}},
-        captured_at=datetime(2026, 10, 2, tzinfo=UTC),
+        occasion=_occasion(captured_at=datetime(2026, 10, 2, tzinfo=UTC)),
         org=None,
     )
     assert path == "archive/notices/2026.html"
 
 
-def test_probe_renders_one_occasion_for_one_captured_at():
-    """Two bags compared against one ``captured_at`` differ only where the bags do."""
-    document = {"path_template": "a/{org.title_slug}/{source_revision.captured_at}.html"}
-    when = datetime(2026, 10, 2, 12, tzinfo=UTC)
-    before = probe_destination(document, {"org": {"title": "Old Name"}}, captured_at=when, org=None)
-    after = probe_destination(document, {"org": {"title": "New Name"}}, captured_at=when, org=None)
-    assert before == "a/old_name/20261002T120000Z.html"
-    assert after == "a/new_name/20261002T120000Z.html"
+def test_probe_renders_the_occasion_it_is_given():
+    """Two bags compared against one occasion differ only where the bags do, and
+    the occasion's revision is the one the paths show (archiver#333)."""
+    document = {
+        "path_template": "a/{org.title_slug}/{source_revision.datetime_time_segment}"
+        "-{source_revision.id}.{source_revision.ext}"
+    }
+    occasion = _occasion(source_media_type="application/pdf")
+    old, new = {"org": {"title": "Old Name"}}, {"org": {"title": "New Name"}}
+    before = probe_destination(document, old, occasion=occasion, org=None)
+    after = probe_destination(document, new, occasion=occasion, org=None)
+    assert before == "a/old_name/2026_08_17-14_30_05-01JZZZZZZZZZZZZZZZZZZZZZZZ.pdf"
+    assert after == "a/new_name/2026_08_17-14_30_05-01JZZZZZZZZZZZZZZZZZZZZZZZ.pdf"
+
+
+def test_probe_without_an_occasion_renders_the_example_revision():
+    path = probe_destination({"path_template": "a/{source_revision.id}"}, rep_fields={}, org=None)
+    assert path == f"a/{EXAMPLE_REVISION_ID}"
+
+
+def test_the_example_occasion_is_recognisably_not_a_revision():
+    """Zeros for the id, now, HTML: a preview with no revision reads as an example
+    and never as a citable id (archiver#308, moved to core for #333)."""
+    occasion = example_occasion()
+
+    assert occasion.source_revision_id == EXAMPLE_REVISION_ID == "0" * 26
+    assert occasion.is_example
+    assert occasion.values()["ext"] == "html"
+    assert not _occasion().is_example
 
 
 # --- fan-out pre-flight ---

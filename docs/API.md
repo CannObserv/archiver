@@ -104,8 +104,10 @@ concurrent assign cannot each pass on their own snapshot. Refusals leave the sto
 - **409** `kind="conflict"`, `code="rep_fields_moves_destination"`: the bag is valid, but an active
   assignment would render to a different path from now on, beside everything already published at
   the old one in a permanent bucket. `data.moves` is `[{assignment_id, rep_spec_id, rep_spec_name,
-  before, after}]`, rendered against one placeholder occasion so the two differ only where the bags
-  do. Resend with `allow_destination_change: true` to store it; the move is logged at WARNING.
+  before, after}]`, both rendered against one occasion, so they differ only where the bags do: the
+  item's latest revision, the one *Replicate now* would use, or, with none or one that cannot
+  render, an example (revision id of zeros, `text/html`; archiver#333). Resend with
+  `allow_destination_change: true` to store it; the move is logged at WARNING.
   Repairing a bag that could not render is not a move.
 
 Error paths point into the request body (`/rep_fields/org/title_slug`). Nothing is announced:

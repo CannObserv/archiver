@@ -40,8 +40,7 @@ from src.core.services.registry_announcement import (
 from src.core.services.replication_issuance import (
     ManualIssuanceError,
     issue_for_assignment,
-    latest_revision_for_item,
-    occasion_for,
+    preview_occasion,
 )
 from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.assign_rep_spec import (
@@ -103,7 +102,7 @@ from src.dashboard.rep_fields_block import (
     parse_fields_form,
     raw_keys,
 )
-from src.dashboard.rep_spec_picker import build_picker, example_occasion, first_document_error
+from src.dashboard.rep_spec_picker import build_picker, first_document_error
 from src.dashboard.replication_actions import (
     POLL_INTERVAL_SECONDS,
     live_poll,
@@ -531,7 +530,15 @@ def _move_flash(request: Request, status_code: int, **context) -> HTMLResponse:
     return _templates.TemplateResponse(
         request,
         "info_items/_move_flash.html",
-        {"moves": [], "lead": "", "confirm": {}, "message": "", "problems": [], **context},
+        {
+            "moves": [],
+            "occasion": None,
+            "lead": "",
+            "confirm": {},
+            "message": "",
+            "problems": [],
+            **context,
+        },
         status_code=status_code,
     )
 
@@ -652,6 +659,7 @@ async def put_org(
             request,
             409,
             moves=e.moves,
+            occasion=e.occasion,
             lead=(f"Not linked yet: linking {label} changes where assigned RepSpecs replicate to."),
             confirm={
                 "verb": "put",
@@ -947,6 +955,7 @@ async def patch_rep_fields(
         return flash(
             409,
             moves=e.moves,
+            occasion=e.occasion,
             lead="Not saved yet: this changes where assigned RepSpecs replicate to.",
             confirm={
                 "verb": "patch",
@@ -1102,8 +1111,7 @@ async def _rep_spec_picker_context(
             )
         ).scalars()
     )
-    revision = await latest_revision_for_item(session, item.info_item_id)
-    occasion = occasion_for(revision) if revision is not None else example_occasion()
+    occasion = await preview_occasion(session, item.info_item_id)
     entries = build_picker(
         dict(item.rep_fields or {}),
         specs,
@@ -1115,7 +1123,7 @@ async def _rep_spec_picker_context(
         "item_id": item.info_item_id,
         "entries": entries,
         "has_specs": has_specs,
-        "preview_revision": revision,
+        "preview_occasion": occasion,
         "assigned": assigned,
         "refusal": refusal,
     }

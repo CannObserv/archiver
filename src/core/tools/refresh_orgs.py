@@ -58,7 +58,7 @@ from src.core.rep_fields import OrgValues
 from src.core.tools.set_rep_fields import (
     active_assignments,
     assignment_refusals,
-    destination_moves,
+    destination_moves_for_item,
     log_moves,
 )
 
@@ -309,7 +309,8 @@ async def _log_moves(
     under the old org and does not under the new one is warned about now - its
     next occasion is skipped. One that was already broken is not the change's
     doing and is not blamed on it (CR 10). Neither reaches
-    ``destination_moves``, which raises on an unrenderable new bag.
+    ``destination_moves_for_item``, which raises on an unrenderable new bag. The
+    logged paths are the item's latest revision's (archiver#333).
     """
     for item in items:
         bag = item.rep_fields or {}
@@ -330,7 +331,9 @@ async def _log_moves(
             )
         refused = {r.assignment_id for r in refusals}
         renderable = [(a, spec) for a, spec in assignments if a.id not in refused]
-        moves = destination_moves(renderable, bag, bag, old_org=before, new_org=after)
+        moves, _ = await destination_moves_for_item(
+            db, item.info_item_id, renderable, bag, bag, old_org=before, new_org=after
+        )
         log_moves(message, item.info_item_id, moves)
 
 

@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
+from src.core.replication.destination import EXAMPLE_REVISION_ID, RenderOccasion
+from src.core.services.replication_issuance import occasion_for
+from src.core.tools import set_rep_fields as set_rep_fields_module
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError,
     RepFieldsIncompleteError,
@@ -23,6 +26,7 @@ from src.core.tools.set_rep_fields import (
     RepFieldsWriteError,
     set_rep_fields,
 )
+from tests.core._revision import REVISION_PATH, capture_revision, revision_path
 
 _ORG_PATH = "organizations/{org.title_slug}/{source_revision.id}.html"
 
@@ -202,6 +206,64 @@ async def test_a_valid_edit_that_moves_the_destination_is_refused_with_both_path
     assert move.after.startswith("organizations/new_name/")
     await session.refresh(item)
     assert item.rep_fields == {"org": {"title": "Old Name"}}
+
+
+@pytest.mark.asyncio
+async def test_a_move_is_shown_against_the_items_latest_revision(session):
+    """archiver#333: the paths are the ones the next replication writes, comparable
+    with the item's published ``public_url``s - not a placeholder revision's."""
+    spec = _spec("Org spec", "org.title_slug", path_template=REVISION_PATH)
+    item = await _assigned(session, {"org": {"title": "Old Name"}}, spec)
+    revision = await capture_revision(session, item)
+
+    with pytest.raises(RepFieldsMoveError) as exc_info:
+        await set_rep_fields(
+            session, info_item_id=item.info_item_id, rep_fields={"org": {"title": "New Name"}}
+        )
+
+    [move] = exc_info.value.moves
+    assert move.before == revision_path("old_name", revision)
+    assert move.after == revision_path("new_name", revision)
+    assert exc_info.value.occasion == occasion_for(revision)
+
+
+@pytest.mark.asyncio
+async def test_with_no_revision_a_move_is_shown_against_the_example(session):
+    item = await _assigned(session, {"org": {"title": "Old Name"}}, _spec("s", "org.title_slug"))
+
+    with pytest.raises(RepFieldsMoveError) as exc_info:
+        await set_rep_fields(
+            session, info_item_id=item.info_item_id, rep_fields={"org": {"title": "New Name"}}
+        )
+
+    [move] = exc_info.value.moves
+    assert move.before == f"organizations/old_name/{EXAMPLE_REVISION_ID}.html"
+    assert exc_info.value.occasion.is_example
+
+
+@pytest.mark.asyncio
+async def test_a_preview_occasion_that_cannot_render_still_refuses_the_move(session, monkeypatch):
+    """CR 1: the example found the move, so a revision occasion that fails to
+    render must not turn it into an unconfirmed write. The example's paths stand."""
+
+    async def unrenderable(db, info_item_id):
+        return RenderOccasion(
+            source_revision_id="01JZZZZZZZZZZZZZZZZZZZZZZZ",
+            content_fingerprint="sha256:" + "c" * 64,
+            captured_at=datetime(2025, 5, 2),  # naive: InvalidOccasionError
+        )
+
+    monkeypatch.setattr(set_rep_fields_module, "preview_occasion", unrenderable)
+    item = await _assigned(session, {"org": {"title": "Old Name"}}, _spec("s", "org.title_slug"))
+
+    with pytest.raises(RepFieldsMoveError) as exc_info:
+        await set_rep_fields(
+            session, info_item_id=item.info_item_id, rep_fields={"org": {"title": "New Name"}}
+        )
+
+    [move] = exc_info.value.moves
+    assert move.after == f"organizations/new_name/{EXAMPLE_REVISION_ID}.html"
+    assert exc_info.value.occasion.is_example
 
 
 @pytest.mark.asyncio

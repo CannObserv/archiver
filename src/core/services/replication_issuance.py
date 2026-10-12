@@ -52,6 +52,7 @@ from src.core.power_map.snapshots import org_values
 from src.core.rep_fields import OrgValues
 from src.core.replication.destination import (
     RenderOccasion,
+    example_occasion,
     find_collisions,
     render_destination,
 )
@@ -268,13 +269,24 @@ async def latest_revision_for_item(
 
 
 def occasion_for(revision: SourceRevision) -> RenderOccasion:
-    """The render occasion one revision supplies: what issuance renders, and the picker previews."""
+    """The render occasion one revision supplies: what issuance renders, and the previews show."""
     return RenderOccasion(
         source_revision_id=str(revision.source_revision_id),
         content_fingerprint=revision.content_fingerprint,
         captured_at=revision.captured_at,
         source_media_type=revision.source_media_type,
     )
+
+
+async def preview_occasion(session: AsyncSession, info_item_id: ULID) -> RenderOccasion:
+    """The occasion a "where this will write" preview renders against.
+
+    The latest revision's, or ``example_occasion()`` when there is none. The
+    picker (archiver#308) and the move 409 (archiver#333) both call this, so
+    the two previews on one screen show one path for one bag and spec.
+    """
+    revision = await latest_revision_for_item(session, info_item_id)
+    return occasion_for(revision) if revision is not None else example_occasion()
 
 
 async def _active_binding(session: AsyncSession, info_item_id: ULID) -> InfoItemSource | None:
