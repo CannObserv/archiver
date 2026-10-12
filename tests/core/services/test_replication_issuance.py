@@ -169,6 +169,20 @@ async def test_command_row_and_outbox_row_are_written_together(session, info_sou
 
 
 @pytest.mark.asyncio
+async def test_an_existing_assignment_of_an_invalid_document_still_issues(session, info_source):
+    """archiver#334 judges a document at *new* assignment only: once frozen it is
+    never re-judged, so issuance does not consult ``validate_rep_spec``."""
+    await _assigned_item(session, info_source, document=_document(bucket="b", version=1))
+    revision = await _revision(session, info_source)
+
+    issued = await issue_for_revision(session, revision)
+
+    assert len(issued) == 1
+    (command,) = await _commands(session)
+    assert command.state == STATE_REQUESTED
+
+
+@pytest.mark.asyncio
 async def test_deactivated_assignment_is_not_issued(session, info_source):
     assignment = await _assigned_item(session, info_source)
     assignment.deactivated_at = datetime.now(UTC)

@@ -58,13 +58,18 @@ def _make_rep_spec(name: str = "Test Spec") -> RepSpec:
         schema_version=1,
         document={
             "provider": "gcs",
-            "version": 1,
-            "credentials_alias": "default",
-            "bucket": "test-bucket",
+            "credentials_alias": "gcs-publication",
             "path_template": "items/{source_revision.id}.json",
             "required_fields": [],
         },
     )
+
+
+def _invalid_rep_spec(name: str) -> RepSpec:
+    """The dev ``307 Org Layout`` specs' fault: keys the v1 envelope refuses (archiver#334)."""
+    rs = _make_rep_spec(name)
+    rs.document = {**rs.document, "version": 1, "bucket": "test-bucket"}
+    return rs
 
 
 # ---------------------------------------------------------------------------
@@ -749,6 +754,24 @@ async def test_an_unwritable_provider_is_disabled_with_its_reason(client, sessio
 
 
 @pytest.mark.asyncio
+async def test_an_invalid_document_is_disabled_with_its_first_error(client, session):
+    """archiver#334: the assign refuses it, so the picker never calls it Ready."""
+    item = _make_item("Invalid Picker", rep_fields={})
+    rs = _invalid_rep_spec("307 Org Layout")
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await client.get(_picker_url(item), headers=_HEADERS)
+
+    entry = _picker_entry(r.text, rs)
+    assert "Invalid" in entry
+    assert "Ready" not in entry
+    assert "Additional properties are not allowed" in entry
+    assert _assign_disabled(entry)
+    assert "selected_spec=" not in entry
+
+
+@pytest.mark.asyncio
 async def test_with_no_specs_at_all_the_picker_is_the_empty_state(client, session):
     assert await session.scalar(select(func.count()).select_from(RepSpec)) == 0
     item = _make_item("Empty Picker")
@@ -1036,6 +1059,24 @@ async def test_assign_refuses_an_unwritable_provider_server_side(client, session
     assert r.status_code == 200
     refusal = r.text[r.text.index('id="picker-refusal"') :]
     assert "Replicator has no Google Drive writer yet" in refusal
+    assert await session.scalar(select(func.count()).select_from(InfoItemRepSpec)) == 0
+
+
+@pytest.mark.asyncio
+async def test_assign_refuses_an_invalid_document_server_side(client, session):
+    """archiver#334: assigning would freeze a document no save route accepts."""
+    item = _make_item("Invalid Assign Picker", rep_fields={})
+    rs = _invalid_rep_spec("307 Org Layout")
+    session.add_all([item, rs])
+    await session.flush()
+
+    r = await _assign(client, item, rs)
+
+    assert r.status_code == 200
+    assert "replicationChanged" not in r.headers.get("HX-Trigger", "")
+    refusal = r.text[r.text.index('id="picker-refusal"') :]
+    assert "RepSpec &#39;307 Org Layout&#39; cannot be assigned" in refusal
+    assert "Additional properties are not allowed" in refusal
     assert await session.scalar(select(func.count()).select_from(InfoItemRepSpec)) == 0
 
 

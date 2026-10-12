@@ -48,6 +48,7 @@ from src.core.tools.assign_rep_spec import (
     DuplicateAssignmentError,
     RepFieldsIncompleteError,
     RepFieldsUnrenderableError,
+    RepSpecInvalidError,
     RepSpecNotFoundError,
     assign_rep_spec,
 )
@@ -102,7 +103,7 @@ from src.dashboard.rep_fields_block import (
     parse_fields_form,
     raw_keys,
 )
-from src.dashboard.rep_spec_picker import build_picker, example_occasion
+from src.dashboard.rep_spec_picker import build_picker, example_occasion, first_document_error
 from src.dashboard.replication_actions import (
     POLL_INTERVAL_SECONDS,
     live_poll,
@@ -1209,6 +1210,11 @@ async def assign_from_picker(
         raise DashboardNotFound("Information Item not found") from e
     except RepSpecNotFoundError:
         return await refused(_GONE_SPEC)
+    except RepSpecInvalidError as e:
+        return await refused(
+            f"{label} cannot be assigned: its document fails validation: "
+            f"{first_document_error(e.errors)}. Fix the spec, or create a corrected one."
+        )
     except RepFieldsIncompleteError as e:
         missing = ", ".join(m.get("path", "").strip("/").replace("/", ".") for m in e.missing)
         return await refused(

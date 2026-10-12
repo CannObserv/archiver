@@ -104,16 +104,18 @@ def sync_detailed(
 
      Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists and is not already
-    actively assigned to it, and the InfoItem's rep_fields satisfies the
-    RepSpec's required_fields and renders its path_template. Returns 201 on
-    success.
+    Validates that the InfoItem exists, the RepSpec exists, its document
+    passes RepSpec validation, it is not already actively assigned to the item,
+    and the InfoItem's rep_fields satisfies the RepSpec's required_fields and
+    renders its path_template. Returns 201 on success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
+    - 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
+      one error per problem, paths under ``/document``; assignment would freeze
+      it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
       missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
       ``/rep_fields``)
 
@@ -151,16 +153,18 @@ def sync(
 
      Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists and is not already
-    actively assigned to it, and the InfoItem's rep_fields satisfies the
-    RepSpec's required_fields and renders its path_template. Returns 201 on
-    success.
+    Validates that the InfoItem exists, the RepSpec exists, its document
+    passes RepSpec validation, it is not already actively assigned to the item,
+    and the InfoItem's rep_fields satisfies the RepSpec's required_fields and
+    renders its path_template. Returns 201 on success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
+    - 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
+      one error per problem, paths under ``/document``; assignment would freeze
+      it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
       missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
       ``/rep_fields``)
 
@@ -193,16 +197,18 @@ async def asyncio_detailed(
 
      Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists and is not already
-    actively assigned to it, and the InfoItem's rep_fields satisfies the
-    RepSpec's required_fields and renders its path_template. Returns 201 on
-    success.
+    Validates that the InfoItem exists, the RepSpec exists, its document
+    passes RepSpec validation, it is not already actively assigned to the item,
+    and the InfoItem's rep_fields satisfies the RepSpec's required_fields and
+    renders its path_template. Returns 201 on success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
+    - 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
+      one error per problem, paths under ``/document``; assignment would freeze
+      it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
       missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
       ``/rep_fields``)
 
@@ -238,16 +244,18 @@ async def asyncio(
 
      Assign a RepSpec to an InfoItem with effective dating.
 
-    Validates that the InfoItem exists, the RepSpec exists and is not already
-    actively assigned to it, and the InfoItem's rep_fields satisfies the
-    RepSpec's required_fields and renders its path_template. Returns 201 on
-    success.
+    Validates that the InfoItem exists, the RepSpec exists, its document
+    passes RepSpec validation, it is not already actively assigned to the item,
+    and the InfoItem's rep_fields satisfies the RepSpec's required_fields and
+    renders its path_template. Returns 201 on success.
 
     Error responses:
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
+    - 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
+      one error per problem, paths under ``/document``; assignment would freeze
+      it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
       missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
       ``/rep_fields``)
 

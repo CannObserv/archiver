@@ -12,6 +12,7 @@ from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError,
     RepFieldsIncompleteError,
     RepFieldsUnrenderableError,
+    RepSpecInvalidError,
     RepSpecNotFoundError,
     assign_rep_spec,
 )
@@ -26,12 +27,19 @@ def _make_item(rep_fields: dict | None = None) -> InfoItem:
 
 
 def _make_spec(
-    required_fields: list[str] | None = None, path_template: str | None = None
+    required_fields: list[str] | None = None,
+    path_template: str = "archive/{source_revision.id}.html",
+    **extra,
 ) -> RepSpec:
-    doc: dict = {"required_fields": required_fields or []}
-    if path_template is not None:
-        doc["path_template"] = path_template
-    return RepSpec(provider="test", name="test-spec", schema_version=1, document=doc)
+    """A document ``validate_rep_spec`` accepts unless ``extra`` breaks it (archiver#334)."""
+    doc: dict = {
+        "provider": "gcs",
+        "credentials_alias": "gcs-publication",
+        "path_template": path_template,
+        "required_fields": required_fields or [],
+        **extra,
+    }
+    return RepSpec(provider="gcs", name="test-spec", schema_version=1, document=doc)
 
 
 # ---------------------------------------------------------------------------
@@ -300,10 +308,9 @@ async def test_a_linked_items_org_satisfies_the_spec(session):
         provider="gcs",
         name="org spec",
         schema_version=1,
-        document={
-            "required_fields": ["org.title_slug"],
-            "path_template": "organizations/{org.title_slug}/{source_revision.id}.html",
-        },
+        document=_make_spec(
+            ["org.title_slug"], "organizations/{org.title_slug}/{source_revision.id}.html"
+        ).document,
     )
     session.add_all([item, spec])
     await session.flush()
@@ -313,3 +320,44 @@ async def test_a_linked_items_org_satisfies_the_spec(session):
     )
 
     assert assignment.deactivated_at is None
+
+
+# ---------------------------------------------------------------------------
+# The document itself (archiver#334)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("extra", "path"),
+    [
+        ({"bucket": "b"}, "/"),
+        ({"object_options": {"storage_class": "HOT"}}, "/object_options/storage_class"),
+        ({"path_template": "archive/latest.html"}, "/path_template"),
+    ],
+    ids=["envelope", "provider-sub-schema", "template-contract"],
+)
+async def test_a_document_failing_validate_rep_spec_is_refused(session, extra, path):
+    """A new assignment is where a draft document freezes (#83), so it is judged here."""
+    item = _make_item()
+    spec = _make_spec(**extra)
+    session.add_all([item, spec])
+    await session.flush()
+
+    with pytest.raises(RepSpecInvalidError) as exc_info:
+        await assign_rep_spec(session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id)
+
+    assert exc_info.value.errors[0]["path"] == path
+    assert isinstance(exc_info.value, AssignmentError)
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_document_is_refused_before_the_rep_fields_gate(session):
+    """The spec's fault is reported, not the bag's: no bag can fix a bad document."""
+    item = _make_item()
+    spec = _make_spec(["org.acronym"], bucket="b")
+    session.add_all([item, spec])
+    await session.flush()
+
+    with pytest.raises(RepSpecInvalidError):
+        await assign_rep_spec(session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id)

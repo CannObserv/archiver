@@ -214,7 +214,9 @@ class ArchiverClient:
         atomically creates RepSpec assignment rows. ``pm_org_id`` links a Power
         Map org, fetched at create; ``rep_fields`` may then not carry
         ``org.title``/``org.acronym``, and Power Map unreachable raises
-        ``ServerError`` (503). On validation failure, no rows are persisted.
+        ``ServerError`` (503). A listed RepSpec whose document fails validation
+        raises ``ValidationError`` (422, ``code="rep_spec_invalid"``). On
+        validation failure, no rows are persisted.
         """
         body = InfoItemCreate(name=name, description=description, owner=owner)
         if rep_fields is not None:
@@ -353,9 +355,11 @@ class ArchiverClient:
         ``activated_at`` defaults to now() when omitted. Raises ``NotFound``
         (unknown item or spec), ``Conflict`` (409: the spec is already actively
         assigned to this item; ``data.existing_assignment_id`` names it -
-        deactivate it first), or ``ValidationError`` (422: ``rep_fields`` lacks a
-        required field, ``code="rep_fields_incomplete"``, or cannot render the
-        spec's ``path_template``, ``code="rep_fields_unrenderable"``).
+        deactivate it first), or ``ValidationError`` (422: the spec's document
+        fails validation, ``code="rep_spec_invalid"``, paths under ``/document``;
+        ``rep_fields`` lacks a required field, ``code="rep_fields_incomplete"``;
+        or cannot render the spec's ``path_template``,
+        ``code="rep_fields_unrenderable"``).
         """
         body = InfoItemRepSpecCreate(
             rep_spec_id=rep_spec_id,

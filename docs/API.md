@@ -75,7 +75,11 @@ Those take production action on 8000 and run only when the operator asks.
 `POST /info-sources` accepts `{url, source_specs}`. Multiple InfoSources at the same URL are valid. Returns 422 on invalid URL or spec validation failure.
 
 `POST /info-items/{id}/rep-spec-assignments` refuses before the RepSpec document freezes (#83),
-because afterwards nothing can fix it: **422** `code="rep_fields_incomplete"` (one error per missing
+because afterwards nothing can fix it: **422** `code="rep_spec_invalid"` when the document itself
+fails `validate_rep_spec` (one error per problem, path under `/document`, `data.rep_spec_id`;
+archiver#334 - judged before the bag, since no bag fixes it, and the same on `POST /info-items` and
+the dashboard picker; existing assignments and issuance are never re-judged),
+`code="rep_fields_incomplete"` (one error per missing
 `required_fields` key) or `code="rep_fields_unrenderable"` (path `/rep_fields`; the bag is present
 but cannot render `path_template`, e.g. `"WA LCB"` as a path segment - this was a 500 until
 archiver#301). A required `_slug` whose raw value slugs to nothing is the second kind wherever the

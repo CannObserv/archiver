@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+import pytest
 from ulid import ULID
 
 from src.core.models import RepSpec
@@ -20,11 +21,16 @@ _OCCASION = RenderOccasion(
 
 
 def _spec(
-    *required: str, path_template: str | None = _ORG_PATH, provider: str = "gcs", name: str = "S"
+    *required: str, path_template: str = _ORG_PATH, provider: str = "gcs", name: str = "S", **extra
 ) -> RepSpec:
-    document: dict = {"provider": provider, "required_fields": list(required)}
-    if path_template is not None:
-        document["path_template"] = path_template
+    """A document ``validate_rep_spec`` accepts unless ``extra`` breaks it (archiver#334)."""
+    document: dict = {
+        "provider": provider,
+        "credentials_alias": f"{provider}-publication",
+        "path_template": path_template,
+        "required_fields": list(required),
+        **extra,
+    }
     return RepSpec(
         rep_spec_id=ULID(), provider=provider, name=name, schema_version=1, document=document
     )
@@ -56,7 +62,10 @@ def test_a_spec_missing_a_slug_key_needs_the_raw_key_the_operator_types():
 
 
 def test_a_missing_composite_needs_either_raw_key():
-    spec = _spec("org.acronym_or_title_slug", path_template="o/{org.acronym_or_title_slug}")
+    spec = _spec(
+        "org.acronym_or_title_slug",
+        path_template="o/{org.acronym_or_title_slug}/{source_revision.id}",
+    )
 
     entry = _only({}, spec)
 
@@ -67,7 +76,9 @@ def test_a_plain_required_key_is_needed_as_itself():
     entry = _only(
         {"org": {"title": "WSLCB"}},
         _spec(
-            "org.title_slug", "info_item.name", path_template="o/{org.title_slug}/{info_item.name}"
+            "org.title_slug",
+            "info_item.name",
+            path_template="o/{org.title_slug}/{info_item.name}/{source_revision.id}",
         ),
     )
 
@@ -101,11 +112,54 @@ def test_an_unwritable_provider_is_disabled_with_its_reason():
     assert not entry.ready
 
 
-def test_a_spec_with_no_path_template_is_ready_with_no_path():
-    entry = _only({}, _spec(path_template=None))
+@pytest.mark.parametrize(
+    ("extra", "reason"),
+    [
+        ({"bucket": "b"}, "Additional properties are not allowed ('bucket' was unexpected)"),
+        (
+            {"object_options": {"storage_class": "HOT"}},
+            "object_options/storage_class: 'HOT' is not one of",
+        ),
+        ({"path_template": "archive/latest.html"}, "path_template: path_template needs a"),
+    ],
+    ids=["envelope", "provider-sub-schema", "template-contract"],
+)
+def test_a_document_failing_validation_is_invalid_with_its_first_error(extra, reason):
+    """archiver#334: the assign would refuse it, so the picker never calls it Ready."""
+    entry = _only({"org": {"title": "WSLCB"}}, _spec("org.title_slug", **extra))
 
-    assert entry.ready
+    assert entry.readiness == "invalid"
+    assert not entry.ready
+    assert entry.reason.startswith(reason)
+    assert entry.needs == ()
     assert entry.path is None
+
+
+def test_an_invalid_document_counts_the_errors_it_does_not_show():
+    spec = _spec("org.title_slug", bucket="b", object_options={"storage_class": "HOT"})
+
+    entry = _only({}, spec)
+
+    assert entry.reason.endswith("(and 1 more)")
+
+
+def test_a_document_with_no_path_template_is_invalid():
+    """The envelope requires one: what was *Ready, no path* is now refused."""
+    spec = _spec()
+    del spec.document["path_template"]
+
+    entry = _only({}, spec)
+
+    assert entry.readiness == "invalid"
+    assert entry.template is None
+    assert "'path_template' is a required property" in entry.reason
+
+
+def test_an_invalid_document_is_judged_before_the_bag():
+    """No bag can fix the spec, so *Needs* would send the operator the wrong way."""
+    entry = _only({}, _spec("org.title_slug", bucket="b"))
+
+    assert entry.readiness == "invalid"
 
 
 def test_entries_keep_the_order_they_are_given():

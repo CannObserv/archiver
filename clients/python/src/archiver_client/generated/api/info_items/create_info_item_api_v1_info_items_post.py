@@ -95,7 +95,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: InfoItemCreate,
 ) -> Response[EnvelopeResponse | InfoItemOut]:
-    """Create Info Item
+    r"""Create Info Item
 
      Create an InfoItem.
 
@@ -106,6 +106,10 @@ def sync_detailed(
 
     ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
     anything is written: Power Map unreachable is a 503 and creates nothing.
+
+    A listed RepSpec whose document fails validation is a 422
+    (``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):
+    assigning would freeze it (archiver#334).
 
     Args:
         body (InfoItemCreate):
@@ -134,7 +138,7 @@ def sync(
     client: AuthenticatedClient,
     body: InfoItemCreate,
 ) -> EnvelopeResponse | InfoItemOut | None:
-    """Create Info Item
+    r"""Create Info Item
 
      Create an InfoItem.
 
@@ -145,6 +149,10 @@ def sync(
 
     ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
     anything is written: Power Map unreachable is a 503 and creates nothing.
+
+    A listed RepSpec whose document fails validation is a 422
+    (``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):
+    assigning would freeze it (archiver#334).
 
     Args:
         body (InfoItemCreate):
@@ -168,7 +176,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: InfoItemCreate,
 ) -> Response[EnvelopeResponse | InfoItemOut]:
-    """Create Info Item
+    r"""Create Info Item
 
      Create an InfoItem.
 
@@ -179,6 +187,10 @@ async def asyncio_detailed(
 
     ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
     anything is written: Power Map unreachable is a 503 and creates nothing.
+
+    A listed RepSpec whose document fails validation is a 422
+    (``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):
+    assigning would freeze it (archiver#334).
 
     Args:
         body (InfoItemCreate):
@@ -205,7 +217,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: InfoItemCreate,
 ) -> EnvelopeResponse | InfoItemOut | None:
-    """Create Info Item
+    r"""Create Info Item
 
      Create an InfoItem.
 
@@ -216,6 +228,10 @@ async def asyncio(
 
     ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
     anything is written: Power Map unreachable is a 503 and creates nothing.
+
+    A listed RepSpec whose document fails validation is a 422
+    (``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):
+    assigning would freeze it (archiver#334).
 
     Args:
         body (InfoItemCreate):

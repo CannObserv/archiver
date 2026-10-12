@@ -53,7 +53,12 @@ def _spec() -> RepSpec:
         provider="gcs",
         name="org spec",
         schema_version=1,
-        document={"required_fields": ["org.title_slug"], "path_template": _ORG_PATH},
+        document={
+            "provider": "gcs",
+            "credentials_alias": "gcs-publication",
+            "required_fields": ["org.title_slug"],
+            "path_template": _ORG_PATH,
+        },
     )
 
 

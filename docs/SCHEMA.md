@@ -239,6 +239,12 @@ deploys: stop using it, then remove it.
   `primary` is refused. Migration `70f32f641751` moved production's one RepSpec to
   `gcs-publication`, the one recorded exception to #83's freeze: both names bind the same
   bucket, so no destination changed.
+  **Re-judged only at new assignment** (archiver#334): a *new* assignment is where a draft
+  document freezes, so `assign_rep_spec` and `POST /info-items` run the whole of
+  `validate_rep_spec` (envelope, provider sub-schema, `path_template` contract, this rule) and
+  refuse with 422 `rep_spec_invalid`. Existing assignments and issuance are never re-judged, so a
+  rule added later cannot strand a frozen document; it only stops that document gaining new
+  assignments.
   **`path_template` contract** (archiver#168) — three rules the envelope schema cannot express,
   checked by `src/core/replication/template.py` from the *same parser* the renderer uses, so a
   document that validates is one that renders:
