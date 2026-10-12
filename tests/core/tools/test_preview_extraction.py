@@ -192,3 +192,23 @@ class TestPreviewExtractionPageTitle:
     async def test_page_title_empty_when_no_title_tag(self):
         result = await preview_extraction(_stub_fetcher(), DEFAULT_URL, VALID_FULL_PAGE_SPEC)
         assert result.page_title == ""
+
+
+class TestPreviewExtractionRefusedAlgorithm:
+    """co-core 0.32 refuses a spec no extractor honours (cannobserv#523, #317)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("algorithm", "selector"),
+        [("xpath", "//div"), ("regex", "kept"), ("jsonpath", "$.a")],
+    )
+    async def test_refused_spec_raises_source_spec_validation_error(self, algorithm, selector):
+        spec = {
+            "schema_version": 1,
+            "extraction": {"algorithm": algorithm, "selector": selector},
+            "fingerprint": {},
+        }
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(_stub_fetcher(), DEFAULT_URL, spec)
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction/algorithm"]
+        assert exc_info.value.errors[0]["message"]

@@ -120,3 +120,23 @@ async def test_preview_extraction_requires_api_key(client):
         json={"url": DEFAULT_URL, "source_spec": VALID_FULL_PAGE_SPEC},
     )
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_preview_extraction_refused_algorithm_returns_422_schema(client):
+    """co-core 0.32 refuses ``xpath`` on HTML rather than previewing the whole page (#317)."""
+    app.dependency_overrides[get_fetch_driver] = lambda: _stub_fetcher()
+    spec = {
+        "schema_version": 1,
+        "extraction": {"algorithm": "xpath", "selector": "//div"},
+        "fingerprint": {},
+    }
+    response = await client.post(
+        "/api/v1/tools/preview-extraction",
+        headers=HEADERS,
+        json={"url": DEFAULT_URL, "source_spec": spec},
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert [e["path"] for e in detail["errors"]] == ["/extraction/algorithm"]
