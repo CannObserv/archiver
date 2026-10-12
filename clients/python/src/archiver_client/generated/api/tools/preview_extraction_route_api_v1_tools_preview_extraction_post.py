@@ -95,16 +95,19 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
 ) -> Response[EnvelopeResponse | PreviewExtractionResult]:
-    """Preview Extraction Route
+    r"""Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
-    + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting.
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Processor would dispatch for the response's media type (RSS/Atom: one line
+    per item) + the canonical-text fingerprint, so an authoring agent can verify
+    the spec yields the expected content before persisting.
 
-    Returns 422 with the standard error envelope; ``code`` on each FieldError
-    disambiguates (``target_unreachable``, etc.).
+    Returns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec
+    fails validation or no extractor honours it on this body (``css`` on XML,
+    ``xpath`` on HTML), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or
+    ``extraction_failed`` (the body would not parse).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -133,16 +136,19 @@ def sync(
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
 ) -> EnvelopeResponse | PreviewExtractionResult | None:
-    """Preview Extraction Route
+    r"""Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
-    + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting.
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Processor would dispatch for the response's media type (RSS/Atom: one line
+    per item) + the canonical-text fingerprint, so an authoring agent can verify
+    the spec yields the expected content before persisting.
 
-    Returns 422 with the standard error envelope; ``code`` on each FieldError
-    disambiguates (``target_unreachable``, etc.).
+    Returns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec
+    fails validation or no extractor honours it on this body (``css`` on XML,
+    ``xpath`` on HTML), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or
+    ``extraction_failed`` (the body would not parse).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -166,16 +172,19 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
 ) -> Response[EnvelopeResponse | PreviewExtractionResult]:
-    """Preview Extraction Route
+    r"""Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
-    + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting.
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Processor would dispatch for the response's media type (RSS/Atom: one line
+    per item) + the canonical-text fingerprint, so an authoring agent can verify
+    the spec yields the expected content before persisting.
 
-    Returns 422 with the standard error envelope; ``code`` on each FieldError
-    disambiguates (``target_unreachable``, etc.).
+    Returns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec
+    fails validation or no extractor honours it on this body (``css`` on XML,
+    ``xpath`` on HTML), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or
+    ``extraction_failed`` (the body would not parse).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.
@@ -202,16 +211,19 @@ async def asyncio(
     client: AuthenticatedClient,
     body: PreviewExtractionRequest,
 ) -> EnvelopeResponse | PreviewExtractionResult | None:
-    """Preview Extraction Route
+    r"""Preview Extraction Route
 
      Validate, fetch, extract, and fingerprint with a candidate SourceSpec.
 
-    Composes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor
-    + the spec's fingerprint algorithm so an authoring agent can verify the
-    spec yields the expected content before persisting.
+    Composes ``validate_source_spec`` + ``fetch_and_render`` + the extractor
+    Processor would dispatch for the response's media type (RSS/Atom: one line
+    per item) + the canonical-text fingerprint, so an authoring agent can verify
+    the spec yields the expected content before persisting.
 
-    Returns 422 with the standard error envelope; ``code`` on each FieldError
-    disambiguates (``target_unreachable``, etc.).
+    Returns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec
+    fails validation or no extractor honours it on this body (``css`` on XML,
+    ``xpath`` on HTML), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or
+    ``extraction_failed`` (the body would not parse).
 
     Args:
         body (PreviewExtractionRequest): Request body for POST /api/v1/tools/preview-extraction.

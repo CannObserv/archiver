@@ -5,18 +5,19 @@ enforces that all InfoSources bound to a single InfoItem agree on the family,
 because every fragment's extraction runs against the InfoItem's primary's
 fetched bytes (the "InfoItem = fetch group" invariant; see
 ``src/core/source_spec_schema/v1.json`` description).
+
+One family today: ``regex`` and ``jsonpath`` left with co-core 0.32, which
+refuses them (#317). ``json`` returns with ``jsonpath`` (cannobserv#354).
 """
 
 from typing import Literal
 
-Family = Literal["html_text", "json"]
+Family = Literal["html_text"]
 
 ALGORITHM_FAMILIES: dict[str, Family] = {
     "css": "html_text",
     "xpath": "html_text",
-    "regex": "html_text",
     "full_page": "html_text",
-    "jsonpath": "json",
 }
 
 

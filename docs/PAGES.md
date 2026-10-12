@@ -56,7 +56,11 @@ Case A/B/C card for the URL; empty body when `url` is blank.
 suggestions from the URL's domain.
 
 **POST `/dashboard/register/preview`** - HTMX partial: attempts a preview
-extraction for `url` + `source_specs`.
+extraction for `url` + `source_specs`, through the extractor Processor would
+dispatch for the response's media type (#317). A spec that extractor refuses
+(`css` on XML, `xpath` on HTML until cannobserv#557) renders as an error, one `path: message` line per validation error. Step 2's
+help text names those limits: CSS for HTML pages, XPath for XML and feeds only,
+full-page for anything.
 
 **POST `/dashboard/register`** - the submit. Form fields `url`, `source_specs`,
 `name`, `description`, `cadence`, `watch_active`. Atomic create-source →

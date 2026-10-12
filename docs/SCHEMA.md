@@ -138,7 +138,9 @@ deploys: stop using it, then remove it.
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are
   cross-check alternatives for selector-rot detection. Each spec: `{schema_version, extraction,
-  fingerprint}` — no `target` section; URL is on the InfoSource directly.
+  fingerprint}` — no `target` section; URL is on the InfoSource directly. `extraction.algorithm`
+  is `css | xpath | full_page`, all one family (`source_spec_schema/v1.json`, `families.py`);
+  which media type honours which is co-core's extractor's call (#317).
   `last_observed_at TIMESTAMPTZ NULL` (archiver#151) — when Watcher last **successfully
   extracted** this source, changed or unchanged: "verified current as of T". A provenance fact,
   materially stronger than "no record of a change", which conflates *verified same* with *never

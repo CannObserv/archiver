@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://watcher.exe.xyz/schemas/source-spec/v1.json",
   "title": "Source Specification v1",
-  "description": "Extraction specification for an InfoSource. Each InfoSource holds a source_specs list; all specs are evaluated against the same fetch group (the InfoSource URL's fetched bytes, not chained off primary extracted output). The first spec is the primary extraction strategy; additional specs are cross-check alternatives for selector-rot detection. All specs in a list must share a content-kind family (html_text: css|xpath|regex|full_page; json: jsonpath). The URL is a separate InfoSource field, not part of this spec.",
+  "description": "Extraction specification for an InfoSource. Each InfoSource holds a source_specs list; all specs are evaluated against the same fetch group (the InfoSource URL's fetched bytes, not chained off primary extracted output). The first spec is the primary extraction strategy; additional specs are cross-check alternatives for selector-rot detection. All specs in a list must share a content-kind family (html_text: css|xpath|full_page). Every algorithm here reaches a co-core extractor that honours it; which media types honour it is the extractor's to say: css on HTML only, xpath on XML only (on HTML after cannobserv#557), full_page on anything, one line per item on an RSS or Atom root. regex and jsonpath are refused by co-core (jsonpath returns with cannobserv#354). The URL is a separate InfoSource field, not part of this spec.",
   "type": "object",
   "required": ["schema_version", "extraction", "fingerprint"],
   "additionalProperties": false,
@@ -13,7 +13,7 @@
       "required": ["algorithm"],
       "additionalProperties": false,
       "properties": {
-        "algorithm": {"enum": ["css", "xpath", "jsonpath", "regex", "full_page"]},
+        "algorithm": {"enum": ["css", "xpath", "full_page"]},
         "selector": {"type": "string"}
       },
       "allOf": [
@@ -21,6 +21,10 @@
           "if": {"properties": {"algorithm": {"const": "full_page"}}},
           "then": {"not": {"required": ["selector"]}},
           "else": {"required": ["selector"]}
+        },
+        {
+          "if": {"properties": {"algorithm": {"const": "xpath"}}},
+          "then": {"properties": {"selector": {"minLength": 1}}}
         }
       ]
     },

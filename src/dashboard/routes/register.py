@@ -37,7 +37,7 @@ from src.core.tools.create_info_source import (
     MixedAlgorithmFamilyError,
     create_info_source,
 )
-from src.core.tools.preview_extraction import preview_extraction
+from src.core.tools.preview_extraction import SourceSpecValidationError, preview_extraction
 from src.core.url_canonicalization import canonicalize_url
 from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS, DEFAULT_CADENCE
@@ -268,6 +268,11 @@ async def preview(
             },
         )
     except Exception as exc:  # noqa: BLE001
+        errors = (
+            [f"{err['path']}: {err['message']}" for err in exc.errors]
+            if isinstance(exc, SourceSpecValidationError)
+            else [str(exc)]
+        )
         return _templates.TemplateResponse(
             request,
             "register/_preview_result.html",
@@ -275,7 +280,7 @@ async def preview(
                 "user": user,
                 "text_preview": "",
                 "fingerprint": "",
-                "errors": [str(exc)],
+                "errors": errors,
                 "suggested_name": "",
             },
         )

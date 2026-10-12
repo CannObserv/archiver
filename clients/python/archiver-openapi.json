@@ -1272,7 +1272,7 @@
         "description": "Request body for POST /info-sources.",
         "properties": {
           "source_specs": {
-            "description": "Ordered list of extraction specs. First element is the primary strategy; subsequent elements are cross-check alternatives. All must share a content-kind family (html_text or json). Each element is a SourceSpec v1 document (schema_version, extraction, fingerprint \u2014 no target section).",
+            "description": "Ordered list of extraction specs. First element is the primary strategy; subsequent elements are cross-check alternatives. All must share a content-kind family (html_text). Each element is a SourceSpec v1 document (schema_version, extraction, fingerprint \u2014 no target section).",
             "items": {
               "additionalProperties": true,
               "type": "object"
@@ -2479,7 +2479,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.26.1"
+    "version": "4.27.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -6822,7 +6822,7 @@
     },
     "/api/v1/tools/preview-extraction": {
       "post": {
-        "description": "Validate, fetch, extract, and fingerprint with a candidate SourceSpec.\n\nComposes ``validate_source_spec`` + ``fetch_and_render`` + the HTML extractor\n+ the spec's fingerprint algorithm so an authoring agent can verify the\nspec yields the expected content before persisting.\n\nReturns 422 with the standard error envelope; ``code`` on each FieldError\ndisambiguates (``target_unreachable``, etc.).",
+        "description": "Validate, fetch, extract, and fingerprint with a candidate SourceSpec.\n\nComposes ``validate_source_spec`` + ``fetch_and_render`` + the extractor\nProcessor would dispatch for the response's media type (RSS/Atom: one line\nper item) + the canonical-text fingerprint, so an authoring agent can verify\nthe spec yields the expected content before persisting.\n\nReturns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec\nfails validation or no extractor honours it on this body (``css`` on XML,\n``xpath`` on HTML), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or\n``extraction_failed`` (the body would not parse).",
         "operationId": "preview_extraction_route_api_v1_tools_preview_extraction_post",
         "requestBody": {
           "content": {

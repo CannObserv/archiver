@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import pytest
 
+from src.core.source_spec_schema.families import ALGORITHM_FAMILIES
+
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
@@ -102,8 +104,11 @@ async def test_post_invalid_spec_element_returns_422(client):
 
 
 @pytest.mark.asyncio
-async def test_post_mixed_families_returns_422(client):
-    specs = [_spec("full_page"), _spec("jsonpath")]
+async def test_post_mixed_families_returns_422(client, monkeypatch):
+    # No two schema algorithms differ in family today (#317 pruned ``jsonpath``),
+    # so stand one in until cannobserv#354 brings ``json`` back.
+    monkeypatch.setitem(ALGORITHM_FAMILIES, "xpath", "json")
+    specs = [_spec("full_page"), _spec("xpath", "//x")]
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
@@ -240,3 +245,18 @@ async def test_get_by_id_not_found(client):
 async def test_get_by_id_requires_api_key(client):
     resp = await client.get("/api/v1/info-sources/01JZZZZZZZZZZZZZZZZZZZZZZZ")
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("algorithm", ["regex", "jsonpath"])
+async def test_post_refused_algorithm_returns_422_schema(client, algorithm):
+    """co-core 0.32 refuses ``regex`` and ``jsonpath``; the schema follows (#317)."""
+    resp = await client.post(
+        "/api/v1/info-sources",
+        headers=HEADERS,
+        json={"url": "https://example.com/p", "source_specs": [_spec(algorithm)]},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert [e["path"] for e in detail["errors"]] == ["/source_specs/0/extraction/algorithm"]

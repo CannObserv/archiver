@@ -1,6 +1,6 @@
 [project]
 name = "archiver"
-version = "4.26.1"
+version = "4.27.0"
 description = "Cannabis Observer Archiver service — central registry for Information Items, Information Sources, Source Revisions, and Replication Specifications."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,6 +13,7 @@ dependencies = [
     "alembic>=1.15.0,<2",
     "python-ulid>=3.0.0,<4",
     "beautifulsoup4>=4.12.0,<5",
+    "soupsieve>=2.5,<3",  # imported directly: preview_extraction catches its SelectorSyntaxError
     "lxml>=5.0,<7",
     "jsonschema>=4.21.0,<5",
     "httpx>=0.28.0,<1",

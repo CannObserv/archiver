@@ -139,4 +139,30 @@ async def test_preview_extraction_refused_algorithm_returns_422_schema(client):
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert detail["kind"] == "schema"
-    assert [e["path"] for e in detail["errors"]] == ["/extraction/algorithm"]
+    assert [e["path"] for e in detail["errors"]] == ["/extraction"]
+
+
+@pytest.mark.asyncio
+async def test_preview_extraction_unparseable_body_returns_422_extraction_failed(client):
+    """The dispatched extractor's parse failure is the target's fault, not a 500 (#317)."""
+
+    class _XmlStub:
+        async def execute(self, effect):
+            return FetchResult(
+                content=b"<rss><unclosed>",
+                status_code=200,
+                headers={"content-type": "application/rss+xml"},
+                duration_ms=5,
+                fetcher_used="http",
+            )
+
+    app.dependency_overrides[get_fetch_driver] = lambda: _XmlStub()
+    response = await client.post(
+        "/api/v1/tools/preview-extraction",
+        headers=HEADERS,
+        json={"url": DEFAULT_URL, "source_spec": VALID_FULL_PAGE_SPEC},
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [("/url", "extraction_failed")]

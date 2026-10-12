@@ -15,12 +15,14 @@ from src.core.source_spec_schema.families import (
 def test_html_text_family_members():
     assert family_for("css") == "html_text"
     assert family_for("xpath") == "html_text"
-    assert family_for("regex") == "html_text"
     assert family_for("full_page") == "html_text"
 
 
-def test_json_family_member():
-    assert family_for("jsonpath") == "json"
+@pytest.mark.parametrize("algorithm", ["regex", "jsonpath"])
+def test_refused_algorithms_have_no_family(algorithm):
+    """No extractor honours them (cannobserv#523, #317), so the schema drops them."""
+    with pytest.raises(UnknownAlgorithmError):
+        family_for(algorithm)
 
 
 def test_unknown_algorithm_raises():
