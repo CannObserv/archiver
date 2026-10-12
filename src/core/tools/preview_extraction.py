@@ -5,9 +5,10 @@ type from the response's ``Content-Type`` (the URL's extension breaking an
 ambiguous one), ``extractor_for_essence`` picks the parser, and
 ``canonical_text_fingerprint`` hashes the chunks. So a feed previews one line per
 item, a PDF previews through the PDF extractor, and the fingerprint is the one
-Processor will store. Returns chunks + total chars + the computed fingerprint so
-an authoring agent can verify the spec yields the expected content before
-persisting.
+Processor will store. The exception is empty text: Processor stores no digest
+there, and the preview still returns sha256 of ``b""``. Returns chunks + total
+chars + the computed fingerprint so an authoring agent can verify the spec
+yields the expected content before persisting.
 """
 
 import asyncio
