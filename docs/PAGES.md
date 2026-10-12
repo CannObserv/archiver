@@ -113,7 +113,7 @@ that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-items/{id}/rep-fields/readout`** - the Fields block's live readout: unsaved `field_*` lists (and `selected_spec`) in, each row's status cell out of band. Writes and fires nothing (archiver#307).
 
-**PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 render `_move_flash.html` into `#rep-fields-flash` (archiver#302, #307); a linked item's `org.title`/`org.acronym` is a 422 naming the org (archiver#304). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
+**PATCH `/dashboard/info-items/{id}/rep-fields`** - saves `rep_fields` through `set_rep_fields`, from the Fields form's `field_key`/`field_value`/`field_type` lists or a `rep_fields` JSON string. 200 re-renders the block (`HX-Retarget`) and fires `replicationChanged`; 422 and 409 (paths as the picker's, #333) render `_move_flash.html` into `#rep-fields-flash` (#302, #307); a linked item's `org.title`/`org.acronym` is a 422 naming the org (archiver#304). A posted `selected_spec` keeps the picker's selection (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
 
 
 **PUT `…/{id}/org`**, **GET `/dashboard/power-map/orgs`** - Organization row Link / Unlink and type-ahead: [ORG_ROW.md](ORG_ROW.md) (archiver#306).
