@@ -10,6 +10,7 @@ an authoring agent can verify the spec yields the expected content before
 persisting.
 """
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -24,6 +25,7 @@ from co_core.pure.extract import (
     extraction_overrides_for_essence,
     resolve_dispatch_essence,
 )
+from co_core.pure.extract.base import ExtractionResult
 from co_core.pure.extract.dispatch import extractor_for_essence
 from co_core.pure.extract.html import HtmlExtractor
 from co_core.pure.extract.xml_feed import XmlExtractor
@@ -91,6 +93,20 @@ def _page_title(content: bytes, extractor: object) -> str:
     return title_tag.get_text(strip=True) if title_tag else ""
 
 
+def _extract(
+    content: bytes, headers: Mapping[str, str], url: str, source_spec: dict[str, Any]
+) -> tuple[ExtractionResult, str]:
+    """Dispatch on the media type, extract, and read the title: the CPU-bound leg.
+
+    Runs in a worker thread: a PDF or spreadsheet extract can take seconds, and
+    the event loop also runs the bus publisher and consumers.
+    """
+    essence = resolve_dispatch_essence(_content_type(headers), url)
+    extractor = extractor_for_essence(essence)
+    config = extraction_config_from_spec(source_spec) | extraction_overrides_for_essence(essence)
+    return extractor.extract(content, config=config), _page_title(content, extractor)
+
+
 async def preview_extraction(
     driver: AsyncFetchDriver,
     url: str,
@@ -115,13 +131,10 @@ async def preview_extraction(
     except httpx.HTTPError as e:
         raise TargetUnreachableError(str(e)) from e
 
-    essence = resolve_dispatch_essence(_content_type(fetch_result.headers), url)
-    extractor = extractor_for_essence(essence)
     try:
-        config = extraction_config_from_spec(source_spec) | extraction_overrides_for_essence(
-            essence
+        extraction, page_title = await asyncio.to_thread(
+            _extract, fetch_result.content, fetch_result.headers, url, source_spec
         )
-        extraction = extractor.extract(fetch_result.content, config=config)
     except UnsupportedExtractionError as e:
         # The algorithm's fault for this body (css on XML) or the selector's (an
         # invalid xpath); co-core's message says which.
@@ -147,5 +160,5 @@ async def preview_extraction(
         total_chars=extraction.total_chars,
         fingerprint_algorithm="sha256",
         computed_fingerprint=canonical_text_fingerprint(extraction.chunks),
-        page_title=_page_title(fetch_result.content, extractor),
+        page_title=page_title,
     )

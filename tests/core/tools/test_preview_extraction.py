@@ -1,12 +1,14 @@
 """Unit tests for src/core/tools/preview_extraction.py."""
 
 import hashlib
+import threading
 
 import httpx
 import pytest
 from co_core.effects.fetch import FetchResult
 from co_core.pure.extract import canonical_text_fingerprint
 from co_core.pure.extract.base import ExtractionResult
+from co_core.pure.extract.html import HtmlExtractor
 from co_core.pure.extract.pdf import PdfExtractor
 
 from src.core.tools.preview_extraction import (
@@ -372,3 +374,19 @@ class TestPreviewExtractionBadSelector:
         with pytest.raises(SourceSpecValidationError) as exc_info:
             await preview_extraction(_stub_fetcher(), DEFAULT_URL, spec)
         assert [e["path"] for e in exc_info.value.errors] == ["/extraction/selector"]
+
+
+class TestPreviewExtractionOffLoop:
+    @pytest.mark.asyncio
+    async def test_extraction_runs_off_the_event_loop_thread(self, monkeypatch):
+        """A PDF or spreadsheet extract is CPU-bound; the loop also runs the bus (#317 CR 4)."""
+        seen: list[int] = []
+        original = HtmlExtractor.extract
+
+        def _spy(self, content, config=None):
+            seen.append(threading.get_ident())
+            return original(self, content, config=config)
+
+        monkeypatch.setattr(HtmlExtractor, "extract", _spy)
+        await preview_extraction(_stub_fetcher(), DEFAULT_URL, VALID_FULL_PAGE_SPEC)
+        assert seen and seen[0] != threading.get_ident()
