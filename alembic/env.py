@@ -87,9 +87,16 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+# How long a migration waits for any one lock (archiver#348). Unbounded, a
+# migration blocked by an open reader queues every API query behind its pending
+# ACCESS EXCLUSIVE; bounded, it fails and deploy.sh switches nothing.
+MIGRATION_LOCK_TIMEOUT = "5s"
+
+
 def do_run_migrations(connection) -> None:
     context.configure(connection=connection, **_common_configure_kwargs())
     with context.begin_transaction():
+        connection.exec_driver_sql(f"SET LOCAL lock_timeout = '{MIGRATION_LOCK_TIMEOUT}'")
         context.run_migrations()
 
 

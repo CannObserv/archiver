@@ -78,7 +78,14 @@ In order, each step refusing before anything switches:
    a flag, by design: the rehearsal is what proves the migration first.
 4. **Migrate** `archiver` the same way, with `ARCHIVER_ALLOW_PRODUCTION_DB=1`; skipped when
    the schema is `ahead` (a rollback). Migrations are **expand-only** (D3): the old release
-   runs on the new schema between this step and the switch, and after any rollback.
+   runs on the new schema between this step and the switch, and after any rollback. A
+   migration waits at most 5 s for any lock (`lock_timeout`, #348), then fails and nothing
+   switches: an open reader stalls the API's queries (queued behind the waiting migration)
+   for at most 5 s, not until the reader finishes. After each database's
+   migration, rehearsal and live, `python -m src.core.reader_grants` re-applies the read
+   role's grants ([§ Reading production](#reading-production-archiver348)); a failure
+   there switches nothing either. A rollback leaves the newer build's grants in place: the
+   older set would reopen anything a later build withheld.
 5. **Switch** `live` (rename(2)), then **install the units that differ** from the release,
    one `daemon-reload`, `try-restart` for a changed timer. A new unit is installed, never
    enabled: the deploy prints `enable --now` for a unit with `[Install]`; a timer's
@@ -232,7 +239,7 @@ root. What `exedev` can no longer do without `sudo`:
 | What | How it is closed |
 |---|---|
 | Read the production secrets | `/etc/archiver/.env` is `root:root 0600`. systemd reads an `EnvironmentFile=` before it drops to `User=`, so not even `archiver` can read the file; `deploy.sh` reads it through `sudo` |
-| Reach the production database | role `archiver` connects only to `archiver`, with a password only that file holds. Agents get `archiver_agent`, which owns `archiver_dev` and `archiver_test` and has no `CONNECT` on `archiver` |
+| Reach the production database | role `archiver` connects only to `archiver`, with a password only that file holds. Agents get `archiver_agent`, which owns `archiver_dev` and `archiver_test` and has no `CONNECT` on `archiver`; they read production as role `exedev` ([§ Reading production](#reading-production-archiver348)) |
 | Signal or trace the service | another uid |
 
 The units can't read `~exedev` either (`ProtectHome=yes`; the repo `.env` holds the PATs).
@@ -259,6 +266,35 @@ Seven operator-present steps after the PR merges, each one undone before the nex
 [plans/2026-10-10-339-service-user-cutover.md](plans/2026-10-10-339-service-user-cutover.md).
 The user, a deploy, the file closed, a rollback proved, the agents' role, production
 closed to everyone but its owner, then `archiver`'s password rotated.
+
+## Reading production (archiver#348)
+
+Agents read production with `psql -d archiver`: role `exedev`, peer-authenticated over the
+Unix socket, no password anywhere. #339 closed write access and took read access with it;
+this restores the reads only. Decision record and the once-per-VM runbook:
+[plans/2026-10-11-348-prod-read-access.md](plans/2026-10-11-348-prod-read-access.md).
+
+| Property | How it holds |
+|---|---|
+| Read-only | privileges: `SELECT` on `information` and nothing else. `default_transaction_read_only` is only a default |
+| No secret | no password, so TCP (`scram-sha-256`) is closed; the socket's `peer` line admits OS user `exedev` |
+| Personal data out | `app_users` and `api_keys` read by column allowlist: no `email`, `external_id` or `key_hash` (`src/core/reader_grants.py`). A column added there starts withheld |
+| New tables readable | default privileges, plus `deploy.sh` re-applying the grants after every migration |
+| Every query on record | `log_statement = 'all'` for the role, in `/var/log/postgresql/postgresql-16-main.log` (readable by `adm`), not journald |
+| Bounded | `CONNECTION LIMIT 3`; `statement_timeout` 30 s and `idle_in_transaction_session_timeout` 60 s, which a session *can* override, so don't |
+| Revocable | `ALTER ROLE exedev NOLOGIN` |
+
+**Don't hold a transaction open.** A `SELECT` holds `AccessShareLock` until its transaction
+ends. A deploy's migration waits at most 5 s for it, then fails (§ `scripts/deploy.sh` step
+4), so a forgotten `BEGIN` in a `psql` session blocks deploys. Use autocommit, the default.
+
+**Python never gets a production URL.** `db_safety` refuses `archiver` without
+`ARCHIVER_ALLOW_PRODUCTION_DB`, and that flag is never set in a shell. To run code over
+production rows, export them with `psql -At` and process the file. The plan has a worked
+example.
+
+`tests/deploy/test_prod_reader.py` checks all of this over the socket and skips on a host
+without the role.
 
 ## cannobserv substrate
 
@@ -349,7 +385,7 @@ logs: [deploy/README.md](../deploy/README.md).
 **Key variables:**
 - `ARCHIVER_DATABASE_URL` — PostgreSQL connection (falls back to `DATABASE_URL`).
 - `TEST_DATABASE_URL` — separate test database. **Must not equal `ARCHIVER_DATABASE_URL` or `DATABASE_URL`** — teardown drops the entire `information` schema. Convention: database name **must** end in `_test` (e.g. `archiver_test`) — `scripts/dev_server.sh` enforces the suffix, and `conftest.py` asserts both non-equality and the `_test` suffix at collection time, failing fast. The suffix is the rule that holds in an agent shell, which cannot read the production URL to compare (#339). Role `archiver_agent`.
-- `ARCHIVER_ALLOW_PRODUCTION_DB` — *optional*. `1` permits the process to serve a database whose name lacks a `_test`/`_dev` suffix. **Only `deploy/` units set it**: `archiver.service`, `archiver-bus-health.service` (read-only) and `archiver-pm-org-refresh.service` (the Power Map org follower, archiver#305) - **and `scripts/deploy.sh`**, for the production `schema_state` check and `alembic upgrade head` it runs (archiver#330). `alembic/env.py` and `src/core/schema_state.py` refuse production without it, as the API does. Without it `src/core/db_safety.py` refuses to start at lifespan, so a hand-rolled `uvicorn` cannot reach the production registry no matter which env files it sourced (2026-07-18 incident). Never set this in `/etc/archiver/.env` or `.env` — putting it in an env file would re-open the hole for every process that sources them.
+- `ARCHIVER_ALLOW_PRODUCTION_DB` — *optional*. `1` permits the process to serve a database whose name lacks a `_test`/`_dev` suffix. **Only `deploy/` units set it**: `archiver.service`, `archiver-bus-health.service` (read-only) and `archiver-pm-org-refresh.service` (the Power Map org follower, archiver#305) - **and `scripts/deploy.sh`**, for the production `schema_state` check, `alembic upgrade head` and the read role's grants it runs (archiver#330, #348). `alembic/env.py` and `src/core/schema_state.py` refuse production without it, as the API does. Without it `src/core/db_safety.py` refuses to start at lifespan, so a hand-rolled `uvicorn` cannot reach the production registry no matter which env files it sourced (2026-07-18 incident). Never set this in `/etc/archiver/.env` or `.env` — putting it in an env file would re-open the hole for every process that sources them.
 - `ARCHIVER_DEV_DATABASE_URL` — *optional in code, set in practice*. Persistent dev database for `scripts/dev_server.sh`; wins over `TEST_DATABASE_URL`. Points at `archiver_dev` on this host (#193 D5), as role `archiver_agent`, like `TEST_DATABASE_URL` (#339). Leaving it unset falls back to the test database, where pytest's `DROP SCHEMA` teardown wipes dev data mid-session. Name must end in `_test`/`_dev`. `scripts/deploy.sh` reads it from `/etc/archiver/dev.env` (never the shell) to rehearse each migration before production sees it (archiver#330 D2).
 - `ARCHIVER_DEV_PORT` — *optional*. Dev server port, default `8001`. `8000` is refused (systemd's). See **Server Lifecycle**.
 - `ARCHIVER_REDIS_URL` — *optional*. When set, enables the outbox publisher background task that drains `changes_outbox` rows to the `info.changes` Redis Stream. Unset → publisher is silently disabled (degraded mode for local dev without Redis). **Archiver no longer operates the broker** — archiver#193 D6 moved it to a neutral node and its operational code to [CannObserv/broker](https://github.com/CannObserv/broker); the cluster stream inventory is that repo's `docs/STREAMS.md`. The connection string is the only switch — write it as `redis://default:<password>@broker:6379/0`, with `default:` explicit: the empty-username form authenticates for redis-py and fails for `redis-cli`, so the service comes up green while `scripts/check_redis_floor.sh` goes silently blind on the floor (archiver#195). `archiver.service` declares **no** `redis-server` ordering — it was removed, not loosened, when the broker left the host (CannObserv/broker#1 Phase 3) — and an `ExecStartPre` (`scripts/check_redis_floor.sh`) asserts the ≥7.0 server floor when the bus is active, plus a warn-only check that the live `maxmemory` is non-zero.
