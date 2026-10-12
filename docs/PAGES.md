@@ -101,9 +101,9 @@ that screen. The entries below stay the inventory line for each route.
 
 **DELETE `/dashboard/info-items/{id}/info-sources/{source_id}`** - HTMX delete (form POST + route handler); sets `deactivated_at = now()`. Response triggers an HTMX redirect to detail.
 
-**GET `/dashboard/info-items/{id}/rep-spec-picker`** - the *Add a spec* picker (`#ii-rep-spec-picker`), re-fetched on a sibling's `replicationChanged`; `no-store`, never moves focus (archiver#308). Readiness and path read the linked Power Map org (archiver#304). A spec whose document fails `validate_rep_spec` is *Invalid*, Assign disabled (archiver#334).
+**GET `/dashboard/info-items/{id}/rep-spec-picker`** - the *Add a spec* picker (`#ii-rep-spec-picker`), re-fetched on a sibling's `replicationChanged`; `no-store`, never moves focus (archiver#308). Readiness and path read the linked Power Map org (archiver#304).
 
-**POST `/dashboard/info-items/{id}/rep-spec-picker/assign`** - assigns a RepSpec (`rep_spec_id`) through `assign_rep_spec`; answers with the picker. Success fires `replicationChanged` + a toast and prompts to replicate; a refusal is a 200 naming the reason in `#picker-refusal` (archiver#301, #312; an invalid document, #334). Replaced the full-page `POST …/assign-rep-spec` (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
+**POST `/dashboard/info-items/{id}/rep-spec-picker/assign`** - assigns a RepSpec (`rep_spec_id`) through `assign_rep_spec`; answers with the picker. Success fires `replicationChanged` + a toast and prompts to replicate; a refusal is a 200 naming the reason in `#picker-refusal` (archiver#301, #312, #334). Replaced the full-page `POST …/assign-rep-spec` (archiver#308). Contract: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) section 5.
 
 **DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** - HTMX delete; sets `deactivated_at = now()`, idempotent (skipped if already deactivated). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`), which updates the table/empty-state and moves focus to the section heading. Fires `HX-Trigger` `replicationChanged` (`{"source": "assignments"}`): the Fields block's rows come from the active assignments (archiver#307).
 
