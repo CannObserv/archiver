@@ -6,7 +6,6 @@ import threading
 import httpx
 import pytest
 from co_core.effects.fetch import FetchResult
-from co_core.pure.extract import canonical_text_fingerprint
 from co_core.pure.extract.base import ExtractionResult
 from co_core.pure.extract.html import HtmlExtractor
 from co_core.pure.extract.pdf import PdfExtractor
@@ -307,14 +306,15 @@ class TestPreviewExtractionDispatch:
         assert [c.text for c in result.chunks] == ["kept content"]
 
     @pytest.mark.asyncio
-    async def test_fingerprint_is_canonical_text_fingerprint(self):
+    async def test_feed_fingerprint_is_sha256_of_joined_lines(self):
         result = await preview_extraction(
             _stub_fetcher(RSS_FIXTURE, content_type="application/rss+xml"),
             DEFAULT_URL,
             VALID_FULL_PAGE_SPEC,
         )
-        chunks = [type("C", (), {"text": c.text})() for c in result.chunks]
-        assert result.computed_fingerprint == canonical_text_fingerprint(chunks)
+        joined = "\n".join(c.text for c in result.chunks)
+        expected_hex = hashlib.sha256(joined.encode("utf-8")).hexdigest()
+        assert result.computed_fingerprint == f"sha256:{expected_hex}"
 
     @pytest.mark.asyncio
     async def test_feed_title_is_channel_title(self):
