@@ -43,6 +43,7 @@ from src.core.tools.refresh_orgs import (
 )
 from src.core.tools.rep_fields_gate import lock_info_item
 from tests.core.power_map.fake import WSLCB_ID, WSLCB_NAME, FakePowerMap, org
+from tests.core.tools._revision import REVISION_PATH, capture_revision, revision_path
 
 WINNER_ID = "01JPM00000000000000000000W"
 OTHER_ID = "01JPM00000000000000000000C"
@@ -88,7 +89,9 @@ def move_warnings(monkeypatch) -> _Spy:
     return spy
 
 
-async def _linked_item(session, pm_org_id: str = WSLCB_ID, *, assigned: bool = False) -> InfoItem:
+async def _linked_item(
+    session, pm_org_id: str = WSLCB_ID, *, assigned: bool = False, path_template: str = _ORG_PATH
+) -> InfoItem:
     item = InfoItem(name=f"linked-{ULID()}", rep_fields={}, pm_org_id=pm_org_id)
     session.add(item)
     await session.flush()
@@ -100,7 +103,7 @@ async def _linked_item(session, pm_org_id: str = WSLCB_ID, *, assigned: bool = F
             document={
                 "provider": "gcs",
                 "credentials_alias": "gcs-cannobserv-prod",
-                "path_template": _ORG_PATH,
+                "path_template": path_template,
                 "required_fields": ["org.title_slug"],
                 "object_options": {"storage_class": "STANDARD"},
             },
@@ -217,6 +220,22 @@ async def test_a_rename_records_renamed_from_and_logs_each_move(session, move_wa
     (move,) = extra["moves"]
     assert move["before"].startswith("organizations/washington_state_liquor_and_cannabis_board/")
     assert move["after"].startswith("organizations/wa_cannabis_board/")
+
+
+@pytest.mark.asyncio
+async def test_a_renames_logged_moves_render_against_the_latest_revision(session, move_warnings):
+    """archiver#333: the logged paths are the ones the next replication writes."""
+    await _snapshot(session)
+    item = await _linked_item(session, assigned=True, path_template=REVISION_PATH)
+    revision = await capture_revision(session, item)
+    pm = FakePowerMap(org(name="WA Cannabis Board", pm_updated_at=T1, etag='"v2"'))
+
+    assert await _refresh(session, pm) == {WSLCB_ID: RENAMED}
+
+    ((_, extra),) = move_warnings.records
+    (move,) = extra["moves"]
+    assert move["before"] == revision_path("washington_state_liquor_and_cannabis_board", revision)
+    assert move["after"] == revision_path("wa_cannabis_board", revision)
 
 
 @pytest.mark.asyncio

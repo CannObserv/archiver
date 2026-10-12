@@ -86,8 +86,9 @@ refusal. Refusals land in `#ii-org-flash` (`aria-live="polite"`) via
 
 - **409** - #302's move contract: the stored hand-typed `org.title`/`org.acronym`
   differ from Power Map's, so an active assignment's path moves. Before → after
-  per assignment, with **Link and move** re-sending the warned-about `pm_org_id`
-  with `allow_destination_change`.
+  per assignment, rendered against the item's latest revision (the picker's
+  occasion, archiver#333) or a labelled example, with **Link and move**
+  re-sending the warned-about `pm_org_id` with `allow_destination_change`.
 - **422** - an org Power Map lacks, or one that breaks an assignment (naming the
   RepSpec and key).
 - **503** - Power Map dormant or down; nothing linked.

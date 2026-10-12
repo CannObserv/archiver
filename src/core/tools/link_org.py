@@ -37,7 +37,7 @@ from src.core.tools.set_rep_fields import (
     RepFieldsRefusedError,
     active_assignments,
     assignment_refusals,
-    destination_moves,
+    destination_moves_for_item,
     log_moves,
 )
 
@@ -125,9 +125,11 @@ async def link_org(
     refusals = assignment_refusals(assignments, new_bag, org=new_org)
     if refusals:
         raise RepFieldsRefusedError(refusals)
-    moves = destination_moves(assignments, old_bag, new_bag, old_org=old_org, new_org=new_org)
+    moves, occasion = await destination_moves_for_item(
+        db, info_item_id, assignments, old_bag, new_bag, old_org=old_org, new_org=new_org
+    )
     if moves and not allow_destination_change:
-        raise RepFieldsMoveError(moves)
+        raise RepFieldsMoveError(moves, occasion)
 
     previous = item.pm_org_id
     item.pm_org_id = new_pm_org_id

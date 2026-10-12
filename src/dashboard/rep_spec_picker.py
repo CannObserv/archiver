@@ -5,7 +5,8 @@ is the rep_fields gate's own answer (``check_bag_against_spec``, the check
 ``assign_rep_spec`` refuses on), so *Ready* here is the assign that succeeds and
 *Can't render* carries the gate's words verbatim (archiver#312). The path is
 rendered through ``render_destination`` against the occasion the route hands in:
-the item's latest revision, or ``example_occasion()`` when it has none.
+``preview_occasion``'s, the item's latest revision or the example when it has
+none - the occasion the move 409 renders too (archiver#333).
 Before any of that, the document itself: one that fails ``validate_rep_spec`` is
 *Invalid*, since ``assign_rep_spec`` refuses it whatever the bag (archiver#334).
 
@@ -16,7 +17,6 @@ that need no database.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from src.core.models import RepSpec
 from src.core.rep_fields import OrgValues
@@ -27,12 +27,6 @@ from src.core.replication.errors import ReplicationRenderError
 from src.core.tools.rep_fields_gate import check_bag_against_spec
 from src.dashboard.providers import UNWRITABLE_PROVIDERS
 from src.dashboard.rep_fields_block import raw_keys
-
-# The stand-in revision for an item that has captured nothing yet: all zeros, so
-# the preview reads as an example and never as a citable id.
-EXAMPLE_REVISION_ID = "0" * 26
-_EXAMPLE_FINGERPRINT = "sha256:" + "0" * 64
-_EXAMPLE_MEDIA_TYPE = "text/html"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,16 +53,6 @@ class PickerEntry:
     def ready(self) -> bool:
         """Whether Assign is offered: the server re-checks either way."""
         return self.readiness == "ready"
-
-
-def example_occasion() -> RenderOccasion:
-    """A labelled stand-in occasion for an item with no revision: zeros, now, HTML."""
-    return RenderOccasion(
-        source_revision_id=EXAMPLE_REVISION_ID,
-        content_fingerprint=_EXAMPLE_FINGERPRINT,
-        captured_at=datetime.now(UTC),
-        source_media_type=_EXAMPLE_MEDIA_TYPE,
-    )
 
 
 def build_picker(

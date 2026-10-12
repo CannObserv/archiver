@@ -16,6 +16,7 @@ from ulid import ULID
 from src.core.models import InfoItem, InfoItemRepSpec, PmOrganization, RepSpec
 from src.core.power_map import PowerMapUnavailableError
 from src.core.power_map.snapshots import OrgUnnamedError
+from src.core.services.replication_issuance import occasion_for
 from src.core.tools.assign_rep_spec import InfoItemNotFoundError
 from src.core.tools.link_org import (
     OrgNotFoundError,
@@ -29,6 +30,7 @@ from src.core.tools.set_rep_fields import (
     set_rep_fields,
 )
 from tests.core.power_map.fake import WSLCB_ID, WSLCB_NAME, FakePowerMap, org
+from tests.core.tools._revision import REVISION_PATH, capture_revision, revision_path
 
 OTHER_ID = "01JPM00000000000000000000C"
 _ORG_PATH = "organizations/{org.title_slug}/{source_revision.id}.html"
@@ -205,6 +207,31 @@ async def test_different_hand_typed_keys_that_move_a_path_are_refused_with_both_
     await session.refresh(item)
     assert item.pm_org_id is None
     assert item.rep_fields == {"org": {"title": "WA LCB"}}
+
+
+@pytest.mark.asyncio
+async def test_a_link_move_is_shown_against_the_items_latest_revision(session):
+    """archiver#333, and #309's third observation: the link 409 showed the
+    placeholder's paths even when the item had a real revision."""
+    item = await _item(
+        session,
+        {"org": {"title": "WA LCB"}},
+        _spec("org spec", "org.title_slug", path_template=REVISION_PATH),
+    )
+    revision = await capture_revision(session, item)
+
+    with pytest.raises(RepFieldsMoveError) as exc:
+        await link_org(
+            session,
+            info_item_id=item.info_item_id,
+            pm_org_id=WSLCB_ID,
+            power_map=FakePowerMap(org()),
+        )
+
+    (move,) = exc.value.moves
+    assert move.before == revision_path("wa_lcb", revision)
+    assert move.after == revision_path(_WSLCB_SLUG, revision)
+    assert exc.value.occasion == occasion_for(revision)
 
 
 @pytest.mark.asyncio

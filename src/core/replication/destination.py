@@ -43,10 +43,13 @@ from src.core.replication.template import (
     parse_placeholders,
 )
 
-# A stand-in occasion for the assignment-time pre-flight: segment-safe by
-# construction, so anything it fails on is the bag's or the template's doing.
-_PROBE_OCCASION_ID = "0" * 26
-_PROBE_FINGERPRINT = "sha256:" + "0" * 64
+# The stand-in revision for a preview with no revision behind it, and for the
+# assignment-time pre-flight: all zeros, so a path reads as an example and never
+# as a citable id, and segment-safe by construction, so anything it fails on is
+# the bag's or the template's doing.
+EXAMPLE_REVISION_ID = "0" * 26
+_EXAMPLE_FINGERPRINT = "sha256:" + "0" * 64
+_EXAMPLE_MEDIA_TYPE = "text/html"
 
 # What a rendered value may contain. Deliberately narrower than "safe": these are
 # the characters that survive a GCS object name, a Drive file name and an
@@ -188,6 +191,11 @@ class RenderOccasion:
     # assignment-time probe, which has no revision yet, can render.
     source_media_type: str | None = None
 
+    @property
+    def is_example(self) -> bool:
+        """Whether this is :func:`example_occasion`'s stand-in rather than a revision's."""
+        return self.source_revision_id == EXAMPLE_REVISION_ID
+
     def values(self) -> dict[str, str]:
         """The ``source_revision.*`` vocabulary, rendered path-safe.
 
@@ -240,6 +248,20 @@ class RenderOccasion:
         return values
 
 
+def example_occasion() -> RenderOccasion:
+    """A labelled stand-in occasion for an item with no revision: zeros, now, HTML.
+
+    What every "where this will write" preview falls back to (archiver#308, #333)
+    and what the assignment-time probe renders.
+    """
+    return RenderOccasion(
+        source_revision_id=EXAMPLE_REVISION_ID,
+        content_fingerprint=_EXAMPLE_FINGERPRINT,
+        captured_at=datetime.now(UTC),
+        source_media_type=_EXAMPLE_MEDIA_TYPE,
+    )
+
+
 def render_destination(
     template: str,
     *,
@@ -290,7 +312,7 @@ def probe_destination(
     rep_fields: Mapping[str, object],
     *,
     org: OrgValues | None,
-    captured_at: datetime | None = None,
+    occasion: RenderOccasion | None = None,
 ) -> str | None:
     """Check that this document + bag could render, before the assignment exists.
 
@@ -306,10 +328,11 @@ def probe_destination(
     create/update gate's job, and reporting it here would blame the assignment
     for a document that was already incomplete.
 
-    Returns the rendered path, or ``None`` when there is no template. Every
-    probe renders one placeholder occasion, so two probes given one
-    ``captured_at`` differ only where their bags do: ``set_rep_fields`` compares
-    a bag's path before and after a save that way (archiver#302).
+    Returns the rendered path, or ``None`` when there is no template. Without an
+    ``occasion`` the probe renders :func:`example_occasion`. Two probes given one
+    occasion differ only where their bags do: ``set_rep_fields`` compares a
+    bag's path before and after a save that way (archiver#302), against the
+    item's latest revision when it has one (archiver#333).
 
     Raises:
         ReplicationRenderError: the pair cannot produce a destination.
@@ -321,11 +344,7 @@ def probe_destination(
         template,
         rep_fields=rep_fields,
         org=org,
-        occasion=RenderOccasion(
-            source_revision_id=_PROBE_OCCASION_ID,
-            content_fingerprint=_PROBE_FINGERPRINT,
-            captured_at=captured_at or datetime.now(UTC),
-        ),
+        occasion=occasion or example_occasion(),
     )
 
 

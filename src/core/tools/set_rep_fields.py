@@ -15,11 +15,12 @@ In order, under the InfoItem row lock (``rep_fields_gate``):
 3. every active assignment's path, rendered from the old bag and the new one
    against one occasion: a valid edit can still move each later occasion to a
    new path in a permanent public bucket, so it is refused unless the caller
-   says the move is meant
+   says the move is meant. The paths shown are the item's latest revision's,
+   the picker's occasion, or the example's when it has none (archiver#333)
 
 Every check reads the effective bag: the stored bag over the linked org's
 snapshot. ``link_org`` reuses steps 2 and 3 (``assignment_refusals``,
-``destination_moves``), since linking changes the effective bag too.
+``destination_moves_for_item``), since linking changes the effective bag too.
 
 Nothing is announced: ``rep_fields`` rides no bus stream.
 """
@@ -28,7 +29,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,8 +43,9 @@ from src.core.rep_fields_schema.validator import (
     linked_org_key_errors,
     validate_rep_fields,
 )
-from src.core.replication.destination import probe_destination
+from src.core.replication.destination import RenderOccasion, example_occasion, probe_destination
 from src.core.replication.errors import ReplicationRenderError
+from src.core.services.replication_issuance import preview_occasion
 from src.core.tools.assign_rep_spec import InfoItemNotFoundError
 from src.core.tools.rep_fields_gate import check_bag_against_spec, lock_info_item
 
@@ -114,10 +115,15 @@ class RepFieldsRefusedError(RepFieldsWriteError):
 
 
 class RepFieldsMoveError(RepFieldsWriteError):
-    """The bag is valid but moves where active assignments render, and that was not allowed."""
+    """The bag is valid but moves where active assignments render, and that was not allowed.
 
-    def __init__(self, moves: list[DestinationMove]) -> None:
+    ``occasion`` is the one every move's paths render against: the item's latest
+    revision's, or ``example_occasion()``'s when it has none (archiver#333).
+    """
+
+    def __init__(self, moves: list[DestinationMove], occasion: RenderOccasion) -> None:
         self.moves = moves
+        self.occasion = occasion
         names = ", ".join(m.rep_spec_name for m in moves)
         super().__init__(f"rep_fields would move the destination of: {names}")
 
@@ -156,11 +162,11 @@ async def set_rep_fields(
     if refusals:
         raise RepFieldsRefusedError(refusals)
 
-    moves = destination_moves(
-        assignments, item.rep_fields or {}, rep_fields, old_org=org, new_org=org
+    moves, occasion = await destination_moves_for_item(
+        db, info_item_id, assignments, item.rep_fields or {}, rep_fields, old_org=org, new_org=org
     )
     if moves and not allow_destination_change:
-        raise RepFieldsMoveError(moves)
+        raise RepFieldsMoveError(moves, occasion)
 
     item.rep_fields = rep_fields
     await db.flush()
@@ -232,6 +238,36 @@ def _refusal(
     )
 
 
+async def destination_moves_for_item(
+    db: AsyncSession,
+    info_item_id: ULID,
+    assignments: Assignments,
+    old_bag: dict,
+    new_bag: dict,
+    *,
+    old_org: OrgValues | None,
+    new_org: OrgValues | None,
+) -> tuple[list[DestinationMove], RenderOccasion]:
+    """``destination_moves`` against the item's ``preview_occasion``, and that occasion.
+
+    Whether a path moves does not depend on the occasion - before and after
+    share it, so only the bag's segments differ - so the example finds the
+    moves and only a move pays for the revision lookup. The follower calls this
+    per item under its locks (archiver#305); it reads, and takes no lock.
+    """
+    occasion = example_occasion()
+    moves = destination_moves(
+        assignments, old_bag, new_bag, old_org=old_org, new_org=new_org, occasion=occasion
+    )
+    if not moves:
+        return moves, occasion
+    occasion = await preview_occasion(db, info_item_id)
+    moves = destination_moves(
+        assignments, old_bag, new_bag, old_org=old_org, new_org=new_org, occasion=occasion
+    )
+    return moves, occasion
+
+
 def destination_moves(
     assignments: Assignments,
     old_bag: dict,
@@ -239,23 +275,23 @@ def destination_moves(
     *,
     old_org: OrgValues | None,
     new_org: OrgValues | None,
+    occasion: RenderOccasion,
 ) -> list[DestinationMove]:
-    """Assignments whose path differs between the old and new effective bags, for one occasion.
+    """Assignments whose path differs between the old and new effective bags, for ``occasion``.
 
     An old bag that could not render is no move: no path came from it to move.
     A document without a ``path_template`` renders nothing from either bag.
     """
     if old_bag == new_bag and old_org == new_org:
         return []
-    when = datetime.now(UTC)
     moves: list[DestinationMove] = []
     for assignment, spec in assignments:
         document = spec.document or {}
         try:
-            before = probe_destination(document, old_bag, org=old_org, captured_at=when)
+            before = probe_destination(document, old_bag, org=old_org, occasion=occasion)
         except ReplicationRenderError:
             continue
-        after = probe_destination(document, new_bag, org=new_org, captured_at=when)
+        after = probe_destination(document, new_bag, org=new_org, occasion=occasion)
         if before is None or after is None or after == before:
             continue
         moves.append(

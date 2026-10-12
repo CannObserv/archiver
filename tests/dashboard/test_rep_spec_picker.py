@@ -6,9 +6,9 @@ import pytest
 from ulid import ULID
 
 from src.core.models import RepSpec
-from src.core.replication.destination import RenderOccasion
+from src.core.replication.destination import EXAMPLE_REVISION_ID, RenderOccasion, example_occasion
 from src.dashboard.providers import UNWRITABLE_PROVIDERS
-from src.dashboard.rep_spec_picker import EXAMPLE_REVISION_ID, build_picker, example_occasion
+from src.dashboard.rep_spec_picker import build_picker
 
 _ORG_PATH = "organizations/{org.title_slug}/{source_revision.id}.{source_revision.ext}"
 _REVISION_ID = "01JZ0000000000000000000000"

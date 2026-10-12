@@ -18,6 +18,10 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.26.1 (2026-10-12)
+
+[service] **The 409 `rep_fields_moves_destination` shows real paths** (archiver#333). `data.moves[].before`/`after` on `PUT /info-items/{id}/rep-fields` and `PUT /info-items/{id}/org` now render against the item's latest revision, the one *Replicate now* would use, so they can be compared with the item's published `public_url`s. They used to render against a placeholder revision (an id of zeros, the current time). An item with no revision still gets that example, now as `text/html`. Shape unchanged; whether a change is a move is unchanged. `archiver-client` stays at 5.9.0; only the OpenAPI snapshot's `info.version` changes.
+
 ## v4.26.0 (2026-10-12)
 
 [service] **New assignments refuse an invalid RepSpec document: 422 `rep_spec_invalid`** (archiver#334). A new assignment is where a draft document freezes (#83), so it is now judged by the whole of `validate_rep_spec` (the v1 envelope, the provider sub-schema, the `path_template` contract, the `credentials_alias` rule) before anything is written. Existing assignments and issuance are never re-judged. `archiver-client` stays at 5.9.0: no type changes; the `assign_rep_spec` and `create_info_item` docstrings, the generated route docstrings and the OpenAPI snapshot change with the descriptions.
