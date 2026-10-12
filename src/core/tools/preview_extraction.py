@@ -19,6 +19,7 @@ import httpx
 from bs4 import BeautifulSoup
 from co_core.effects.fetch import FetchContent
 from co_core.pure.extract import (
+    Extractor,
     UnsupportedExtractionError,
     canonical_text_fingerprint,
     extraction_config_from_spec,
@@ -78,7 +79,7 @@ def _content_type(headers: Mapping[str, str]) -> str | None:
     return next((v for k, v in headers.items() if k.lower() == "content-type"), None)
 
 
-def _page_title(content: bytes, extractor: object) -> str:
+def _page_title(content: bytes, extractor: Extractor) -> str:
     """The first ``<title>`` of an HTML page or XML document (a feed's channel title).
 
     Empty for a PDF or spreadsheet, whose bytes the HTML parser would only misread.
