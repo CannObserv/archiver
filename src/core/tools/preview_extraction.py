@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 from co_core.effects.fetch import FetchContent
-from co_core.pure.extract import extraction_config_from_spec
+from co_core.pure.extract import UnsupportedExtractionError, extraction_config_from_spec
 from co_core.pure.extract.html import HtmlExtractor
 from co_core_aio.fetch import AsyncFetchDriver
 
@@ -68,7 +68,9 @@ async def preview_extraction(
     """Validate the SourceSpec, fetch ``url``, extract, and fingerprint.
 
     Raises:
-        SourceSpecValidationError: if the document fails schema validation.
+        SourceSpecValidationError: if the document fails schema validation, or
+            co-core refuses its algorithm (``UnsupportedExtractionError``: no
+            extractor honours it, cannobserv#523).
         TargetUnreachableError: if the HTTP fetch fails (route layer → 422).
     """
     ok, errors = validate_source_spec(source_spec)
@@ -85,9 +87,13 @@ async def preview_extraction(
     title_tag = soup.find("title")
     page_title = title_tag.get_text(strip=True) if title_tag else ""
 
-    config = extraction_config_from_spec(source_spec)
-    extractor = HtmlExtractor()
-    extraction = extractor.extract(fetch_result.content, config=config)
+    try:
+        config = extraction_config_from_spec(source_spec)
+        extraction = HtmlExtractor().extract(fetch_result.content, config=config)
+    except UnsupportedExtractionError as e:
+        raise SourceSpecValidationError(
+            [{"path": "/extraction/algorithm", "message": str(e)}]
+        ) from e
 
     joined_text = "\n".join(c.text for c in extraction.chunks)
     computed_fingerprint = _compute_fingerprint(joined_text)
