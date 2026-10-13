@@ -121,6 +121,11 @@ _OUTBOUND_SERVICE_ENV_VARS = (
     # an alert, and a stray ok masks real silence, so no test holds the real one.
     "ARCHIVER_STATUS_URL",
     "CO_ARCHIVER_DRIFT_MONITOR_ID",
+    # The nightly backup (#233): its monitor for the drift reason; its bucket
+    # and key so a test that forgot its fake client cannot write the real one.
+    "CO_ARCHIVER_BACKUP_MONITOR_ID",
+    "ARCHIVER_BACKUP_BUCKET",
+    "GOOGLE_APPLICATION_CREDENTIALS",
 )
 for _var in _OUTBOUND_SERVICE_ENV_VARS:
     os.environ.pop(_var, None)

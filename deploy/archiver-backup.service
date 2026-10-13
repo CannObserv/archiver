@@ -1,0 +1,80 @@
+# Archiver's nightly database dump to GCS (archiver#233). Started by
+# archiver-backup.timer. scripts/deploy.sh installs both from the release, but
+# never enables a new unit (archiver#330 D12): enable the timer once by hand
+# (docs/BACKUP.md).
+#
+# Dumps `archiver` (pg_dump --format=custom), verifies the archive reads through
+# and holds information.alembic_version and info_items, and creates
+# gs://co-gcs-archiver-backup/<host>/<UTC>.dump, never overwriting. Checks in to
+# Status's co-archiver-backup monitor: ok when shipped, alert when not.
+# src/core/backup.py has the rules; CannObserv/watcher's watcher-backup is the
+# original (watcher#296, #297).
+#
+# Not bound to archiver.service: the artifact is the database, and a stopped
+# service still has one worth shipping. After postgresql so a boot-time catch-up
+# run (Persistent=true on the timer) does not race the server.
+[Unit]
+Description=Archiver: nightly database dump to GCS, create-only, holding no database credential (archiver#233)
+Documentation=https://github.com/CannObserv/archiver/blob/main/docs/DEPLOYMENT.md
+Wants=network-online.target tailscaled.service
+After=network-online.target postgresql.service tailscaled.service
+
+[Service]
+Type=oneshot
+# Its own system user, not archiver (#339's owner role can write) and not
+# DynamicUser= (deploy.sh refuses a User= the host cannot resolve). The database
+# knows it as the role of the same name: pg_read_all_data and CONNECT, nothing
+# more (scripts/setup-backup-role.sql), reached by peer auth over the socket,
+# so no database credential exists for the job at all.
+User=archiver_backup
+Group=archiver_backup
+# A release, never a checkout (archiver#330).
+WorkingDirectory=/srv/archiver/live
+# The release's interpreter, not `uv run`: uv wants $HOME, which this user lacks
+# and ProtectHome= hides.
+ExecStart=/srv/archiver/live/.venv/bin/python -m src.core.backup --database archiver
+Environment=ARCHIVER_BACKUP_BUCKET=co-gcs-archiver-backup
+# co-archiver-backup's id goes here, as drift's does, once co-status creates the
+# monitor: Environment=CO_ARCHIVER_BACKUP_MONITOR_ID=<ULID>. Until then the job
+# logs that a stop would go unnoticed and exits on the backup's own result.
+
+# The two keys, as credentials rather than environment: systemd reads each
+# root-only file and hands the run a private copy under $CREDENTIALS_DIRECTORY,
+# gone when it exits. No fallback for the GCS key: without it there is nothing
+# to ship to, and the start fails (243/CREDENTIALS). The Status key is the
+# co-archiver tenant's one key, drift's too; SetCredential= is its fallback, so
+# a missing file costs the check-in, never the backup.
+LoadCredential=gcs:/etc/archiver/co-archiver-backup.json
+LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key
+SetCredential=status-checkin-key:\n
+# The SDK takes a path; this is the private copy's. Nothing else may set it: an
+# env file's value would win and aim the job at the root-only original, which
+# the job refuses (exit 2) rather than fail "Permission denied".
+Environment=GOOGLE_APPLICATION_CREDENTIALS=%d/gcs
+
+# No EnvironmentFile=: /etc/archiver/.env holds the database, Redis and Power Map
+# secrets, none of which this unit needs and all of which it must not have.
+# Nor ARCHIVER_ALLOW_PRODUCTION_DB: pg_dump by name never meets db_safety.
+
+# The sandbox. A read-only filesystem but for a private /tmp (the dump is
+# written there, through an fd this process opens); no new privileges.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+# The local socket for pg_dump, and IP for GCS and the co-status check-in.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# No capabilities at all: the job is already the user the database knows.
+CapabilityBoundingSet=
+# The release is read-only to this unit anyway; say so rather than let Python try.
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# The database was about 9 MB on 2026-10-13. An hour is generous for the dump
+# and the upload, and short enough that a wedged run is a failed unit, not a
+# hang. No Restart=: the next night is the retry, and a failure is an alert.
+TimeoutStartSec=3600

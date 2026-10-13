@@ -1732,11 +1732,16 @@ class TestTheRepoUnits:
         built = {rel for _, rel in self.release_paths() if rel.startswith(".venv/")}
         assert built <= {".venv/bin/python", ".venv/bin/uvicorn"}, built
 
+    #: The one exception (archiver#233): the backup reads as its own
+    #: ``pg_read_all_data`` role by peer auth, never as the owner role.
+    OWN_USERS = {"archiver-backup.service": "archiver_backup"}
+
     def test_every_service_runs_as_the_service_user(self):
         """archiver#339: never exedev, the account agents and humans use."""
         for unit in sorted(self.REPO_DEPLOY.glob("*.service")):
             lines = unit.read_text().splitlines()
-            assert "User=archiver" in lines and "Group=archiver" in lines, unit.name
+            user = self.OWN_USERS.get(unit.name, "archiver")
+            assert f"User={user}" in lines and f"Group={user}" in lines, unit.name
 
     def test_no_unit_runs_uv(self):
         """uv wants a cache under $HOME, and the service user has none (archiver#339):

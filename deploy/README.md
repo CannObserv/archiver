@@ -7,7 +7,7 @@ checkout, and the deploy installs the units from that release** (archiver#330;
 unit edit ships like code: merge it, run `scripts/deploy.sh`. The host configs
 below are compared by each deploy and installed by hand.
 
-**Every service runs as `archiver`**, a system user with no login and no home, and
+**Every service runs as `archiver`** (bar the backup, as `archiver_backup`), a system user with no login and no home, and
 is sandboxed (`ProtectSystem=strict`, `ProtectHome=yes`), running the release venv's own
 entry points, never `uv run` (archiver#339; [docs/DEPLOYMENT.md § The service
 user](../docs/DEPLOYMENT.md#the-service-user-archiver339)). `/etc/archiver/.env` is
@@ -22,6 +22,8 @@ user](../docs/DEPLOYMENT.md#the-service-user-archiver339)). `/etc/archiver/.env`
 | `archiver-pm-org-refresh.timer` | timer | Runs the follower hourly. Enable with `systemctl enable --now archiver-pm-org-refresh.timer`. |
 | `archiver-drift.service` | service (oneshot) | The drift check (#338): asks GitHub whether live lags `origin/main` in code that runs, and checks in to Status's `co-archiver-drift`. No env file, no database; the Status key arrives as a `LoadCredential=`. See [docs/DEPLOYMENT.md § The drift check](../docs/DEPLOYMENT.md#the-drift-check-archiver338). |
 | `archiver-drift.timer` | timer | Runs the check hourly. `scripts/deploy.sh` installs it and never enables it: enable once with `sudo systemctl enable --now archiver-drift.timer`. |
+| `archiver-backup.service` | service (oneshot) | The nightly dump (#233): `pg_dump` of `archiver` as its own user **`archiver_backup`** (the one service not run as `archiver`: peer auth to a `pg_read_all_data` role, no database credential), verified, created create-only in `gs://co-gcs-archiver-backup`, then a check-in to Status's `co-archiver-backup`. No env file; the GCS and Status keys arrive as `LoadCredential=`. See [docs/BACKUP.md](../docs/BACKUP.md). |
+| `archiver-backup.timer` | timer | Runs the dump at 03:17 UTC, `Persistent=true`. Installed by `scripts/deploy.sh`, never enabled by it: enable once, after a hand run succeeds, with `sudo systemctl enable --now archiver-backup.timer`. |
 | `needrestart.conf.d/archiver.conf` | needrestart drop-in | `$nrconf{restart} = 'l'`: apt's hook lists restarts and never performs them, so a security update cannot restart Postgres or archiver mid-apply (#278). Install with `sudo install -m 644 deploy/needrestart.conf.d/archiver.conf /etc/needrestart/conf.d/`. |
 | `99-archiver-memory.conf` | sysctl drop-in | `vm.min_free_kbytes = 65536`: the atomic-allocation reserve no cgroup setting can provide (#237). `vm.swappiness = 10`: the 4 G swapfile is a last resort (#286). See *Host memory posture*. |
 | `system.slice.d/10-memory-protection.conf`, `system-postgresql.slice.d/10-memory-protection.conf` | slice drop-ins | The `MemoryLow=` grants without which a unit's own floor is inert (#237). |

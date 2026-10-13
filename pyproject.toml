@@ -25,6 +25,7 @@ dependencies = [
     "co-core-aio[bus]>=0.32,<0.33",
     "archiver-client",
     "power-map-client",
+    "google-cloud-storage>=2,<4",  # the nightly backup's bucket (archiver#233)
 ]
 
 [dependency-groups]

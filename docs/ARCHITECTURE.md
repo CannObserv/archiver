@@ -250,6 +250,13 @@ src/core/                      Domain logic
                                reports ok/alert to co-status's co-archiver-drift
   status_checkin.py            One check-in to a co-status monitor; the key is a
                                systemd credential, never in the environment
+  backup.py                    The nightly dump (archiver#233): pg_dump as its own
+                               pg_read_all_data role, verified, created create-only
+                               in gs://co-gcs-archiver-backup; ok/alert to
+                               co-status's co-archiver-backup. BACKUP.md
+  restore.py                   Its operator CLI: list, fetch + sha256-verify, restore
+                               into an empty database (refuses production unless
+                               --allow-production)
 clients/python/                archiver_client SDK v5.x (generated + hand-written wrappers).
                                Version lives in clients/python/pyproject.toml and
                                bumps only when the SDK surface changes
@@ -263,8 +270,8 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                with db_safety.py);
                                tests/deploy/ asserts the installed systemd artifacts match
                                deploy/ — archiver.service, the bus-health pair,
-                               the pm-org-refresh pair and the drift pair
-                               (each skips when absent, so CI passes) — and the
+                               the pm-org-refresh pair, the drift pair and the
+                               backup pair (each skips when absent, so CI passes) — and the
                                needrestart drop-in against the live config chain
                                (archiver#278; asserts only on the archiver host),
                                the memory reservation's effective protection,
@@ -282,6 +289,8 @@ scripts/                       deploy.sh (build a release from a pushed main com
                                GCS index into ./.wheelhouse; run before uv sync, and by
                                deploy.sh into each release) +
                                dump_openapi.py +
+                               setup-backup-role.sql (the backup's database role,
+                               once per cluster; archiver#233, BACKUP.md) +
                                check_client_drift.py (regen vendored clients from
                                committed OpenAPI snapshots; diff vs generated/;
                                CI gate, see client-drift job) +
@@ -316,12 +325,15 @@ deploy/                        README.md (install instructions) + systemd units,
                                the broker-side half is CannObserv/broker's since
                                archiver#193 D6) +
                                archiver-pm-org-refresh.service/.timer (the
-                               Power Map org follower, archiver#305). The #128 OOM lockstep now spans two
+                               Power Map org follower, archiver#305) +
+                               archiver-drift.service/.timer (archiver#338) +
+                               archiver-backup.service/.timer (the nightly dump,
+                               as user archiver_backup; archiver#233). The #128 OOM lockstep now spans two
                                repos: the cap is in CannObserv/broker's drop-in,
                                the transient classification in publisher.py
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                BUS.md, BUS_CONSUMERS.md, SCHEMA.md, SCHEMA_BUS.md,
-                               DEPLOYMENT.md, CONVENTIONS.md, SKILLS.md,
+                               DEPLOYMENT.md, BACKUP.md, CONVENTIONS.md, SKILLS.md,
                                SOCRATICODE.md, plus the
                                dashboard living docs
                                UI.md + SCREENS.md + PAGES.md +

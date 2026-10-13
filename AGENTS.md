@@ -257,6 +257,7 @@ Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); o
 - [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the three streams consumed; consumer naming
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev-server internals, full env-var reference
+- [docs/BACKUP.md](docs/BACKUP.md) - the nightly dump to GCS, its provisioning, the restore runbook
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald contract, error envelope, living-docs rule, `PLC0415` scope
 - [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, overrides, trigger table, SessionStart hook mechanics
 - [docs/SOCRATICODE.md](docs/SOCRATICODE.md) - tool map, `co-index` traps, cross-repo search

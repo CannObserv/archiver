@@ -229,6 +229,13 @@ sudo systemctl start archiver-drift.service   # its ok clears the test fault: "h
 `archiver*` unit the release lacks; it never removes one. Stop it with `sudo systemctl
 disable --now archiver-drift.timer` if that is the intent.
 
+## The nightly backup (archiver#233)
+
+`archiver-backup.timer` dumps `archiver` at 03:17 UTC to `gs://co-gcs-archiver-backup`,
+create-only, as its own `pg_read_all_data` user `archiver_backup`, and checks in to
+co-status's `co-archiver-backup`. Provisioning, first run, the create-only probe, the
+restore runbook and the alert remedies: [BACKUP.md](BACKUP.md).
+
 ## The service user (archiver#339)
 
 **The units run as `archiver`**, a system user with no login, no home and no `sudo`, not
@@ -379,6 +386,7 @@ logs: [deploy/README.md](../deploy/README.md).
 | `archiver-bus-health` | 10 min | `python -m src.core.bus_health` | nothing (WARN-only outbox and schema probe, #130, #330) | never |
 | `archiver-pm-org-refresh` | 1 h | `python -m src.core.tools.refresh_orgs` | `pm_organizations`; `info_items.pm_org_id` on a merge (#305) | `ARCHIVER_POWER_MAP_API_KEY` unset: exits 0, no database |
 | `archiver-drift` | 1 h | `python -m src.core.drift` | nothing local; one check-in to co-status (#338) | never; no key or monitor id: logs it, exits 1 |
+| `archiver-backup` | 03:17 UTC | `python -m src.core.backup` as `archiver_backup` | one object in `gs://co-gcs-archiver-backup`; one check-in to co-status (#233) | never; no monitor id: logs it, exits on the backup's own result |
 
 ## Environment variable reference
 
@@ -413,7 +421,11 @@ logs: [deploy/README.md](../deploy/README.md).
 - `ARCHIVER_POWER_MAP_BASE_URL` — *optional*. Power Map's base URL, default `https://power-map.exe.xyz` (public HTTPS, no tailnet hop). Read only when the key is set.
 - `ARCHIVER_DEV_POWER_MAP_API_KEY` / `ARCHIVER_DEV_POWER_MAP_BASE_URL` — *optional*, dev only. What `scripts/dev_server.sh` exports as the two above; unset → the dev server runs Power Map-dormant. Unlike the Redis guard there is no same-target refusal: the key is read-only and dev writes only `archiver_dev`, so reading production Power Map from 8001 is the supported posture. Only inheriting the service's credential is refused. Set in the repo `.env`.
 - `CO_ARCHIVER_DRIFT_MONITOR_ID` — the drift check's co-status monitor, `co-archiver-drift` (archiver#338). Not a secret: set in `deploy/archiver-drift.service`, never an env file. Must be a ULID (it lands in a URL path); anything else exits 2. Unset → the check runs, logs that nothing was sent, exits 1. Scrubbed by `tests/conftest.py`: no test may hold the real one (§ The drift check).
-- `ARCHIVER_STATUS_URL` — *optional*. co-status's base URL for the drift check, default `http://status:9000` (MagicDNS over the tailnet). Its key is never an env var: the unit's `status-checkin-key` credential.
+- `ARCHIVER_STATUS_URL` — *optional*. co-status's base URL for the drift check and the backup, default `http://status:9000` (MagicDNS over the tailnet). Its key is never an env var: the units' `status-checkin-key` credential.
+- `CO_ARCHIVER_BACKUP_MONITOR_ID` — the backup's co-status monitor, `co-archiver-backup` (archiver#233). Set in `deploy/archiver-backup.service` once the monitor exists, never an env file. Unset → the backup runs, warns that a stop will go unnoticed, and sends nothing. Scrubbed by `tests/conftest.py`.
+- `ARCHIVER_BACKUP_BUCKET` — the backup's and the restore's bucket, `co-gcs-archiver-backup`. Set in the unit; given by hand to a restore. No default: unset is exit 2. Scrubbed by `tests/conftest.py`.
+- `ARCHIVER_BACKUP_PREFIX` — *optional*. The object prefix; default this host's name (`co-registrar`), so a replacement host never writes into the timeline it restores from.
+- `GOOGLE_APPLICATION_CREDENTIALS` — the GCS key's path, for the wheel fetch (`/etc/archiver/deploy.env`) and the backup, where only the unit's own `%d/gcs` is accepted ([BACKUP.md](BACKUP.md)). Scrubbed by `tests/conftest.py`.
 - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance (e.g. `https://archiver.example.com`). When set, InfoItem API responses include `dashboard_url` pointing to the dashboard detail page (`{ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}`). Unset → `dashboard_url` is `null`. Set this to the URL end-users open in a browser, distinct from any internal service-to-service address. Set in `/etc/archiver/.env` on the VM.
 - `WATCHER_CACHE_DIR`, `WATCHER_CACHE_TTL_SECONDS`, `WATCHER_CACHE_SWEEP_INTERVAL_SECONDS` — Watcher-side, not Archiver-side; documented here because the `content_cache_uri` lifecycle protocol they govern is a registry contract (see design doc Section 2).
 
