@@ -206,6 +206,6 @@ next `scripts/deploy.sh`.
 
 | Fault | Remedy |
 |---|---|
-| `failed` | the `error` says which step: `bucket … not found` (the bucket, or the SA's `objectViewer`); `pg_dump exited` (a lock it would not wait for, after a deploy: rerun by hand); `already exists with different contents` (two runs in one second); a google.auth error (the key revoked or rotated) |
+| `failed` | the `error` says which step: `bucket … not found` (the bucket, or the SA's `objectViewer`); `pg_dump exited` (a lock it would not wait for, after a deploy: rerun by hand); `already exists with different contents` (two runs in one second); a google.auth error (the key revoked or rotated); `passed its 3300 s deadline` (something hung: the last step `journalctl -u archiver-backup` logged names it) |
 | `misconfigured` | the unit was edited or overridden: `ARCHIVER_BACKUP_BUCKET` unset, or `GOOGLE_APPLICATION_CREDENTIALS` set outside the unit's own line |
 | `missing` | no run checked in: `systemctl status archiver-backup.timer`, `journalctl -u archiver-backup`; a failed start (`243/CREDENTIALS`) sends nothing |
