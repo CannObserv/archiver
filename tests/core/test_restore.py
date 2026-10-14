@@ -394,7 +394,12 @@ class TestMain:
         _ship(bucket, f"{SRC}/20261013T031702Z.dump")
         code = restore.main(["--latest", "--prefix", SRC, "--into", "archiver_restore_test"])
         assert code == 0
-        assert "reader_grants" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        # Named, not half-quoted: the grants run in a superuser session under
+        # SET ROLE archiver, which a bare command line would leave out.
+        assert "read role's grants" in out
+        assert "scripts/setup-backup-role.sql" in out
+        assert "docs/BACKUP.md § Restore" in out
 
     def test_into_production_is_refused_before_anything_is_fetched(
         self, pg, bucket, client, monkeypatch, capsys

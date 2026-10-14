@@ -404,8 +404,8 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
         return 1
     print(f"restored gs://{bucket}/{key} into {args.into}")
     print(
-        "next: re-apply the read role's grants (python -m src.core.reader_grants --sql), "
-        "then the checks in docs/BACKUP.md § Restore"
+        "next: re-apply the read role's grants and scripts/setup-backup-role.sql, "
+        "then the checks, as docs/BACKUP.md § Restore shows"
     )
     return 0
 
