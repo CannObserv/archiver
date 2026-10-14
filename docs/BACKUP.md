@@ -32,7 +32,8 @@ sends `outcome` (`uploaded` or `unchanged`), `object`, `dumped_at`, `size_bytes`
 (status#29): disabling pauses only the dead-man timer. Enabled, `missing` is 26 h with no
 check-in, repeated daily. Without a monitor id the run warns that a stop will not be noticed
 and exits on the backup's own result. **Never run it
-with the real monitor id outside the unit**: a stray `ok` resets the dead-man clock.
+with the real monitor id outside the unit**, bar the `--test-alert` below, sent on cue with
+status-agent: a stray `ok` resets the dead-man clock.
 `tests/conftest.py` scrubs `CO_ARCHIVER_BACKUP_MONITOR_ID`, `ARCHIVER_BACKUP_BUCKET` and
 `GOOGLE_APPLICATION_CREDENTIALS`.
 
