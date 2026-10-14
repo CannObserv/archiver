@@ -56,6 +56,7 @@ from src.core.backup import (
     UPLOAD_TIMEOUT_SECONDS,
     BackupError,
     Runner,
+    password_in,
     sha256_file,
     tail,
     verify_dump,
@@ -351,6 +352,13 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
         print(
             "say whose: --latest needs --prefix HOST, the host that shipped the dump "
             "(--list shows every host's)",
+            file=sys.stderr,
+        )
+        return 2
+    if args.into and password_in(args.into):
+        print(
+            "refused: --into carries a password, which argv would expose; "
+            "use a plain name and peer auth (--run-as postgres)",
             file=sys.stderr,
         )
         return 2

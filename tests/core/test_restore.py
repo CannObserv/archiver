@@ -419,6 +419,14 @@ class TestMain:
         restored = [c for c in pg.calls if "--single-transaction" in c]
         assert len(restored) == 1 and restored[0][0] == "setpriv"
 
+    def test_a_password_on_the_command_line_is_refused(self, pg, capsys) -> None:
+        """psql and pg_restore would carry it in a world-readable argv."""
+        into = "postgresql://u:s3cret@localhost/archiver_restore_test"
+        assert restore.main(["--latest", "--prefix", SRC, "--into", into]) == 2
+        err = capsys.readouterr().err
+        assert "password" in err and "s3cret" not in err
+        assert pg.calls == []
+
     def test_the_override_is_only_for_into(self, pg, tmp_path, capsys) -> None:
         argv = ["--latest", "--prefix", SRC, "--download-only", str(tmp_path / "d")]
         assert restore.main([*argv, "--allow-production"]) == 2

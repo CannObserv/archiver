@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import parse_qs, urlsplit
 
 from google.api_core.exceptions import NotFound, PreconditionFailed
 from google.cloud import storage
@@ -180,6 +181,22 @@ def misplaced_key(environ: Mapping[str, str]) -> str | None:
         f"{KEY_PATH_ENV} is {key!r}, not this run's credential copy under {directory}: "
         f"only the unit's own Environment={KEY_PATH_ENV}=%d/{GCS_CREDENTIAL} may set it"
     )
+
+
+def password_in(database: str) -> bool:
+    """Whether a ``--database``/``--into`` value carries a password.
+
+    Every spelling libpq takes: a URL's ``user:password@`` or ``?password=``,
+    or a conninfo ``password=``. It would ride the argv of ``pg_dump``, ``psql``
+    and ``pg_restore``, which ``/proc/<pid>/cmdline`` shows to every local user.
+    """
+    if "://" in database:
+        try:
+            parts = urlsplit(database)
+            return bool(parts.password) or "password" in parse_qs(parts.query)
+        except ValueError:
+            return True  # unparseable: fail closed
+    return re.search(r"(^|\s)password\s*=", database) is not None
 
 
 def sha256_file(path: Path) -> str:
@@ -461,6 +478,11 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
 
     configure_logging()
     host = socket.gethostname()
+
+    if password_in(args.database):
+        # A hand-run mistake, not a night's failure: no check-in, and never the value.
+        logger.error("--database carries a password, which argv would expose; use peer auth")
+        return 2
 
     if args.test_alert:
         # Proves the alert template through a real dispatch (status#41 Q3):

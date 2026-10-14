@@ -441,6 +441,27 @@ class TestMain:
         (dump_call,) = [call for call in pg.calls if call[0] == "pg_dump"]
         assert "--dbname=archiver" in dump_call
 
+    @pytest.mark.parametrize(
+        "database",
+        [
+            "postgresql://u:s3cret@localhost/archiver",
+            "postgresql://u@localhost/archiver?password=s3cret",
+            "host=localhost password=s3cret dbname=archiver",
+        ],
+        ids=["url", "url-query", "conninfo"],
+    )
+    def test_a_password_on_the_command_line_is_refused(
+        self, wired, monkeypatch, database, caplog
+    ) -> None:
+        """pg_dump and psql would carry it in /proc/<pid>/cmdline, mode 444
+        (CONVENTIONS.md "Nor a command line"). Peer auth or PGPASSWORD."""
+        pg = FakePg()
+        monkeypatch.setattr(backup.subprocess, "run", pg)
+        assert backup.main(["--database", database]) == 2
+        assert pg.calls == []
+        assert wired == []
+        assert "s3cret" not in caplog.text
+
     def test_there_is_no_user_to_run_as(self, wired) -> None:
         """A job that holds no capability cannot drop to another user."""
         with pytest.raises(SystemExit):
