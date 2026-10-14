@@ -1,0 +1,19 @@
+# Nightly: Status's co-archiver-backup monitor expects a check-in every 86400 s,
+# with a grace of 7200 s (the jitter, plus the unit's one-hour timeout).
+# Installed by scripts/deploy.sh, enabled once by hand (archiver#330 D12;
+# docs/BACKUP.md).
+[Unit]
+Description=Archiver: nightly database dump to GCS (archiver#233)
+
+[Timer]
+Unit=archiver-backup.service
+# Watcher's slot. Persistent=true runs a night a reboot skipped, so a VM that
+# was down at 03:17 still ships when it comes back; the jitter keeps it off the
+# minute other timers on the host share.
+OnCalendar=*-*-* 03:17:00 UTC
+RandomizedDelaySec=10min
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

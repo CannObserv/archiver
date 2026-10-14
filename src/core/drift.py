@@ -30,7 +30,6 @@ grace (status CR 15).
 import argparse
 import logging
 import os
-import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -43,7 +42,15 @@ import httpx
 
 from src.core.build import build_id
 from src.core.logging import configure_logging, get_logger
-from src.core.status_checkin import CREDENTIAL_NAME, CheckinFailed, post_checkin, read_key
+from src.core.status_checkin import (
+    CREDENTIAL_NAME,
+    DEFAULT_STATUS_URL,
+    MONITOR_ID_PATTERN,
+    STATUS_URL_ENV,
+    CheckinFailed,
+    post_checkin,
+    read_key,
+)
 
 # Literal rather than __name__: the timer runs this module via ``python -m``,
 # where __name__ is "__main__" - a useless journald filter key.
@@ -86,11 +93,7 @@ RUNTIME_FILES = frozenset(
 
 #: ``live`` and ``main`` when there is no SHA to name.
 UNKNOWN = "unknown"
-STATUS_URL_ENV = "ARCHIVER_STATUS_URL"
-DEFAULT_STATUS_URL = "http://status:9000"
 MONITOR_ID_ENV = "CO_ARCHIVER_DRIFT_MONITOR_ID"
-#: A ULID: the id lands in a URL path, so nothing else may.
-MONITOR_ID_PATTERN = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}")
 
 #: ``silent`` sends no check-in; ``ok`` sends ``ok``; every other kind an ``alert``.
 Kind = Literal["ok", "lag", "off_main", "unstamped", "test", "silent"]

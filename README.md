@@ -13,6 +13,7 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 - [docs/BUS.md](docs/BUS.md) / [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the change-bus contracts, produced and consumed
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev server, environment variables
+- [docs/BACKUP.md](docs/BACKUP.md) - the nightly database dump to GCS and the restore runbook
 - [docs/UI.md](docs/UI.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) - dashboard patterns, page inventory, the InfoItem hub screen, Alpine components, and styling
 
 ## Run locally

@@ -22,8 +22,13 @@ from typing import Literal
 
 import httpx
 
-#: The ``LoadCredential=`` name ``archiver-drift.service`` gives the key.
+#: The ``LoadCredential=`` name the drift and backup units give the key: one key
+#: per tenant (``co-archiver``), whichever monitor it checks in to.
 CREDENTIAL_NAME = "status-checkin-key"
+STATUS_URL_ENV = "ARCHIVER_STATUS_URL"
+DEFAULT_STATUS_URL = "http://status:9000"
+#: A ULID: the id lands in a URL path, so nothing else may.
+MONITOR_ID_PATTERN = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}")
 TIMEOUT_SECONDS = 10.0
 #: One token of printable ASCII: what Status mints. Anything else is a bad
 #: paste, refused before httpx sees it, since a header error can quote it.
