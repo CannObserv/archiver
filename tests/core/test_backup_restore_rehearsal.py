@@ -12,7 +12,7 @@ them), and the column-level grants the read role depends on.
 
 Needs ``CREATEDB`` (and ``CREATEROLE`` for the grant check) on the test role:
 CI's ``postgres`` has both; this VM's ``archiver_agent`` has neither, and the
-module skips there.
+module skips there. On CI a missing precondition fails instead.
 """
 
 import os
@@ -44,6 +44,14 @@ def _libpq(url: str) -> str:
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
+def _unavailable(reason: str) -> None:
+    """Skip here; fail on CI, where every precondition is provisioned and a
+    skip would hide the suite's one real round trip."""
+    if os.environ.get("CI"):
+        pytest.fail(f"rehearsal cannot run on CI: {reason}")
+    pytest.skip(reason)
+
+
 def _major(version_text: str) -> int:
     return int(re.search(r"(\d+)", version_text).group(1))
 
@@ -57,7 +65,7 @@ async def databases():
     """
     for binary in ("pg_dump", "pg_restore", "psql"):
         if shutil.which(binary) is None:
-            pytest.skip(f"{binary} not installed")
+            _unavailable(f"{binary} not installed")
     admin = create_async_engine(TEST_DATABASE_URL, isolation_level="AUTOCOMMIT")
     names = (f"archiver_rh{os.getpid()}_src_test", f"archiver_rh{os.getpid()}_dst_test")
     try:
@@ -65,7 +73,7 @@ async def databases():
             server = int((await conn.execute(text("SHOW server_version_num"))).scalar()) // 10000
             dump_version = subprocess.run(["pg_dump", "--version"], capture_output=True, text=True)
             if _major(dump_version.stdout) < server:
-                pytest.skip(f"pg_dump is older than the server ({dump_version.stdout.strip()})")
+                _unavailable(f"pg_dump is older than the server ({dump_version.stdout.strip()})")
             exists = await conn.execute(
                 text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": READER_ROLE}
             )
@@ -73,19 +81,31 @@ async def databases():
                 try:
                     await conn.execute(text(f"CREATE ROLE {READER_ROLE} NOLOGIN"))
                 except Exception as exc:  # no CREATEROLE: nothing to rehearse
-                    pytest.skip(f"{READER_ROLE} absent and cannot be created: {exc}")
+                    _unavailable(f"{READER_ROLE} absent and cannot be created: {exc}")
             for name in names:
                 await conn.execute(text(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
                 try:
                     await conn.execute(text(f"CREATE DATABASE {name}"))
                 except Exception as exc:  # no CREATEDB: nothing to rehearse
-                    pytest.skip(f"cannot create scratch databases: {exc}")
+                    _unavailable(f"cannot create scratch databases: {exc}")
         yield tuple(_with_database(TEST_DATABASE_URL, name) for name in names)
     finally:
         async with admin.connect() as conn:
             for name in names:
                 await conn.execute(text(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
         await admin.dispose()
+
+
+def test_on_ci_a_missing_precondition_fails_rather_than_skips(monkeypatch) -> None:
+    """CI's server is a superuser and its runner has the client tools, so a
+    skip there means the runner image changed: the one real round trip in the
+    suite would go quiet while everything stays green."""
+    monkeypatch.setenv("CI", "true")
+    with pytest.raises(pytest.fail.Exception, match="pg_dump not installed"):
+        _unavailable("pg_dump not installed")
+    monkeypatch.delenv("CI")
+    with pytest.raises(pytest.skip.Exception, match="pg_dump not installed"):
+        _unavailable("pg_dump not installed")
 
 
 SEED = [
