@@ -115,6 +115,10 @@ sudo systemctl enable --now archiver-backup.timer         # only once the run ab
 systemctl list-timers archiver-backup.timer               # next run about 03:17 UTC
 ```
 
+The hand run checks in for real: the unit names the monitor. Its `ok` lands on the
+disabled monitor and pages nobody; post its object and `dumped_at` on status#41 so
+status-agent can enable it. A failed run pages both channels at once, disabled or not.
+
 `243/CREDENTIALS` is the GCS key missing; `FATAL: role "archiver_backup" does not exist`
 is step 3 not run; `permission denied for database` is its `CONNECT`.
 
