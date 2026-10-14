@@ -521,35 +521,41 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
         logger.error("%s; not starting", misplaced)
         return fail(2, misplaced, "misconfigured")
 
+    outcome = _attempt(database=args.database, bucket=bucket, prefix=prefix, host=host)
+    # Outside the deadline: the check-in has the time it left.
+    if isinstance(outcome, str):
+        return fail(1, outcome, "failed")
+    checkin("ok", outcome, environ=environ)
+    return 0
+
+
+def _attempt(*, database: str, bucket: str, prefix: str, host: str) -> dict | str:
+    """One bounded attempt: the run's summary, or why there is none.
+
+    The client is built first, so a missing or unreadable key fails before the
+    dump. Everything here runs under :func:`_deadline`, which may fire between
+    any two steps, and the outer ``except`` takes it wherever it lands.
+    """
     try:
         with tempfile.TemporaryDirectory(prefix="archiver-backup-") as work, _deadline():
             try:
-                # Built first, so a missing or unreadable key fails before the dump.
                 client = storage.Client()
+            except BackupError:
+                raise  # the deadline, not the key
             except Exception as e:  # google.auth raises its own hierarchy
                 error = f"{type(e).__name__}: {e}"
                 logger.error("Backup failed before it could start: %s", error)
-                summary = None
-            else:
-                try:
-                    summary = run_backup(
-                        database=args.database,
-                        bucket=bucket,
-                        prefix=prefix,
-                        client=client,
-                        workdir=Path(work),
-                        host=host,
-                    )
-                except BackupError as e:
-                    error = str(e)
-                    summary = None
-    except BackupError as e:  # the deadline, firing between the steps above
-        error, summary = str(e), None
-    # Outside the deadline: the check-in has the time it left.
-    if summary is None:
-        return fail(1, error, "failed")
-    checkin("ok", summary, environ=environ)
-    return 0
+                return error
+            return run_backup(
+                database=database,
+                bucket=bucket,
+                prefix=prefix,
+                client=client,
+                workdir=Path(work),
+                host=host,
+            )
+    except BackupError as e:
+        return str(e)
 
 
 @contextmanager
