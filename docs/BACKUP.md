@@ -28,8 +28,10 @@ be a follow-up, not part of #233.
 **What a check-in carries**, for the monitor's templates: an `alert` sends `source_host`,
 `outcome` (`failed`) and `error`, with `metadata.fault` `failed` or `misconfigured`; an `ok`
 sends `outcome` (`uploaded` or `unchanged`), `object`, `dumped_at`, `size_bytes`, `sha256`,
-`alembic_head`, `source_host`. **No monitor id**, as until co-status creates it: the run
-warns that a stop will not be noticed and exits on the backup's own result. **Never run it
+`alembic_head`, `source_host`. **An `alert` reports even while the monitor is disabled**
+(status#29): disabling pauses only the dead-man timer. Enabled, `missing` is 26 h with no
+check-in, repeated daily. Without a monitor id the run warns that a stop will not be noticed
+and exits on the backup's own result. **Never run it
 with the real monitor id outside the unit**: a stray `ok` resets the dead-man clock.
 `tests/conftest.py` scrubs `CO_ARCHIVER_BACKUP_MONITOR_ID`, `ARCHIVER_BACKUP_BUCKET` and
 `GOOGLE_APPLICATION_CREDENTIALS`.
@@ -70,8 +72,10 @@ report must read `t` for `login`, `inherit`, `no_password`, `reads_all_data`,
 sudo -u postgres psql -d archiver < scripts/setup-backup-role.sql
 ```
 
-**4. co-status**: a request on CannObserv/status for monitor `co-archiver-backup` in tenant
-`co-archiver`. The tenant's key is already `/etc/archiver/status-checkin.key`: no new key.
+**4. co-status**: monitor `co-archiver-backup`, id `01M4XBGKAD52BN3J69B7AX95GS`, tenant
+`co-archiver`, created disabled 2026-10-14 (CannObserv/status#41) on the same Mailgun +
+Slack pair as `co-archiver-drift`. The tenant's key is `/etc/archiver/status-checkin.key`,
+drift's: no new key.
 
 | Field | Value | Why |
 |---|---|---|
@@ -80,8 +84,24 @@ sudo -u postgres psql -d archiver < scripts/setup-backup-role.sql
 | `renotify_seconds` | `86400` | every failed night still reports; the next `ok` sends "has cleared" (status#28) |
 | `title_template` / `body_template` | `archiver backup {{ outcome }} on {{ source_host }}` / `{{ error }}` | rendered for an `alert` |
 
-Its id goes into the unit as `Environment=CO_ARCHIVER_BACKUP_MONITOR_ID=<ULID>`, by PR and
-deploy, as drift's did. Then the status#17-style alarm rehearsal after the first `ok`.
+The id is the unit's `Environment=CO_ARCHIVER_BACKUP_MONITOR_ID`. **After the first `ok`**,
+post its object name and `dumped_at` on status#41: status-agent checks it against the row,
+enables the monitor, then runs the status#17-style alarm rehearsal (interval to 60/0 for
+*has stopped reporting*, back to 86400/7200, then a hand `systemctl start
+archiver-backup.service` for *has recovered*: a full dump and upload, so on cue).
+
+**The test alert**, once the monitor is enabled: the rehearsal exercises only co-status's
+built-in notices, so this is what proves the alert template through a real dispatch. It
+dumps nothing; both channels report at once, and the next `ok` sends *has cleared*. Exit 1
+if co-status did not take it (a 422 is a template variable missing, and records nothing).
+
+```bash
+sudo systemd-run --quiet --pipe --wait \
+  -p LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key \
+  -p Environment=CO_ARCHIVER_BACKUP_MONITOR_ID=01M4XBGKAD52BN3J69B7AX95GS \
+  -p WorkingDirectory=/srv/archiver/live -p User=archiver_backup \
+  /srv/archiver/live/.venv/bin/python -m src.core.backup --test-alert
+```
 
 ## Turning it on (once)
 

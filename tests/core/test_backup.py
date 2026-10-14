@@ -519,6 +519,48 @@ class TestMain:
         assert backup.BUCKET_ENV in variables["error"]
 
 
+class TestTestAlert:
+    """``--test-alert`` proves the alert template through a real dispatch
+    without a real failure (status#41 Q3, as drift's did on #32). co-status
+    previews the template before recording, and notifier renders with
+    ``StrictUndefined``: a missing variable is a 422 that records nothing."""
+
+    @pytest.fixture
+    def sent(self, monkeypatch) -> list[tuple[str, dict, str | None]]:
+        sent: list[tuple[str, dict, str | None]] = []
+
+        def record(status, variables, *, fault=None, environ):
+            sent.append((status, dict(variables), fault))
+            return True
+
+        self.pg = FakePg()
+        self.built: list[int] = []
+        monkeypatch.setattr(backup, "checkin", record)
+        monkeypatch.setattr(backup.subprocess, "run", self.pg)
+        monkeypatch.setattr(backup.storage, "Client", lambda: self.built.append(1))
+        return sent
+
+    def test_sends_one_alert_carrying_every_template_variable(self, sent) -> None:
+        assert backup.main(["--test-alert"]) == 0
+        ((status, variables, fault),) = sent
+        assert status == "alert"
+        assert fault == "test"
+        assert set(variables) == {"source_host", "outcome", "error"}
+        assert variables["outcome"] == "test"
+        assert "test alert" in variables["error"]
+
+    def test_dumps_nothing_and_needs_no_bucket_or_key(self, sent, monkeypatch) -> None:
+        monkeypatch.delenv(backup.BUCKET_ENV, raising=False)
+        assert backup.main(["--test-alert"]) == 0
+        assert self.pg.calls == []
+        assert self.built == []
+
+    def test_an_alert_status_did_not_take_exits_non_zero(self, monkeypatch) -> None:
+        """Its whole purpose is the dispatch: a 422 or no monitor is a failure."""
+        monkeypatch.setattr(backup, "checkin", lambda *a, **k: False)
+        assert backup.main(["--test-alert"]) == 1
+
+
 class TestMainThroughTheRealCheckin:
     """End to end through :func:`backup.checkin` and ``post_checkin``, Status
     stubbed: the shipped dump decides the exit code, never the check-in."""

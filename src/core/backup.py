@@ -68,7 +68,7 @@ logger = get_logger("src.core.backup")
 
 BUCKET_ENV = "ARCHIVER_BACKUP_BUCKET"
 PREFIX_ENV = "ARCHIVER_BACKUP_PREFIX"
-#: co-archiver-backup, tenant co-archiver; absent until co-status creates it.
+#: co-archiver-backup, tenant co-archiver (CannObserv/status#41); set by the unit.
 MONITOR_ID_ENV = "CO_ARCHIVER_BACKUP_MONITOR_ID"
 #: Where the GCS SDK finds its key. The unit sets it to its credential copy.
 KEY_PATH_ENV = "GOOGLE_APPLICATION_CREDENTIALS"
@@ -364,8 +364,8 @@ def checkin(
     **Never raises.** Whatever goes wrong here is logged and swallowed: a
     shipped dump stays a successful unit, a failed one stays failed, and a
     check-in that never lands is what the dead-man monitor exists to notice.
-    No monitor id is a warning, not an error: the unit runs without one until
-    co-status creates the monitor.
+    No monitor id is a warning, not an error: a hand run without one still
+    backs up.
     """
     monitor_id = environ.get(MONITOR_ID_ENV, "").strip()
     if not monitor_id:
@@ -450,16 +450,32 @@ def run_backup(
 
 def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.environ) -> int:
     """Timer entrypoint. Exit 0 only when the dump is in the bucket; 1 when it
-    is not; 2 for invalid settings. The check-in never changes the code."""
+    is not; 2 for invalid settings. The check-in never changes the code, except
+    under ``--test-alert``, whose only purpose is the check-in."""
     parser = argparse.ArgumentParser(description="Archiver database dump to GCS (archiver#233)")
     parser.add_argument("--database", default=DEFAULT_DATABASE, help="name, or a DSN in tests")
+    parser.add_argument(
+        "--test-alert", action="store_true", help="send one test alert; dump nothing"
+    )
     args = parser.parse_args(argv)
 
     configure_logging()
     host = socket.gethostname()
 
+    if args.test_alert:
+        # Proves the alert template through a real dispatch (status#41 Q3):
+        # co-status previews it before recording, and a missing variable is a
+        # 422 that records nothing. Same three variables as a real failure.
+        variables = {
+            "source_host": host,
+            "outcome": "test",
+            "error": "a test alert from archiver's backup, sent by hand; no dump was taken",
+        }
+        return 0 if checkin("alert", variables, fault="test", environ=environ) else 1
+
     def fail(code: int, error: str, fault: str) -> int:
-        # The variables a monitor's alert template can use; DEPLOYMENT.md lists them.
+        # Every alert carries all three: notifier renders with StrictUndefined,
+        # so a missing one is a 422 that records nothing (status#41 Q3).
         variables = {"source_host": host, "outcome": "failed", "error": error}
         checkin("alert", variables, fault=fault, environ=environ)
         return code

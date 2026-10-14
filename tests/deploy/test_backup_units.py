@@ -29,6 +29,8 @@ RELEASE = "/srv/archiver/live"
 USER = "archiver_backup"
 GCS_KEY = "/etc/archiver/co-archiver-backup.json"
 CHECKIN_KEY = "/etc/archiver/status-checkin.key"
+#: co-archiver-backup, created disabled 2026-10-14 (CannObserv/status#41).
+MONITOR_ID = "01M4XBGKAD52BN3J69B7AX95GS"
 
 
 def _values(path: Path, directive: str) -> list[str]:
@@ -148,16 +150,10 @@ class TestCredentials:
     def test_names_its_bucket(self) -> None:
         assert f"{BUCKET_ENV}=co-gcs-archiver-backup" in _values(SERVICE, "Environment")
 
-    def test_a_monitor_id_when_set_is_a_ulid(self) -> None:
-        """Absent until co-status creates ``co-archiver-backup``: the job logs
-        that a stop will go unnoticed and exits on its own result."""
-        ids = [
-            v.split("=", 1)[1]
-            for v in _values(SERVICE, "Environment")
-            if v.startswith(f"{MONITOR_ID_ENV}=")
-        ]
-        assert len(ids) <= 1
-        assert all(MONITOR_ID_PATTERN.fullmatch(i) for i in ids)
+    def test_names_the_monitor(self) -> None:
+        """co-archiver-backup, tenant co-archiver (CannObserv/status#41)."""
+        assert f"{MONITOR_ID_ENV}={MONITOR_ID}" in _values(SERVICE, "Environment")
+        assert MONITOR_ID_PATTERN.fullmatch(MONITOR_ID)
 
     @pytest.mark.parametrize("key", [GCS_KEY, CHECKIN_KEY], ids=["gcs", "checkin-key"])
     def test_an_installed_key_is_readable_only_by_root(self, key: str) -> None:

@@ -34,9 +34,11 @@ WorkingDirectory=/srv/archiver/live
 # and ProtectHome= hides.
 ExecStart=/srv/archiver/live/.venv/bin/python -m src.core.backup --database archiver
 Environment=ARCHIVER_BACKUP_BUCKET=co-gcs-archiver-backup
-# co-archiver-backup's id goes here, as drift's does, once co-status creates the
-# monitor: Environment=CO_ARCHIVER_BACKUP_MONITOR_ID=<ULID>. Until then the job
-# logs that a stop would go unnoticed and exits on the backup's own result.
+# co-archiver-backup, tenant co-archiver (CannObserv/status#41). Not a secret;
+# the base URL defaults to http://status:9000. Without it the job logs that a
+# stop would go unnoticed and exits on the backup's own result. An alert reports
+# even while the monitor is disabled; only the dead-man timer waits for enable.
+Environment=CO_ARCHIVER_BACKUP_MONITOR_ID=01M4XBGKAD52BN3J69B7AX95GS
 
 # The two keys, as credentials rather than environment: systemd reads each
 # root-only file and hands the run a private copy under $CREDENTIALS_DIRECTORY,
