@@ -78,5 +78,6 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 
 # The database was about 9 MB on 2026-10-13. An hour is generous for the dump
 # and the upload, and short enough that a wedged run is a failed unit, not a
-# hang. No Restart=: the next night is the retry, and a failure is an alert.
+# hang. The job's own deadline (RUN_DEADLINE_SECONDS, 3300 s) fires first, so a
+# wedged run still sends its alert. No Restart=: the next night is the retry.
 TimeoutStartSec=3600

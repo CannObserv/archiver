@@ -12,7 +12,9 @@ respx, and a stray ``ok`` would reset the dead-man clock (status#32).
 
 import json
 import logging
+import signal
 import subprocess
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -580,6 +582,51 @@ class TestTestAlert:
         """Its whole purpose is the dispatch: a 422 or no monitor is a failure."""
         monkeypatch.setattr(backup, "checkin", lambda *a, **k: False)
         assert backup.main(["--test-alert"]) == 1
+
+
+class TestDeadline:
+    """One wall-clock bound on the whole run, under the unit's own: the per-step
+    timeouts add up past it, and the GCS SDK retries inside them."""
+
+    def test_a_run_past_its_deadline_alerts_and_exits_1(self, monkeypatch, client) -> None:
+        sent: list[tuple[str, dict, str | None]] = []
+
+        def wedged(argv, **kwargs):
+            if argv[0] == "pg_dump":
+                time.sleep(5)
+            return FakePg()(argv, **kwargs)
+
+        monkeypatch.setattr(backup, "RUN_DEADLINE_SECONDS", 1)
+        monkeypatch.setattr(backup.storage, "Client", lambda: client)
+        monkeypatch.setattr(backup.subprocess, "run", wedged)
+        monkeypatch.setattr(
+            backup,
+            "checkin",
+            lambda status, variables, *, fault=None, environ: sent.append(
+                (status, variables, fault)
+            ),
+        )
+        monkeypatch.setenv(backup.BUCKET_ENV, BUCKET)
+        started = time.monotonic()
+        assert backup.main([]) == 1
+        assert time.monotonic() - started < 4
+        ((status, variables, fault),) = sent
+        assert status == "alert"
+        assert fault == "failed"
+        assert "deadline" in variables["error"]
+
+    def test_the_alarm_is_cleared_after_the_run(self, wired_ok) -> None:
+        assert backup.main([]) == 0
+        assert signal.alarm(0) == 0
+        assert signal.getsignal(signal.SIGALRM) is signal.SIG_DFL
+
+
+@pytest.fixture
+def wired_ok(monkeypatch, client):
+    monkeypatch.setattr(backup.storage, "Client", lambda: client)
+    monkeypatch.setattr(backup.subprocess, "run", FakePg())
+    monkeypatch.setattr(backup, "checkin", lambda *a, **k: True)
+    monkeypatch.setenv(backup.BUCKET_ENV, BUCKET)
 
 
 class TestMainThroughTheRealCheckin:

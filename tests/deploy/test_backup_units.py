@@ -16,8 +16,15 @@ from pathlib import Path
 
 import pytest
 
-from src.core.backup import BUCKET_ENV, GCS_CREDENTIAL, KEY_PATH_ENV, MONITOR_ID_ENV
+from src.core.backup import (
+    BUCKET_ENV,
+    GCS_CREDENTIAL,
+    KEY_PATH_ENV,
+    MONITOR_ID_ENV,
+    RUN_DEADLINE_SECONDS,
+)
 from src.core.status_checkin import CREDENTIAL_NAME, MONITOR_ID_PATTERN
+from src.core.status_checkin import TIMEOUT_SECONDS as CHECKIN_TIMEOUT_SECONDS
 from tests.deploy.live_release import drift_message, installed_and_expected
 
 REPO = Path(__file__).resolve().parents[2]
@@ -119,6 +126,12 @@ class TestSandbox:
     def test_a_wedged_run_is_a_failed_unit_within_the_night(self) -> None:
         (value,) = _values(SERVICE, "TimeoutStartSec")
         assert 600 <= int(value) <= 3600
+
+    def test_the_run_deadline_leaves_room_for_the_alert(self) -> None:
+        """Killed by systemd, a run sends nothing, and a hang reads as silence
+        for up to 26 h. The job's own deadline fires first, so it alerts."""
+        (value,) = _values(SERVICE, "TimeoutStartSec")
+        assert RUN_DEADLINE_SECONDS + CHECKIN_TIMEOUT_SECONDS + 60 <= int(value)
 
     def test_has_no_retry_loop(self) -> None:
         """The next night is the retry; a failure is an ``alert`` check-in."""

@@ -40,11 +40,13 @@ import argparse
 import hashlib
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -94,6 +96,11 @@ UPLOAD_TIMEOUT_SECONDS = 600.0
 LIST_TIMEOUT_SECONDS = 30.0
 #: How long the dump waits for a table lock before it gives up.
 LOCK_WAIT_TIMEOUT = "30s"
+#: One wall-clock bound on the whole run, under the unit's TimeoutStartSec=3600.
+#: The per-step bounds above add up past it, and the GCS SDK retries inside
+#: them; killed by systemd, a run sends nothing and a hang reads as silence
+#: until the monitor goes missing. Firing first, this leaves the alert 300 s.
+RUN_DEADLINE_SECONDS = 3300
 
 _HEADER_RE = re.compile(r"^;\s+(Dumped from database version|Dumped by pg_dump version): (.+)$")
 _ENTRIES_RE = re.compile(r"^;\s+TOC Entries: (\d+)$")
@@ -514,27 +521,53 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] = os.envir
         logger.error("%s; not starting", misplaced)
         return fail(2, misplaced, "misconfigured")
 
-    with tempfile.TemporaryDirectory(prefix="archiver-backup-") as work:
-        try:
-            # Built first, so a missing or unreadable key fails before the dump.
-            client = storage.Client()
-        except Exception as e:  # google.auth raises its own hierarchy
-            error = f"{type(e).__name__}: {e}"
-            logger.error("Backup failed before it could start: %s", error)
-            return fail(1, error, "failed")
-        try:
-            summary = run_backup(
-                database=args.database,
-                bucket=bucket,
-                prefix=prefix,
-                client=client,
-                workdir=Path(work),
-                host=host,
-            )
-        except BackupError as e:
-            return fail(1, str(e), "failed")
+    try:
+        with tempfile.TemporaryDirectory(prefix="archiver-backup-") as work, _deadline():
+            try:
+                # Built first, so a missing or unreadable key fails before the dump.
+                client = storage.Client()
+            except Exception as e:  # google.auth raises its own hierarchy
+                error = f"{type(e).__name__}: {e}"
+                logger.error("Backup failed before it could start: %s", error)
+                summary = None
+            else:
+                try:
+                    summary = run_backup(
+                        database=args.database,
+                        bucket=bucket,
+                        prefix=prefix,
+                        client=client,
+                        workdir=Path(work),
+                        host=host,
+                    )
+                except BackupError as e:
+                    error = str(e)
+                    summary = None
+    except BackupError as e:  # the deadline, firing between the steps above
+        error, summary = str(e), None
+    # Outside the deadline: the check-in has the time it left.
+    if summary is None:
+        return fail(1, error, "failed")
     checkin("ok", summary, environ=environ)
     return 0
+
+
+@contextmanager
+def _deadline() -> Iterator[None]:
+    """Raise ``BackupError`` in the main thread once ``RUN_DEADLINE_SECONDS``
+    pass. ``subprocess.run`` kills its child on the way out; the handler and
+    the alarm are restored on exit, so the check-in after it is unbounded by it."""
+
+    def expired(signum: int, frame: object) -> None:
+        raise BackupError(f"the run passed its {RUN_DEADLINE_SECONDS} s deadline")
+
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.alarm(RUN_DEADLINE_SECONDS)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 if __name__ == "__main__":
