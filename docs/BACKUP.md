@@ -175,10 +175,12 @@ not the roles, nor the database's `CONNECT` grants, so on a fresh cluster first:
 `archiver` with the password `/etc/archiver/.env` already holds
 ([plans/2026-10-10-339-service-user-cutover.md](plans/2026-10-10-339-service-user-cutover.md)),
 role `exedev` ([plans/2026-10-11-348-prod-read-access.md](plans/2026-10-11-348-prod-read-access.md)),
-then:
+then, with the service **and the timers that touch the database** stopped: the follower
+writes to `archiver`, and a 03:17 backup of an empty database would alert and ship nothing.
 
 ```bash
-sudo systemctl stop archiver.service
+TIMERS='archiver-pm-org-refresh.timer archiver-bus-health.timer archiver-backup.timer'
+sudo systemctl stop archiver.service $TIMERS
 sudo -u postgres createdb -O archiver archiver
 sudo -u postgres psql -qv ON_ERROR_STOP=1 -d archiver \
   -c 'REVOKE CONNECT, TEMPORARY ON DATABASE archiver FROM PUBLIC' \
@@ -188,6 +190,7 @@ cd /home/exedev/archiver && uv run python -m src.core.reader_grants --sql --data
   sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d archiver -c 'SET ROLE archiver' -f -
 sudo -u postgres psql -d archiver < scripts/setup-backup-role.sql
 sudo systemctl start archiver.service && curl -s localhost:8000/health
+sudo systemctl start $TIMERS         # after the checks below pass
 ```
 
 Then check `alembic_version` against the dump's `alembic_head` (`--list` shows it) and the
