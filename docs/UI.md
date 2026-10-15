@@ -24,6 +24,8 @@ The other parts of this reference, under the same living-doc rule:
 > dashboard route, or a new Alpine.js component must update the doc it touches
 > in the same commit - usually PAGES.md or COMPONENTS.md, and this file when it
 > changes a shared pattern or convention.
+> An HTMX pattern's doc is [HTMX.md](HTMX.md); a document-level script's is
+> this file's § Document-level scripts.
 
 ---
 

@@ -9,6 +9,8 @@ the index into them; `docs/STYLE.md` carries the CSS classes they toggle.
 
 > **AGENTS.md enforcement:** update this file in the same commit as any change
 > to a JS module under `src/dashboard/static/`.
+> The three document-level scripts (`flash.js`, `dark-mode.js`, `htmx-errors.js`)
+> are catalogued in [UI.md](UI.md) instead, so a change to one updates that file.
 
 ---
 

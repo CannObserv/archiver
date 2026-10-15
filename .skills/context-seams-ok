@@ -350,3 +350,7 @@ docs/UI.md :: - [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), [ORG_ROW.md](ORG_ROW
 # The two pointers fixed above, now naming HTMX.md beside the moved title.
 docs/PAGES.md :: gate; the HTMX swap patterns (flash messages, `hx-target-422`) are [HTMX.md](HTMX.md);
 docs/SCREENS.md :: success toast (see [HTMX.md](HTMX.md) § **Flash messages**). Keep a `method`/`action` fallback on the
+# CR 13 and CR 15 added these lines; each names the moved content's new home.
+docs/COMPONENTS.md :: > The three document-level scripts (`flash.js`, `dark-mode.js`, `htmx-errors.js`)
+docs/COMPONENTS.md :: > are catalogued in [UI.md](UI.md) instead, so a change to one updates that file.
+docs/ARCHITECTURE.md :: HTMX.md + REP_SPEC_PAGES.md +
