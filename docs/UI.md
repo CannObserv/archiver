@@ -17,7 +17,8 @@ The other parts of this reference, under the same living-doc rule:
 - [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), [ORG_ROW.md](ORG_ROW.md),
   [REGISTER.md](REGISTER.md), [HEALTH_ROW.md](HEALTH_ROW.md) - one screen's
   internals each: the InfoItem hub and its Organization row, the register
-  wizard, the home screen's health row.
+  wizard, the home screen's health row. The hub's action routes are
+  [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
 > **AGENTS.md enforcement:** a Jinja2 template change, a new or changed
 > dashboard route, or a new Alpine.js component must update the doc it touches

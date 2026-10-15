@@ -203,7 +203,8 @@ applicable doc is a CR blocker.
   ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
 - `docs/INFO_ITEM_DETAIL.md` - required when the change alters the InfoItem hub
   screen itself: its five sections, a partial's swap target, or one of the
-  action-route contracts that moved there in archiver#176. PAGES.md keeps the
+  action-route contracts that moved there in archiver#176 (now
+  `docs/INFO_ITEM_ACTIONS.md`). PAGES.md keeps the
   inventory line for those routes, so a behaviour change updates both.
 - `docs/ORG_ROW.md` - required when the change alters the InfoItem
   Organization row: its notices, the `orgCombobox` keyboard model, or the link
