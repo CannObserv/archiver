@@ -86,8 +86,8 @@ numbers are neither.
 - Bus monitoring is never on `/health` (unauthenticated, DB-free), and broker-side
   monitoring is CannObserv/broker's (#193 D6). Outbox stats (archiver#112) reach the
   dashboard badge and journald; the `archiver-bus-health` timer (#130) re-runs them
-  from outside the publisher, the one surface that survives a down publisher. See
-  [docs/BUS.md](BUS.md).
+  from outside the publisher, the one surface that survives a down publisher
+  (**Outbox observability** below).
 
 **Triaging dead-lettered outbox rows (archiver#191)** - the only way out of
 the terminal state; nothing expires one on its own, because an untriaged

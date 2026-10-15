@@ -153,7 +153,7 @@ there, delete the line, then restart: `sudo sed -i '/^GOOGLE_APPLICATION_CREDENT
 
 `archiver-drift.timer` alerts co-status when live lags `main` in code that runs for over
 8 h (#338); never run it with the real key or monitor id outside its unit, bar the
-DEPLOYMENT.md `--test-alert`.
+`--test-alert` in § Turning it on (once) below.
 
 **A merge is not a deploy.** Since releases, nothing that runs changes until
 `scripts/deploy.sh`, and nothing else reports a merge that was never deployed.

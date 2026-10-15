@@ -2,7 +2,7 @@
 
 This project follows the [agentskills.io](https://agentskills.io) spec.
 
-Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers and the SessionStart hook rules: [docs/SKILLS.md](SKILLS.md).
+Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers and the SessionStart hook rules: the sections below.
 
 ## Directory Layout
 

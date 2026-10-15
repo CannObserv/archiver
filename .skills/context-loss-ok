@@ -58,3 +58,9 @@ docs/BUS.md :: retarget :: - **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** (
 # Two pointers check-seams caught naming UI.md (implicitly) for the HTMX patterns.
 docs/PAGES.md :: retarget :: gate, and HTMX swap patterns (flash messages, `hx-target-422`);
 docs/SCREENS.md :: retarget :: success toast (see **Flash messages**). Keep a `method`/`action` fallback on the
+# CR 14: three demoted AGENTS.md lines pointed at the file they now sit in; each
+# now names the section below it instead.
+AGENTS.md :: retarget :: from outside the publisher, the one surface that survives a down publisher. See
+AGENTS.md :: retarget :: [docs/BUS.md](docs/BUS.md).
+AGENTS.md :: retarget :: DEPLOYMENT.md `--test-alert`.
+AGENTS.md :: retarget :: Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers and the SessionStart hook rules: [docs/SKILLS.md](docs/SKILLS.md).
