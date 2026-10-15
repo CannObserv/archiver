@@ -10,7 +10,8 @@ The other parts of this reference, under the same living-doc rule:
 - [SCREENS.md](SCREENS.md) - the conventions every entity detail
   screen follows: header anatomy, affordances, mutation and pagination rules.
 - [PAGES.md](PAGES.md) - the per-page route inventory: what each screen renders
-  and the routes behind it.
+  and the routes behind it; the RepSpec screens are
+  [REP_SPEC_PAGES.md](REP_SPEC_PAGES.md).
 - [COMPONENTS.md](COMPONENTS.md) - the Alpine.js component catalogue.
 - [STYLE.md](STYLE.md) - design tokens and component classes.
 - [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), [ORG_ROW.md](ORG_ROW.md),
