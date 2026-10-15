@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session, get_redis_client
@@ -171,13 +172,17 @@ async def dashboard_health_registry(
     Such a document publishes cleanly - the announcement path checks only the
     envelope - and cannot be re-saved, so nothing else reports it until an edit
     is refused. Warning "N invalid", linking the list page; success "ok"; danger
-    "error" when the sweep itself fails. ``title`` carries the documents judged.
+    "error" when the database fails the sweep. ``title`` carries the documents judged.
     The sweep reads every document column once per page load: no poll, and a
     corpus of tens of rows.
     """
     try:
         report = await audit_stored_documents(session)
-    except Exception as exc:
+    except (SQLAlchemyError, OSError) as exc:
+        # Not `except Exception`: a document a validator raises on is already a
+        # finding, so anything else reaching here is a bug in the sweep, left to
+        # 500 rather than worn as a database condition (CR 5; the Consumers
+        # badge draws the same line).
         reason = str(exc)
         logger.warning("Registry document sweep failed", extra={"error": reason})
         return _badge("danger", "error", detail=html_escape(reason))

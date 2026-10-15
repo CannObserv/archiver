@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 import pytest
 from markupsafe import escape
+from sqlalchemy.exc import OperationalError
 
 from src.core.models import InfoItem, InfoItemRepSpec, InfoSource, RepSpec
 from src.dashboard.routes import index as index_routes
@@ -78,16 +79,31 @@ async def test_registry_badge_counts_invalid_documents_and_links_the_list(client
 
 
 @pytest.mark.asyncio
-async def test_registry_badge_reports_a_failed_sweep(client, monkeypatch):
+async def test_registry_badge_reports_a_database_failure(client, monkeypatch):
     async def _boom(_db):
-        raise RuntimeError("sweep exploded")
+        raise OperationalError("SELECT", {}, OSError("connection refused"))
 
     monkeypatch.setattr(index_routes, "audit_stored_documents", _boom)
 
     r = await client.get("/dashboard/health/registry", headers=_HEADERS)
 
     assert "badge--danger" in r.text
-    assert "sweep exploded" in r.text
+    assert "connection refused" in r.text
+
+
+@pytest.mark.asyncio
+async def test_registry_badge_leaves_a_sweep_bug_to_500(client, monkeypatch):
+    """CR 5. A document a validator raises on is already a finding, so what
+    reaches the handler is the database or a bug in the sweep - and a bug
+    dressed as "error" would read as a database condition."""
+
+    async def _boom(_db):
+        raise TypeError("sweep bug, not a database state")
+
+    monkeypatch.setattr(index_routes, "audit_stored_documents", _boom)
+
+    with pytest.raises(TypeError):
+        await client.get("/dashboard/health/registry", headers=_HEADERS)
 
 
 @pytest.mark.asyncio

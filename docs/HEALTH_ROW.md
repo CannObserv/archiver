@@ -70,9 +70,10 @@ so a wedged broker reads differently from a refused one (round 2, finding 11).
 against the validator its write path applies. Such a document still publishes - the
 announcement path checks only the envelope - and cannot be re-saved, so this badge is
 the only place it shows before an edit is refused. Warning "N invalid", an `<a>` to
-**`/dashboard/registry-audit`** (PAGES.md); success "ok"; danger "error" when the sweep
-itself raises, with the reason in `title`. A *document* the validator raises on is a
-finding, not a sweep failure. `title` carries `N documents checked`. No Redis, so no
+**`/dashboard/registry-audit`** (PAGES.md); success "ok"; danger "error" on a
+`SQLAlchemyError` or `OSError`, with the reason in `title`. A *document* the validator
+raises on is a finding, not a sweep failure, so anything else reaching the handler is a
+sweep bug and is left to 500 - the Consumers badge's line, for its reason. `title` carries `N documents checked`. No Redis, so no
 no-client branch. Registry health, not bus health: it stays out of
 `archiver-bus-health`, and off the API's `/health` (unauthenticated, DB-free).
 
