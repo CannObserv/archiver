@@ -3,7 +3,7 @@
 **What each dashboard screen renders, and the routes behind it.**
 
 Shared mechanics live in [UI.md](UI.md) - the URL map, the proxy-header auth
-gate, and HTMX swap patterns (flash messages, `hx-target-422`);
+gate; the HTMX swap patterns (flash messages, `hx-target-422`) are [HTMX.md](HTMX.md);
 [SCREENS.md](SCREENS.md) holds the detail-screen conventions this
 file refers to by name. Alpine components are
 catalogued in [COMPONENTS.md](COMPONENTS.md).

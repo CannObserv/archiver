@@ -138,7 +138,7 @@ validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachab
 `lookup` (404), `conflict` (409), `auth` (401/403), `unimplemented` (501/405),
 `server` (5xx).  Always pass `source_exc=e` from inside `except X as e:` blocks.
 
-## Schema tightenings ship with their data (archiver#164)
+## Schema tightenings ship with their data
 
 **Stored documents must satisfy the current schema.** Each authored JSONB
 document - `info_sources.source_specs`, `info_items.watch_spec`,

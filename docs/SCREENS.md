@@ -164,7 +164,7 @@ region in place rather than full-page reloading: extract the region to a
 partial with a stable `id`, post via `hx-post`/`hx-patch` with
 `hx-target="#…" hx-swap="outerHTML"` (+ `hx-confirm` for destructive ones), and
 return the re-rendered partial with `HX-Trigger: {"showFlash": {...}}` for a
-success toast (see **Flash messages**). Keep a `method`/`action` fallback on the
+success toast (see [HTMX.md](HTMX.md) § **Flash messages**). Keep a `method`/`action` fallback on the
 form so it still works as a plain POST→303 without JS (progressive
 enhancement). Emit a focus-move `<script>` in the swap response only (gated on a
 `swapped` flag) so keyboard focus lands on the region heading rather than

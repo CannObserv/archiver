@@ -55,3 +55,6 @@ docs/STYLE.md :: retarget :: - `.flash`, `.flash--success/warning/error/info` - 
 docs/STYLE.md :: retarget :: Moved to [UI.md](UI.md) § **HTMX Patterns** (#182 curation) - the async partial,
 docs/ORG_ROW.md :: retarget :: effective bag (UI.md § *Blocks that share a section*).
 docs/BUS.md :: retarget :: - **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([DEPLOYMENT.md](DEPLOYMENT.md)).
+# Two pointers check-seams caught naming UI.md (implicitly) for the HTMX patterns.
+docs/PAGES.md :: retarget :: gate, and HTMX swap patterns (flash messages, `hx-target-422`);
+docs/SCREENS.md :: retarget :: success toast (see **Flash messages**). Keep a `method`/`action` fallback on the
