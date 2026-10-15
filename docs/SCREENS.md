@@ -170,6 +170,20 @@ enhancement). Emit a focus-move `<script>` in the swap response only (gated on a
 `swapped` flag) so keyboard focus lands on the region heading rather than
 `<body>`.
 
+*No settle on class or style.* `main.js` sets `htmx.config.attributesToSettle =
+[]` (#358). htmx's settle pairs every id'd element of the new content with its
+namesake in the old, then, 20 ms after the swap, puts back the server-rendered
+`class`/`style` and drops any the server did not send. Alpine has initialised
+the new content by then, so settle strips the inline `display:none` an `x-show`
+just set, and Alpine never re-applies it because its state did not change.
+That showed the Source Specification card's editor beside its view after every
+successful Save, and left the Organization row's results box open after a link
+(`ii-org-results`). `hx-swap="… settle:0ms"` only runs the restore sooner. The
+cost is htmx's settle transitions, which no dashboard CSS uses
+(`htmx-settling`/`htmx-added`); an id on an `x-show`/`:class`/`:style` element
+in a swapped partial is safe because of this setting.
+`tests/js/htmx-settle-alpine.test.js` holds it to the real htmx and Alpine.
+
 *One builder per behaviour-bearing partial.* A partial whose missing context key
 changes behaviour rather than omitting text - today the two replication
 assignment sections, whose `poll` drives the self-refresh (#212), the
