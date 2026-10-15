@@ -8,8 +8,7 @@ document is frozen (#83), so the only fix is a clone.
 
 from dataclasses import dataclass
 
-from src.core.source_spec_schema.validator import ValidationError
-from src.core.tools.audit_stored_documents import Finding
+from src.core.tools.audit_stored_documents import Finding, error_text
 
 _LABELS = {
     "source_spec": "Source spec",
@@ -50,15 +49,6 @@ class FindingView:
     remedy: str
 
 
-def _message(error: ValidationError) -> str:
-    """``path: message``, without the bare ``/`` a whole-document error carries."""
-    return (
-        f"{error['path']}: {error['message']}"
-        if error["path"] not in ("", "/")
-        else error["message"]
-    )
-
-
 def finding_view(finding: Finding) -> FindingView:
     """Name ``finding`` for an operator: its kind, its page, its errors, its remedy."""
     return FindingView(
@@ -66,7 +56,7 @@ def finding_view(finding: Finding) -> FindingView:
         href=_PATHS[finding.kind].format(finding.row_id),
         row_id=finding.row_id,
         index=finding.index,
-        messages=[_message(e) for e in finding.errors],
+        messages=[error_text(e) for e in finding.errors],
         remedy=_FROZEN_REMEDY if finding.frozen else _REMEDIES[finding.kind],
     )
 

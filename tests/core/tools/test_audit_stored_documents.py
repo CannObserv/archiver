@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import io
+import json
 import pkgutil
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import JSON
+from sqlalchemy import JSON, text
 from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemRepSpec, InfoSource, RepSpec
@@ -29,9 +31,14 @@ from src.core.tools.audit_stored_documents import (
     KINDS,
     DocumentKind,
     audit_stored_documents,
+    export_sql,
     info_item_findings,
     info_source_findings,
+    judge_exported,
     rep_spec_findings,
+)
+from src.core.tools.audit_stored_documents import (
+    main as cli_main,
 )
 
 _CORE = Path(__file__).resolve().parents[3] / "src" / "core"
@@ -353,3 +360,94 @@ def test_exemptions_are_live_and_reasoned():
         assert reason.strip(), name
     assert set(EXEMPT_VALIDATORS) <= _schema_functions()
     assert set(EXEMPT_COLUMNS) <= _json_columns()
+
+
+# ---------------------------------------------------------------------------
+# The export path: production's documents judged without Python touching it
+# ---------------------------------------------------------------------------
+
+
+async def _seed_one_invalid_of_each_kind(session) -> None:
+    session.add(_org("01KPMORG164EXPORT00000000A"))
+    await session.flush()
+    spec = RepSpec(provider="gcs", name="e164", schema_version=1, document=_gcs_doc(folder_id="x"))
+    item = InfoItem(
+        name="e164",
+        watch_spec={"schema_version": 1, "active": False},
+        rep_fields={"org": {"title": "Shadow"}},
+        pm_org_id="01KPMORG164EXPORT00000000A",
+    )
+    session.add_all(
+        [
+            InfoSource(
+                url="https://example.com/e164", source_specs=[_valid_spec(), _legacy_spec()]
+            ),
+            RepSpec(provider="gcs", name="r164", schema_version=1, document={"provider": 5}),
+            spec,
+            item,
+        ]
+    )
+    await session.flush()
+    session.add(
+        InfoItemRepSpec(
+            info_item_id=item.info_item_id,
+            rep_spec_id=spec.rep_spec_id,
+            activated_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+
+async def _export_lines(session) -> list[str]:
+    """What ``psql -At -c "$(… --sql)"`` prints: one JSON line per document row."""
+    return list((await session.execute(text(export_sql()))).scalars())
+
+
+@pytest.mark.asyncio
+async def test_exported_rows_judge_exactly_as_the_sweep(session):
+    """The export is compiled from each kind's own query, so it cannot drift from the sweep."""
+    await _seed_one_invalid_of_each_kind(session)
+
+    swept = await audit_stored_documents(session)
+    exported = judge_exported(await _export_lines(session))
+
+    assert exported == swept
+    assert {f.kind for f in exported.findings} >= {k.name for k in KINDS}
+    assert any(f.frozen for f in exported.findings)
+
+
+def test_judge_exported_refuses_an_unknown_kind():
+    with pytest.raises(ValueError, match="unknown kind"):
+        judge_exported(['["nope", "01K", {}, false]'])
+
+
+def test_cli_prints_the_export_sql():
+    out = io.StringIO()
+    assert cli_main(["--sql"], stdin=io.StringIO(), stdout=out) == 0
+    assert out.getvalue().strip() == export_sql().strip()
+
+
+@pytest.mark.asyncio
+async def test_cli_exits_1_and_names_each_finding(session):
+    await _seed_one_invalid_of_each_kind(session)
+    lines = await _export_lines(session)
+    out = io.StringIO()
+
+    code = cli_main([], stdin=io.StringIO("\n".join(lines) + "\n\n"), stdout=out)
+
+    assert code == 1
+    assert "'target' was unexpected" in out.getvalue()
+    assert "frozen" in out.getvalue()
+    assert out.getvalue().rstrip().endswith("invalid")
+
+
+def test_cli_exits_0_when_every_document_validates():
+    line = json.dumps(["watch_spec", "01KVALID", {"schema_version": 1}, False])
+    out = io.StringIO()
+    assert cli_main([], stdin=io.StringIO(line + "\n"), stdout=out) == 0
+    assert "1 documents checked, 0 invalid" in out.getvalue()
+
+
+def test_cli_exits_2_on_a_malformed_line():
+    out = io.StringIO()
+    assert cli_main([], stdin=io.StringIO("not json\n"), stdout=out) == 2

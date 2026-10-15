@@ -20,10 +20,14 @@ RepSpecs only drafts may be migrated, because an assigned document is frozen
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import argparse
+import json
+import sys
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from sqlalchemy import Select, false, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -82,6 +86,13 @@ class DocumentKind:
         if self.per_entry and isinstance(document, list) and document:
             return len(document)
         return 1
+
+
+def error_text(error: ValidationError) -> str:
+    """``path: message``, without the bare ``/`` a whole-document error carries."""
+    if error["path"] in ("", "/"):
+        return error["message"]
+    return f"{error['path']}: {error['message']}"
 
 
 # ---------------------------------------------------------------------------
@@ -252,3 +263,95 @@ async def audit_stored_documents(db: AsyncSession) -> AuditReport:
             checked += kind.documents(document)
             findings.extend(kind.judge(str(row_id), document, flag))
     return AuditReport(findings=findings, checked=checked)
+
+
+# ---------------------------------------------------------------------------
+# The export path - production's documents, judged without Python touching it
+# ---------------------------------------------------------------------------
+
+EXIT_OK = 0
+EXIT_INVALID = 1
+EXIT_ERROR = 2
+
+
+def export_sql() -> str:
+    """One statement printing every document row as a JSON line: ``[kind, id, doc, flag]``.
+
+    Compiled from each kind's own ``query``, so the export reads exactly what
+    the sweep reads and cannot drift from it. Ordered like the sweep - kind,
+    then primary key - so ``judge_exported`` returns the same report.
+    """
+    parts = []
+    for ordinal, kind in enumerate(KINDS):
+        inner = kind.query.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+        parts.append(
+            f"SELECT {ordinal} AS k, q.c0 AS rid, "
+            f"json_build_array('{kind.name}', q.c0, q.c1, q.c2)::text AS line "
+            f"FROM ({inner}) AS q(c0, c1, c2)"
+        )
+    union = "\nUNION ALL\n".join(parts)
+    return f"SELECT line FROM (\n{union}\n) AS export ORDER BY k, rid;"
+
+
+def judge_exported(lines: Iterable[str]) -> AuditReport:
+    """Judge ``export_sql``'s output, line by line, as the sweep judges the table.
+
+    Blank lines are skipped. Raises ``ValueError`` on a line that is not a
+    ``[kind, id, document, flag]`` array or names no kind in ``KINDS``.
+    """
+    by_name = {k.name: k for k in KINDS}
+    checked, findings = 0, []
+    for line in lines:
+        if not line.strip():
+            continue
+        name, row_id, document, flag = json.loads(line)
+        kind = by_name.get(name)
+        if kind is None:
+            raise ValueError(f"unknown kind {name!r}")
+        checked += kind.documents(document)
+        findings.extend(kind.judge(str(row_id), document, bool(flag)))
+    return AuditReport(findings=findings, checked=checked)
+
+
+def _finding_line(finding: Finding) -> str:
+    where = f"[{finding.index}]" if finding.index is not None else ""
+    frozen = " (frozen: assigned, clone to fix)" if finding.frozen else ""
+    messages = "; ".join(error_text(e) for e in finding.errors)
+    return f"{finding.kind} {finding.row_id}{where}{frozen}: {messages}"
+
+
+def main(argv: list[str] | None = None, *, stdin=None, stdout=None) -> int:
+    """``--sql`` prints the export statement; otherwise judge an export read from stdin.
+
+    The "0 affected" check a schema tightening records (docs/CONVENTIONS.md),
+    run against production without a production URL in Python::
+
+        psql -d archiver -At -c "$(uv run python -m src.core.tools.audit_stored_documents --sql)" \\
+          | uv run python -m src.core.tools.audit_stored_documents
+
+    Exit 0 when every document validates, 1 when any does not, 2 on input that
+    is not an export.
+    """
+    stdin = sys.stdin if stdin is None else stdin
+    stdout = sys.stdout if stdout is None else stdout
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--sql", action="store_true", help="print the export statement")
+    args = parser.parse_args(argv)
+    if args.sql:
+        print(export_sql(), file=stdout)
+        return EXIT_OK
+    try:
+        report = judge_exported(stdin)
+    except (ValueError, TypeError) as e:
+        print(f"not an export_sql() line: {e}", file=stdout)
+        return EXIT_ERROR
+    for finding in report.findings:
+        print(_finding_line(finding), file=stdout)
+    print(f"{report.checked} documents checked, {len(report.findings)} invalid", file=stdout)
+    return EXIT_INVALID if report.findings else EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -148,10 +148,19 @@ So a PR that **tightens** anything under `src/core/*_schema/` - removes a key,
 narrows a type or enum, adds a required key or a rule - carries one of:
 
 - **a data migration** that rewrites the affected rows to the new shape, or
-- **the sweep's "0 affected"**, recorded in the PR: run
-  `audit_stored_documents` against the new schema on production's shape. Production
-  data never reaches Python, so export it (`psql -At`, CLAUDE.md) and validate
-  locally, as #164's brief did.
+- **the sweep's "0 affected"**, recorded in the PR. Run from the PR's checkout, so
+  production's documents meet the *new* schema; production data never reaches
+  Python, so `psql` exports it and the module judges the export:
+
+  ```bash
+  psql -d archiver -At -c "$(uv run python -m src.core.tools.audit_stored_documents --sql)" \
+    | uv run python -m src.core.tools.audit_stored_documents
+  ```
+
+  It prints each failing document and ends `N documents checked, M invalid`; exit 0
+  is "0 affected". The statement is compiled from the sweep's own queries, so the
+  export cannot read less than the badge does. One autocommit statement, so it
+  holds no transaction open (CLAUDE.md § Reading production).
 
 **RepSpecs differ: an assigned document is frozen (#83).** A migration may rewrite
 drafts. If an *assigned* RepSpec is affected, either the migration is a recorded
