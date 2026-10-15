@@ -156,20 +156,28 @@ def _one(_document: object) -> int:
 
 
 async def _sweep_source_specs(db: AsyncSession) -> tuple[int, list[Finding]]:
-    rows = await db.execute(select(InfoSource.info_source_id, InfoSource.source_specs))
+    rows = await db.execute(
+        select(InfoSource.info_source_id, InfoSource.source_specs).order_by(
+            InfoSource.info_source_id
+        )
+    )
     return _collect(
         rows, _source_specs_findings, lambda s: len(s) if isinstance(s, list) and s else 1
     )
 
 
 async def _sweep_watch_specs(db: AsyncSession) -> tuple[int, list[Finding]]:
-    rows = await db.execute(select(InfoItem.info_item_id, InfoItem.watch_spec))
+    rows = await db.execute(
+        select(InfoItem.info_item_id, InfoItem.watch_spec).order_by(InfoItem.info_item_id)
+    )
     return _collect(rows, _watch_spec_findings, _one)
 
 
 async def _sweep_rep_fields(db: AsyncSession) -> tuple[int, list[Finding]]:
     rows = await db.execute(
-        select(InfoItem.info_item_id, InfoItem.rep_fields, InfoItem.pm_org_id.is_not(None))
+        select(
+            InfoItem.info_item_id, InfoItem.rep_fields, InfoItem.pm_org_id.is_not(None)
+        ).order_by(InfoItem.info_item_id)
     )
     return _collect(rows, lambda i, bag, linked: _rep_fields_findings(i, bag, linked=linked), _one)
 
@@ -177,7 +185,9 @@ async def _sweep_rep_fields(db: AsyncSession) -> tuple[int, list[Finding]]:
 async def _sweep_rep_specs(db: AsyncSession) -> tuple[int, list[Finding]]:
     assigned = select(InfoItemRepSpec.rep_spec_id).distinct().scalar_subquery()
     rows = await db.execute(
-        select(RepSpec.rep_spec_id, RepSpec.document, RepSpec.rep_spec_id.in_(assigned))
+        select(RepSpec.rep_spec_id, RepSpec.document, RepSpec.rep_spec_id.in_(assigned)).order_by(
+            RepSpec.rep_spec_id
+        )
     )
     return _collect(rows, lambda i, doc, frozen: _rep_spec_findings(i, doc, frozen=frozen), _one)
 
@@ -226,7 +236,9 @@ async def audit_stored_documents(db: AsyncSession) -> AuditReport:
     """Judge every stored document of every kind against its current validator.
 
     One full-column read per kind: the corpus is tens of documents, and the
-    dashboard runs this once per home-page load, never on a poll.
+    dashboard runs this once per home-page load, never on a poll. Findings come
+    in ``KINDS`` order and by primary key within a kind, so the list page reads
+    the same on every load.
     """
     checked, findings = 0, []
     for kind in KINDS:

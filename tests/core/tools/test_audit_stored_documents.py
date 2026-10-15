@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import JSON
+from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemRepSpec, InfoSource, RepSpec
 from src.core.models.base import Base
@@ -214,6 +215,35 @@ async def test_a_document_the_validator_raises_on_is_a_finding_not_a_crash(sessi
     [finding] = _mine(report.findings, bad.rep_spec_id)
     assert finding.errors[0]["message"].startswith("validator raised TypeError")
     assert _mine(report.findings, legacy.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_findings_come_in_kind_then_id_order_not_insertion_order(session):
+    """The list page must not reshuffle between loads (CR 4)."""
+    later = InfoSource(
+        info_source_id=ULID.from_str("01KZZZZZZZZZZZZZZZZZZZZ164"),
+        url="https://example.com/o2-164",
+        source_specs=[_legacy_spec()],
+    )
+    earlier = InfoSource(
+        info_source_id=ULID.from_str("01KAAAAAAAAAAAAAAAAAAAA164"),
+        url="https://example.com/o1-164",
+        source_specs=[_legacy_spec()],
+    )
+    item = InfoItem(name="o164", watch_spec={"schema_version": 1, "active": False})
+    session.add(later)
+    await session.flush()
+    session.add_all([item, earlier])
+    await session.flush()
+
+    report = await audit_stored_documents(session)
+
+    mine = _mine(report.findings, later.info_source_id, earlier.info_source_id, item.info_item_id)
+    assert [f.row_id for f in mine] == [
+        str(earlier.info_source_id),
+        str(later.info_source_id),
+        str(item.info_item_id),
+    ]
 
 
 @pytest.mark.asyncio
