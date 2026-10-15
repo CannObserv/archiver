@@ -17,8 +17,9 @@ RepSpec nobody can fix.
 
 Tightening this schema (archiver#164): stored documents are validated on write
 only, so the PR ships a data migration or the stored-document sweep's "0 affected"
-- docs/CONVENTIONS.md § Schema tightenings, where assigned (frozen, #83)
-documents get a carve-out.
+(docs/CONVENTIONS.md § Schema tightenings). An assigned document
+is frozen (#83), so a migration may rewrite drafts only; that section has the
+carve-out.
 """
 
 import json

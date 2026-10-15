@@ -10,7 +10,7 @@ paused item. This module's schema is the only thing that rejects it.
 
 Tightening this schema (archiver#164): stored documents are validated on write
 only, so the PR ships a data migration or the stored-document sweep's "0 affected"
-- docs/CONVENTIONS.md § Schema tightenings.
+(docs/CONVENTIONS.md § Schema tightenings).
 """
 
 import json
