@@ -13,137 +13,23 @@
  * htmx-error-trigger.test.js does for #178, this drives the real library,
  * through a stubbed XHR that stays in flight until a test answers it.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { cwd } from "node:process";
+import { describe, it, expect, afterAll, beforeEach, afterEach } from "vitest";
+import { installHtmx, respond, resetSent, restoreGlobals, sent } from "./support/htmx-harness.js";
 
-let sent = [];
 let toasts = [];
-let realDocument;
 
-// happy-dom's `document` is an HTMLDocument that is not `instanceof Document`,
-// and htmx resolves a plain-selector hx-target - the shipped `#<section-id>` -
-// through getRootNode() behind exactly that check, so every click threw.
-// htmx-error-trigger.test.js never met it: htmx.ajax resolves its target
-// another way.
-beforeAll(function () {
-    realDocument = window.Document;
-    if (!(document instanceof window.Document)) {
-        window.Document = document.constructor;
-    }
-});
-
-afterAll(function () {
-    window.Document = realDocument;
-});
-
-// Just enough XMLHttpRequest for htmx's ajax path. send() records the request
-// and leaves it in flight; abort() fires onabort synchronously, as the real
-// one does, which is what releases htmx's sync lock.
-class PendingXhr {
-    constructor() {
-        this.readyState = 0;
-        this.status = 0;
-        this.response = "";
-        this.responseText = "";
-        this.aborted = false;
-        this._headers = {};
-        this.upload = {
-            addEventListener: function () { return undefined; },
-            removeEventListener: function () { return undefined; }
-        };
-    }
-
-    open(method, url) {
-        this.method = method;
-        this.url = url;
-    }
-
-    setRequestHeader() {
-        return undefined;
-    }
-
-    addEventListener() {
-        return undefined;
-    }
-
-    removeEventListener() {
-        return undefined;
-    }
-
-    overrideMimeType() {
-        return undefined;
-    }
-
-    getAllResponseHeaders() {
-        return Object.keys(this._headers).map(function (k) {
-            return k + ": " + this._headers[k];
-        }, this).join("\r\n");
-    }
-
-    getResponseHeader(name) {
-        var key = Object.keys(this._headers).find(function (k) {
-            return k.toLowerCase() === name.toLowerCase();
-        });
-        return key === undefined ? null : this._headers[key];
-    }
-
-    send() {
-        sent.push(this);
-    }
-
-    abort() {
-        this.aborted = true;
-        if (this.onabort) { this.onabort(); }
-    }
-}
-
-function respond(xhr, body, headers) {
-    xhr.status = 200;
-    xhr._headers = headers || {};
-    xhr.response = body;
-    xhr.responseText = body;
-    xhr.readyState = 4;
-    xhr.onload();
-}
+afterAll(restoreGlobals);
 
 let htmx;
 
 beforeEach(function () {
     document.body.innerHTML = "";
-    sent = [];
+    resetSent();
     toasts = [];
-    window.XMLHttpRequest = PendingXhr;
     // The row actions carry hx-confirm; the operator always says yes here.
     window.confirm = function () { return true; };
     globalThis.confirm = window.confirm;
-    // The same happy-dom gap htmx-error-trigger.test.js fills: htmx 2 touches
-    // XPathEvaluator at load and never on the path under test.
-    if (typeof window.XPathEvaluator === "undefined") {
-        var emptyResult = { iterateNext: function () { return null; } };
-        window.XPathEvaluator = function () {
-            return {
-                createExpression: function () {
-                    return { evaluate: function () { return emptyResult; } };
-                },
-                evaluate: function () { return emptyResult; }
-            };
-        };
-        globalThis.XPathEvaluator = window.XPathEvaluator;
-    }
-    if (!htmx) {
-        var source = readFileSync(
-            cwd() + "/src/dashboard/static/vendor/htmx.min.js",
-            "utf8"
-        );
-        (0, eval)(source);
-        htmx = globalThis.htmx || window.htmx;
-        // htmx attaches its htmx:abort listener - the one hx-sync's abort
-        // goes through - on DOMContentLoaded unless the document is complete.
-        if (document.readyState !== "complete") {
-            document.dispatchEvent(new Event("DOMContentLoaded"));
-        }
-    }
+    htmx = installHtmx();
     document.addEventListener("showFlash", onFlash);
 });
 
@@ -317,4 +203,3 @@ describe("a self-polling section's sync rules, on the vendored htmx", function (
         expect(requests()).toEqual(["GET /reread", "POST /act"]);
     });
 });
-

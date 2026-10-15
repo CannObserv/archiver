@@ -17,76 +17,7 @@
  * htmx-poll-sync.test.js does for #220.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { cwd } from "node:process";
-
-let sent = [];
-let realDocument;
-
-class PendingXhr {
-    constructor() {
-        this.readyState = 0;
-        this.status = 0;
-        this.response = "";
-        this.responseText = "";
-        this._headers = {};
-        this.upload = {
-            addEventListener: function () { return undefined; },
-            removeEventListener: function () { return undefined; }
-        };
-    }
-
-    open(method, url) {
-        this.method = method;
-        this.url = url;
-    }
-
-    setRequestHeader() {
-        return undefined;
-    }
-
-    addEventListener() {
-        return undefined;
-    }
-
-    removeEventListener() {
-        return undefined;
-    }
-
-    overrideMimeType() {
-        return undefined;
-    }
-
-    getAllResponseHeaders() {
-        return Object.keys(this._headers).map(function (k) {
-            return k + ": " + this._headers[k];
-        }, this).join("\r\n");
-    }
-
-    getResponseHeader(name) {
-        var key = Object.keys(this._headers).find(function (k) {
-            return k.toLowerCase() === name.toLowerCase();
-        });
-        return key === undefined ? null : this._headers[key];
-    }
-
-    send() {
-        sent.push(this);
-    }
-
-    abort() {
-        if (this.onabort) { this.onabort(); }
-    }
-}
-
-function respond(xhr, status, body, headers) {
-    xhr.status = status;
-    xhr._headers = headers || {};
-    xhr.response = body;
-    xhr.responseText = body;
-    xhr.readyState = 4;
-    xhr.onload();
-}
+import { installHtmx, respond, resetSent, restoreGlobals, sent } from "./support/htmx-harness.js";
 
 function wait(ms) {
     return new Promise(function (resolve) { setTimeout(resolve, ms); });
@@ -96,41 +27,16 @@ function wait(ms) {
 var SETTLED = 100;
 
 beforeAll(async function () {
-    // The happy-dom gaps htmx-poll-sync.test.js documents: `#id` targets
-    // resolve through an `instanceof Document` check, and htmx touches
-    // XPathEvaluator at load.
-    realDocument = window.Document;
-    if (!(document instanceof window.Document)) {
-        window.Document = document.constructor;
-    }
-    if (typeof window.XPathEvaluator === "undefined") {
-        var emptyResult = { iterateNext: function () { return null; } };
-        window.XPathEvaluator = function () {
-            return {
-                createExpression: function () {
-                    return { evaluate: function () { return emptyResult; } };
-                },
-                evaluate: function () { return emptyResult; }
-            };
-        };
-        globalThis.XPathEvaluator = window.XPathEvaluator;
-    }
-    window.XMLHttpRequest = PendingXhr;
-    (0, eval)(readFileSync(cwd() + "/src/dashboard/static/vendor/htmx.min.js", "utf8"));
-    if (document.readyState !== "complete") {
-        document.dispatchEvent(new Event("DOMContentLoaded"));
-    }
+    installHtmx();
     // main.js configures htmx at import, so htmx has to be there first.
     await import("../../src/dashboard/static/main.js");
     await import("../../src/dashboard/static/vendor/alpine.min.js");
 });
 
-afterAll(function () {
-    window.Document = realDocument;
-});
+afterAll(restoreGlobals);
 
 async function mount(html) {
-    sent = [];
+    resetSent();
     document.body.innerHTML = html;
     window.htmx.process(document.body);
     await wait(SETTLED);
@@ -177,7 +83,7 @@ async function editAndSave() {
 describe("the Source Specification card after an htmx save", function () {
     it("returns to view mode: the editor stays hidden after settle", async function () {
         await editAndSave();
-        respond(sent[0], 200, specsCard(null));
+        respond(sent[0], specsCard(null));
         await wait(SETTLED);
 
         expect(hidden("view")).toBe(false);
@@ -188,7 +94,7 @@ describe("the Source Specification card after an htmx save", function () {
 
     it("stays in edit mode on an error, with the submitted text and the error", async function () {
         await editAndSave();
-        respond(sent[0], 200, specsCard("Invalid JSON"));
+        respond(sent[0], specsCard("Invalid JSON"));
         await wait(SETTLED);
 
         expect(hidden("source-specs-form")).toBe(false);
@@ -226,7 +132,7 @@ describe("the Organization row after a link re-targets it", function () {
         el("org-edit").click();
         await wait(SETTLED);
         window.htmx.trigger(document.getElementById("ii-org-form"), "submit");
-        respond(sent[0], 200, ORG_ROW, { "HX-Retarget": "#ii-org", "HX-Reswap": "outerHTML" });
+        respond(sent[0], ORG_ROW, { "HX-Retarget": "#ii-org", "HX-Reswap": "outerHTML" });
         await wait(SETTLED);
 
         // The row is back in view mode; open it again without touching the
