@@ -195,7 +195,8 @@ applicable doc is a CR blocker.
   per-page inventory: what the screen renders, what the route returns.
 - `docs/COMPONENTS.md` - required for any change to a JS module under
   `src/dashboard/static/`. Alpine components are catalogued there; a module
-  that is not an Alpine component is documented where its behaviour lives
+  that is not an Alpine component (catalogued in `docs/UI.md` § Document-level
+  scripts) is documented where its behaviour lives
   instead, and a change to it updates that doc - `flash.js` in `docs/HTMX.md`
   ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
 - `docs/INFO_ITEM_DETAIL.md` - required when the change alters the InfoItem hub

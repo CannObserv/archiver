@@ -121,3 +121,56 @@ grid and authored rows, the row-level view/edit pattern, the copy /
 external-open / replication-state affordances, the double-guard and flash
 rules for irreversible actions, reported state from another service, HTMX
 mutation and focus rules, related-collection tables, and pagination clamping.
+
+## Document-level scripts (not Alpine)
+
+Each is an IIFE that attaches listeners to `document` on load, surviving HTMX
+body swaps because nothing it binds to is inside the swapped tree. Dropping any
+of them from the `base.html` script list is silent - the behaviour simply stops
+(archiver#62).
+
+### `flash.js`
+
+Toast/flash system. Listens for the `showFlash` `CustomEvent` - dispatched by
+htmx from an `HX-Trigger` response header, or directly by other scripts - and
+injects `.flash--*` toasts into the `#flash-region` overlay, announcing every
+message through the two visually-hidden live regions. All three regions are
+**recreated on demand** when absent: a boosted swap replaces everything inside
+`<body>`, and the dashboard error page does exactly that, so without it the
+first toast after such a swap was dropped in silence (archiver#178). Levels, dismissal rules,
+the visible cap and its two overflow affordances: [HTMX.md](HTMX.md) § Flash
+messages.
+
+### `dark-mode.js`
+
+Colour-scheme toggle (`[data-theme-toggle]`), persisting the choice in
+`localStorage` under `co-color-scheme`. `base.html` re-reads that key in a
+blocking inline script before the stylesheet paints, to prevent FOUC.
+
+### `htmx-errors.js`
+
+Makes failed htmx requests visible (archiver#178). htmx refuses to swap a
+non-2xx response, so without this a failure is indistinguishable from a click
+that never happened.
+
+**Listens for:**
+- `htmx:beforeSwap` - on a failed response, either swaps the server's error page
+  in (boosted/full-page request: sets `detail.shouldSwap = true` and
+  `detail.isError = false`) or, for a partial, leaves the swap refused and
+  raises an `error` toast through `flash.js`.
+- `htmx:sendError`, `htmx:timeout` - no response arrived, so
+  `htmx:responseError` never fires; both toast.
+
+**Reads:** the response's `HX-Trigger` header. A dashboard error carries
+`showFlash`, which htmx raises before `beforeSwap` runs, so the listener stays
+silent rather than double-reporting; a failure carrying no flash gets a
+status-code toast rather than silence.
+
+**Defers by one task before toasting.** htmx runs extension `onEvent` hooks
+after DOM listeners, so at listener time the `response-targets` extension has
+not yet decided whether an `hx-target-422` claims this failure. The deferred
+check reads `detail.shouldSwap`: set means the error is already going somewhere
+visible, and toasting would report it twice.
+
+The server half - which paths render HTML, and why `_error.html` does not extend
+`base.html` - is in [HTMX.md](HTMX.md) § Failures are surfaced, not swallowed.

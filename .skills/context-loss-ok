@@ -15,3 +15,10 @@ docs/UI.md :: retarget :: **The dashboard's shared mechanics: URL map, proxy-hea
 docs/UI.md :: retarget :: patterns.**
 docs/UI.md :: retarget :: the pagination clamp below cannot close). Each wrapper *delegates* the
 docs/UI.md :: retarget :: § **Failures are surfaced, not swallowed** above.
+# COMPONENTS.md: HTMX Patterns -> HTMX.md and Document-level scripts -> UI.md moved
+# the targets these pointers named.
+docs/COMPONENTS.md :: retarget :: sit alongside are in [UI.md](UI.md). The one-line summary table below is
+docs/COMPONENTS.md :: retarget :: and are catalogued at the foot of this file instead: `flash.js`,
+docs/COMPONENTS.md :: retarget :: the visible cap and its two overflow affordances: [UI.md](UI.md) § Flash
+docs/COMPONENTS.md :: retarget :: `base.html` - is in [UI.md](UI.md) § Failures are surfaced, not swallowed.
+docs/COMPONENTS.md :: retarget :: Uses the **JSON data island** pattern (`sortableChips` above; the reason it exists is `docs/UI.md` § **JSON data island pattern**) - the title is placed in a `<script type="application/json">` child rather than an HTML attribute, avoiding double-quote escaping hazards from `tojson`.
