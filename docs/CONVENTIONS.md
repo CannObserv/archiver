@@ -134,6 +134,43 @@ validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachab
 `lookup` (404), `conflict` (409), `auth` (401/403), `unimplemented` (501/405),
 `server` (5xx).  Always pass `source_exc=e` from inside `except X as e:` blocks.
 
+## Schema tightenings ship with their data (archiver#164)
+
+**Stored documents must satisfy the current schema.** Each authored JSONB
+document - `info_sources.source_specs`, `info_items.watch_spec`,
+`info_items.rep_fields`, `rep_specs.document` - is validated on write and on
+no read path. A tightening that skips the stored rows leaves documents that
+publish cleanly and cannot be re-saved: every edit path re-validates the whole
+document, so the operator has to find and delete a key they never added. The
+WSLCB source carrying #48's dropped `target` key sat that way for months.
+
+So a PR that **tightens** anything under `src/core/*_schema/` - removes a key,
+narrows a type or enum, adds a required key or a rule - carries one of:
+
+- **a data migration** that rewrites the affected rows to the new shape, or
+- **the sweep's "0 affected"**, recorded in the PR: run
+  `audit_stored_documents` against the new schema on production's shape. Production
+  data never reaches Python, so export it (`psql -At`, CLAUDE.md) and validate
+  locally, as #164's brief did.
+
+**RepSpecs differ: an assigned document is frozen (#83).** A migration may rewrite
+drafts. If an *assigned* RepSpec is affected, either the migration is a recorded
+#83 exception that moves no destination (the precedent is `70f32f641751`'s alias
+rename), or the tightening waits for #95's clone-and-migrate. Until then an
+affected frozen spec stops gaining assignments (#334) and shows as "clone it" on
+the Registry badge's list.
+
+**Loosening needs neither.** An additive key or a wider type strands nothing.
+
+**The guard keeps the sweep complete.**
+`tests/core/tools/test_audit_stored_documents.py` fails when a public function
+in a `src/core/*_schema/` package, or a JSON column on any model, is neither
+swept by a kind in `audit_stored_documents.KINDS` nor exempted there with a
+reason. A new schema or document column cannot slip past the sweep silently.
+What the guard cannot see is a tightening of an *existing* validator; that is
+this rule's job, and the Registry badge's after deploy
+([HEALTH_ROW.md](HEALTH_ROW.md)).
+
 ## Dashboard living docs - which doc a change requires
 
 **Dashboard living docs:** each doc is scoped to what it actually documents -
