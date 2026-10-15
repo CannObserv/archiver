@@ -345,10 +345,13 @@ deploy/                        README.md (install instructions) + systemd units,
 docs/                          Live reference docs — ARCHITECTURE.md, API.md,
                                BUS.md, BUS_CONSUMERS.md, SCHEMA.md, SCHEMA_BUS.md,
                                DEPLOYMENT.md, BACKUP.md, CONVENTIONS.md, SKILLS.md,
+                               ENVIRONMENT.md,
                                SOCRATICODE.md, plus the
                                dashboard living docs
                                UI.md + SCREENS.md + PAGES.md +
+                               HTMX.md + REP_SPEC_PAGES.md +
                                INFO_ITEM_DETAIL.md + ORG_ROW.md + REGISTER.md +
+                               INFO_ITEM_ACTIONS.md +
                                HEALTH_ROW.md +
                                COMPONENTS.md + STYLE.md
                                (see "Dashboard living docs").
