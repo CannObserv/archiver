@@ -5,13 +5,13 @@
 # file never counted exactly or since drifted far from the size recorded here.
 13041 5840 AGENTS.md
 17041 7037 docs/API.md
-31192 8912 docs/ARCHITECTURE.md
+31354 8973 docs/ARCHITECTURE.md
 13588 5761 docs/BACKUP.md
-23902 9278 docs/BUS.md
+23908 9271 docs/BUS.md
 23288 8832 docs/BUS_CONSUMERS.md
-22911 9068 docs/COMPONENTS.md
+23075 9139 docs/COMPONENTS.md
 17670 6630 docs/CONVENTIONS.md
-23386 9743 docs/DEPLOYMENT.md
+23405 9743 docs/DEPLOYMENT.md
 22072 9085 docs/ENVIRONMENT.md
 5953 2310 docs/HEALTH_ROW.md
 22054 8050 docs/HTMX.md
@@ -24,8 +24,8 @@
 25907 9538 docs/SCHEMA.md
 6664 2435 docs/SCHEMA_BUS.md
 21571 7762 docs/SCREENS.md
-16784 6635 docs/SKILLS.md
+16775 6620 docs/SKILLS.md
 18266 7070 docs/SOCRATICODE.md
 21202 8374 docs/STYLE.md
-9093 3466 docs/UI.md
+9210 3516 docs/UI.md
 14174 5728 docs/reference/tailscale.md
