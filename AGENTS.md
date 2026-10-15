@@ -214,10 +214,6 @@ enforce the same regex:
 ^(alembic/versions/|src/api/routes/|src/api/schemas/|clients/python/)
 ```
 
-**Schema tightenings ship with their data:** a PR that tightens `src/core/*_schema/`
-carries a data migration or the stored-document sweep's "0 affected"; assigned RepSpecs
-are frozen (#83). Rule: [docs/CONVENTIONS.md](docs/CONVENTIONS.md) (archiver#164).
-
 **Dashboard living docs:** a dashboard change updates the doc it touches in the
 same commit; failing to is a CR blocker. Which doc each change requires:
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md).

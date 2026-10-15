@@ -14,6 +14,11 @@ because the *renderer* enforces the same rules from the same parser
 (archiver#168) — a document that validates has to be one that renders, and
 ``document`` freezes on assignment (#83), so the two drifting apart produces a
 RepSpec nobody can fix.
+
+Tightening this schema (archiver#164): stored documents are validated on write
+only, so the PR ships a data migration or the stored-document sweep's "0 affected"
+- docs/CONVENTIONS.md § Schema tightenings, where assigned (frozen, #83)
+documents get a carve-out.
 """
 
 import json

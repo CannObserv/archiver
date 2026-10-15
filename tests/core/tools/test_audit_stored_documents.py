@@ -451,3 +451,10 @@ def test_cli_exits_0_when_every_document_validates():
 def test_cli_exits_2_on_a_malformed_line():
     out = io.StringIO()
     assert cli_main([], stdin=io.StringIO("not json\n"), stdout=out) == 2
+
+
+@pytest.mark.parametrize("pkg_dir", sorted(_CORE.glob("*_schema")), ids=lambda p: p.name)
+def test_every_schema_validator_points_at_the_tightening_rule(pkg_dir):
+    """Whoever tightens a schema edits this module; the rule has to be where they look (CR 3)."""
+    doc = importlib.import_module(f"src.core.{pkg_dir.name}.validator").__doc__ or ""
+    assert "Schema tightenings" in doc and "archiver#164" in doc

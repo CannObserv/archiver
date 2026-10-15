@@ -175,7 +175,9 @@ the Registry badge's list.
 `tests/core/tools/test_audit_stored_documents.py` fails when a public function
 in a `src/core/*_schema/` package, or a JSON column on any model, is neither
 swept by a kind in `audit_stored_documents.KINDS` nor exempted there with a
-reason. A new schema or document column cannot slip past the sweep silently.
+reason. A new schema or document column cannot slip past the sweep silently. The
+same module checks that every `*_schema/validator.py` docstring points here, so
+the rule sits in the file a tightening edits rather than in AGENTS.md.
 What the guard cannot see is a tightening of an *existing* validator; that is
 this rule's job, and the Registry badge's after deploy
 ([HEALTH_ROW.md](HEALTH_ROW.md)).

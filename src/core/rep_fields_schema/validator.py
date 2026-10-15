@@ -1,4 +1,9 @@
-"""rep_fields validation — schema-shape check + required-field-presence check."""
+"""rep_fields validation — schema-shape check + required-field-presence check.
+
+Tightening this schema (archiver#164): stored documents are validated on write
+only, so the PR ships a data migration or the stored-document sweep's "0 affected"
+- docs/CONVENTIONS.md § Schema tightenings.
+"""
 
 import json
 from functools import lru_cache
