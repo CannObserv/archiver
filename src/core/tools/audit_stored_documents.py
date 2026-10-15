@@ -20,10 +20,10 @@ RepSpecs only drafts may be migrated, because an assigned document is frozen
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import Select, false, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -61,12 +61,27 @@ class AuditReport:
 
 @dataclass(frozen=True, slots=True)
 class DocumentKind:
-    """One authored document column, the validators its write paths apply, and its sweep."""
+    """One authored document column, the validators its write paths apply, and how to sweep it.
+
+    ``query`` selects ``(row_id, document, flag)`` per row, ordered by primary
+    key; ``judge`` turns one such row into findings. ``flag`` is the row context
+    a kind needs - linked for ``rep_fields``, frozen for ``rep_spec`` - and
+    ``false`` otherwise. ``per_entry`` counts each entry of a list column as a
+    document of its own (``source_specs``).
+    """
 
     name: str
     column: InstrumentedAttribute
     validators: tuple[Callable[..., object], ...]
-    sweep: Callable[[AsyncSession], Awaitable[tuple[int, list[Finding]]]]
+    query: Select
+    judge: Callable[[str, object, bool], list[Finding]]
+    per_entry: bool = False
+
+    def documents(self, document: object) -> int:
+        """How many documents ``document`` counts as in the sweep's total."""
+        if self.per_entry and isinstance(document, list) and document:
+            return len(document)
+        return 1
 
 
 # ---------------------------------------------------------------------------
@@ -137,73 +152,64 @@ def rep_spec_findings(spec: RepSpec, *, frozen: bool) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
-# The sweep - one query per kind, whole column
+# The registry - each kind's query and judge
 # ---------------------------------------------------------------------------
 
 
-def _collect(
-    rows: Iterable[tuple], judge: Callable[..., list[Finding]], size: Callable[[object], int]
-) -> tuple[int, list[Finding]]:
-    checked, findings = 0, []
-    for row_id, document, *rest in rows:
-        checked += size(document)
-        findings.extend(judge(str(row_id), document, *rest))
-    return checked, findings
+def _judge_source_specs(row_id: str, specs: object, _flag: bool) -> list[Finding]:
+    return _source_specs_findings(row_id, specs)
 
 
-def _one(_document: object) -> int:
-    return 1
+def _judge_watch_spec(row_id: str, document: object, _flag: bool) -> list[Finding]:
+    return _watch_spec_findings(row_id, document)
 
 
-async def _sweep_source_specs(db: AsyncSession) -> tuple[int, list[Finding]]:
-    rows = await db.execute(
-        select(InfoSource.info_source_id, InfoSource.source_specs).order_by(
-            InfoSource.info_source_id
-        )
-    )
-    return _collect(
-        rows, _source_specs_findings, lambda s: len(s) if isinstance(s, list) and s else 1
-    )
+def _judge_rep_fields(row_id: str, bag: object, linked: bool) -> list[Finding]:
+    return _rep_fields_findings(row_id, bag, linked=linked)
 
 
-async def _sweep_watch_specs(db: AsyncSession) -> tuple[int, list[Finding]]:
-    rows = await db.execute(
-        select(InfoItem.info_item_id, InfoItem.watch_spec).order_by(InfoItem.info_item_id)
-    )
-    return _collect(rows, _watch_spec_findings, _one)
+def _judge_rep_spec(row_id: str, document: object, frozen: bool) -> list[Finding]:
+    return _rep_spec_findings(row_id, document, frozen=frozen)
 
 
-async def _sweep_rep_fields(db: AsyncSession) -> tuple[int, list[Finding]]:
-    rows = await db.execute(
-        select(
-            InfoItem.info_item_id, InfoItem.rep_fields, InfoItem.pm_org_id.is_not(None)
-        ).order_by(InfoItem.info_item_id)
-    )
-    return _collect(rows, lambda i, bag, linked: _rep_fields_findings(i, bag, linked=linked), _one)
-
-
-async def _sweep_rep_specs(db: AsyncSession) -> tuple[int, list[Finding]]:
-    assigned = select(InfoItemRepSpec.rep_spec_id).distinct().scalar_subquery()
-    rows = await db.execute(
-        select(RepSpec.rep_spec_id, RepSpec.document, RepSpec.rep_spec_id.in_(assigned)).order_by(
-            RepSpec.rep_spec_id
-        )
-    )
-    return _collect(rows, lambda i, doc, frozen: _rep_spec_findings(i, doc, frozen=frozen), _one)
-
+_ASSIGNED = select(InfoItemRepSpec.rep_spec_id).distinct().scalar_subquery()
 
 KINDS: tuple[DocumentKind, ...] = (
     DocumentKind(
-        "source_spec", InfoSource.source_specs, (validate_source_spec,), _sweep_source_specs
+        "source_spec",
+        InfoSource.source_specs,
+        (validate_source_spec,),
+        select(InfoSource.info_source_id, InfoSource.source_specs, false()).order_by(
+            InfoSource.info_source_id
+        ),
+        _judge_source_specs,
+        per_entry=True,
     ),
-    DocumentKind("watch_spec", InfoItem.watch_spec, (validate_watch_spec,), _sweep_watch_specs),
+    DocumentKind(
+        "watch_spec",
+        InfoItem.watch_spec,
+        (validate_watch_spec,),
+        select(InfoItem.info_item_id, InfoItem.watch_spec, false()).order_by(InfoItem.info_item_id),
+        _judge_watch_spec,
+    ),
     DocumentKind(
         "rep_fields",
         InfoItem.rep_fields,
         (validate_rep_fields, linked_org_key_errors),
-        _sweep_rep_fields,
+        select(
+            InfoItem.info_item_id, InfoItem.rep_fields, InfoItem.pm_org_id.is_not(None)
+        ).order_by(InfoItem.info_item_id),
+        _judge_rep_fields,
     ),
-    DocumentKind("rep_spec", RepSpec.document, (validate_rep_spec,), _sweep_rep_specs),
+    DocumentKind(
+        "rep_spec",
+        RepSpec.document,
+        (validate_rep_spec,),
+        select(RepSpec.rep_spec_id, RepSpec.document, RepSpec.rep_spec_id.in_(_ASSIGNED)).order_by(
+            RepSpec.rep_spec_id
+        ),
+        _judge_rep_spec,
+    ),
 )
 """Every authored document column. Adding a schema or a JSON column means adding
 a kind here or an exemption below - the guard test refuses neither."""
@@ -242,7 +248,7 @@ async def audit_stored_documents(db: AsyncSession) -> AuditReport:
     """
     checked, findings = 0, []
     for kind in KINDS:
-        n, found = await kind.sweep(db)
-        checked += n
-        findings.extend(found)
+        for row_id, document, flag in await db.execute(kind.query):
+            checked += kind.documents(document)
+            findings.extend(kind.judge(str(row_id), document, flag))
     return AuditReport(findings=findings, checked=checked)
