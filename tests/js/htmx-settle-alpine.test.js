@@ -15,6 +15,10 @@
  * main.js empties `attributesToSettle`; this holds the fix to the real
  * library, the real main.js and the real Alpine, through a stubbed XHR - as
  * htmx-poll-sync.test.js does for #220.
+ *
+ * The fixtures are hand-reduced copies of the two templates, not renders of
+ * them: what this pins is the config, under which an id'd `x-show` anywhere
+ * in a swapped partial is safe, so the templates' exact shape is not at stake.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { installHtmx, respond, resetSent, restoreGlobals, sent } from "./support/htmx-harness.js";
