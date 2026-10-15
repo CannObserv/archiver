@@ -10,15 +10,15 @@ The other parts of this reference, under the same living-doc rule:
 - [SCREENS.md](SCREENS.md) - the conventions every entity detail
   screen follows: header anatomy, affordances, mutation and pagination rules.
 - [PAGES.md](PAGES.md) - the per-page route inventory: what each screen renders
-  and the routes behind it; the RepSpec screens are
-  [REP_SPEC_PAGES.md](REP_SPEC_PAGES.md).
+  and the routes behind it.
+  The RepSpec screens are [REP_SPEC_PAGES.md](REP_SPEC_PAGES.md).
 - [COMPONENTS.md](COMPONENTS.md) - the Alpine.js component catalogue.
 - [STYLE.md](STYLE.md) - design tokens and component classes.
 - [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), [ORG_ROW.md](ORG_ROW.md),
   [REGISTER.md](REGISTER.md), [HEALTH_ROW.md](HEALTH_ROW.md) - one screen's
   internals each: the InfoItem hub and its Organization row, the register
-  wizard, the home screen's health row. The hub's action routes are
-  [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
+  wizard, the home screen's health row.
+  The hub's action routes are [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
 > **AGENTS.md enforcement:** a Jinja2 template change, a new or changed
 > dashboard route, or a new Alpine.js component must update the doc it touches

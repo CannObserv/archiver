@@ -9,12 +9,19 @@ lives here.
 
 ## Current model (Phase 4 — Archiver v2)
 
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate` and `content.persist` via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](BUS.md) and [docs/BUS_CONSUMERS.md](BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+
 Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
 
 - `docs/plans/2026-05-08-archiver-v2-architecture-design.md`
 - `docs/plans/2026-05-08-phase-4-archiver-v2-implementation.md`
 
 ## Project Layout
+
+- `tests/` mirrors `src/`; `tests/deploy/` pins host contracts - `deploy.sh`
+  end to end, installed units against the live release, the needrestart drop-in
+  and the memory reservation, the production read role (#348), and the SocratiCode
+  client config and server pin.
 
 ```
 src/api/                       FastAPI routes, deps, schemas, serializers
@@ -397,6 +404,9 @@ Phase 1b landed — **no more mirror discipline for the acquisition pipeline.**
   re-exported from `__init__`. `preview_extraction` dispatches as Processor does (#317):
   `resolve_dispatch_essence` → `extractor_for_essence` (`co_core.pure.extract.dispatch`) →
   `canonical_text_fingerprint`, in a worker thread.
+
+**The broker is CannObserv/broker's, not this repo's (#193 D6)**; the one seam
+that split left untested: [docs/BUS.md](BUS.md).
 
 ## Retired model (Phase 1–3a)
 

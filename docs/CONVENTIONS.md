@@ -17,6 +17,10 @@ changelog there. On a PR, the `no-changelog` label opts out.
 
 ## Logging - plain-text `ExecStartPre` lines in journald
 
+Entry points only: call `configure_logging()` once. `ExecStartPre` steps in
+`deploy/archiver.service` write **plain text**, not JSON - a journald consumer
+must tolerate that.
+
 The app's own records - including uvicorn's access/error lines via `--log-config`
 - are JSON. The `ExecStartPre` step in `deploy/archiver.service` (the redis floor
 check; the wheelhouse sync moved to deploy time, #330) and `scripts/deploy.sh`'s

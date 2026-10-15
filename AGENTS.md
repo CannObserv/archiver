@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences; sacrifice grammar for density. S
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate` and `content.persist` via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](docs/BUS.md) and [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Tables and streams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 **Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one - a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
 
@@ -65,17 +65,10 @@ Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries a
   `generated/`.
 - `src/core/db_safety.py` is mirrored by `scripts/dev_server.sh`, kept in step by
   `tests/scripts/test_db_guard_parity.py`.
-- `tests/` mirrors `src/`; `tests/deploy/` pins host contracts - `deploy.sh`
-  end to end, installed units against the live release, the needrestart drop-in
-  and the memory reservation, the production read role (#348), and the SocratiCode
-  client config and server pin.
 
 ## Content-acquisition via co-core
 
 Fetch, extract, and the content fingerprint come from **co-core**. Wiring: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-**The broker is CannObserv/broker's, not this repo's (#193 D6)**; the one seam
-that split left untested: [docs/BUS.md](docs/BUS.md).
 
 **No cross-repo mirror discipline (CannObserv/watcher#159, #236).** Content
 acquisition is co-core's (above) and the change-bus contracts + driver are too
@@ -104,9 +97,6 @@ dashboard `https://co-registrar.exe.xyz/`, dev server
 `systemctl restart archiver` restarts the *current* release - it deploys nothing; hand
 alembic against production is refused without the opt-in. Logs: `sudo journalctl -u
 archiver -f`; deploys `-t archiver-deploy`. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-`archiver-drift.timer` alerts co-status when live lags `main` in code that runs for over
-8 h (#338); never run it with the real key or monitor id outside its unit, bar the
-DEPLOYMENT.md `--test-alert`.
 
 Dev server (port 8001) - **always** via the launch script:
 
@@ -187,11 +177,7 @@ Rules holding across all of it:
   max 500. Over-max is a 422, not a clamp.
 - Bus payloads carry `schema_version: int`. Bump only on *incompatible* reshapes;
   additive fields are not a bump, and consumers must tolerate them.
-- Bus monitoring is never on `/health` (unauthenticated, DB-free), and broker-side
-  monitoring is CannObserv/broker's (#193 D6). Outbox stats (archiver#112) reach the
-  dashboard badge and journald; the `archiver-bus-health` timer (#130) re-runs them
-  from outside the publisher, the one surface that survives a down publisher. See
-  [docs/BUS.md](docs/BUS.md).
+- Bus monitoring is never on `/health` (unauthenticated, DB-free): [docs/BUS.md](docs/BUS.md).
 
 ## Conventions
 
@@ -224,9 +210,7 @@ from src.core.logging import get_logger
 
 logger = get_logger(__name__)
 ```
-Entry points only: call `configure_logging()` once. `ExecStartPre` steps in
-`deploy/archiver.service` write **plain text**, not JSON - a journald consumer
-must tolerate that.
+Entry points only: call `configure_logging()` once.
 
 **Date & Time:** UTC only. ISO 8601: `YYYY-MM-DDTHH:MM:SS.ffffffZ` (timestamps), `YYYY-MM-DD` (dates).
 
@@ -244,10 +228,6 @@ directly**; pass `source_exc=e` from inside `except X as e:`.
 ## Vocabulary
 
 Data model identifiers (table names, FastAPI route paths, Redis Stream topics) stay verbatim - never rename casually. Every model, its table, and its contracts and invariants: [docs/SCHEMA.md](docs/SCHEMA.md). The Phase 1-3a `InfoSpec` model is retired - no new `info_spec*` references.
-
-## Agent Skills
-
-Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers and the SessionStart hook rules: [docs/SKILLS.md](docs/SKILLS.md).
 
 ## Detail Docs
 
