@@ -147,6 +147,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 | `requesting-code-review` / `receiving-code-review` | CR handoff between agents |
 | `managing-skills` | add skill repo, manage external skills |
 | `orchestrating-issue-backlog` | backlog grooming, issue triage |
+| `coordinating-epics` | coordinate the epic, burn down, check-in, I finished #N, next issue. Serial, operator-paced; the coordinator writes no code (epic #357) |
 | `using-mayfly-chat` | mayfly, open a channel, join the channel, chat with `<repo>`, agent chat. Never commit a channel URL; nothing here guards it, so run the skill's leak check first |
 | `using-superpowers` | meta - when to invoke superpowers skills |
 | `socraticode` (codebase MCP) | see **Code Exploration Policy** in `AGENTS.md` |
