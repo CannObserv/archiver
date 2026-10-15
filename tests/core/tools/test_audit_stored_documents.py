@@ -448,9 +448,12 @@ def test_cli_exits_0_when_every_document_validates():
     assert "1 documents checked, 0 invalid" in out.getvalue()
 
 
-def test_cli_exits_2_on_a_malformed_line():
-    out = io.StringIO()
-    assert cli_main([], stdin=io.StringIO("not json\n"), stdout=out) == 2
+def test_cli_exits_2_on_a_malformed_line_and_says_so_on_stderr():
+    """CR 11: stdout is the result someone pastes into a PR; diagnostics stay off it."""
+    out, err = io.StringIO(), io.StringIO()
+    assert cli_main([], stdin=io.StringIO("not json\n"), stdout=out, stderr=err) == 2
+    assert out.getvalue() == ""
+    assert "not an export_sql() line" in err.getvalue()
 
 
 @pytest.mark.parametrize("pkg_dir", sorted(_CORE.glob("*_schema")), ids=lambda p: p.name)

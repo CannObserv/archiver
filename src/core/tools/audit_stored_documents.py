@@ -349,7 +349,7 @@ def main(argv: list[str] | None = None, *, stdin=None, stdout=None, stderr=None)
     try:
         report = judge_exported(stdin)
     except (ValueError, TypeError) as e:
-        print(f"not an export_sql() line: {e}", file=stdout)
+        print(f"not an export_sql() line: {e}", file=stderr)
         return EXIT_ERROR
     if report.checked == 0:
         print("empty export - did psql fail? (every row counts at least one document)", file=stderr)
