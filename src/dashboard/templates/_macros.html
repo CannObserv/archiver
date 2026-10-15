@@ -84,3 +84,23 @@
   A replication is still open. Live updates have stopped — reload to check again.
 </p>
 {%- endmacro %}
+
+{# A stored document on this page the current schema rejects (archiver#164).
+   Such a document publishes cleanly and cannot be re-saved, so the operator
+   learns of it here rather than from a refused edit. Page-level and rendered
+   from the page load: an in-place save that fixes the document clears it on
+   the next reload, not in the swap. `findings` are FindingViews
+   (src/dashboard/stored_documents.py); renders nothing when empty. #}
+{% macro stored_document_notice(findings) -%}
+{% if findings %}
+<div class="alert alert--warning" id="stored-document-notice" role="status" style="margin-bottom:var(--space-3);">
+  <p class="alert__title">A document stored here fails the current schema. It still publishes, but cannot be saved again as it stands.</p>
+  {% for f in findings %}
+  <p class="text-sm" style="margin:var(--space-1) 0 0;">
+    <strong>{{ f.label }}{% if f.index is not none %} [{{ f.index }}]{% endif %}:</strong>
+    {{ f.messages | join("; ") }} - {{ f.remedy }}
+  </p>
+  {% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}

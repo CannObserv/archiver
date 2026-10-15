@@ -202,6 +202,10 @@ src/core/                      Domain logic
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
                                set_rep_fields + the rep_fields_gate they share,
                                link_org, update_rep_spec, preview_extraction, etc.)
+                               audit_stored_documents.py re-judges every stored
+                               authored document against its current schema
+                               (archiver#164); its KINDS registry is guarded
+                               against every *_schema/ function and JSON column.
                                refresh_orgs.py is the hourly Power Map org
                                follower (archiver#305, moved here by #327):
                                refresh_linked_orgs + the timer's main, beside

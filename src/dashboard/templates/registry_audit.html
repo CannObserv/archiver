@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Registry Audit{% endblock %}
+
+{# Every stored document the current schemas reject (archiver#164) - the list
+   the home screen's Registry badge links to. One sweep per load, the same one
+   the badge runs. #}
+{% block content %}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Registry Audit</h1>
+  </div>
+  <p class="text-sm text-muted" style="margin-bottom:var(--space-3);">
+    Stored documents the current schemas reject. Each one still publishes, but
+    any edit to it is refused until the flagged keys are fixed.
+    {{ checked }} documents checked.
+  </p>
+
+  {% if findings %}
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Invalid stored documents">
+    <table class="data-table" aria-label="Invalid stored documents">
+      <thead>
+        <tr>
+          <th class="data-table__th">Document</th>
+          <th class="data-table__th">Row</th>
+          <th class="data-table__th">Errors</th>
+          <th class="data-table__th">Remedy</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in findings %}
+        <tr>
+          <td class="data-table__cell">{{ f.label }}{% if f.index is not none %} [{{ f.index }}]{% endif %}</td>
+          <td class="data-table__cell"><a href="{{ f.href }}"><code class="text-sm">{{ f.row_id }}</code></a></td>
+          <td class="data-table__cell text-sm">
+            {% for m in f.messages %}<div>{{ m }}</div>{% endfor %}
+          </td>
+          <td class="data-table__cell data-table__cell--muted text-sm">{{ f.remedy }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">Every stored document validates.</p>
+  {% endif %}
+</div>
+{% endblock %}

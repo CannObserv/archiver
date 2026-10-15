@@ -1,9 +1,11 @@
 {% extends "base.html" %}
-{% from "_macros.html" import copyable %}
+{% from "_macros.html" import copyable, stored_document_notice %}
 {% block title %}{{ spec.name }}{% endblock %}
 
 {% block content %}
 <div class="entity-section">
+
+  {{ stored_document_notice(stored_findings) }}
 
   {# Header #}
   <div class="entity-card">

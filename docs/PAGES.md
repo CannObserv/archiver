@@ -21,11 +21,25 @@ repeat it.
 **GET `/dashboard/`** - summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each linking to its list page. Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`; columns Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at as `%Y-%m-%d %H:%M`).
 
 **The health row** - the badges behind **GET `/dashboard/health`**,
-**`/dashboard/health/redis`**, **`/dashboard/health/outbox`** and
-**`/dashboard/health/consumers`**, each its own `hx-trigger="load"` partial - is
+**`/dashboard/health/redis`**, **`/dashboard/health/outbox`**,
+**`/dashboard/health/consumers`** and **`/dashboard/health/registry`**, each its own
+`hx-trigger="load"` partial - is
 [docs/HEALTH_ROW.md](HEALTH_ROW.md): what each badge reports, its state ladder,
 and why the lag probe is bounded where it is. Needed only when working on that
 row; this entry stays the inventory line for its routes.
+
+**GET `/dashboard/registry-audit`** (`registry_audit.html`, archiver#164) - the page the
+Registry badge links to: every stored document the current schemas reject, one row per
+document - kind (a source spec carries its list index), the row's id linked to its detail
+page, the validator's messages, and the remedy (`src/dashboard/stored_documents.py`; an
+assigned RepSpec's is "clone it", #83). Empty state "Every stored document validates."
+The same sweep the badge runs, once per load.
+
+**Stored-document notice** (`stored_document_notice` macro, `#stored-document-notice`,
+archiver#164) - an `.alert--warning` at the top of the InfoSource, InfoItem and RepSpec
+detail pages when a document stored on that row fails its current schema: kind, messages,
+remedy. It judges only that row, never a sweep. Page-level and rendered on load, so an
+in-place save that fixes the document clears it on the next reload, not in the swap.
 
 ## Domain pages (`/dashboard/domains/`)
 
@@ -132,6 +146,7 @@ that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-sources/{id}`** - detail page. Sections:
 
+- The stored-document notice (§ Home), when `source_specs` fails the current schema.
 - Header: `.entity-card` (SCREENS.md § **Header**, `#info-source-heading`, #79) - eyebrow "Information Source", the `url` in `<code>`, copyable `info_source_id`, then the **domain pill**: `domain_name` as a `.badge--primary` linking `/dashboard/domains/{name}`, or a `.badge--muted` "No domain" where the column is null - a state of its own, not an absence (#185). `open_button` is the header's action slot. `.detail-grid` (created_at UTC).
 - Source Specification editor - the `info_sources/_source_specs_card.html` partial, extracted so the update-specs action can swap it in place (root `#source-specs-card`, heading `#source-specs-heading`, titled "Source Specification"). `sourceSpecsCard(startEditing)` (`main.js`; not in the COMPONENTS.md catalogue - it exists only for this card) gates it: **view mode** (`x-show="!editing"`) renders `source_specs` in `<pre class="code-block">`, edit mode the textarea form. All three buttons share one `.entity-card__actions` slot in the `.entity-card__header` (#185): **Edit** (`x-show="!editing"`); **Cancel** (`btn--secondary`, for border parity with the `apiKeyRow` Cancel - `@click="cancel()"` restores the stored specs and returns to view mode with no server call); **Save**, which submits the `POST .../source-specs` replace via `form="source-specs-form"` - it renders outside the `<form>`, so without that association it is inert with JS off. `specs_error` opens the card in edit mode (`sourceSpecsCard(true)`) so the error and the submitted text stay visible. The URL is immutable.
 - Other Sources at This URL - shown only when other InfoSources share this `url` (the model allows several sources per URL, #79 #8); count in the heading, capped at 50 via a `limit+1` probe and rendered "50+" beyond that, each linked by `info_source_id` with its created date UTC.
@@ -158,6 +173,8 @@ that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/rep-specs/{id}`** - detail page.
 
+- The stored-document notice (§ Home), when `document` fails the current schema; frozen
+  (assigned) specs get the clone remedy.
 - Header: `.entity-card` (SCREENS.md § **Header**, `#rep-spec-heading`, #80) - eyebrow "Replication Specification", name, copyable `rep_spec_id`, `.detail-grid` (provider badge, created_at UTC, plus **Updated** UTC *only when* `updated_at` is non-null - a null means "never edited", and rendering `created_at` there would blur that distinction, #83).
 - Document card - the `rep_specs/_document_card.html` partial, extracted so the update-document action can swap it in place (root `#rep-spec-document-card`, heading `#rep-spec-document-heading`). Shows the stored document JSON in `<pre class="code-block">`, then **conditionally** an edit form: the textarea renders only while the RepSpec is a *draft* - zero `info_item_rep_specs` rows, active **or** deactivated. That count comes from `assignment_count()`, deliberately not `_load_active_assignments`: a deactivated assignment still means a replication run happened under that document. A non-draft gets an `.alert--info` "frozen" notice with the count instead of the form (#83; clone + migrate is #95).
 - Active assignments - `rep_specs/_assignments.html` (wrapper `#rep-spec-assignments`): count in heading; item name link, activated_at UTC, **Replication** (the `replication_state` macro over the latest `replication_commands` row for that assignment), read-only `public_url` with an `open_button`, and **Replicate now** + **Deactivate** actions. Deactivate is `hx-delete` to the RepSpec-scoped route below, targeting `#rep-spec-assignments` (`outerHTML`) so the row set, count, and empty-state re-render together. Assignments are manageable from either the RepSpec or the InfoItem screen (#80). The wrapper **polls itself while a command is open** (archiver#212), identically to the InfoItem hub's section and from the same `live_poll` decision, so the two screens cannot disagree about when a command is worth watching - see INFO_ITEM_DETAIL.md § Replication Specs for the mechanism and the two-minute bound. The poll yields to both row actions the same way too (archiver#220, UI.md § *A section that polls and takes actions*). Every render site spreads `_assignments_context`, which carries `spec` too (SCREENS.md § *One builder per behaviour-bearing partial*, #219).

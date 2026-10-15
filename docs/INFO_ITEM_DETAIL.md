@@ -16,6 +16,11 @@ Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
 
 **GET `/dashboard/info-items/{id}`** - 5-section vertical-scroll hub page (`info_items/detail.html`):
 
+Above section 1, the **stored-document notice** (archiver#164, PAGES.md § Home) when the
+item's `watch_spec` or `rep_fields` fails its current schema - a linked item's bag is also
+judged for the `org.title`/`org.acronym` it may not carry. Rendered from the page load, not
+from any section's partial, so a fix in the Watcher or Fields section clears it on reload.
+
 1. **Overview** - `.entity-card` header (canonical detail-screen pattern, #81): `.eyebrow` "Information Item" kicker → `<h1 class="entity-card__title" id="info-item-heading" tabindex="-1">` name → copyable ULID (shared `copyable` macro) → domain badge linking to `/dashboard/domains/{name}`, or a muted "No primary source" when unbound; `.detail-grid` with description, owner (if set), created_at. Watcher status is deliberately absent here - the status and its controls live in section 3 (#62).
 
    **Organization** (archiver#306) - `info_items/_org_row.html` (`#ii-org`), a full-width `.detail-grid` cell: the linked Power Map org with worded notices, an `orgCombobox` type-ahead, Link / Unlink through `link_org`. Contract: [ORG_ROW.md](ORG_ROW.md).
