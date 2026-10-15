@@ -95,4 +95,4 @@ refusal. Refusals land in `#ii-org-flash` (`aria-live="polite"`) via
 
 **200** re-renders the row (`HX-Retarget: #ii-org`, focus to its label) and
 fires `replicationChanged` from `org`, so Fields and the picker re-read the
-effective bag (UI.md § *Blocks that share a section*).
+effective bag (HTMX.md § *Blocks that share a section*).

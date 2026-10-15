@@ -93,7 +93,7 @@ to one - htmx will not even swap it. `register_dashboard(app)` therefore
 installs wrappers (`src/dashboard/errors.py`) that render HTML for a dashboard
 path and delegate every other path back to the handlers above; the envelope is
 unchanged for `/api/v1` and the SDK. Registration order is load-bearing, and the
-whole mechanism is described in [UI.md](UI.md) § Failures are surfaced, not
+whole mechanism is described in [HTMX.md](HTMX.md) § Failures are surfaced, not
 swallowed (archiver#178).
 
 Examples:
@@ -196,7 +196,7 @@ applicable doc is a CR blocker.
 - `docs/COMPONENTS.md` - required for any change to a JS module under
   `src/dashboard/static/`. Alpine components are catalogued there; a module
   that is not an Alpine component is documented where its behaviour lives
-  instead, and a change to it updates that doc - `flash.js` in `docs/UI.md`
+  instead, and a change to it updates that doc - `flash.js` in `docs/HTMX.md`
   ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
 - `docs/INFO_ITEM_DETAIL.md` - required when the change alters the InfoItem hub
   screen itself: its five sections, a partial's swap target, or one of the
@@ -211,7 +211,8 @@ applicable doc is a CR blocker.
   the inventory line for those routes: update it too when a route, or a form
   field it lists, is added, removed or renamed.
 - `docs/UI.md` - required when the change alters a *shared* mechanic rather
-  than one screen: the URL map, the auth gate, or an HTMX swap pattern.
+  than one screen: the URL map or the auth gate; `docs/HTMX.md` for an HTMX
+  swap pattern.
   `docs/SCREENS.md` for a detail-screen convention. A change that merely follows an existing
   convention updates PAGES.md alone.
 - `docs/STYLE.md` - required when the change introduces or alters *styling*:

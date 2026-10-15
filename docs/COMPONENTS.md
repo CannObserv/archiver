@@ -277,7 +277,7 @@ One-shot event dispatcher, identical in shape to `previewNameDispatch`: reads th
 
 One-shot event dispatcher that reads a suggested page title from a JSON data island child element and fires a bubbling `preview-name` custom event. Used inside the `_preview_result.html` HTMX partial so that a successful preview auto-fills the Name field on step 3.
 
-Uses the **JSON data island** pattern (`sortableChips` above; the reason it exists is `docs/UI.md` § **JSON data island pattern**) - the title is placed in a `<script type="application/json">` child rather than an HTML attribute, avoiding double-quote escaping hazards from `tojson`.
+Uses the **JSON data island** pattern (`sortableChips` above; the reason it exists is `docs/HTMX.md` § **JSON data island pattern**) - the title is placed in a `<script type="application/json">` child rather than an HTML attribute, avoiding double-quote escaping hazards from `tojson`.
 
 **Events dispatched:** `preview-name` (bubbles) with payload `{ name: string }`.
 
@@ -335,7 +335,7 @@ message through the two visually-hidden live regions. All three regions are
 **recreated on demand** when absent: a boosted swap replaces everything inside
 `<body>`, and the dashboard error page does exactly that, so without it the
 first toast after such a swap was dropped in silence (archiver#178). Levels, dismissal rules,
-the visible cap and its two overflow affordances: [UI.md](UI.md) § Flash
+the visible cap and its two overflow affordances: [HTMX.md](HTMX.md) § Flash
 messages.
 
 ### `dark-mode.js`
@@ -370,4 +370,4 @@ check reads `detail.shouldSwap`: set means the error is already going somewhere
 visible, and toasting would report it twice.
 
 The server half - which paths render HTML, and why `_error.html` does not extend
-`base.html` - is in [UI.md](UI.md) § Failures are surfaced, not swallowed.
+`base.html` - is in [HTMX.md](HTMX.md) § Failures are surfaced, not swallowed.

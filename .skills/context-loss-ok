@@ -8,3 +8,10 @@
 # The preamble described the env reference and dev-server internals, which moved.
 docs/DEPLOYMENT.md :: retarget :: Releases and `scripts/deploy.sh`, wheelhouse reproducibility, dev-server internals,
 docs/DEPLOYMENT.md :: retarget :: and the full environment variable reference. `AGENTS.md` keeps the safety rules; the reference lives here.
+# UI.md split, HTMX Patterns -> HTMX.md. The preamble named the HTMX patterns,
+# which moved; two relative pointers ("below", "above") crossed the new file
+# boundary and now name their target doc.
+docs/UI.md :: retarget :: **The dashboard's shared mechanics: URL map, proxy-header auth, and HTMX swap
+docs/UI.md :: retarget :: patterns.**
+docs/UI.md :: retarget :: the pagination clamp below cannot close). Each wrapper *delegates* the
+docs/UI.md :: retarget :: § **Failures are surfaced, not swallowed** above.

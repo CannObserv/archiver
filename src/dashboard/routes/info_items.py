@@ -702,7 +702,7 @@ async def put_org(
 # Its own swap target, `#ii-rep-fields`, beside the assignments table rather
 # than inside it: the table polls every two seconds while a command is open,
 # and a poll must never clobber a half-edited form. It re-fetches itself on a
-# sibling's `replicationChanged` instead (docs/UI.md § Blocks that share a
+# sibling's `replicationChanged` instead (docs/HTMX.md § Blocks that share a
 # section).
 
 _FIELDS_SOURCE = "fields"

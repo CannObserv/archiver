@@ -15,7 +15,7 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the drift check, the service user, wheelhouse
 - [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) - environment variables, the dev server
 - [docs/BACKUP.md](docs/BACKUP.md) - the nightly database dump to GCS and the restore runbook
-- [docs/UI.md](docs/UI.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) - dashboard patterns, page inventory, the InfoItem hub screen, Alpine components, and styling
+- [docs/UI.md](docs/UI.md) / [docs/HTMX.md](docs/HTMX.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) - dashboard mechanics, HTMX patterns, page inventory, the InfoItem hub screen, Alpine components, and styling
 
 ## Run locally
 
