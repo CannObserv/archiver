@@ -3,25 +3,29 @@
 # The offline estimators prefer a file's own last exact measurement to the
 # repo-wide figure in .skills/context-token-ratio, falling back to it for a
 # file never counted exactly or since drifted far from the size recorded here.
-14493 6381 AGENTS.md
+13041 5840 AGENTS.md
 17041 7037 docs/API.md
-29982 8431 docs/ARCHITECTURE.md
+31192 8912 docs/ARCHITECTURE.md
 13588 5761 docs/BACKUP.md
-23540 9129 docs/BUS.md
+23902 9278 docs/BUS.md
 23288 8832 docs/BUS_CONSUMERS.md
-25450 10009 docs/COMPONENTS.md
-17267 6432 docs/CONVENTIONS.md
-44632 18492 docs/DEPLOYMENT.md
+22911 9068 docs/COMPONENTS.md
+17670 6630 docs/CONVENTIONS.md
+23386 9743 docs/DEPLOYMENT.md
+22072 9085 docs/ENVIRONMENT.md
 5953 2310 docs/HEALTH_ROW.md
-27213 10197 docs/INFO_ITEM_DETAIL.md
-5789 2275 docs/ORG_ROW.md
-26961 10547 docs/PAGES.md
+22054 8050 docs/HTMX.md
+5138 1858 docs/INFO_ITEM_ACTIONS.md
+22790 8663 docs/INFO_ITEM_DETAIL.md
+5791 2277 docs/ORG_ROW.md
+21235 8436 docs/PAGES.md
 3020 1200 docs/REGISTER.md
+6317 2407 docs/REP_SPEC_PAGES.md
 25907 9538 docs/SCHEMA.md
 6664 2435 docs/SCHEMA_BUS.md
-21549 7746 docs/SCREENS.md
-16562 6534 docs/SKILLS.md
+21571 7762 docs/SCREENS.md
+16784 6635 docs/SKILLS.md
 18266 7070 docs/SOCRATICODE.md
-21192 8370 docs/STYLE.md
-27417 10044 docs/UI.md
+21202 8374 docs/STYLE.md
+9093 3466 docs/UI.md
 14174 5728 docs/reference/tailscale.md
