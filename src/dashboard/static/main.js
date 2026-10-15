@@ -15,6 +15,10 @@ function configureHtmx() {
     window.htmx.config.refreshOnHistoryMiss = true;
     window.htmx.config.scrollBehavior = "smooth";
     window.htmx.config.includeIndicatorStyles = false; // we style our own spinners
+    // Settle would put the server-rendered class/style back on every id'd
+    // element of a swap 20 ms after Alpine set them, stripping x-show's
+    // display:none (archiver#358). No dashboard CSS uses settle transitions.
+    window.htmx.config.attributesToSettle = [];
 }
 
 // Register Alpine components via alpine:init so they are present before the

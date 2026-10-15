@@ -14,6 +14,8 @@ the index into them; `docs/STYLE.md` carries the CSS classes they toggle.
 
 All components registered as `Alpine.data('name', factory)` in `main.js` before `Alpine.start()`. No inline `x-data="{ ... }"` blobs in templates.
 
+`configureHtmx` empties `attributesToSettle`, or settle undoes `x-show` on id'd swapped elements (#358; why: SCREENS.md, HTMX mutations).
+
 Three JS modules under `src/dashboard/static/` register **no** Alpine component
 and are catalogued at the foot of this file instead: `flash.js`,
 `dark-mode.js`, and `htmx-errors.js`. They attach document-level listeners at
