@@ -153,12 +153,14 @@ narrows a type or enum, adds a required key or a rule - carries one of:
   Python, so `psql` exports it and the module judges the export:
 
   ```bash
+  set -o pipefail
   psql -d archiver -At -c "$(uv run python -m src.core.tools.audit_stored_documents --sql)" \
     | uv run python -m src.core.tools.audit_stored_documents
   ```
 
   It prints each failing document and ends `N documents checked, M invalid`; exit 0
-  is "0 affected". The statement is compiled from the sweep's own queries, so the
+  is "0 affected". An empty export is exit 2, never "0 affected": a failed `psql`
+  prints nothing to stdout, and `pipefail` makes its own failure the pipeline's too. The statement is compiled from the sweep's own queries, so the
   export cannot read less than the badge does. One autocommit statement, so it
   holds no transaction open (CLAUDE.md § Reading production).
 

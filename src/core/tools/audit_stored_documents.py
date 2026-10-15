@@ -322,20 +322,24 @@ def _finding_line(finding: Finding) -> str:
     return f"{finding.kind} {finding.row_id}{where}{frozen}: {messages}"
 
 
-def main(argv: list[str] | None = None, *, stdin=None, stdout=None) -> int:
+def main(argv: list[str] | None = None, *, stdin=None, stdout=None, stderr=None) -> int:
     """``--sql`` prints the export statement; otherwise judge an export read from stdin.
 
     The "0 affected" check a schema tightening records (docs/CONVENTIONS.md),
     run against production without a production URL in Python::
 
+        set -o pipefail
         psql -d archiver -At -c "$(uv run python -m src.core.tools.audit_stored_documents --sql)" \\
           | uv run python -m src.core.tools.audit_stored_documents
 
     Exit 0 when every document validates, 1 when any does not, 2 on input that
-    is not an export.
+    is not an export - including an empty one. A psql that failed prints nothing
+    to stdout, and without ``pipefail`` the pipeline reports this exit alone, so
+    no rows must never read as "0 affected" (CR 10).
     """
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
+    stderr = sys.stderr if stderr is None else stderr
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--sql", action="store_true", help="print the export statement")
     args = parser.parse_args(argv)
@@ -346,6 +350,9 @@ def main(argv: list[str] | None = None, *, stdin=None, stdout=None) -> int:
         report = judge_exported(stdin)
     except (ValueError, TypeError) as e:
         print(f"not an export_sql() line: {e}", file=stdout)
+        return EXIT_ERROR
+    if report.checked == 0:
+        print("empty export - did psql fail? (every row counts at least one document)", file=stderr)
         return EXIT_ERROR
     for finding in report.findings:
         print(_finding_line(finding), file=stdout)

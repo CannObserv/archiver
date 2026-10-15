@@ -458,3 +458,14 @@ def test_every_schema_validator_points_at_the_tightening_rule(pkg_dir):
     """Whoever tightens a schema edits this module; the rule has to be where they look (CR 3)."""
     doc = importlib.import_module(f"src.core.{pkg_dir.name}.validator").__doc__ or ""
     assert "Schema tightenings" in doc and "archiver#164" in doc
+
+
+@pytest.mark.parametrize("stdin", ["", "\n\n"], ids=["empty", "blank-lines"])
+def test_cli_refuses_an_empty_export(stdin):
+    """CR 10. A failed psql prints nothing to stdout; without pipefail the
+    pipeline's status is the judge's, so an empty export must not read as
+    "0 affected" - that is the evidence a tightening PR records."""
+    out, err = io.StringIO(), io.StringIO()
+    assert cli_main([], stdin=io.StringIO(stdin), stdout=out, stderr=err) == 2
+    assert "0 invalid" not in out.getvalue()
+    assert "empty export" in err.getvalue()
