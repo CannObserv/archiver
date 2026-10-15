@@ -17,7 +17,8 @@ docs/API.md: a route, its SDK wrapper, or the pagination contract under src/api/
 docs/SCHEMA.md, docs/SCHEMA_BUS.md: a migration under alembic/versions/, a model under src/core/models/, or a table contract or invariant enforced elsewhere under src/core/ (services, fingerprints, the JSON Schema validators)
 docs/BUS.md, docs/BUS_CONSUMERS.md: the outbox producer, a stream payload, or a consumer group under src/core/changes/
 docs/CONVENTIONS.md "Dashboard living docs": which doc a change under src/dashboard/ requires (docs/PAGES.md for any template or route); missing one is a CR blocker
-docs/DEPLOYMENT.md, deploy/README.md: deploy/ units, an operator-facing script under scripts/, a new env var, or dependency resolution (pyproject.toml, uv.lock, the co-core wheelhouse)
+docs/DEPLOYMENT.md, deploy/README.md: deploy/ units, an operator-facing script under scripts/, or dependency resolution (pyproject.toml, uv.lock, the co-core wheelhouse)
+docs/ENVIRONMENT.md: a new env var, a dev-server knob, or scripts/dev_server.sh itself
 docs/ARCHITECTURE.md "Project Layout": a file or package added, moved, or retired under src/, scripts/, deploy/, or clients/python/
 docs/SKILLS.md, docs/SOCRATICODE.md, deploy/README.md, AGENTS.md "Architecture": a guard test under tests/scripts/ or tests/deploy/, which scripts/ and deploy/ over-match - the doc stating the rule it pins
 AGENTS.md "Detail Docs", README.md "Documentation": a doc added, renamed, or retired; README.md keeps only orientation and curated links into docs/

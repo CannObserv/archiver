@@ -307,7 +307,7 @@ seven-day temp store into its permanent, content-addressed one. The normative
 contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
 (P1-P5); `src/core/services/persist_issuance.py` is this side of it.
 
-- **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([DEPLOYMENT.md](DEPLOYMENT.md)).
+- **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([ENVIRONMENT.md](ENVIRONMENT.md)).
   The go-live order is broker, then Replicator's `REPLICATOR_PERSIST_ENABLED`,
   then Archiver (broker#64): `replicator.persist` is created at `$`, so an entry
   sent before it existed is never delivered.

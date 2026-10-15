@@ -171,7 +171,7 @@ redis_identity() {
 # ARCHIVER_REDIS_URL, so a dev server that inherited it would publish onto prod's
 # info.changes stream. The dev server never inherits it — it either uses an
 # explicit ARCHIVER_DEV_REDIS_URL (a distinct broker — in practice a local
-# throwaway, see docs/DEPLOYMENT.md) or runs bus-dormant. And a dev override
+# throwaway, see docs/ENVIRONMENT.md) or runs bus-dormant. And a dev override
 # addressing the SAME broker as production (by normalized host:port, not just
 # string, and whatever the DB index) is refused outright.
 PROD_REDIS_URL="${ARCHIVER_REDIS_URL:-}"

@@ -116,7 +116,7 @@ bash scripts/dev_server.sh
 
 Anything that writes - curl, SDK scripts, manual verification - targets 8001,
 never 8000. Why the script exists, its knobs, and the 2026-07-18
-production-write incident: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The one
+production-write incident: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
 exception is DLQ discard and reprocess (#238): the queues exist only on prod's
 broker, so they go to 8000, and only when the operator asks
 ([docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)). Outbox discard and rearm
@@ -146,7 +146,7 @@ transaction open: it blocks deploy migrations. Never give Python a production UR
 with `psql -At` instead. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Reading production.
 
 **Four variables carry safety rules; the rest are reference
-([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).**
+([docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)).**
 
 - `TEST_DATABASE_URL` - **must not equal** `ARCHIVER_DATABASE_URL` or
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
@@ -256,7 +256,8 @@ Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); o
 - [docs/BUS.md](docs/BUS.md) - the outbox producer; the four streams published
 - [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the three streams consumed; consumer naming
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md)
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev-server internals, full env-var reference
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the drift check, the service user, wheelhouse
+- [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) - full env-var reference, dev-server internals
 - [docs/BACKUP.md](docs/BACKUP.md) - the nightly dump to GCS, its provisioning, the restore runbook
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald contract, error envelope, living-docs rule, `PLC0415` scope
 - [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, overrides, trigger table, SessionStart hook mechanics

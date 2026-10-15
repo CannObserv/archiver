@@ -4,10 +4,7 @@
 # curation that needed it, so entries are pruned once that curation merges.
 # Their text and reasoning stay in git history (git log -- .skills/context-loss-ok).
 
-# "on the authoring path only": #305's hourly follower (src/core/power_map/follower.py,
-# deploy/archiver-pm-org-refresh.service) calls Power Map too. Corrected in place.
-AGENTS.md :: disproven :: **Power Map (identity for `org.*`) is called on the authoring path only, never during replication (#304)**: rendering reads the `pm_organizations` snapshot ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
-# `grep -rn "raise HTTPException(" src` finds only src/api/errors.py, inside
-# raise_envelope itself; callers chain via raise_envelope(..., source_exc=e), as
-# the Error envelope rule says. The chaining rule (B904) is kept.
-AGENTS.md :: disproven :: - Translated exceptions chain via `raise HTTPException(...) from e` (capture the source with `as e`). Ruff `B904` enforces this in CI.
+# archiver#164 curation (base 9354d19): DEPLOYMENT.md split, env material -> ENVIRONMENT.md.
+# The preamble described the env reference and dev-server internals, which moved.
+docs/DEPLOYMENT.md :: retarget :: Releases and `scripts/deploy.sh`, wheelhouse reproducibility, dev-server internals,
+docs/DEPLOYMENT.md :: retarget :: and the full environment variable reference. `AGENTS.md` keeps the safety rules; the reference lives here.

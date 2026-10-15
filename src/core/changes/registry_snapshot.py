@@ -96,7 +96,7 @@ strength of #42; the ceiling still depends on it.
 
 And the mirror's real hazard is not this literal, it is
 ``ARCHIVER_REGISTRY_STREAM_MAXLEN`` below: naming a source is not enough when an
-env var can move it with no commit in either repo. ``docs/DEPLOYMENT.md`` carries
+env var can move it with no commit in either repo. ``docs/ENVIRONMENT.md`` carries
 the operator's side of that - setting the override obliges a note to broker.
 
 Derived from key count x sets retained, never from the fact stream's number:
