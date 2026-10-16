@@ -69,7 +69,7 @@ Environment=ARCHIVER_BUS_CONSUMER=1
 # credential: in no environment, never logged. The empty fallback keeps a
 # missing key from failing the start (243/CREDENTIALS), which deploy.sh would
 # answer with a switch-back: the service runs unmonitored and logs it at ERROR.
-Environment=CO_ARCHIVER_LIVE_MONITOR_ID=PENDING-status-47
+Environment=CO_ARCHIVER_LIVE_MONITOR_ID=01M52WN2A5SVMK2B4ZZ4RD2TDD
 LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key
 SetCredential=status-checkin-key:\n
 

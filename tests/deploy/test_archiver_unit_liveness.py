@@ -16,9 +16,8 @@ from src.core.liveness import MONITOR_ID_ENV
 from src.core.status_checkin import CREDENTIAL_NAME, MONITOR_ID_PATTERN
 
 REPO_UNIT = Path(__file__).resolve().parents[2] / "deploy" / "archiver.service"
-#: co-archiver-live, tenant co-archiver (CannObserv/status#47). ``None`` until
-#: Status returns it: this pin is red until then, by design (no merge without it).
-MONITOR_ID: str | None = None
+#: co-archiver-live, tenant co-archiver (CannObserv/status#47 issuecomment-6221210998).
+MONITOR_ID = "01M52WN2A5SVMK2B4ZZ4RD2TDD"
 
 
 def _sections() -> dict[str, list[tuple[str, str]]]:
@@ -82,7 +81,6 @@ def test_the_key_is_a_credential_with_an_empty_fallback() -> None:
 
 
 def test_the_unit_names_the_monitor() -> None:
-    assert MONITOR_ID is not None, "co-archiver-live id pending (CannObserv/status#47)"
     assert MONITOR_ID_PATTERN.fullmatch(MONITOR_ID)
     assert f"{MONITOR_ID_ENV}={MONITOR_ID}" in _values("Service", "Environment")
 

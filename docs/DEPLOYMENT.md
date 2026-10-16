@@ -236,8 +236,8 @@ disable --now archiver-drift.timer` if that is the intent.
 
 ## Liveness (archiver#297)
 
-`archiver.service` checks in `ok` to Status's **`co-archiver-live`** monitor (tenant
-`co-archiver`, CannObserv/status#47; 300 s, grace 900 s, renotify daily) every 5 min,
+`archiver.service` checks in `ok` to Status's **`co-archiver-live`** monitor
+(`01M52WN2A5SVMK2B4ZZ4RD2TDD`, tenant `co-archiver`, CannObserv/status#47; 300 s, grace 900 s, renotify daily) every 5 min,
 **only while its bus loops are making progress**. It never sends `alert`: silence is the
 page. Ported from processor#39. The rules are in `src/core/liveness.py`.
 
