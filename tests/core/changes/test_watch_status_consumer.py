@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.core.changes import watch_status_consumer
 from src.core.models import BusTailCursor, InfoItem, WatchStatus
 from src.core.services.watch_status import WATCH_STATUS_TOPIC, read_cursor
+from tests.core.changes._stamps import Stamps
 
 OCCURRED_AT = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
 
@@ -363,3 +364,62 @@ def test_skip_throttle_logs_first_then_every_nth():
     assert emitted[0] == 1
     assert watch_status_consumer.ERROR_LOG_EVERY in emitted
     assert len(emitted) < watch_status_consumer.ERROR_LOG_EVERY  # suppression happened
+
+
+# --- Liveness stamps (archiver#297) ----------------------------------------------
+
+
+class _ScriptedReader:
+    """An ``AsyncBusTailReader`` stand-in: empty reads, failing on the listed ones."""
+
+    def __init__(self, stop_event: asyncio.Event, *, fail_reads=(), stop_after_reads=1):
+        self.cursor = "0-0"
+        self.reads = 0
+        self._stop_event = stop_event
+        self._fail_reads = frozenset(fail_reads)
+        self._stop_after_reads = stop_after_reads
+
+    async def read(self, *, count: int, block_ms: int | None):
+        await asyncio.sleep(0)
+        self.reads += 1
+        if self.reads >= self._stop_after_reads:
+            self._stop_event.set()
+        if self.reads in self._fail_reads:
+            raise ConnectionError("broker went away")
+        return []
+
+    def seek(self, cursor: str) -> None:
+        self.cursor = cursor
+
+
+async def test_run_stamps_progress_on_an_empty_read(session_factory):
+    stop_event = asyncio.Event()
+    stamps = Stamps()
+    await asyncio.wait_for(
+        watch_status_consumer.run(
+            session_factory=session_factory,
+            reader=_ScriptedReader(stop_event, stop_after_reads=2),
+            stop_event=stop_event,
+            progress=stamps,
+        ),
+        timeout=10,
+    )
+    assert stamps.log == [False, False]
+
+
+async def test_run_stamps_progress_while_backing_off(session_factory):
+    """Broker and database errors share this backoff; the publisher, always
+    expected beside the tail, is what carries the database signal (archiver#297)."""
+    stop_event = asyncio.Event()
+    stamps = Stamps()
+    await asyncio.wait_for(
+        watch_status_consumer.run(
+            session_factory=session_factory,
+            reader=_ScriptedReader(stop_event, fail_reads={1}, stop_after_reads=2),
+            stop_event=stop_event,
+            error_backoff_base=0.001,
+            progress=stamps,
+        ),
+        timeout=10,
+    )
+    assert stamps.log == [True, False]

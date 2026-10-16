@@ -234,6 +234,65 @@ sudo systemctl start archiver-drift.service   # its ok clears the test fault: "h
 `archiver*` unit the release lacks; it never removes one. Stop it with `sudo systemctl
 disable --now archiver-drift.timer` if that is the intent.
 
+## Liveness (archiver#297)
+
+`archiver.service` checks in `ok` to Status's **`co-archiver-live`** monitor (tenant
+`co-archiver`, CannObserv/status#47; 300 s, grace 900 s, renotify daily) every 5 min,
+**only while its bus loops are making progress**. It never sends `alert`: silence is the
+page. Ported from processor#39. The rules are in `src/core/liveness.py`.
+
+**The gate.** Every expected continuous loop stamped progress within 300 s and has not
+exited. Every expected periodic task is still running. A loop whose init failed counts
+as silence.
+
+| Loop | Expected when | Stamps |
+|---|---|---|
+| outbox publisher | always, while liveness is on | each drain that **returns**. Not while the database is down: `/health` is DB-free, so this is how a Postgres outage pages |
+| `content.revisions` + `content.artifacts` consumers | `ARCHIVER_BUS_CONSUMER` | every iteration, broker backoff included, and per reclaimed message |
+| `info.watch-status` tail | `ARCHIVER_REDIS_URL` | every iteration, backoff included |
+| registry snapshot, replication reaper | as their loops | nothing: alive while not `done()` |
+
+So a broker outage still counts as alive (broker has its own monitoring), and so does an
+idle stream. What goes silent, and pages:
+- a dead process;
+- a crash loop. `StartLimitIntervalSec=300` and `StartLimitBurst=5` in `[Unit]` take it to `failed` in about 30 s. systemd's default, 5 starts in 10 s, can never be spent at `RestartSec=5`, so before this it restarted forever;
+- a wedged event loop;
+- a stalled or exited bus loop;
+- a database outage.
+
+**No `OnFailure=`.** `deploy.sh` runs `reset-failed` before every restart, so a spent
+burst never blocks a deploy or a switch-back. A planned stop ends `inactive`, not
+`failed`: uvicorn dies by the SIGTERM it re-raises, which systemd counts as clean.
+`tests/deploy/test_planned_stop.py` pins this. The 2026-09-30 `failed` came from `uv run`,
+which turned that same SIGTERM into exit code 143.
+
+**The unit** carries `Environment=CO_ARCHIVER_LIVE_MONITOR_ID=…`. That line is never in an
+env file: a hand-run server would check in for production. The key is the tenant's,
+shared with drift and backup, handed over as the `status-checkin-key` credential, with
+the empty `SetCredential=` fallback. Each check-in runs in a daemon thread, bounded at
+15 s, one attempt per tick, so a hung Status never delays a publish or an ack. Startup
+says which state it is in:
+
+| Journal | Meaning |
+|---|---|
+| `liveness: on <id>` | checking in. The first `liveness check-in` (`checkin` 202) follows at once, then one after each failure |
+| `liveness: off` | no monitor id: a dev server, a test, a hand run |
+| `liveness: off: missing the status-checkin-key credential` (ERROR) | the key file is gone or empty. The service runs **unmonitored**. Reinstall `/etc/archiver/status-checkin.key` (root 0600) and restart |
+| `bus loops not progressing; not checking in` (WARNING, each tick) | the gate is shut. `reasons` names each loop (`not started`, `exited`, `stale N s`) |
+| `liveness check-in failed` (WARNING) | Status refused or timed out. The grace absorbs one |
+
+### When it goes `missing`
+
+Read `journalctl -u archiver -o cat | grep liveness` first:
+- **No `liveness` lines since the last start:** the process is down or crash-looping. Run `systemctl status archiver`, and `systemctl show archiver -p NRestarts -p Result`. After fixing the cause, `sudo systemctl reset-failed archiver && sudo systemctl start archiver`.
+- **`bus loops not progressing`:** its `reasons` name the loop. `stale` on the publisher alone is most likely the database (`systemctl status postgresql`). `exited` or `not started` means a bus task died: look for `Bus task exited` and `Failed to initialise` just before it. The remedy is a restart once the cause is fixed.
+- **`check-in failed` every tick:** Status is unreachable (`curl http://status:9000/health`, the tailnet path) or refuses the key.
+
+**Planned stops.** A stop longer than interval plus grace, about 20 min, pages. **Pause the
+monitor first.** Ask Status's operator to `PATCH` `co-archiver-live` to `enabled: false`;
+check-ins still land while it is paused. Re-enable it after the restart. A deploy never
+needs this: its worst silence is about 520 s.
+
 ## The nightly backup (archiver#233)
 
 `archiver-backup.timer` dumps `archiver` at 03:17 UTC to `gs://co-gcs-archiver-backup`,

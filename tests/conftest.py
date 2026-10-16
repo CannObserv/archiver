@@ -126,6 +126,10 @@ _OUTBOUND_SERVICE_ENV_VARS = (
     "CO_ARCHIVER_BACKUP_MONITOR_ID",
     "ARCHIVER_BACKUP_BUCKET",
     "GOOGLE_APPLICATION_CREDENTIALS",
+    # The liveness heartbeat (#297), for the drift reason, and the directory its
+    # key is read from: with both, a lifespan test would check in for production.
+    "CO_ARCHIVER_LIVE_MONITOR_ID",
+    "CREDENTIALS_DIRECTORY",
 )
 for _var in _OUTBOUND_SERVICE_ENV_VARS:
     os.environ.pop(_var, None)

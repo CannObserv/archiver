@@ -50,6 +50,7 @@ from src.core.changes.backoff import (
     error_backoff_seconds,
 )
 from src.core.changes.diagnostics import error_text
+from src.core.liveness import LoopProgress
 from src.core.logging import get_logger
 from src.core.services.watch_status import (
     WATCH_STATUS_TOPIC,
@@ -276,6 +277,7 @@ async def run(
     stop_event: asyncio.Event | None = None,
     block_ms: int = READ_BLOCK_MS,
     error_backoff_base: float = ERROR_BACKOFF_BASE_SECONDS,
+    progress: LoopProgress | None = None,
 ) -> None:
     """Loop until ``stop_event`` is set, tailing scheduler status.
 
@@ -283,6 +285,10 @@ async def run(
     (escalating, capped, logged every ``ERROR_LOG_EVERY``-th so a sustained
     broker outage cannot flood the journal). ``asyncio.CancelledError``
     propagates for shutdown; everything else is logged and the loop continues.
+
+    ``progress`` is stamped at the end of every iteration, backoff included
+    (archiver#297). The database's errors reach this backoff too, but the outbox
+    publisher, expected wherever this tail is, carries that signal.
     """
     stop_event = stop_event or asyncio.Event()
     logger.info(
@@ -308,6 +314,8 @@ async def run(
                     extra={"after_failures": consecutive_failures},
                 )
             consecutive_failures = 0
+            if progress is not None:
+                progress.stamp()
             continue
         except asyncio.CancelledError:
             raise
@@ -318,6 +326,8 @@ async def run(
                     "info.watch-status tail loop error; backing off",
                     extra={"consecutive_failures": consecutive_failures},
                 )
+            if progress is not None:
+                progress.stamp(backing_off=True)
 
         delay = error_backoff_seconds(consecutive_failures, error_backoff_base)
         await asyncio.wait(

@@ -40,6 +40,7 @@ from src.core.changes.backoff import (
     error_backoff_seconds,
 )
 from src.core.changes.diagnostics import error_text
+from src.core.liveness import LoopProgress
 from src.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -378,6 +379,7 @@ async def reclaim_stale(
     poison_errors: tuple[type[BaseException], ...] = (),
     min_idle_ms: int = CLAIM_MIN_IDLE_MS,
     cursor: ReclaimCursor | None = None,
+    progress: LoopProgress | None = None,
 ) -> int:
     """Process one page of entries a dead consumer left pending. Returns how many settled.
 
@@ -402,6 +404,9 @@ async def reclaim_stale(
     failed, so it has nothing to count.) Before ``claim_stale_page`` one bad frame
     raised out of the whole page, and its decodable neighbours - already claimed,
     idle clocks reset - waited for a later pass.
+
+    ``progress`` is stamped per message (archiver#297): a page of slow handlers
+    is progress, not a stalled loop.
     """
     cursor = cursor if cursor is not None else ReclaimCursor()
     page = await _claim_page(consumer, min_idle_ms=min_idle_ms, start_id=cursor.position)
@@ -417,6 +422,8 @@ async def reclaim_stale(
                 "Failed to process reclaimed message; leaving it pending",
                 extra={"message_id": message.message_id, "topic": consumer.topic},
             )
+        if progress is not None:
+            progress.stamp()
     return settled
 
 
@@ -430,6 +437,7 @@ async def run(
     claim_interval_iterations: int = CLAIM_INTERVAL_ITERATIONS,
     claim_min_idle_ms: int = CLAIM_MIN_IDLE_MS,
     error_backoff_base: float = ERROR_BACKOFF_BASE_SECONDS,
+    progress: LoopProgress | None = None,
 ) -> None:
     """Loop until ``stop_event`` is set, consuming ``consumer.topic``.
 
@@ -455,6 +463,10 @@ async def run(
     growing. ``ensure_group`` is idempotent (``BUSYGROUP`` is swallowed), so
     re-asserting costs one round trip on the pass after a failure and nothing at
     all on the happy path.
+
+    ``progress`` is stamped at the end of every iteration, backoff included
+    (archiver#297): a handler's errors are settled per message, so only the
+    broker reaches the backoff, and a broker outage counts as alive.
     """
     stop_event = stop_event or asyncio.Event()
     logger.info(
@@ -493,6 +505,7 @@ async def run(
                     poison_errors=poison_errors,
                     min_idle_ms=claim_min_idle_ms,
                     cursor=reclaim_cursor,
+                    progress=progress,
                 )
             if consecutive_failures:
                 # Positive recovery signal at the same filter level as the
@@ -502,6 +515,8 @@ async def run(
                     extra={"topic": consumer.topic, "after_failures": consecutive_failures},
                 )
             consecutive_failures = 0
+            if progress is not None:
+                progress.stamp()
             continue
         except asyncio.CancelledError:
             raise
@@ -523,6 +538,8 @@ async def run(
                         "consecutive_failures": consecutive_failures,
                     },
                 )
+            if progress is not None:
+                progress.stamp(backing_off=True)
 
         delay = error_backoff_seconds(consecutive_failures, error_backoff_base)
         await asyncio.wait(

@@ -44,6 +44,7 @@ from src.core.changes.publisher import (
     trim_stream,
 )
 from src.core.models import ChangesOutboxRow
+from tests.core.changes._stamps import Stamps
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -1791,3 +1792,85 @@ async def test_run_survives_a_failing_prune(publisher, monkeypatch):
     )
 
     assert iterations == 3
+
+
+# ---------------------------------------------------------------------------
+# Liveness stamps - archiver#297
+# ---------------------------------------------------------------------------
+
+
+async def test_run_stamps_progress_after_an_empty_drain(session_factory, publisher, monkeypatch):
+    """An idle outbox is a turning loop, not an outage."""
+    stop = asyncio.Event()
+
+    async def _drain(**_kwargs):
+        stop.set()
+        return 0
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+    stamps = Stamps()
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        idle_interval=0.001,
+        stop_event=stop,
+        stats_interval=None,
+        progress=stamps,
+    )
+    assert stamps.log == [False]
+
+
+async def test_run_stamps_progress_while_the_broker_refuses_every_publish(
+    session_factory, monkeypatch
+):
+    """A broker outage is alive (the operator decision on archiver#297): a publish
+    error is caught per row inside the real ``drain_once``, so the drain returns."""
+    await _insert_row(session_factory, payload=_captured_event("rev-down"))
+    broken_redis = AsyncMock()
+    broken_redis.xadd = AsyncMock(side_effect=RedisConnectionError("broker down"))
+    stop = asyncio.Event()
+
+    async def _drain_then_stop(**kwargs):
+        stop.set()
+        return await drain_once(**kwargs)
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain_then_stop)
+    stamps = Stamps()
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=AsyncBusPublisher(broken_redis),
+        idle_interval=0.001,
+        stop_event=stop,
+        stats_interval=None,
+        progress=stamps,
+    )
+    assert broken_redis.xadd.await_count == 1
+    assert stamps.log == [False]
+
+
+async def test_run_does_not_stamp_while_the_database_is_down(
+    session_factory, publisher, monkeypatch
+):
+    """``/health`` is DB-free, so a Postgres outage pages only through this silence."""
+    stop = asyncio.Event()
+    calls = 0
+
+    async def _drain(**_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls >= 3:
+            stop.set()
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(publisher_mod, "drain_once", _drain)
+    stamps = Stamps()
+    await publisher_mod.run(
+        session_factory=session_factory,
+        publisher=publisher,
+        error_backoff_base=0.001,
+        stop_event=stop,
+        stats_interval=None,
+        progress=stamps,
+    )
+    assert calls == 3
+    assert stamps.log == []

@@ -45,6 +45,7 @@ from src.core.changes.backoff import (
 from src.core.changes.diagnostics import error_text
 from src.core.changes.outbox_prune import prune_outbox
 from src.core.changes.outbox_stats import log_outbox_stats
+from src.core.liveness import LoopProgress
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow
 
@@ -413,6 +414,7 @@ async def run(
     stats_interval: float | None = STATS_LOG_INTERVAL_SECONDS,
     retention_days: int | None = None,
     prune_interval: float = PRUNE_INTERVAL_SECONDS,
+    progress: LoopProgress | None = None,
 ) -> None:
     """Loop forever (until ``stop_event`` is set), draining the outbox.
 
@@ -453,6 +455,11 @@ async def run(
     published-row retention pass via ``prune_outbox`` - archiver#189. Left at the
     default ``retention_days=None`` (the dormant or disabled-knob case) nothing
     is pruned. Failures are swallowed there too, on the same reasoning.
+
+    ``progress`` is stamped at the end of each iteration whose drain returned
+    (archiver#297). Not while ``drain_once`` keeps raising: a publish error is
+    caught per row, so what reaches that backoff is the database, and the
+    liveness heartbeat's silence is how a Postgres outage pages.
     """
     both_capped = trim_topics & set(topic_maxlen or {})
     if both_capped:
@@ -521,6 +528,9 @@ async def run(
             # from the first pass.
             for topic in trim_topics:
                 await trim_stream(redis_client, topic, stream_maxlen)
+
+        if progress is not None and not consecutive_failures:
+            progress.stamp()
 
         delay = _next_delay(
             consecutive_failures=consecutive_failures,
