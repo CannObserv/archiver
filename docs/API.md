@@ -53,6 +53,7 @@ Those take production action on 8000 and run only when the operator asks.
 | Atomic InfoItem create | `POST /info-items` | `create_info_item(name, ..., initial_url=None, initial_source_specs=None, initial_rep_spec_assignments=None, rep_fields=None, pm_org_id=None)` |
 | Bind a Source to an Item | `POST /info-items/{id}/info-sources` | `add_info_source(info_item_id, info_source_id)` |
 | Deactivate a source binding | `DELETE /info-items/{id}/info-sources/{source_id}` | `deactivate_info_source_binding(info_item_id, info_source_id)` |
+| Replace an item's primary source (the swap) | `PUT /info-items/{id}/primary-source` | `replace_primary_source(info_item_id, info_source_id)` |
 | Delete an InfoItem | `DELETE /info-items/{id}` | `delete_info_item(info_item_id)` |
 | Author a top-level InfoSource | `POST /info-sources` | `create_info_source(url, source_specs)` |
 | Update InfoSource specs | `PATCH /info-sources/{id}/source-specs` | `update_info_source_specs(info_source_id, source_specs)` |
@@ -73,6 +74,26 @@ Those take production action on 8000 and run only when the operator asks.
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
 `POST /info-sources` accepts `{url, source_specs}`. Multiple InfoSources at the same URL are valid. Returns 422 on invalid URL or spec validation failure.
+
+`PUT /info-items/{id}/primary-source` accepts `{info_source_id}` and **is the swap** (archiver#45).
+In one transaction it deactivates the current primary, binds the new one, emits
+`info_item_primary_changed` and announces once on `info.registry`, with the final state.
+**`DELETE …/info-sources/{source_id}` then `POST …/info-sources` is not a swap.** It is two
+flows and two announcements, revoked then live, so the consumer destroys its row and recreates it,
+losing every local column. Use the DELETE only to leave an item with no primary. The InfoItem row
+is locked `FOR UPDATE`, so concurrent swaps serialize. The dashboard's two swap routes run the same
+core tool (`src/core/tools/swap_primary_source.py`). Outcomes:
+
+- **201**: the item had no active primary.
+- **200**: replaced; or the source was already primary, in which case nothing is written,
+  emitted or announced.
+- **404** `kind="lookup"`: no such InfoItem or InfoSource.
+
+**A revert reactivates.** The `(info_item_id, info_source_id)` primary key keeps an earlier
+primary's row as history, so swapping back to that source clears the row's `deactivated_at`
+rather than inserting a second. The binding returned carries the first stint's `created_at`; the
+earlier deactivation time is overwritten. The revert's `info_item_primary_changed` reuses the
+`{info_item_id}:{new_info_source_id}` key of that first binding: see [BUS.md](BUS.md).
 
 `POST /info-items/{id}/rep-spec-assignments` refuses before the RepSpec document freezes (#83),
 because afterwards nothing can fix it: **422** `code="rep_spec_invalid"` when the document itself

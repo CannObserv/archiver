@@ -58,7 +58,15 @@ only starts when `ARCHIVER_REDIS_URL` is set. Two event types:
 | Event type | Trigger | Payload type (co-core) |
 |---|---|---|
 | `source_revision_captured` | New `SourceRevision` insert - from `POST /source-revisions` **or** from a `content.revisions` observation, on the non-idempotent path either way | `co_core.pure.models.changes.SourceRevisionCapturedEvent` |
-| `info_item_primary_changed` | New active `InfoItemSource` binding created (`POST /info-items/{id}/info-sources`) | `co_core.pure.models.changes.InfoItemPrimaryChangedEvent` |
+| `info_item_primary_changed` | New active `InfoItemSource` binding created: `POST /info-items/{id}/info-sources`, and the swap (`swap_primary_source`: `PUT /info-items/{id}/primary-source` and the dashboard's two swap routes, archiver#45). A swap to the current primary writes nothing and emits nothing. **A revert (A → B → A) re-emits A's key**: see below | `co_core.pure.models.changes.InfoItemPrimaryChangedEvent` |
+
+**A revert reuses the primary-changed key (archiver#45).** co-core keys
+`info_item_primary_changed` on `{info_item_id}:{new_info_source_id}`, which was
+unique only while a source could never be bound to an item twice. The swap now
+reactivates a previous primary, so A → B → A emits A's key a second time and a
+consumer deduping on the envelope `key` drops the revert. No consumer of this
+event is known today; the key derivation is co-core's to change
+(CannObserv/cannobserv#578).
 
 The payload models live in **co-core** (`co_core.pure.models.changes`) - lifted
 from archiver in cannobserv#261 so the whole cluster shares one contract. Emit

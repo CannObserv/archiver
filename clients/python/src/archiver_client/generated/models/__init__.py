@@ -31,6 +31,7 @@ from .info_item_org_put import InfoItemOrgPut
 from .info_item_out import InfoItemOut
 from .info_item_out_rep_fields import InfoItemOutRepFields
 from .info_item_out_watch_spec import InfoItemOutWatchSpec
+from .info_item_primary_source_put import InfoItemPrimarySourcePut
 from .info_item_rep_fields_put import InfoItemRepFieldsPut
 from .info_item_rep_fields_put_rep_fields import InfoItemRepFieldsPutRepFields
 from .info_item_rep_spec_create import InfoItemRepSpecCreate
@@ -124,6 +125,7 @@ __all__ = (
     "InfoItemOut",
     "InfoItemOutRepFields",
     "InfoItemOutWatchSpec",
+    "InfoItemPrimarySourcePut",
     "InfoItemRepFieldsPut",
     "InfoItemRepFieldsPutRepFields",
     "InfoItemRepSpecCreate",

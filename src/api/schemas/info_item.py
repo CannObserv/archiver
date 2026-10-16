@@ -26,6 +26,15 @@ class InfoItemSourceCreate(BaseModel):
     info_source_id: str = Field(min_length=1, description="ULID of an existing InfoSource.")
 
 
+class InfoItemPrimarySourcePut(BaseModel):
+    """Request body for PUT /info-items/{id}/primary-source (archiver#45)."""
+
+    model_config = {"extra": "forbid"}
+    info_source_id: ULIDStr = Field(
+        description="ULID of an existing InfoSource to make the item's primary."
+    )
+
+
 class InfoItemRepSpecCreate(BaseModel):
     """Request body for POST /info-items/{id}/rep-spec-assignments."""
 

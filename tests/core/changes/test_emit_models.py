@@ -10,7 +10,8 @@ Referencing the models *through the emitting module's namespace* (not importing
 them straight from co-core) is deliberate: it ties the guard to what the emit
 sites actually bind. The two live in different layers — archiver#139 moved the
 SourceRevision emit into ``src.core.services`` so the bus consumer emits through
-the same code as the route, while the InfoItem one is still in its route.
+the same code as the route, and archiver#45 moved the InfoItem one into
+``src.core.tools.bind_info_source`` so the POST route and the swap share it.
 """
 
 from __future__ import annotations
@@ -20,8 +21,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from src.api.routes import info_items
 from src.core.services import source_revision
+from src.core.tools import bind_info_source
 
 
 def test_source_revision_emit_model_forbids_extra_fields():
@@ -40,8 +41,8 @@ def test_source_revision_emit_model_forbids_extra_fields():
 
 
 def test_info_item_primary_changed_emit_model_forbids_extra_fields():
-    """info_items emits via a forbid-configured model."""
-    model = info_items.InfoItemPrimaryChangedEmit
+    """bind_info_source emits via a forbid-configured model."""
+    model = bind_info_source.InfoItemPrimaryChangedEmit
     assert model.model_config.get("extra") == "forbid"
     with pytest.raises(ValidationError):
         model(

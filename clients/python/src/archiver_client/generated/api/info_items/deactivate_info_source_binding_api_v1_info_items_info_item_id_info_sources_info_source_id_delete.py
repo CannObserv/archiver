@@ -97,7 +97,9 @@ def sync_detailed(
 
      Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
-    Use this to retire the current primary before binding a new one.
+    Retires the primary and leaves the item with none: it announces revoked.
+    To replace a primary, use ``PUT /info-items/{id}/primary-source``; this
+    followed by a POST is two flows, not a swap.
     Returns the deactivated binding row. 404 when no active binding exists.
 
     Args:
@@ -134,7 +136,9 @@ def sync(
 
      Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
-    Use this to retire the current primary before binding a new one.
+    Retires the primary and leaves the item with none: it announces revoked.
+    To replace a primary, use ``PUT /info-items/{id}/primary-source``; this
+    followed by a POST is two flows, not a swap.
     Returns the deactivated binding row. 404 when no active binding exists.
 
     Args:
@@ -166,7 +170,9 @@ async def asyncio_detailed(
 
      Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
-    Use this to retire the current primary before binding a new one.
+    Retires the primary and leaves the item with none: it announces revoked.
+    To replace a primary, use ``PUT /info-items/{id}/primary-source``; this
+    followed by a POST is two flows, not a swap.
     Returns the deactivated binding row. 404 when no active binding exists.
 
     Args:
@@ -201,7 +207,9 @@ async def asyncio(
 
      Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
-    Use this to retire the current primary before binding a new one.
+    Retires the primary and leaves the item with none: it announces revoked.
+    To replace a primary, use ``PUT /info-items/{id}/primary-source``; this
+    followed by a POST is two flows, not a swap.
     Returns the deactivated binding row. 404 when no active binding exists.
 
     Args:

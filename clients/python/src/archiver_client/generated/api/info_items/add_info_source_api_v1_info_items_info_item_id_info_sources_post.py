@@ -102,11 +102,13 @@ def sync_detailed(
 ) -> Response[EnvelopeResponse | InfoItemSourceOut]:
     """Add Info Source
 
-     Bind an existing InfoSource to an InfoItem.
+     Bind an existing InfoSource to an InfoItem that has no active primary.
 
     At most one active binding per InfoItem. If one already exists, returns 409 with
-    ``data.existing_info_source_id`` — deactivate it first via
-    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+    ``data.existing_info_source_id``. To replace a primary, use
+    ``PUT /info-items/{id}/primary-source``: DELETE then POST is **not** a swap.
+    It is two announcements, revoked then live, and the consumer destroys and
+    recreates its row in between.
 
     Emits ``info_item_primary_changed`` on the change bus
     (``old_info_source_id`` is ``null`` on first assignment).
@@ -143,11 +145,13 @@ def sync(
 ) -> EnvelopeResponse | InfoItemSourceOut | None:
     """Add Info Source
 
-     Bind an existing InfoSource to an InfoItem.
+     Bind an existing InfoSource to an InfoItem that has no active primary.
 
     At most one active binding per InfoItem. If one already exists, returns 409 with
-    ``data.existing_info_source_id`` — deactivate it first via
-    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+    ``data.existing_info_source_id``. To replace a primary, use
+    ``PUT /info-items/{id}/primary-source``: DELETE then POST is **not** a swap.
+    It is two announcements, revoked then live, and the consumer destroys and
+    recreates its row in between.
 
     Emits ``info_item_primary_changed`` on the change bus
     (``old_info_source_id`` is ``null`` on first assignment).
@@ -179,11 +183,13 @@ async def asyncio_detailed(
 ) -> Response[EnvelopeResponse | InfoItemSourceOut]:
     """Add Info Source
 
-     Bind an existing InfoSource to an InfoItem.
+     Bind an existing InfoSource to an InfoItem that has no active primary.
 
     At most one active binding per InfoItem. If one already exists, returns 409 with
-    ``data.existing_info_source_id`` — deactivate it first via
-    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+    ``data.existing_info_source_id``. To replace a primary, use
+    ``PUT /info-items/{id}/primary-source``: DELETE then POST is **not** a swap.
+    It is two announcements, revoked then live, and the consumer destroys and
+    recreates its row in between.
 
     Emits ``info_item_primary_changed`` on the change bus
     (``old_info_source_id`` is ``null`` on first assignment).
@@ -218,11 +224,13 @@ async def asyncio(
 ) -> EnvelopeResponse | InfoItemSourceOut | None:
     """Add Info Source
 
-     Bind an existing InfoSource to an InfoItem.
+     Bind an existing InfoSource to an InfoItem that has no active primary.
 
     At most one active binding per InfoItem. If one already exists, returns 409 with
-    ``data.existing_info_source_id`` — deactivate it first via
-    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+    ``data.existing_info_source_id``. To replace a primary, use
+    ``PUT /info-items/{id}/primary-source``: DELETE then POST is **not** a swap.
+    It is two announcements, revoked then live, and the consumer destroys and
+    recreates its row in between.
 
     Emits ``info_item_primary_changed`` on the change bus
     (``old_info_source_id`` is ``null`` on first assignment).

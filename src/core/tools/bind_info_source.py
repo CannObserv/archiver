@@ -1,10 +1,13 @@
 """Bind an InfoSource to an InfoItem."""
 
+from datetime import UTC, datetime
+
+from co_core.pure.models.changes import InfoItemPrimaryChangedEmit
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 
 
 class InfoItemNotFoundError(Exception):
@@ -66,3 +69,24 @@ async def bind_info_source(
     db.add(binding)
     await db.flush()
     return binding
+
+
+def emit_primary_changed(
+    db: AsyncSession,
+    *,
+    info_item_id: ULID,
+    old_info_source_id: ULID | None,
+    new_info_source_id: ULID,
+) -> None:
+    """Stage an ``info_item_primary_changed`` outbox row on ``info.changes``.
+
+    Every new active binding is a primary binding, so every one emits this;
+    ``old_info_source_id`` is ``None`` on first assignment. Caller commits.
+    """
+    event = InfoItemPrimaryChangedEmit(
+        occurred_at=datetime.now(UTC),
+        info_item_id=str(info_item_id),
+        old_info_source_id=str(old_info_source_id) if old_info_source_id else None,
+        new_info_source_id=str(new_info_source_id),
+    )
+    db.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
