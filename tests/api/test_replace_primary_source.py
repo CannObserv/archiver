@@ -182,6 +182,22 @@ async def test_a_malformed_source_id_is_422(client, item):
 
 
 @pytest.mark.asyncio
+async def test_an_unknown_body_field_is_422(client, session, item):
+    """``extra="forbid"``: a typo'd field is refused, not silently dropped."""
+    src = await _source(session, "https://example.com/a")
+    await session.commit()
+
+    resp = await client.put(
+        f"/api/v1/info-items/{item.info_item_id}/primary-source",
+        headers=HEADERS,
+        json={"info_source_id": str(src.info_source_id), "role": None},
+    )
+
+    assert resp.status_code == 422
+    assert await _outbox(session, "info.registry") == []
+
+
+@pytest.mark.asyncio
 async def test_requires_api_key(client, item):
     resp = await client.put(
         f"/api/v1/info-items/{item.info_item_id}/primary-source",
