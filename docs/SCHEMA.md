@@ -236,7 +236,9 @@ document; the dashboard's Registry badge reports the count
     fetches each tick.
   - **Previous primary** — a deactivated row (`deactivated_at IS NOT NULL`). Preserved indefinitely
     as succession history. Watcher may continue watching previous primaries for unanticipated
-    changes.
+    changes. History is one row per `(info_item_id, info_source_id)`, the primary key, not one per
+    stint: swapping back to a previous primary **reactivates** its row (archiver#45), keeping
+    `created_at` and overwriting the earlier `deactivated_at`.
   - **Both directions are indexed.** The composite primary key leads with `info_item_id`, so a
     lookup by `info_source_id` alone cannot use it — Postgres has no skip scan. Partial index
     `ix_info_item_sources_active_source` covers that direction (archiver#176), matching the same
