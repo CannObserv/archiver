@@ -4,8 +4,7 @@ import os
 from datetime import UTC, datetime
 from typing import NoReturn
 
-from co_core.pure.models.changes import InfoItemPrimaryChangedEmit
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
@@ -16,6 +15,7 @@ from src.api.schemas.info_item import (
     InfoItemCreate,
     InfoItemOrgPut,
     InfoItemOut,
+    InfoItemPrimarySourcePut,
     InfoItemRepFieldsPut,
     InfoItemRepSpecCreate,
     InfoItemRepSpecOut,
@@ -34,7 +34,6 @@ from src.api.serializers import (
 )
 from src.core.logging import get_logger
 from src.core.models import (
-    ChangesOutboxRow,
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
@@ -76,6 +75,7 @@ from src.core.tools.assign_rep_spec import (
 from src.core.tools.bind_info_source import (
     ActiveBindingAlreadyExistsError,
     bind_info_source,
+    emit_primary_changed,
 )
 from src.core.tools.bind_info_source import (
     InfoItemNotFoundError as BindIIS_InfoItemNotFoundError,
@@ -111,6 +111,13 @@ from src.core.tools.set_rep_fields import (
     RepFieldsRefusedError,
     set_rep_fields,
 )
+from src.core.tools.swap_primary_source import (
+    InfoItemNotFoundError as SwapInfoItemNotFoundError,
+)
+from src.core.tools.swap_primary_source import (
+    InfoSourceNotFoundError as SwapInfoSourceNotFoundError,
+)
+from src.core.tools.swap_primary_source import swap_primary_source
 from src.core.watch_spec_schema.validator import validate_watch_spec
 
 router = APIRouter(prefix="/info-items", tags=["info-items"])
@@ -447,11 +454,13 @@ async def add_info_source(
     body: InfoItemSourceCreate,
     session: AsyncSession = Depends(get_db_session),
 ) -> InfoItemSourceOut:
-    """Bind an existing InfoSource to an InfoItem.
+    """Bind an existing InfoSource to an InfoItem that has no active primary.
 
     At most one active binding per InfoItem. If one already exists, returns 409 with
-    ``data.existing_info_source_id`` — deactivate it first via
-    ``DELETE /info-items/{id}/info-sources/{source_id}``, then re-POST.
+    ``data.existing_info_source_id``. To replace a primary, use
+    ``PUT /info-items/{id}/primary-source``: DELETE then POST is **not** a swap.
+    It is two announcements, revoked then live, and the consumer destroys and
+    recreates its row in between.
 
     Emits ``info_item_primary_changed`` on the change bus
     (``old_info_source_id`` is ``null`` on first assignment).
@@ -516,13 +525,12 @@ async def add_info_source(
             .limit(1)
         )
     ).scalar_one_or_none()
-    event = InfoItemPrimaryChangedEmit(
-        occurred_at=datetime.now(UTC),
-        info_item_id=str(item_ulid),
-        old_info_source_id=str(prev_binding.info_source_id) if prev_binding else None,
-        new_info_source_id=str(source_ulid),
+    emit_primary_changed(
+        session,
+        info_item_id=item_ulid,
+        old_info_source_id=prev_binding.info_source_id if prev_binding else None,
+        new_info_source_id=source_ulid,
     )
-    session.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
 
     await announce_info_item(session, item_ulid)
     await session.commit()
@@ -542,7 +550,9 @@ async def deactivate_info_source_binding(
 ) -> InfoItemSourceOut:
     """Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
-    Use this to retire the current primary before binding a new one.
+    Retires the primary and leaves the item with none: it announces revoked.
+    To replace a primary, use ``PUT /info-items/{id}/primary-source``; this
+    followed by a POST is two flows, not a swap.
     Returns the deactivated binding row. 404 when no active binding exists.
     """
     try:
@@ -583,6 +593,51 @@ async def deactivate_info_source_binding(
     await announce_info_item(session, item_ulid)
     await session.commit()
     return info_item_source_to_out(binding)
+
+
+@router.put(
+    "/{info_item_id}/primary-source",
+    response_model=InfoItemSourceOut,
+    dependencies=[Depends(require_api_key)],
+    responses={201: {"model": InfoItemSourceOut, "description": "First assignment"}},
+)
+async def put_primary_source(
+    info_item_id: ULIDStr,
+    body: InfoItemPrimarySourcePut,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemSourceOut:
+    """Replace an InfoItem's primary InfoSource in one transaction (archiver#45).
+
+    Deactivates the current primary, binds the new one, emits
+    ``info_item_primary_changed`` and announces **once**, with the final state.
+    This is the swap; ``DELETE …/info-sources/{id}`` then ``POST …/info-sources``
+    is not one, because it announces revoked and then live.
+
+    A source that was an earlier primary of this item is reactivated: its
+    history row comes back, keeping its first ``created_at``.
+
+    - **201**: the item had no active primary.
+    - **200**: the primary was replaced, or was already this source (nothing
+      written, nothing announced).
+    - **404**: no such InfoItem or InfoSource.
+    """
+    try:
+        result = await swap_primary_source(
+            session,
+            info_item_id=ULID.from_str(info_item_id),
+            info_source_id=ULID.from_str(body.info_source_id),
+        )
+    except SwapInfoItemNotFoundError as e:
+        raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
+    except SwapInfoSourceNotFoundError as e:
+        raise_envelope(404, "lookup", "InfoSource not found", source_exc=e)
+
+    if result.changed:
+        await session.commit()
+    if result.previous_info_source_id is None:
+        response.status_code = 201
+    return info_item_source_to_out(result.binding)
 
 
 @router.post(

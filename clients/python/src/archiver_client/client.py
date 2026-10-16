@@ -70,6 +70,9 @@ from archiver_client.generated.api.info_items import (
     put_org_api_v1_info_items_info_item_id_org_put as _put_org,
 )
 from archiver_client.generated.api.info_items import (
+    put_primary_source_api_v1_info_items_info_item_id_primary_source_put as _put_primary_source,
+)
+from archiver_client.generated.api.info_items import (
     put_rep_fields_api_v1_info_items_info_item_id_rep_fields_put as _put_rep_fields,
 )
 from archiver_client.generated.api.info_sources import (
@@ -112,6 +115,9 @@ from archiver_client.generated.models.info_item_create_initial_source_specs_type
 from archiver_client.generated.models.info_item_create_rep_fields import InfoItemCreateRepFields
 from archiver_client.generated.models.info_item_org_put import InfoItemOrgPut
 from archiver_client.generated.models.info_item_out import InfoItemOut
+from archiver_client.generated.models.info_item_primary_source_put import (
+    InfoItemPrimarySourcePut,
+)
 from archiver_client.generated.models.info_item_rep_fields_put import InfoItemRepFieldsPut
 from archiver_client.generated.models.info_item_rep_fields_put_rep_fields import (
     InfoItemRepFieldsPutRepFields,
@@ -481,10 +487,12 @@ class ArchiverClient:
         info_item_id: str,
         info_source_id: str,
     ) -> InfoItemSourceOut:
-        """Bind an InfoSource to an InfoItem.
+        """Bind an InfoSource to an InfoItem that has no active primary.
 
         At most one active binding per InfoItem. Raises ``Conflict`` if an active
-        binding already exists — deactivate it first.
+        binding already exists. To replace a primary, use
+        ``replace_primary_source``: deactivating then re-adding is not a swap
+        (archiver#45).
         """
         body = InfoItemSourceCreate(info_source_id=info_source_id)
         response = await _add_info_source.asyncio_detailed(
@@ -499,13 +507,33 @@ class ArchiverClient:
     ) -> InfoItemSourceOut:
         """Deactivate an InfoItemSource binding (sets ``deactivated_at``).
 
-        Use to retire the current primary before binding a new one.
+        Retires the primary and leaves the item with none. To replace a primary,
+        use ``replace_primary_source`` instead (archiver#45).
         Returns the deactivated binding row. Raises on 404.
         """
         response = await _deactivate_info_source_binding.asyncio_detailed(
             client=self._gen_client,
             info_item_id=info_item_id,
             info_source_id=info_source_id,
+        )
+        return _unwrap(response)
+
+    async def replace_primary_source(
+        self,
+        info_item_id: str,
+        info_source_id: str,
+    ) -> InfoItemSourceOut:
+        """Make ``info_source_id`` the item's primary, retiring the current one.
+
+        One request, one transaction, one ``info.registry`` announcement
+        (archiver#45). Deactivating and then re-adding announces revoked and
+        then live, and the consumer destroys and recreates its row in between.
+        Already-primary is a no-op; an earlier primary of this item is
+        reactivated. Raises ``NotFound`` for an unknown item or source.
+        """
+        body = InfoItemPrimarySourcePut(info_source_id=info_source_id)
+        response = await _put_primary_source.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id, body=body
         )
         return _unwrap(response)
 

@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.28.0 (2026-10-16)
+
+[both] **`PUT /info-items/{id}/primary-source` is the atomic primary swap** (archiver#45). `archiver-client` 5.10.0 adds `replace_primary_source(info_item_id, info_source_id)`.
+
+- **One request, one transaction, one announcement.** Body `{info_source_id}`. It deactivates the current primary, binds the new one, emits `info_item_primary_changed` and announces once on `info.registry`, with the final state. Returns the new `InfoItemSourceOut`: **201** when the item had no active primary, **200** on replacement. Already-primary is a 200 that writes, emits and announces nothing. **404** for an unknown item or source.
+- **DELETE then POST is not a swap.** It announces revoked and then live, so the consumer destroys its row and recreates it, losing every local column. The DELETE and POST docstrings and SDK wrappers now say so and point at the PUT.
+- **`POST /info-items/{id}/info-sources` takes the InfoItem row lock** that the swap takes, as does the dashboard's `bind-source`. A bind racing a swap on an item with no primary used to collide on `uq_info_item_sources_active` and 500; it now waits and gets the 409 `existing_info_source_id`.
+- **A revert reactivates.** Swapping back to an earlier primary clears its history row's `deactivated_at` rather than inserting a second row, which the `(info_item_id, info_source_id)` primary key refuses. The returned binding keeps the first stint's `created_at`. The revert's `info_item_primary_changed` reuses that first binding's idempotency key, so a consumer deduping on `key` drops it ([BUS.md](docs/BUS.md); cannobserv#578).
+- **The dashboard's two swap routes run the same core tool** (`swap_primary_source`). They now emit `info_item_primary_changed`, which they had silently skipped. Swap-by-id to the current primary is a no-op, and to a previous primary reactivates it; both used to 500.
+
 ## v4.27.0 (2026-10-12)
 
 [service] **Source specs reach an extractor that honours them; the preview extracts as Processor does** (archiver#317, on co-core 0.32's cannobserv#523). `archiver-client` stays at 5.9.0: no type changes. The `preview_extraction` docstrings, the `InfoSourceCreate.source_specs` description, the generated route docstring and the OpenAPI snapshot change.

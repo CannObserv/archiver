@@ -87,6 +87,9 @@ from src.core.tools.set_rep_fields import (
     RepFieldsRefusedError,
     set_rep_fields,
 )
+from src.core.tools.swap_primary_source import (
+    swap_primary_source as swap_primary_binding,
+)
 from src.core.url_canonicalization import canonicalize_url
 from src.core.watch_spec_schema.validator import validate_watch_spec
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
@@ -1479,10 +1482,11 @@ async def swap_primary_source(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Author new InfoSource inline, deactivate old primary binding, bind new source.
+    """Author new InfoSource inline and make it the item's primary.
 
-    The announcement above carries the swap; Watcher reconciles it off
-    ``info.registry``. The post-commit HTTP patch retired with archiver#142.
+    The swap is ``swap_primary_source`` (archiver#45), the core tool behind
+    ``PUT /api/v1/info-items/{id}/primary-source``: one announcement, carrying
+    the final state, which Watcher reconciles off ``info.registry``.
     """
     item = await _resolve_item(item_id, session)
 
@@ -1523,29 +1527,9 @@ async def swap_primary_source(
             status_code=422,
         )
 
-    # Deactivate old primary binding if present
-    old_binding = (
-        await session.execute(
-            select(InfoItemSource).where(
-                InfoItemSource.info_item_id == item.info_item_id,
-                InfoItemSource.deactivated_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-    if old_binding is not None:
-        old_binding.deactivated_at = datetime.now(UTC)
-        await session.flush()
-
-    session.add(
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=new_src.info_source_id,
-        )
+    await swap_primary_binding(
+        session, info_item_id=item.info_item_id, info_source_id=new_src.info_source_id
     )
-    # ONE announcement for the whole swap, carrying the final state — announcing
-    # the deactivate and the bind separately would be revoked-then-live, and the
-    # consumer would destroy and recreate its row, losing every local column.
-    await announce_info_item(session, item.info_item_id)
     await session.commit()
 
     return Response(
@@ -1568,8 +1552,9 @@ async def swap_primary_by_id(
 ) -> Response:
     """Swap primary source to an existing InfoSource by ULID.
 
-    Deactivates the current active binding, creates a new one. The announcement
-    carries the swap; the post-commit HTTP patch retired with archiver#142.
+    Runs ``swap_primary_source`` (archiver#45): one announcement for the swap,
+    nothing written when the source is already primary, and a previous
+    primary's history row reactivated rather than duplicated.
     """
     item = await _resolve_item(item_id, session)
 
@@ -1587,29 +1572,9 @@ async def swap_primary_by_id(
     if new_src is None:
         raise DashboardNotFound("Information Source not found")
 
-    # Deactivate old primary binding if present
-    old_binding = (
-        await session.execute(
-            select(InfoItemSource).where(
-                InfoItemSource.info_item_id == item.info_item_id,
-                InfoItemSource.deactivated_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-    if old_binding is not None:
-        old_binding.deactivated_at = datetime.now(UTC)
-        await session.flush()
-
-    session.add(
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=new_src.info_source_id,
-        )
+    await swap_primary_binding(
+        session, info_item_id=item.info_item_id, info_source_id=new_src.info_source_id
     )
-    # ONE announcement for the whole swap, carrying the final state — announcing
-    # the deactivate and the bind separately would be revoked-then-live, and the
-    # consumer would destroy and recreate its row, losing every local column.
-    await announce_info_item(session, item.info_item_id)
     await session.commit()
 
     return Response(

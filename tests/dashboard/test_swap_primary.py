@@ -3,14 +3,19 @@
 Covers:
   POST /dashboard/info-items/{id}/swap-primary-source  — author new source inline
   POST /dashboard/info-items/{id}/swap-primary-by-id   — bind existing source by ULID
+
+Both run the ``swap_primary_source`` core tool (archiver#45), the one the API's
+``PUT /info-items/{id}/primary-source`` runs.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import select
 
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 
 _HEADERS = {"X-ExeDev-UserID": "ext-swap", "X-ExeDev-Email": "swap@example.com"}
 _TS = "2026-06-11T12:00:00+00:00"
@@ -194,3 +199,117 @@ async def test_swap_primary_by_id_invalid_ulid(client, session):
     assert r.status_code == 422
     assert "swap-by-id-error" in r.text
     assert "text-danger" in r.text
+
+
+# ---------------------------------------------------------------------------
+# Shared core tool (archiver#45)
+# ---------------------------------------------------------------------------
+
+
+async def _primary_changed(session) -> list[dict]:
+    payloads = (
+        await session.execute(
+            select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.changes")
+        )
+    ).scalars()
+    return [p for p in payloads if p["event_type"] == "info_item_primary_changed"]
+
+
+async def _bound_item(session, name: str) -> tuple[InfoItem, InfoSource]:
+    item = InfoItem(name=name)
+    src = InfoSource(url=f"https://old.{name}.example.com/", source_specs=[])
+    session.add_all([item, src])
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    await session.commit()
+    return item, src
+
+
+@pytest.mark.asyncio
+async def test_swap_primary_source_emits_primary_changed(client, session):
+    """The dashboard swap is a succession on ``info.changes`` like the API's."""
+    item, old = await _bound_item(session, "swap-emits")
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/swap-primary-source",
+        data={"url": "https://new.swap-emits.example.com/", "source_specs": _SPEC},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 204
+
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["old_info_source_id"] == str(old.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_swap_primary_by_id_emits_primary_changed(client, session):
+    item, old = await _bound_item(session, "swap-by-id-emits")
+    new = InfoSource(url="https://new.swap-by-id-emits.example.com/", source_specs=[])
+    session.add(new)
+    await session.commit()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/swap-primary-by-id",
+        data={"info_source_id": str(new.info_source_id)},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 204
+
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["old_info_source_id"] == str(old.info_source_id)
+    assert events[0]["new_info_source_id"] == str(new.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_swap_primary_by_id_to_the_current_primary_writes_nothing(client, session):
+    """It used to deactivate and re-insert the same (item, source) key: a 500."""
+    item, src = await _bound_item(session, "swap-by-id-same")
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/swap-primary-by-id",
+        data={"info_source_id": str(src.info_source_id)},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 204
+
+    binding = await session.get(InfoItemSource, (item.info_item_id, src.info_source_id))
+    await session.refresh(binding)
+    assert binding.deactivated_at is None
+    assert await _primary_changed(session) == []
+
+
+@pytest.mark.asyncio
+async def test_swap_primary_by_id_to_a_previous_primary_reactivates_it(client, session):
+    """It used to insert a second (item, source) key: a 500."""
+    item, current = await _bound_item(session, "swap-by-id-earlier")
+    earlier = InfoSource(url="https://earlier.swap-by-id.example.com/", source_specs=[])
+    session.add(earlier)
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=earlier.info_source_id,
+            deactivated_at=datetime.now(UTC),
+        )
+    )
+    await session.commit()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/swap-primary-by-id",
+        data={"info_source_id": str(earlier.info_source_id)},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 204
+
+    reactivated = await session.get(InfoItemSource, (item.info_item_id, earlier.info_source_id))
+    retired = await session.get(InfoItemSource, (item.info_item_id, current.info_source_id))
+    await session.refresh(reactivated)
+    await session.refresh(retired)
+    assert reactivated.deactivated_at is None
+    assert retired.deactivated_at is not None

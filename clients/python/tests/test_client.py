@@ -450,6 +450,42 @@ async def test_add_info_source(client):
     assert out.is_active is True
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [200, 201])
+async def test_replace_primary_source(client, status):
+    """archiver#45: one PUT is the swap; 201 on first assignment, 200 otherwise."""
+    with respx.mock:
+        route = respx.put(
+            f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/primary-source"
+        ).mock(return_value=httpx.Response(status, json=_info_item_source_out_payload()))
+        out = await client.replace_primary_source(
+            "01HZZ00000000000000000000A",
+            "01HZZ00000000000000000000F",
+        )
+    assert json.loads(route.calls.last.request.content) == {
+        "info_source_id": "01HZZ00000000000000000000F"
+    }
+    assert out.info_source_id == "01HZZ00000000000000000000F"
+    assert out.is_active is True
+
+
+@pytest.mark.asyncio
+async def test_replace_primary_source_404_raises_not_found(client):
+    with respx.mock:
+        respx.put(f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/primary-source").mock(
+            return_value=httpx.Response(
+                404,
+                json={
+                    "detail": {"kind": "lookup", "message": "InfoSource not found", "errors": []}
+                },
+            )
+        )
+        with pytest.raises(NotFound):
+            await client.replace_primary_source(
+                "01HZZ00000000000000000000A", "01HZZ00000000000000000000F"
+            )
+
+
 # --- SourceRevision endpoints ---
 
 

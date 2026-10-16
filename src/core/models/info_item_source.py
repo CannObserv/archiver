@@ -5,7 +5,10 @@ per InfoItem, enforced by ``uq_info_item_sources_active``. Its InfoSource URL is
 fetched by Watcher each tick.
 
 Deactivated binding (``deactivated_at IS NOT NULL``) is a previous primary,
-preserved indefinitely as succession history.
+preserved indefinitely as succession history: one row per (item, source), not
+per stint. The composite key admits no second row, so a swap back to that source
+reactivates this one (archiver#45), keeping ``created_at`` and overwriting the
+earlier ``deactivated_at``.
 """
 
 from datetime import UTC, datetime
