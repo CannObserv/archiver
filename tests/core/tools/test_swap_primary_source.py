@@ -1,9 +1,11 @@
 """Tests for the swap_primary_source core tool (archiver#45)."""
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
@@ -228,3 +230,61 @@ async def test_a_previous_primary_is_reactivated_when_there_is_no_current_one(se
     assert result.binding is earlier_binding
     assert result.previous_info_source_id is None
     assert earlier_binding.deactivated_at is None
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: the InfoItem row serializes two swaps
+# ---------------------------------------------------------------------------
+
+
+async def _track_outbox(make_session, committed_rows, info_item_id: ULID) -> None:
+    """Committed swaps leave outbox rows; track them so teardown deletes them."""
+    async with make_session() as s:
+        ids = (
+            await s.execute(
+                select(ChangesOutboxRow.id).where(
+                    ChangesOutboxRow.payload["info_item_id"].astext == str(info_item_id)
+                )
+            )
+        ).scalars()
+        committed_rows.extend((ChangesOutboxRow, row_id) for row_id in ids)
+
+
+@pytest.mark.asyncio
+async def test_a_second_swap_waits_and_then_replaces_the_first(test_engine, committed_rows):
+    """Without the item lock both read the same primary, and the later insert
+    collides with the earlier one on ``uq_info_item_sources_active``: a 500."""
+    make_session = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with make_session() as setup:
+        item = InfoItem(name="race swap")
+        a, b, c = (
+            InfoSource(url=f"https://example.com/race-{n}", source_specs=[_spec()]) for n in "abc"
+        )
+        setup.add_all([item, a, b, c])
+        await setup.flush()
+        setup.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=a.info_source_id))
+        await setup.commit()
+        committed_rows += [(InfoSource, src.info_source_id) for src in (a, b, c)]
+        committed_rows.append((InfoItem, item.info_item_id))
+
+    try:
+        async with make_session() as first, make_session() as second:
+            await swap_primary_source(
+                first, info_item_id=item.info_item_id, info_source_id=b.info_source_id
+            )
+            task = asyncio.create_task(
+                swap_primary_source(
+                    second, info_item_id=item.info_item_id, info_source_id=c.info_source_id
+                )
+            )
+            done, _ = await asyncio.wait({task}, timeout=1.0)
+            assert not done, "second swap proceeded while the first held the InfoItem row"
+
+            await first.commit()
+            result = await asyncio.wait_for(task, timeout=10.0)
+            await second.commit()
+    finally:
+        await _track_outbox(make_session, committed_rows, item.info_item_id)
+
+    assert result.previous_info_source_id == b.info_source_id
+    assert result.binding.info_source_id == c.info_source_id
