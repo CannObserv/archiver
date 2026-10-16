@@ -9,6 +9,15 @@ release must run on the new schema. Add tables and columns nullable or with a
 default; a drop, a rename or a new `NOT NULL` without a default ships as two
 deploys: stop using it, then remove it.
 
+**Stored documents satisfy the current schema** (archiver#164). The four authored
+documents - `source_specs`, `watch_spec`, `rep_fields`, RepSpec `document` - are
+validated on write only, so a schema tightening ships with a data migration or with
+the sweep's "0 affected" in its PR; for an assigned (frozen) RepSpec, a recorded #83
+exception or #95. The rule and its RepSpec carve-out: [CONVENTIONS.md](CONVENTIONS.md)
+§ Schema tightenings. `src/core/tools/audit_stored_documents.py` re-judges every stored
+document; the dashboard's Registry badge reports the count
+([HEALTH_ROW.md](HEALTH_ROW.md)).
+
 ## Entities
 
 - **`InfoItem`** (`info_items`) — semantic anchor; carries domain meaning + `rep_fields` JSONB bag.
@@ -245,8 +254,10 @@ deploys: stop using it, then remove it.
   document freezes, so `assign_rep_spec` and `POST /info-items` run the whole of
   `validate_rep_spec` (envelope, provider sub-schema, `path_template` contract, this rule) and
   refuse with 422 `rep_spec_invalid`. Existing assignments and issuance are never re-judged, so a
-  rule added later cannot strand a frozen document; it only stops that document gaining new
-  assignments.
+  rule added later cannot break a frozen document's replication; it only stops that document
+  gaining new assignments. That is still a stranded document, so #164's rule applies to it: the
+  tightening's PR shows 0 assigned specs affected, or carries a recorded #83 exception, and the
+  Registry sweep reports any it missed as "clone it".
   **`path_template` contract** (archiver#168) — three rules the envelope schema cannot express,
   checked by `src/core/replication/template.py` from the *same parser* the renderer uses, so a
   document that validates is one that renders:

@@ -83,6 +83,12 @@ stays visible past its one-time dead-letter ERROR. Deliberately **not** on
 `/health`: that route is unauthenticated and DB-free (pure liveness), and these
 numbers are neither.
 
+- Bus monitoring is never on `/health` (unauthenticated, DB-free), and broker-side
+  monitoring is CannObserv/broker's (#193 D6). Outbox stats (archiver#112) reach the
+  dashboard badge and journald; the `archiver-bus-health` timer (#130) re-runs them
+  from outside the publisher, the one surface that survives a down publisher
+  (**Outbox observability** below).
+
 **Triaging dead-lettered outbox rows (archiver#191)** - the only way out of
 the terminal state; nothing expires one on its own, because an untriaged
 incident record ageing out silently is worse than a permanent warning.
@@ -307,7 +313,7 @@ seven-day temp store into its permanent, content-addressed one. The normative
 contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
 (P1-P5); `src/core/services/persist_issuance.py` is this side of it.
 
-- **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([DEPLOYMENT.md](DEPLOYMENT.md)).
+- **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([ENVIRONMENT.md](ENVIRONMENT.md)).
   The go-live order is broker, then Replicator's `REPLICATOR_PERSIST_ENABLED`,
   then Archiver (broker#64): `replicator.persist` is created at `$`, so an entry
   sent before it existed is never delivered.

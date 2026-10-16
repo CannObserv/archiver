@@ -54,6 +54,7 @@ from src.core.tools.assign_rep_spec import (
 from src.core.tools.assign_rep_spec import (
     InfoItemNotFoundError as AssignItemNotFoundError,
 )
+from src.core.tools.audit_stored_documents import info_item_findings
 from src.core.tools.bind_info_source import (
     ActiveBindingAlreadyExistsError,
     bind_info_source,
@@ -108,6 +109,7 @@ from src.dashboard.replication_actions import (
     live_poll,
     outcome_flash_header,
 )
+from src.dashboard.stored_documents import finding_views
 from src.dashboard.watch_panel import build_watch_context
 
 router = APIRouter(prefix="/dashboard/info-items")
@@ -508,6 +510,7 @@ async def detail_info_item(
             **picker_ctx,
             "revisions": revisions,
             "rev_sources_by_id": rev_sources_by_id,
+            "stored_findings": finding_views(info_item_findings(item)),
             "now": datetime.now(UTC),
         },
     )
@@ -699,7 +702,7 @@ async def put_org(
 # Its own swap target, `#ii-rep-fields`, beside the assignments table rather
 # than inside it: the table polls every two seconds while a command is open,
 # and a poll must never clobber a half-edited form. It re-fetches itself on a
-# sibling's `replicationChanged` instead (docs/UI.md § Blocks that share a
+# sibling's `replicationChanged` instead (docs/HTMX.md § Blocks that share a
 # section).
 
 _FIELDS_SOURCE = "fields"

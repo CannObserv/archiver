@@ -87,7 +87,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 
 ### Alerts & Flash
 - `.alert`, `.alert--success/warning/danger/info` - static inline alerts.
-- `.flash`, `.flash--success/warning/error/info` - toast notifications injected by `flash.js` into the `#flash-region` overlay. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`. `#flash-region` is `position: fixed` (top-right on desktop, full-width top on ≤640px), `z-index: 1000` - anchored to the viewport so toasts stay visible at any scroll position (archiver#65). `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until dismissed. Capped at 4 visible slots; on overflow a transient still flashes as a single lane and persistent excess collapses behind a `+N more` counter (archiver#73 - see `docs/UI.md` "Flash messages").
+- `.flash`, `.flash--success/warning/error/info` - toast notifications injected by `flash.js` into the `#flash-region` overlay. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`. `#flash-region` is `position: fixed` (top-right on desktop, full-width top on ≤640px), `z-index: 1000` - anchored to the viewport so toasts stay visible at any scroll position (archiver#65). `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until dismissed. Capped at 4 visible slots; on overflow a transient still flashes as a single lane and persistent excess collapses behind a `+N more` counter (archiver#73 - see `docs/HTMX.md` "Flash messages").
 - `.flash__more` - the `+N more` overflow counter button occupying the 4th slot when more than four persistent toasts stack; dashed-border, surface-alt pill. Click/Enter expands the overlay to reveal all (no re-collapse). Announcement is carried by the visually-hidden `#flash-announcer-assertive` / `#flash-announcer-polite` live regions (`.sr-only`), not the visible toasts.
 
 ### Data display
@@ -150,7 +150,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 
 ### HTMX and Alpine patterns
 
-Moved to [UI.md](UI.md) § **HTMX Patterns** (#182 curation) - the async partial,
+Moved to [HTMX.md](HTMX.md) (#182 curation, then split out of UI.md) - the async partial,
 inline form error, action-swaps-card and JSON data island patterns are HTMX and
 Alpine *mechanics*, with no CSS in them, and UI.md is the doc whose stated scope
 is the dashboard's shared mechanics. This file keeps the classes they toggle.

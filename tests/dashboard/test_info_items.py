@@ -1496,7 +1496,7 @@ async def test_replicate_now_refuses_when_there_is_nothing_captured_yet(client, 
         headers=_HEADERS,
     )
 
-    # 200, not 422: a 4xx is discarded by htmx (docs/UI.md), so the refusal
+    # 200, not 422: a 4xx is discarded by htmx (docs/HTMX.md), so the refusal
     # would reach the operator as nothing at all (CR #36).
     assert r.status_code == 200
     assert read_flash(r)["showFlash"]["level"] == "error"
@@ -1877,7 +1877,7 @@ async def test_rep_fields_save_invalid_json_is_422(client, session):
 
 @pytest.mark.asyncio
 async def test_rep_fields_flash_fragments_add_no_nested_live_region(client, session):
-    """The target is the live region (UI.md); an alert inside it can announce twice."""
+    """The target is the live region (HTMX.md); an alert inside it can announce twice."""
     rs = _rep_spec_requiring("Org Layout", "org.title_slug", path_template=_ORG_PATH)
     item = await _item_assigned_to(session, {"org": {"title": "Old Name"}}, rs)
     url = f"/dashboard/info-items/{item.info_item_id}/rep-fields"

@@ -12,9 +12,10 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 - [docs/API.md](docs/API.md) - every HTTP route and its SDK wrapper
 - [docs/BUS.md](docs/BUS.md) / [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the change-bus contracts, produced and consumed
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md)
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev server, environment variables
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the drift check, the service user, wheelhouse
+- [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) - environment variables, the dev server
 - [docs/BACKUP.md](docs/BACKUP.md) - the nightly database dump to GCS and the restore runbook
-- [docs/UI.md](docs/UI.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) - dashboard patterns, page inventory, the InfoItem hub screen, Alpine components, and styling
+- [docs/UI.md](docs/UI.md) / [docs/HTMX.md](docs/HTMX.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) - dashboard mechanics, HTMX patterns, page inventory, the InfoItem hub screen, Alpine components, and styling
 
 ## Run locally
 
@@ -79,4 +80,4 @@ Outbox health (depth, oldest-unpublished age, dead-lettered count) is watched by
 
 The dashboard's **Consumers** badge (archiver#147) reads the same `OWNED_GROUPS` list per request: consumer-task liveness plus `XPENDING` and DLQ depth for the archiver-owned groups. It distinguishes gated-off from gated-on-but-dead, which a `ARCHIVER_REDIS_URL` boolean could not - see [docs/HEALTH_ROW.md](docs/HEALTH_ROW.md).
 
-The `content.revisions` consumer needs `ARCHIVER_BUS_CONSUMER=1` **as well**, and only `deploy/archiver.service` sets it. Publishing from a stray process is merely noisy; consuming *removes* messages from the `archiver.revisions` group, so a Redis URL alone is not authority to join it. Never put that variable in an env file - see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The `info.watch-status` tail is **not** behind that gate and needs only the Redis URL: it is groupless, so it removes nothing from any pending list and a stray tail is harmless.
+The `content.revisions` consumer needs `ARCHIVER_BUS_CONSUMER=1` **as well**, and only `deploy/archiver.service` sets it. Publishing from a stray process is merely noisy; consuming *removes* messages from the `archiver.revisions` group, so a Redis URL alone is not authority to join it. Never put that variable in an env file - see [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The `info.watch-status` tail is **not** behind that gate and needs only the Redis URL: it is groupless, so it removes nothing from any pending list and a stray tail is harmless.

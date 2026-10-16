@@ -8,7 +8,8 @@ the consumer-lag probe behind the Outbox and Consumers badges are
 [BUS.md](BUS.md)'s; this file is how the dashboard reports them.
 
 The health row is **Archiver + Redis + Outbox + Consumers** since archiver#147
-(the absence of a Watcher badge is deliberate, not an omission). Each badge is
+(the absence of a Watcher badge is deliberate, not an omission), plus **Registry**
+since archiver#164. Each badge is
 its own `hx-trigger="load"` partial - non-blocking, "checking…" until HTMX
 fires. **Every badge is a live route:** the template used to branch on
 `ARCHIVER_REDIS_URL` to render a static "not configured" span instead of the
@@ -62,6 +63,26 @@ a `TypeError` out of the probe is a bug here and is left to 500 rather than
 dressed up as a broker condition (finding 2). A timeout titles itself `probe
 exceeded <N>s` rather than the bare `TimeoutError()` an empty `str()` produced,
 so a wedged broker reads differently from a refused one (round 2, finding 11).
+
+**GET `/dashboard/health/registry`** - over
+`src/core/tools/audit_stored_documents.py` (archiver#164): every authored document
+(`source_specs` per entry, `watch_spec`, `rep_fields`, RepSpec `document`) re-judged
+against the validator its write path applies. Such a document still publishes - the
+announcement path checks only the envelope - and cannot be re-saved, so this badge is
+the only place it shows before an edit is refused. Warning "N invalid", an `<a>` to
+**`/dashboard/registry-audit`** (PAGES.md); success "ok"; danger "error" on a
+`SQLAlchemyError` or `OSError`, with the reason in `title`. A *document* the validator
+raises on is a finding, not a sweep failure, so anything else reaching the handler is a
+sweep bug and is left to 500 - the Consumers badge's line, for its reason. `title` carries `N documents checked`. No Redis, so no
+no-client branch. Registry health, not bus health: it stays out of
+`archiver-bus-health`, and off the API's `/health` (unauthenticated, DB-free).
+
+**Cost:** one full read of three columns per home-page load - the row loads once and
+never polls. The detail notices judge their own row only. Validation measured
+20-95 µs per document (2026-10-15; source specs and RepSpecs the dearest), synchronous on
+the event loop: today's 16 cost ~1 ms, and ~10k would hold the loop about a second. Past
+a few thousand, cache the result rather than cap the scan - a cap turns "N invalid" into
+a lower bound.
 
 **`…/health/watcher` retired with archiver#142** - it pinged Watcher over the
 SDK, and the no-outbound-HTTP rule left nothing to ping. Its successor signal

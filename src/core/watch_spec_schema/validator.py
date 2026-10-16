@@ -7,6 +7,10 @@ downstream would catch the mistake if it drifted back in here: ``watch_spec`` is
 an untyped ``dict`` on the wire, so a nested ``active: false`` validates cleanly
 while the envelope reports "no opinion yet" and the consumer keeps scheduling a
 paused item. This module's schema is the only thing that rejects it.
+
+Tightening this schema (archiver#164): stored documents are validated on write
+only, so the PR ships a data migration or the stored-document sweep's "0 affected"
+(docs/CONVENTIONS.md § Schema tightenings).
 """
 
 import json

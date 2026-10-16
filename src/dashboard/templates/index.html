@@ -55,6 +55,17 @@
         <span class="badge">checking…</span>
       </span>
     </span>
+    {# Stored documents the current schemas reject (archiver#164): registry
+       health, not bus health, so it is not part of archiver-bus-health. #}
+    <span>
+      <span class="text-sm text-muted">Registry</span>&nbsp;
+      <span id="health-registry"
+            hx-get="/dashboard/health/registry"
+            hx-trigger="load"
+            hx-swap="innerHTML">
+        <span class="badge">checking…</span>
+      </span>
+    </span>
   </div>
 
   {# Summary counts #}

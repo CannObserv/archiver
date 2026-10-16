@@ -3,7 +3,7 @@
 **What each dashboard screen renders, and the routes behind it.**
 
 Shared mechanics live in [UI.md](UI.md) - the URL map, the proxy-header auth
-gate, and HTMX swap patterns (flash messages, `hx-target-422`);
+gate; the HTMX swap patterns (flash messages, `hx-target-422`) are [HTMX.md](HTMX.md);
 [SCREENS.md](SCREENS.md) holds the detail-screen conventions this
 file refers to by name. Alpine components are
 catalogued in [COMPONENTS.md](COMPONENTS.md).
@@ -21,11 +21,25 @@ repeat it.
 **GET `/dashboard/`** - summary dashboard. Four count tiles in nav order (Information Items, Information Sources, Information Source Revisions, Replication Specifications), each linking to its list page. Recent Changes table: last 10 SourceRevisions ordered by `captured_at desc`; columns Information Source (URL, links to source detail), Source Revision (truncated fingerprint, links to revision detail), Observed (captured_at as `%Y-%m-%d %H:%M`).
 
 **The health row** - the badges behind **GET `/dashboard/health`**,
-**`/dashboard/health/redis`**, **`/dashboard/health/outbox`** and
-**`/dashboard/health/consumers`**, each its own `hx-trigger="load"` partial - is
+**`/dashboard/health/redis`**, **`/dashboard/health/outbox`**,
+**`/dashboard/health/consumers`** and **`/dashboard/health/registry`**, each its own
+`hx-trigger="load"` partial - is
 [docs/HEALTH_ROW.md](HEALTH_ROW.md): what each badge reports, its state ladder,
 and why the lag probe is bounded where it is. Needed only when working on that
 row; this entry stays the inventory line for its routes.
+
+**GET `/dashboard/registry-audit`** (`registry_audit.html`, archiver#164) - the page the
+Registry badge links to: every stored document the current schemas reject, one row per
+document - kind (a source spec carries its list index), the row's id linked to its detail
+page, the validator's messages, and the remedy (`src/dashboard/stored_documents.py`; an
+assigned RepSpec's is "clone it", #83). Empty state "Every stored document validates."
+The same sweep the badge runs, once per load.
+
+**Stored-document notice** (`stored_document_notice` macro, `#stored-document-notice`,
+archiver#164) - an `.alert--warning` at the top of the InfoSource, InfoItem and RepSpec
+detail pages when a document stored on that row fails its current schema: kind, messages,
+remedy. It judges only that row, never a sweep. Page-level and rendered on load, so an
+in-place save that fixes the document clears it on the next reload, not in the swap.
 
 ## Domain pages (`/dashboard/domains/`)
 
@@ -86,16 +100,16 @@ each route.
 (`info_items/detail.html`). Its anatomy, partials, swap targets and **Action-route
 contracts** (the shared Watcher-POST contract, the three routes retired with the
 SDK, the always-200 always-flash replication outcome rule) are
-[docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), needed only when working on
+[docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) and [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md), needed only when working on
 that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-items/{id}/watcher-status`** - HTMX partial rendered from local state, zero SDK calls (#151); states not_watching/no_status/watching. No page embeds it: it is reachable directly, and is the (discarded) response body of the two action POSTs.
 
 **GET `/dashboard/info-items/{id}/watcher-section`** - the section 3 partial (its anatomy is in [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md)), same local render. Loaded on page init via `hx-trigger="load"` and re-fetched on the `watcherUpdated` body event. The section's `<h2>` is a plain heading - the Watcher deeplink it used to carry retired with archiver#142.
 
-**POST `/dashboard/info-items/{id}/toggle-watch-active`** - pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. On an unannounceable item (no active source with specs) it writes nothing and re-renders with an error flash (archiver#167). Gating, applied-state lag, and the failure path: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
+**POST `/dashboard/info-items/{id}/toggle-watch-active`** - pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. On an unannounceable item (no active source with specs) it writes nothing and re-renders with an error flash (archiver#167). Gating, applied-state lag, and the failure path: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
-**POST `/dashboard/info-items/{id}/watch-cadence`** - replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Refused like `toggle-watch-active` on an unannounceable item (archiver#167). Replace-vs-merge reasoning and the vocabulary gate: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
+**POST `/dashboard/info-items/{id}/watch-cadence`** - replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Refused like `toggle-watch-active` on an unannounceable item (archiver#167). Replace-vs-merge reasoning and the vocabulary gate: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
 **POST `/dashboard/info-items/{id}/swap-primary-source`** - inline primary-source swap: creates a new InfoSource (form fields: `url`, `source_specs` JSON array), deactivates the old active binding, binds the new source, and announces the whole swap as one `info.registry` frame. 204 + `HX-Redirect` to detail on success; 422 with a `<div id="swap-error">` fragment on validation error. Template: `info_items/_swap_primary.html`.
 
@@ -111,7 +125,7 @@ that screen. The entries below stay the inventory line for each route.
 
 **DELETE `/dashboard/info-items/{id}/rep-spec-assignments/{aid}`** - HTMX delete; sets `deactivated_at = now()`, idempotent (skipped if already deactivated). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`), which updates the table/empty-state and moves focus to the section heading. Fires `HX-Trigger` `replicationChanged` (`{"source": "assignments"}`): the Fields block's rows come from the active assignments (archiver#307).
 
-**POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** - issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading - the swap destroys the clicked button, exactly as the Deactivate beside it does. Double guard: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**. Both buttons `hx-sync` on the section so its poll yields to them (archiver#220, [UI.md](UI.md) § *A section that polls and takes actions*). Fires no `replicationChanged`: an occasion changes nothing a sibling block renders, and the Fields block's re-fetch would discard unsaved input there (archiver#307).
+**POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** - issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading - the swap destroys the clicked button, exactly as the Deactivate beside it does. Double guard: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md). Both buttons `hx-sync` on the section so its poll yields to them (archiver#220, [HTMX.md](HTMX.md) § *A section that polls and takes actions*). Fires no `replicationChanged`: an occasion changes nothing a sibling block renders, and the Fields block's re-fetch would discard unsaved input there (archiver#307).
 
 **GET `/dashboard/info-items/{id}/rep-fields`** - the Fields block (`#ii-rep-fields`), re-fetched on a sibling's `replicationChanged`; `no-store`, never moves focus (archiver#307). `selected_spec` adds an unassigned spec's keys; `focus=true` (the picker's Select) focuses the first one it needs (archiver#308). A linked Power Map org's keys render read-only as *from Power Map* (archiver#304).
 
@@ -132,6 +146,7 @@ that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-sources/{id}`** - detail page. Sections:
 
+- The stored-document notice (§ Home), when `source_specs` fails the current schema.
 - Header: `.entity-card` (SCREENS.md § **Header**, `#info-source-heading`, #79) - eyebrow "Information Source", the `url` in `<code>`, copyable `info_source_id`, then the **domain pill**: `domain_name` as a `.badge--primary` linking `/dashboard/domains/{name}`, or a `.badge--muted` "No domain" where the column is null - a state of its own, not an absence (#185). `open_button` is the header's action slot. `.detail-grid` (created_at UTC).
 - Source Specification editor - the `info_sources/_source_specs_card.html` partial, extracted so the update-specs action can swap it in place (root `#source-specs-card`, heading `#source-specs-heading`, titled "Source Specification"). `sourceSpecsCard(startEditing)` (`main.js`; not in the COMPONENTS.md catalogue - it exists only for this card) gates it: **view mode** (`x-show="!editing"`) renders `source_specs` in `<pre class="code-block">`, edit mode the textarea form. All three buttons share one `.entity-card__actions` slot in the `.entity-card__header` (#185): **Edit** (`x-show="!editing"`); **Cancel** (`btn--secondary`, for border parity with the `apiKeyRow` Cancel - `@click="cancel()"` restores the stored specs and returns to view mode with no server call); **Save**, which submits the `POST .../source-specs` replace via `form="source-specs-form"` - it renders outside the `<form>`, so without that association it is inert with JS off. `specs_error` opens the card in edit mode (`sourceSpecsCard(true)`) so the error and the submitted text stay visible. The URL is immutable.
 - Other Sources at This URL - shown only when other InfoSources share this `url` (the model allows several sources per URL, #79 #8); count in the heading, capped at 50 via a `limit+1` probe and rendered "50+" beyond that, each linked by `info_source_id` with its created date UTC.
@@ -150,27 +165,8 @@ that screen. The entries below stay the inventory line for each route.
 
 ## Replication Specifications (`/dashboard/rep-specs/`)
 
-**GET `/dashboard/rep-specs/`** - paginated list. Optional `provider` filter (enum: `gcs` / `gdrive` / `ia`). Columns: name (link to detail), provider badge, created_at.
-
-**GET `/dashboard/rep-specs/new`** - create form. Provider `<select>` - `gdrive` and `ia` are rendered **disabled, not hidden**, each with its reason inline, because Replicator writes for `gcs` only (CannObserv/replicator#29); `UNWRITABLE_PROVIDERS` in `src/dashboard/providers.py` - shared with the InfoItem picker (archiver#308) - is the one place to lift when a writer lands, and the sub-schema question is #153 - name text input, document JSON textarea (the `repSpecEditor` component, validate-on-blur). The hint under the textarea is the authoring contract in miniature: `required_fields` lists the bag keys the template uses (a `_slug` key derives from its raw field, so list `org.title_slug` and enter `org.title` on the item), and the eight `source_revision.*` keys are supplied per replication and never listed there; `credentials_alias` is `<provider>-<role>` with the selected provider as prefix, e.g. `gcs-publication` (archiver#276). Returns 200 with an errors dict on validation failure.
-
-**POST `/dashboard/rep-specs/new`** - form fields: `provider`, `name`, `document` (JSON string). Calls `create_rep_spec`. 303 to detail on success; re-renders the form with errors on missing provider, an unwritable provider (`gdrive`, `ia` - refused server-side too, so a direct POST cannot bypass the disabled option; a template-only gate is the #167 defect class), missing name, invalid JSON, or `InvalidRepSpecError`. The API's `POST /rep-specs` is unchanged: the contract still accepts the envelope's full enum.
-
-**GET `/dashboard/rep-specs/{id}`** - detail page.
-
-- Header: `.entity-card` (SCREENS.md § **Header**, `#rep-spec-heading`, #80) - eyebrow "Replication Specification", name, copyable `rep_spec_id`, `.detail-grid` (provider badge, created_at UTC, plus **Updated** UTC *only when* `updated_at` is non-null - a null means "never edited", and rendering `created_at` there would blur that distinction, #83).
-- Document card - the `rep_specs/_document_card.html` partial, extracted so the update-document action can swap it in place (root `#rep-spec-document-card`, heading `#rep-spec-document-heading`). Shows the stored document JSON in `<pre class="code-block">`, then **conditionally** an edit form: the textarea renders only while the RepSpec is a *draft* - zero `info_item_rep_specs` rows, active **or** deactivated. That count comes from `assignment_count()`, deliberately not `_load_active_assignments`: a deactivated assignment still means a replication run happened under that document. A non-draft gets an `.alert--info` "frozen" notice with the count instead of the form (#83; clone + migrate is #95).
-- Active assignments - `rep_specs/_assignments.html` (wrapper `#rep-spec-assignments`): count in heading; item name link, activated_at UTC, **Replication** (the `replication_state` macro over the latest `replication_commands` row for that assignment), read-only `public_url` with an `open_button`, and **Replicate now** + **Deactivate** actions. Deactivate is `hx-delete` to the RepSpec-scoped route below, targeting `#rep-spec-assignments` (`outerHTML`) so the row set, count, and empty-state re-render together. Assignments are manageable from either the RepSpec or the InfoItem screen (#80). The wrapper **polls itself while a command is open** (archiver#212), identically to the InfoItem hub's section and from the same `live_poll` decision, so the two screens cannot disagree about when a command is worth watching - see INFO_ITEM_DETAIL.md § Replication Specs for the mechanism and the two-minute bound. The poll yields to both row actions the same way too (archiver#220, UI.md § *A section that polls and takes actions*). Every render site spreads `_assignments_context`, which carries `spec` too (SCREENS.md § *One builder per behaviour-bearing partial*, #219).
-
-**POST `/dashboard/rep-specs/{id}/document`** - replaces the `document` on a **draft** RepSpec (form field: `document`, a JSON object string). An **editor card** (SCREENS.md § **Editor cards**) against `#rep-spec-document-card`, error key `doc_error` - the same shape as the InfoSource source-specs editor. Whole-document replace, not merge (#83). Rejections: JSON parse failure, schema/sub-schema validation, an attempted `provider` change (immutable), and `RepSpecNotDraftError` - the last re-checked server-side, because a rendered editor goes stale if the spec acquires an assignment mid-edit.
-
-**DELETE `/dashboard/rep-specs/{id}/assignments/{aid}`** - deactivates a RepSpec assignment (sets `deactivated_at`); the assignment must belong to `{id}` (404 otherwise). Returns the re-rendered `rep_specs/_assignments.html` fragment.
-
-**GET `/dashboard/rep-specs/{id}/assignments`** - the Active Assignments section as a standalone fragment, for the poll above (archiver#212). Renders with `swapped=False` so a tick never moves focus.
-
-**POST `/dashboard/rep-specs/{id}/assignments/{aid}/replicate`** - the InfoItem hub's twin, spec-scoped (archiver#171). Issues one replication occasion against the item's latest SourceRevision; the assignment must belong to `{id}` (404 otherwise). Re-renders the whole `rep_specs/_assignments.html` section and moves focus to its heading. Identical outcome handling to the hub route: always 200, always a `showFlash` toast (`success` / `warning` / `error`).
-
-It exists because this screen is the natural entry point for "this spec's assignments are all stale", and rendering the state here while forcing a navigation hop per item to act on it makes the diagnosis useless.
+The list, create form, detail screen and their routes:
+[REP_SPEC_PAGES.md](REP_SPEC_PAGES.md).
 
 ## Settings - API Keys (`/dashboard/settings/api-keys`)
 

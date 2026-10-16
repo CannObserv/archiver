@@ -19,6 +19,7 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.services.registry_announcement import announce_for_info_source
+from src.core.tools.audit_stored_documents import info_source_findings
 from src.core.tools.create_info_source import (
     CreateInfoSourceError,
     InvalidSourceSpecError,
@@ -38,6 +39,7 @@ from src.core.tools.update_info_source_specs import (
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
+from src.dashboard.stored_documents import finding_views
 
 router = APIRouter(prefix="/dashboard/info-sources")
 
@@ -132,6 +134,7 @@ async def _detail_context(
         "specs_input": specs_input,
         "now": datetime.now(UTC),
         "specs_error": specs_error,
+        "stored_findings": finding_views(info_source_findings(src)),
     }
 
 

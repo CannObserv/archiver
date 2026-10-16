@@ -6,7 +6,7 @@
 #
 # Dropped from the upstream defaults because they match nothing in this tree:
 # schema.sql (Alembic owns the schema), src/models/ (models live in src/core/),
-# .env.example (env vars are documented in docs/DEPLOYMENT.md, never templated).
+# .env.example (env vars are documented in docs/ENVIRONMENT.md, never templated).
 # tests/scripts/test_doc_sensitive_paths.py fails on any entry that goes dead.
 
 # Agent + human orientation docs; CLAUDE.md is a symlink to AGENTS.md.

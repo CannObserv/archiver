@@ -4,10 +4,63 @@
 # curation that needed it, so entries are pruned once that curation merges.
 # Their text and reasoning stay in git history (git log -- .skills/context-loss-ok).
 
-# "on the authoring path only": #305's hourly follower (src/core/power_map/follower.py,
-# deploy/archiver-pm-org-refresh.service) calls Power Map too. Corrected in place.
-AGENTS.md :: disproven :: **Power Map (identity for `org.*`) is called on the authoring path only, never during replication (#304)**: rendering reads the `pm_organizations` snapshot ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
-# `grep -rn "raise HTTPException(" src` finds only src/api/errors.py, inside
-# raise_envelope itself; callers chain via raise_envelope(..., source_exc=e), as
-# the Error envelope rule says. The chaining rule (B904) is kept.
-AGENTS.md :: disproven :: - Translated exceptions chain via `raise HTTPException(...) from e` (capture the source with `as e`). Ruff `B904` enforces this in CI.
+# archiver#164 curation (base 9354d19): DEPLOYMENT.md split, env material -> ENVIRONMENT.md.
+# The preamble described the env reference and dev-server internals, which moved.
+docs/DEPLOYMENT.md :: retarget :: Releases and `scripts/deploy.sh`, wheelhouse reproducibility, dev-server internals,
+docs/DEPLOYMENT.md :: retarget :: and the full environment variable reference. `AGENTS.md` keeps the safety rules; the reference lives here.
+# UI.md split, HTMX Patterns -> HTMX.md. The preamble named the HTMX patterns,
+# which moved; two relative pointers ("below", "above") crossed the new file
+# boundary and now name their target doc.
+docs/UI.md :: retarget :: **The dashboard's shared mechanics: URL map, proxy-header auth, and HTMX swap
+docs/UI.md :: retarget :: patterns.**
+docs/UI.md :: retarget :: the pagination clamp below cannot close). Each wrapper *delegates* the
+docs/UI.md :: retarget :: § **Failures are surfaced, not swallowed** above.
+# COMPONENTS.md: HTMX Patterns -> HTMX.md and Document-level scripts -> UI.md moved
+# the targets these pointers named.
+docs/COMPONENTS.md :: retarget :: sit alongside are in [UI.md](UI.md). The one-line summary table below is
+docs/COMPONENTS.md :: retarget :: and are catalogued at the foot of this file instead: `flash.js`,
+docs/COMPONENTS.md :: retarget :: the visible cap and its two overflow affordances: [UI.md](UI.md) § Flash
+docs/COMPONENTS.md :: retarget :: `base.html` - is in [UI.md](UI.md) § Failures are surfaced, not swallowed.
+docs/COMPONENTS.md :: retarget :: Uses the **JSON data island** pattern (`sortableChips` above; the reason it exists is `docs/UI.md` § **JSON data island pattern**) - the title is placed in a `<script type="application/json">` child rather than an HTML attribute, avoiding double-quote escaping hazards from `tojson`.
+# PAGES.md: HTMX Patterns -> HTMX.md, and Replication Specifications -> REP_SPEC_PAGES.md,
+# moved the targets these pointers named (UI.md §, § Home).
+docs/PAGES.md :: retarget :: **POST `/dashboard/info-items/{id}/rep-spec-assignments/{aid}/replicate`** - issues one replication occasion for this assignment against the InfoItem's latest SourceRevision (archiver#171). Returns the re-rendered `info_items/_rep_spec_assignments.html` fragment (targets `#ii-rep-spec-assignments`) and moves focus to the section heading - the swap destroys the clicked button, exactly as the Deactivate beside it does. Double guard: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**. Both buttons `hx-sync` on the section so its poll yields to them (archiver#220, [UI.md](UI.md) § *A section that polls and takes actions*). Fires no `replicationChanged`: an occasion changes nothing a sibling block renders, and the Fields block's re-fetch would discard unsaved input there (archiver#307).
+docs/PAGES.md :: retarget :: - The stored-document notice (§ Home), when `document` fails the current schema; frozen
+docs/PAGES.md :: retarget :: - Active assignments - `rep_specs/_assignments.html` (wrapper `#rep-spec-assignments`): count in heading; item name link, activated_at UTC, **Replication** (the `replication_state` macro over the latest `replication_commands` row for that assignment), read-only `public_url` with an `open_button`, and **Replicate now** + **Deactivate** actions. Deactivate is `hx-delete` to the RepSpec-scoped route below, targeting `#rep-spec-assignments` (`outerHTML`) so the row set, count, and empty-state re-render together. Assignments are manageable from either the RepSpec or the InfoItem screen (#80). The wrapper **polls itself while a command is open** (archiver#212), identically to the InfoItem hub's section and from the same `live_poll` decision, so the two screens cannot disagree about when a command is worth watching - see INFO_ITEM_DETAIL.md § Replication Specs for the mechanism and the two-minute bound. The poll yields to both row actions the same way too (archiver#220, UI.md § *A section that polls and takes actions*). Every render site spreads `_assignments_context`, which carries `spec` too (SCREENS.md § *One builder per behaviour-bearing partial*, #219).
+# INFO_ITEM_DETAIL.md: Action-route contracts -> INFO_ITEM_ACTIONS.md; with the HTMX and
+# RepSpec-pages moves, these pointers name the new homes of their targets.
+docs/INFO_ITEM_DETAIL.md :: retarget :: Sibling docs: [UI.md](UI.md) shared mechanics · [COMPONENTS.md](COMPONENTS.md)
+docs/INFO_ITEM_DETAIL.md :: retarget :: 5. **Replication** (`<section id="replication" aria-label="Replication">`; the id is the section's deep link - keep it). Renamed from "Replicator" in archiver#307. **Three blocks, each its own swap target** (UI.md § *Blocks that share a section*): the assignments table, Fields, and the *Add a spec* picker (archiver#308, replacing the ULID form). Each block's render sites all spread its builder (SCREENS.md, #219).
+docs/INFO_ITEM_DETAIL.md :: retarget :: **It re-reads itself while a command is open** (archiver#212): *closure* arrives on `content.artifacts` a bus round trip (~800ms) after issuance, so the POST's swap is always too early. `GET …/rep-spec-assignments` returns the same partial; the wrapper carries `hx-get` + `hx-trigger="every 2s"` + `hx-swap="outerHTML"` **only while some latest command is `requested`**, rendered from the same `latest_commands` the badges are, so the swap that lands a terminal state stops the polling. Bounded at two minutes (`POLL_WINDOW`; the reaper's six hours is too long for a forgotten tab), then a `role="status"` line says one is still open. A poll renders `swapped=False`: no focus move. **The poll always yields to an action** (archiver#220): `hx-sync="this:abort"` + `hx-disinherit="hx-sync"` on the wrapper, `hx-sync="closest #ii-rep-spec-assignments:drop"` on each action - UI.md § *A section that polls and takes actions*.
+docs/INFO_ITEM_DETAIL.md :: retarget :: **Every outcome is a 200, and every outcome flashes** via `HX-Trigger: showFlash` - issued at `success` naming the rendered destination, a recorded `skipped` row at `warning` naming its reason (it also renders as state in the Replication column), and a refusal the service will not record - `not_active`, `no_active_source`, `no_revision`, `assignment_unreachable` - at `error`. Refusals are 200s rather than 422s because htmx discards a 4xx body (see UI.md § **Inline validation errors** and the STYLE.md rule it points at). The outcome→flash translation is `src/dashboard/replication_actions.py`, shared with the RepSpec-scoped twin (PAGES.md § **Replication Specifications**).
+docs/INFO_ITEM_DETAIL.md :: retarget :: "Every outcome flashes" also depends on the poll yielding to the click (archiver#220): unsynced, a poll that landed first swapped the section out from under the action and discarded its response - swap, focus and toast - so the operator saw nothing on a fresh button, and a second click is a second occasion. Hence the `drop` sync (UI.md § *A section that polls and takes actions*).
+docs/PAGES.md :: retarget :: [docs/INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), needed only when working on
+docs/PAGES.md :: retarget :: **POST `/dashboard/info-items/{id}/toggle-watch-active`** - pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. On an unannounceable item (no active source with specs) it writes nothing and re-renders with an error flash (archiver#167). Gating, applied-state lag, and the failure path: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
+docs/PAGES.md :: retarget :: **POST `/dashboard/info-items/{id}/watch-cadence`** - replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Refused like `toggle-watch-active` on an unannounceable item (archiver#167). Replace-vs-merge reasoning and the vocabulary gate: [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md) § **Action-route contracts**.
+# AGENTS.md: env material moved to ENVIRONMENT.md (pointers retargeted); the dashboard
+# index line was extended in place to link HTMX.md, REP_SPEC_PAGES.md and INFO_ITEM_ACTIONS.md.
+AGENTS.md :: retarget :: production-write incident: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The one
+AGENTS.md :: retarget :: ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).**
+AGENTS.md :: retarget :: - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - wheelhouse, dev-server internals, full env-var reference
+AGENTS.md :: index :: - The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest: [docs/PAGES.md](docs/PAGES.md), [docs/SCREENS.md](docs/SCREENS.md), [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md), [docs/ORG_ROW.md](docs/ORG_ROW.md), [docs/REGISTER.md](docs/REGISTER.md), [docs/HEALTH_ROW.md](docs/HEALTH_ROW.md), [docs/COMPONENTS.md](docs/COMPONENTS.md), [docs/STYLE.md](docs/STYLE.md)
+# Pointers in other docs whose targets this curation moved (HTMX.md, ENVIRONMENT.md,
+# REP_SPEC_PAGES.md, INFO_ITEM_ACTIONS.md, UI.md § Document-level scripts).
+docs/CONVENTIONS.md :: retarget :: whole mechanism is described in [UI.md](UI.md) § Failures are surfaced, not
+docs/CONVENTIONS.md :: retarget :: per-page inventory: what the screen renders, what the route returns.
+docs/CONVENTIONS.md :: retarget :: that is not an Alpine component is documented where its behaviour lives
+docs/CONVENTIONS.md :: retarget :: instead, and a change to it updates that doc - `flash.js` in `docs/UI.md`
+docs/CONVENTIONS.md :: retarget :: action-route contracts that moved there in archiver#176. PAGES.md keeps the
+docs/CONVENTIONS.md :: retarget :: than one screen: the URL map, the auth gate, or an HTMX swap pattern.
+docs/STYLE.md :: retarget :: - `.flash`, `.flash--success/warning/error/info` - toast notifications injected by `flash.js` into the `#flash-region` overlay. Server sends `HX-Trigger: {"showFlash": {"level": "success", "body": "..."}}`. `#flash-region` is `position: fixed` (top-right on desktop, full-width top on ≤640px), `z-index: 1000` - anchored to the viewport so toasts stay visible at any scroll position (archiver#65). `success`/`info` auto-dismiss after 6 s; `error`/`warning` persist until dismissed. Capped at 4 visible slots; on overflow a transient still flashes as a single lane and persistent excess collapses behind a `+N more` counter (archiver#73 - see `docs/UI.md` "Flash messages").
+docs/STYLE.md :: retarget :: Moved to [UI.md](UI.md) § **HTMX Patterns** (#182 curation) - the async partial,
+docs/ORG_ROW.md :: retarget :: effective bag (UI.md § *Blocks that share a section*).
+docs/BUS.md :: retarget :: - **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([DEPLOYMENT.md](DEPLOYMENT.md)).
+# Two pointers check-seams caught naming UI.md (implicitly) for the HTMX patterns.
+docs/PAGES.md :: retarget :: gate, and HTMX swap patterns (flash messages, `hx-target-422`);
+docs/SCREENS.md :: retarget :: success toast (see **Flash messages**). Keep a `method`/`action` fallback on the
+# CR 14: three demoted AGENTS.md lines pointed at the file they now sit in; each
+# now names the section below it instead.
+AGENTS.md :: retarget :: from outside the publisher, the one surface that survives a down publisher. See
+AGENTS.md :: retarget :: [docs/BUS.md](docs/BUS.md).
+AGENTS.md :: retarget :: DEPLOYMENT.md `--test-alert`.
+AGENTS.md :: retarget :: Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers and the SessionStart hook rules: [docs/SKILLS.md](docs/SKILLS.md).

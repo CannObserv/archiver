@@ -20,6 +20,7 @@ from src.core.models import (
 )
 from src.core.services.replication_issuance import ManualIssuanceError, issue_for_assignment
 from src.core.services.replication_status import latest_commands_by_assignment
+from src.core.tools.audit_stored_documents import rep_spec_findings
 from src.core.tools.create_rep_spec import InvalidRepSpecError, create_rep_spec
 from src.core.tools.update_rep_spec import (
     InvalidRepSpecError as UpdateInvalidRepSpecError,
@@ -38,6 +39,7 @@ from src.dashboard.replication_actions import (
     live_poll,
     outcome_flash_header,
 )
+from src.dashboard.stored_documents import finding_views
 
 router = APIRouter(prefix="/dashboard/rep-specs")
 
@@ -277,6 +279,7 @@ async def detail_rep_spec(
     """Detail: provider, name, document (editable while draft), active assignments."""
     spec = await _resolve_spec(spec_id, session)
     assignments_ctx = await _assignments_context(spec, session)
+    document_ctx = await _document_card_context(spec, session)
 
     return _templates.TemplateResponse(
         request,
@@ -287,7 +290,10 @@ async def detail_rep_spec(
             # builders carry it: the header should not read it by accident.
             "spec": spec,
             **assignments_ctx,
-            **await _document_card_context(spec, session),
+            **document_ctx,
+            "stored_findings": finding_views(
+                rep_spec_findings(spec, frozen=not document_ctx["is_draft"])
+            ),
         },
     )
 

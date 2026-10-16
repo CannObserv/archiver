@@ -3,7 +3,6 @@
 # counts, in the same sentence or the list immediately under it, so an editor
 # adding a sixth table or a fifth safety variable cannot miss the number - the
 # section is the check.
-AGENTS.md :: enumerated :: Owns five registry tables
 AGENTS.md :: enumerated :: Three databases:
 AGENTS.md :: enumerated :: Two env files load in order
 AGENTS.md :: enumerated :: **Four variables carry safety rules

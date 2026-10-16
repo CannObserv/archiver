@@ -7,7 +7,7 @@ it, and nobody working on Domains or RepSpecs needs to load it. PAGES.md keeps
 the page and route inventory, including every route listed here; this document
 is what the screen *is*.
 
-Sibling docs: [UI.md](UI.md) shared mechanics · [COMPONENTS.md](COMPONENTS.md)
+Sibling docs: [UI.md](UI.md) shared mechanics · [HTMX.md](HTMX.md) · [COMPONENTS.md](COMPONENTS.md)
 Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
 
 ---
@@ -15,6 +15,11 @@ Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
 ## The five sections
 
 **GET `/dashboard/info-items/{id}`** - 5-section vertical-scroll hub page (`info_items/detail.html`):
+
+Above section 1, the **stored-document notice** (archiver#164, PAGES.md § Home) when the
+item's `watch_spec` or `rep_fields` fails its current schema - a linked item's bag is also
+judged for the `org.title`/`org.acronym` it may not carry. Rendered from the page load, not
+from any section's partial, so a fix in the Watcher or Fields section clears it on reload.
 
 1. **Overview** - `.entity-card` header (canonical detail-screen pattern, #81): `.eyebrow` "Information Item" kicker → `<h1 class="entity-card__title" id="info-item-heading" tabindex="-1">` name → copyable ULID (shared `copyable` macro) → domain badge linking to `/dashboard/domains/{name}`, or a muted "No primary source" when unbound; `.detail-grid` with description, owner (if set), created_at. Watcher status is deliberately absent here - the status and its controls live in section 3 (#62).
 
@@ -45,7 +50,7 @@ Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
 
 4. **Revision History** - `data-table` of the last 50 `source_revisions` captured across the item's InfoSource **bindings** - the active primary **plus** previous primaries (deactivated `info_item_sources` rows, preserved as succession history) - ordered `captured_at desc`, count in the heading. Columns: Fingerprint (linked to revision detail), Source (the InfoSource URL, linked to source detail - present because an item accumulates successive sources over its life), Captured (UTC), Cache (`.status-pill--cached/expired/missing`). The timeline is a query over bindings, **not** over the `info_item_source_revisions` pin table, which was dropped in archiver#101. The route computes `revisions` + `rev_sources_by_id`, the latter covering deactivated previous primaries that the active-only `sources_by_id` misses.
 
-5. **Replication** (`<section id="replication" aria-label="Replication">`; the id is the section's deep link - keep it). Renamed from "Replicator" in archiver#307. **Three blocks, each its own swap target** (UI.md § *Blocks that share a section*): the assignments table, Fields, and the *Add a spec* picker (archiver#308, replacing the ULID form). Each block's render sites all spread its builder (SCREENS.md, #219).
+5. **Replication** (`<section id="replication" aria-label="Replication">`; the id is the section's deep link - keep it). Renamed from "Replicator" in archiver#307. **Three blocks, each its own swap target** (HTMX.md § *Blocks that share a section*): the assignments table, Fields, and the *Add a spec* picker (archiver#308, replacing the ULID form). Each block's render sites all spread its builder (SCREENS.md, #219).
    - *Fields* - `info_items/_rep_fields.html` (`#ii-rep-fields`, heading `#ii-rep-fields-heading`, archiver#307). Replaced the textarea and its flat-key chips (refused by v1). **One row per raw key the specs require** - assigned specs ∪ the picker's selection - so the spec requires `org.title_slug` and the operator types `org.title` (a required `acronym_or_title[_slug]` asks for both `acronym` and `title`). Each row: the key and the specs requiring it; a raw-value input; **Renders as**, the derived value from `effective_rep_fields` (archiver#303); and a source badge - *stored*, *override* (a stored derived key, usually a `_slug`; its removable input sits under the first row it feeds, so the composite's two rows share one), *from Power Map* (read-only; the linked org's `pm_organizations` snapshot, archiver#304 - a JSON save carrying one is refused, naming the org), *slugs to nothing* (`empty_slug_reason`'s wording beneath, archiver#312), or *missing*. Badges are per row, so an empty slug shows even while another row is missing (the gate reports missing keys first). View model: `src/dashboard/rep_fields_block.py` (pure).
 
      **The picker's selection** (`?selected_spec=<id>`, archiver#308) is named above the form with **Clear**, and the block carries it - re-fetch URL, a hidden `selected_spec` in both forms, the 409's **Save and move** `hx-vals` - so saves and re-fetches keep it; an unknown or since-assigned id is no selection. Select's `focus=true` focuses the first input the spec still needs.
@@ -55,7 +60,7 @@ Alpine catalogue · [STYLE.md](STYLE.md) tokens and component classes.
      **Save** posts parallel `field_key`/`field_value`/`field_type` lists; **"Edit as JSON"** (a `<details>`) posts `rep_fields`. Both go through `set_rep_fields`, the gate behind `PUT /info-items/{id}/rep-fields` (archiver#302), and target `#rep-fields-flash` (`aria-live="polite"`) with `hx-target-422`/`hx-target-409`, without which `htmx-errors.js` toasts a bare "request failed". **200** re-renders the block from the stored bag (`HX-Retarget: #ii-rep-fields` + `HX-Reswap: outerHTML`), focuses its heading, toasts, and fires `replicationChanged`; **422** (invalid JSON, an unbuildable form, a non-v1 bag, or one breaking an active assignment - one line per RepSpec and key) and **409** (the bag moves an active assignment's path, each before → after as the picker renders it, with **Save and move** re-sending the exact bag it warned about, not whatever the form holds by then) land in the flash, leaving the input on screen. The block re-fetches itself (`GET …/rep-fields`, no focus move) on `replicationChanged[detail.source!=='fields'] from:body`.
    - *Replication Specs* - `info_items/_rep_spec_assignments.html` (`#ii-rep-spec-assignments`, heading `#ii-rep-spec-heading`): active `info_item_rep_specs` assignments. Rows (`_rep_spec_row.html`): Spec, Provider, Activated, **Replication**, Public URL, Actions. **Both** row actions - deactivate and **Replicate now** (confirm- and `hx-disabled-elt`-guarded) - re-render the whole section and focus the heading, because each destroys the clicked button. Deactivate also fires `replicationChanged` (`{"source": "assignments"}`): the Fields rows come from the active assignments. Replicate now fires nothing - an occasion changes nothing a sibling renders, and a re-fetch would discard unsaved Fields input. The section re-fetches on a sibling's `replicationChanged` (`[detail.source!=='assignments']`; Assign adds a row) through a hidden element inside the wrapper, synced `closest #ii-rep-spec-assignments:drop` like a row action, so the wrapper's attributes stay the poll's (archiver#308).
 
-     **It re-reads itself while a command is open** (archiver#212): *closure* arrives on `content.artifacts` a bus round trip (~800ms) after issuance, so the POST's swap is always too early. `GET …/rep-spec-assignments` returns the same partial; the wrapper carries `hx-get` + `hx-trigger="every 2s"` + `hx-swap="outerHTML"` **only while some latest command is `requested`**, rendered from the same `latest_commands` the badges are, so the swap that lands a terminal state stops the polling. Bounded at two minutes (`POLL_WINDOW`; the reaper's six hours is too long for a forgotten tab), then a `role="status"` line says one is still open. A poll renders `swapped=False`: no focus move. **The poll always yields to an action** (archiver#220): `hx-sync="this:abort"` + `hx-disinherit="hx-sync"` on the wrapper, `hx-sync="closest #ii-rep-spec-assignments:drop"` on each action - UI.md § *A section that polls and takes actions*.
+     **It re-reads itself while a command is open** (archiver#212): *closure* arrives on `content.artifacts` a bus round trip (~800ms) after issuance, so the POST's swap is always too early. `GET …/rep-spec-assignments` returns the same partial; the wrapper carries `hx-get` + `hx-trigger="every 2s"` + `hx-swap="outerHTML"` **only while some latest command is `requested`**, rendered from the same `latest_commands` the badges are, so the swap that lands a terminal state stops the polling. Bounded at two minutes (`POLL_WINDOW`; the reaper's six hours is too long for a forgotten tab), then a `role="status"` line says one is still open. A poll renders `swapped=False`: no focus move. **The poll always yields to an action** (archiver#220): `hx-sync="this:abort"` + `hx-disinherit="hx-sync"` on the wrapper, `hx-sync="closest #ii-rep-spec-assignments:drop"` on each action - HTMX.md § *A section that polls and takes actions*.
 
      **Replication** renders the `replication_state` macro over the assignment's latest `replication_commands` row: state badge, the producer's `reason` for a failure or Archiver's local one for a skip (`detail` on the `title`), `command_id`, and when it closed. Skips are shown because a refusal living only in a log line reads "not replicated yet" forever. `public_url` is **read-only** (archiver#171; `PATCH …/public-url` retired): #170 gave it an automated writer, so an inline edit was silently clobbered by the next occasion.
    - *Add a spec* - `info_items/_rep_spec_picker.html` (`#ii-rep-spec-picker`, heading `#ii-rep-spec-picker-heading`, archiver#308). Every RepSpec not actively assigned, by name. **Readiness** is the gate `assign_rep_spec` refuses on (`check_bag_against_spec`): *Ready*, *Needs* (the raw keys to enter, as Fields names them), *Can't render* (the gate's reason verbatim, archiver#312, or a bag off the v1 shape), *Invalid* (`validate_rep_spec`'s first error, #334), or *Unavailable* (`UNWRITABLE_PROVIDERS`, `src/dashboard/providers.py`, #202). **Path** renders against `preview_occasion` (the move 409's too, #333): *Replicate now*'s revision, else a labelled example (zeros, HTML); an unready spec shows its template. View model: `src/dashboard/rep_spec_picker.py` (pure).
@@ -107,40 +112,5 @@ and an advanced `<details>` for `swap-primary-by-id` (`.form-input` field +
 
 ## Action-route contracts
 
-Moved here from [PAGES.md](PAGES.md), which keeps the inventory line for each of
-these routes. This is the behaviour behind them.
-
-**The two Watcher action POSTs share a contract.** `toggle-watch-active` and
-`watch-cadence` each re-render a Watcher partial and set `HX-Trigger:
-{"watcherUpdated":{}}`. Their forms use `hx-swap="none"`, so the rendered body is
-discarded and the trigger is what refreshes `#watcher-section` - swapping the
-response in *and* firing the trigger would render twice. On failure each adds a
-`showFlash` error to that trigger rather than 500ing (#60, #61). Each also carries
-`hx-on::after-request` moving focus to `#watcher-heading` (archiver#181): the
-refresh destroys the control that was clicked, and the `<h2>` is the nearest
-thing that survives it, living in `detail.html` outside the swapped region. The
-focus-script-in-the-response trick the domain notes row uses cannot work here -
-`hx-swap="none"` discards the body a script would ride in.
-
-**There were five.** `begin-watching`, `check-now`, and `resync-watcher` were
-SDK-backed and retired with it in archiver#142, along with the stale-link
-reconcile they triggered (a `WatcherNotFound` NULLed `watcher_item_id` so the
-panel could re-offer "Begin Watching"). Nothing replaces them individually:
-reconciliation is level-triggered off `info.registry`, so there is no per-item
-push to retry, no remote id to go stale, and no provisioning gesture to repeat.
-The two survivors are *local* writes
-that announce and let Watcher converge; the route entries in [PAGES.md](PAGES.md) name only what each adds.
-
-**`toggle-watch-active`.** The re-render still shows applied state, so the button flips only once Watcher reports back on `info.watch-status` - the lag window is the announcement round-trip and stays visible as generation drift. The affordance is gated on `has_active_source` - as the cadence editor is, and as the panel's own state now is (archiver#142): mutating policy on an item that cannot announce live would emit a *tombstone* and burn a generation for nothing. **The route enforces the same gate** (archiver#167), for a stale tab whose binding was deactivated after render, or a script: on an unannounceable item it writes nothing, flashes "no active source with extraction specs", and re-renders, which shows `not_watching` and corrects the tab. `watch-cadence` does the same, before its vocabulary check. A failed local write rolls back, flashes "the change was not saved", and renders `degraded` **from the path id** - reading through the rolled-back ORM object would emit IO from the template and raise `MissingGreenlet`.
-
-**`watch-cadence`.** Whole-document replacement, never a merge - a merge would make "delegate" unreachable once an interval had been set, the same reasoning the API's `PUT /watch-spec` gives. Validated against `src/dashboard/cadence.py`'s offered vocabulary, which is deliberately narrower than the schema's `^[0-9]+[smhd]$`; a hand-posted value outside it re-renders with a flash and writes nothing (the API route is the escape hatch for the full grammar).
-
-### Replication actions
-
-**Every outcome is a 200, and every outcome flashes** via `HX-Trigger: showFlash` - issued at `success` naming the rendered destination, a recorded `skipped` row at `warning` naming its reason (it also renders as state in the Replication column), and a refusal the service will not record - `not_active`, `no_active_source`, `no_revision`, `assignment_unreachable` - at `error`. Refusals are 200s rather than 422s because htmx discards a 4xx body (see UI.md § **Inline validation errors** and the STYLE.md rule it points at). The outcome→flash translation is `src/dashboard/replication_actions.py`, shared with the RepSpec-scoped twin (PAGES.md § **Replication Specifications**).
-
-It exists because a new assignment on *stable* content otherwise never replicates - issuance is triggered by a new revision, and a stable InfoItem may never produce one.
-
-Every issue button - both scoped tables and the picker's prompt (archiver#308) - is guarded twice: `hx-confirm` because the target is a permanent store, `hx-disabled-elt="this"` because htmx does not deduplicate concurrent requests from an element.
-
-"Every outcome flashes" also depends on the poll yielding to the click (archiver#220): unsynced, a poll that landed first swapped the section out from under the action and discarded its response - swap, focus and toast - so the operator saw nothing on a fresh button, and a second click is a second occasion. Hence the `drop` sync (UI.md § *A section that polls and takes actions*).
+The shared Watcher-POST contract, the routes retired with the SDK, and the
+replication outcome rule: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).

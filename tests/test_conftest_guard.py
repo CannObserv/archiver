@@ -273,7 +273,7 @@ def test_every_allowlist_entry_states_a_reason():
 
     CR round 1, finding 4. Only key membership was ever consulted, so an entry
     added with an empty string satisfied the 'with the reason' contract that
-    docs/DEPLOYMENT.md and the failure message both advertise.
+    docs/ENVIRONMENT.md and the failure message both advertise.
     """
     for name, reason in _OUTBOUND_ENV_ALLOWLIST.items():
         assert reason and reason.strip(), (

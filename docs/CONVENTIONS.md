@@ -17,6 +17,10 @@ changelog there. On a PR, the `no-changelog` label opts out.
 
 ## Logging - plain-text `ExecStartPre` lines in journald
 
+Entry points only: call `configure_logging()` once. `ExecStartPre` steps in
+`deploy/archiver.service` write **plain text**, not JSON - a journald consumer
+must tolerate that.
+
 The app's own records - including uvicorn's access/error lines via `--log-config`
 - are JSON. The `ExecStartPre` step in `deploy/archiver.service` (the redis floor
 check; the wheelhouse sync moved to deploy time, #330) and `scripts/deploy.sh`'s
@@ -93,7 +97,7 @@ to one - htmx will not even swap it. `register_dashboard(app)` therefore
 installs wrappers (`src/dashboard/errors.py`) that render HTML for a dashboard
 path and delegate every other path back to the handlers above; the envelope is
 unchanged for `/api/v1` and the SDK. Registration order is load-bearing, and the
-whole mechanism is described in [UI.md](UI.md) § Failures are surfaced, not
+whole mechanism is described in [HTMX.md](HTMX.md) § Failures are surfaced, not
 swallowed (archiver#178).
 
 Examples:
@@ -134,6 +138,56 @@ validators), `domain` (typed core-tool errors, malformed ULIDs, target unreachab
 `lookup` (404), `conflict` (409), `auth` (401/403), `unimplemented` (501/405),
 `server` (5xx).  Always pass `source_exc=e` from inside `except X as e:` blocks.
 
+## Schema tightenings ship with their data
+
+**Stored documents must satisfy the current schema.** Each authored JSONB
+document - `info_sources.source_specs`, `info_items.watch_spec`,
+`info_items.rep_fields`, `rep_specs.document` - is validated on write and on
+no read path. A tightening that skips the stored rows leaves documents that
+publish cleanly and cannot be re-saved: every edit path re-validates the whole
+document, so the operator has to find and delete a key they never added. The
+WSLCB source carrying #48's dropped `target` key sat that way for months.
+
+So a PR that **tightens** anything under `src/core/*_schema/` - removes a key,
+narrows a type or enum, adds a required key or a rule - carries one of:
+
+- **a data migration** that rewrites the affected rows to the new shape, or
+- **the sweep's "0 affected"**, recorded in the PR. Run from the PR's checkout, so
+  production's documents meet the *new* schema; production data never reaches
+  Python, so `psql` exports it and the module judges the export:
+
+  ```bash
+  set -o pipefail
+  psql -d archiver -At -c "$(uv run python -m src.core.tools.audit_stored_documents --sql)" \
+    | uv run python -m src.core.tools.audit_stored_documents
+  ```
+
+  It prints each failing document and ends `N documents checked, M invalid`; exit 0
+  is "0 affected". An empty export is exit 2, never "0 affected": a failed `psql`
+  prints nothing to stdout, and `pipefail` makes its own failure the pipeline's too. The statement is compiled from the sweep's own queries, so the
+  export cannot read less than the badge does. One autocommit statement, so it
+  holds no transaction open (CLAUDE.md § Reading production).
+
+**RepSpecs differ: an assigned document is frozen (#83).** A migration may rewrite
+drafts. If an *assigned* RepSpec is affected, either the migration is a recorded
+#83 exception that moves no destination (the precedent is `70f32f641751`'s alias
+rename), or the tightening waits for #95's clone-and-migrate. Until then an
+affected frozen spec stops gaining assignments (#334) and shows as "clone it" on
+the Registry badge's list.
+
+**Loosening needs neither.** An additive key or a wider type strands nothing.
+
+**The guard keeps the sweep complete.**
+`tests/core/tools/test_audit_stored_documents.py` fails when a public function
+in a `src/core/*_schema/` package, or a JSON column on any model, is neither
+swept by a kind in `audit_stored_documents.KINDS` nor exempted there with a
+reason. A new schema or document column cannot slip past the sweep silently. The
+same module checks that every `*_schema/validator.py` docstring points here, so
+the rule sits in the file a tightening edits rather than in AGENTS.md.
+What the guard cannot see is a tightening of an *existing* validator; that is
+this rule's job, and the Registry badge's after deploy
+([HEALTH_ROW.md](HEALTH_ROW.md)).
+
 ## Dashboard living docs - which doc a change requires
 
 **Dashboard living docs:** each doc is scoped to what it actually documents -
@@ -142,15 +196,19 @@ applicable doc is a CR blocker.
 
 - `docs/PAGES.md` - required for any change to a Jinja2 template in
   `src/dashboard/templates/`, or a new/changed dashboard route. It is the
-  per-page inventory: what the screen renders, what the route returns.
+  per-page inventory: what the screen renders, what the route returns. The
+  RepSpec screens (`rep_specs/` templates, `/dashboard/rep-specs/` routes) live in
+  `docs/REP_SPEC_PAGES.md` instead.
 - `docs/COMPONENTS.md` - required for any change to a JS module under
   `src/dashboard/static/`. Alpine components are catalogued there; a module
-  that is not an Alpine component is documented where its behaviour lives
-  instead, and a change to it updates that doc - `flash.js` in `docs/UI.md`
+  that is not an Alpine component (catalogued in `docs/UI.md` § Document-level
+  scripts) is documented where its behaviour lives
+  instead, and a change to it updates that doc - `flash.js` in `docs/HTMX.md`
   ("Flash messages") and `docs/STYLE.md`, `dark-mode.js` in `docs/STYLE.md`.
 - `docs/INFO_ITEM_DETAIL.md` - required when the change alters the InfoItem hub
   screen itself: its five sections, a partial's swap target, or one of the
-  action-route contracts that moved there in archiver#176. PAGES.md keeps the
+  action-route contracts that moved there in archiver#176 (now
+  `docs/INFO_ITEM_ACTIONS.md`). PAGES.md keeps the
   inventory line for those routes, so a behaviour change updates both.
 - `docs/ORG_ROW.md` - required when the change alters the InfoItem
   Organization row: its notices, the `orgCombobox` keyboard model, or the link
@@ -161,7 +219,8 @@ applicable doc is a CR blocker.
   the inventory line for those routes: update it too when a route, or a form
   field it lists, is added, removed or renamed.
 - `docs/UI.md` - required when the change alters a *shared* mechanic rather
-  than one screen: the URL map, the auth gate, or an HTMX swap pattern.
+  than one screen: the URL map or the auth gate; `docs/HTMX.md` for an HTMX
+  swap pattern.
   `docs/SCREENS.md` for a detail-screen convention. A change that merely follows an existing
   convention updates PAGES.md alone.
 - `docs/STYLE.md` - required when the change introduces or alters *styling*:

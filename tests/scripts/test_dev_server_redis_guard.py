@@ -211,7 +211,7 @@ def test_unix_socket_refusal_does_not_claim_host_port() -> None:
 # Since #339 /etc/archiver/.env is root's alone, so the shell that runs this
 # script never holds prod's ARCHIVER_REDIS_URL and the comparison above has
 # nothing to compare against. The rule that still holds is positive: a dev
-# broker is a local one (DEPLOYMENT.md: dormant, or a local throwaway).
+# broker is a local one (ENVIRONMENT.md: dormant, or a local throwaway).
 
 
 def test_a_remote_broker_is_refused_with_no_prod_url_to_compare() -> None:

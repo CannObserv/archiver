@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session, get_redis_client
@@ -31,7 +32,9 @@ from src.core.models import (
     SourceRevision,
 )
 from src.core.models.domain import Domain
+from src.core.tools.audit_stored_documents import audit_stored_documents
 from src.dashboard.deps import get_dashboard_user
+from src.dashboard.stored_documents import finding_views
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as RedisAsync
@@ -157,6 +160,54 @@ async def dashboard_health_outbox(
     if age is not None and age > BACKLOG_WARN_AGE_SECONDS:
         return HTMLResponse(f'<span class="badge badge--warning" title="{detail}">backlog</span>')
     return HTMLResponse(f'<span class="badge badge--success" title="{detail}">ok</span>')
+
+
+@router.get("/health/registry", response_class=HTMLResponse)
+async def dashboard_health_registry(
+    user: AppUser = Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX partial - stored documents the current schemas reject (archiver#164).
+
+    Such a document publishes cleanly - the announcement path checks only the
+    envelope - and cannot be re-saved, so nothing else reports it until an edit
+    is refused. Warning "N invalid", linking the list page; success "ok"; danger
+    "error" when the database fails the sweep. ``title`` carries the documents judged.
+    The sweep reads every document column once per page load: no poll, and a
+    corpus of tens of rows.
+    """
+    try:
+        report = await audit_stored_documents(session)
+    except (SQLAlchemyError, OSError) as exc:
+        # Not `except Exception`: a document a validator raises on is already a
+        # finding, so anything else reaching here is a bug in the sweep, left to
+        # 500 rather than worn as a database condition (CR 5; the Consumers
+        # badge draws the same line).
+        reason = str(exc)
+        logger.warning("Registry document sweep failed", extra={"error": reason})
+        return _badge("danger", "error", detail=html_escape(reason))
+    detail = html_escape(f"{report.checked} documents checked")
+    if report.findings:
+        return HTMLResponse(
+            f'<a href="/dashboard/registry-audit" class="badge badge--warning" title="{detail}">'
+            f"{len(report.findings)} invalid</a>"
+        )
+    return _badge("success", "ok", detail=detail)
+
+
+@router.get("/registry-audit", response_class=HTMLResponse)
+async def dashboard_registry_audit(
+    request: Request,
+    user: AppUser = Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Every stored document the current schemas reject, with where and how to fix it."""
+    report = await audit_stored_documents(session)
+    return _templates.TemplateResponse(
+        request,
+        "registry_audit.html",
+        {"user": user, "findings": finding_views(report.findings), "checked": report.checked},
+    )
 
 
 # Each archiver-owned consumer, paired with the ``app.state`` handle its

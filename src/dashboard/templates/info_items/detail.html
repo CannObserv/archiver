@@ -1,9 +1,11 @@
 {% extends "base.html" %}
-{% from "_macros.html" import copyable, open_button %}
+{% from "_macros.html" import copyable, open_button, stored_document_notice %}
 {% block title %}{{ item.name }}{% endblock %}
 
 {% block content %}
 <div class="entity-section">
+
+  {{ stored_document_notice(stored_findings) }}
 
   {# ── Section 1: Overview ───────────────────────────────────────────── #}
   <section aria-label="Overview" style="margin-bottom:var(--space-5);">
