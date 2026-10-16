@@ -465,9 +465,11 @@ async def run(
     is pruned. Failures are swallowed there too, on the same reasoning.
 
     ``progress`` is stamped at the end of each iteration whose drain returned
-    (archiver#297). Not while ``drain_once`` keeps raising: a publish error is
-    caught per row, so what reaches that backoff is the database, and the
-    liveness heartbeat's silence is how a Postgres outage pages.
+    (archiver#297), and passed into ``drain_once``, which stamps per publish
+    attempt so a slow broker is never a stall. Not while ``drain_once`` keeps
+    raising: a publish error is caught per row, so what reaches that backoff is
+    the database, and the liveness heartbeat's silence is how a Postgres
+    outage pages.
     """
     both_capped = trim_topics & set(topic_maxlen or {})
     if both_capped:
