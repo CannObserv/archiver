@@ -42,7 +42,7 @@ def _wait_healthy(port: int, process: subprocess.Popen, deadline_s: float = 30.0
     raise AssertionError(f"/health did not answer within {deadline_s} s")
 
 
-def test_sigterm_ends_the_process_cleanly() -> None:
+def test_sigterm_ends_the_process_cleanly(tmp_path: Path) -> None:
     port = _free_port()
     # The unit's command, from this venv, against the test database; no broker,
     # no monitor id, nothing a test may not hold (tests/conftest.py).
@@ -50,6 +50,9 @@ def test_sigterm_ends_the_process_cleanly() -> None:
         "PATH": os.environ.get("PATH", ""),
         "ARCHIVER_DATABASE_URL": os.environ["TEST_DATABASE_URL"],
     }
+    # A file, not a pipe: nothing reads a pipe before the SIGTERM, so a startup
+    # that logged past its buffer would block uvicorn and read as "no /health".
+    log = (tmp_path / "uvicorn.log").open("w")
     process = subprocess.Popen(
         [
             sys.executable,
@@ -65,17 +68,18 @@ def test_sigterm_ends_the_process_cleanly() -> None:
         ],
         cwd=ROOT,
         env=env,
-        stdout=subprocess.PIPE,
+        stdout=log,
         stderr=subprocess.STDOUT,
-        text=True,
     )
     try:
         _wait_healthy(port, process)
         process.send_signal(signal.SIGTERM)
-        output, _ = process.communicate(timeout=30)
+        process.wait(timeout=30)
     finally:
         if process.poll() is None:
             process.kill()
             process.wait()
+        log.close()
+    output = (tmp_path / "uvicorn.log").read_text()
     assert process.returncode in (0, -signal.SIGTERM), output
     assert "Application shutdown complete." in output
