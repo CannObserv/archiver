@@ -37,10 +37,12 @@ __all__ = [
 
 @dataclass(frozen=True)
 class SwapResult:
-    """The active binding after the swap, and what it replaced.
+    """The active binding after the swap, and the primary before the call.
 
-    ``changed`` is false when the requested source was already the primary:
-    nothing was written, emitted or announced.
+    ``previous_info_source_id`` is the active primary when the call began, and
+    ``None`` when the item had none (the API's 201). On a no-op it is the
+    requested source itself, since that was already the primary.
+    ``changed`` is false on that no-op: nothing was written, emitted or announced.
     """
 
     binding: InfoItemSource
