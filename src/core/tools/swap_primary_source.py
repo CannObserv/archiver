@@ -18,13 +18,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import InfoItemSource, InfoSource
 from src.core.services.registry_announcement import announce_info_item
 from src.core.tools.bind_info_source import (
     InfoItemNotFoundError,
     InfoSourceNotFoundError,
     emit_primary_changed,
 )
+from src.core.tools.rep_fields_gate import lock_info_item
 
 __all__ = [
     "InfoItemNotFoundError",
@@ -60,8 +61,7 @@ async def swap_primary_source(
     ``uq_info_item_sources_active``. Reactivates a previous primary's row.
     Emits ``info_item_primary_changed`` and announces once. Caller commits.
     """
-    item = await db.get(InfoItem, info_item_id, with_for_update=True, populate_existing=True)
-    if item is None:
+    if await lock_info_item(db, info_item_id) is None:
         raise InfoItemNotFoundError(str(info_item_id))
     if await db.get(InfoSource, info_source_id) is None:
         raise InfoSourceNotFoundError(str(info_source_id))
