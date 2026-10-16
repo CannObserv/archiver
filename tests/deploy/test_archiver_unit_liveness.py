@@ -7,6 +7,7 @@ restarting forever. There is no ``OnFailure=``: silence is the page.
 """
 
 import configparser
+import sys
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,7 @@ def _sections() -> dict[str, list[tuple[str, str]]]:
             sections.setdefault(current, [])
             continue
         key, _, value = line.partition("=")
-        sections[current].append((key, value))
+        sections[current].append((key.strip(), value.strip()))
     return sections
 
 
@@ -97,3 +98,12 @@ def test_a_planned_stop_is_clean_by_systemds_own_rule() -> None:
     (execstart,) = _values("Service", "ExecStart")
     assert execstart.startswith("/srv/archiver/live/.venv/bin/uvicorn ")
     assert "uv run" not in execstart
+
+
+def test_the_parser_reads_spaced_directives(tmp_path, monkeypatch) -> None:
+    """systemd accepts ``Key = value``: a pin blind to it passes on the edit it guards."""
+    unit = tmp_path / "spaced.service"
+    unit.write_text("[Unit]\nStartLimitBurst = 5\n[Service]\nSuccessExitStatus = 143\n")
+    monkeypatch.setattr(sys.modules[__name__], "REPO_UNIT", unit)
+    assert _values("Unit", "StartLimitBurst") == ["5"]
+    assert _values("Service", "SuccessExitStatus") == ["143"]
