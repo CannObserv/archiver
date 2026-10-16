@@ -286,7 +286,8 @@ says which state it is in:
 ### When it goes `missing`
 
 Read `journalctl -u archiver -o cat | grep liveness` first:
-- **No `liveness` lines since the last start:** the process is down or crash-looping. Run `systemctl status archiver`, and `systemctl show archiver -p NRestarts -p Result`. After fixing the cause, `sudo systemctl reset-failed archiver && sudo systemctl start archiver`.
+- **Repeated `liveness: on` with no `liveness check-in` between them:** it is crash-looping, or dying within 5 min of each start. Every start logs `on`, and the first check-in waits one interval. Run `systemctl show archiver -p NRestarts -p Result` and read the traceback before each `on`.
+- **No `liveness` lines at all since the last stop:** the process is down. Usually that means `failed` after `StartLimitBurst` (`systemctl status archiver`). After fixing the cause, `sudo systemctl reset-failed archiver && sudo systemctl start archiver`.
 - **`bus loops not progressing`:** its `reasons` name the loop. `stale` on the publisher alone is most likely the database (`systemctl status postgresql`). `exited` or `not started` means a bus task died: look for `Bus task exited` and `Failed to initialise` just before it. The remedy is a restart once the cause is fixed.
 - **`check-in failed` every tick:** Status is unreachable (`curl http://status:9000/health`, the tailnet path) or refuses the key.
 
