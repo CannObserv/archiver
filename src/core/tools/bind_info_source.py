@@ -90,7 +90,7 @@ def emit_primary_changed(
     event = InfoItemPrimaryChangedEmit(
         occurred_at=datetime.now(UTC),
         info_item_id=str(info_item_id),
-        old_info_source_id=str(old_info_source_id) if old_info_source_id else None,
+        old_info_source_id=(str(old_info_source_id) if old_info_source_id is not None else None),
         new_info_source_id=str(new_info_source_id),
     )
     db.add(ChangesOutboxRow(topic="info.changes", payload=event.model_dump(mode="json")))
