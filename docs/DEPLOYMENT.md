@@ -252,7 +252,8 @@ still goes silent instead of sending `ok` on every start.
 | outbox publisher | always, while liveness is on | each publish attempt, and each drain that **returns**. Never while the database is down: `/health` is DB-free, so this is how a Postgres outage pages |
 | `content.revisions` + `content.artifacts` consumers | `ARCHIVER_BUS_CONSUMER` | every iteration, broker backoff included, and per reclaimed message |
 | `info.watch-status` tail | `ARCHIVER_REDIS_URL` | every iteration, backoff included |
-| registry snapshot, replication reaper | as their loops | nothing: alive while not `done()` |
+| registry snapshot | `ARCHIVER_REDIS_URL` | nothing: alive while not `done()` |
+| replication reaper | `ARCHIVER_BUS_CONSUMER` | nothing: alive while not `done()` |
 
 So a broker outage still counts as alive (broker has its own monitoring), and so does an
 idle stream. What goes silent, and pages:
