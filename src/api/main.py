@@ -461,11 +461,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             loops["revisions_consumer"] = (consumer_task, stamps["revisions_consumer"])
             loops["artifacts_consumer"] = (artifacts_task, stamps["artifacts_consumer"])
             tasks["replication_reaper"] = reaper_task
+        try:
+            build = build_id() or "unknown"
+        except OSError:  # informational only: never worth a failed start
+            build = "unknown"
         liveness_task = asyncio.create_task(
             liveness.Heartbeat(
-                liveness.Gate(loops=loops, tasks=tasks),
-                liveness_post,
-                build=build_id() or "unknown",
+                liveness.Gate(loops=loops, tasks=tasks), liveness_post, build=build
             ).run()
         )
     app.state.liveness_task = liveness_task

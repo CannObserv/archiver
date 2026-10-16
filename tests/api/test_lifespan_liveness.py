@@ -10,6 +10,7 @@ Covers:
 3. On, with the bus and the consumer gate: one check-in naming all four loops
 4. On, bus-dormant: the publisher is still expected, so silence
 5. The heartbeat is cancelled first at shutdown
+6. An unreadable REVISION still starts the service
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import pytest
 import respx
 from fakeredis import aioredis as fakeredis_aio
 
+from src.api import main
 from src.api.main import app, lifespan
 from src.core import liveness
 from src.core.status_checkin import CREDENTIAL_NAME
@@ -141,3 +143,14 @@ async def test_the_heartbeat_is_cancelled_before_the_bus_stops(
         monkeypatch.setattr(stop_event, "set", lambda: (seen.append(heartbeat.done()), real_set()))
     assert seen == [True]
     assert heartbeat.cancelled()
+
+
+async def test_an_unreadable_revision_never_stops_the_service(live_env, test_engine, monkeypatch):
+    """Liveness must never cost a start: the build is informational."""
+
+    def _unreadable():
+        raise PermissionError("REVISION")
+
+    monkeypatch.setattr(main, "build_id", _unreadable)
+    async with lifespan(app):
+        assert app.state.liveness_task is not None
