@@ -241,13 +241,15 @@ disable --now archiver-drift.timer` if that is the intent.
 **only while its bus loops are making progress**. It never sends `alert`: silence is the
 page. Ported from processor#39. The rules are in `src/core/liveness.py`.
 
-**The gate.** Every expected continuous loop stamped progress within 300 s and has not
-exited. Every expected periodic task is still running. A loop whose init failed counts
-as silence.
+**The gate.** Every expected continuous loop stamped progress within 120 s and has not
+exited. Every expected periodic task is still running. A loop whose init failed, or that
+has not finished one iteration yet, counts as silence. The first tick comes one interval
+(5 min) after start, never at once. That way a crash loop too slow for `StartLimitBurst`
+still goes silent instead of sending `ok` on every start.
 
 | Loop | Expected when | Stamps |
 |---|---|---|
-| outbox publisher | always, while liveness is on | each drain that **returns**. Not while the database is down: `/health` is DB-free, so this is how a Postgres outage pages |
+| outbox publisher | always, while liveness is on | each publish attempt, and each drain that **returns**. Never while the database is down: `/health` is DB-free, so this is how a Postgres outage pages |
 | `content.revisions` + `content.artifacts` consumers | `ARCHIVER_BUS_CONSUMER` | every iteration, broker backoff included, and per reclaimed message |
 | `info.watch-status` tail | `ARCHIVER_REDIS_URL` | every iteration, backoff included |
 | registry snapshot, replication reaper | as their loops | nothing: alive while not `done()` |
@@ -275,7 +277,7 @@ says which state it is in:
 
 | Journal | Meaning |
 |---|---|
-| `liveness: on <id>` | checking in. The first `liveness check-in` (`checkin` 202) follows at once, then one after each failure |
+| `liveness: on <id>` | checking in. The first `liveness check-in` (`checkin` 202) comes 5 min after start, then one after each failure |
 | `liveness: off` | no monitor id: a dev server, a test, a hand run |
 | `liveness: off: missing the status-checkin-key credential` (ERROR) | the key file is gone or empty. The service runs **unmonitored**. Reinstall `/etc/archiver/status-checkin.key` (root 0600) and restart |
 | `bus loops not progressing; not checking in` (WARNING, each tick) | the gate is shut. `reasons` names each loop (`not started`, `exited`, `stale N s`) |
@@ -291,7 +293,9 @@ Read `journalctl -u archiver -o cat | grep liveness` first:
 **Planned stops.** A stop longer than interval plus grace, about 20 min, pages. **Pause the
 monitor first.** Ask Status's operator to `PATCH` `co-archiver-live` to `enabled: false`;
 check-ins still land while it is paused. Re-enable it after the restart. A deploy never
-needs this: its worst silence is about 520 s.
+needs this. Its worst silence is about 900 s: up to 300 s since the last `ok`, a stop of 90 s
+or less, the 120 s verify, a switch-back restart, and then the 300 s first tick. The
+monitor allows 1200 s (interval plus grace).
 
 ## The nightly backup (archiver#233)
 

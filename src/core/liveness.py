@@ -61,10 +61,11 @@ logger = get_logger(__name__)
 MONITOR_ID_ENV = "CO_ARCHIVER_LIVE_MONITOR_ID"
 #: The monitor's interval (CannObserv/status#47).
 INTERVAL_SECONDS = 300.0
-#: A loop silent for longer is stalled. Every loop turns far faster: the
-#: consumers' blocking read is 5 s, the publisher's idle sleep 1 s, the
-#: longest backoff 30 s.
-STALE_AFTER_SECONDS = 300.0
+#: A loop silent for longer is stalled. Every loop stamps far more often: the
+#: consumers' blocking read is 5 s, the publisher's idle sleep 1 s, the longest
+#: backoff 30 s, a broker socket timeout 10 s (the publisher stamps per row).
+#: Under the interval, so a loop that dies just after a tick fails the next one.
+STALE_AFTER_SECONDS = 120.0
 #: The heartbeat's own bound on one check-in; httpx's 10 s normally fires first.
 TIMEOUT_SECONDS = 15.0
 
@@ -72,12 +73,14 @@ TIMEOUT_SECONDS = 15.0
 class LoopProgress:
     """One continuous bus loop's last finished iteration.
 
-    Starts fresh at creation: a loop's first blocking read is not an outage.
+    ``None`` until the first: creation is not progress. A process that dies
+    before its loops turn must never check in, or a crash loop slower than
+    ``StartLimitBurst=`` would report ``ok`` on every start (archiver#297 review).
     """
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
-        self.last = clock()
+        self.last: float | None = None
         self.backing_off = False
 
     def stamp(self, *, backing_off: bool = False) -> None:
@@ -112,12 +115,12 @@ class Gate:
         *,
         loops: Mapping[str, tuple[_Task | None, LoopProgress]],
         tasks: Mapping[str, _Task | None],
-        stale_after_s: float = STALE_AFTER_SECONDS,
+        stale_after_s: float | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._loops = loops
         self._tasks = tasks
-        self._stale_after_s = stale_after_s
+        self._stale_after_s = STALE_AFTER_SECONDS if stale_after_s is None else stale_after_s
         self._clock = clock
 
     def read(self) -> Reading:
@@ -127,6 +130,9 @@ class Gate:
         backing_off: list[str] = []
         for name, (task, progress) in self._loops.items():
             if not _running(name, task, reasons):
+                continue
+            if progress.last is None:
+                reasons.append(f"{name}: no progress yet")
                 continue
             age = self._clock() - progress.last
             variables[f"{name}_age_s"] = str(round(age))
@@ -163,14 +169,14 @@ class Heartbeat:
         post: Callable[[dict[str, str]], int],
         *,
         build: str,
-        interval_s: float = INTERVAL_SECONDS,
-        timeout_s: float = TIMEOUT_SECONDS,
+        interval_s: float | None = None,
+        timeout_s: float | None = None,
     ) -> None:
         self._gate = gate
         self._post = post
         self._build = build
-        self._interval_s = interval_s
-        self._timeout_s = timeout_s
+        self._interval_s = INTERVAL_SECONDS if interval_s is None else interval_s
+        self._timeout_s = TIMEOUT_SECONDS if timeout_s is None else timeout_s
         # Set before a check-in thread starts; cleared by that thread once its
         # post returns, never by the timeout path (processor#39 trap 1, #45).
         self._in_flight = False
@@ -178,12 +184,18 @@ class Heartbeat:
         self._ok = False
 
     async def run(self) -> None:
-        """Tick at once, then every ``interval_s``, until cancelled. Never raises.
+        """Tick every ``interval_s``, the first one interval in, until cancelled.
 
-        A tick that raises (a bug outside its own handlers) is logged with its
-        traceback, and the next tick runs: the heartbeat never ends silently.
+        Not at once (processor ticks at once): each start's first ``ok`` would
+        then come before the process had proven it stays up, and a crash loop
+        slower than ``StartLimitBurst=`` would never go silent (archiver#297
+        review). A deploy's worst silence is still inside the grace
+        (``docs/DEPLOYMENT.md`` § Liveness). Never raises: a tick that raises (a
+        bug outside its own handlers) is logged with its traceback, and the next
+        tick runs, so the heartbeat never ends silently.
         """
-        next_tick = time.monotonic()
+        next_tick = time.monotonic() + self._interval_s
+        await asyncio.sleep(self._interval_s)
         while True:
             try:
                 await self.tick()

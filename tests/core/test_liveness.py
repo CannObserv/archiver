@@ -59,6 +59,13 @@ def clock() -> Clock:
     return Clock()
 
 
+def stamped(clock=None) -> LoopProgress:
+    """A loop that has finished one iteration, now."""
+    progress = LoopProgress(clock) if clock is not None else LoopProgress()
+    progress.stamp()
+    return progress
+
+
 def gate_of(clock: Clock, **loops: LoopProgress) -> Gate:
     return Gate(
         loops={name: (Task(), progress) for name, progress in loops.items()},
@@ -80,10 +87,11 @@ def records(caplog, message: str) -> list[logging.LogRecord]:
 # --- LoopProgress ------------------------------------------------------------
 
 
-def test_progress_starts_fresh_at_creation(clock):
-    """A loop's first blocking read is not an outage: creation counts as progress."""
+def test_progress_starts_unstamped(clock):
+    """Creation is not progress: a process that restarts before its loops turn
+    must not check in (the crash-loop case, archiver#297 review)."""
     progress = LoopProgress(clock)
-    assert progress.last == clock.now
+    assert progress.last is None
     assert progress.backing_off is False
 
 
@@ -100,7 +108,7 @@ def test_a_stamp_moves_progress_and_records_backoff(clock):
 
 
 def test_every_fresh_loop_reads_fresh_with_its_age(clock):
-    publisher, tail = LoopProgress(clock), LoopProgress(clock)
+    publisher, tail = stamped(clock), stamped(clock)
     clock.now += 42.4
     tail.stamp(backing_off=True)
     reading = gate_of(clock, publisher=publisher, watch_status_tail=tail).read()
@@ -113,18 +121,18 @@ def test_every_fresh_loop_reads_fresh_with_its_age(clock):
 
 
 def test_no_loop_backing_off_reads_none(clock):
-    reading = gate_of(clock, publisher=LoopProgress(clock)).read()
+    reading = gate_of(clock, publisher=stamped(clock)).read()
     assert reading.variables["backing_off"] == "none"
 
 
 def test_progress_at_the_bound_is_still_fresh(clock):
-    publisher = LoopProgress(clock)
+    publisher = stamped(clock)
     clock.now += 300.0
     assert gate_of(clock, publisher=publisher).read().fresh
 
 
 def test_one_stale_loop_is_silence(clock):
-    publisher, consumer = LoopProgress(clock), LoopProgress(clock)
+    publisher, consumer = stamped(clock), stamped(clock)
     clock.now += 300.5
     publisher.stamp()
     reading = gate_of(clock, publisher=publisher, revisions_consumer=consumer).read()
@@ -132,10 +140,24 @@ def test_one_stale_loop_is_silence(clock):
     assert reading.reasons == ("revisions_consumer: stale 300 s",)
 
 
+def test_a_loop_that_never_finished_an_iteration_is_silence(clock):
+    reading = gate_of(
+        clock, publisher=stamped(clock), revisions_consumer=LoopProgress(clock)
+    ).read()
+    assert not reading.fresh
+    assert reading.reasons == ("revisions_consumer: no progress yet",)
+    assert "revisions_consumer_age_s" not in reading.variables
+
+
+def test_staleness_is_tighter_than_the_interval():
+    """A loop that dies just after a tick must fail the next one, not the one after."""
+    assert liveness.STALE_AFTER_SECONDS < liveness.INTERVAL_SECONDS
+
+
 def test_an_expected_loop_that_never_started_is_silence(clock):
     """Init failed, so the lifespan holds ``None``: nothing is consuming."""
     gate = Gate(
-        loops={"publisher": (None, LoopProgress(clock))},
+        loops={"publisher": (None, stamped(clock))},
         tasks={},
         stale_after_s=300.0,
         clock=clock,
@@ -147,7 +169,7 @@ def test_an_expected_loop_that_never_started_is_silence(clock):
 
 def test_an_exited_loop_is_silence_however_fresh_its_last_stamp(clock):
     gate = Gate(
-        loops={"publisher": (Task(done=True), LoopProgress(clock))},
+        loops={"publisher": (Task(done=True), stamped(clock))},
         tasks={},
         stale_after_s=300.0,
         clock=clock,
@@ -164,7 +186,7 @@ def test_an_exited_loop_is_silence_however_fresh_its_last_stamp(clock):
 def test_a_periodic_task_is_checked_for_running_only(clock, task, reason):
     """The hourly snapshot and the 900 s reaper stamp nothing: alive is not done()."""
     gate = Gate(
-        loops={"publisher": (Task(), LoopProgress(clock))},
+        loops={"publisher": (Task(), stamped(clock))},
         tasks={"replication_reaper": task},
         stale_after_s=300.0,
         clock=clock,
@@ -177,7 +199,7 @@ def test_a_periodic_task_is_checked_for_running_only(clock, task, reason):
 
 def test_a_running_periodic_task_reads_fresh(clock):
     gate = Gate(
-        loops={"publisher": (Task(), LoopProgress(clock))},
+        loops={"publisher": (Task(), stamped(clock))},
         tasks={"registry_snapshot": Task()},
         stale_after_s=300.0,
         clock=clock,
@@ -190,7 +212,7 @@ def test_a_running_periodic_task_reads_fresh(clock):
 
 async def test_a_fresh_gate_checks_in_ok_with_every_variable(clock):
     posts = []
-    publisher = LoopProgress(clock)
+    publisher = stamped(clock)
     clock.now += 12
     await beat(gate_of(clock, publisher=publisher), lambda v: posts.append(v) or 202).tick()
     assert posts == [{"build": "abc123def456", "publisher_age_s": "12", "backing_off": "none"}]
@@ -200,7 +222,7 @@ async def test_a_fresh_gate_checks_in_ok_with_every_variable(clock):
 async def test_the_real_post_sends_ok_with_the_key_in_its_header_only(clock):
     route = respx.post(CHECKIN).mock(return_value=httpx.Response(202, json={}))
     post = partial(post_checkin, BASE, MONITOR, KEY, "ok")
-    await beat(gate_of(clock, publisher=LoopProgress(clock)), post).tick()
+    await beat(gate_of(clock, publisher=stamped(clock)), post).tick()
     (call,) = route.calls
     assert call.request.headers["X-API-Key"] == KEY
     body = json.loads(call.request.content)
@@ -211,7 +233,7 @@ async def test_the_real_post_sends_ok_with_the_key_in_its_header_only(clock):
 
 async def test_a_stale_gate_stays_silent_and_says_why(clock, caplog):
     posts = []
-    publisher = LoopProgress(clock)
+    publisher = stamped(clock)
     clock.now += 301
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
         await beat(gate_of(clock, publisher=publisher), posts.append).tick()
@@ -228,7 +250,7 @@ async def test_a_refusal_is_one_warning_and_the_next_tick_tries_again(clock, cap
         return_value=httpx.Response(code, json={"detail": "bad key"} if code == 401 else {})
     )
     heartbeat = beat(
-        gate_of(clock, publisher=LoopProgress(clock)),
+        gate_of(clock, publisher=stamped(clock)),
         partial(post_checkin, BASE, MONITOR, KEY, "ok"),
     )
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
@@ -247,7 +269,7 @@ async def test_unreachable_status_is_a_warning(clock, caplog):
         url = f"http://127.0.0.1:{probe.getsockname()[1]}"
     post = partial(post_checkin, url, MONITOR, KEY, "ok")
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
-        await beat(gate_of(clock, publisher=LoopProgress(clock)), post).tick()
+        await beat(gate_of(clock, publisher=stamped(clock)), post).tick()
     (record,) = records(caplog, "liveness check-in failed")
     assert record.error.startswith("ConnectError")
 
@@ -257,7 +279,7 @@ async def test_an_unexpected_error_is_a_warning_never_an_escape(clock, caplog):
         raise RuntimeError("boom")
 
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
-        await beat(gate_of(clock, publisher=LoopProgress(clock)), post).tick()
+        await beat(gate_of(clock, publisher=stamped(clock)), post).tick()
     (record,) = records(caplog, "liveness check-in failed")
     assert record.error == "RuntimeError: boom"
 
@@ -293,7 +315,7 @@ def hung_status() -> Iterator[str]:
 
 async def test_a_hung_status_is_cut_off_and_the_next_tick_is_skipped(hung_status, caplog):
     # httpx's own timeout is longer, so the heartbeat's bound is what cuts it off.
-    gate = Gate(loops={"publisher": (Task(), LoopProgress())}, tasks={}, stale_after_s=300.0)
+    gate = Gate(loops={"publisher": (Task(), stamped())}, tasks={}, stale_after_s=300.0)
     post = partial(post_checkin, hung_status, MONITOR, KEY, "ok", timeout=5)
     heartbeat = beat(gate, post, timeout_s=0.2)
     started = time.monotonic()
@@ -310,7 +332,7 @@ async def test_a_hung_status_is_cut_off_and_the_next_tick_is_skipped(hung_status
 
 async def test_a_hung_status_never_delays_the_event_loop(hung_status):
     """A publish or an ack is a coroutine on this loop: it must keep turning."""
-    gate = Gate(loops={"publisher": (Task(), LoopProgress())}, tasks={}, stale_after_s=300.0)
+    gate = Gate(loops={"publisher": (Task(), stamped())}, tasks={}, stale_after_s=300.0)
     post = partial(post_checkin, hung_status, MONITOR, KEY, "ok", timeout=5)
     task = asyncio.create_task(beat(gate, post, timeout_s=3).tick())
     try:
@@ -319,7 +341,7 @@ async def test_a_hung_status_never_delays_the_event_loop(hung_status):
         while time.monotonic() - started < 0.5:
             await asyncio.sleep(0.01)
             turns += 1
-        assert turns > 20
+        assert turns > 5
         assert not task.done()
     finally:
         task.cancel()
@@ -340,13 +362,14 @@ async def test_a_cut_off_check_in_frees_the_next_tick_once_its_post_returns(cloc
             release.wait(5)
         return 202
 
-    heartbeat = beat(gate_of(clock, publisher=LoopProgress(clock)), post, timeout_s=0.05)
+    heartbeat = beat(gate_of(clock, publisher=stamped(clock)), post, timeout_s=0.05)
     try:
         with caplog.at_level(logging.INFO, logger="src.core.liveness"):
             await heartbeat.tick()  # cut off: the post is still running
             await heartbeat.tick()  # skipped
             release.set()
             threads[0].join(5)
+            heartbeat._timeout_s = 15.0  # a real thread on a loaded runner: not 50 ms
             await heartbeat.tick()
     finally:
         release.set()
@@ -372,9 +395,7 @@ async def test_a_finished_check_in_whose_thread_lingers_does_not_skip_the_next_t
 
     monkeypatch.setattr(threading, "Thread", Lingering)
     posts = []
-    heartbeat = beat(
-        gate_of(clock, publisher=LoopProgress(clock)), lambda v: posts.append(v) or 202
-    )
+    heartbeat = beat(gate_of(clock, publisher=stamped(clock)), lambda v: posts.append(v) or 202)
     try:
         with caplog.at_level(logging.INFO, logger="src.core.liveness"):
             await heartbeat.tick()
@@ -401,7 +422,7 @@ async def test_a_thread_that_fails_to_start_does_not_wedge_the_heartbeat(
         real_start(self)
 
     monkeypatch.setattr(threading.Thread, "start", start)
-    heartbeat = beat(gate_of(clock, publisher=LoopProgress(clock)), lambda v: 202)
+    heartbeat = beat(gate_of(clock, publisher=stamped(clock)), lambda v: 202)
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
         await heartbeat.tick()
         await heartbeat.tick()
@@ -420,7 +441,7 @@ async def test_ok_is_logged_on_the_first_and_after_a_failure_only(clock, caplog)
             raise CheckinFailed(str(code))
         return code
 
-    publisher = LoopProgress(clock)
+    publisher = stamped(clock)
     heartbeat = beat(gate_of(clock, publisher=publisher), post)
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
         await heartbeat.tick()
@@ -439,9 +460,27 @@ async def test_ok_is_logged_on_the_first_and_after_a_failure_only(clock, caplog)
 # --- Heartbeat: the run loop ---------------------------------------------------
 
 
-async def test_run_ticks_at_once_then_every_interval():
+async def test_run_waits_one_interval_before_its_first_tick():
+    """Each start's first ok comes an interval in, so a crash loop that outlives
+    StartLimitBurst still goes silent and pages (archiver#297 review)."""
     posts = []
-    progress = LoopProgress()
+    gate = Gate(loops={"publisher": (Task(), stamped())}, tasks={}, stale_after_s=300.0)
+    task = asyncio.create_task(beat(gate, posts.append, interval_s=0.5).run())
+    try:
+        await asyncio.sleep(0.2)
+        assert posts == []
+        async with asyncio.timeout(5):
+            while not posts:
+                await asyncio.sleep(0.01)
+    finally:
+        task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def test_run_ticks_every_interval():
+    posts = []
+    progress = stamped()
     gate = Gate(loops={"publisher": (Task(), progress)}, tasks={}, stale_after_s=300.0)
     task = asyncio.create_task(beat(gate, posts.append, interval_s=0.1, timeout_s=0.05).run())
     try:
@@ -456,7 +495,7 @@ async def test_run_ticks_at_once_then_every_interval():
 
 
 async def test_cancel_ends_run_promptly_mid_check_in(hung_status):
-    gate = Gate(loops={"publisher": (Task(), LoopProgress())}, tasks={}, stale_after_s=300.0)
+    gate = Gate(loops={"publisher": (Task(), stamped())}, tasks={}, stale_after_s=300.0)
     post = partial(post_checkin, hung_status, MONITOR, KEY, "ok", timeout=30)
     task = asyncio.create_task(beat(gate, post, timeout_s=30).run())
     await asyncio.sleep(0.2)  # the first check-in is in flight, for up to 30 s

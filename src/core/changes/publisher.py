@@ -282,6 +282,7 @@ async def drain_once(
     publisher: AsyncBusPublisher,
     batch_size: int = DEFAULT_BATCH_SIZE,
     topic_maxlen: Mapping[str, int] | None = None,
+    progress: LoopProgress | None = None,
 ) -> int:
     """Drain at most ``batch_size`` unpublished rows.
 
@@ -295,6 +296,11 @@ async def drain_once(
     ``published_at IS NULL`` and it is re-published next drain - a duplicate stream
     entry. Consumers MUST dedupe on the co-core idempotency ``key`` in the wire
     envelope; that is also why a re-publish is safe to retry freely (CR #12).
+
+    ``progress`` is stamped after each publish attempt, failed or not
+    (archiver#297): a black-holed broker costs a socket timeout per row, and a
+    full batch of those outlasts the liveness gate. Only after the SELECT has
+    answered, so a database outage still never stamps.
     """
     published = 0
     async with session_factory() as session:
@@ -368,6 +374,8 @@ async def drain_once(
                             "error": repr(exc),
                         },
                     )
+            if progress is not None:
+                progress.stamp()
         await session.commit()
         return published
 
@@ -480,6 +488,7 @@ async def run(
                 publisher=publisher,
                 batch_size=batch_size,
                 topic_maxlen=topic_maxlen,
+                progress=progress,
             )
             if consecutive_failures:
                 # Positive signal that the loop is healthy again (CR #14) - the

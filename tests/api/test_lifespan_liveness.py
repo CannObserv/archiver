@@ -54,6 +54,8 @@ def live_env(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(tmp_path))
     monkeypatch.setenv(liveness.MONITOR_ID_ENV, MONITOR)
     monkeypatch.setenv("ARCHIVER_STATUS_URL", STATUS)
+    # The first tick waits one interval: 300 s in production, a moment here.
+    monkeypatch.setattr(liveness, "INTERVAL_SECONDS", 0.1)
     return monkeypatch
 
 
@@ -91,7 +93,8 @@ async def test_on_checks_in_for_every_expected_loop(live_env, fake_bus, test_eng
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
         async with lifespan(app):
             assert app.state.liveness_task is not None
-            async with asyncio.timeout(5):
+            # The consumers' first blocking read is up to 5 s on the fake bus.
+            async with asyncio.timeout(15):
                 while not route.called:
                     await asyncio.sleep(0.01)
     assert (logging.INFO, f"liveness: on {MONITOR}") in _messages(caplog)

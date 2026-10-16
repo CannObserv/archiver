@@ -1845,7 +1845,7 @@ async def test_run_stamps_progress_while_the_broker_refuses_every_publish(
         progress=stamps,
     )
     assert broken_redis.xadd.await_count == 1
-    assert stamps.log == [False]
+    assert stamps.log == [False, False]  # the row's attempt, then the iteration
 
 
 async def test_run_does_not_stamp_while_the_database_is_down(
@@ -1873,4 +1873,31 @@ async def test_run_does_not_stamp_while_the_database_is_down(
         progress=stamps,
     )
     assert calls == 3
+    assert stamps.log == []
+
+
+async def test_drain_stamps_progress_per_row_so_a_slow_broker_is_not_a_stall(session_factory):
+    """A black-holed broker costs a socket timeout per XADD; 100 rows of 5-10 s is
+    longer than the gate's staleness. Each attempt is progress (archiver#297 review)."""
+    for n in range(3):
+        await _insert_row(session_factory, payload=_captured_event(f"rev-slow-{n}"))
+    broken_redis = AsyncMock()
+    broken_redis.xadd = AsyncMock(side_effect=RedisConnectionError("timed out"))
+    stamps = Stamps()
+    published = await drain_once(
+        session_factory=session_factory,
+        publisher=AsyncBusPublisher(broken_redis),
+        progress=stamps,
+    )
+    assert published == 0
+    assert stamps.log == [False, False, False]
+
+
+async def test_drain_never_stamps_when_the_database_is_down(publisher):
+    def _down():
+        raise RuntimeError("db down")
+
+    stamps = Stamps()
+    with pytest.raises(RuntimeError):
+        await drain_once(session_factory=_down, publisher=publisher, progress=stamps)
     assert stamps.log == []
