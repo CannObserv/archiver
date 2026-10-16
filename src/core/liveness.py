@@ -14,9 +14,11 @@ page the same way. An idle stream still turns its loop, so quiet is not an outag
 **What a loop stamps** (the operator decision on archiver#297): a broker outage
 counts as alive, since broker has its own monitoring. A database outage does
 not, since ``/health`` is DB-free and would otherwise never page. The loops
-already split the two: the publisher stamps only when a drain returns (a
-publish error is caught per row, so only the database reaches its backoff), and
-the consumers and the tail stamp every iteration, backoff included.
+already split the two. The publisher stamps after each publish attempt and when
+a drain returns, never before its SELECT answers: a publish error is caught per
+row, so only the database reaches its backoff. The consumers and the tail stamp
+every iteration, backoff included. A loop stamps nothing at creation, and the
+first tick waits one interval: a start is not proof of life.
 
 **Never in a publish's or an ack's way** (processor#39 trap 1):
 :func:`~src.core.status_checkin.post_checkin` is blocking ``httpx``, so each
