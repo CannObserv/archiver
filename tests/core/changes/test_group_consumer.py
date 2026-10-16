@@ -39,6 +39,7 @@ from ulid import ULID
 
 from src.core.changes import artifacts_consumer, group_consumer
 from src.core.changes import consumer as revisions_consumer
+from tests.core.changes._stamps import Stamps
 
 
 @pytest.fixture
@@ -405,3 +406,92 @@ async def test_run_carries_the_reclaim_cursor_across_passes_and_resets_it_on_fai
     )
 
     assert bus.starts == ["0-0", "1-0", "0-0"]
+
+
+# --- Liveness stamps (archiver#297) ----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_stamps_progress_on_an_empty_read():
+    """A quiet stream still turns the loop: not an outage."""
+    bus = _LoopBus(stop_after_reads=2)
+    stamps = Stamps()
+    await asyncio.wait_for(
+        group_consumer.run(
+            consumer=_scripted(bus),
+            handle=_settle,
+            stop_event=bus.stop_event,
+            claim_interval_iterations=0,
+            progress=stamps,
+        ),
+        timeout=10,
+    )
+    assert stamps.log == [False, False]
+
+
+@pytest.mark.asyncio
+async def test_run_stamps_progress_while_backing_off_from_the_broker():
+    """A broker outage is alive (the operator decision on archiver#297): handler
+    errors are settled per message, so only the broker reaches this backoff."""
+    bus = _LoopBus(fail_reads=frozenset({1}), stop_after_reads=2)
+    stamps = Stamps()
+    await asyncio.wait_for(
+        group_consumer.run(
+            consumer=_scripted(bus),
+            handle=_settle,
+            stop_event=bus.stop_event,
+            claim_interval_iterations=0,
+            error_backoff_base=0.001,
+            progress=stamps,
+        ),
+        timeout=10,
+    )
+    assert stamps.log == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_stamp_while_a_read_is_wedged():
+    """A hung read is a stalled loop: no stamp, so the gate reads it stale."""
+
+    @dataclass
+    class _HungBus(_LoopBus):
+        async def read(self, *, count: int, block_ms: int | None) -> list[BusMessage]:
+            await asyncio.Event().wait()
+            return []
+
+    bus = _HungBus()
+    stamps = Stamps()
+    task = asyncio.create_task(
+        group_consumer.run(consumer=_scripted(bus), handle=_settle, progress=stamps)
+    )
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert stamps.log == []
+
+
+@pytest.mark.asyncio
+async def test_reclaim_stamps_progress_per_message():
+    """A page of slow reclaims is progress, message by message."""
+    bus = _ScriptedBus(
+        pages=[_page("0-0", messages=(_message("1-0"), _message("2-0"), _message("3-0")))]
+    )
+    stamps = Stamps()
+    await group_consumer.reclaim_stale(consumer=_scripted(bus), handle=_settle, progress=stamps)
+    assert bus.acked == ["1-0", "2-0", "3-0"]
+    assert stamps.log == [False, False, False]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module", [revisions_consumer, artifacts_consumer])
+async def test_the_consumer_wrappers_pass_progress_through(module):
+    seen: dict[str, Any] = {}
+
+    async def _run(**kwargs):
+        seen.update(kwargs)
+
+    stamps = Stamps()
+    with patch.object(group_consumer, "run", _run):
+        await module.run(session_factory=None, consumer=None, progress=stamps)
+    assert seen["progress"] is stamps

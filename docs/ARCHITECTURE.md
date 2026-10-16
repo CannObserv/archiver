@@ -261,6 +261,9 @@ src/core/                      Domain logic
                                reports ok/alert to co-status's co-archiver-drift
   status_checkin.py            One check-in to a co-status monitor; the key is a
                                systemd credential, never in the environment
+  liveness.py                  The service's heartbeat (archiver#297): checks in ok
+                               to co-archiver-live every 5 min while every expected
+                               bus loop stamps progress; silent otherwise
   backup.py                    The nightly dump (archiver#233): pg_dump as its own
                                pg_read_all_data role, verified, created create-only
                                in gs://co-gcs-archiver-backup; ok/alert to

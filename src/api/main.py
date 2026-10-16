@@ -21,6 +21,8 @@ from src.api.routes.info_sources import router as info_sources_router
 from src.api.routes.rep_specs import router as rep_specs_router
 from src.api.routes.source_revisions import router as source_revisions_router
 from src.api.routes.tools import router as tools_router
+from src.core import liveness
+from src.core.build import build_id
 from src.core.changes import (
     artifacts_consumer,
     bus_client,
@@ -75,6 +77,11 @@ def _bus_task_exit_logger(label: str, stop_event: asyncio.Event) -> Callable[[as
     return _log
 
 
+#: The continuous bus loops the liveness heartbeat reads progress from
+#: (archiver#297). Which of them a process expects is decided in the lifespan.
+_LIVENESS_LOOPS = ("publisher", "revisions_consumer", "artifacts_consumer", "watch_status_tail")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Set up shared resources for the process lifetime.
@@ -99,6 +106,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       That gate exists because a group consumer removes messages from
       production's PEL; a groupless tail removes nothing, so a stray tail is
       harmless.
+    - Optionally starts the liveness heartbeat (archiver#297) when
+      ``CO_ARCHIVER_LIVE_MONITOR_ID`` and the ``status-checkin-key`` credential
+      are both present, which only ``deploy/archiver.service`` provides. It
+      checks in to Status only while every expected bus loop is progressing.
     """
     # Before any resource is built or any request is served.
     try:
@@ -125,6 +136,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if app.state.power_map
         else "not configured",
     )
+
+    # --- Optional liveness heartbeat (archiver#297), part 1 ---
+    # Resolved before the bus loops so each can be handed the progress it
+    # stamps. ``None`` everywhere but the unit, and then no loop stamps at all.
+    liveness_post = liveness.poster_from_env(os.environ)
+    stamps: dict[str, liveness.LoopProgress] = (
+        {name: liveness.LoopProgress() for name in _LIVENESS_LOOPS} if liveness_post else {}
+    )
+    liveness_task: asyncio.Task | None = None
 
     # --- Optional outbox publisher ---
     redis_url = os.environ.get("ARCHIVER_REDIS_URL")
@@ -227,6 +247,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     trim_topics=frozenset({outbox_publisher.CHANGE_STREAM_TOPIC}),
                     topic_maxlen={registry_topic: registry_maxlen},
                     retention_days=retention_days,
+                    progress=stamps.get("publisher"),
                 )
             )
             pub_task.add_done_callback(_bus_task_exit_logger("outbox_publisher", stop_event))
@@ -291,6 +312,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         ),
                         consumer=revisions_consumer.build_consumer(redis_client),
                         stop_event=stop_event,
+                        progress=stamps.get("revisions_consumer"),
                     )
                 )
                 consumer_task.add_done_callback(
@@ -325,6 +347,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         ),
                         consumer=artifacts_consumer.build_consumer(redis_client),
                         stop_event=stop_event,
+                        progress=stamps.get("artifacts_consumer"),
                     )
                 )
                 artifacts_task.add_done_callback(
@@ -358,6 +381,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         session_factory=ws_session_factory,
                         reader=watch_status_consumer.build_reader(redis_client, start_id=start_id),
                         stop_event=stop_event,
+                        progress=stamps.get("watch_status_tail"),
                     )
                 )
                 watch_status_task.add_done_callback(
@@ -420,10 +444,46 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         app.state.replication_reaper_task = None
 
+    # --- Optional liveness heartbeat (archiver#297), part 2 ---
+    # Last, so it reads every handle above. The publisher is expected whenever
+    # liveness is on: only the unit turns it on, and production without a bus
+    # is broken, so a missing handle is silence rather than a vacuous ok.
+    if liveness_post is not None:
+        consumers_on = artifacts_consumer.consumer_enabled(os.environ.get("ARCHIVER_BUS_CONSUMER"))
+        loops: dict[str, tuple[asyncio.Task | None, liveness.LoopProgress]] = {
+            "publisher": (pub_task, stamps["publisher"]),
+        }
+        tasks: dict[str, asyncio.Task | None] = {}
+        if redis_url:
+            loops["watch_status_tail"] = (watch_status_task, stamps["watch_status_tail"])
+            tasks["registry_snapshot"] = snapshot_task
+        if consumers_on:
+            loops["revisions_consumer"] = (consumer_task, stamps["revisions_consumer"])
+            loops["artifacts_consumer"] = (artifacts_task, stamps["artifacts_consumer"])
+            tasks["replication_reaper"] = reaper_task
+        try:
+            build = build_id() or "unknown"
+        except OSError:  # informational only: never worth a failed start
+            build = "unknown"
+        liveness_task = asyncio.create_task(
+            liveness.Heartbeat(
+                liveness.Gate(loops=loops, tasks=tasks), liveness_post, build=build
+            ).run()
+        )
+    app.state.liveness_task = liveness_task
+
     try:
         yield
     finally:
-        # Stop the bus tasks first — they watch the same stop event, and the
+        # The heartbeat first: a check-in taken while the loops wind down would
+        # report a service that is stopping.
+        if liveness_task is not None:
+            liveness_task.cancel()
+            try:
+                await liveness_task
+            except asyncio.CancelledError:
+                pass
+        # Then the bus tasks — they watch the same stop event, and the
         # reaper watches its own when the bus is dormant.
         if stop_event is not None:
             stop_event.set()

@@ -14,6 +14,15 @@ After=network.target postgresql.service
 # dependency is now a network hop with an explicit connection policy
 # (src/core/changes/bus_client.py, archiver#193) instead of a local unit.
 
+# Bounded restarts (archiver#297). systemd's default, 5 starts in 10 s, can
+# never be spent at RestartSec=5, so a crash loop restarted forever and never
+# reached `failed`. Now it does, in about 30 s, and goes silent: the liveness
+# heartbeat below stops and Status pages. deploy.sh runs `reset-failed` before
+# every restart, so a spent burst never blocks a deploy or a switch-back.
+# No OnFailure=: the heartbeat's silence is the page.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Type=simple
 # Its own user (archiver#339): a system account with no login, no home, no
@@ -38,17 +47,31 @@ EnvironmentFile=/etc/archiver/.env
 # src/core/db_safety.py refuses to serve a database whose name lacks a
 # _test/_dev suffix unless this is set, so a hand-rolled uvicorn cannot reach
 # production regardless of which env files it sourced (2026-07-18 incident).
-# Keep this AFTER the EnvironmentFile lines so it cannot be overridden by them.
+# Never in an env file: that reopens the hole for every process that sources
+# it. Line order protects nothing here - EnvironmentFile= overrides
+# Environment= wherever either is written (man systemd.exec, archiver#297).
 Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 
 # This unit is likewise the ONLY sanctioned member of the archiver.revisions
 # consumer group on content.revisions (archiver#139). Publishing from a stray
 # process is merely noisy; consuming REMOVES messages from the group, so any
 # process that sources /etc/archiver/.env — an agent shell, a one-off script —
-# would silently swallow revisions into whatever database it holds. Same
-# placement rule as above: after the EnvironmentFile lines, and never in an env
-# file, or the hole reopens for every process that sources them.
+# would silently swallow revisions into whatever database it holds. Same rule
+# as above: never in an env file, or the hole reopens for every process that
+# sources it.
 Environment=ARCHIVER_BUS_CONSUMER=1
+
+# The liveness heartbeat (archiver#297): checks in `ok` to co-archiver-live
+# (tenant co-archiver, CannObserv/status#47) every 5 min while every expected
+# bus loop is progressing; silence past the grace pages. Same rule again: the
+# id never goes in an env file, or a hand-run server would check in for
+# production. The key is the tenant's, shared with drift and backup, as a
+# credential: in no environment, never logged. The empty fallback keeps a
+# missing key from failing the start (243/CREDENTIALS), which deploy.sh would
+# answer with a switch-back: the service runs unmonitored and logs it at ERROR.
+Environment=CO_ARCHIVER_LIVE_MONITOR_ID=01M52WN2A5SVMK2B4ZZ4RD2TDD
+LoadCredential=status-checkin-key:/etc/archiver/status-checkin.key
+SetCredential=status-checkin-key:\n
 
 # No wheelhouse sync here any more: the private wheels are fetched into the
 # release at deploy time (archiver#330 D10), so a start never depends on GCS.

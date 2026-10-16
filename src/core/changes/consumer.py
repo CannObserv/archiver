@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.changes import group_consumer
 from src.core.changes.backoff import ERROR_BACKOFF_BASE_SECONDS
+from src.core.liveness import LoopProgress
 from src.core.logging import get_logger
 from src.core.services.source_revision import (
     RevisionFacts,
@@ -280,6 +281,7 @@ async def run(
     claim_interval_iterations: int = group_consumer.CLAIM_INTERVAL_ITERATIONS,
     claim_min_idle_ms: int = group_consumer.CLAIM_MIN_IDLE_MS,
     error_backoff_base: float = ERROR_BACKOFF_BASE_SECONDS,
+    progress: LoopProgress | None = None,
 ) -> None:
     """Ingest observed revisions until ``stop_event`` is set."""
     await group_consumer.run(
@@ -291,4 +293,5 @@ async def run(
         claim_interval_iterations=claim_interval_iterations,
         claim_min_idle_ms=claim_min_idle_ms,
         error_backoff_base=error_backoff_base,
+        progress=progress,
     )

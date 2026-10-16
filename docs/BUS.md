@@ -88,6 +88,11 @@ numbers are neither.
   dashboard badge and journald; the `archiver-bus-health` timer (#130) re-runs them
   from outside the publisher, the one surface that survives a down publisher
   (**Outbox observability** below).
+- The publisher, both group consumers and the `info.watch-status` tail each stamp
+  progress for the service's liveness heartbeat (archiver#297). A loop that stops
+  stamping, or exits, silences the check-in to co-status's `co-archiver-live`, and
+  the silence pages. A broker outage still stamps; a database outage does not
+  ([DEPLOYMENT.md](DEPLOYMENT.md) § Liveness).
 
 **Triaging dead-lettered outbox rows (archiver#191)** - the only way out of
 the terminal state; nothing expires one on its own, because an untriaged

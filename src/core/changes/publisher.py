@@ -45,6 +45,7 @@ from src.core.changes.backoff import (
 from src.core.changes.diagnostics import error_text
 from src.core.changes.outbox_prune import prune_outbox
 from src.core.changes.outbox_stats import log_outbox_stats
+from src.core.liveness import LoopProgress
 from src.core.logging import get_logger
 from src.core.models import ChangesOutboxRow
 
@@ -281,6 +282,7 @@ async def drain_once(
     publisher: AsyncBusPublisher,
     batch_size: int = DEFAULT_BATCH_SIZE,
     topic_maxlen: Mapping[str, int] | None = None,
+    progress: LoopProgress | None = None,
 ) -> int:
     """Drain at most ``batch_size`` unpublished rows.
 
@@ -294,6 +296,11 @@ async def drain_once(
     ``published_at IS NULL`` and it is re-published next drain - a duplicate stream
     entry. Consumers MUST dedupe on the co-core idempotency ``key`` in the wire
     envelope; that is also why a re-publish is safe to retry freely (CR #12).
+
+    ``progress`` is stamped after each publish attempt, failed or not
+    (archiver#297): a black-holed broker costs a socket timeout per row, and a
+    full batch of those outlasts the liveness gate. Only after the SELECT has
+    answered, so a database outage still never stamps.
     """
     published = 0
     async with session_factory() as session:
@@ -367,6 +374,8 @@ async def drain_once(
                             "error": repr(exc),
                         },
                     )
+            if progress is not None:
+                progress.stamp()
         await session.commit()
         return published
 
@@ -413,6 +422,7 @@ async def run(
     stats_interval: float | None = STATS_LOG_INTERVAL_SECONDS,
     retention_days: int | None = None,
     prune_interval: float = PRUNE_INTERVAL_SECONDS,
+    progress: LoopProgress | None = None,
 ) -> None:
     """Loop forever (until ``stop_event`` is set), draining the outbox.
 
@@ -453,6 +463,13 @@ async def run(
     published-row retention pass via ``prune_outbox`` - archiver#189. Left at the
     default ``retention_days=None`` (the dormant or disabled-knob case) nothing
     is pruned. Failures are swallowed there too, on the same reasoning.
+
+    ``progress`` is stamped at the end of each iteration whose drain returned
+    (archiver#297), and passed into ``drain_once``, which stamps per publish
+    attempt so a slow broker is never a stall. Not while ``drain_once`` keeps
+    raising: a publish error is caught per row, so what reaches that backoff is
+    the database, and the liveness heartbeat's silence is how a Postgres
+    outage pages.
     """
     both_capped = trim_topics & set(topic_maxlen or {})
     if both_capped:
@@ -473,6 +490,7 @@ async def run(
                 publisher=publisher,
                 batch_size=batch_size,
                 topic_maxlen=topic_maxlen,
+                progress=progress,
             )
             if consecutive_failures:
                 # Positive signal that the loop is healthy again (CR #14) - the
@@ -521,6 +539,9 @@ async def run(
             # from the first pass.
             for topic in trim_topics:
                 await trim_stream(redis_client, topic, stream_maxlen)
+
+        if progress is not None and not consecutive_failures:
+            progress.stamp()
 
         delay = _next_delay(
             consecutive_failures=consecutive_failures,

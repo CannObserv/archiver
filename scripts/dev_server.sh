@@ -209,6 +209,13 @@ else
   REDIS_REPORT="(dormant)"
 fi
 
+# --- Liveness isolation (archiver#297) ---
+# Only archiver.service sets the co-archiver-live monitor id and hands over the
+# Status key. A dev server holding both would check in `ok` for production and
+# mask a real outage, so it drops whatever it inherited and runs liveness off.
+unset CO_ARCHIVER_LIVE_MONITOR_ID CREDENTIALS_DIRECTORY
+LIVENESS_REPORT="${CO_ARCHIVER_LIVE_MONITOR_ID:-(off)}"
+
 # --- Power Map credential isolation (archiver#304) ---
 # /etc/archiver/.env carries the live service's ARCHIVER_POWER_MAP_API_KEY. The
 # dev server never inherits it: it uses ARCHIVER_DEV_POWER_MAP_API_KEY (and
@@ -252,6 +259,7 @@ if [[ "${ARCHIVER_DEV_SERVER_DRY_RUN:-}" == "1" ]]; then
   echo "MIGRATE=$MIGRATE_REPORT"
   echo "REDIS=$REDIS_REPORT"
   echo "POWER_MAP=$POWER_MAP_REPORT"
+  echo "LIVENESS=$LIVENESS_REPORT"
   exit 0
 fi
 
