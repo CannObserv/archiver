@@ -1,8 +1,10 @@
 """Tests for the bind_info_source core tool."""
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -12,6 +14,7 @@ from src.core.tools.bind_info_source import (
     InfoSourceNotFoundError,
     bind_info_source,
 )
+from src.core.tools.rep_fields_gate import lock_info_item
 
 
 def _spec(algorithm: str = "full_page") -> dict:
@@ -105,3 +108,42 @@ async def test_unknown_info_item_rejected(session, source):
 async def test_unknown_info_source_rejected(session, item):
     with pytest.raises(InfoSourceNotFoundError):
         await bind_info_source(session, info_item_id=item.info_item_id, info_source_id=ULID())
+
+
+# --- concurrency: the InfoItem row serializes a bind against a swap ---
+
+
+@pytest.mark.asyncio
+async def test_a_bind_waits_for_a_swap_and_then_sees_its_primary(test_engine, committed_rows):
+    """``swap_primary_source`` holds the item lock while it binds. Without the
+    same lock here, both see no primary, and the later insert collides on
+    ``uq_info_item_sources_active``: a 500 instead of the 409 (archiver#45)."""
+    make_session = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with make_session() as setup:
+        item = InfoItem(name="race bind")
+        b, c = (
+            InfoSource(url=f"https://example.com/race-bind-{n}", source_specs=[_spec()])
+            for n in "bc"
+        )
+        setup.add_all([item, b, c])
+        await setup.commit()
+        committed_rows += [(InfoSource, b.info_source_id), (InfoSource, c.info_source_id)]
+        committed_rows.append((InfoItem, item.info_item_id))
+
+    async with make_session() as swapper, make_session() as binder:
+        await lock_info_item(swapper, item.info_item_id)
+        swapper.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=b.info_source_id))
+        await swapper.flush()
+
+        task = asyncio.create_task(
+            bind_info_source(
+                binder, info_item_id=item.info_item_id, info_source_id=c.info_source_id
+            )
+        )
+        done, _ = await asyncio.wait({task}, timeout=1.0)
+        assert not done, "bind proceeded while a swap held the InfoItem row"
+
+        await swapper.commit()
+        with pytest.raises(ActiveBindingAlreadyExistsError):
+            await asyncio.wait_for(task, timeout=10.0)
+        await binder.rollback()

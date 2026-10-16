@@ -81,7 +81,8 @@ In one transaction it deactivates the current primary, binds the new one, emits
 **`DELETE …/info-sources/{source_id}` then `POST …/info-sources` is not a swap.** It is two
 flows and two announcements, revoked then live, so the consumer destroys its row and recreates it,
 losing every local column. Use the DELETE only to leave an item with no primary. The InfoItem row
-is locked `FOR UPDATE`, so concurrent swaps serialize. The dashboard's two swap routes run the same
+is locked `FOR UPDATE`, as `POST …/info-sources` also locks it, so a swap serializes against
+another swap or a bind. The dashboard's two swap routes run the same
 core tool (`src/core/tools/swap_primary_source.py`). Outcomes:
 
 - **201**: the item had no active primary.

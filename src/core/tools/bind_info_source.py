@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
+from src.core.models import ChangesOutboxRow, InfoItemSource, InfoSource
+from src.core.tools.rep_fields_gate import lock_info_item
 
 
 class InfoItemNotFoundError(Exception):
@@ -41,9 +42,12 @@ async def bind_info_source(
     """Persist a new ``info_item_sources`` row.
 
     Validates that both the InfoItem and InfoSource exist, and that no active
-    binding already exists for this InfoItem. Caller commits.
+    binding already exists for this InfoItem. Locks the InfoItem row first, as
+    ``swap_primary_source`` does: unlocked, a bind racing a swap on an item with
+    no primary sees none, and its insert collides on
+    ``uq_info_item_sources_active`` (a 500) instead of refusing. Caller commits.
     """
-    item = await db.get(InfoItem, info_item_id)
+    item = await lock_info_item(db, info_item_id)
     if item is None:
         raise InfoItemNotFoundError(str(info_item_id))
 
