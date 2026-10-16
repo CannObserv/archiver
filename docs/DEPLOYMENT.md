@@ -281,7 +281,7 @@ says which state it is in:
 | `liveness: off` | no monitor id: a dev server, a test, a hand run |
 | `liveness: off: CO_ARCHIVER_LIVE_MONITOR_ID is not a ULID` (ERROR) | the unit's id is wrong (a placeholder or a bad paste). The service runs **unmonitored**. Fix the `Environment=` line in `deploy/archiver.service`, then merge and deploy |
 | `liveness: off: missing the status-checkin-key credential` (ERROR) | the key file is gone or empty. The service runs **unmonitored**. Reinstall `/etc/archiver/status-checkin.key` (root 0600) and restart |
-| `bus loops not progressing; not checking in` (WARNING, each tick) | the gate is shut. `reasons` names each loop (`not started`, `exited`, `stale N s`) |
+| `bus loops not progressing; not checking in` (WARNING, each tick) | the gate is shut. `reasons` names each loop (`not started`, `exited`, `no progress yet` before its first iteration finishes, `stale N s`) |
 | `liveness check-in failed` (WARNING) | Status refused or timed out. The grace absorbs one |
 
 ### When it goes `missing`
