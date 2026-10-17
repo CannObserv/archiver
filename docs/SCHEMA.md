@@ -240,6 +240,8 @@ document; the dashboard's Registry badge reports the count
   - **One row per tenure** (archiver#392). The primary key is a ULID `id`, minted from
     `created_at` for pre-existing rows, so a pair bound, retired and bound again has two rows, each
     bounding one stint. A swap back to a previous primary inserts; nothing reactivates a row.
+    `id`'s server default `information.gen_ulid()` serves the previous release, whose inserts name
+    no `id` (expand-only).
   - **Both directions are indexed.** `ix_info_item_sources_item (info_item_id)` serves an item's
     bindings, history included, and the `ON DELETE CASCADE` from `info_items`. A lookup by
     `info_source_id` alone needs its own index — Postgres has no skip scan. Partial index

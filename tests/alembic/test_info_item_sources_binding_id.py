@@ -6,10 +6,15 @@ first tenure's end. The migration backfills ``id`` from each row's
 ``created_at``, so the new key sorts the bindings in the order they were made,
 moves the primary key onto it, and indexes ``info_item_id`` to replace the
 composite key's leading column. The downgrade refuses once a pair has two rows.
+
+Migrations are expand-only (archiver#330 D3): the previous release runs on this
+schema during a deploy and after a rollback, and it inserts bindings without
+``id``. ``information.gen_ulid()`` is the column's server default, so those
+inserts still get a real ULID.
 """
 
 import importlib.util
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -167,3 +172,41 @@ async def test_downgrade_refuses_two_tenures_of_one_pair(test_engine):
         assert await _primary_key(test_engine) == "PRIMARY KEY (id)"
     finally:
         await _cleanup(test_engine)
+
+
+@pytest.mark.asyncio
+async def test_an_insert_without_id_gets_a_ulid_minted_now(test_engine):
+    """The previous release's INSERT names no ``id``; the server default fills it."""
+    before = datetime.now(UTC) - timedelta(seconds=1)
+    async with test_engine.begin() as conn:
+        await _seed_parents(conn)
+        await conn.execute(
+            text(
+                "INSERT INTO information.info_item_sources (info_item_id, info_source_id)"
+                " VALUES (:i, :s)"
+            ),
+            {"i": _ITEM, "s": _SOURCES[0]},
+        )
+    try:
+        async with test_engine.connect() as conn:
+            minted = (
+                await conn.execute(
+                    text("SELECT id FROM information.info_item_sources WHERE info_item_id = :i"),
+                    {"i": _ITEM},
+                )
+            ).scalar_one()
+        assert before <= ULID.from_str(minted).datetime <= datetime.now(UTC) + timedelta(seconds=1)
+    finally:
+        await _cleanup(test_engine)
+
+
+@pytest.mark.asyncio
+async def test_gen_ulid_mints_distinct_parseable_ulids(test_engine):
+    async with test_engine.connect() as conn:
+        minted = (
+            (await conn.execute(text("SELECT information.gen_ulid() FROM generate_series(1, 200)")))
+            .scalars()
+            .all()
+        )
+    assert len(set(minted)) == 200
+    assert all(len(m) == 26 and str(ULID.from_str(m)) == m for m in minted)

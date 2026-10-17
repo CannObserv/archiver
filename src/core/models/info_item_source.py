@@ -25,7 +25,14 @@ class InfoItemSource(Base):
 
     __tablename__ = "info_item_sources"
 
-    id: Mapped[ULID] = mapped_column(ULIDType(), primary_key=True, default=generate_ulid)
+    # The server default is for the previous release, whose inserts name no id
+    # (expand-only, archiver#330 D3); this one always mints in Python.
+    id: Mapped[ULID] = mapped_column(
+        ULIDType(),
+        primary_key=True,
+        default=generate_ulid,
+        server_default=text("information.gen_ulid()"),
+    )
     info_item_id: Mapped[ULID] = mapped_column(
         ULIDType(),
         ForeignKey("information.info_items.info_item_id", ondelete="CASCADE"),
