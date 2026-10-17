@@ -66,10 +66,12 @@ def _source_revision_payload(
 def _info_item_source_out_payload(
     info_source_id: str = "01HZZ00000000000000000000F",
     *,
+    binding_id: str = "01HZZ00000000000000000000T",
     is_active: bool = True,
     deactivated_at: str | None = None,
 ) -> dict:
     return {
+        "id": binding_id,
         "info_source_id": info_source_id,
         "is_active": is_active,
         "created_at": _TS,
@@ -447,6 +449,7 @@ async def test_add_info_source(client):
             "01HZZ00000000000000000000F",
         )
     assert out.info_source_id == "01HZZ00000000000000000000F"
+    assert out.id == "01HZZ00000000000000000000T"
     assert out.is_active is True
 
 

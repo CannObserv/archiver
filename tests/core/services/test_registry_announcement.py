@@ -662,12 +662,13 @@ async def test_concurrent_bumps_yield_distinct_generations(test_engine, committe
         source = InfoSource(url="https://example.test/concurrent", source_specs=_SPECS)
         setup.add_all([item, source])
         await setup.flush()
-        setup.add(
-            InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+        binding = InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=source.info_source_id
         )
+        setup.add(binding)
         await setup.commit()
         item_id = item.info_item_id
-        committed_rows.append((InfoItemSource, (item_id, source.info_source_id)))
+        committed_rows.append((InfoItemSource, binding.id))
         committed_rows.append((InfoSource, source.info_source_id))
         committed_rows.append((InfoItem, item_id))
 
