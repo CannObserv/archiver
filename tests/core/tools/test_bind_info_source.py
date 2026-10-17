@@ -162,6 +162,34 @@ async def test_succession_emits_the_latest_closed_tenure_as_old(
 
 
 @pytest.mark.asyncio
+async def test_equal_close_times_break_the_tie_by_tenure_id(session, item, source, other_source):
+    """Same ``deactivated_at``: the later tenure (the larger ULID ``id``) is ``old`` (CR 3)."""
+    third = InfoSource(url="https://example.com/r", source_specs=[_spec()])
+    session.add(third)
+    await session.flush()
+    closed = datetime(2026, 3, 1, tzinfo=UTC)
+    earlier_id, later_id = sorted([ULID(), ULID()])
+    # The earlier tenure goes in first, so heap order alone would pick it.
+    for tenure_id, src in ((earlier_id, source), (later_id, other_source)):
+        session.add(
+            InfoItemSource(
+                id=tenure_id,
+                info_item_id=item.info_item_id,
+                info_source_id=src.info_source_id,
+                deactivated_at=closed,
+            )
+        )
+        await session.flush()
+
+    await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=third.info_source_id
+    )
+
+    events = await _primary_changed(session)
+    assert events[0]["old_info_source_id"] == str(other_source.info_source_id)
+
+
+@pytest.mark.asyncio
 async def test_a_refused_bind_emits_nothing(session, item, source, other_source):
     await bind_info_source(
         session, info_item_id=item.info_item_id, info_source_id=source.info_source_id

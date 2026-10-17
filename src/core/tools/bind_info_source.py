@@ -86,7 +86,8 @@ async def bind_info_source(
                 InfoItemSource.info_item_id == info_item_id,
                 InfoItemSource.deactivated_at.isnot(None),
             )
-            .order_by(InfoItemSource.deactivated_at.desc())
+            # Tenure ids are time-ordered ULIDs: an equal close time goes to the later one.
+            .order_by(InfoItemSource.deactivated_at.desc(), InfoItemSource.id.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
