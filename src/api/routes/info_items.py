@@ -139,6 +139,9 @@ async def create_info_item(
     effective-dated RepSpec assignments). All writes are a single transaction; any
     validation or lookup failure rolls back the whole thing.
 
+    With ``initial_url``, emits ``info_item_primary_changed`` on the change bus
+    (``old_info_source_id`` is ``null``: a first assignment).
+
     ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
     anything is written: Power Map unreachable is a 503 and creates nothing.
 
