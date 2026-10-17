@@ -48,6 +48,16 @@ async def fake_redis():
     await r.aclose()
 
 
+def _captured(entries: list) -> list:
+    """The ``source_revision_captured`` stream entries, without the setup's other events."""
+    return [
+        e
+        for e in entries
+        if e[1].get(b"event_type", e[1].get("event_type"))
+        in (b"source_revision_captured", "source_revision_captured")
+    ]
+
+
 @pytest.fixture(autouse=True)
 async def cleanup_outbox(test_engine):
     """Truncate outbox before and after each test so no cross-test leakage."""
@@ -103,12 +113,14 @@ async def test_source_revision_post_to_redis_stream(
     # ------------------------------------------------------------------
     # Step 3: Verify outbox row written with correct payload.
     # ------------------------------------------------------------------
-    # Scoped to the fact topic: the create-with-initial_url above also wrote an
-    # info.registry announcement (archiver#141), which is not under test here.
+    # Scoped to the fact under test: the create-with-initial_url above also
+    # wrote an info.registry announcement (archiver#141) and, on info.changes,
+    # the first assignment's info_item_primary_changed (archiver#390).
     outbox_result = await session.execute(
         select(ChangesOutboxRow).where(
             ChangesOutboxRow.published_at.is_(None),
             ChangesOutboxRow.topic == "info.changes",
+            ChangesOutboxRow.payload["event_type"].astext == "source_revision_captured",
         )
     )
     outbox_rows = list(outbox_result.scalars())
@@ -142,15 +154,15 @@ async def test_source_revision_post_to_redis_stream(
         session_factory=publisher_session_factory,
         publisher=AsyncBusPublisher(fake_redis),
     )
-    # 2: the captured fact under test + the registry announcement the setup's
-    # bind wrote (archiver#141). The stream assertions below stay scoped to
-    # info.changes, so the announcement never contaminates them.
-    assert drained == 2
+    # 3: the captured fact under test + the registry announcement (archiver#141)
+    # and the primary-changed event (archiver#390) the setup's bind wrote. The
+    # stream assertions below stay scoped to the captured fact.
+    assert drained == 3
 
     # ------------------------------------------------------------------
     # Step 6: Verify stream has 1 entry with matching payload.
     # ------------------------------------------------------------------
-    entries = await fake_redis.xrange("info.changes")
+    entries = _captured(await fake_redis.xrange("info.changes"))
     assert len(entries) == 1, f"Expected 1 stream entry, got {len(entries)}"
     _msg_id, fields = entries[0]
     raw_payload = fields.get(b"payload") or fields.get("payload")
@@ -238,10 +250,11 @@ async def test_observed_event_to_redis_stream(client, session, fake_redis):
     drained = await drain_once(
         session_factory=ingest_session_factory, publisher=AsyncBusPublisher(fake_redis)
     )
-    # 2: the captured fact + the setup's registry announcement (archiver#141).
-    assert drained == 2
+    # 3: the captured fact + the setup's registry announcement (archiver#141)
+    # and primary-changed event (archiver#390).
+    assert drained == 3
 
-    entries = await fake_redis.xrange("info.changes")
+    entries = _captured(await fake_redis.xrange("info.changes"))
     assert len(entries) == 1
     _msg_id, fields = entries[0]
     assert fields[b"event_type"] == b"source_revision_captured"
@@ -316,7 +329,11 @@ async def test_bus_and_http_payloads_are_identical(client, session, fake_redis):
         (
             await session.execute(
                 select(ChangesOutboxRow)
-                .where(ChangesOutboxRow.topic == "info.changes")
+                .where(
+                    ChangesOutboxRow.topic == "info.changes",
+                    # Not the setup's primary-changed event (archiver#390).
+                    ChangesOutboxRow.payload["event_type"].astext == "source_revision_captured",
+                )
                 .order_by(ChangesOutboxRow.created_at)
             )
         )

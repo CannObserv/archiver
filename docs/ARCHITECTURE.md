@@ -212,6 +212,9 @@ src/core/                      Domain logic
                                swap_primary_source.py is the one primary swap
                                (#45): PUT …/primary-source and both dashboard
                                swaps; a swap-back starts a new tenure row.
+                               bind_info_source.py is the only binding writer
+                               and emits info_item_primary_changed (#390;
+                               tests/core/test_binding_guard.py).
                                audit_stored_documents.py re-judges every stored
                                authored document against its current schema
                                (archiver#164); its KINDS registry is guarded

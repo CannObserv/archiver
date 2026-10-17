@@ -39,13 +39,19 @@ async def bind_info_source(
     info_item_id: ULID,
     info_source_id: ULID,
 ) -> InfoItemSource:
-    """Persist a new ``info_item_sources`` row.
+    """Persist a new ``info_item_sources`` row and emit ``info_item_primary_changed``.
+
+    The only writer of a binding row (archiver#390, guarded by
+    ``tests/core/test_binding_guard.py``): every new active binding emits, so
+    no bind path can forget to. ``old_info_source_id`` is the item's latest
+    closed tenure, ``None`` when it has never had one.
 
     Validates that both the InfoItem and InfoSource exist, and that no active
     binding already exists for this InfoItem. Locks the InfoItem row first, as
     ``swap_primary_source`` does: unlocked, a bind racing a swap on an item with
     no primary sees none, and its insert collides on
-    ``uq_info_item_sources_active`` (a 500) instead of refusing. Caller commits.
+    ``uq_info_item_sources_active`` (a 500) instead of refusing. Does not
+    announce: callers announce once their whole change is staged. Caller commits.
     """
     item = await lock_info_item(db, info_item_id)
     if item is None:
@@ -72,6 +78,24 @@ async def bind_info_source(
     )
     db.add(binding)
     await db.flush()
+
+    previous = (
+        await db.execute(
+            select(InfoItemSource)
+            .where(
+                InfoItemSource.info_item_id == info_item_id,
+                InfoItemSource.deactivated_at.isnot(None),
+            )
+            .order_by(InfoItemSource.deactivated_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    emit_primary_changed(
+        db,
+        info_item_id=info_item_id,
+        old_info_source_id=previous.info_source_id if previous is not None else None,
+        new_info_source_id=info_source_id,
+    )
     return binding
 
 
