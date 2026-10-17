@@ -66,10 +66,12 @@ def _source_revision_payload(
 def _info_item_source_out_payload(
     info_source_id: str = "01HZZ00000000000000000000F",
     *,
+    binding_id: str = "01HZZ00000000000000000000T",
     is_active: bool = True,
     deactivated_at: str | None = None,
 ) -> dict:
     return {
+        "id": binding_id,
         "info_source_id": info_source_id,
         "is_active": is_active,
         "created_at": _TS,
@@ -447,7 +449,25 @@ async def test_add_info_source(client):
             "01HZZ00000000000000000000F",
         )
     assert out.info_source_id == "01HZZ00000000000000000000F"
+    assert out.id == "01HZZ00000000000000000000T"
     assert out.is_active is True
+
+
+@pytest.mark.asyncio
+async def test_a_binding_from_a_pre_4_29_server_has_no_id(client):
+    """Servers before archiver#392 send no ``id``; the SDK must still parse them."""
+    payload = _info_item_source_out_payload()
+    del payload["id"]
+    with respx.mock:
+        respx.post(f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/info-sources").mock(
+            return_value=httpx.Response(201, json=payload)
+        )
+        out = await client.add_info_source(
+            "01HZZ00000000000000000000A",
+            "01HZZ00000000000000000000F",
+        )
+    assert out.info_source_id == "01HZZ00000000000000000000F"
+    assert not out.id
 
 
 @pytest.mark.asyncio

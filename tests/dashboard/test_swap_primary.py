@@ -215,6 +215,18 @@ async def _primary_changed(session) -> list[dict]:
     return [p for p in payloads if p["event_type"] == "info_item_primary_changed"]
 
 
+async def _tenures(session, item, source) -> list[InfoItemSource]:
+    result = await session.execute(
+        select(InfoItemSource)
+        .where(
+            InfoItemSource.info_item_id == item.info_item_id,
+            InfoItemSource.info_source_id == source.info_source_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    return list(result.scalars())
+
+
 async def _bound_item(session, name: str) -> tuple[InfoItem, InfoSource]:
     item = InfoItem(name=name)
     src = InfoSource(url=f"https://old.{name}.example.com/", source_specs=[])
@@ -277,27 +289,28 @@ async def test_swap_primary_by_id_to_the_current_primary_writes_nothing(client, 
     )
     assert r.status_code == 204
 
-    binding = await session.get(InfoItemSource, (item.info_item_id, src.info_source_id))
-    await session.refresh(binding)
-    assert binding.deactivated_at is None
+    tenures = await _tenures(session, item, src)
+    assert len(tenures) == 1
+    assert tenures[0].deactivated_at is None
     assert await _primary_changed(session) == []
 
 
 @pytest.mark.asyncio
-async def test_swap_primary_by_id_to_a_previous_primary_reactivates_it(client, session):
-    """It used to insert a second (item, source) key: a 500."""
+async def test_swap_primary_by_id_to_a_previous_primary_starts_a_new_tenure(client, session):
+    """It used to insert a second (item, source) key: a 500. The first tenure keeps
+    its end (archiver#392)."""
     item, current = await _bound_item(session, "swap-by-id-earlier")
     earlier = InfoSource(url="https://earlier.swap-by-id.example.com/", source_specs=[])
     session.add(earlier)
     await session.flush()
-    session.add(
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=earlier.info_source_id,
-            deactivated_at=datetime.now(UTC),
-        )
+    first = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=earlier.info_source_id,
+        deactivated_at=datetime.now(UTC),
     )
+    session.add(first)
     await session.commit()
+    first_tenure_end = first.deactivated_at
 
     r = await client.post(
         f"/dashboard/info-items/{item.info_item_id}/swap-primary-by-id",
@@ -307,9 +320,10 @@ async def test_swap_primary_by_id_to_a_previous_primary_reactivates_it(client, s
     )
     assert r.status_code == 204
 
-    reactivated = await session.get(InfoItemSource, (item.info_item_id, earlier.info_source_id))
-    retired = await session.get(InfoItemSource, (item.info_item_id, current.info_source_id))
-    await session.refresh(reactivated)
-    await session.refresh(retired)
-    assert reactivated.deactivated_at is None
+    earlier_tenures = {t.id: t for t in await _tenures(session, item, earlier)}
+    assert len(earlier_tenures) == 2
+    assert earlier_tenures[first.id].deactivated_at == first_tenure_end
+    (second,) = (t for t in earlier_tenures.values() if t.id != first.id)
+    assert second.deactivated_at is None
+    (retired,) = await _tenures(session, item, current)
     assert retired.deactivated_at is not None

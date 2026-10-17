@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.29.0 (2026-10-17)
+
+[both] **`info_item_sources` is one row per tenure: a swap-back no longer erases history** (archiver#392, fixes #389). `archiver-client` 5.11.0: `InfoItemSourceOut` gains `id`. Supersedes v4.28.0's reactivation, which never deployed.
+
+- **Migration `80ca1ae1a1ce`.** The primary key moves from `(info_item_id, info_source_id)` to a ULID `id`, backfilled from each row's `created_at`. `ix_info_item_sources_item (info_item_id)` replaces the old key's leading column. `uq_info_item_sources_active` is unchanged: still one active primary per item. The downgrade is refused once a pair holds two rows. **Expand-only:** `id` defaults to `information.gen_ulid()`, a server-side ULID, so the previous release, whose inserts name no `id`, still binds during the deploy and after a rollback. **Production exposure:** 5 bindings, none deactivated (checked 2026-10-17), so no history is rewritten.
+- **After a rollback to 4.27**, one path degrades: deactivating a pair that a swap-back gave two rows. That release maps the old composite key, so its UPDATE matches both rows; SQLAlchemy's rowcount check should then fail the request (a 500) and roll it back, rather than overwrite the first tenure. Its `GET /info-items/{id}?include_deactivated=true` reads that pair as one object too, so it would list the first tenure twice: wrong, but nothing is written. Every other path reads only active rows, and there is at most one of those per item.
+- **A revert starts a new tenure.** `PUT /info-items/{id}/primary-source` back to an earlier primary inserts a row. The earlier tenure keeps its `created_at` and `deactivated_at`; v4.28.0 overwrote them. The response's `id` is the new row's.
+- **`POST /info-items/{id}/info-sources` binds a previous primary**: a 201 and a new tenure (#389). It used to 500 on the composite key, and so did the dashboard's `bind-source`.
+- **`InfoItemSourceOut.id`** (additive) names the binding row. Always set by this server; optional in the schema so `archiver-client` 5.11 still parses an older server's bindings, as `pm_org_id` was added. `GET /info-items/{id}?include_deactivated=true` can now list a source more than once, once per tenure, and lists bindings oldest tenure first (it was unordered). That only happens after a swap-back, which no earlier version could perform.
+
 ## v4.28.0 (2026-10-16)
 
 [both] **`PUT /info-items/{id}/primary-source` is the atomic primary swap** (archiver#45). `archiver-client` 5.10.0 adds `replace_primary_source(info_item_id, info_source_id)`.

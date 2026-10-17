@@ -537,6 +537,44 @@ async def test_bind_source_creates_binding(client, session):
 
 
 @pytest.mark.asyncio
+async def test_bind_source_of_a_previous_primary_starts_a_new_tenure(client, session):
+    """It used to collide with the history row on the composite key: a 500 (archiver#389)."""
+    item = _make_item("Bind Previous Primary")
+    source = _make_source("https://example.com/bind-previous")
+    session.add_all([item, source])
+    await session.flush()
+    old = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        deactivated_at=datetime.now(UTC),
+    )
+    session.add(old)
+    await session.flush()
+    first_tenure_end = old.deactivated_at
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/bind-source",
+        data={"info_source_id": str(source.info_source_id)},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    tenures = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.info_source_id == source.info_source_id,
+            )
+        )
+    ).scalars()
+    by_id = {t.id: t for t in tenures}
+    assert len(by_id) == 2
+    await session.refresh(by_id[old.id])
+    assert by_id[old.id].deactivated_at == first_tenure_end
+
+
+@pytest.mark.asyncio
 async def test_bind_source_unknown_item_returns_404(client):
     fake_id = str(ULID())
     r = await client.post(

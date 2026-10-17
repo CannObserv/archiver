@@ -5,10 +5,9 @@ change: the swap announces **once**, with the final state. Done as two flows
 (``DELETE`` then ``POST``) it announces revoked and then live, and the consumer
 destroys its row and recreates it, losing every local column.
 
-**A revert reactivates.** The ``(info_item_id, info_source_id)`` primary key
-holds a previous primary's row as history, so swapping back to it clears that
-row's ``deactivated_at`` rather than inserting a second. Its ``created_at`` is
-the first binding's; the earlier stint's deactivation time is overwritten.
+**A revert starts a new tenure.** Each binding row is one tenure, keyed by its
+own ``id`` (archiver#392), so swapping back to a previous primary inserts a row
+and the first tenure keeps its ``created_at`` and ``deactivated_at``.
 """
 
 from dataclasses import dataclass
@@ -60,7 +59,7 @@ async def swap_primary_source(
 
     Locks the InfoItem row first, so two concurrent swaps serialize instead of
     both deactivating the same binding and colliding on
-    ``uq_info_item_sources_active``. Reactivates a previous primary's row.
+    ``uq_info_item_sources_active``. Always inserts a new tenure.
     Emits ``info_item_primary_changed`` and announces once. Caller commits.
     """
     if await lock_info_item(db, info_item_id) is None:
@@ -86,12 +85,8 @@ async def swap_primary_source(
         # The partial unique index admits the new primary only once the old one is out.
         await db.flush()
 
-    binding = await db.get(InfoItemSource, (info_item_id, info_source_id))
-    if binding is not None:
-        binding.deactivated_at = None
-    else:
-        binding = InfoItemSource(info_item_id=info_item_id, info_source_id=info_source_id)
-        db.add(binding)
+    binding = InfoItemSource(info_item_id=info_item_id, info_source_id=info_source_id)
+    db.add(binding)
     await db.flush()
 
     emit_primary_changed(

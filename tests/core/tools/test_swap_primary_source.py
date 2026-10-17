@@ -192,23 +192,35 @@ async def test_unknown_source_raises_and_leaves_the_primary(session, item):
 
 
 @pytest.mark.asyncio
-async def test_a_previous_primary_is_reactivated(session, item):
-    """The (item, source) key holds the history row, so a revert reactivates it."""
+async def test_a_swap_back_starts_a_new_tenure(session, item):
+    """A → B → A keeps A's first tenure intact and adds a second (archiver#392)."""
     earlier = await _source(session, "https://example.com/a")
     current = await _source(session, "https://example.com/b")
     earlier_binding = await _bind(session, item, earlier, deactivated=True)
+    first_tenure_end = earlier_binding.deactivated_at
     current_binding = await _bind(session, item, current)
 
     result = await swap_primary_source(
         session, info_item_id=item.info_item_id, info_source_id=earlier.info_source_id
     )
 
-    assert result.binding is earlier_binding
+    assert result.binding is not earlier_binding
+    assert result.binding.id != earlier_binding.id
+    assert result.binding.info_source_id == earlier.info_source_id
     assert result.changed is True
     assert result.previous_info_source_id == current.info_source_id
-    assert earlier_binding.deactivated_at is None
+    assert earlier_binding.deactivated_at == first_tenure_end
     assert current_binding.deactivated_at is not None
-    assert [b.info_source_id for b in await _active(session, item)] == [earlier.info_source_id]
+    assert [b.id for b in await _active(session, item)] == [result.binding.id]
+    tenures = (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.info_source_id == earlier.info_source_id,
+            )
+        )
+    ).scalars()
+    assert len(list(tenures)) == 2
     registry = await _outbox(session, "info.registry")
     assert len(registry) == 1
     assert registry[0]["info_source_id"] == str(earlier.info_source_id)
@@ -219,17 +231,18 @@ async def test_a_previous_primary_is_reactivated(session, item):
 
 
 @pytest.mark.asyncio
-async def test_a_previous_primary_is_reactivated_when_there_is_no_current_one(session, item):
+async def test_a_swap_back_with_no_current_primary_starts_a_new_tenure(session, item):
     earlier = await _source(session, "https://example.com/a")
     earlier_binding = await _bind(session, item, earlier, deactivated=True)
+    first_tenure_end = earlier_binding.deactivated_at
 
     result = await swap_primary_source(
         session, info_item_id=item.info_item_id, info_source_id=earlier.info_source_id
     )
 
-    assert result.binding is earlier_binding
+    assert result.binding is not earlier_binding
     assert result.previous_info_source_id is None
-    assert earlier_binding.deactivated_at is None
+    assert earlier_binding.deactivated_at == first_tenure_end
 
 
 # ---------------------------------------------------------------------------

@@ -406,14 +406,17 @@ async def get_info_item(
     """Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
 
     Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+    deactivated source bindings in ``info_item_sources``, one per tenure, oldest first.
     """
     result = await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
     item = result.scalar_one_or_none()
     if item is None:
         raise_envelope(404, "lookup", "InfoItem not found")
-    sources_q = select(InfoItemSource).where(
-        InfoItemSource.info_item_id == item.info_item_id,
+    # Oldest tenure first: ``id`` is minted at creation (archiver#392).
+    sources_q = (
+        select(InfoItemSource)
+        .where(InfoItemSource.info_item_id == item.info_item_id)
+        .order_by(InfoItemSource.id)
     )
     if not include_deactivated:
         sources_q = sources_q.where(InfoItemSource.deactivated_at.is_(None))
@@ -614,8 +617,9 @@ async def put_primary_source(
     This is the swap; ``DELETE …/info-sources/{id}`` then ``POST …/info-sources``
     is not one, because it announces revoked and then live.
 
-    A source that was an earlier primary of this item is reactivated: its
-    history row comes back, keeping its first ``created_at``.
+    A source that was an earlier primary of this item starts a new tenure: a
+    new binding row with its own ``id``; the earlier tenure keeps its
+    ``created_at`` and ``deactivated_at`` (archiver#392).
 
     - **201**: the item had no active primary.
     - **200**: the primary was replaced, or was already this source (nothing

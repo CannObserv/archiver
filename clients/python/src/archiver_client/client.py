@@ -528,8 +528,9 @@ class ArchiverClient:
         One request, one transaction, one ``info.registry`` announcement
         (archiver#45). Deactivating and then re-adding announces revoked and
         then live, and the consumer destroys and recreates its row in between.
-        Already-primary is a no-op; an earlier primary of this item is
-        reactivated. Raises ``NotFound`` for an unknown item or source.
+        Already-primary is a no-op; an earlier primary of this item starts a
+        new tenure, a binding with a new ``id``. Raises ``NotFound`` for an
+        unknown item or source.
         """
         body = InfoItemPrimarySourcePut(info_source_id=info_source_id)
         response = await _put_primary_source.asyncio_detailed(

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import select
 from ulid import ULID
 
 from src.core.models import InfoItemRepSpec, InfoItemSource, RepSpec
@@ -47,6 +48,18 @@ async def _bind(client, item_id: str, source_id: str) -> None:
         json={"info_source_id": source_id},
     )
     assert resp.status_code == 201
+
+
+async def _binding(session, item_id: str, source_id: str) -> InfoItemSource:
+    """The item's one binding row of ``source_id``; rows are tenures since archiver#392."""
+    return (
+        await session.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == ULID.from_str(item_id),
+                InfoItemSource.info_source_id == ULID.from_str(source_id),
+            )
+        )
+    ).scalar_one()
 
 
 @pytest.mark.asyncio
@@ -176,10 +189,7 @@ async def test_get_info_item_excludes_deactivated_source_binding(client, session
     await _bind(client, item_id, source_id)
 
     # Deactivate the binding directly in the DB.
-    binding = await session.get(
-        InfoItemSource,
-        (ULID.from_str(item_id), ULID.from_str(source_id)),
-    )
+    binding = await _binding(session, item_id, source_id)
     binding.deactivated_at = datetime.now(UTC)
     await session.flush()
 
@@ -274,10 +284,7 @@ async def test_list_info_items_excludes_deactivated_source_binding(client, sessi
     source_id = await _make_source(client, "https://example.com/deact")
     await _bind(client, item_id, source_id)
 
-    binding = await session.get(
-        InfoItemSource,
-        (ULID.from_str(item_id), ULID.from_str(source_id)),
-    )
+    binding = await _binding(session, item_id, source_id)
     binding.deactivated_at = datetime.now(UTC)
     await session.flush()
 
@@ -306,10 +313,7 @@ async def test_get_info_item_include_deactivated_false_default(client, session):
     source_id = await _make_source(client)
     await _bind(client, item_id, source_id)
 
-    binding = await session.get(
-        InfoItemSource,
-        (ULID.from_str(item_id), ULID.from_str(source_id)),
-    )
+    binding = await _binding(session, item_id, source_id)
     binding.deactivated_at = datetime.now(UTC)
     await session.flush()
 
@@ -326,10 +330,7 @@ async def test_get_info_item_include_deactivated_true_returns_all(client, sessio
     await _bind(client, item_id, old_source_id)
 
     # Deactivate the old primary.
-    binding = await session.get(
-        InfoItemSource,
-        (ULID.from_str(item_id), ULID.from_str(old_source_id)),
-    )
+    binding = await _binding(session, item_id, old_source_id)
     binding.deactivated_at = datetime.now(UTC)
     await session.flush()
 

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
+from ulid import ULID
 
 from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 
@@ -146,17 +147,17 @@ async def test_unknown_source_is_404(client, item):
 
 
 @pytest.mark.asyncio
-async def test_a_previous_primary_is_reactivated_200(client, session, item):
-    """A revert reactivates the history row; the (item, source) key admits no second."""
+async def test_a_swap_back_is_200_and_a_new_tenure(client, session, item):
+    """A → B → A: the first tenure of A keeps its end; A comes back as a second row,
+    and ``include_deactivated`` lists both (archiver#392)."""
     earlier = await _source(session, "https://example.com/a")
     current = await _source(session, "https://example.com/b")
-    session.add(
-        InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=earlier.info_source_id,
-            deactivated_at=datetime.now(UTC),
-        )
+    first = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=earlier.info_source_id,
+        deactivated_at=datetime.now(UTC),
     )
+    session.add(first)
     session.add(
         InfoItemSource(info_item_id=item.info_item_id, info_source_id=current.info_source_id)
     )
@@ -168,10 +169,53 @@ async def test_a_previous_primary_is_reactivated_200(client, session, item):
     body = resp.json()
     assert body["info_source_id"] == str(earlier.info_source_id)
     assert body["is_active"] is True
-    assert body["deactivated_at"] is None
+    assert body["id"] != str(first.id)
     registry = await _outbox(session, "info.registry")
     assert len(registry) == 1
     assert registry[0]["info_source_id"] == str(earlier.info_source_id)
+
+    item_resp = await client.get(
+        f"/api/v1/info-items/{item.info_item_id}",
+        headers=HEADERS,
+        params={"include_deactivated": "true"},
+    )
+    tenures = [
+        b
+        for b in item_resp.json()["info_item_sources"]
+        if b["info_source_id"] == str(earlier.info_source_id)
+    ]
+    assert {b["id"] for b in tenures} == {str(first.id), body["id"]}
+    assert [b["is_active"] for b in sorted(tenures, key=lambda b: b["id"])] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_include_deactivated_lists_tenures_oldest_first(client, session, item):
+    """History reads in order: ``id`` is minted at creation, so it orders tenures."""
+    a = await _source(session, "https://example.com/a")
+    b = await _source(session, "https://example.com/b")
+    later = ULID.from_datetime(datetime(2026, 6, 1, tzinfo=UTC))
+    earlier = ULID.from_datetime(datetime(2026, 5, 1, tzinfo=UTC))
+    session.add(
+        InfoItemSource(id=later, info_item_id=item.info_item_id, info_source_id=b.info_source_id)
+    )
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            id=earlier,
+            info_item_id=item.info_item_id,
+            info_source_id=a.info_source_id,
+            deactivated_at=datetime(2026, 6, 1, tzinfo=UTC),
+        )
+    )
+    await session.commit()
+
+    resp = await client.get(
+        f"/api/v1/info-items/{item.info_item_id}",
+        headers=HEADERS,
+        params={"include_deactivated": "true"},
+    )
+
+    assert [b["id"] for b in resp.json()["info_item_sources"]] == [str(earlier), str(later)]
 
 
 @pytest.mark.asyncio

@@ -185,8 +185,18 @@ class InfoItemCreate(BaseModel):
 
 
 class InfoItemSourceOut(BaseModel):
-    """Light projection of an info_item_sources row."""
+    """Light projection of an info_item_sources row: one tenure of a binding."""
 
+    # Optional only so an SDK talking to a pre-4.29 server still parses its
+    # bindings, as pm_org_id/org were added; this server always sets it.
+    id: str | None = Field(
+        default=None,
+        description=(
+            "ULID of this binding row; always set since archiver 4.29. Each row is one "
+            "tenure (archiver#392): a source swapped back to after a later primary "
+            "appears again under a new id."
+        ),
+    )
     info_source_id: str
     is_active: bool = Field(
         description="True when deactivated_at is null (binding is currently active)."

@@ -62,7 +62,7 @@ only starts when `ARCHIVER_REDIS_URL` is set. Two event types:
 
 **A revert re-uses the primary-changed key (archiver#45).** The key
 `{info_item_id}:{new_info_source_id}` was unique only while a source could not be
-re-bound; the swap now reactivates one, so A → B → A repeats A's key and a
+re-bound; a swap-back now binds the pair again, so A → B → A repeats A's key and a
 `key`-deduping consumer drops the revert. No consumer is known; the fix is
 co-core's (cannobserv#578).
 

@@ -51,6 +51,12 @@ async def test_bind_201(client, session, item):
     assert body["is_active"] is True
     assert body["deactivated_at"] is None
     assert "role" not in body
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    assert body["id"] == str(binding.id)
 
 
 @pytest.mark.asyncio
@@ -69,6 +75,29 @@ async def test_duplicate_active_binding_returns_409(client, session, item):
     detail = resp.json()["detail"]
     assert detail["kind"] == "conflict"
     assert detail["data"]["existing_info_source_id"] == str(src_a.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_binding_a_previous_primary_is_a_201_new_tenure(client, session, item):
+    """It used to collide with the history row on the composite key: a 500 (archiver#389)."""
+    src = await _make_source(session)
+    old = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=src.info_source_id,
+        deactivated_at=datetime.now(UTC),
+    )
+    session.add(old)
+    await session.commit()
+
+    resp = await client.post(
+        f"/api/v1/info-items/{item.info_item_id}/info-sources",
+        headers=HEADERS,
+        json={"info_source_id": str(src.info_source_id)},
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["id"] != str(old.id)
+    assert resp.json()["is_active"] is True
 
 
 @pytest.mark.asyncio

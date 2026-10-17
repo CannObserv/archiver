@@ -80,6 +80,27 @@ async def test_deactivated_binding_allows_new_active(session, item, source, othe
     assert binding.deactivated_at is None
 
 
+@pytest.mark.asyncio
+async def test_binding_a_previous_primary_starts_a_new_tenure(session, item, source):
+    """It used to collide with the history row on the composite key: a 500 (archiver#389)."""
+    old = InfoItemSource(
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        deactivated_at=datetime.now(UTC),
+    )
+    session.add(old)
+    await session.flush()
+    first_tenure_end = old.deactivated_at
+
+    binding = await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=source.info_source_id
+    )
+
+    assert binding.id != old.id
+    assert binding.deactivated_at is None
+    assert old.deactivated_at == first_tenure_end
+
+
 # --- collision guard ---
 
 

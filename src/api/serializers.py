@@ -27,6 +27,7 @@ from src.core.models import (
 def info_item_source_to_out(src: InfoItemSource) -> InfoItemSourceOut:
     """Serialise an InfoItemSource ORM row."""
     return InfoItemSourceOut(
+        id=str(src.id),
         info_source_id=str(src.info_source_id),
         is_active=src.deactivated_at is None,
         created_at=src.created_at,
