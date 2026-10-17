@@ -15,10 +15,12 @@ T = TypeVar("T", bound="InfoItemSourceOut")
 
 @_attrs_define
 class InfoItemSourceOut:
-    """Light projection of an info_item_sources row.
+    """Light projection of an info_item_sources row: one tenure of a binding.
 
     Attributes:
         created_at (datetime.datetime):
+        id (str): ULID of this binding row. Each row is one tenure (archiver#392): a source swapped back to after a
+            later primary appears again under a new id.
         info_source_id (str):
         is_active (bool): True when deactivated_at is null (binding is currently active).
         deactivated_at (datetime.datetime | None | Unset): UTC timestamp when this binding was deactivated, or null if
@@ -26,6 +28,7 @@ class InfoItemSourceOut:
     """
 
     created_at: datetime.datetime
+    id: str
     info_source_id: str
     is_active: bool
     deactivated_at: datetime.datetime | None | Unset = UNSET
@@ -33,6 +36,8 @@ class InfoItemSourceOut:
 
     def to_dict(self) -> dict[str, Any]:
         created_at = self.created_at.isoformat()
+
+        id = self.id
 
         info_source_id = self.info_source_id
 
@@ -51,6 +56,7 @@ class InfoItemSourceOut:
         field_dict.update(
             {
                 "created_at": created_at,
+                "id": id,
                 "info_source_id": info_source_id,
                 "is_active": is_active,
             }
@@ -64,6 +70,8 @@ class InfoItemSourceOut:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
         created_at = isoparse(d.pop("created_at"))
+
+        id = d.pop("id")
 
         info_source_id = d.pop("info_source_id")
 
@@ -88,6 +96,7 @@ class InfoItemSourceOut:
 
         info_item_source_out = cls(
             created_at=created_at,
+            id=id,
             info_source_id=info_source_id,
             is_active=is_active,
             deactivated_at=deactivated_at,

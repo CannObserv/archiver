@@ -18,6 +18,15 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.29.0 (2026-10-17)
+
+[both] **`info_item_sources` is one row per tenure: a swap-back no longer erases history** (archiver#392, fixes #389). `archiver-client` 5.11.0: `InfoItemSourceOut` gains `id`. Supersedes v4.28.0's reactivation, which never deployed.
+
+- **Migration `80ca1ae1a1ce`.** The primary key moves from `(info_item_id, info_source_id)` to a ULID `id`, backfilled from each row's `created_at`. `ix_info_item_sources_item (info_item_id)` replaces the old key's leading column. `uq_info_item_sources_active` is unchanged: still one active primary per item. The downgrade is refused once a pair holds two rows. **Production exposure:** 5 bindings, none deactivated (checked 2026-10-17), so no history is rewritten.
+- **A revert starts a new tenure.** `PUT /info-items/{id}/primary-source` back to an earlier primary inserts a row. The earlier tenure keeps its `created_at` and `deactivated_at`; v4.28.0 overwrote them. The response's `id` is the new row's.
+- **`POST /info-items/{id}/info-sources` binds a previous primary**: a 201 and a new tenure (#389). It used to 500 on the composite key, and so did the dashboard's `bind-source`.
+- **`InfoItemSourceOut.id`** (additive) names the binding row. `GET /info-items/{id}?include_deactivated=true` can now list a source more than once, once per tenure. That only happens after a swap-back, which no earlier version could perform.
+
 ## v4.28.0 (2026-10-16)
 
 [both] **`PUT /info-items/{id}/primary-source` is the atomic primary swap** (archiver#45). `archiver-client` 5.10.0 adds `replace_primary_source(info_item_id, info_source_id)`.

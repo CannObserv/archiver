@@ -185,8 +185,14 @@ class InfoItemCreate(BaseModel):
 
 
 class InfoItemSourceOut(BaseModel):
-    """Light projection of an info_item_sources row."""
+    """Light projection of an info_item_sources row: one tenure of a binding."""
 
+    id: str = Field(
+        description=(
+            "ULID of this binding row. Each row is one tenure (archiver#392): a source "
+            "swapped back to after a later primary appears again under a new id."
+        )
+    )
     info_source_id: str
     is_active: bool = Field(
         description="True when deactivated_at is null (binding is currently active)."

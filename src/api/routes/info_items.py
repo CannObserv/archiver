@@ -614,8 +614,9 @@ async def put_primary_source(
     This is the swap; ``DELETE …/info-sources/{id}`` then ``POST …/info-sources``
     is not one, because it announces revoked and then live.
 
-    A source that was an earlier primary of this item is reactivated: its
-    history row comes back, keeping its first ``created_at``.
+    A source that was an earlier primary of this item starts a new tenure: a
+    new binding row with its own ``id``; the earlier tenure keeps its
+    ``created_at`` and ``deactivated_at`` (archiver#392).
 
     - **201**: the item had no active primary.
     - **200**: the primary was replaced, or was already this source (nothing

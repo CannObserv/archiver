@@ -1212,7 +1212,7 @@
         "type": "object"
       },
       "InfoItemSourceOut": {
-        "description": "Light projection of an info_item_sources row.",
+        "description": "Light projection of an info_item_sources row: one tenure of a binding.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -1232,6 +1232,11 @@
             "description": "UTC timestamp when this binding was deactivated, or null if still active.",
             "title": "Deactivated At"
           },
+          "id": {
+            "description": "ULID of this binding row. Each row is one tenure (archiver#392): a source swapped back to after a later primary appears again under a new id.",
+            "title": "Id",
+            "type": "string"
+          },
           "info_source_id": {
             "title": "Info Source Id",
             "type": "string"
@@ -1243,6 +1248,7 @@
           }
         },
         "required": [
+          "id",
           "info_source_id",
           "is_active",
           "created_at"
@@ -2495,7 +2501,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.28.0"
+    "version": "4.29.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3999,7 +4005,7 @@
     },
     "/api/v1/info-items/{info_item_id}/primary-source": {
       "put": {
-        "description": "Replace an InfoItem's primary InfoSource in one transaction (archiver#45).\n\nDeactivates the current primary, binds the new one, emits\n``info_item_primary_changed`` and announces **once**, with the final state.\nThis is the swap; ``DELETE \u2026/info-sources/{id}`` then ``POST \u2026/info-sources``\nis not one, because it announces revoked and then live.\n\nA source that was an earlier primary of this item is reactivated: its\nhistory row comes back, keeping its first ``created_at``.\n\n- **201**: the item had no active primary.\n- **200**: the primary was replaced, or was already this source (nothing\n  written, nothing announced).\n- **404**: no such InfoItem or InfoSource.",
+        "description": "Replace an InfoItem's primary InfoSource in one transaction (archiver#45).\n\nDeactivates the current primary, binds the new one, emits\n``info_item_primary_changed`` and announces **once**, with the final state.\nThis is the swap; ``DELETE \u2026/info-sources/{id}`` then ``POST \u2026/info-sources``\nis not one, because it announces revoked and then live.\n\nA source that was an earlier primary of this item starts a new tenure: a\nnew binding row with its own ``id``; the earlier tenure keeps its\n``created_at`` and ``deactivated_at`` (archiver#392).\n\n- **201**: the item had no active primary.\n- **200**: the primary was replaced, or was already this source (nothing\n  written, nothing announced).\n- **404**: no such InfoItem or InfoSource.",
         "operationId": "put_primary_source_api_v1_info_items__info_item_id__primary_source_put",
         "parameters": [
           {

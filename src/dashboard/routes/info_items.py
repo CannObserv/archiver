@@ -1553,8 +1553,8 @@ async def swap_primary_by_id(
     """Swap primary source to an existing InfoSource by ULID.
 
     Runs ``swap_primary_source`` (archiver#45): one announcement for the swap,
-    nothing written when the source is already primary, and a previous
-    primary's history row reactivated rather than duplicated.
+    nothing written when the source is already primary, and a new tenure row
+    for a previous primary (archiver#392).
     """
     item = await _resolve_item(item_id, session)
 

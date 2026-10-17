@@ -236,11 +236,13 @@ document; the dashboard's Registry badge reports the count
     fetches each tick.
   - **Previous primary** — a deactivated row (`deactivated_at IS NOT NULL`). Preserved indefinitely
     as succession history. Watcher may continue watching previous primaries for unanticipated
-    changes. History is one row per `(info_item_id, info_source_id)`, the primary key, not one per
-    stint: swapping back to a previous primary **reactivates** its row (archiver#45), keeping
-    `created_at` and overwriting the earlier `deactivated_at`.
-  - **Both directions are indexed.** The composite primary key leads with `info_item_id`, so a
-    lookup by `info_source_id` alone cannot use it — Postgres has no skip scan. Partial index
+    changes.
+  - **One row per tenure** (archiver#392). The primary key is a ULID `id`, minted from
+    `created_at` for pre-existing rows, so a pair bound, retired and bound again has two rows, each
+    bounding one stint. A swap back to a previous primary inserts; nothing reactivates a row.
+  - **Both directions are indexed.** `ix_info_item_sources_item (info_item_id)` serves an item's
+    bindings, history included, and the `ON DELETE CASCADE` from `info_items`. A lookup by
+    `info_source_id` alone needs its own index — Postgres has no skip scan. Partial index
     `ix_info_item_sources_active_source` covers that direction (archiver#176), matching the same
     `deactivated_at IS NULL` predicate its consumers filter by: reaching *items* from a *source*
     is by definition a question about current bindings.

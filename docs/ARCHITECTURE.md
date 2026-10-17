@@ -211,7 +211,7 @@ src/core/                      Domain logic
                                link_org, update_rep_spec, preview_extraction, etc.)
                                swap_primary_source.py is the one primary swap
                                (#45): PUT …/primary-source and both dashboard
-                               swaps; it reactivates a previous primary's row.
+                               swaps; a swap-back starts a new tenure row.
                                audit_stored_documents.py re-judges every stored
                                authored document against its current schema
                                (archiver#164); its KINDS registry is guarded
