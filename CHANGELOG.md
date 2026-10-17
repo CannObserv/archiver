@@ -20,7 +20,7 @@ service-only patch does not require an SDK bump.
 
 ## v4.30.0 (2026-10-17)
 
-[service] **Every new binding emits `info_item_primary_changed`** (archiver#390). Same payload, same `schema_version`; `archiver-client` is unchanged.
+[service] **Every new binding emits `info_item_primary_changed`** (archiver#390). Same payload, same `schema_version`. `archiver-client` surface unchanged: one regenerated docstring (`POST /info-items` now says it emits), no SDK bump.
 
 - **Four bind paths were silent.** `POST /info-items` with `initial_url`, and the dashboard's `info-items/new`, `bind-source` and `register`, each created an active binding and emitted nothing, so a subscriber tracking succession on `info.changes` never heard of them. Each now emits exactly once, with a null `old_info_source_id` on a first assignment.
 - **One writer.** `bind_info_source` emits, and is the only code that writes an `info_item_sources` row; the swap binds through it, and `tests/core/test_binding_guard.py` fails CI on any other writer. The create paths now also take the InfoItem row lock that #45 added.
