@@ -58,13 +58,12 @@ only starts when `ARCHIVER_REDIS_URL` is set. Two event types:
 | Event type | Trigger | Payload type (co-core) |
 |---|---|---|
 | `source_revision_captured` | New `SourceRevision` insert - from `POST /source-revisions` **or** from a `content.revisions` observation, on the non-idempotent path either way | `co_core.pure.models.changes.SourceRevisionCapturedEvent` |
-| `info_item_primary_changed` | **Every** new active `InfoItemSource` binding. One writer makes them all, `bind_info_source`, and it emits; `tests/core/test_binding_guard.py` refuses any other (archiver#390). Its callers: `POST /info-items` with `initial_url`, `POST /info-items/{id}/info-sources`, the swap (`swap_primary_source`: `PUT /info-items/{id}/primary-source` and the dashboard's two swap routes, archiver#45), and the dashboard's `info-items/new`, `bind-source` and `register`. `old_info_source_id` is the item's latest closed tenure, null when it has none. A no-op swap emits nothing; a revert re-uses a key (below) | `co_core.pure.models.changes.InfoItemPrimaryChangedEvent` |
+| `info_item_primary_changed` | **Every** new active binding: `bind_info_source` is the one writer and emits (archiver#390; `tests/core/test_binding_guard.py`). Callers: `POST /info-items` (`initial_url`), `POST …/info-sources`, `PUT …/primary-source`, dashboard `info-items/new`, `bind-source`, `register` and both swaps. `old_info_source_id`: latest closed tenure, else null. A no-op swap emits nothing; a revert re-uses a key (below) | `co_core.pure.models.changes.InfoItemPrimaryChangedEvent` |
 
 **A revert re-uses the primary-changed key (archiver#45).** The key
 `{info_item_id}:{new_info_source_id}` was unique only while a source could not be
 re-bound; a swap-back now binds the pair again, so A → B → A repeats A's key and a
-`key`-deduping consumer drops the revert. Any re-bind of an earlier primary does the
-same: `POST …/info-sources` and the dashboard's `bind-source` too. No consumer is known; the fix is
+`key`-deduping consumer drops the revert; so does any re-bind of an earlier primary. No consumer is known; the fix is
 co-core's (cannobserv#578).
 
 The payload models live in **co-core** (`co_core.pure.models.changes`) - lifted
