@@ -26,7 +26,7 @@ HOME = Path("src/core/tools/bind_info_source.py")
 MODEL = "InfoItemSource"
 ALLOWED_WRITER = "bind_info_source"
 EMITTER = "emit_primary_changed"
-_RAW_INSERT = re.compile(r"insert\s+into\s+(\w+\.)?info_item_sources\b", re.IGNORECASE)
+_RAW_INSERT = re.compile(r'insert\s+into\s+("?\w+"?\.)?"?info_item_sources\b', re.IGNORECASE)
 
 
 def _names_model(node: ast.AST) -> bool:
@@ -35,6 +35,14 @@ def _names_model(node: ast.AST) -> bool:
         or (isinstance(n, ast.Attribute) and n.attr == MODEL)
         for n in ast.walk(node)
     )
+
+
+def _callee(func: ast.expr) -> str:
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return ""
 
 
 def binding_violations(source: str, relpath: Path) -> list[str]:
@@ -70,11 +78,12 @@ def binding_violations(source: str, relpath: Path) -> list[str]:
                 isinstance(func, ast.Attribute) and func.attr == MODEL
             ):
                 found.append((node.lineno, f"constructs {MODEL}"))
-            elif isinstance(func, ast.Name) and func.id == "insert":
-                if any(_names_model(a) for a in node.args):
-                    found.append((node.lineno, f"inserts {MODEL}"))
-            elif isinstance(func, ast.Attribute) and func.attr == "insert":
-                if _names_model(func.value):
+            elif _callee(func).endswith("insert"):
+                # insert(M), pg_insert(M), postgresql.insert(M), M.__table__.insert()
+                receiver = func.value if isinstance(func, ast.Attribute) else None
+                if any(_names_model(a) for a in node.args) or (
+                    receiver is not None and _names_model(receiver)
+                ):
                     found.append((node.lineno, f"inserts {MODEL}"))
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             if _RAW_INSERT.search(node.value):
@@ -131,6 +140,29 @@ def test_the_sweep_catches_a_core_insert():
     assert binding_violations(planted, Path("src/x.py")) == [
         "src/x.py:4 inserts InfoItemSource",
         "src/x.py:5 inserts InfoItemSource",
+    ]
+
+
+def test_the_sweep_catches_the_dialect_inserts():
+    """``pg_insert`` is this repo's upsert idiom; the model may sit in the args (CR 7)."""
+    planted = (
+        "from sqlalchemy.dialects import postgresql\n"
+        "from sqlalchemy.dialects.postgresql import insert as pg_insert\n"
+        "from src.core.models import InfoItemSource\n"
+        "\n"
+        "a = pg_insert(InfoItemSource).on_conflict_do_nothing()\n"
+        "b = postgresql.insert(InfoItemSource)\n"
+    )
+    assert binding_violations(planted, Path("src/x.py")) == [
+        "src/x.py:5 inserts InfoItemSource",
+        "src/x.py:6 inserts InfoItemSource",
+    ]
+
+
+def test_the_sweep_catches_quoted_raw_sql():
+    planted = 'SQL = \'INSERT INTO "information"."info_item_sources" (id) VALUES (:i)\'\n'
+    assert binding_violations(planted, Path("src/x.py")) == [
+        "src/x.py:1 inserts info_item_sources in SQL"
     ]
 
 
