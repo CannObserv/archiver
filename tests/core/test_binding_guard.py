@@ -8,6 +8,10 @@ site in ``src/`` that could insert a row: a constructor call, a Core ``insert``
 reaching the model or its table, an aliased import (an alias dodges the name
 check), or raw SQL inserting into the table. Updates are out of scope: rows are
 never reactivated since #392, and a reactivation would be an ``UPDATE``.
+
+The reverse failure is guarded too (CR 2): any reference to
+``emit_primary_changed`` outside the tool. A route that binds and then emits
+again, as ``POST …/info-sources`` did before #390, would emit twice.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ SRC = ROOT / "src"
 HOME = Path("src/core/tools/bind_info_source.py")
 MODEL = "InfoItemSource"
 ALLOWED_WRITER = "bind_info_source"
+EMITTER = "emit_primary_changed"
 _RAW_INSERT = re.compile(r"insert\s+into\s+(\w+\.)?info_item_sources\b", re.IGNORECASE)
 
 
@@ -33,7 +38,7 @@ def _names_model(node: ast.AST) -> bool:
 
 
 def binding_violations(source: str, relpath: Path) -> list[str]:
-    """Every site in *source* that could insert an ``info_item_sources`` row.
+    """Every site in *source* that could insert a binding row or emit beside the tool.
 
     The sanctioned one is inside ``bind_info_source`` in
     ``src/core/tools/bind_info_source.py``.
@@ -53,6 +58,12 @@ def binding_violations(source: str, relpath: Path) -> list[str]:
             for alias in node.names:
                 if alias.name == MODEL and alias.asname not in (None, MODEL):
                     found.append((node.lineno, f"aliases {MODEL}"))
+                elif alias.name == EMITTER:
+                    found.append((node.lineno, f"imports {EMITTER}"))
+        elif isinstance(node, ast.Name) and node.id == EMITTER:
+            found.append((node.lineno, f"references {EMITTER}"))
+        elif isinstance(node, ast.Attribute) and node.attr == EMITTER:
+            found.append((node.lineno, f"references .{EMITTER}"))
         elif isinstance(node, ast.Call):
             func = node.func
             if (isinstance(func, ast.Name) and func.id == MODEL) or (
@@ -127,6 +138,24 @@ def test_the_sweep_catches_raw_sql():
     planted = 'SQL = "INSERT INTO information.info_item_sources (info_item_id) VALUES (:i)"\n'
     assert binding_violations(planted, Path("src/x.py")) == [
         "src/x.py:1 inserts info_item_sources in SQL"
+    ]
+
+
+def test_the_sweep_catches_a_second_emitter():
+    """A site that binds and then emits again double-emits: the shape #390 removed."""
+    planted = (
+        "from src.core.tools.bind_info_source import bind_info_source, emit_primary_changed\n"
+        "from src.core.tools import bind_info_source as tool\n"
+        "\n"
+        "async def route(db, i, s):\n"
+        "    await bind_info_source(db, info_item_id=i, info_source_id=s)\n"
+        "    emit_primary_changed(db, info_item_id=i, new_info_source_id=s)\n"
+        "    tool.emit_primary_changed(db)\n"
+    )
+    assert binding_violations(planted, Path("src/x.py")) == [
+        "src/x.py:1 imports emit_primary_changed",
+        "src/x.py:6 references emit_primary_changed",
+        "src/x.py:7 references .emit_primary_changed",
     ]
 
 
