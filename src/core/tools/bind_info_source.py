@@ -109,7 +109,8 @@ def emit_primary_changed(
 ) -> None:
     """Stage an ``info_item_primary_changed`` outbox row on ``info.changes``.
 
-    Every new active binding is a primary binding, so every one emits this;
+    Called only by ``bind_info_source``, once per new binding: a second caller
+    would emit twice, and ``tests/core/test_binding_guard.py`` refuses one.
     ``old_info_source_id`` is ``None`` on first assignment. Caller commits.
     """
     event = InfoItemPrimaryChangedEmit(
