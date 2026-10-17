@@ -62,8 +62,9 @@ async def swap_primary_source(
     ``uq_info_item_sources_active``. Always inserts a new tenure, through
     ``bind_info_source``, which emits ``info_item_primary_changed`` naming the
     tenure just closed (or the item's last one, when nothing was active). The
-    tool re-locks and re-checks under the lock this already holds: three
-    redundant queries, kept so it stays the one binding writer (archiver#390).
+    tool re-locks and re-checks the active binding under the lock this already
+    holds: two redundant queries (its source lookup hits the identity map), kept
+    so it stays the one binding writer (archiver#390).
     Announces once. Caller commits.
     """
     if await lock_info_item(db, info_item_id) is None:
