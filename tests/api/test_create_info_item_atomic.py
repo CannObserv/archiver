@@ -15,7 +15,14 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import func, select
 
-from src.core.models import InfoItem, InfoItemRepSpec, InfoItemSource, InfoSource, RepSpec
+from src.core.models import (
+    ChangesOutboxRow,
+    InfoItem,
+    InfoItemRepSpec,
+    InfoItemSource,
+    InfoSource,
+    RepSpec,
+)
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -69,6 +76,44 @@ async def test_create_name_only_returns_empty_arrays(client):
 # ---------------------------------------------------------------------------
 # Happy path — with initial_url + initial_source_specs
 # ---------------------------------------------------------------------------
+
+
+async def _primary_changed(session) -> list[dict]:
+    payloads = (
+        await session.execute(
+            select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.changes")
+        )
+    ).scalars()
+    return [p for p in payloads if p.get("event_type") == "info_item_primary_changed"]
+
+
+@pytest.mark.asyncio
+async def test_create_with_initial_url_emits_primary_changed_once(client, session):
+    """The first assignment is a new active binding, so it emits (archiver#390)."""
+    response = await client.post(
+        "/api/v1/info-items",
+        headers=HEADERS,
+        json={
+            "name": "emits",
+            "initial_url": "https://example.com/emits",
+            "initial_source_specs": [VALID_SPEC],
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["info_item_id"] == body["info_item_id"]
+    assert events[0]["old_info_source_id"] is None
+    assert events[0]["new_info_source_id"] == body["info_item_sources"][0]["info_source_id"]
+
+
+@pytest.mark.asyncio
+async def test_create_name_only_emits_nothing(client, session):
+    response = await client.post("/api/v1/info-items", headers=HEADERS, json={"name": "bare"})
+    assert response.status_code == 201
+    assert await _primary_changed(session) == []
 
 
 @pytest.mark.asyncio

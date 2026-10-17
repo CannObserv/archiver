@@ -574,6 +574,97 @@ async def test_bind_source_of_a_previous_primary_starts_a_new_tenure(client, ses
     assert by_id[old.id].deactivated_at == first_tenure_end
 
 
+async def _primary_changed(session) -> list[dict]:
+    payloads = (
+        await session.execute(
+            select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.changes")
+        )
+    ).scalars()
+    return [p for p in payloads if p.get("event_type") == "info_item_primary_changed"]
+
+
+@pytest.mark.asyncio
+async def test_create_with_source_emits_primary_changed_once(client, session):
+    """The legacy create's first assignment emits, as the API create's does (archiver#390)."""
+    r = await client.post(
+        _NEW_URL,
+        data={
+            "name": "Emitting Item",
+            "rep_fields": "{}",
+            "initial_url": "https://example.com/emitting-item",
+            "initial_source_specs": json.dumps([_spec()]),
+        },
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    item = (
+        await session.execute(select(InfoItem).where(InfoItem.name == "Emitting Item"))
+    ).scalar_one()
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["info_item_id"] == str(item.info_item_id)
+    assert events[0]["old_info_source_id"] is None
+    assert events[0]["new_info_source_id"] == str(binding.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_bind_source_emits_primary_changed_once(client, session):
+    item = _make_item("Bind Emits")
+    source = _make_source("https://example.com/bind-emits")
+    session.add_all([item, source])
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/bind-source",
+        data={"info_source_id": str(source.info_source_id)},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["old_info_source_id"] is None
+    assert events[0]["new_info_source_id"] == str(source.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_bind_source_after_a_closed_tenure_names_it_as_old(client, session):
+    item = _make_item("Bind Succession")
+    earlier = _make_source("https://example.com/bind-earlier")
+    later = _make_source("https://example.com/bind-later")
+    session.add_all([item, earlier, later])
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            info_item_id=item.info_item_id,
+            info_source_id=earlier.info_source_id,
+            deactivated_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    r = await client.post(
+        f"/dashboard/info-items/{item.info_item_id}/bind-source",
+        data={"info_source_id": str(later.info_source_id)},
+        headers=_HEADERS,
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["old_info_source_id"] == str(earlier.info_source_id)
+    assert events[0]["new_info_source_id"] == str(later.info_source_id)
+
+
 @pytest.mark.asyncio
 async def test_bind_source_unknown_item_returns_404(client):
     fake_id = str(ULID())
