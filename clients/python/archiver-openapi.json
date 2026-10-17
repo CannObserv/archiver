@@ -1233,9 +1233,16 @@
             "title": "Deactivated At"
           },
           "id": {
-            "description": "ULID of this binding row. Each row is one tenure (archiver#392): a source swapped back to after a later primary appears again under a new id.",
-            "title": "Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ULID of this binding row; always set since archiver 4.29. Each row is one tenure (archiver#392): a source swapped back to after a later primary appears again under a new id.",
+            "title": "Id"
           },
           "info_source_id": {
             "title": "Info Source Id",
@@ -1248,7 +1255,6 @@
           }
         },
         "required": [
-          "id",
           "info_source_id",
           "is_active",
           "created_at"

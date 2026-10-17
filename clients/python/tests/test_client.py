@@ -454,6 +454,23 @@ async def test_add_info_source(client):
 
 
 @pytest.mark.asyncio
+async def test_a_binding_from_a_pre_4_29_server_has_no_id(client):
+    """Servers before archiver#392 send no ``id``; the SDK must still parse them."""
+    payload = _info_item_source_out_payload()
+    del payload["id"]
+    with respx.mock:
+        respx.post(f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/info-sources").mock(
+            return_value=httpx.Response(201, json=payload)
+        )
+        out = await client.add_info_source(
+            "01HZZ00000000000000000000A",
+            "01HZZ00000000000000000000F",
+        )
+    assert out.info_source_id == "01HZZ00000000000000000000F"
+    assert not out.id
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("status", [200, 201])
 async def test_replace_primary_source(client, status):
     """archiver#45: one PUT is the swap; 201 on first assignment, 200 otherwise."""

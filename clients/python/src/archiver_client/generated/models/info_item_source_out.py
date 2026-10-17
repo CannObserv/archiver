@@ -19,25 +19,23 @@ class InfoItemSourceOut:
 
     Attributes:
         created_at (datetime.datetime):
-        id (str): ULID of this binding row. Each row is one tenure (archiver#392): a source swapped back to after a
-            later primary appears again under a new id.
         info_source_id (str):
         is_active (bool): True when deactivated_at is null (binding is currently active).
         deactivated_at (datetime.datetime | None | Unset): UTC timestamp when this binding was deactivated, or null if
             still active.
+        id (None | str | Unset): ULID of this binding row; always set since archiver 4.29. Each row is one tenure
+            (archiver#392): a source swapped back to after a later primary appears again under a new id.
     """
 
     created_at: datetime.datetime
-    id: str
     info_source_id: str
     is_active: bool
     deactivated_at: datetime.datetime | None | Unset = UNSET
+    id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         created_at = self.created_at.isoformat()
-
-        id = self.id
 
         info_source_id = self.info_source_id
 
@@ -51,18 +49,25 @@ class InfoItemSourceOut:
         else:
             deactivated_at = self.deactivated_at
 
+        id: None | str | Unset
+        if isinstance(self.id, Unset):
+            id = UNSET
+        else:
+            id = self.id
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
                 "created_at": created_at,
-                "id": id,
                 "info_source_id": info_source_id,
                 "is_active": is_active,
             }
         )
         if deactivated_at is not UNSET:
             field_dict["deactivated_at"] = deactivated_at
+        if id is not UNSET:
+            field_dict["id"] = id
 
         return field_dict
 
@@ -70,8 +75,6 @@ class InfoItemSourceOut:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
         created_at = isoparse(d.pop("created_at"))
-
-        id = d.pop("id")
 
         info_source_id = d.pop("info_source_id")
 
@@ -94,12 +97,21 @@ class InfoItemSourceOut:
 
         deactivated_at = _parse_deactivated_at(d.pop("deactivated_at", UNSET))
 
+        def _parse_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        id = _parse_id(d.pop("id", UNSET))
+
         info_item_source_out = cls(
             created_at=created_at,
-            id=id,
             info_source_id=info_source_id,
             is_active=is_active,
             deactivated_at=deactivated_at,
+            id=id,
         )
 
         info_item_source_out.additional_properties = d
