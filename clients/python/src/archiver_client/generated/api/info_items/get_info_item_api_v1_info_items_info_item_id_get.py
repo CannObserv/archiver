@@ -105,7 +105,7 @@ def sync_detailed(
      Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
 
     Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+    deactivated source bindings in ``info_item_sources``, one per tenure, oldest first.
 
     Args:
         info_item_id (str):
@@ -144,7 +144,7 @@ def sync(
      Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
 
     Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+    deactivated source bindings in ``info_item_sources``, one per tenure, oldest first.
 
     Args:
         info_item_id (str):
@@ -178,7 +178,7 @@ async def asyncio_detailed(
      Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
 
     Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+    deactivated source bindings in ``info_item_sources``, one per tenure, oldest first.
 
     Args:
         info_item_id (str):
@@ -215,7 +215,7 @@ async def asyncio(
      Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
 
     Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+    deactivated source bindings in ``info_item_sources``, one per tenure, oldest first.
 
     Args:
         info_item_id (str):

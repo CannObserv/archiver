@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
+from ulid import ULID
 
 from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 
@@ -185,6 +186,36 @@ async def test_a_swap_back_is_200_and_a_new_tenure(client, session, item):
     ]
     assert {b["id"] for b in tenures} == {str(first.id), body["id"]}
     assert [b["is_active"] for b in sorted(tenures, key=lambda b: b["id"])] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_include_deactivated_lists_tenures_oldest_first(client, session, item):
+    """History reads in order: ``id`` is minted at creation, so it orders tenures."""
+    a = await _source(session, "https://example.com/a")
+    b = await _source(session, "https://example.com/b")
+    later = ULID.from_datetime(datetime(2026, 6, 1, tzinfo=UTC))
+    earlier = ULID.from_datetime(datetime(2026, 5, 1, tzinfo=UTC))
+    session.add(
+        InfoItemSource(id=later, info_item_id=item.info_item_id, info_source_id=b.info_source_id)
+    )
+    await session.flush()
+    session.add(
+        InfoItemSource(
+            id=earlier,
+            info_item_id=item.info_item_id,
+            info_source_id=a.info_source_id,
+            deactivated_at=datetime(2026, 6, 1, tzinfo=UTC),
+        )
+    )
+    await session.commit()
+
+    resp = await client.get(
+        f"/api/v1/info-items/{item.info_item_id}",
+        headers=HEADERS,
+        params={"include_deactivated": "true"},
+    )
+
+    assert [b["id"] for b in resp.json()["info_item_sources"]] == [str(earlier), str(later)]
 
 
 @pytest.mark.asyncio

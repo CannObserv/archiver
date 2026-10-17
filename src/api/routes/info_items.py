@@ -406,14 +406,17 @@ async def get_info_item(
     """Fetch a single InfoItem by ID, including sources and active rep_spec assignments.
 
     Pass ``include_deactivated=true`` to also include previous primaries and other
-    deactivated source bindings in ``info_item_sources``.
+    deactivated source bindings in ``info_item_sources``, one per tenure, oldest first.
     """
     result = await session.execute(select(InfoItem).where(InfoItem.info_item_id == info_item_id))
     item = result.scalar_one_or_none()
     if item is None:
         raise_envelope(404, "lookup", "InfoItem not found")
-    sources_q = select(InfoItemSource).where(
-        InfoItemSource.info_item_id == item.info_item_id,
+    # Oldest tenure first: ``id`` is minted at creation (archiver#392).
+    sources_q = (
+        select(InfoItemSource)
+        .where(InfoItemSource.info_item_id == item.info_item_id)
+        .order_by(InfoItemSource.id)
     )
     if not include_deactivated:
         sources_q = sources_q.where(InfoItemSource.deactivated_at.is_(None))

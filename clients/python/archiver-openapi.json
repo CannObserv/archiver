@@ -3532,7 +3532,7 @@
         ]
       },
       "get": {
-        "description": "Fetch a single InfoItem by ID, including sources and active rep_spec assignments.\n\nPass ``include_deactivated=true`` to also include previous primaries and other\ndeactivated source bindings in ``info_item_sources``.",
+        "description": "Fetch a single InfoItem by ID, including sources and active rep_spec assignments.\n\nPass ``include_deactivated=true`` to also include previous primaries and other\ndeactivated source bindings in ``info_item_sources``, one per tenure, oldest first.",
         "operationId": "get_info_item_api_v1_info_items__info_item_id__get",
         "parameters": [
           {
