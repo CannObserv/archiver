@@ -245,6 +245,29 @@ async def test_a_swap_back_with_no_current_primary_starts_a_new_tenure(session, 
     assert earlier_binding.deactivated_at == first_tenure_end
 
 
+@pytest.mark.asyncio
+async def test_a_swap_with_no_current_primary_names_the_last_tenure_as_old(session, item):
+    """No active primary is not a first assignment when a tenure has closed.
+
+    ``previous_info_source_id`` answers "was anything active?" (the API's 201);
+    the event's ``old`` answers "what did this succeed?", as ``POST
+    …/info-sources`` always has (archiver#390).
+    """
+    earlier = await _source(session, "https://example.com/a")
+    new = await _source(session, "https://example.com/b")
+    await _bind(session, item, earlier, deactivated=True)
+
+    result = await swap_primary_source(
+        session, info_item_id=item.info_item_id, info_source_id=new.info_source_id
+    )
+
+    assert result.previous_info_source_id is None
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["old_info_source_id"] == str(earlier.info_source_id)
+    assert events[0]["new_info_source_id"] == str(new.info_source_id)
+
+
 # ---------------------------------------------------------------------------
 # Concurrency: the InfoItem row serializes two swaps
 # ---------------------------------------------------------------------------

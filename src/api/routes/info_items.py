@@ -75,7 +75,6 @@ from src.core.tools.assign_rep_spec import (
 from src.core.tools.bind_info_source import (
     ActiveBindingAlreadyExistsError,
     bind_info_source,
-    emit_primary_changed,
 )
 from src.core.tools.bind_info_source import (
     InfoItemNotFoundError as BindIIS_InfoItemNotFoundError,
@@ -139,6 +138,9 @@ async def create_info_item(
     a primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates
     effective-dated RepSpec assignments). All writes are a single transaction; any
     validation or lookup failure rolls back the whole thing.
+
+    With ``initial_url``, emits ``info_item_primary_changed`` on the change bus
+    (``old_info_source_id`` is ``null``: a first assignment).
 
     ``pm_org_id`` links a Power Map org at create (archiver#304), fetched before
     anything is written: Power Map unreachable is a 503 and creates nothing.
@@ -279,12 +281,12 @@ async def create_info_item(
 
     new_sources: list[InfoItemSource] = []
     if info_source is not None:
-        binding = InfoItemSource(
+        # Both rows were flushed above, so the tool's refusals cannot fire here.
+        binding = await bind_info_source(
+            session,
             info_item_id=item.info_item_id,
             info_source_id=info_source.info_source_id,
         )
-        session.add(binding)
-        await session.flush()
         new_sources.append(binding)
 
     # --- 4. Insert InfoItemRepSpec rows ---
@@ -515,25 +517,6 @@ async def add_info_source(
             data={"existing_info_source_id": str(e.existing_info_source_id)},
             source_exc=e,
         )
-
-    # Every binding is a primary binding — emit info_item_primary_changed.
-    prev_binding = (
-        await session.execute(
-            select(InfoItemSource)
-            .where(
-                InfoItemSource.info_item_id == item_ulid,
-                InfoItemSource.deactivated_at.isnot(None),
-            )
-            .order_by(InfoItemSource.deactivated_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    emit_primary_changed(
-        session,
-        info_item_id=item_ulid,
-        old_info_source_id=prev_binding.info_source_id if prev_binding else None,
-        new_info_source_id=source_ulid,
-    )
 
     await announce_info_item(session, item_ulid)
     await session.commit()

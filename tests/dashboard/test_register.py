@@ -10,7 +10,7 @@ from co_core.effects.fetch import FetchResult
 from sqlalchemy import select
 
 from src.api.main import app
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
 
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
@@ -351,6 +351,41 @@ async def test_register_creates_info_item_source_binding(client, session):
         )
     ).scalar_one()
     assert binding is not None
+
+
+@pytest.mark.asyncio
+async def test_register_emits_primary_changed_once(client, session):
+    """Registration is a first assignment: one event, no old (archiver#390)."""
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data={
+            "url": "https://emittest.example.com/page",
+            "source_specs": _VALID_SPEC,
+            "name": "Emit Test Item",
+            "description": "",
+        },
+    )
+    assert resp.status_code == 303
+    item = (
+        await session.execute(select(InfoItem).where(InfoItem.name == "Emit Test Item"))
+    ).scalar_one()
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+
+    payloads = (
+        await session.execute(
+            select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.changes")
+        )
+    ).scalars()
+    events = [p for p in payloads if p.get("event_type") == "info_item_primary_changed"]
+    assert len(events) == 1
+    assert events[0]["info_item_id"] == str(item.info_item_id)
+    assert events[0]["old_info_source_id"] is None
+    assert events[0]["new_info_source_id"] == str(binding.info_source_id)
 
 
 @pytest.mark.asyncio

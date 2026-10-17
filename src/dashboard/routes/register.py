@@ -31,6 +31,7 @@ from src.api.deps import get_db_session
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
 from src.core.services.registry_announcement import announce_info_item
+from src.core.tools.bind_info_source import bind_info_source
 from src.core.tools.create_info_source import (
     InvalidSourceSpecError,
     InvalidUrlError,
@@ -416,12 +417,11 @@ async def register_submit(
     session.add(item)
     await session.flush()
 
-    # Bind
-    binding = InfoItemSource(
-        info_item_id=item.info_item_id,
-        info_source_id=src.info_source_id,
+    # Bind: emits info_item_primary_changed (archiver#390). Both rows were
+    # flushed above, so the tool's refusals cannot fire here.
+    await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=src.info_source_id
     )
-    session.add(binding)
     await announce_info_item(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)

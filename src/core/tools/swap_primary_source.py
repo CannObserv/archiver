@@ -22,7 +22,7 @@ from src.core.services.registry_announcement import announce_info_item
 from src.core.tools.bind_info_source import (
     InfoItemNotFoundError,
     InfoSourceNotFoundError,
-    emit_primary_changed,
+    bind_info_source,
 )
 from src.core.tools.rep_fields_gate import lock_info_item
 
@@ -59,8 +59,13 @@ async def swap_primary_source(
 
     Locks the InfoItem row first, so two concurrent swaps serialize instead of
     both deactivating the same binding and colliding on
-    ``uq_info_item_sources_active``. Always inserts a new tenure.
-    Emits ``info_item_primary_changed`` and announces once. Caller commits.
+    ``uq_info_item_sources_active``. Always inserts a new tenure, through
+    ``bind_info_source``, which emits ``info_item_primary_changed`` naming the
+    tenure just closed (or the item's last one, when nothing was active). The
+    tool re-locks and re-checks the active binding under the lock this already
+    holds: two redundant queries (its source lookup hits the identity map), kept
+    so it stays the one binding writer (archiver#390).
+    Announces once. Caller commits.
     """
     if await lock_info_item(db, info_item_id) is None:
         raise InfoItemNotFoundError(str(info_item_id))
@@ -85,16 +90,7 @@ async def swap_primary_source(
         # The partial unique index admits the new primary only once the old one is out.
         await db.flush()
 
-    binding = InfoItemSource(info_item_id=info_item_id, info_source_id=info_source_id)
-    db.add(binding)
-    await db.flush()
-
-    emit_primary_changed(
-        db,
-        info_item_id=info_item_id,
-        old_info_source_id=previous_info_source_id,
-        new_info_source_id=info_source_id,
-    )
+    binding = await bind_info_source(db, info_item_id=info_item_id, info_source_id=info_source_id)
     await announce_info_item(db, info_item_id)
     return SwapResult(
         binding=binding, previous_info_source_id=previous_info_source_id, changed=True

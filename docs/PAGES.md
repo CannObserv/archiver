@@ -94,7 +94,7 @@ each route.
 
 **GET `/dashboard/info-items/new`** - 301 redirect to `/dashboard/register`.
 
-**POST `/dashboard/info-items/new`** - legacy direct-create, still live. Form fields: `name`, `description`, `owner`, `rep_fields` (JSON), `initial_url` (string), `initial_source_specs` (JSON array). 303 to detail on success; 422 re-rendering `info_items/new.html` on validation error, including a `rep_fields` bag that is not Rep Fields v1 (archiver#302). Interactive registration goes through `/dashboard/register`.
+**POST `/dashboard/info-items/new`** - legacy direct-create, still live. Form fields: `name`, `description`, `owner`, `rep_fields` (JSON), `initial_url` (string), `initial_source_specs` (JSON array). 303 to detail on success; 422 re-rendering `info_items/new.html` on validation error, including a `rep_fields` bag that is not Rep Fields v1 (archiver#302). With `initial_url` it binds through `bind_info_source`, so it emits `info_item_primary_changed` with a null `old_info_source_id` (archiver#390). Interactive registration goes through `/dashboard/register`.
 
 **GET `/dashboard/info-items/{id}`** - the 5-section hub page
 (`info_items/detail.html`). Its anatomy, partials, swap targets and **Action-route
@@ -115,7 +115,7 @@ that screen. The entries below stay the inventory line for each route.
 
 **POST `/dashboard/info-items/{id}/swap-primary-by-id`** - the same swap (`swap_primary_source`) for an existing InfoSource (form field: `info_source_id` ULID). Deactivates the old binding, binds the new source, emits `info_item_primary_changed`, announces once. 204 + `HX-Redirect`; the current primary is a 204 that writes nothing, and an earlier primary of this item starts a new tenure (a new binding row, archiver#392). A ULID validation error returns 422 with a `<div id="swap-by-id-error">` fragment.
 
-**POST `/dashboard/info-items/{id}/bind-source`** - binds an existing InfoSource (form field: `info_source_id`). 303 to detail; 409 if an active binding already exists. Not linked from the dashboard UI - interactive use goes through swap-primary-by-id.
+**POST `/dashboard/info-items/{id}/bind-source`** - binds an existing InfoSource (form field: `info_source_id`). Emits `info_item_primary_changed`, naming the item's latest closed tenure as `old_info_source_id` (archiver#390), and announces. 303 to detail; 409 if an active binding already exists. Not linked from the dashboard UI - interactive use goes through swap-primary-by-id.
 
 **DELETE `/dashboard/info-items/{id}/info-sources/{source_id}`** - HTMX delete (form POST + route handler); sets `deactivated_at = now()`. Response triggers an HTMX redirect to detail.
 

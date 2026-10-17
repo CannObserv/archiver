@@ -44,6 +44,9 @@ id="reg-watch-active" name="watch_active" value="on"`, `x-model="watchActive"`,
 `watch_active=True`; unchecked (the checkbox sends nothing) → `watch_active=False`,
 announcing the item **paused**. Both are written before the announcement, so the
 item's very first `info.registry` frame carries the policy the operator chose.
+The submit binds through `bind_info_source`, so a registration also stages one
+`info_item_primary_changed` on `info.changes` with a null `old_info_source_id`
+(archiver#390), in the same transaction.
 Sticky across validation re-renders (`watch_active_value` → `checked` attribute,
 defaulting to checked via `|default(true)`). Step 4 review shows "Active
 immediately" / "Paused" via `watchActiveLabel`.

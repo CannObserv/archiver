@@ -4,10 +4,11 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 from src.core.tools.bind_info_source import (
     ActiveBindingAlreadyExistsError,
     InfoItemNotFoundError,
@@ -99,6 +100,108 @@ async def test_binding_a_previous_primary_starts_a_new_tenure(session, item, sou
     assert binding.id != old.id
     assert binding.deactivated_at is None
     assert old.deactivated_at == first_tenure_end
+
+
+# --- info_item_primary_changed: the tool emits, so no bind path can forget (archiver#390) ---
+
+
+async def _primary_changed(session) -> list[dict]:
+    payloads = (
+        await session.execute(
+            select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.changes")
+        )
+    ).scalars()
+    return [p for p in payloads if p.get("event_type") == "info_item_primary_changed"]
+
+
+@pytest.mark.asyncio
+async def test_first_assignment_emits_once_with_no_old(session, item, source):
+    await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=source.info_source_id
+    )
+
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["info_item_id"] == str(item.info_item_id)
+    assert events[0]["old_info_source_id"] is None
+    assert events[0]["new_info_source_id"] == str(source.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_succession_emits_the_latest_closed_tenure_as_old(
+    session, item, source, other_source
+):
+    """Two closed tenures: ``old`` is the one closed last, not the one opened first."""
+    third = InfoSource(url="https://example.com/r", source_specs=[_spec()])
+    session.add(third)
+    await session.flush()
+    session.add_all(
+        [
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=source.info_source_id,
+                deactivated_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ),
+            InfoItemSource(
+                info_item_id=item.info_item_id,
+                info_source_id=other_source.info_source_id,
+                deactivated_at=datetime(2026, 2, 1, tzinfo=UTC),
+            ),
+        ]
+    )
+    await session.flush()
+
+    await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=third.info_source_id
+    )
+
+    events = await _primary_changed(session)
+    assert len(events) == 1
+    assert events[0]["old_info_source_id"] == str(other_source.info_source_id)
+    assert events[0]["new_info_source_id"] == str(third.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_equal_close_times_break_the_tie_by_tenure_id(session, item, source, other_source):
+    """Same ``deactivated_at``: the later tenure (the larger ULID ``id``) is ``old`` (CR 3)."""
+    third = InfoSource(url="https://example.com/r", source_specs=[_spec()])
+    session.add(third)
+    await session.flush()
+    closed = datetime(2026, 3, 1, tzinfo=UTC)
+    earlier_id, later_id = sorted([ULID(), ULID()])
+    # The earlier tenure goes in first, so heap order alone would pick it.
+    for tenure_id, src in ((earlier_id, source), (later_id, other_source)):
+        session.add(
+            InfoItemSource(
+                id=tenure_id,
+                info_item_id=item.info_item_id,
+                info_source_id=src.info_source_id,
+                deactivated_at=closed,
+            )
+        )
+        await session.flush()
+
+    await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=third.info_source_id
+    )
+
+    events = await _primary_changed(session)
+    assert events[0]["old_info_source_id"] == str(other_source.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_bind_emits_nothing(session, item, source, other_source):
+    await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=source.info_source_id
+    )
+    with pytest.raises(ActiveBindingAlreadyExistsError):
+        await bind_info_source(
+            session, info_item_id=item.info_item_id, info_source_id=other_source.info_source_id
+        )
+    with pytest.raises(InfoSourceNotFoundError):
+        await bind_info_source(session, info_item_id=item.info_item_id, info_source_id=ULID())
+
+    assert len(await _primary_changed(session)) == 1
 
 
 # --- collision guard ---

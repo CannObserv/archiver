@@ -98,6 +98,11 @@ first. The
 revert's `info_item_primary_changed` repeats the `{info_item_id}:{new_info_source_id}` key of the
 first binding: see [BUS.md](BUS.md).
 
+**Every bind emits `info_item_primary_changed` once** (archiver#390): `POST /info-items` with
+`initial_url`, `POST …/info-sources` and the PUT all bind through `bind_info_source`, which emits.
+`old_info_source_id` is the item's latest closed tenure, `null` when it has none: so a PUT on an
+item whose primary was DELETEd names that primary, though the response is a 201.
+
 `POST /info-items/{id}/rep-spec-assignments` refuses before the RepSpec document freezes (#83),
 because afterwards nothing can fix it: **422** `code="rep_spec_invalid"` when the document itself
 fails `validate_rep_spec` (one error per problem, path under `/document`, `data.rep_spec_id`;

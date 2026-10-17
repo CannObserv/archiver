@@ -355,12 +355,10 @@ async def create_info_item(
     await session.flush()
 
     if info_source is not None:
-        binding = InfoItemSource(
-            info_item_id=item.info_item_id,
-            info_source_id=info_source.info_source_id,
+        # Both rows were flushed above, so the tool's refusals cannot fire here.
+        await bind_info_source(
+            session, info_item_id=item.info_item_id, info_source_id=info_source.info_source_id
         )
-        session.add(binding)
-        await session.flush()
 
     # Same transaction as the create: live if bound, skipped if bare.
     await announce_info_item(session, item.info_item_id)

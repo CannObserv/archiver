@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.30.0 (2026-10-17)
+
+[service] **Every new binding emits `info_item_primary_changed`** (archiver#390). Same payload, same `schema_version`. `archiver-client` surface unchanged: one regenerated docstring (`POST /info-items` now says it emits), no SDK bump.
+
+- **Four bind paths were silent.** `POST /info-items` with `initial_url`, and the dashboard's `info-items/new`, `bind-source` and `register`, each created an active binding and emitted nothing, so a subscriber tracking succession on `info.changes` never heard of them. Each now emits exactly once, with a null `old_info_source_id` on a first assignment.
+- **One writer.** `bind_info_source` emits, and is the only code that writes an `info_item_sources` row; the swap binds through it, and `tests/core/test_binding_guard.py` fails CI on any other writer. The create paths now also take the InfoItem row lock that #45 added.
+- **One rule for `old_info_source_id`:** the item's latest closed tenure, null when it has none. That was already `POST …/info-sources`'s rule. The swap used to send null whenever nothing was active, so **`PUT …/primary-source` on an item whose primary was DELETEd now names that primary**. The response is still the 201 for "nothing was active".
+- **Volume:** every item create with a URL and every registration adds one `info.changes` row. The stream is capped, and no consumer group exists (measured 2026-10-13).
+- **A re-bind of an earlier primary** from the dashboard's `bind-source` now repeats that source's first key, as `POST …/info-sources` and a swap-back already do: the known collision in [BUS.md](docs/BUS.md) (#394, cannobserv#578).
+
 ## v4.29.0 (2026-10-17)
 
 [both] **`info_item_sources` is one row per tenure: a swap-back no longer erases history** (archiver#392, fixes #389). `archiver-client` 5.11.0: `InfoItemSourceOut` gains `id`. Supersedes v4.28.0's reactivation, which never deployed.
