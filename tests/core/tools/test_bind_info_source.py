@@ -418,3 +418,20 @@ async def test_the_source_lock_does_not_stall_revision_ingest(test_engine, commi
         await asyncio.wait_for(key_share, timeout=2.0)
         await ingest.rollback()
         await binder.rollback()
+
+
+@pytest.mark.asyncio
+async def test_require_unbound_on_the_items_own_source_is_an_active_binding_refusal(
+    session, item, source
+):
+    """The item already has a primary: that is the conflict, not another holder (CR 6)."""
+    await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=source.info_source_id
+    )
+    with pytest.raises(ActiveBindingAlreadyExistsError):
+        await bind_info_source(
+            session,
+            info_item_id=item.info_item_id,
+            info_source_id=source.info_source_id,
+            require_unbound_source=True,
+        )

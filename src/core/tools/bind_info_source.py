@@ -84,6 +84,17 @@ async def bind_info_source(
     if source is None:
         raise InfoSourceNotFoundError(str(info_source_id))
 
+    existing = (
+        await db.execute(
+            select(InfoItemSource).where(
+                InfoItemSource.info_item_id == info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise ActiveBindingAlreadyExistsError(existing_info_source_id=existing.info_source_id)
+
     if require_unbound_source:
         holders = list(
             (
@@ -97,17 +108,6 @@ async def bind_info_source(
         )
         if holders:
             raise InfoSourceAlreadyBoundError(info_item_ids=holders)
-
-    existing = (
-        await db.execute(
-            select(InfoItemSource).where(
-                InfoItemSource.info_item_id == info_item_id,
-                InfoItemSource.deactivated_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        raise ActiveBindingAlreadyExistsError(existing_info_source_id=existing.info_source_id)
 
     binding = InfoItemSource(
         info_item_id=info_item_id,
