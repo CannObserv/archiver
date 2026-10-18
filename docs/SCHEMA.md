@@ -245,11 +245,8 @@ document; the dashboard's Registry badge reports the count
   - **One writer, and every insert emits** (archiver#390). `bind_info_source` is the only code in
     `src/` that inserts a row, and it stages `info_item_primary_changed` in the same transaction;
     `tests/core/test_binding_guard.py` refuses any other writer, and any other emitter.
-  - **Binds of one source serialize** (archiver#51). The tool locks the InfoItem, then the
-    InfoSource row `FOR NO KEY UPDATE`: not `FOR UPDATE`, which would conflict with the `FOR KEY
-    SHARE` a `source_revisions` insert takes through its FK and stall ingest. With
-    `require_unbound_source` (registration's Case B reuse) it refuses a source any item actively
-    holds (`InfoSourceAlreadyBoundError`); without it, sharing a source stays allowed.
+  - **Binds of one source serialize** (archiver#51): the tool locks the source row (`FOR NO KEY
+    UPDATE`); `require_unbound_source` refuses a source an item holds. Why not `FOR UPDATE`: its docstring.
   - **Both directions are indexed.** `ix_info_item_sources_item (info_item_id)` serves an item's
     bindings, history included, and the `ON DELETE CASCADE` from `info_items`. A lookup by
     `info_source_id` alone needs its own index — Postgres has no skip scan. Partial index
