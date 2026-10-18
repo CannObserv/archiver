@@ -14,6 +14,9 @@
  *   JSON for the rolling summary bar + step-4 review),
  * - url-check dispatch state (hostname + known/new domain from the HTMX
  *   fragment, with stale-check protection when the URL has since changed),
+ * - the Case B source choice (archiver#51): chooseSource's pre-fill, which
+ *   never overwrites an edit, the needsSourceChoice gate on step 1, and the
+ *   step-4 sourceChoiceLabel,
  * - the urlCheckDispatch component's JSON data-island event dispatch.
  */
 import { describe, it, expect, beforeAll, vi } from "vitest";
