@@ -966,6 +966,7 @@ async def test_register_case_b_source_bound_since_the_check_is_a_409(client, ses
     )
     assert resp.status_code == 409
     assert "Got There First" in resp.text
+    assert "Submit again to create a new source" in resp.text
     assert await _items_named(session, "Case B Item") == []
 
 

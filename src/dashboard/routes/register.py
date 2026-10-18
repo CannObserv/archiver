@@ -566,7 +566,7 @@ async def register_submit(
                 1,
                 "source_choice",
                 "That Information Source was bound to another Information Item after the "
-                "URL check. Register at this URL again, or choose another source.",
+                "URL check (listed below). Submit again to create a new source at this URL.",
                 canonical_url,
             )
 
