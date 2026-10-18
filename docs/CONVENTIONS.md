@@ -215,7 +215,7 @@ applicable doc is a CR blocker.
   flow's refusals.
 - `docs/HEALTH_ROW.md` and `docs/REGISTER.md` - required when the change alters
   the health row (a badge added or removed, its states, or the lag-probe bound),
-  or the register wizard's summary bar or Step 3 controls. PAGES.md keeps only
+  or the register wizard's summary bar, Step 1 Case B choice or Step 3 controls. PAGES.md keeps only
   the inventory line for those routes: update it too when a route, or a form
   field it lists, is added, removed or renamed.
 - `docs/UI.md` - required when the change alters a *shared* mechanic rather
