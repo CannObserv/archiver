@@ -222,11 +222,15 @@ def _card(check: dict[str, Any], choice: str) -> dict[str, Any]:
 
 def _candidate(src: InfoSource, revisions: int) -> dict[str, Any]:
     specs = list(src.source_specs or [])
-    errors = [
-        f"/source_specs/{i}{err['path']}: {err['message']}"
-        for i, spec in enumerate(specs)
-        for err in validate_source_spec(spec)[1]
-    ]
+    # A stored element may predate validation altogether (#164): report it, don't 500.
+    errors: list[str] = []
+    for i, spec in enumerate(specs):
+        if not isinstance(spec, dict):
+            errors.append(f"/source_specs/{i}: not an object")
+            continue
+        errors += [
+            f"/source_specs/{i}{e['path']}: {e['message']}" for e in validate_source_spec(spec)[1]
+        ]
     return {
         "source": src,
         "revisions": revisions,
@@ -238,10 +242,11 @@ def _candidate(src: InfoSource, revisions: int) -> dict[str, Any]:
 
 def _specs_summary(specs: list[dict]) -> str:
     """The wizard's ``selectorSummary`` server-side: ``css: #a``, ``full_page``, ``2 specs (…)``."""
-    algos = [(spec.get("extraction") or {}).get("algorithm", "?") for spec in specs]
+    extractions = [(s.get("extraction") or {}) if isinstance(s, dict) else {} for s in specs]
+    algos = [e.get("algorithm", "?") for e in extractions]
     if len(specs) != 1:
         return f"{len(specs)} specs ({' + '.join(algos)})"
-    selector = (specs[0].get("extraction") or {}).get("selector")
+    selector = extractions[0].get("selector")
     return f"{algos[0]}: {selector}" if selector else algos[0]
 
 

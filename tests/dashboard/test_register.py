@@ -988,3 +988,16 @@ async def test_register_case_b_choice_must_be_a_source_at_this_url(client, sessi
 async def test_register_review_names_the_information_source(client):
     r = await client.get("/dashboard/register", headers=_HEADERS)
     assert 'x-text="sourceChoiceLabel"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_url_check_case_b_reports_a_malformed_stored_spec(client, session):
+    """A stored element that is not an object is a spec error, not a 500 (CR 3)."""
+    await _unbound(session, "https://reuse11.example.com/p", ["not-a-spec"])
+
+    r = await client.get(
+        "/dashboard/register/url-check?url=https://reuse11.example.com/p", headers=_HEADERS
+    )
+    assert r.status_code == 200
+    assert "fails the current schema" in r.text
+    assert "/source_specs/0" in r.text
