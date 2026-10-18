@@ -33,11 +33,24 @@ class ActiveBindingAlreadyExistsError(Exception):
         )
 
 
+class InfoSourceAlreadyBoundError(Exception):
+    """``require_unbound_source`` was set and the source backs an active item.
+
+    Registration's Case B reuse (archiver#51) only takes a source no item
+    holds; one bound since the URL check is a conflict, not a share.
+    """
+
+    def __init__(self, *, info_item_ids: list[ULID]):
+        self.info_item_ids = info_item_ids
+        super().__init__(f"info source already bound to {', '.join(map(str, info_item_ids))}")
+
+
 async def bind_info_source(
     db: AsyncSession,
     *,
     info_item_id: ULID,
     info_source_id: ULID,
+    require_unbound_source: bool = False,
 ) -> InfoItemSource:
     """Persist a new ``info_item_sources`` row and emit ``info_item_primary_changed``.
 
@@ -52,14 +65,38 @@ async def bind_info_source(
     no primary sees none, and its insert collides on
     ``uq_info_item_sources_active`` (a 500) instead of refusing. Does not
     announce: callers announce once their whole change is staged. Caller commits.
+
+    Then locks the InfoSource row, so two binds of one source serialize: a
+    Case B item is new, and its own lock guards nothing (archiver#51). ``FOR
+    NO KEY UPDATE``, because a ``source_revisions`` insert takes ``FOR KEY
+    SHARE`` on its source through the FK, and ``FOR UPDATE`` would stall
+    ingest for the source while the bind is open. With
+    ``require_unbound_source``, a source any item actively holds is refused
+    with ``InfoSourceAlreadyBoundError``; without it, sharing stays allowed.
     """
     item = await lock_info_item(db, info_item_id)
     if item is None:
         raise InfoItemNotFoundError(str(info_item_id))
 
-    source = await db.get(InfoSource, info_source_id)
+    source = await db.get(
+        InfoSource, info_source_id, with_for_update={"key_share": True}, populate_existing=True
+    )
     if source is None:
         raise InfoSourceNotFoundError(str(info_source_id))
+
+    if require_unbound_source:
+        holders = list(
+            (
+                await db.execute(
+                    select(InfoItemSource.info_item_id).where(
+                        InfoItemSource.info_source_id == info_source_id,
+                        InfoItemSource.deactivated_at.is_(None),
+                    )
+                )
+            ).scalars()
+        )
+        if holders:
+            raise InfoSourceAlreadyBoundError(info_item_ids=holders)
 
     existing = (
         await db.execute(

@@ -12,6 +12,7 @@ from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSour
 from src.core.tools.bind_info_source import (
     ActiveBindingAlreadyExistsError,
     InfoItemNotFoundError,
+    InfoSourceAlreadyBoundError,
     InfoSourceNotFoundError,
     bind_info_source,
 )
@@ -270,4 +271,150 @@ async def test_a_bind_waits_for_a_swap_and_then_sees_its_primary(test_engine, co
         await swapper.commit()
         with pytest.raises(ActiveBindingAlreadyExistsError):
             await asyncio.wait_for(task, timeout=10.0)
+        await binder.rollback()
+
+
+# --- require_unbound_source: registration's Case B reuse (archiver#51) ---
+
+
+@pytest.fixture
+async def other_item(session):
+    obj = InfoItem(name="other")
+    session.add(obj)
+    await session.flush()
+    return obj
+
+
+@pytest.mark.asyncio
+async def test_require_unbound_binds_an_unbound_source(session, item, source):
+    binding = await bind_info_source(
+        session,
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        require_unbound_source=True,
+    )
+    assert binding.info_source_id == source.info_source_id
+    assert len(await _primary_changed(session)) == 1
+
+
+@pytest.mark.asyncio
+async def test_require_unbound_refuses_a_source_another_item_holds(
+    session, item, other_item, source
+):
+    await bind_info_source(
+        session, info_item_id=other_item.info_item_id, info_source_id=source.info_source_id
+    )
+    with pytest.raises(InfoSourceAlreadyBoundError) as exc_info:
+        await bind_info_source(
+            session,
+            info_item_id=item.info_item_id,
+            info_source_id=source.info_source_id,
+            require_unbound_source=True,
+        )
+    assert exc_info.value.info_item_ids == [other_item.info_item_id]
+    # The refusal wrote nothing: one binding, one event, both other_item's.
+    assert len(await _primary_changed(session)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_closed_tenure_elsewhere_does_not_count_as_bound(session, item, other_item, source):
+    """Unbound means no *active* binding: the source's history is what reuse keeps."""
+    old = await bind_info_source(
+        session, info_item_id=other_item.info_item_id, info_source_id=source.info_source_id
+    )
+    old.deactivated_at = datetime.now(UTC)
+    await session.flush()
+
+    binding = await bind_info_source(
+        session,
+        info_item_id=item.info_item_id,
+        info_source_id=source.info_source_id,
+        require_unbound_source=True,
+    )
+    assert binding.deactivated_at is None
+
+
+@pytest.mark.asyncio
+async def test_without_the_flag_a_bound_source_can_still_be_shared(
+    session, item, other_item, source
+):
+    """Every other bind path keeps today's behaviour: the model allows sharing (Case A)."""
+    await bind_info_source(
+        session, info_item_id=other_item.info_item_id, info_source_id=source.info_source_id
+    )
+    binding = await bind_info_source(
+        session, info_item_id=item.info_item_id, info_source_id=source.info_source_id
+    )
+    assert binding.info_source_id == source.info_source_id
+
+
+# --- concurrency: the InfoSource row serializes two binds of one source ---
+
+
+async def _committed_pair(make_session, committed_rows, label: str):
+    async with make_session() as setup:
+        a, b = InfoItem(name=f"{label} a"), InfoItem(name=f"{label} b")
+        src = InfoSource(url=f"https://example.com/{label}", source_specs=[_spec()])
+        setup.add_all([a, b, src])
+        await setup.commit()
+        committed_rows.append((InfoSource, src.info_source_id))
+        committed_rows += [(InfoItem, a.info_item_id), (InfoItem, b.info_item_id)]
+        return a.info_item_id, b.info_item_id, src.info_source_id
+
+
+async def _track_bind_writes(make_session, committed_rows, source_id) -> None:
+    bindings = select(InfoItemSource).where(InfoItemSource.info_source_id == source_id)
+    events = select(ChangesOutboxRow).where(ChangesOutboxRow.topic == "info.changes")
+    async with make_session() as s:
+        for binding in (await s.execute(bindings)).scalars():
+            committed_rows.append((InfoItemSource, binding.id))
+        for row in (await s.execute(events)).scalars():
+            if row.payload.get("new_info_source_id") == str(source_id):
+                committed_rows.append((ChangesOutboxRow, row.id))
+
+
+@pytest.mark.asyncio
+async def test_two_unbound_binds_of_one_source_serialize(test_engine, committed_rows):
+    """Case B's item is new, so the item lock serializes nothing. Without a lock
+    on the source, two registrations both see it unbound and both bind it."""
+    make_session = async_sessionmaker(test_engine, expire_on_commit=False)
+    a, b, source_id = await _committed_pair(make_session, committed_rows, "race-unbound")
+
+    try:
+        async with make_session() as first, make_session() as second:
+            await bind_info_source(
+                first, info_item_id=a, info_source_id=source_id, require_unbound_source=True
+            )
+            task = asyncio.create_task(
+                bind_info_source(
+                    second, info_item_id=b, info_source_id=source_id, require_unbound_source=True
+                )
+            )
+            done, _ = await asyncio.wait({task}, timeout=1.0)
+            assert not done, "a second bind proceeded while the first held the InfoSource row"
+
+            await first.commit()
+            with pytest.raises(InfoSourceAlreadyBoundError):
+                await asyncio.wait_for(task, timeout=10.0)
+            await second.rollback()
+    finally:
+        await _track_bind_writes(make_session, committed_rows, source_id)
+
+
+@pytest.mark.asyncio
+async def test_the_source_lock_does_not_stall_revision_ingest(test_engine, committed_rows):
+    """A ``source_revisions`` insert takes FOR KEY SHARE on its source through the
+    FK; the bind's lock must not conflict with it (FOR NO KEY UPDATE, not FOR UPDATE)."""
+    make_session = async_sessionmaker(test_engine, expire_on_commit=False)
+    a, _b, source_id = await _committed_pair(make_session, committed_rows, "race-ingest")
+
+    async with make_session() as binder, make_session() as ingest:
+        await bind_info_source(binder, info_item_id=a, info_source_id=source_id)
+        key_share = ingest.execute(
+            select(InfoSource.info_source_id)
+            .where(InfoSource.info_source_id == source_id)
+            .with_for_update(read=True, key_share=True)
+        )
+        await asyncio.wait_for(key_share, timeout=2.0)
+        await ingest.rollback()
         await binder.rollback()
