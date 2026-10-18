@@ -71,10 +71,16 @@
                hx-swap="innerHTML">
       </div>
 
-      <div id="url-check-result" style="margin-bottom:var(--space-3);min-height:2rem;"></div>
+      {# A re-render includes the card server-side, with the operator's Case B
+         choice still checked: htmx only fetches it on the URL's change (#51). #}
+      <div id="url-check-result" style="margin-bottom:var(--space-3);min-height:2rem;">{% if url_checked %}{% include "register/_url_check.html" %}{% endif %}</div>
+
+      {% if errors.source_choice %}
+      <p class="text-danger text-sm" role="alert" style="margin-bottom:var(--space-2);">{{ errors.source_choice }}</p>
+      {% endif %}
 
       <button type="button" class="btn btn--primary"
-              :disabled="!url.trim()"
+              :disabled="!url.trim() || needsSourceChoice"
               @click="step=2; loadSuggestions()">
         Next: Choose Selector →
       </button>
@@ -212,6 +218,12 @@
               <td class="data-table__cell text-muted text-sm">Selector</td>
               <td class="data-table__cell"><code class="text-sm" x-text="selectorSummary" :title="sourceSpecs"></code>
                 <button type="button" class="btn btn--secondary btn--sm" @click="step=2">Edit</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="data-table__cell text-muted text-sm">Information Source</td>
+              <td class="data-table__cell"><span x-text="sourceChoiceLabel"></span>
+                <button type="button" class="btn btn--secondary btn--sm" @click="step=1">Edit</button>
               </td>
             </tr>
             <tr>

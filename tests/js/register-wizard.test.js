@@ -165,6 +165,84 @@ describe("registerWizard url-check state", function () {
 });
 
 // ---------------------------------------------------------------------------
+// Case B: reuse an existing unbound source (archiver#51)
+// ---------------------------------------------------------------------------
+
+describe("registerWizard Case B source choice", function () {
+    var STORED = '[{"schema_version":1,"extraction":{"algorithm":"css","selector":"#a"},"fingerprint":{}}]';
+    var OTHER = '[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]';
+
+    function caseB(choice) {
+        return {
+            hostname: "reuse.example.com",
+            case: "B",
+            domain_known: true,
+            source_choice: choice,
+            candidates: { S1: { specs: STORED, revisions: 3 }, S2: { specs: OTHER, revisions: 1 } }
+        };
+    }
+
+    it("pre-fills step 2 from the one pre-selected source", function () {
+        var comp = wizard({});
+        comp.onUrlCheck(caseB("S1"));
+        expect(comp.sourceChoice).toBe("S1");
+        expect(comp.sourceSpecs).toBe(STORED);
+        expect(comp.needsSourceChoice).toBe(false);
+        expect(comp.sourceChoiceLabel).toBe("Reuse the existing source (3 earlier revisions will appear)");
+    });
+
+    it("with nothing pre-selected, step 1 waits for a choice", function () {
+        var comp = wizard({});
+        comp.onUrlCheck(caseB(""));
+        expect(comp.needsSourceChoice).toBe(true);
+        expect(comp.sourceSpecs).toBe("");
+        comp.chooseSource("S2");
+        expect(comp.needsSourceChoice).toBe(false);
+        expect(comp.sourceSpecs).toBe(OTHER);
+        expect(comp.sourceChoiceLabel).toBe("Reuse the existing source (1 earlier revision will appear)");
+    });
+
+    it("switching sources replaces an unedited pre-fill", function () {
+        var comp = wizard({});
+        comp.onUrlCheck(caseB("S1"));
+        comp.chooseSource("S2");
+        expect(comp.sourceSpecs).toBe(OTHER);
+    });
+
+    it("never overwrites specs the operator edited", function () {
+        var comp = wizard({});
+        comp.onUrlCheck(caseB("S1"));
+        comp.sourceSpecs = "[edited]";
+        comp.chooseSource("S2");
+        expect(comp.sourceSpecs).toBe("[edited]");
+    });
+
+    it("a validation re-render keeps the server-rendered specs", function () {
+        var comp = wizard({ sourceSpecsInput: { value: "[from the server]" } });
+        comp.onUrlCheck(caseB("S1"));
+        expect(comp.sourceChoice).toBe("S1");
+        expect(comp.sourceSpecs).toBe("[from the server]");
+    });
+
+    it("the opt-out leaves the specs alone and says a new source", function () {
+        var comp = wizard({});
+        comp.onUrlCheck(caseB("S1"));
+        comp.chooseSource("new");
+        expect(comp.sourceSpecs).toBe(STORED);
+        expect(comp.sourceChoiceLabel).toBe("A new source");
+    });
+
+    it("leaving Case B clears the choice", function () {
+        var comp = wizard({});
+        comp.onUrlCheck(caseB("S1"));
+        comp.onUrlCheck({ hostname: "fresh.example.org", case: "new", domain_known: false });
+        expect(comp.sourceChoice).toBe("");
+        expect(comp.needsSourceChoice).toBe(false);
+        expect(comp.sourceChoiceLabel).toBe("A new source");
+    });
+});
+
+// ---------------------------------------------------------------------------
 // urlCheckDispatch data-island component
 // ---------------------------------------------------------------------------
 

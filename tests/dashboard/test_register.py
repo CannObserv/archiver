@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import UTC, datetime
 
 import pytest
 from co_core.effects.fetch import FetchResult
 from sqlalchemy import select
 
 from src.api.main import app
-from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
+from src.core.models import (
+    ChangesOutboxRow,
+    InfoItem,
+    InfoItemSource,
+    InfoSource,
+    SourceRevision,
+)
 from src.core.models.domain import Domain
+from src.core.tools.bind_info_source import bind_info_source
 
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
 
@@ -732,3 +740,251 @@ async def test_preview_renders_a_spec_refusal_as_path_and_message(client):
     assert r.status_code == 200
     assert "/extraction: " in r.text
     assert "{&#39;path&#39;" not in r.text and "{'path'" not in r.text
+
+
+# ---------------------------------------------------------------------------
+# Case B: reuse the existing unbound InfoSource by default (archiver#51)
+# ---------------------------------------------------------------------------
+
+_FULL_PAGE = {"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}
+_CSS = {
+    "schema_version": 1,
+    "extraction": {"algorithm": "css", "selector": "#a"},
+    "fingerprint": {},
+}
+# Stored before a schema tightening: css without its selector (#164).
+_STALE = {"schema_version": 1, "extraction": {"algorithm": "css"}, "fingerprint": {}}
+
+
+async def _unbound(session, url: str, specs: list[dict], revisions: int = 0) -> InfoSource:
+    src = InfoSource(url=url, source_specs=specs)
+    session.add(src)
+    await session.flush()
+    for n in range(revisions):
+        session.add(
+            SourceRevision(
+                info_source_id=src.info_source_id,
+                content_fingerprint=f"fp-{src.info_source_id}-{n}",
+                captured_at=datetime(2026, 10, 1 + n, tzinfo=UTC),
+            )
+        )
+    await session.flush()
+    return src
+
+
+def _choices(html: str) -> dict[str, bool]:
+    out = {}
+    for tag in re.findall(r'<input[^>]*name="source_choice"[^>]*>', html):
+        value = re.search(r'value="([^"]*)"', tag).group(1)
+        out[value] = bool(re.search(r"\schecked\b", tag))
+    return out
+
+
+def _submit(url: str, **extra) -> dict:
+    return {
+        "url": url,
+        "source_specs": json.dumps([_FULL_PAGE]),
+        "name": extra.pop("name", "Case B Item"),
+        "description": "",
+        **extra,
+    }
+
+
+async def _sources_at(session, url: str) -> list[InfoSource]:
+    return list((await session.execute(select(InfoSource).where(InfoSource.url == url))).scalars())
+
+
+async def _items_named(session, name: str) -> list[InfoItem]:
+    return list((await session.execute(select(InfoItem).where(InfoItem.name == name))).scalars())
+
+
+@pytest.mark.asyncio
+async def test_url_check_case_b_one_source_is_preselected(client, session):
+    src = await _unbound(session, "https://reuse1.example.com/p", [_CSS], revisions=3)
+
+    r = await client.get(
+        "/dashboard/register/url-check?url=https://reuse1.example.com/p", headers=_HEADERS
+    )
+    assert r.status_code == 200
+    assert _choices(r.text) == {str(src.info_source_id): True, "new": False}
+    assert "3 earlier revisions will appear" in r.text
+    assert "css: #a" in r.text
+    island = _dispatch_island(r.text)
+    assert island["case"] == "B"
+    assert island["source_choice"] == str(src.info_source_id)
+    candidate = island["candidates"][str(src.info_source_id)]
+    assert json.loads(candidate["specs"]) == [_CSS]
+    assert candidate["revisions"] == 3
+
+
+@pytest.mark.asyncio
+async def test_url_check_case_b_several_sources_preselect_none(client, session):
+    a = await _unbound(session, "https://reuse2.example.com/p", [_FULL_PAGE])
+    b = await _unbound(session, "https://reuse2.example.com/p", [_CSS], revisions=1)
+
+    r = await client.get(
+        "/dashboard/register/url-check?url=https://reuse2.example.com/p", headers=_HEADERS
+    )
+    assert _choices(r.text) == {
+        str(a.info_source_id): False,
+        str(b.info_source_id): False,
+        "new": False,
+    }
+    assert "1 earlier revision will appear" in r.text
+    assert _dispatch_island(r.text)["source_choice"] == ""
+
+
+@pytest.mark.asyncio
+async def test_url_check_case_b_flags_a_stored_spec_the_schema_rejects(client, session):
+    await _unbound(session, "https://reuse3.example.com/p", [_STALE])
+
+    r = await client.get(
+        "/dashboard/register/url-check?url=https://reuse3.example.com/p", headers=_HEADERS
+    )
+    assert "fails the current schema" in r.text
+    assert "selector" in r.text
+
+
+@pytest.mark.asyncio
+async def test_register_case_b_reuses_the_one_source(client, session):
+    url = "https://reuse4.example.com/p"
+    src = await _unbound(session, url, [_FULL_PAGE], revisions=2)
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data=_submit(url, source_choice=str(src.info_source_id)),
+    )
+    assert resp.status_code == 303
+    assert [s.info_source_id for s in await _sources_at(session, url)] == [src.info_source_id]
+    (item,) = await _items_named(session, "Case B Item")
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    assert binding.info_source_id == src.info_source_id
+
+    payloads = (
+        await session.execute(
+            select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.changes")
+        )
+    ).scalars()
+    events = [p for p in payloads if p.get("event_type") == "info_item_primary_changed"]
+    assert len(events) == 1
+    assert events[0]["old_info_source_id"] is None
+    assert events[0]["new_info_source_id"] == str(src.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_register_case_b_saves_edited_specs_onto_the_reused_source(client, session):
+    url = "https://reuse5.example.com/p"
+    src = await _unbound(session, url, [_FULL_PAGE])
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data=_submit(url, source_choice=str(src.info_source_id), source_specs=json.dumps([_CSS])),
+    )
+    assert resp.status_code == 303
+    await session.refresh(src)
+    assert src.source_specs == [_CSS]
+
+
+@pytest.mark.asyncio
+async def test_register_case_b_unchosen_is_refused(client, session):
+    url = "https://reuse6.example.com/p"
+    a = await _unbound(session, url, [_FULL_PAGE])
+    await _unbound(session, url, [_CSS])
+
+    resp = await client.post("/dashboard/register", headers=_HEADERS, data=_submit(url))
+    assert resp.status_code == 422
+    assert "registerWizard(1)" in resp.text
+    assert "Choose" in resp.text
+    assert await _items_named(session, "Case B Item") == []
+    assert len(await _sources_at(session, url)) == 2
+    # The card re-renders server-side, still with nothing chosen.
+    assert _choices(resp.text)[str(a.info_source_id)] is False
+
+
+@pytest.mark.asyncio
+async def test_register_case_b_opt_out_creates_a_new_source(client, session):
+    url = "https://reuse7.example.com/p"
+    src = await _unbound(session, url, [_FULL_PAGE])
+
+    resp = await client.post(
+        "/dashboard/register", headers=_HEADERS, data=_submit(url, source_choice="new")
+    )
+    assert resp.status_code == 303
+    sources = await _sources_at(session, url)
+    assert len(sources) == 2
+    (item,) = await _items_named(session, "Case B Item")
+    binding = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    assert binding.info_source_id != src.info_source_id
+
+
+@pytest.mark.asyncio
+async def test_register_case_b_refuses_a_stored_spec_the_schema_rejects(client, session):
+    url = "https://reuse8.example.com/p"
+    src = await _unbound(session, url, [_STALE])
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data=_submit(url, source_choice=str(src.info_source_id), source_specs=json.dumps([_STALE])),
+    )
+    assert resp.status_code == 422
+    assert "registerWizard(2)" in resp.text
+    assert "selector" in resp.text
+    assert await _items_named(session, "Case B Item") == []
+    # The operator's choice survives the re-render.
+    assert _choices(resp.text)[str(src.info_source_id)] is True
+    await session.refresh(src)
+    assert src.source_specs == [_STALE]
+
+
+@pytest.mark.asyncio
+async def test_register_case_b_source_bound_since_the_check_is_a_409(client, session):
+    url = "https://reuse9.example.com/p"
+    src = await _unbound(session, url, [_FULL_PAGE])
+    other = InfoItem(name="Got There First")
+    session.add(other)
+    await session.flush()
+    await bind_info_source(
+        session, info_item_id=other.info_item_id, info_source_id=src.info_source_id
+    )
+    await session.flush()
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data=_submit(url, source_choice=str(src.info_source_id)),
+    )
+    assert resp.status_code == 409
+    assert "Got There First" in resp.text
+    assert await _items_named(session, "Case B Item") == []
+
+
+@pytest.mark.asyncio
+async def test_register_case_b_choice_must_be_a_source_at_this_url(client, session):
+    url = "https://reuse10.example.com/p"
+    await _unbound(session, url, [_FULL_PAGE])
+    elsewhere = await _unbound(session, "https://reuse10.example.com/other", [_FULL_PAGE])
+
+    resp = await client.post(
+        "/dashboard/register",
+        headers=_HEADERS,
+        data=_submit(url, source_choice=str(elsewhere.info_source_id)),
+    )
+    assert resp.status_code == 422
+    assert await _items_named(session, "Case B Item") == []
+
+
+@pytest.mark.asyncio
+async def test_register_review_names_the_information_source(client):
+    r = await client.get("/dashboard/register", headers=_HEADERS)
+    assert 'x-text="sourceChoiceLabel"' in r.text
