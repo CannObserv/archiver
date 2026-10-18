@@ -20,6 +20,7 @@ from src.core.models import (
 )
 from src.core.models.domain import Domain
 from src.core.tools.bind_info_source import bind_info_source
+from src.dashboard.routes.register import _specs_summary
 
 _HEADERS = {"X-ExeDev-UserID": "ext-reg", "X-ExeDev-Email": "reg@example.com"}
 
@@ -1002,3 +1003,17 @@ async def test_url_check_case_b_reports_a_malformed_stored_spec(client, session)
     assert r.status_code == 200
     assert "fails the current schema" in r.text
     assert "/source_specs/0" in r.text
+
+
+@pytest.mark.parametrize(
+    ("specs", "summary"),
+    [
+        ([_CSS], "css: #a"),
+        ([_FULL_PAGE], "full_page"),
+        ([_CSS, _FULL_PAGE], "2 specs (css + full_page)"),
+        (["not-a-spec"], "?"),
+    ],
+)
+def test_specs_summary_matches_the_wizards(specs, summary):
+    """The card's server-side summary mirrors the wizard's ``selectorSummary`` (CR 7)."""
+    assert _specs_summary(specs) == summary
