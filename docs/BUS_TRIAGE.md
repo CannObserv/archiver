@@ -15,7 +15,11 @@ sections render server-side on load; each is also its own partial, which its Re-
 Previous / Next buttons and its row actions swap whole (`hx-swap="outerHTML"`). Every
 partial response renders with `swapped`, so its focus script moves focus to the section's
 `<h2 tabindex="-1">` (SCREENS.md § HTMX mutations): each swap removes the button clicked.
-The page's own render never moves focus. Routes in
+The page's own render never moves focus. Every request in a section carries
+`hx-sync="#<section id>:drop"`, and each write `hx-disabled-elt="this"`: one request per
+section at a time, so a Re-list can't strand an in-flight action's response (dropped on a
+detached element, its toast still fired) and a double click can't run a handler twice
+(the archiver#220 rule, for a section that does not poll). Routes in
 `src/dashboard/routes/bus_triage.py`, messages in `src/dashboard/bus_triage.py`; both call
 the core triage modules directly, with no API route between.
 

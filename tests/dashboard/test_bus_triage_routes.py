@@ -10,6 +10,7 @@ import asyncio
 import logging
 import re
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from unittest.mock import patch
 
 import pytest
@@ -757,3 +758,55 @@ async def test_every_route_requires_a_dashboard_login(
     await session.refresh(row)
     assert row.dead_lettered_at is not None
     assert await fake_redis.xlen(DLQ) == 1
+
+
+# ---------------------------------------------------------------------------
+# Overlapping requests (archiver#220's rule, applied to a section with no poll)
+# ---------------------------------------------------------------------------
+
+
+class _Requesters(HTMLParser):
+    """Every element in a fragment that issues an htmx request, with its attributes."""
+
+    def __init__(self):
+        super().__init__()
+        self.found: list[dict] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if "hx-get" in a or "hx-post" in a:
+            self.found.append(a)
+
+
+def _requesters(html: str) -> list[dict]:
+    parser = _Requesters()
+    parser.feed(html)
+    return parser.found
+
+
+@pytest.mark.parametrize("which", ["outbox", "dlq"])
+async def test_every_section_request_drops_while_another_is_in_flight(
+    client, session, fake_redis, which
+):
+    """A Re-list that swaps first strands an in-flight Discard's response on a
+    detached element: dropped, while its toast still fires - the table and the
+    toast disagree. A double-clicked Reprocess runs the handler twice. So every
+    request syncs on its section with ``drop``, and each write disables its
+    button while in flight."""
+    if which == "outbox":
+        rows = [await _dead_lettered(session) for _ in range(3)]
+        assert rows
+        url, dom_id = f"{OUTBOX}?limit=2&offset=1", "triage-outbox"
+    else:
+        for n in range(3):
+            await _park(fake_redis, source_id=f"{n}-0")
+        url, dom_id = f"{DLQ_URL}?limit=2&offset=1", "triage-dlq-content-revisions-dlq"
+
+    found = _requesters((await client.get(url, headers=_HEADERS)).text)
+
+    assert any("hx-post" in a for a in found), "non-vacuity: no action rendered"
+    assert any("hx-get" in a for a in found), "non-vacuity: no re-list or paging"
+    for a in found:
+        assert a.get("hx-sync") == f"#{dom_id}:drop", a
+        if "hx-post" in a:
+            assert a.get("hx-disabled-elt") == "this", a

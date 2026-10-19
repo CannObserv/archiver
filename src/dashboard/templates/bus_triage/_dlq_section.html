@@ -1,13 +1,16 @@
 {# Partial: one DLQ section (archiver#271). Context: `section` (DlqSection).
    Returned by GET /dashboard/bus-triage/dlq/{dlq} and by both row actions.
    `state` other than "ok" is a broker that cannot be read - never rendered as
-   an empty queue (the API's 409 / 503). #}
+   an empty queue (the API's 409 / 503).
+   Every request here syncs on the section with `drop`, and each write disables
+   its button in flight: a Re-list that swapped first would strand an in-flight
+   action's response on a detached element - dropped, its toast still fired. #}
 <section id="{{ section.dom_id }}" class="entity-section" aria-labelledby="{{ section.dom_id }}-title">
   <div class="entity-section__header">
     <h2 id="{{ section.dom_id }}-title" class="entity-section__title" tabindex="-1"><code>{{ section.dlq }}</code></h2>
     <button type="button" class="btn btn--ghost btn--sm"
             hx-get="{{ section.url }}?offset={{ section.offset }}&amp;limit={{ section.limit }}"
-            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML">Re-list</button>
+            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ section.dom_id }}:drop">Re-list</button>
   </div>
   <p class="text-sm text-muted">
     Shared by every group consuming the stream. Reprocess runs archiver's own
@@ -77,7 +80,7 @@
               {% if e.owned %}
               <button type="button" class="btn btn--sm btn--secondary"
                       hx-post="{{ section.url }}/{{ e.entry_id }}/reprocess?limit={{ section.limit }}&amp;offset={{ section.offset }}"
-                      hx-target="#{{ section.dom_id }}" hx-swap="outerHTML"
+                      hx-target="#{{ section.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ section.dom_id }}:drop" hx-disabled-elt="this"
                       aria-label="Reprocess entry {{ e.entry_id }}">Reprocess</button>
               {% else %}
               <button type="button" class="btn btn--sm btn--secondary" disabled
@@ -86,7 +89,7 @@
               {% endif %}
               <button type="button" class="btn btn--sm btn--danger"
                       hx-post="{{ section.url }}/{{ e.entry_id }}/discard?limit={{ section.limit }}&amp;offset={{ section.offset }}"
-                      hx-target="#{{ section.dom_id }}" hx-swap="outerHTML"
+                      hx-target="#{{ section.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ section.dom_id }}:drop" hx-disabled-elt="this"
                       hx-confirm="{{ section.confirms[e.entry_id] }}"
                       aria-label="Discard entry {{ e.entry_id }}">Discard</button>
             </div>
@@ -105,12 +108,12 @@
     {% if section.offset > 0 %}
     <button type="button" class="btn btn--ghost btn--sm"
             hx-get="{{ section.url }}?offset={{ [section.offset - section.limit, 0] | max }}&amp;limit={{ section.limit }}"
-            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML">← Previous</button>
+            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ section.dom_id }}:drop">← Previous</button>
     {% endif %}
     {% if section.has_more %}
     <button type="button" class="btn btn--ghost btn--sm"
             hx-get="{{ section.url }}?offset={{ section.offset + section.limit }}&amp;limit={{ section.limit }}"
-            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML">Next →</button>
+            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ section.dom_id }}:drop">Next →</button>
     {% endif %}
   </div>
   {% endif %}
