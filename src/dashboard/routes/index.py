@@ -72,7 +72,7 @@ def _badge(variant: str, text: str, *, detail: str = "", href: str = "") -> HTML
     return HTMLResponse(f'<span class="badge badge--{variant}"{title}>{text}</span>')
 
 
-_INIT_FAILED_DETAIL = (
+INIT_FAILED_DETAIL = (
     "ARCHIVER_REDIS_URL is set but no client exists - bus init raised "
     "at startup; see the lifespan's logged exception"
 )
@@ -93,7 +93,7 @@ def _no_client_badge() -> HTMLResponse:
         return _badge(
             "danger",
             "init failed",
-            detail=html_escape(_INIT_FAILED_DETAIL),
+            detail=html_escape(INIT_FAILED_DETAIL),
         )
     return _badge("muted", "not configured")
 
@@ -142,7 +142,7 @@ async def dashboard_health_outbox(
             return _badge(
                 "danger",
                 "not draining (init failed)",
-                detail=html_escape(_INIT_FAILED_DETAIL),
+                detail=html_escape(INIT_FAILED_DETAIL),
             )
         return _badge("muted", "not draining")
     try:

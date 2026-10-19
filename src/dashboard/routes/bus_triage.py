@@ -72,6 +72,7 @@ from src.dashboard.bus_triage import (
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
+from src.dashboard.routes.index import INIT_FAILED_DETAIL
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as RedisAsync
@@ -93,10 +94,7 @@ OUTBOX_QUEUE = "changes_outbox"
 BROKER_READ_TIMEOUT_SECONDS = 5.0
 
 _DORMANT = "Bus dormant - no ARCHIVER_REDIS_URL, so there is no broker to read."
-_INIT_FAILED = (
-    "Bus init failed - ARCHIVER_REDIS_URL is set but no client exists; "
-    "see the lifespan's logged exception."
-)
+_INIT_FAILED = f"Bus init failed - {INIT_FAILED_DETAIL}."
 
 DlqState = Literal["ok", "dormant", "init_failed", "unreadable"]
 

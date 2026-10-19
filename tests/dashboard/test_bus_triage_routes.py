@@ -16,6 +16,7 @@ from co_core.pure.adapters.bus.dead_letter import dead_letter_fields
 from co_core.pure.adapters.bus.envelope import to_wire
 from co_core.pure.models.changes import SourceRevisionObservedEvent
 from fakeredis import aioredis as fakeredis_aio
+from markupsafe import escape
 from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -26,6 +27,7 @@ from src.api.main import app
 from src.core.changes.dlq_triage import TRIAGE_DLQS
 from src.core.models import AppUser, ChangesOutboxRow
 from src.dashboard.routes import bus_triage as bus_triage_routes
+from src.dashboard.routes import index as index_routes
 from tests.dashboard.conftest import read_flash
 
 _HEADERS = {"X-ExeDev-UserID": "ext-triage", "X-ExeDev-Email": "triage@example.com"}
@@ -337,6 +339,8 @@ async def test_a_bus_that_failed_init_says_so(client, monkeypatch):
     app.dependency_overrides[get_redis_client] = lambda: None
     r = await client.get(DLQ_URL, headers=_HEADERS)
     assert "init failed" in r.text
+    # One sentence for the condition, shared with the health-row badges.
+    assert str(escape(index_routes.INIT_FAILED_DETAIL)) in r.text
     assert "No dead letters" not in r.text
 
 
