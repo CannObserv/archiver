@@ -136,12 +136,6 @@ def _entry_present(html: str, entry_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def test_the_page_requires_a_dashboard_login(client):
-    r = await client.get(PAGE, follow_redirects=False)
-    assert r.status_code == 307
-    assert "/__exe.dev/login" in r.headers["location"]
-
-
 async def test_the_page_has_an_outbox_section_and_one_per_triage_dlq(client, fake_redis):
     r = await client.get(PAGE, headers=_HEADERS)
     assert r.status_code == 200
@@ -311,14 +305,6 @@ async def test_outbox_actions_work_bus_dormant(client, session, dormant):
     row = await _dead_lettered(session)
     r = await client.post(f"{OUTBOX}/{row.id}/rearm", headers=_HEADERS)
     assert read_flash(r)["showFlash"]["level"] == "success"
-
-
-async def test_outbox_actions_require_a_dashboard_login(client, session):
-    row = await _dead_lettered(session)
-    r = await client.post(f"{OUTBOX}/{row.id}/discard", follow_redirects=False)
-    assert r.status_code == 307
-    await session.refresh(row)
-    assert row.dead_lettered_at is not None
 
 
 # ---------------------------------------------------------------------------
@@ -728,3 +714,46 @@ async def test_an_entry_id_never_wraps(client, fake_redis):
     r = await client.get(DLQ_URL, headers=_HEADERS)
     assert re.search(rf"<code[^>]*white-space:nowrap[^>]*>{entry}</code>", r.text)
     assert re.search(r"<summary[^>]*white-space:nowrap[^>]*>Fields</summary>", r.text)
+
+
+_ROUTES = [
+    ("get", PAGE),
+    ("get", OUTBOX),
+    ("get", DLQ_URL),
+    ("post", f"{OUTBOX}/{{row}}/rearm"),
+    ("post", f"{OUTBOX}/{{row}}/discard"),
+    ("post", f"{DLQ_URL}/{{entry}}/reprocess"),
+    ("post", f"{DLQ_URL}/{{entry}}/discard"),
+]
+
+
+def test_every_bus_triage_route_is_in_the_login_sweep():
+    """Non-vacuity: a route added to the router must join ``_ROUTES``."""
+    swept = {
+        (m.upper(), p.replace("{row}", "{row_id}").replace("{entry}", "{entry_id}"))
+        for m, p in _ROUTES
+    }
+    swept = {(m, p.replace(DLQ, "{dlq}")) for m, p in swept}
+    mounted = {
+        (method, route.path)
+        for route in bus_triage_routes.router.routes
+        for method in route.methods
+    }
+    assert mounted == swept
+
+
+@pytest.mark.parametrize(("method", "path"), _ROUTES)
+async def test_every_route_requires_a_dashboard_login(
+    client, session, fake_redis, db_factory, method, path
+):
+    """Four of these write: none may run, or read, without the proxy's identity."""
+    row = await _dead_lettered(session)
+    entry = await _park(fake_redis, _observed_wire(str(ULID())), source_id="1-0")
+
+    r = await client.request(method, path.format(row=row.id, entry=entry), follow_redirects=False)
+
+    assert r.status_code == 307
+    assert "/__exe.dev/login" in r.headers["location"]
+    await session.refresh(row)
+    assert row.dead_lettered_at is not None
+    assert await fake_redis.xlen(DLQ) == 1
