@@ -98,8 +98,10 @@ numbers are neither.
 **Triaging dead-lettered outbox rows (archiver#191)** - the only way out of
 the terminal state; nothing expires one on its own, because an untriaged
 incident record ageing out silently is worse than a permanent warning.
-`src/core/changes/outbox_triage.py`, behind three operator routes, every write
-by explicit row id:
+`src/core/changes/outbox_triage.py`, behind the dashboard's **Bus triage**
+screen (`/dashboard/bus-triage`, archiver#271 - the Outbox badge links there in
+its "N dead-lettered" state; per-row Rearm and Discard, logged with the acting
+user) and three operator routes, every write by explicit row id:
 
 ```bash
 H='X-API-Key: <key>'; Q=http://localhost:8000/api/v1/tools/outbox/dead-lettered
@@ -127,7 +129,7 @@ curl -s -X POST -H "$H" -H 'Content-Type: application/json' \
 - **These write the database, not the broker**, so unlike the DLQ routes they
   work bus-dormant and are exercised on 8001 against the dev database. On 8000
   they are production writes, an operator's decision about named rows; an
-  agent does not run them unasked.
+  agent does not run them unasked, by curl or through the screen.
 
 **Stream trim allowlist (archiver#239)** - the drain loop `XTRIM`s exactly
 `trim_topics`, literally `{info.changes}` (set in `src/api/main.py`, pinned by

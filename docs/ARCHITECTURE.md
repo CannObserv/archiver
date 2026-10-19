@@ -34,6 +34,9 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                translation shared by both screens that offer the action, and
                                the one place that records why a refusal is a 200 rather than
                                a 4xx, archiver#171;
+                               bus_triage.py — the Bus triage screen's outcome→flash per
+                               core outcome, the discard confirm (names a foreign parking
+                               group) and parked-twice detection, archiver#271;
                                rep_fields_block.py — pure Replication Fields block view model:
                                rows per required raw key, source badges, the form parse,
                                archiver#307;

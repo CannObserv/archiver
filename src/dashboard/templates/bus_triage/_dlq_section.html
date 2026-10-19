@@ -1,0 +1,117 @@
+{# Partial: one DLQ section (archiver#271). Context: `section` (DlqSection).
+   Returned by GET /dashboard/bus-triage/dlq/{dlq} and by both row actions.
+   `state` other than "ok" is a broker that cannot be read - never rendered as
+   an empty queue (the API's 409 / 503). #}
+<section id="{{ section.dom_id }}" class="entity-section" aria-labelledby="{{ section.dom_id }}-title">
+  <div class="entity-section__header">
+    <h2 id="{{ section.dom_id }}-title" class="section-heading"><code>{{ section.dlq }}</code></h2>
+    <button type="button" class="btn btn--ghost btn--sm"
+            hx-get="{{ section.url }}?offset={{ section.offset }}&amp;limit={{ section.limit }}"
+            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML">Re-list</button>
+  </div>
+  <p class="text-sm text-muted">
+    Shared by every group consuming the stream. Reprocess runs archiver's own
+    handler and is offered only on entries archiver's group parked; discard
+    deletes whatever it is given, so read who parked it first.
+  </p>
+
+  {% if section.state == "dormant" %}
+  <p class="text-muted"><span class="badge badge--muted">dormant</span> {{ section.message }}</p>
+  {% elif section.state == "init_failed" %}
+  <p><span class="badge badge--danger">init failed</span> {{ section.message }}</p>
+  {% elif section.state == "unreadable" %}
+  <p><span class="badge badge--warning">unreadable</span> The queue could not be read: {{ section.message }}. Its depth is unknown, not zero.</p>
+  {% elif section.entries %}
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Entries in {{ section.dlq }}">
+    <table class="data-table" aria-label="Entries in {{ section.dlq }}">
+      <thead>
+        <tr>
+          <th class="data-table__th">Entry</th>
+          <th class="data-table__th">Parked by</th>
+          <th class="data-table__th">Decode</th>
+          <th class="data-table__th">Fields</th>
+          <th class="data-table__th">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in section.entries %}
+        {% set p = e.provenance %}
+        <tr data-entry-id="{{ e.entry_id }}">
+          <td class="data-table__cell">
+            <code class="text-sm">{{ e.entry_id }}</code>
+            <div class="text-xs text-muted">{{ e.dead_lettered_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</div>
+            {% if e.entry_id in section.duplicates %}
+            <span class="badge badge--info badge--sm"
+                  title="Another entry has the same group and source_id: one frame, parked twice. Count it once.">parked twice</span>
+            {% endif %}
+          </td>
+          <td class="data-table__cell text-sm">
+            {% if p.group %}
+            <code>{{ p.group }}</code>
+            {% if e.owned %}<span class="badge badge--success badge--sm">archiver</span>{% else %}<span class="badge badge--warning badge--sm">not archiver</span>{% endif %}
+            {% else %}
+            <span class="badge badge--warning badge--sm">no provenance</span>
+            {% endif %}
+            {% if e.parked_as %}<div>{{ e.parked_as }}</div>{% endif %}
+            {% if p.source_id %}<div class="text-xs text-muted">source <code>{{ p.source_id }}</code></div>{% endif %}
+            {% if p.reason %}<div class="text-xs text-muted">{{ p.reason }}</div>{% endif %}
+          </td>
+          <td class="data-table__cell text-sm">
+            <div>{{ e.event_type or '-' }}</div>
+            {% if e.decodes %}
+            <span class="badge badge--success badge--sm"
+                  title="Decodes with the running co-core{% if e.parked_as == 'undecodable' %} - parked as undecodable, so version skew: reprocess{% endif %}">decodes</span>
+            {% else %}
+            <span class="badge badge--danger badge--sm">does not decode</span>
+            <div class="text-xs text-muted">{{ e.decode_error }}</div>
+            {% endif %}
+          </td>
+          <td class="data-table__cell">
+            <details>
+              <summary class="text-sm">Fields</summary>
+              <pre class="code-block">{{ e.fields | tojson(indent=2) }}</pre>
+            </details>
+          </td>
+          <td class="data-table__cell">
+            <div class="entity-card__actions">
+              {% if e.owned %}
+              <button type="button" class="btn btn--sm btn--secondary"
+                      hx-post="{{ section.url }}/{{ e.entry_id }}/reprocess?limit={{ section.limit }}&amp;offset={{ section.offset }}"
+                      hx-target="#{{ section.dom_id }}" hx-swap="outerHTML"
+                      aria-label="Reprocess entry {{ e.entry_id }}">Reprocess</button>
+              {% else %}
+              <button type="button" class="btn btn--sm btn--secondary" disabled
+                      title="Only entries archiver's group parked reprocess."
+                      aria-label="Reprocess unavailable for entry {{ e.entry_id }}">Reprocess</button>
+              {% endif %}
+              <button type="button" class="btn btn--sm btn--danger"
+                      hx-post="{{ section.url }}/{{ e.entry_id }}/discard?limit={{ section.limit }}&amp;offset={{ section.offset }}"
+                      hx-target="#{{ section.dom_id }}" hx-swap="outerHTML"
+                      hx-confirm="{{ section.confirms[e.entry_id] }}"
+                      aria-label="Discard entry {{ e.entry_id }}">Discard</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No dead letters{% if section.offset %} on this page{% endif %}.</p>
+  {% endif %}
+
+  {% if section.state == "ok" and (section.offset > 0 or section.has_more) %}
+  <div class="pagination">
+    {% if section.offset > 0 %}
+    <button type="button" class="btn btn--ghost btn--sm"
+            hx-get="{{ section.url }}?offset={{ [section.offset - section.limit, 0] | max }}&amp;limit={{ section.limit }}"
+            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML">← Previous</button>
+    {% endif %}
+    {% if section.has_more %}
+    <button type="button" class="btn btn--ghost btn--sm"
+            hx-get="{{ section.url }}?offset={{ section.offset + section.limit }}&amp;limit={{ section.limit }}"
+            hx-target="#{{ section.dom_id }}" hx-swap="outerHTML">Next →</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>

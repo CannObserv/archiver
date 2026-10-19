@@ -25,7 +25,9 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 
 **Tools:** read-only authoring helpers, plus operator controls that write - the
 registry republish, DLQ discard/reprocess (#238) and outbox rearm/discard (#191).
-Those take production action on 8000 and run only when the operator asks.
+Those take production action on 8000 and run only when the operator asks. The
+operator can also triage both from the dashboard's Bus triage screen (#271),
+which calls the same core functions without these routes.
 
 | Tool | HTTP | SDK method |
 |---|---|---|

@@ -110,7 +110,9 @@ production-write incident: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
 exception is DLQ discard and reprocess (#238): the queues exist only on prod's
 broker, so they go to 8000, and only when the operator asks
 ([docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)). Outbox discard and rearm
-(#191) follow the same rule on 8000 ([docs/BUS.md](docs/BUS.md)).
+(#191) follow the same rule on 8000 ([docs/BUS.md](docs/BUS.md)). The operator
+can do both on the dashboard's `/dashboard/bus-triage` (#271); the rule binds an
+agent there too.
 
 ## Environment Files
 

@@ -17,6 +17,7 @@ from src.dashboard.errors import (
     dashboard_unhandled_exception,
 )
 from src.dashboard.exceptions import DashboardNotFound
+from src.dashboard.routes.bus_triage import router as bus_triage_router
 from src.dashboard.routes.domains import router as domains_router
 from src.dashboard.routes.index import router as index_router
 from src.dashboard.routes.info_items import router as info_items_router
@@ -58,6 +59,7 @@ def register_dashboard(app: FastAPI) -> None:
     # proxy-header auth, and clients/python/scripts/regen.sh generates the SDK
     # from app.openapi() - any leaked path becomes public client surface (#87).
     for router in (
+        bus_triage_router,
         domains_router,
         register_router,
         index_router,

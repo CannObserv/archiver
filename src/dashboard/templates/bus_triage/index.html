@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Bus Triage{% endblock %}
+
+{# Dead-lettered outbox rows and archiver's DLQs (archiver#271) - the screen the
+   Outbox and Consumers badges link to in their "N dead-lettered" state. One
+   section per queue; each is its own partial, re-rendered by its row actions. #}
+{% block content %}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Bus Triage</h1>
+  </div>
+  <p class="text-sm text-muted">
+    Every action here is a write about one named row or entry, logged with who
+    asked. The rules are the runbooks' - <code>docs/BUS.md</code> for the outbox,
+    <code>docs/BUS_CONSUMERS.md</code> &sect; DLQ triage for the queues.
+  </p>
+</div>
+
+{% include "bus_triage/_outbox_section.html" %}
+
+{% for section in dlq_sections %}
+{% include "bus_triage/_dlq_section.html" %}
+{% endfor %}
+{% endblock %}

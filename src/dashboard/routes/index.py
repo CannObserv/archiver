@@ -59,9 +59,16 @@ async def dashboard_health_partial(
     return HTMLResponse('<span class="badge badge--success">ok</span>')
 
 
-def _badge(variant: str, text: str, *, detail: str = "") -> HTMLResponse:
-    """One badge span. ``detail`` must already be HTML-escaped."""
+# Where a badge's "N dead-lettered" state links (archiver#271, D2): the screen
+# that clears it, linked in that state only, as the Registry badge does.
+BUS_TRIAGE_HREF = "/dashboard/bus-triage"
+
+
+def _badge(variant: str, text: str, *, detail: str = "", href: str = "") -> HTMLResponse:
+    """One badge - a link when ``href`` is given. ``detail`` must already be HTML-escaped."""
     title = f' title="{detail}"' if detail else ""
+    if href:
+        return HTMLResponse(f'<a href="{href}" class="badge badge--{variant}"{title}>{text}</a>')
     return HTMLResponse(f'<span class="badge badge--{variant}"{title}>{text}</span>')
 
 
@@ -124,7 +131,8 @@ async def dashboard_health_outbox(
     design; #112 CR round 1, finding 1). danger "not draining (init failed)"
     when the URL *is* set: bus init raised, which is exactly when a stale
     backlog is ill health rather than dormancy (#147 CR round 2, finding 10).
-    danger: any dead-lettered (poison) row - needs an operator.
+    danger: any dead-lettered (poison) row - needs an operator; links to the
+    Bus triage screen (archiver#271).
     warning: oldest live unpublished row older than the backlog threshold -
     the drain is not keeping up or Redis has been down a while.
     success otherwise; the title carries the raw numbers in every drain state.
@@ -153,9 +161,11 @@ async def dashboard_health_outbox(
     parts.append(f"dead_lettered={stats.dead_lettered_count}")
     detail = html_escape(" ".join(parts))
     if stats.dead_lettered_count:
-        return HTMLResponse(
-            f'<span class="badge badge--danger" title="{detail}">'
-            f"{stats.dead_lettered_count} dead-lettered</span>"
+        return _badge(
+            "danger",
+            f"{stats.dead_lettered_count} dead-lettered",
+            detail=detail,
+            href=BUS_TRIAGE_HREF,
         )
     if age is not None and age > BACKLOG_WARN_AGE_SECONDS:
         return HTMLResponse(f'<span class="badge badge--warning" title="{detail}">backlog</span>')
@@ -350,7 +360,9 @@ async def dashboard_health_consumers(
     if dead_lettered:
         # Actionable even while both consumers run normally: every entry is a
         # frame the registry decided it could never use (archiver#162).
-        return _badge("danger", f"{dead_lettered} dead-lettered", detail=detail)
+        return _badge(
+            "danger", f"{dead_lettered} dead-lettered", detail=detail, href=BUS_TRIAGE_HREF
+        )
     if any(lag.pending is None for lag in lags.values()):
         return _badge("warning", "group missing", detail=detail)
     if any(lag.pending for lag in lags.values()):

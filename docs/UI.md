@@ -34,6 +34,7 @@ The other parts of this reference, under the same living-doc rule:
 ```
 /dashboard/                          Home - CTA, health strip, Recent Activity, domain overview
 /dashboard/registry-audit            Registry Audit - stored documents the current schemas reject
+/dashboard/bus-triage                Bus Triage - dead-lettered outbox rows and archiver's DLQs
 /dashboard/domains/                  Domains list
 /dashboard/domains/{name}            Domain detail - notes, status, linked sources
 /dashboard/register                  Register Information Item - 4-step flow

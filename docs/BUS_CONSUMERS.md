@@ -201,7 +201,10 @@ non-resting queue, dumps its entries under `dlq-evidence/` on the broker node,
 and names archiver; archiver reads the payloads and decides. The resting depth
 is 0, and the dashboard bus panel shows each queue's depth.
 
-`src/core/changes/dlq_triage.py` does the work, behind three operator routes:
+`src/core/changes/dlq_triage.py` does the work, behind the dashboard's **Bus
+triage** screen (`/dashboard/bus-triage`, archiver#271: one section per
+`TRIAGE_DLQS` queue, per-entry Reprocess and Discard, linked from the Consumers
+badge's "N dead-lettered" state; [PAGES.md](PAGES.md)) and three operator routes:
 
 ```bash
 H='X-API-Key: <key>'; Q=http://localhost:8000/api/v1/tools/dead-letters/content.revisions.dlq
@@ -216,8 +219,8 @@ curl -s -X POST -H "$H" -H 'Content-Type: application/json' \
 only on prod's broker, the dev server is bus-dormant (409), and a scratch bus
 holds none of prod's entries. Reprocess also writes prod's database, through
 the same handler the consumer loop runs. Both are an operator's decision about
-named entries. An agent does not run them unasked, and they are not
-verification the 8001 rule covers.
+named entries. An agent does not run them unasked - by curl or through the
+screen - and they are not verification the 8001 rule covers.
 
 - **Why it was parked comes with the entry.** Since co-core 0.19.1
   (cannobserv#474) each item's `provenance` carries the original `source_id`,
