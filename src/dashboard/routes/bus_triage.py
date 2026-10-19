@@ -147,10 +147,12 @@ class DlqSection:
 
     @property
     def url(self) -> str:
+        """The section partial's route; its row actions hang off it."""
         return f"{PAGE_PATH}/dlq/{self.dlq}"
 
     @property
     def dom_id(self) -> str:
+        """The section's element id: the swap target, and ``<id>-title`` its focus target."""
         return "triage-dlq-" + self.dlq.replace(".", "-")
 
 
