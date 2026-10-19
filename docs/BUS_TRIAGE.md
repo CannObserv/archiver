@@ -42,8 +42,10 @@ the core triage modules directly, with no API route between.
   badge on entries sharing `(provenance.group, provenance.source_id)` on the page. The read
   is bounded by `BROKER_READ_TIMEOUT_SECONDS` (5s, the lag probe's reason). States that are
   never an empty table: "dormant" (no `ARCHIVER_REDIS_URL`), "init failed" (URL set, no
-  client), "unreadable" (`RedisError` / `OSError` / timeout, only the exception's class name shown, as the API's 503 does - a broker message or a chained cause can carry its address; the full text goes to the `Bus triage DLQ read failed` warning).
-  Empty state "No dead letters." A queue outside `TRIAGE_DLQS` is the 404 page.
+  client), "unreadable" (`RedisError` / `OSError` / timeout; only the exception's class
+  name is shown, as the API's 503 does - a broker message or a chained cause can carry its
+  address - and the full text goes to the `Bus triage DLQ read failed` warning). Empty
+  state "No dead letters." A queue outside `TRIAGE_DLQS` is the 404 page.
 - **POST `.../dlq/{dlq}/{entry_id}/reprocess`** - rendered only on `owned` entries (else
   disabled). **POST `.../dlq/{dlq}/{entry_id}/discard`** - offered on every entry, as the
   API does (discard does not filter; deciding is archiver's role); its `hx-confirm` names
