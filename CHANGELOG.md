@@ -18,6 +18,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.30.1 (2026-10-19)
+
+[service] **co-core 0.32 → 0.37.1** (archiver#397), so **`info_item_primary_changed` keys on an occurrence** (archiver#394). Routes, schemas and `archiver-client` are unchanged; no SDK bump.
+
+- **The key.** On `info.changes`, `info_item_primary_changed` now keys on `info_item_id:new_info_source_id:occurred_at` (cannobserv#578). A re-bind of an earlier primary (a swap-back, `POST …/info-sources`, dashboard `bind-source`) gets a fresh key instead of repeating its first binding's. The payload and `schema_version` (1) are unchanged. The key is derived at publish, so outbox rows staged before the deploy take the new key too.
+- **Consumers.** An `info.watch-status` frame carrying 0.37's three new optional fields parses as before, and the cache reads none of them. On `content.artifacts` a capture outcome (cannobserv#571) now decodes and is acked as foreign; on 0.32 it was dead-lettered as undecodable. None can arrive until #380 issues captures ([BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)).
+- **Parser stack aligned with Processor's lock:** lxml 6.1.3, beautifulsoup4 4.15.0, soupsieve 2.10, pypdf 6.19.0. `co_core.pure.extract` is byte-identical 0.32.0 → 0.37.1. Preview fingerprints for all five production sources match their latest revisions on both locks.
+
 ## v4.30.0 (2026-10-17)
 
 [service] **Every new binding emits `info_item_primary_changed`** (archiver#390). Same payload, same `schema_version`. `archiver-client` surface unchanged: one regenerated docstring (`POST /info-items` now says it emits), no SDK bump.

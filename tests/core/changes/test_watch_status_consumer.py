@@ -12,12 +12,14 @@ Covers:
 5. Another event type on the stream is skipped-but-advanced
 6. A DB failure rewinds the reader — the message is redelivered, not lost
 7. The loop honours stop_event and cancels cleanly
+8. A co-core 0.37 frame's new optional fields parse and are ignored (#397)
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from datetime import UTC, datetime
 from unittest.mock import patch
 
@@ -318,6 +320,38 @@ async def test_open_vocabulary_health_token_applies(fake_redis, session_factory,
         )
         row = await _get_row(session_factory, item.info_item_id)
         assert row.health == long_health
+    finally:
+        await _cleanup_cursor(session_factory)
+
+
+async def test_co_core_037_status_fields_parse_and_are_ignored(fake_redis, session_factory, item):
+    """A 0.37 frame's three new optional fields (cannobserv#565) neither wedge the
+    consumer nor reach the cache: ``apply_watch_status`` reads none of them (#397).
+
+    The frame is patched by hand so it is what Watcher sends, whatever co-core
+    this side has installed. Adopting the fields is #371's.
+    """
+    frame = _status(str(item.info_item_id))
+    payload = json.loads(frame["payload"])
+    payload |= {
+        "last_full_fetch_at": OCCURRED_AT.isoformat(),
+        "health_reason": "http_status",
+        "health_status_code": 503,
+    }
+    frame["payload"] = json.dumps(payload)
+    try:
+        await fake_redis.xadd(WATCH_STATUS_TOPIC, frame)
+        reader = watch_status_consumer.build_reader(fake_redis)
+
+        assert (
+            await watch_status_consumer.consume_once(session_factory=session_factory, reader=reader)
+            == 1
+        )
+        row = await _get_row(session_factory, item.info_item_id)
+        assert (row.applied_generation, row.applied_active, row.health) == (1, True, "ok")
+        assert not {"last_full_fetch_at", "health_reason", "health_status_code"} & set(
+            WatchStatus.__table__.columns.keys()
+        )
     finally:
         await _cleanup_cursor(session_factory)
 
