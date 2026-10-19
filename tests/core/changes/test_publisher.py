@@ -1289,7 +1289,7 @@ def _processing_failed_event(command_id: str = "cmd-pfx") -> dict:
 
 
 def _capture_payload(event_type: str, command_id: str, **fields) -> dict:
-    """A full ``content.capture`` command or outcome payload (co-core 0.37.1, #571)."""
+    """A full ``content.capture`` command or outcome payload (co-core 0.37.1, cannobserv#571)."""
     return {
         "schema_version": 1,
         "event_type": event_type,
@@ -1302,7 +1302,7 @@ def _capture_payload(event_type: str, command_id: str, **fields) -> dict:
 
 
 def _watch_event(event_type: str, event_id: str, **fields) -> dict:
-    """A full ``info.watch-events`` fact payload (co-core 0.37.0, #563)."""
+    """A full ``info.watch-events`` fact payload (co-core 0.37.0, cannobserv#563)."""
     return {
         "schema_version": 1,
         "event_type": event_type,
@@ -1367,9 +1367,10 @@ _UNION_CASES = [
     (_content_process_command("cmd-cp"), "content_process", "cmd-cp"),
     (_processing_complete_event("cmd-pc"), "processing_complete", f"cmd-pc:{_OCCURRED_AT}"),
     (_processing_failed_event("cmd-pfx"), "processing_failed", f"cmd-pfx:{_OCCURRED_AT}"),
-    # co-core 0.37: the capture pair (#571) and headless Watcher's streams (#563,
-    # #564). Archiver emits none of them yet; they are here because the guard
-    # below pins this list to co-core's dispatch table.
+    # co-core 0.37: the capture pair (cannobserv#571) and headless Watcher's
+    # streams (cannobserv#563, cannobserv#564). Archiver emits none of them yet;
+    # they are here because the guard below pins this list to co-core's dispatch
+    # table.
     (
         _capture_payload(
             "content_capture",
