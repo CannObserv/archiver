@@ -303,16 +303,17 @@ async def bus_triage_dlq(
 # ---------------------------------------------------------------------------
 
 
-def _canonical_row_id(row_id: str) -> str | None:
-    """``row_id`` as the core keys it, or ``None`` if it is not a ULID.
+def _is_row_id(row_id: str) -> bool:
+    """Whether ``row_id`` parses as a ULID - what the core's ``ULID.from_str`` needs.
 
-    Canonical, not as typed: the core matches the lock query case-insensitively
-    but reports by ``str(row.id)``, so a lowercase id would be deleted-as-absent.
+    Strict, as the parser is: Crockford base32 in upper case only, so a
+    hand-typed lowercase id is refused here rather than raising in the core.
     """
     try:
-        return str(ULID.from_str(row_id))
+        ULID.from_str(row_id)
     except ValueError:
-        return None
+        return False
+    return True
 
 
 @router.post("/outbox/{row_id}/rearm", response_class=HTMLResponse)
@@ -324,12 +325,11 @@ async def bus_triage_outbox_rearm(
     page: Pagination = Depends(pagination),
 ) -> HTMLResponse:
     """Return one dead-lettered row to the drain's queue."""
-    canonical = _canonical_row_id(row_id)
-    if canonical is None:
+    if not _is_row_id(row_id):
         flash: Flash = ("error", f"Not an outbox row id: {row_id}. Nothing was changed.")
     else:
-        [result] = await rearm_dead_lettered(session, [canonical])
-        _audit(user, action="rearm", queue=OUTBOX_QUEUE, ids=[canonical], outcome=result.outcome)
+        [result] = await rearm_dead_lettered(session, [row_id])
+        _audit(user, action="rearm", queue=OUTBOX_QUEUE, ids=[row_id], outcome=result.outcome)
         flash = rearm_flash(result)
     return _render_outbox(request, await _outbox_section(session, page), flash)
 
@@ -343,19 +343,18 @@ async def bus_triage_outbox_discard(
     page: Pagination = Depends(pagination),
 ) -> HTMLResponse:
     """Delete one dead-lettered row, logged in full by the core first."""
-    canonical = _canonical_row_id(row_id)
-    if canonical is None:
+    if not _is_row_id(row_id):
         flash: Flash = ("error", f"Not an outbox row id: {row_id}. Nothing was deleted.")
     else:
-        outcome = await discard_dead_lettered(session, [canonical])
+        outcome = await discard_dead_lettered(session, [row_id])
         _audit(
             user,
             action="discard",
             queue=OUTBOX_QUEUE,
-            ids=[canonical],
+            ids=[row_id],
             outcome="discarded" if outcome.discarded else "not_found",
         )
-        flash = outbox_discard_flash(outcome, canonical)
+        flash = outbox_discard_flash(outcome, row_id)
     return _render_outbox(request, await _outbox_section(session, page), flash)
 
 

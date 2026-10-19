@@ -289,6 +289,17 @@ async def test_discard_deletes_the_row(client, session):
     assert gone.scalar_one_or_none() is None
 
 
+async def test_a_lowercase_row_id_is_refused_and_touches_nothing(client, session):
+    """``ULID.from_str`` accepts upper case only, so a hand-typed lowercase id is a
+    malformed id: an error flash, and the row stays dead-lettered."""
+    row = await _dead_lettered(session)
+
+    r = await client.post(f"{OUTBOX}/{str(row.id).lower()}/discard", headers=_HEADERS)
+
+    assert read_flash(r)["showFlash"]["level"] == "error"
+    assert _row_present(r.text, str(row.id))
+
+
 async def test_an_action_keeps_the_page_it_was_taken_on(client, session):
     row = await _dead_lettered(session)
     r = await client.post(f"{OUTBOX}/{row.id}/discard?limit=7&offset=0", headers=_HEADERS)
