@@ -259,9 +259,13 @@ async def bus_triage_page(
     redis: "RedisAsync | None" = Depends(get_redis_client),
     page: Pagination = Depends(pagination),
 ) -> HTMLResponse:
-    """Every section's first page, rendered server-side."""
+    """Every section's first page, rendered server-side.
+
+    The queues are read at once, so a hung broker costs the page one
+    ``BROKER_READ_TIMEOUT_SECONDS``, not one per queue.
+    """
     outbox = await _outbox_section(session, page)
-    dlqs = [await _dlq_section(redis, dlq, page) for dlq in TRIAGE_DLQS]
+    dlqs = await asyncio.gather(*(_dlq_section(redis, dlq, page) for dlq in TRIAGE_DLQS))
     return _templates.TemplateResponse(
         request,
         "bus_triage/index.html",

@@ -368,6 +368,24 @@ async def test_a_hung_broker_is_bounded(client, fake_redis, monkeypatch):
     assert "0.05s" in r.text
 
 
+async def test_the_page_bounds_a_hung_broker_once_not_per_queue(client, fake_redis, monkeypatch):
+    """The page reads every queue at once, so a hung broker costs one bound, not N."""
+    monkeypatch.setattr(bus_triage_routes, "BROKER_READ_TIMEOUT_SECONDS", 0.5)
+
+    async def hang(*_a, **_kw):
+        await asyncio.sleep(10)
+
+    assert len(TRIAGE_DLQS) >= 2, "non-vacuity: one queue cannot tell the two apart"
+    loop = asyncio.get_running_loop()
+    with patch.object(fake_redis, "xrange", hang):
+        started = loop.time()
+        r = await client.get(PAGE, headers=_HEADERS)
+        elapsed = loop.time() - started
+
+    assert r.text.count(">unreadable</span>") == len(TRIAGE_DLQS)
+    assert elapsed < 0.5 * len(TRIAGE_DLQS) - 0.1
+
+
 async def test_an_empty_queue_says_so(client, fake_redis):
     r = await client.get(DLQ_URL, headers=_HEADERS)
     assert "No dead letters" in r.text
