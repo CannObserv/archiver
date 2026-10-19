@@ -21,7 +21,10 @@ section at a time (the archiver#220 rule, for a section that does not poll). Uns
 Re-list that swapped first would strand an in-flight action's response on a detached
 element: its swap and its toast both lost, though the write commits (`HX-Trigger` fires on
 the requesting button, which no longer reaches `document`; HTMX.md). Landing second
-instead, a stale Re-list would hide the result. And a double click ran a handler twice. Routes in
+instead, a stale Re-list would hide the result. And a double click ran a handler twice.
+The cost, as on the polling sections: a click while a section request is in flight is
+dropped with no confirm and no feedback - on a hung broker, up to the 5s read bound behind
+a Re-list. Routes in
 `src/dashboard/routes/bus_triage.py`, messages in `src/dashboard/bus_triage.py`; both call
 the core triage modules directly, with no API route between.
 
