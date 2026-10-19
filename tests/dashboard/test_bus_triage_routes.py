@@ -217,7 +217,7 @@ async def test_the_outbox_section_pages(client, session):
     rows = [await _dead_lettered(session) for _ in range(3)]
     r = await client.get(f"{OUTBOX}?limit=2", headers=_HEADERS)
     shown = [row for row in rows if _row_present(r.text, str(row.id))]
-    assert len(shown) <= 2
+    assert len(shown) == 2
     assert f"{OUTBOX}?offset=2&amp;limit=2" in r.text
 
 
