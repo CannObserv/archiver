@@ -387,8 +387,9 @@ wheelhouse before `uv sync`/`uv run`:
 ## Wheelhouse reproducibility
 
 Reproducibility is `uv.lock` (pinned version + wheelhouse artifact), not the
-wheelhouse contents. Upgrade: re-sync, then `uv lock --upgrade-package co-core`
-(bump the floor if the minor moved). CI resolves the wheelhouse keyless via Workload
+wheelhouse contents. Upgrade: re-sync, then `uv lock --upgrade-package co-core
+--upgrade-package co-core-aio`, together: co-core-aio pins co-core to its own minor, so a
+minor move bumps both floors (#397). CI resolves the wheelhouse keyless via Workload
 Identity Federation; `scripts/deploy.sh` fetches it into each release (§ Releases). No git sources and
 no `cannobserv`/`co-core-sync` (heavy google/trello deps). Archiver depends on
 **`co-core[extract]`** + `co-core-aio` — the authoring tools use `co_core_aio.fetch`

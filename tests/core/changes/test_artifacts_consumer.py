@@ -10,7 +10,8 @@ Covers, per-message:
 4. A non-terminal failure → command still open, acked
 5. An unknown command_id → ack and drop, nothing written
 6. A DB failure leaves the message un-acked (redelivery, not loss)
-7. Another event type on the stream → acked, ignored
+7. Another event type on the stream → acked, ignored; the capture outcomes
+   (cannobserv#571) are one, until #380 handles them
 8. ``blob_persisted`` / ``persist_failed`` (archiver#276) → applied to the persist
    command and its digest's revisions, acked; unknown command → dropped
 
@@ -21,6 +22,7 @@ And, around the loop:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import patch
 
@@ -307,6 +309,72 @@ async def test_foreign_event_type_is_acked_and_ignored(fake_redis, session_facto
     async with session_factory() as s:
         count = await s.scalar(select(func.count()).select_from(ReplicationCommand))
     assert count == 1
+
+
+def _capture_frame(event_type: str, payload: dict) -> dict[str, str]:
+    """A capture outcome as Replicator would put it on the wire (cannobserv#571).
+
+    Built by hand, not with ``to_wire``: it is the frame that arrives, whatever
+    co-core this side has installed.
+    """
+    occurred_at = OCCURRED_AT.isoformat()
+    body = {
+        "schema_version": 1,
+        "event_type": event_type,
+        "occurred_at": occurred_at,
+        "command_id": "cmd-capture-1",
+        "url": "https://example.com/artifacts",
+        "info_source_id": "01K2E0CCCCCCCCCCCCCCCCCCCC",
+        **payload,
+    }
+    return {
+        "key": f"cmd-capture-1:{occurred_at}",
+        "payload": json.dumps(body),
+        "event_type": event_type,
+        "schema_version": "1",
+        "occurred_at": occurred_at,
+        "content_type": "application/json",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "payload"),
+    [
+        (
+            "capture_stored",
+            {
+                "content_fingerprint": "sha256:" + "e" * 64,
+                "blob_uri": "gs://co-blobs/e.png",
+                "media_type": "image/png",
+                "size_bytes": 2048,
+                "image_width": 1280,
+                "image_height": 800,
+                "final_url": "https://example.com/artifacts",
+                "captured_at": OCCURRED_AT.isoformat(),
+            },
+        ),
+        ("capture_failed", {"reason": "timeout", "terminal": True}),
+    ],
+)
+async def test_capture_outcome_is_acked_not_dead_lettered(
+    fake_redis, session_factory, event_type, payload
+):
+    """co-core 0.37.1 decodes the capture pair, so it takes the foreign-event ack.
+
+    On 0.32 the same frame was an unknown event type: undecodable, dead-lettered.
+    Until #380 adds handlers, an outcome is acked and dropped (#397): #380's
+    branches turn this test red, which is the point.
+    """
+    await _publish(fake_redis, _capture_frame(event_type, payload))
+
+    with patch.object(artifacts_consumer.logger, "info") as info:
+        assert await _consume(fake_redis, session_factory) == 1
+
+    assert await _pending(fake_redis) == 0
+    assert await fake_redis.xlen(f"{CONTENT_ARTIFACTS}.dlq") == 0
+    ignored = [c for c in info.call_args_list if c.args[0].startswith("Ignoring non-outcome")]
+    assert [c.kwargs["extra"]["event_type"] for c in ignored] == [event_type]
 
 
 # --- the persist outcomes (archiver#276) ---

@@ -58,13 +58,7 @@ only starts when `ARCHIVER_REDIS_URL` is set. Two event types:
 | Event type | Trigger | Payload type (co-core) |
 |---|---|---|
 | `source_revision_captured` | New `SourceRevision` insert - from `POST /source-revisions` **or** from a `content.revisions` observation, on the non-idempotent path either way | `co_core.pure.models.changes.SourceRevisionCapturedEvent` |
-| `info_item_primary_changed` | **Every** new active binding: `bind_info_source` is the one writer and emits (archiver#390; `tests/core/test_binding_guard.py`). Callers: `POST /info-items` (`initial_url`), `POST …/info-sources`, `PUT …/primary-source`, dashboard `info-items/new`, `bind-source`, `register` and both swaps. `old_info_source_id`: latest closed tenure, else null. A no-op swap emits nothing; a revert re-uses a key (below) | `co_core.pure.models.changes.InfoItemPrimaryChangedEvent` |
-
-**A revert re-uses the primary-changed key (archiver#45).** The key
-`{info_item_id}:{new_info_source_id}` was unique only while a source could not be
-re-bound; a swap-back now binds the pair again, so A → B → A repeats A's key and a
-`key`-deduping consumer drops the revert. Any re-bind of an earlier primary repeats
-its key the same way. No consumer is known; the fix is co-core's (cannobserv#578).
+| `info_item_primary_changed` | **Every** new active binding: `bind_info_source` is the one writer and emits (archiver#390; `tests/core/test_binding_guard.py`). Callers: `POST /info-items` (`initial_url`), `POST …/info-sources`, `PUT …/primary-source`, dashboard `info-items/new`, `bind-source`, `register` and both swaps. `old_info_source_id`: latest closed tenure, else null. A no-op swap emits nothing | `co_core.pure.models.changes.InfoItemPrimaryChangedEvent` |
 
 The payload models live in **co-core** (`co_core.pure.models.changes`) - lifted
 from archiver in cannobserv#261 so the whole cluster shares one contract. Emit
@@ -74,7 +68,8 @@ canonical classes are `extra="ignore"` (consumer-safe forward-compat). The
 **wire envelope** is the XADD field map `key` / `payload` (full event JSON) /
 `event_type` / `schema_version` / `occurred_at` / `content_type`; the idempotency
 `key` is derived per type by co-core (`source_revision_id`; the
-`{info_item_id}:{new_info_source_id}` composite).
+`{info_item_id}:{new_info_source_id}:{occurred_at}` occurrence, so a revert to an
+earlier primary gets a fresh key: cannobserv#578, archiver#394).
 
 **Producer-side observability (archiver#112)** - the Archiver half of the
 archiver#109 monitoring split (consumer lag/DLQ is Replicator's, Phase 3).

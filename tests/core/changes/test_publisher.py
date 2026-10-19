@@ -205,11 +205,13 @@ async def test_drain_single_row_writes_canonical_envelope(session_factory, publi
 
 
 @pytest.mark.asyncio
-async def test_primary_changed_key_is_composite(session_factory, publisher, fake_redis):
-    """info_item_primary_changed derives the composite idempotency key.
+async def test_primary_changed_key_is_an_occurrence(session_factory, publisher, fake_redis):
+    """info_item_primary_changed keys on ``item:new_source:occurred_at`` (#394).
 
     (The old hand-rolled publisher keyed every event on ``source_revision_id``,
-    yielding an empty key for this type - co-core's ``idempotency_key`` fixes it.)
+    yielding an empty key for this type - co-core's ``idempotency_key`` fixes it.
+    Through co-core 0.37.0 the key was the bare composite; cannobserv#578 added
+    ``occurred_at``.)
     """
     await _insert_row(
         session_factory,
@@ -221,8 +223,26 @@ async def test_primary_changed_key_is_composite(session_factory, publisher, fake
 
     messages = await fake_redis.xrange("info.changes")
     _msg_id, fields = messages[0]
-    assert fields[b"key"] == b"item-1:src-9"
+    assert fields[b"key"] == f"item-1:src-9:{_OCCURRED_AT}".encode()
     assert fields[b"event_type"] == b"info_item_primary_changed"
+
+
+@pytest.mark.asyncio
+async def test_primary_changed_revert_gets_a_fresh_key(session_factory, publisher, fake_redis):
+    """A → B → A re-binds A: its second emit must not repeat the first's key (#394).
+
+    The key is derived at publish from the stored ``occurred_at``, so a row staged
+    before the co-core bump takes the new key too.
+    """
+    first = _primary_changed_event(info_item_id="item-1", new_info_source_id="src-a")
+    revert = {**first, "occurred_at": "2026-07-29T12:00:00+00:00"}
+    await _insert_row(session_factory, payload=first)
+    await _insert_row(session_factory, payload=revert)
+
+    assert await drain_once(session_factory=session_factory, publisher=publisher) == 2
+
+    keys = [fields[b"key"] for _, fields in await fake_redis.xrange("info.changes")]
+    assert len(set(keys)) == 2
 
 
 @pytest.mark.asyncio
@@ -1268,6 +1288,32 @@ def _processing_failed_event(command_id: str = "cmd-pfx") -> dict:
     }
 
 
+def _capture_payload(event_type: str, command_id: str, **fields) -> dict:
+    """A full ``content.capture`` command or outcome payload (co-core 0.37.1, cannobserv#571)."""
+    return {
+        "schema_version": 1,
+        "event_type": event_type,
+        "occurred_at": _OCCURRED_AT,
+        "command_id": command_id,
+        "url": "https://example.com/capture",
+        "info_source_id": _INFO_SOURCE_ID,
+        **fields,
+    }
+
+
+def _watch_event(event_type: str, event_id: str, **fields) -> dict:
+    """A full ``info.watch-events`` fact payload (co-core 0.37.0, cannobserv#563)."""
+    return {
+        "schema_version": 1,
+        "event_type": event_type,
+        "occurred_at": _OCCURRED_AT,
+        "event_id": event_id,
+        "info_item_id": "item-we",
+        "info_source_id": _INFO_SOURCE_ID,
+        **fields,
+    }
+
+
 # The single source for both the parametrize below and the completeness guard that
 # pins it to co-core's dispatch table (CR round 1, finding 3).
 _UNION_CASES = [
@@ -1275,7 +1321,7 @@ _UNION_CASES = [
     (
         _primary_changed_event(info_item_id="item-u", new_info_source_id="src-u"),
         "info_item_primary_changed",
-        "item-u:src-u",
+        f"item-u:src-u:{_OCCURRED_AT}",  # an occurrence since co-core 0.37.1 (#394)
     ),
     (_content_fetch_command("cmd-u"), "content_fetch", "cmd-u"),
     # #300 re-keyed this from the bare fingerprint to fingerprint:command_id.
@@ -1321,6 +1367,76 @@ _UNION_CASES = [
     (_content_process_command("cmd-cp"), "content_process", "cmd-cp"),
     (_processing_complete_event("cmd-pc"), "processing_complete", f"cmd-pc:{_OCCURRED_AT}"),
     (_processing_failed_event("cmd-pfx"), "processing_failed", f"cmd-pfx:{_OCCURRED_AT}"),
+    # co-core 0.37: the capture pair (cannobserv#571) and headless Watcher's
+    # streams (cannobserv#563, cannobserv#564). Archiver emits none of them yet;
+    # they are here because the guard below pins this list to co-core's dispatch
+    # table.
+    (
+        _capture_payload(
+            "content_capture",
+            "cmd-cc",
+            viewport={"width": 1280, "height": 800},
+            full_page=True,
+        ),
+        "content_capture",
+        "cmd-cc",
+    ),
+    (
+        _capture_payload(
+            "capture_stored",
+            "cmd-cs",
+            content_fingerprint="sha256:" + "e" * 64,
+            blob_uri="gs://co-blobs/e.png",
+            media_type="image/png",
+            size_bytes=2048,
+            image_width=1280,
+            image_height=800,
+            final_url="https://example.com/capture",
+            captured_at=_OCCURRED_AT,
+        ),
+        "capture_stored",
+        f"cmd-cs:{_OCCURRED_AT}",
+    ),
+    (
+        _capture_payload("capture_failed", "cmd-cf", reason="timeout", terminal=True),
+        "capture_failed",
+        f"cmd-cf:{_OCCURRED_AT}",
+    ),
+    (
+        {
+            "schema_version": 1,
+            "event_type": "watch_check",
+            "occurred_at": _OCCURRED_AT,
+            "command_id": "cmd-wc",
+            "info_item_id": "item-wc",
+            "requested_at": _OCCURRED_AT,
+        },
+        "watch_check",
+        "cmd-wc",
+    ),
+    (
+        _watch_event(
+            "change_detected",
+            "evt-cd",
+            previous_fingerprint="sha256:" + "e" * 64,
+            current_fingerprint="sha256:" + "f" * 64,
+            previous_text_uri=None,
+            current_text_uri="gs://co-blobs/f.txt",
+        ),
+        "change_detected",
+        "evt-cd",
+    ),
+    (_watch_event("watch_error", "evt-we", reason="http_status"), "watch_error", "evt-we"),
+    (
+        _watch_event("watch_recovered", "evt-wr", error_since=_OCCURRED_AT),
+        "watch_recovered",
+        "evt-wr",
+    ),
+    (
+        _watch_event("check_rejected", "evt-cr", command_id="cmd-wc", reason="unknown_item"),
+        "check_rejected",
+        "evt-cr",
+    ),
 ]
 
 

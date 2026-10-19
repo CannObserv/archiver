@@ -94,9 +94,7 @@ core tool (`src/core/tools/swap_primary_source.py`). Outcomes:
 its own `id` (`InfoItemSourceOut.id`), so swapping back to an earlier primary - or binding one with
 `POST …/info-sources` - inserts a row, and the earlier tenure keeps its `created_at` and
 `deactivated_at`. `include_deactivated=true` therefore lists a source once per tenure, oldest
-first. The
-revert's `info_item_primary_changed` repeats the `{info_item_id}:{new_info_source_id}` key of the
-first binding: see [BUS.md](BUS.md).
+first. The revert's `info_item_primary_changed` gets a fresh key: see [BUS.md](BUS.md).
 
 **Every bind emits `info_item_primary_changed` once** (archiver#390): `POST /info-items` with
 `initial_url`, `POST …/info-sources` and the PUT all bind through `bind_info_source`, which emits.

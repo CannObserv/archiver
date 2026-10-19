@@ -2507,7 +2507,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.30.0"
+    "version": "4.30.1"
   },
   "openapi": "3.1.0",
   "paths": {
