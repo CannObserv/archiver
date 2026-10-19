@@ -363,13 +363,18 @@ async def test_capture_outcome_is_acked_not_dead_lettered(
     """co-core 0.37.1 decodes the capture pair, so it takes the foreign-event ack.
 
     On 0.32 the same frame was an unknown event type: undecodable, dead-lettered.
-    Until #380 adds handlers, an outcome is acked and dropped (#397).
+    Until #380 adds handlers, an outcome is acked and dropped (#397): #380's
+    branches turn this test red, which is the point.
     """
     await _publish(fake_redis, _capture_frame(event_type, payload))
 
-    assert await _consume(fake_redis, session_factory) == 1
+    with patch.object(artifacts_consumer.logger, "info") as info:
+        assert await _consume(fake_redis, session_factory) == 1
+
     assert await _pending(fake_redis) == 0
     assert await fake_redis.xlen(f"{CONTENT_ARTIFACTS}.dlq") == 0
+    ignored = [c for c in info.call_args_list if c.args[0].startswith("Ignoring non-outcome")]
+    assert [c.kwargs["extra"]["event_type"] for c in ignored] == [event_type]
 
 
 # --- the persist outcomes (archiver#276) ---
