@@ -63,7 +63,7 @@
             <div>{{ e.event_type or '-' }}</div>
             {% if e.decodes %}
             <span class="badge badge--success badge--sm"
-                  title="Decodes with the running co-core{% if e.parked_as == 'undecodable' %} - parked as undecodable, so version skew: reprocess{% endif %}">decodes</span>
+                  title="Decodes with the running co-core{% if e.owned and e.parked_as == 'undecodable' %} - parked as undecodable, so version skew: reprocess{% endif %}">decodes</span>
             {% else %}
             <span class="badge badge--danger badge--sm">does not decode</span>
             <div class="text-xs text-muted">{{ e.decode_error }}</div>

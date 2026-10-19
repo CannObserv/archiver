@@ -816,3 +816,11 @@ async def test_every_section_request_drops_while_another_is_in_flight(
         assert a.get("hx-sync") == f"#{dom_id}:drop", a
         if "hx-post" in a:
             assert a.get("hx-disabled-elt") == "this", a
+
+
+async def test_the_skew_hint_appears_only_where_reprocess_is_offered(client, fake_redis):
+    """ "Version skew: reprocess" on a foreign entry would point at a disabled button."""
+    await _park(fake_redis, _observed_wire(str(ULID())), source_id="1-0")
+    await _park(fake_redis, _observed_wire(str(ULID())), group="replicator.revisions")
+    r = await client.get(DLQ_URL, headers=_HEADERS)
+    assert r.text.count("version skew: reprocess") == 1
