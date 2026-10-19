@@ -28,7 +28,6 @@ is ``error`` when the core call raised.
 """
 
 import asyncio
-import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -78,7 +77,7 @@ from src.dashboard.bus_triage import (
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
-from src.dashboard.routes.index import INIT_FAILED_DETAIL
+from src.dashboard.routes.index import INIT_FAILED_DETAIL, bus_init_failed
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as RedisAsync
@@ -181,7 +180,7 @@ async def _outbox_section(session: AsyncSession, page: Pagination) -> OutboxSect
 
 def _no_client_state() -> tuple[DlqState, str]:
     """Why there is no broker client: configured off, or init raised with the URL set."""
-    if os.environ.get("ARCHIVER_REDIS_URL", "").strip():
+    if bus_init_failed():
         return "init_failed", _INIT_FAILED
     return "dormant", _DORMANT
 

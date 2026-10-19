@@ -78,6 +78,17 @@ INIT_FAILED_DETAIL = (
 )
 
 
+def bus_init_failed() -> bool:
+    """With no Redis client, whether that is init failure rather than dormancy.
+
+    The lifespan nulls the client both when ``ARCHIVER_REDIS_URL`` is unset and
+    when init raised with it set; only the URL tells them apart. One reading,
+    shared by the badges and the Bus triage screen (archiver#271), so the two
+    cannot disagree about which state the bus is in.
+    """
+    return bool(os.environ.get("ARCHIVER_REDIS_URL", "").strip())
+
+
 def _no_client_badge() -> HTMLResponse:
     """The badge for ``app.state.redis_client is None``, split by *why*.
 
@@ -89,7 +100,7 @@ def _no_client_badge() -> HTMLResponse:
     server's vocabulary. The URL is read here as configuration, which is all it
     is asked to answer (CR round 1, finding 3).
     """
-    if os.environ.get("ARCHIVER_REDIS_URL", "").strip():
+    if bus_init_failed():
         return _badge(
             "danger",
             "init failed",
@@ -138,7 +149,7 @@ async def dashboard_health_outbox(
     success otherwise; the title carries the raw numbers in every drain state.
     """
     if redis is None:
-        if os.environ.get("ARCHIVER_REDIS_URL", "").strip():
+        if bus_init_failed():
             return _badge(
                 "danger",
                 "not draining (init failed)",
