@@ -3,8 +3,9 @@
    `state` other than "ok" is a broker that cannot be read - never rendered as
    an empty queue (the API's 409 / 503).
    Every request here syncs on the section with `drop`, and each write disables
-   its button in flight: a Re-list that swapped first would strand an in-flight
-   action's response on a detached element - dropped, its toast still fired. #}
+   its button in flight. Unsynced, a Re-list that swapped first stranded an
+   in-flight action's response on a detached element - swap and toast both lost,
+   though the write committed; landing second, a stale Re-list hid the result. #}
 <section id="{{ section.dom_id }}" class="entity-section" aria-labelledby="{{ section.dom_id }}-title">
   <div class="entity-section__header">
     <h2 id="{{ section.dom_id }}-title" class="entity-section__title" tabindex="-1"><code>{{ section.dlq }}</code></h2>

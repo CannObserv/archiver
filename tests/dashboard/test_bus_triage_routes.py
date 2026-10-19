@@ -828,8 +828,9 @@ async def test_every_section_request_drops_while_another_is_in_flight(
     client, session, fake_redis, which
 ):
     """A Re-list that swaps first strands an in-flight Discard's response on a
-    detached element: dropped, while its toast still fires - the table and the
-    toast disagree. A double-clicked Reprocess runs the handler twice. So every
+    detached element: swap and toast both lost (``HX-Trigger`` fires on the
+    detached button), though the write commits. Landing second, a stale Re-list
+    hides the result. A double-clicked Reprocess runs the handler twice. So every
     request syncs on its section with ``drop``, and each write disables its
     button while in flight."""
     if which == "outbox":

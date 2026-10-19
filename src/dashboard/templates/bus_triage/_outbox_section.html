@@ -2,8 +2,9 @@
    Returned by GET /dashboard/bus-triage/outbox and by both row actions, which
    swap it whole and raise their outcome as a showFlash toast.
    Every request here syncs on the section with `drop`, and each write disables
-   its button in flight: a Re-list that swapped first would strand an in-flight
-   action's response on a detached element - dropped, its toast still fired. #}
+   its button in flight. Unsynced, a Re-list that swapped first stranded an
+   in-flight action's response on a detached element - swap and toast both lost,
+   though the write committed; landing second, a stale Re-list hid the result. #}
 <section id="{{ outbox.dom_id }}" class="entity-section" aria-labelledby="{{ outbox.dom_id }}-title">
   <div class="entity-section__header">
     <h2 id="{{ outbox.dom_id }}-title" class="entity-section__title" tabindex="-1">Outbox dead-letters</h2>

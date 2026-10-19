@@ -17,9 +17,11 @@ partial response renders with `swapped`, so its focus script moves focus to the 
 `<h2 tabindex="-1">` (SCREENS.md § HTMX mutations): each swap removes the button clicked.
 The page's own render never moves focus. Every request in a section carries
 `hx-sync="#<section id>:drop"`, and each write `hx-disabled-elt="this"`: one request per
-section at a time, so a Re-list can't strand an in-flight action's response (dropped on a
-detached element, its toast still fired) and a double click can't run a handler twice
-(the archiver#220 rule, for a section that does not poll). Routes in
+section at a time (the archiver#220 rule, for a section that does not poll). Unsynced, a
+Re-list that swapped first would strand an in-flight action's response on a detached
+element: its swap and its toast both lost, though the write commits (`HX-Trigger` fires on
+the requesting button, which no longer reaches `document`; HTMX.md). Landing second
+instead, a stale Re-list would hide the result. And a double click ran a handler twice. Routes in
 `src/dashboard/routes/bus_triage.py`, messages in `src/dashboard/bus_triage.py`; both call
 the core triage modules directly, with no API route between.
 
