@@ -46,9 +46,10 @@ belongs to no other item, so editing its specs affects no one.
 - **Review**: the step-4 **Information Source** row (`sourceChoiceLabel`) reads
   "Reuse the existing source (N earlier revisions will appear)" or "A new
   source".
-- **The server re-derives the case** and doesn't trust the card. Each refusal
-  re-renders the wizard with the card included server-side and the choice still
-  checked, because htmx fetches the card only on the URL's `change`:
+- **The server re-derives the case** and doesn't trust the card. Every refusal
+  at a valid URL re-renders the wizard with the card included server-side and
+  the choice still checked, because htmx fetches the card only on the URL's
+  `change` (an invalid URL has no card to show):
   - Case B with no `source_choice` is a 422 at step 1.
   - A `source_choice` naming a source not at this URL is a 422.
   - A source bound since the check is a **409** at step 1: the bind takes
