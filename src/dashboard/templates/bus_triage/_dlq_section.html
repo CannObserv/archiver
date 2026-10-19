@@ -38,7 +38,7 @@
         {% set p = e.provenance %}
         <tr data-entry-id="{{ e.entry_id }}">
           <td class="data-table__cell">
-            <code class="text-sm">{{ e.entry_id }}</code>
+            <code class="text-sm" style="white-space:nowrap;">{{ e.entry_id }}</code>
             <div class="text-xs text-muted">{{ e.dead_lettered_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</div>
             {% if e.entry_id in section.duplicates %}
             <span class="badge badge--info badge--sm"
@@ -68,7 +68,7 @@
           </td>
           <td class="data-table__cell">
             <details>
-              <summary class="text-sm">Fields</summary>
+              <summary class="text-sm" style="white-space:nowrap;">Fields</summary>
               <pre class="code-block">{{ e.fields | tojson(indent=2) }}</pre>
             </details>
           </td>

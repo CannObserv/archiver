@@ -712,3 +712,11 @@ async def test_paging_and_re_list_focus_their_section_heading(client, fake_redis
     """Re-list and Previous / Next live inside the section they replace, too."""
     r = await client.get(path, headers=_HEADERS)
     assert ".focus()" in r.text
+
+
+async def test_an_entry_id_never_wraps(client, fake_redis):
+    """A stream id broken at its hyphen reads as two values and copies wrong."""
+    entry = await _park(fake_redis)
+    r = await client.get(DLQ_URL, headers=_HEADERS)
+    assert re.search(rf"<code[^>]*white-space:nowrap[^>]*>{entry}</code>", r.text)
+    assert re.search(r"<summary[^>]*white-space:nowrap[^>]*>Fields</summary>", r.text)

@@ -43,7 +43,7 @@
           <td class="data-table__cell text-sm">{{ row.publish_attempts }}</td>
           <td class="data-table__cell">
             <details>
-              <summary class="text-sm">Payload</summary>
+              <summary class="text-sm" style="white-space:nowrap;">Payload</summary>
               <pre class="code-block">{{ row.payload | tojson(indent=2) }}</pre>
             </details>
           </td>
