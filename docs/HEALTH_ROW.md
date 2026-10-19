@@ -37,7 +37,7 @@ failed)" when the URL is set, which is exactly when a stale backlog *is* ill
 health. Otherwise danger "N dead-lettered" if any poison row, warning
 "backlog" if the oldest live unpublished row exceeds 300s, else success "ok";
 `title` carries `depth=N oldest=Ns dead_lettered=N` in the drain states.
-"N dead-lettered" is an `<a>` to **`/dashboard/bus-triage`** (PAGES.md,
+"N dead-lettered" is an `<a>` to **`/dashboard/bus-triage`** ([BUS_TRIAGE.md](BUS_TRIAGE.md),
 archiver#271); no other state links. The badge clears once every dead-lettered
 row is triaged - discarded or rearmed on that screen or through
 `/api/v1/tools/outbox/dead-lettered` (archiver#191, runbook in [BUS.md](BUS.md)).

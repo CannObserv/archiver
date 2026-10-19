@@ -218,6 +218,9 @@ applicable doc is a CR blocker.
   or the register wizard's summary bar, Step 1 Case B choice or Step 3 controls. PAGES.md keeps only
   the inventory line for those routes: update it too when a route, or a form
   field it lists, is added, removed or renamed.
+- `docs/BUS_TRIAGE.md` - required when the change alters the Bus triage screen: a
+  section, its states, a row action, its flash or the audit line. PAGES.md keeps
+  its inventory line, on the same terms as above.
 - `docs/UI.md` - required when the change alters a *shared* mechanic rather
   than one screen: the URL map or the auth gate; `docs/HTMX.md` for an HTMX
   swap pattern.

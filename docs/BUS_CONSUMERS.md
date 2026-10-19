@@ -204,7 +204,7 @@ is 0, and the dashboard bus panel shows each queue's depth.
 `src/core/changes/dlq_triage.py` does the work, behind the dashboard's **Bus
 triage** screen (`/dashboard/bus-triage`, archiver#271: one section per
 `TRIAGE_DLQS` queue, per-entry Reprocess and Discard, linked from the Consumers
-badge's "N dead-lettered" state; [PAGES.md](PAGES.md)) and three operator routes:
+badge's "N dead-lettered" state; [BUS_TRIAGE.md](BUS_TRIAGE.md)) and three operator routes:
 
 ```bash
 H='X-API-Key: <key>'; Q=http://localhost:8000/api/v1/tools/dead-letters/content.revisions.dlq
