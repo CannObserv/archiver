@@ -72,6 +72,31 @@ def test_no_inline_margin_on_spacing_owning_class(css_class: str) -> None:
     assert not offenders, f"inline margin on .{css_class}:\n  " + "\n  ".join(offenders)
 
 
+_HEADER_WITH_SECTION_HEADING = re.compile(
+    r"class=\"[^\"]*\bentity-section__header\b[^\"]*\"[^>]*>\s*"
+    r"<h[1-6][^>]*\bclass=\"[^\"]*\bsection-heading\b"
+)
+
+
+def test_no_section_heading_inside_an_entity_section_header() -> None:
+    """The two are alternatives, never nested (docs/STYLE.md, archiver#271).
+
+    `.section-heading` draws its own rule under a bare heading; the flex
+    `.entity-section__header` draws one under the whole header row. Nested, every
+    section showed two rules, and the heading's own bottom margin sat it off the
+    row's centre line beside the action. In the header, the title is
+    `.entity-section__title`.
+    """
+    offenders = [
+        str(path.relative_to(_TEMPLATES))
+        for path in _template_files()
+        if _HEADER_WITH_SECTION_HEADING.search(path.read_text())
+    ]
+    assert not offenders, "section-heading inside entity-section__header:\n  " + "\n  ".join(
+        offenders
+    )
+
+
 # ---------------------------------------------------------------------------
 # The Watcher panel's layout contract (archiver#181)
 #
