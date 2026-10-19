@@ -298,10 +298,21 @@ async def test_health_outbox_danger_on_dead_lettered(client, session):
 
 
 @pytest.mark.asyncio
-async def test_health_outbox_links_only_when_dead_lettered(client, session):
+@pytest.mark.parametrize(("stale", "label"), [(False, "ok"), (True, "backlog")])
+async def test_health_outbox_links_only_when_dead_lettered(client, session, stale, label):
     """D2: the badge links in its "N dead-lettered" state only, as Registry does."""
     _configure_bus()
+    if stale:
+        session.add(
+            ChangesOutboxRow(
+                topic="info.changes",
+                payload={"event_type": "irrelevant"},
+                created_at=datetime.now(UTC) - timedelta(hours=1),
+            )
+        )
+        await session.flush()
     r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert f">{label}</span>" in r.text
     assert "bus-triage" not in r.text
 
 

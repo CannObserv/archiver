@@ -132,6 +132,12 @@ def _entry_present(html: str, entry_id: str) -> bool:
     return f'data-entry-id="{entry_id}"' in html
 
 
+def _entry_row(html: str, entry_id: str) -> str:
+    """The markup of one entry's table row, so an assertion cannot pass on a neighbour."""
+    start = html.index(f'data-entry-id="{entry_id}"')
+    return html[start : html.index("</tr>", start)]
+
+
 # ---------------------------------------------------------------------------
 # The page
 # ---------------------------------------------------------------------------
@@ -445,9 +451,11 @@ async def test_the_decode_verdict_is_shown(client, fake_redis):
 
     r = await client.get(DLQ_URL, headers=_HEADERS)
 
-    assert _entry_present(r.text, skew) and _entry_present(r.text, residue)
-    assert "decodes" in r.text
-    assert "BusMessageUnknownEventTypeError" in r.text
+    skew_row, residue_row = _entry_row(r.text, skew), _entry_row(r.text, residue)
+    assert ">decodes</span>" in skew_row
+    assert "does not decode" not in skew_row
+    assert ">does not decode</span>" in residue_row
+    assert "BusMessageUnknownEventTypeError" in residue_row
 
 
 async def test_a_frame_parked_twice_is_marked(client, fake_redis):
@@ -621,6 +629,31 @@ async def test_an_outbox_action_logs_who_asked(client, session, caplog):
     assert record.ids == [str(row.id)]
     assert record.outcome == "discarded"
     assert "triage@example.com" not in str(record.__dict__)
+
+
+@pytest.mark.parametrize(
+    ("topic", "outcome"), [("info.changes", "rearmed"), ("info.registry", "refused")]
+)
+async def test_a_rearm_audits_the_cores_outcome(client, session, caplog, topic, outcome):
+    """Two outcomes, so a hard-coded value cannot pass."""
+    row = await _dead_lettered(session, topic=topic)
+    caplog.set_level(logging.INFO)
+    await client.post(f"{OUTBOX}/{row.id}/rearm", headers=_HEADERS)
+    [record] = _audit_records(caplog)
+    assert (record.action, record.outcome) == ("rearm", outcome)
+
+
+@pytest.mark.parametrize(
+    ("fingerprint", "outcome"), [("sha256:" + "c" * 64, "reprocessed"), ("deadbeef", "rejected")]
+)
+async def test_a_reprocess_audits_the_cores_outcome(
+    client, fake_redis, db_factory, caplog, fingerprint, outcome
+):
+    entry = await _park(fake_redis, _observed_wire(str(ULID()), fingerprint), source_id="1-0")
+    caplog.set_level(logging.INFO)
+    await client.post(f"{DLQ_URL}/{entry}/reprocess", headers=_HEADERS)
+    [record] = _audit_records(caplog)
+    assert (record.action, record.queue, record.outcome) == ("reprocess", DLQ, outcome)
 
 
 async def test_a_dlq_action_logs_who_asked_even_when_interrupted(client, fake_redis, caplog):
