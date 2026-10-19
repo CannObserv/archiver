@@ -8,6 +8,12 @@ The final POST submits all fields atomically in a single transaction:
 ``session.commit()``. That commit's announcement is the whole of the hand-off to
 Watcher — there is no provisioning call (archiver#142).
 
+Case B (sources at the URL, none bound) reuses one by default (archiver#51):
+the operator's ``source_choice`` names it, its specs are saved through
+``update_info_source_specs`` in place of ``create_info_source``, and the bind
+refuses a source some item took since the check (409). ``source_choice=new``
+keeps the create path.
+
 HTMX partials:
   GET  /dashboard/register/url-check     — domain badge + Case A/B/C card
   GET  /dashboard/register/suggest-specs — sortableChips with full-spec values
@@ -19,19 +25,22 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import InfoItem, InfoItemSource, InfoSource, SourceRevision
 from src.core.models.domain import Domain
 from src.core.services.registry_announcement import announce_info_item
-from src.core.tools.bind_info_source import bind_info_source
+from src.core.source_spec_schema.validator import validate_source_spec
+from src.core.tools.bind_info_source import InfoSourceAlreadyBoundError, bind_info_source
 from src.core.tools.create_info_source import (
     InvalidSourceSpecError,
     InvalidUrlError,
@@ -39,6 +48,13 @@ from src.core.tools.create_info_source import (
     create_info_source,
 )
 from src.core.tools.preview_extraction import SourceSpecValidationError, preview_extraction
+from src.core.tools.update_info_source_specs import (
+    InvalidSourceSpecError as UpdateInvalidSpecError,
+)
+from src.core.tools.update_info_source_specs import (
+    MixedAlgorithmFamilyError as UpdateMixedFamilyError,
+)
+from src.core.tools.update_info_source_specs import update_info_source_specs
 from src.core.url_canonicalization import canonicalize_url
 from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS, DEFAULT_CADENCE
@@ -94,46 +110,77 @@ async def url_check(
             {"user": user, "error": "Invalid URL — must include scheme and host.", "url": url},
         )
 
-    hostname = urlparse(canonical).hostname or ""
+    check = await _check_url(session, canonical)
+    # One reusable source is the default; with several, nothing is chosen for
+    # the operator (archiver#51).
+    candidates = check["candidates"]
+    choice = str(candidates[0]["source"].info_source_id) if len(candidates) == 1 else ""
+    return _templates.TemplateResponse(
+        request,
+        "register/_url_check.html",
+        {"user": user, **_card(check, choice)},
+    )
 
-    # Look up the domain
+
+NEW_SOURCE = "new"
+
+
+async def _check_url(session: AsyncSession, canonical: str) -> dict[str, Any]:
+    """Classify a canonical URL: Case A (a source is bound), B (sources, none bound), new.
+
+    The url-check card's context. Case B also lists each source as a reuse
+    candidate (archiver#51): its revision count, a specs summary, and any
+    errors the current schema finds in its stored specs (#164).
+    """
+    hostname = urlparse(canonical).hostname or ""
     domain_row = (
         await session.execute(select(Domain).where(Domain.name == hostname))
     ).scalar_one_or_none()
-
-    # Look up existing InfoSources at this URL
     src_rows = list(
-        (await session.execute(select(InfoSource).where(InfoSource.url == canonical)))
+        (
+            await session.execute(
+                select(InfoSource)
+                .where(InfoSource.url == canonical)
+                .order_by(InfoSource.info_source_id)
+            )
+        )
         .scalars()
         .all()
     )
 
-    # Check whether any source is bound to an active InfoItem
-    bound_items = []
+    bound_items: list[InfoItem] = []
+    candidates: list[dict[str, Any]] = []
     if src_rows:
         source_ids = [s.info_source_id for s in src_rows]
-        binding_rows = list(
+        item_ids = (
+            await session.execute(
+                select(InfoItemSource.info_item_id).where(
+                    InfoItemSource.info_source_id.in_(source_ids),
+                    InfoItemSource.deactivated_at.is_(None),
+                )
+            )
+        ).scalars()
+        bound_items = list(
             (
                 await session.execute(
-                    select(InfoItemSource).where(
-                        InfoItemSource.info_source_id.in_(source_ids),
-                        InfoItemSource.deactivated_at.is_(None),
-                    )
+                    select(InfoItem).where(InfoItem.info_item_id.in_(set(item_ids)))
                 )
             )
             .scalars()
             .all()
         )
-        if binding_rows:
-            item_ids = list({b.info_item_id for b in binding_rows})
-            item_rows = list(
-                (await session.execute(select(InfoItem).where(InfoItem.info_item_id.in_(item_ids))))
-                .scalars()
-                .all()
+        if not bound_items:
+            counts = dict(
+                (
+                    await session.execute(
+                        select(SourceRevision.info_source_id, func.count())
+                        .where(SourceRevision.info_source_id.in_(source_ids))
+                        .group_by(SourceRevision.info_source_id)
+                    )
+                ).all()
             )
-            bound_items = item_rows
+            candidates = [_candidate(src, counts.get(src.info_source_id, 0)) for src in src_rows]
 
-    # Determine case
     if bound_items:
         case = "A"  # URL registered + bound
     elif src_rows:
@@ -141,20 +188,66 @@ async def url_check(
     else:
         case = "new"
 
-    return _templates.TemplateResponse(
-        request,
-        "register/_url_check.html",
-        {
-            "user": user,
-            "url": canonical,
-            "hostname": hostname,
-            "domain": domain_row,
-            "case": case,
-            "bound_items": bound_items,
-            "existing_sources": src_rows,
-            "error": None,
-        },
-    )
+    return {
+        "url": canonical,
+        "hostname": hostname,
+        "domain": domain_row,
+        "case": case,
+        "bound_items": bound_items,
+        "existing_sources": src_rows,
+        "candidates": candidates,
+        "error": None,
+    }
+
+
+def _card(check: dict[str, Any], choice: str) -> dict[str, Any]:
+    """The card's context: *check*, the checked ``source_choice``, and the data island.
+
+    The island carries each candidate's stored specs and revision count, so
+    the wizard can pre-fill step 2 and the review without another request.
+    """
+    island: dict[str, Any] = {
+        "hostname": check["hostname"],
+        "case": check["case"],
+        "domain_known": check["domain"] is not None,
+    }
+    if check["case"] == "B":
+        island["source_choice"] = choice
+        island["candidates"] = {
+            str(c["source"].info_source_id): {"specs": c["specs_json"], "revisions": c["revisions"]}
+            for c in check["candidates"]
+        }
+    return {**check, "source_choice": choice, "island": island}
+
+
+def _candidate(src: InfoSource, revisions: int) -> dict[str, Any]:
+    specs = list(src.source_specs or [])
+    # A stored element may predate validation altogether (#164): report it, don't 500.
+    errors: list[str] = []
+    for i, spec in enumerate(specs):
+        if not isinstance(spec, dict):
+            errors.append(f"/source_specs/{i}: not an object")
+            continue
+        errors += [
+            f"/source_specs/{i}{e['path']}: {e['message']}" for e in validate_source_spec(spec)[1]
+        ]
+    return {
+        "source": src,
+        "revisions": revisions,
+        "summary": _specs_summary(specs),
+        "specs_json": json.dumps(specs),
+        "spec_errors": errors,
+    }
+
+
+def _specs_summary(specs: list[dict]) -> str:
+    """The wizard's ``selectorSummary`` server-side: ``css: #a``, ``full_page``, ``2 specs (…)``."""
+    extractions = [(s.get("extraction") or {}) if isinstance(s, dict) else {} for s in specs]
+    algos = [e.get("algorithm", "?") for e in extractions]
+    if len(specs) != 1:
+        return f"{len(specs)} specs ({' + '.join(algos)})"
+    selector = extractions[0].get("selector")
+    return f"{algos[0]}: {selector}" if selector else algos[0]
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +385,45 @@ async def preview(
 # ---------------------------------------------------------------------------
 
 
+async def _rerender(
+    request: Request,
+    session: AsyncSession,
+    user,
+    *,
+    status_code: int,
+    step: int,
+    errors: dict[str, str],
+    url: str,
+    form: dict[str, str],
+) -> HTMLResponse:
+    """Re-open the wizard at *step*, every field sticky, the url-check card included.
+
+    htmx fetches the card only on the URL's ``change``, so without the include
+    a re-render would drop the Case B choice the operator made (archiver#51).
+    """
+    context: dict[str, Any] = {
+        "user": user,
+        "errors": errors,
+        "url_value": url,
+        "source_specs_value": form["source_specs"],
+        "name_value": form["name"],
+        "description_value": form["description"],
+        "cadence_value": form["cadence"],
+        "watch_active_value": bool(form["watch_active"]),
+        "initial_step": step,
+    }
+    try:
+        canonical = canonicalize_url(url)
+    except ValueError:
+        canonical = None
+    if canonical is not None:
+        check = await _check_url(session, canonical)
+        context |= {**_card(check, form["source_choice"]), "url_checked": True}
+    return _templates.TemplateResponse(
+        request, "register/index.html", context, status_code=status_code
+    )
+
+
 @router.post("")
 async def register_submit(
     request: Request,
@@ -301,23 +433,37 @@ async def register_submit(
     description: str = Form(default=""),
     cadence: str = Form(default=""),
     watch_active: str = Form(default=""),
+    source_choice: str = Form(default=""),
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Atomic: create_info_source → create InfoItem → bind → 303 to detail."""
-    errors: dict[str, str] = {}
+    """Atomic: create (or, in Case B, reuse) the source → create InfoItem → bind → 303."""
+    form = {
+        "source_specs": source_specs,
+        "name": name,
+        "description": description,
+        "cadence": cadence,
+        "watch_active": watch_active,
+        "source_choice": source_choice,
+    }
+
+    async def rerender(status_code: int, step: int, field: str, message: str, at: str = url):
+        return await _rerender(
+            request,
+            session,
+            user,
+            status_code=status_code,
+            step=step,
+            errors={field: message},
+            url=at,
+            form=form,
+        )
 
     # 1. Validate URL
     try:
         canonical_url = canonicalize_url(url)
     except ValueError as exc:
-        errors["url"] = str(exc)
-        return _templates.TemplateResponse(
-            request,
-            "register/index.html",
-            {"user": user, "errors": errors, "url_value": url},
-            status_code=422,
-        )
+        return await rerender(422, 1, "url", str(exc))
 
     # 2. Parse source_specs
     try:
@@ -325,73 +471,45 @@ async def register_submit(
         if not isinstance(specs, list):
             raise ValueError("must be a JSON array")
     except (json.JSONDecodeError, ValueError) as exc:
-        errors["source_specs"] = f"Invalid source_specs: {exc}"
-        return _templates.TemplateResponse(
-            request,
-            "register/index.html",
-            {
-                "user": user,
-                "errors": errors,
-                "url_value": canonical_url,
-                "source_specs_value": source_specs,
-                "name_value": name,
-                "description_value": description,
-                "cadence_value": cadence,
-                "watch_active_value": bool(watch_active),
-                "initial_step": 2,
-            },
-            status_code=422,
-        )
+        return await rerender(422, 2, "source_specs", f"Invalid source_specs: {exc}", canonical_url)
 
     # 3. Validate name
     if not name.strip():
-        errors["name"] = "Name is required."
-        return _templates.TemplateResponse(
-            request,
-            "register/index.html",
-            {
-                "user": user,
-                "errors": errors,
-                "url_value": canonical_url,
-                "source_specs_value": source_specs,
-                "name_value": name,
-                "description_value": description,
-                "cadence_value": cadence,
-                "watch_active_value": bool(watch_active),
-                "initial_step": 3,
-            },
-            status_code=422,
+        return await rerender(422, 3, "name", "Name is required.", canonical_url)
+
+    # 4. Case B: which source? The server re-derives the case rather than trust
+    # the card the client last saw (archiver#51).
+    reuse: InfoSource | None = None
+    if source_choice and source_choice != NEW_SOURCE:
+        try:
+            reuse = await session.get(InfoSource, ULID.from_str(source_choice))
+        except ValueError:
+            reuse = None
+        if reuse is None or reuse.url != canonical_url:
+            return await rerender(
+                422,
+                1,
+                "source_choice",
+                "The chosen Information Source is not at this URL.",
+                canonical_url,
+            )
+    elif not source_choice and (await _check_url(session, canonical_url))["case"] == "B":
+        return await rerender(
+            422,
+            1,
+            "source_choice",
+            "Choose an existing Information Source to reuse, or create a new one.",
+            canonical_url,
         )
 
-    # 4. Atomic creation
-    try:
-        src = await create_info_source(session, url=canonical_url, source_specs=specs)
-    except InvalidUrlError as exc:
-        errors["url"] = str(exc)
-        return _templates.TemplateResponse(
-            request,
-            "register/index.html",
-            {"user": user, "errors": errors, "url_value": url},
-            status_code=422,
-        )
-    except (InvalidSourceSpecError, MixedAlgorithmFamilyError) as exc:
-        errors["source_specs"] = str(exc)
-        return _templates.TemplateResponse(
-            request,
-            "register/index.html",
-            {
-                "user": user,
-                "errors": errors,
-                "url_value": canonical_url,
-                "source_specs_value": source_specs,
-                "name_value": name,
-                "description_value": description,
-                "cadence_value": cadence,
-                "watch_active_value": bool(watch_active),
-                "initial_step": 2,
-            },
-            status_code=422,
-        )
+    # 5. Atomic creation
+    if reuse is None:
+        try:
+            src = await create_info_source(session, url=canonical_url, source_specs=specs)
+        except InvalidUrlError as exc:
+            return await rerender(422, 1, "url", str(exc))
+        except (InvalidSourceSpecError, MixedAlgorithmFamilyError) as exc:
+            return await rerender(422, 2, "source_specs", str(exc), canonical_url)
 
     # Create InfoItem. Cadence and pause state are Archiver's own as of the
     # control-plane cutover (archiver#158): they are written here, *before* the
@@ -414,14 +532,44 @@ async def register_submit(
         ),
         watch_active=bool(watch_active),
     )
-    session.add(item)
-    await session.flush()
 
-    # Bind: emits info_item_primary_changed (archiver#390). Both rows were
-    # flushed above, so the tool's refusals cannot fire here.
-    await bind_info_source(
-        session, info_item_id=item.info_item_id, info_source_id=src.info_source_id
-    )
+    if reuse is None:
+        session.add(item)
+        await session.flush()
+        # Bind: emits info_item_primary_changed (archiver#390). Both rows were
+        # flushed above, so the tool's refusals cannot fire here.
+        await bind_info_source(
+            session, info_item_id=item.info_item_id, info_source_id=src.info_source_id
+        )
+    else:
+        # A savepoint, so a refusal leaves no item behind. The source is
+        # unbound, so its edited specs affect no other item; the bind locks it
+        # and refuses one bound since the check (archiver#51).
+        try:
+            async with session.begin_nested():
+                await update_info_source_specs(
+                    session, info_source_id=reuse.info_source_id, source_specs=specs
+                )
+                session.add(item)
+                await session.flush()
+                await bind_info_source(
+                    session,
+                    info_item_id=item.info_item_id,
+                    info_source_id=reuse.info_source_id,
+                    require_unbound_source=True,
+                )
+        except (UpdateInvalidSpecError, UpdateMixedFamilyError) as exc:
+            return await rerender(422, 2, "source_specs", str(exc), canonical_url)
+        except InfoSourceAlreadyBoundError:
+            return await rerender(
+                409,
+                1,
+                "source_choice",
+                "That Information Source was bound to another Information Item after the "
+                "URL check (listed below). Submit again to create a new source at this URL.",
+                canonical_url,
+            )
+
     await announce_info_item(session, item.info_item_id)
     await session.commit()
     await session.refresh(item)

@@ -64,7 +64,8 @@ Templates: `domains/list.html`, `domains/detail.html`, `domains/_notes_partial.h
 **GET `/dashboard/register`** - renders the wizard (step 1: URL input).
 
 **GET `/dashboard/register/url-check?url=`** - HTMX partial: domain badge +
-Case A/B/C card for the URL; empty body when `url` is blank.
+Case A/B/C card for the URL; empty body when `url` is blank. Case B's card is
+the reuse choice ([REGISTER.md](REGISTER.md)).
 
 **GET `/dashboard/register/suggest-specs?url=`** - HTMX partial: top-5 selector
 suggestions from the URL's domain.
@@ -77,12 +78,15 @@ help text names those limits: CSS for HTML pages, XPath for XML and feeds only,
 full-page for anything.
 
 **POST `/dashboard/register`** - the submit. Form fields `url`, `source_specs`,
-`name`, `description`, `cadence`, `watch_active`. Atomic create-source →
-create-item → bind, 303 to detail; 422 re-renders the wizard.
+`name`, `description`, `cadence`, `watch_active`, `source_choice` (Case B: an
+InfoSource ULID to reuse, or `new`; archiver#51). Atomic create-source (or
+reuse and save its specs) → create-item → bind, 303 to detail; 422 re-renders
+the wizard, and so does a 409 when the reused source was bound since the check.
 
-**The wizard's rolling step-summary bar and its Step 3 (Metadata) Watcher
-settings** - the chip anatomy, the cadence `<select>` and its vocabulary, and
-the watch-active checkbox - are [docs/REGISTER.md](REGISTER.md), needed only
+**The wizard's rolling step-summary bar, its Step 1 Case B choice and its Step 3
+(Metadata) Watcher settings** - the chip anatomy, the reuse radios, the cadence
+`<select>` and its vocabulary, and the watch-active checkbox - are
+[docs/REGISTER.md](REGISTER.md), needed only
 when working on that screen. The entries above stay the inventory line for
 each route.
 

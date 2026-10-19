@@ -689,6 +689,14 @@ document.addEventListener("alpine:init", function () {
             // island inside the HTMX #url-check-result fragment (#53).
             checkHostname: "",
             checkDomainKnown: null,
+            // Case B (#51): the url-check's reuse candidates ({id: {specs,
+            // revisions}}), the chosen source_choice ("" none, "new" opt-out),
+            // and the specs last pre-filled, so a pre-fill never overwrites an
+            // edit.
+            caseB: false,
+            candidates: {},
+            sourceChoice: "",
+            prefilledSpecs: "",
 
             // Human-readable label for the selected Watcher fetch cadence, shown
             // in the Step 4 review summary. Reads the label off the server-rendered
@@ -724,6 +732,20 @@ document.addEventListener("alpine:init", function () {
                 if (!this.urlHostname || this.checkHostname !== this.urlHostname) { return ""; }
                 if (this.checkDomainKnown === null) { return ""; }
                 return this.checkDomainKnown ? "known domain" : "new domain";
+            },
+
+            // Case B with nothing chosen holds step 1: the server refuses an
+            // unchosen submit, and a guess must not happen silently (#51).
+            get needsSourceChoice() {
+                return this.caseB && !this.sourceChoice;
+            },
+
+            // Step-4 review row for the Information Source.
+            get sourceChoiceLabel() {
+                var c = this.caseB ? this.candidates[this.sourceChoice] : null;
+                if (!c) { return "A new source"; }
+                return "Reuse the existing source (" + c.revisions + " earlier revision"
+                    + (c.revisions === 1 ? "" : "s") + " will appear)";
             },
 
             // Compact human summary of the sourceSpecs JSON for the summary bar
@@ -773,15 +795,34 @@ document.addEventListener("alpine:init", function () {
                 if (waEl) { this.watchActive = waEl.checked; }
             },
 
-            // Handler for the url-check event bubbled by urlCheckDispatch.
-            // The payload's `case` field (A/B/new) is intentionally unconsumed
-            // here — only the domain fact feeds the summary bar.
+            // Handler for the url-check event bubbled by urlCheckDispatch: the
+            // domain fact feeds the summary bar, and a Case B payload carries
+            // the reuse candidates and the pre-selected one (#51).
             onUrlCheck: function (detail) {
                 if (!detail) { return; }
                 this.checkHostname = detail.hostname || "";
                 this.checkDomainKnown = (detail.domain_known === undefined)
                     ? null
                     : Boolean(detail.domain_known);
+                this.caseB = detail.case === "B";
+                this.candidates = (this.caseB && detail.candidates) || {};
+                this.sourceChoice = "";
+                if (this.caseB && detail.source_choice) { this.chooseSource(detail.source_choice); }
+            },
+
+            // A Case B radio changed (or the island pre-selected one). Pre-fills
+            // step 2 with the source's stored specs only while the textarea is
+            // empty or still holds the last pre-fill: an edit, or specs a
+            // validation re-render brought back, are never overwritten. The
+            // opt-out ("new") leaves the specs as they are.
+            chooseSource: function (value) {
+                this.sourceChoice = value || "";
+                var c = this.candidates[this.sourceChoice];
+                if (!c) { return; }
+                if (!this.sourceSpecs.trim() || this.sourceSpecs === this.prefilledSpecs) {
+                    this.sourceSpecs = c.specs;
+                    this.prefilledSpecs = c.specs;
+                }
             },
 
             loadSuggestions: function () {

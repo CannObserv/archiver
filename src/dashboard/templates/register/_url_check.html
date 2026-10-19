@@ -1,7 +1,8 @@
 {% if not error and hostname %}
 {# Data island — bubbles the check result up to registerWizard for the rolling
-   step-summary bar (#53). Same pattern as previewNameDispatch. #}
-<div x-data="urlCheckDispatch"><script type="application/json">{{ {"hostname": hostname, "case": case, "domain_known": domain is not none} | tojson }}</script></div>
+   step-summary bar (#53). Same pattern as previewNameDispatch. In Case B it
+   also carries the reuse candidates' specs and revision counts (#51). #}
+<div x-data="urlCheckDispatch"><script type="application/json">{{ island | tojson }}</script></div>
 {% endif %}
 {% if error %}
 <div class="filter-card" style="border-color:var(--color-danger,#c00);">
@@ -28,15 +29,41 @@
   </div>
 </div>
 {% elif case == "B" %}
-<div class="filter-card">
-  <p class="text-sm text-muted">
-    <strong>{{ hostname }}</strong> — This URL already has an unbound Information Source.
+{# Reuse by default (#51): the new item keeps the source's revision history and
+   fingerprint chain. One source is pre-selected; with several, none is, so a
+   guess can't happen silently. "Create a new source" is the opt-out. #}
+<fieldset class="filter-card filter-card--stacked" style="margin:0;gap:var(--space-1);">
+  <legend class="text-sm" style="padding:0;">
+    <strong>{{ hostname }}</strong> — This URL already has
+    {% if candidates|length == 1 %}an unbound Information Source{% else %}{{ candidates|length }} unbound Information Sources{% endif %}.
+  </legend>
+  <p class="text-sm" style="margin:var(--space-1) 0 var(--space-2);">
+    By default the new Information Item reuses {% if candidates|length == 1 %}it{% else %}the one you choose{% endif %}:
+    its earlier revisions carry over, and step 2 starts from its stored specification.
   </p>
-  <p class="text-sm" style="margin-top:var(--space-1);">
-    Proceeding will create a <strong>new</strong> Information Source and Information Item at this URL.
-    To reuse the existing source, bind it manually from the Information Item detail page after registering.
-  </p>
-</div>
+  {% for c in candidates %}
+  {% set sid = c.source.info_source_id|string %}
+  <label class="text-sm" style="flex-direction:row;gap:var(--space-2);align-items:baseline;font-weight:normal;cursor:pointer;">
+    <input type="radio" name="source_choice" value="{{ sid }}"{% if source_choice == sid %} checked{% endif %}
+           @change="chooseSource($el.value)">
+    <span>
+      Reuse the source created {{ c.source.created_at.strftime('%Y-%m-%d %H:%M') }}
+      — <code>{{ c.summary }}</code>
+      — {{ c.revisions }} earlier revision{{ '' if c.revisions == 1 else 's' }} will appear
+      (<a href="/dashboard/info-sources/{{ sid }}">view</a>)
+      {% if c.spec_errors %}
+      <br><span class="text-danger">Its stored specification fails the current schema; fix it in step 2:
+        {{ c.spec_errors|join('; ') }}</span>
+      {% endif %}
+    </span>
+  </label>
+  {% endfor %}
+  <label class="text-sm" style="flex-direction:row;gap:var(--space-2);align-items:baseline;font-weight:normal;cursor:pointer;">
+    <input type="radio" name="source_choice" value="new"{% if source_choice == "new" %} checked{% endif %}
+           @change="chooseSource($el.value)">
+    <span>Create a new source instead</span>
+  </label>
+</fieldset>
 {% elif case == "new" and domain %}
 <div class="filter-card" style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);">
   <p class="text-sm" style="margin:0;">

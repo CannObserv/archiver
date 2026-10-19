@@ -34,9 +34,9 @@ load and are wired only by their `<script>` tag in `base.html`.
 | `apiKeyReveal` | `main.js` | One-time raw key display after API key creation. |
 | `domainNotes` | `main.js` | Edit/view toggle for the notes row in the domain detail header panel (#176). Cancel resets the textarea to its `defaultValue`. |
 | `editableField` | `main.js` | Row-level edit/view toggle for a single field, agnostic about the control it wraps (#181). The Watcher panel's editable rows use it. Cancel restores the server-rendered value through `$refs.field`. |
-| `registerWizard` | `main.js` | 4-step registration wizard state: step navigation, field state synced from server-rendered values in `init()` (every `x-model` field must be synced there or validation re-renders wipe it - #53), rolling step-summary bar getters (`urlHostname`, `domainSummary`, `selectorSummary`). |
+| `registerWizard` | `main.js` | 4-step registration wizard state: step navigation, field state synced from server-rendered values in `init()` (every `x-model` field must be synced there or validation re-renders wipe it - #53), rolling step-summary bar getters (`urlHostname`, `domainSummary`, `selectorSummary`), Case B source choice (`chooseSource`, `needsSourceChoice`, `sourceChoiceLabel`; #51). |
 | `previewNameDispatch` | `main.js` | One-shot dispatcher: bubbles a `preview-name` event from a JSON data island inside the preview-result fragment. |
-| `urlCheckDispatch` | `main.js` | One-shot dispatcher (#53): bubbles a `url-check` event (`{hostname, case, domain_known}`) from a JSON data island inside the `_url_check.html` fragment; feeds the wizard's rolling summary bar. |
+| `urlCheckDispatch` | `main.js` | One-shot dispatcher (#53): bubbles a `url-check` event (`{hostname, case, domain_known}`, plus `source_choice` and `candidates` in Case B, #51) from a JSON data island inside the `_url_check.html` fragment; feeds the wizard's rolling summary bar and Case B choice. |
 
 ---
 
@@ -224,18 +224,21 @@ Multi-step Information Item registration wizard. Manages step navigation and for
 **Factory args:**
 - `initialStep: number` - starting step (1-4; defaults to `1`). The server passes a non-1 value on validation re-renders to re-open at the failing step.
 
-**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (the announced `watch_spec` interval, default `"1d"` - Archiver's own policy as of archiver#158, written locally at registration rather than forwarded to Watcher; editable afterwards from the InfoItem detail panel), `watchActive: boolean` (default `true`; "Watch active immediately" - false provisions paused), `checkHostname: string` / `checkDomainKnown: boolean|null` (last url-check result, fed by `urlCheckDispatch`; `null` = no check landed yet; the payload's `case` field is intentionally not stored - only the domain fact feeds the summary bar) *(#53)*.
+**State:** `step: number`, `url: string`, `sourceSpecs: string`, `itemName: string`, `description: string`, `cadence: string` (the announced `watch_spec` interval, default `"1d"` - Archiver's own policy as of archiver#158, written locally at registration rather than forwarded to Watcher; editable afterwards from the InfoItem detail panel), `watchActive: boolean` (default `true`; "Watch active immediately" - false provisions paused), `checkHostname: string` / `checkDomainKnown: boolean|null` (last url-check result, fed by `urlCheckDispatch`; `null` = no check landed yet) *(#53)*, `caseB: boolean` / `candidates: {id: {specs, revisions}}` / `sourceChoice: string` (`""` none, `"new"` the opt-out, else an InfoSource ULID) / `prefilledSpecs: string` (the last pre-fill, so one never overwrites an edit) *(#51)*.
 
 **Getters:**
 - `cadenceLabel` - returns the human-readable label for the selected cadence by reading the text of the matching `<option>` in `$refs.cadenceInput` (no hardcoded map; the server-rendered options are the single source). Shown in the Step 4 review row.
 - `watchActiveLabel` - returns "Active immediately" / "Paused" for the Step 4 review row.
 - `urlHostname` *(#53)* - hostname parsed client-side from `url` via `new URL()`; `""` when the URL doesn't parse.
 - `domainSummary` *(#53)* - `"known domain"` / `"new domain"` when the last url-check result matches the *current* `urlHostname` (guards against stale checks after the user edits the URL), else `""`.
+- `needsSourceChoice` *(#51)* - Case B with nothing chosen; disables step 1's Next (the server refuses an unchosen submit too).
+- `sourceChoiceLabel` *(#51)* - the step-4 Information Source row: "Reuse the existing source (N earlier revisions will appear)" or "A new source".
 - `selectorSummary` *(#53)* - compact human summary of the `sourceSpecs` JSON: `css: .rule-title` (single spec), `full_page` (no selector), `2 specs (css + full_page)` (multiple). Falls back to the raw text truncated to 80 chars + `…` while the JSON doesn't parse (operator mid-edit). Used by the summary bar and the Step 4 review Selector row (where `:title="sourceSpecs"` keeps the full JSON inspectable as a tooltip).
 
 **Methods:**
 - `init()` - copies **all** server-rendered field values into Alpine state via `$refs`: `urlInput` → `url`, `sourceSpecsInput` → `sourceSpecs`, `nameInput` → `itemName`, `descriptionInput` → `description`, `cadenceInput` → `cadence`, `watchActiveInput.checked` → `watchActive`. **Every `x-model`-bound field must be synced here** - `x-model` is data-authoritative at bind time, so any unsynced server-rendered value is wiped to `""` on validation-error re-renders (#53 regression; pinned by `tests/js/register-wizard-alpine.test.js` against the real Alpine build).
-- `onUrlCheck(detail)` *(#53)* - stores a bubbled url-check result (`{hostname, case, domain_known}`) into `checkHostname` / `checkDomainKnown`.
+- `onUrlCheck(detail)` *(#53)* - stores a bubbled url-check result (`{hostname, case, domain_known}`) into `checkHostname` / `checkDomainKnown`. On every check it also resets `caseB` / `candidates` / `sourceChoice`, so leaving Case B drops a stale choice; in Case B it stores `candidates` and applies the pre-selected `source_choice` through `chooseSource` *(#51)*.
+- `chooseSource(value)` *(#51)* - a Case B radio's `@change`. Sets `sourceChoice`, and for a reuse candidate copies its stored specs into `sourceSpecs` only while the textarea is empty or still holds the last pre-fill.
 - `loadSuggestions()` - fires an HTMX GET to `/dashboard/register/suggest-specs?url=<encoded>`, targeting `#spec-suggestions-panel`. Called by the step-1 "Next" button.
 - `prepareSubmit()` - no-op; `x-model` keeps the textarea in sync without a manual step.
 
