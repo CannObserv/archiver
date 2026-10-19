@@ -345,15 +345,21 @@ async def test_a_bus_that_failed_init_says_so(client, monkeypatch):
 
 async def test_an_unreadable_broker_is_not_an_empty_queue(client, fake_redis):
     async def broken(*_a, **_kw):
-        raise RedisConnectionError("broker went away")
+        try:
+            raise OSError(113, "No route to host 10.1.2.3:6379")
+        except OSError as e:
+            raise RedisConnectionError("broker went away") from e
 
     with patch.object(fake_redis, "xrange", broken):
         r = await client.get(DLQ_URL, headers=_HEADERS)
 
     assert r.status_code == 200
     assert "unreadable" in r.text
-    # error_text's class-only form: a broker message can carry the URL.
+    # The class only, as the API's 503 does: a broker message, or a chained
+    # cause's, can carry its address. The full text goes to the warning log.
     assert "ConnectionError" in r.text
+    assert "broker went away" not in r.text
+    assert "10.1.2.3" not in r.text
     assert "No dead letters" not in r.text
 
 

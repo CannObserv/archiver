@@ -201,9 +201,10 @@ async def _dlq_section(redis: "RedisAsync | None", dlq: str, page: Pagination) -
         logger.warning("Bus triage DLQ read timed out", extra={"dlq": dlq, "error": message})
         return DlqSection(state="unreadable", message=message, **window)
     except (RedisError, OSError) as exc:
-        message = error_text(exc)
-        logger.warning("Bus triage DLQ read failed", extra={"dlq": dlq, "error": message})
-        return DlqSection(state="unreadable", message=message, **window)
+        # The page gets the class only, as the API's 503 does: a broker message,
+        # or a chained cause's, can carry its address. journald gets it all.
+        logger.warning("Bus triage DLQ read failed", extra={"dlq": dlq, "error": error_text(exc)})
+        return DlqSection(state="unreadable", message=type(exc).__name__, **window)
     return DlqSection(
         state="ok",
         entries=entries,
