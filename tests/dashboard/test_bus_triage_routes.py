@@ -145,8 +145,7 @@ async def test_the_page_has_an_outbox_section_and_one_per_triage_dlq(client, fak
     assert 'id="triage-outbox"' in r.text
     assert TRIAGE_DLQS, "non-vacuity: the allowlist is derived from OWNED_GROUPS"
     for dlq in TRIAGE_DLQS:
-        assert f'hx-get="{PAGE}/dlq/{dlq}' in r.text or f"{PAGE}/dlq/{dlq}" in r.text
-        assert dlq in r.text
+        assert f'id="triage-dlq-{dlq.replace(".", "-")}"' in r.text
 
 
 async def test_the_page_renders_bus_dormant(client, dormant):
