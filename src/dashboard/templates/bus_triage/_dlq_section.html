@@ -4,7 +4,7 @@
    an empty queue (the API's 409 / 503). #}
 <section id="{{ section.dom_id }}" class="entity-section" aria-labelledby="{{ section.dom_id }}-title">
   <div class="entity-section__header">
-    <h2 id="{{ section.dom_id }}-title" class="section-heading"><code>{{ section.dlq }}</code></h2>
+    <h2 id="{{ section.dom_id }}-title" class="section-heading" tabindex="-1"><code>{{ section.dlq }}</code></h2>
     <button type="button" class="btn btn--ghost btn--sm"
             hx-get="{{ section.url }}?offset={{ section.offset }}&amp;limit={{ section.limit }}"
             hx-target="#{{ section.dom_id }}" hx-swap="outerHTML">Re-list</button>
@@ -113,5 +113,17 @@
             hx-target="#{{ section.dom_id }}" hx-swap="outerHTML">Next →</button>
     {% endif %}
   </div>
+  {% endif %}
+
+  {% if swapped %}
+  {# Every swap of this section removes the button that was clicked, so focus the
+     heading rather than dropping keyboard users to <body>. Rendered only on a
+     swap response, never in the page's include. htmx runs scripts in swaps. #}
+  <script>
+    (function () {
+      var h = document.getElementById("{{ section.dom_id }}-title");
+      if (h) { h.focus(); }
+    }());
+  </script>
   {% endif %}
 </section>

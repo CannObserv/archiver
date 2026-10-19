@@ -12,7 +12,10 @@ section for the outbox (`bus_triage/_outbox_section.html`, `#triage-outbox`) and
 queue in `dlq_triage.TRIAGE_DLQS` (`bus_triage/_dlq_section.html`,
 `#triage-dlq-<dlq with dots as dashes>`), so a new owned group appears by itself. All
 sections render server-side on load; each is also its own partial, which its Re-list and
-Previous / Next buttons and its row actions swap whole (`hx-swap="outerHTML"`). Routes in
+Previous / Next buttons and its row actions swap whole (`hx-swap="outerHTML"`). Every
+partial response renders with `swapped`, so its focus script moves focus to the section's
+`<h2 tabindex="-1">` (SCREENS.md § HTMX mutations): each swap removes the button clicked.
+The page's own render never moves focus. Routes in
 `src/dashboard/routes/bus_triage.py`, messages in `src/dashboard/bus_triage.py`; both call
 the core triage modules directly, with no API route between.
 

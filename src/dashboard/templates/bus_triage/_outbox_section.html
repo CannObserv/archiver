@@ -3,7 +3,7 @@
    swap it whole and raise their outcome as a showFlash toast. #}
 <section id="{{ outbox.dom_id }}" class="entity-section" aria-labelledby="{{ outbox.dom_id }}-title">
   <div class="entity-section__header">
-    <h2 id="{{ outbox.dom_id }}-title" class="section-heading">Outbox dead-letters</h2>
+    <h2 id="{{ outbox.dom_id }}-title" class="section-heading" tabindex="-1">Outbox dead-letters</h2>
     <button type="button" class="btn btn--ghost btn--sm"
             hx-get="{{ outbox.url }}?offset={{ outbox.offset }}&amp;limit={{ outbox.limit }}"
             hx-target="#{{ outbox.dom_id }}" hx-swap="outerHTML">Re-list</button>
@@ -88,5 +88,17 @@
             hx-target="#{{ outbox.dom_id }}" hx-swap="outerHTML">Next →</button>
     {% endif %}
   </div>
+  {% endif %}
+
+  {% if swapped %}
+  {# Every swap of this section removes the button that was clicked, so focus the
+     heading rather than dropping keyboard users to <body>. Rendered only on a
+     swap response, never in the page's include. htmx runs scripts in swaps. #}
+  <script>
+    (function () {
+      var h = document.getElementById("{{ outbox.dom_id }}-title");
+      if (h) { h.focus(); }
+    }());
+  </script>
   {% endif %}
 </section>

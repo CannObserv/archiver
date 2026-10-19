@@ -8,6 +8,7 @@ fakeredis instance through ``get_redis_client``, so XRANGE / XDEL run for real.
 
 import asyncio
 import logging
+import re
 from datetime import UTC, datetime
 from unittest.mock import patch
 
@@ -670,3 +671,44 @@ async def test_an_action_whose_core_call_raises_still_logs_who_asked(
 
     [record] = _audit_records(caplog)
     assert record.outcome == "error"
+
+
+# ---------------------------------------------------------------------------
+# Focus after a swap (SCREENS.md, HTMX mutations)
+# ---------------------------------------------------------------------------
+
+
+def _focus_target(html: str, heading_id: str) -> bool:
+    return re.search(rf'<h2 id="{heading_id}"[^>]*tabindex="-1"', html) is not None
+
+
+def _focus_script(html: str, heading_id: str) -> bool:
+    return f'document.getElementById("{heading_id}")' in html and ".focus()" in html
+
+
+async def test_the_page_moves_no_focus(client, fake_redis):
+    """Only a swap response moves focus; the page's own render never does."""
+    r = await client.get(PAGE, headers=_HEADERS)
+    assert ".focus()" not in r.text
+    assert _focus_target(r.text, "triage-outbox-title")
+
+
+async def test_an_outbox_action_focuses_its_section_heading(client, session):
+    """The swap removes the clicked button, so focus would otherwise drop to <body>."""
+    row = await _dead_lettered(session)
+    r = await client.post(f"{OUTBOX}/{row.id}/discard", headers=_HEADERS)
+    assert _focus_script(r.text, "triage-outbox-title")
+
+
+async def test_a_dlq_action_focuses_its_section_heading(client, fake_redis):
+    entry = await _park(fake_redis)
+    r = await client.post(f"{DLQ_URL}/{entry}/discard", headers=_HEADERS)
+    assert _focus_script(r.text, "triage-dlq-content-revisions-dlq-title")
+    assert _focus_target(r.text, "triage-dlq-content-revisions-dlq-title")
+
+
+@pytest.mark.parametrize("path", [OUTBOX, DLQ_URL])
+async def test_paging_and_re_list_focus_their_section_heading(client, fake_redis, path):
+    """Re-list and Previous / Next live inside the section they replace, too."""
+    r = await client.get(path, headers=_HEADERS)
+    assert ".focus()" in r.text

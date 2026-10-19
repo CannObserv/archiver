@@ -7,7 +7,10 @@ replication action does, so the operator's bus writes move off curl and
 operator is told is ``src/dashboard/bus_triage.py``.
 
 **Each section is its own partial**, so each paginates with the standard clamp,
-fails on its own, and is what its row actions re-render. The outbox section is
+fails on its own, and is what its row actions re-render. Every partial response
+answers a click inside the section it replaces - an action, Re-list, Previous /
+Next - so each renders with ``swapped`` and moves focus to the section heading
+(SCREENS.md, HTMX mutations); the page's own render never does. The outbox section is
 a database read and works bus-dormant; a DLQ section with no broker client, or
 a broker that errors or hangs, says so rather than rendering an empty table -
 the API's 409 / 503 distinction, worn as a section state.
@@ -251,7 +254,7 @@ def _render_outbox(request: Request, section: OutboxSection, flash: Flash) -> HT
     return _templates.TemplateResponse(
         request,
         "bus_triage/_outbox_section.html",
-        {"outbox": section},
+        {"outbox": section, "swapped": True},
         headers={"HX-Trigger": flash_header(flash)},
     )
 
@@ -259,7 +262,10 @@ def _render_outbox(request: Request, section: OutboxSection, flash: Flash) -> HT
 def _render_dlq(request: Request, section: DlqSection, flash: Flash | None = None) -> HTMLResponse:
     headers = {"HX-Trigger": flash_header(flash)} if flash else None
     return _templates.TemplateResponse(
-        request, "bus_triage/_dlq_section.html", {"section": section}, headers=headers
+        request,
+        "bus_triage/_dlq_section.html",
+        {"section": section, "swapped": True},
+        headers=headers,
     )
 
 
@@ -301,7 +307,7 @@ async def bus_triage_outbox(
     return _templates.TemplateResponse(
         request,
         "bus_triage/_outbox_section.html",
-        {"outbox": await _outbox_section(session, page)},
+        {"outbox": await _outbox_section(session, page), "swapped": True},
     )
 
 
