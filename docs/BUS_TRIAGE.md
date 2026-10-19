@@ -47,4 +47,5 @@ an inexact stream id, or a DLQ action with no broker client, is an error flash t
 reaches no core function. Each action that does reach one writes a `Dashboard bus triage
 action` journald line: `app_user_id` (never the email), `action`, `queue`
 (`changes_outbox` or the DLQ), `ids`, `outcome` (`interrupted` for a mid-way broker
-failure).
+failure, `error` when the core call raised - the crash itself still reaches the error
+handler).

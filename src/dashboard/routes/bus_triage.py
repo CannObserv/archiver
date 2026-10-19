@@ -20,11 +20,14 @@ section exists to re-render.
 **Who acted (D5).** The cores log each frame or row before deleting it, but not
 who asked. Every action that reaches a core function writes one
 ``Dashboard bus triage action`` line with the acting ``AppUser``'s id - never
-the email, a column #348 withholds - the queue, the ids and the outcome.
+the email, a column #348 withholds - the queue, the ids and the outcome, which
+is ``error`` when the core call raised.
 """
 
 import asyncio
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -214,18 +217,34 @@ def _require_triage_dlq(dlq: str) -> str:
     return dlq
 
 
-def _audit(user: AppUser, *, action: str, queue: str, ids: list[str], outcome: str) -> None:
-    """D5: who asked for a triage write, beside the core's own frame log."""
-    logger.info(
-        "Dashboard bus triage action",
-        extra={
-            "app_user_id": str(user.id),
-            "action": action,
-            "queue": queue,
-            "ids": ids,
-            "outcome": outcome,
-        },
-    )
+@dataclass(slots=True)
+class _Audit:
+    """The outcome an action records; ``error`` until the core call returns."""
+
+    outcome: str = "error"
+
+
+@contextmanager
+def _audited(user: AppUser, *, action: str, queue: str, ids: list[str]) -> Iterator[_Audit]:
+    """D5: who asked for a triage write, beside the core's own frame log.
+
+    Written on the way out whatever happened, so a core call that raises still
+    leaves its line - ``outcome="error"`` - before the error handler takes it.
+    """
+    audit = _Audit()
+    try:
+        yield audit
+    finally:
+        logger.info(
+            "Dashboard bus triage action",
+            extra={
+                "app_user_id": str(user.id),
+                "action": action,
+                "queue": queue,
+                "ids": ids,
+                "outcome": audit.outcome,
+            },
+        )
 
 
 def _render_outbox(request: Request, section: OutboxSection, flash: Flash) -> HTMLResponse:
@@ -328,8 +347,9 @@ async def bus_triage_outbox_rearm(
     if not _is_row_id(row_id):
         flash: Flash = ("error", f"Not an outbox row id: {row_id}. Nothing was changed.")
     else:
-        [result] = await rearm_dead_lettered(session, [row_id])
-        _audit(user, action="rearm", queue=OUTBOX_QUEUE, ids=[row_id], outcome=result.outcome)
+        with _audited(user, action="rearm", queue=OUTBOX_QUEUE, ids=[row_id]) as audit:
+            [result] = await rearm_dead_lettered(session, [row_id])
+            audit.outcome = result.outcome
         flash = rearm_flash(result)
     return _render_outbox(request, await _outbox_section(session, page), flash)
 
@@ -346,14 +366,9 @@ async def bus_triage_outbox_discard(
     if not _is_row_id(row_id):
         flash: Flash = ("error", f"Not an outbox row id: {row_id}. Nothing was deleted.")
     else:
-        outcome = await discard_dead_lettered(session, [row_id])
-        _audit(
-            user,
-            action="discard",
-            queue=OUTBOX_QUEUE,
-            ids=[row_id],
-            outcome="discarded" if outcome.discarded else "not_found",
-        )
+        with _audited(user, action="discard", queue=OUTBOX_QUEUE, ids=[row_id]) as audit:
+            outcome = await discard_dead_lettered(session, [row_id])
+            audit.outcome = "discarded" if outcome.discarded else "not_found"
         flash = outbox_discard_flash(outcome, row_id)
     return _render_outbox(request, await _outbox_section(session, page), flash)
 
@@ -386,15 +401,15 @@ async def bus_triage_dlq_discard(
     _require_triage_dlq(dlq)
     flash = _dlq_refusal(redis, entry_id)
     if flash is None:
-        try:
-            result = await discard_dead_letters(redis, dlq, [entry_id])
-        except DiscardInterruptedError as e:
-            outcome = "interrupted"
-            flash = dlq_discard_interrupted_flash(e)
-        else:
-            outcome = "discarded" if result.discarded else "not_found"
-            flash = dlq_discard_flash(result, dlq, entry_id)
-        _audit(user, action="discard", queue=dlq, ids=[entry_id], outcome=outcome)
+        with _audited(user, action="discard", queue=dlq, ids=[entry_id]) as audit:
+            try:
+                result = await discard_dead_letters(redis, dlq, [entry_id])
+            except DiscardInterruptedError as e:
+                audit.outcome = "interrupted"
+                flash = dlq_discard_interrupted_flash(e)
+            else:
+                audit.outcome = "discarded" if result.discarded else "not_found"
+                flash = dlq_discard_flash(result, dlq, entry_id)
     return _render_dlq(request, await _dlq_section(redis, dlq, page), flash)
 
 
@@ -412,15 +427,15 @@ async def bus_triage_dlq_reprocess(
     _require_triage_dlq(dlq)
     flash = _dlq_refusal(redis, entry_id)
     if flash is None:
-        try:
-            [result] = await reprocess_dead_letters(
-                redis, dlq, [entry_id], session_factory=session_factory
-            )
-        except ReprocessInterruptedError as e:
-            outcome = "interrupted"
-            flash = reprocess_interrupted_flash(e)
-        else:
-            outcome = result.outcome
-            flash = reprocess_flash(result)
-        _audit(user, action="reprocess", queue=dlq, ids=[entry_id], outcome=outcome)
+        with _audited(user, action="reprocess", queue=dlq, ids=[entry_id]) as audit:
+            try:
+                [result] = await reprocess_dead_letters(
+                    redis, dlq, [entry_id], session_factory=session_factory
+                )
+            except ReprocessInterruptedError as e:
+                audit.outcome = "interrupted"
+                flash = reprocess_interrupted_flash(e)
+            else:
+                audit.outcome = result.outcome
+                flash = reprocess_flash(result)
     return _render_dlq(request, await _dlq_section(redis, dlq, page), flash)

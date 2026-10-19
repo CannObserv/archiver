@@ -642,3 +642,31 @@ async def test_a_refused_request_logs_no_action(client, caplog):
     caplog.set_level(logging.INFO)
     await client.post(f"{OUTBOX}/not-a-ulid/discard", headers=_HEADERS)
     assert _audit_records(caplog) == []
+
+
+@pytest.mark.parametrize(
+    ("core", "path"),
+    [
+        ("rearm_dead_lettered", "outbox/{row}/rearm"),
+        ("discard_dead_lettered", "outbox/{row}/discard"),
+        ("discard_dead_letters", "dlq/content.revisions.dlq/1-0/discard"),
+        ("reprocess_dead_letters", "dlq/content.revisions.dlq/1-0/reprocess"),
+    ],
+)
+async def test_an_action_whose_core_call_raises_still_logs_who_asked(
+    client, fake_redis, db_factory, monkeypatch, caplog, core, path
+):
+    """D5 is one line per action that reaches a core function - a crash included.
+    The crash itself still goes to the dashboard's error handler."""
+
+    async def boom(*_a, **_kw):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(bus_triage_routes, core, boom)
+    caplog.set_level(logging.INFO)
+
+    with pytest.raises(RuntimeError):
+        await client.post(f"{PAGE}/{path.format(row=ULID())}", headers=_HEADERS)
+
+    [record] = _audit_records(caplog)
+    assert record.outcome == "error"
