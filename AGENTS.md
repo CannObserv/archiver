@@ -110,7 +110,9 @@ production-write incident: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
 exception is DLQ discard and reprocess (#238): the queues exist only on prod's
 broker, so they go to 8000, and only when the operator asks
 ([docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)). Outbox discard and rearm
-(#191) follow the same rule on 8000 ([docs/BUS.md](docs/BUS.md)).
+(#191) follow the same rule on 8000 ([docs/BUS.md](docs/BUS.md)). The operator
+can do both on the dashboard's `/dashboard/bus-triage` (#271); the rule binds an
+agent there too.
 
 ## Environment Files
 
@@ -243,4 +245,4 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, overrides, trigger table, SessionStart hook mechanics
 - [docs/SOCRATICODE.md](docs/SOCRATICODE.md) - tool map, `co-index` traps, cross-repo search
 - [docs/reference/tailscale.md](docs/reference/tailscale.md) - this node on the tailnet: the ACL, the bind decision, the two-names-one-host trap
-- The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest: [docs/HTMX.md](docs/HTMX.md), [docs/PAGES.md](docs/PAGES.md), [docs/REP_SPEC_PAGES.md](docs/REP_SPEC_PAGES.md), [docs/SCREENS.md](docs/SCREENS.md), [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md), [docs/INFO_ITEM_ACTIONS.md](docs/INFO_ITEM_ACTIONS.md), [docs/ORG_ROW.md](docs/ORG_ROW.md), [docs/REGISTER.md](docs/REGISTER.md), [docs/HEALTH_ROW.md](docs/HEALTH_ROW.md), [docs/COMPONENTS.md](docs/COMPONENTS.md), [docs/STYLE.md](docs/STYLE.md)
+- The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest: [docs/HTMX.md](docs/HTMX.md), [docs/PAGES.md](docs/PAGES.md), [docs/REP_SPEC_PAGES.md](docs/REP_SPEC_PAGES.md), [docs/SCREENS.md](docs/SCREENS.md), [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md), [docs/INFO_ITEM_ACTIONS.md](docs/INFO_ITEM_ACTIONS.md), [docs/ORG_ROW.md](docs/ORG_ROW.md), [docs/REGISTER.md](docs/REGISTER.md), [docs/HEALTH_ROW.md](docs/HEALTH_ROW.md), [docs/BUS_TRIAGE.md](docs/BUS_TRIAGE.md), [docs/COMPONENTS.md](docs/COMPONENTS.md), [docs/STYLE.md](docs/STYLE.md)

@@ -35,6 +35,15 @@ page, the validator's messages, and the remedy (`src/dashboard/stored_documents.
 assigned RepSpec's is "clone it", #83). Empty state "Every stored document validates."
 The same sweep the badge runs, once per load.
 
+**GET `/dashboard/bus-triage`** (`bus_triage/index.html` + `_outbox_section.html` /
+`_dlq_section.html`, archiver#271) - the page the Outbox and Consumers badges link to in
+their "N dead-lettered" state: one section for dead-lettered outbox rows, one per
+`TRIAGE_DLQS` queue. Section partials **GET `/dashboard/bus-triage/outbox`** and
+**`/dashboard/bus-triage/dlq/{dlq}`**; row actions **POST `.../outbox/{row_id}/rearm`**,
+**`.../outbox/{row_id}/discard`**, **`.../dlq/{dlq}/{entry_id}/reprocess`** and
+**`.../dlq/{dlq}/{entry_id}/discard`**. What each section renders, its states, the flash
+per outcome and the audit line: [BUS_TRIAGE.md](BUS_TRIAGE.md).
+
 **Stored-document notice** (`stored_document_notice` macro, `#stored-document-notice`,
 archiver#164) - an `.alert--warning` at the top of the InfoSource, InfoItem and RepSpec
 detail pages when a document stored on that row fails its current schema: kind, messages,

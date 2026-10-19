@@ -123,9 +123,11 @@ string an operator will grep the logs and CannObserv/replicator for, so
 prettifying it costs more than it reads.
 
 **Irreversible actions guard themselves twice.** An action whose effect cannot
-be undone - today only "Replicate now", which asks Replicator to write into a
-permanent store, one of which (archive.org) cannot be deleted at all - carries
-both `hx-confirm` and `hx-disabled-elt="this"`. The second is not redundant:
+be undone - "Replicate now", which asks Replicator to write into a permanent
+store, one of which (archive.org) cannot be deleted at all, and the Bus triage
+screen's Discard, which deletes an outbox row or a DLQ entry (archiver#271,
+[BUS_TRIAGE.md](BUS_TRIAGE.md)) - carries both `hx-confirm` and
+`hx-disabled-elt="this"`. The second is not redundant:
 htmx does not deduplicate concurrent requests from an element, so without it a
 double-click issues two occasions. They render the same destination (the
 issuer contract's R2 determinism), so the bytes are safe, but the second

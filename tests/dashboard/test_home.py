@@ -293,6 +293,27 @@ async def test_health_outbox_danger_on_dead_lettered(client, session):
     assert r.status_code == 200
     assert "badge--danger" in r.text
     assert "1 dead-lettered" in r.text
+    # The danger state links to the screen that clears it (archiver#271, D2).
+    assert '<a href="/dashboard/bus-triage"' in r.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("stale", "label"), [(False, "ok"), (True, "backlog")])
+async def test_health_outbox_links_only_when_dead_lettered(client, session, stale, label):
+    """D2: the badge links in its "N dead-lettered" state only, as Registry does."""
+    _configure_bus()
+    if stale:
+        session.add(
+            ChangesOutboxRow(
+                topic="info.changes",
+                payload={"event_type": "irrelevant"},
+                created_at=datetime.now(UTC) - timedelta(hours=1),
+            )
+        )
+        await session.flush()
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert f">{label}</span>" in r.text
+    assert "bus-triage" not in r.text
 
 
 @pytest.mark.asyncio
@@ -429,6 +450,18 @@ async def test_health_consumers_danger_on_a_nonempty_dlq(client, monkeypatch, fa
     assert r.status_code == 200
     assert "badge--danger" in r.text
     assert "1 dead-lettered" in r.text
+    assert '<a href="/dashboard/bus-triage"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_links_only_when_dead_lettered(client, monkeypatch, fake_redis):
+    """A stopped consumer outranks a DLQ depth; its badge is not the triage link."""
+    await _provision_groups(fake_redis)
+    await fake_redis.xadd("content.revisions.dlq", {"k": "v"})
+    _consumers(monkeypatch, fake_redis, revisions=_dead_task(), artifacts=_live_task())
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert "stopped" in r.text
+    assert "bus-triage" not in r.text
 
 
 @pytest.mark.asyncio

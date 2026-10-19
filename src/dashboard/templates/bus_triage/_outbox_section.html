@@ -1,0 +1,108 @@
+{# Partial: the outbox section (archiver#271). Context: `outbox` (OutboxSection).
+   Returned by GET /dashboard/bus-triage/outbox and by both row actions, which
+   swap it whole and raise their outcome as a showFlash toast.
+   Every request here syncs on the section with `drop`, and each write disables
+   its button in flight. Unsynced, a Re-list that swapped first stranded an
+   in-flight action's response on a detached element - swap and toast both lost,
+   though the write committed; landing second, a stale Re-list hid the result. #}
+<section id="{{ outbox.dom_id }}" class="entity-section" aria-labelledby="{{ outbox.dom_id }}-title">
+  <div class="entity-section__header">
+    <h2 id="{{ outbox.dom_id }}-title" class="entity-section__title" tabindex="-1">Outbox dead-letters</h2>
+    <button type="button" class="btn btn--ghost btn--sm"
+            hx-get="{{ outbox.url }}?offset={{ outbox.offset }}&amp;limit={{ outbox.limit }}"
+            hx-target="#{{ outbox.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ outbox.dom_id }}:drop">Re-list</button>
+  </div>
+  <p class="text-sm text-muted">
+    Rows the publisher could not publish. Rearm sends an <code>info.changes</code>
+    row back to the drain once its cause is fixed; other topics are discarded.
+    A database read, so it works with the bus dormant.
+  </p>
+
+  {% if outbox.rows %}
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Dead-lettered outbox rows">
+    <table class="data-table" aria-label="Dead-lettered outbox rows">
+      <thead>
+        <tr>
+          <th class="data-table__th">Row</th>
+          <th class="data-table__th">Topic / event</th>
+          <th class="data-table__th">Last error</th>
+          <th class="data-table__th">Attempts</th>
+          <th class="data-table__th">Payload</th>
+          <th class="data-table__th">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in outbox.rows %}
+        <tr id="outbox-row-{{ row.row_id }}">
+          <td class="data-table__cell">
+            <code class="text-sm">{{ row.row_id }}</code>
+            <div class="text-xs text-muted">dead-lettered {{ row.dead_lettered_at.strftime('%Y-%m-%dT%H:%M:%SZ') if row.dead_lettered_at else '-' }}</div>
+            <div class="text-xs text-muted">created {{ row.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') if row.created_at else '-' }}</div>
+          </td>
+          <td class="data-table__cell">
+            <code class="text-sm">{{ row.topic }}</code>
+            <div class="text-sm">{{ row.event_type or '-' }}</div>
+          </td>
+          <td class="data-table__cell text-sm">{{ row.last_error or '-' }}</td>
+          <td class="data-table__cell text-sm">{{ row.publish_attempts }}</td>
+          <td class="data-table__cell">
+            <details>
+              <summary class="text-sm" style="white-space:nowrap;">Payload</summary>
+              <pre class="code-block">{{ row.payload | tojson(indent=2) }}</pre>
+            </details>
+          </td>
+          <td class="data-table__cell">
+            <div class="entity-card__actions">
+              {% if row.rearmable %}
+              <button type="button" class="btn btn--sm btn--secondary"
+                      hx-post="{{ outbox.url }}/{{ row.row_id }}/rearm?limit={{ outbox.limit }}&amp;offset={{ outbox.offset }}"
+                      hx-target="#{{ outbox.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ outbox.dom_id }}:drop" hx-disabled-elt="this"
+                      aria-label="Rearm outbox row {{ row.row_id }}">Rearm</button>
+              {% else %}
+              <button type="button" class="btn btn--sm btn--secondary" disabled
+                      title="Only info.changes rows rearm; discard this {{ row.topic }} row."
+                      aria-label="Rearm unavailable for {{ row.topic }} row {{ row.row_id }}">Rearm</button>
+              {% endif %}
+              <button type="button" class="btn btn--sm btn--danger"
+                      hx-post="{{ outbox.url }}/{{ row.row_id }}/discard?limit={{ outbox.limit }}&amp;offset={{ outbox.offset }}"
+                      hx-target="#{{ outbox.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ outbox.dom_id }}:drop" hx-disabled-elt="this"
+                      hx-confirm="Discard outbox row {{ row.row_id }} ({{ row.topic }})? This cannot be undone."
+                      aria-label="Discard outbox row {{ row.row_id }}">Discard</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No dead-lettered outbox rows{% if outbox.offset %} on this page{% endif %}.</p>
+  {% endif %}
+
+  {% if outbox.offset > 0 or outbox.has_more %}
+  <div class="pagination">
+    {% if outbox.offset > 0 %}
+    <button type="button" class="btn btn--ghost btn--sm"
+            hx-get="{{ outbox.url }}?offset={{ [outbox.offset - outbox.limit, 0] | max }}&amp;limit={{ outbox.limit }}"
+            hx-target="#{{ outbox.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ outbox.dom_id }}:drop">← Previous</button>
+    {% endif %}
+    {% if outbox.has_more %}
+    <button type="button" class="btn btn--ghost btn--sm"
+            hx-get="{{ outbox.url }}?offset={{ outbox.offset + outbox.limit }}&amp;limit={{ outbox.limit }}"
+            hx-target="#{{ outbox.dom_id }}" hx-swap="outerHTML" hx-sync="#{{ outbox.dom_id }}:drop">Next →</button>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if swapped %}
+  {# Every swap of this section removes the button that was clicked, so focus the
+     heading rather than dropping keyboard users to <body>. Rendered only on a
+     swap response, never in the page's include. htmx runs scripts in swaps. #}
+  <script>
+    (function () {
+      var h = document.getElementById("{{ outbox.dom_id }}-title");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</section>

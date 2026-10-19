@@ -37,9 +37,12 @@ failed)" when the URL is set, which is exactly when a stale backlog *is* ill
 health. Otherwise danger "N dead-lettered" if any poison row, warning
 "backlog" if the oldest live unpublished row exceeds 300s, else success "ok";
 `title` carries `depth=N oldest=Ns dead_lettered=N` in the drain states.
-The badge clears once every dead-lettered row is triaged - discarded or
-rearmed through `/api/v1/tools/outbox/dead-lettered` (archiver#191, runbook in
-[BUS.md](BUS.md)); the dashboard has no triage screen of its own.
+"N dead-lettered" is an `<a>` to **`/dashboard/bus-triage`** ([BUS_TRIAGE.md](BUS_TRIAGE.md),
+archiver#271); no other state links. The badge clears once every dead-lettered
+row is triaged - discarded or rearmed on that screen or through
+`/api/v1/tools/outbox/dead-lettered` (archiver#191, runbook in [BUS.md](BUS.md)).
+The no-client branches outrank it, so a dormant or init-failed bus never shows
+the count or the link; the screen is still reachable by URL.
 
 **GET `/dashboard/health/consumers`** - over
 `src/core/bus_health.collect_group_lag` (archiver#147). Liveness from
@@ -52,6 +55,9 @@ dev default) / danger "not started" / danger "stopped" / warning "lag unknown"
 missing" (absent group, not a healthy zero) / warning "lagging" / success
 "running". Liveness outranks lag: a stopped consumer is the cause, its lag the
 symptom. `title` carries `<name>=<state> pending=N dlq=N` per consumer.
+"N dead-lettered" - the sum of each owned topic's `XLEN <topic>.dlq`, every
+group's entries, not only archiver's - is an `<a>` to **`/dashboard/bus-triage`**
+(archiver#271), which lists the same entries; no other state links.
 
 The probe is bounded by `LAG_PROBE_TIMEOUT_SECONDS` (5s) at the call site
 rather than by a socket timeout on the client: the badge borrows the lifespan's

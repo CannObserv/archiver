@@ -182,6 +182,12 @@ def test_no_dashboard_route_declares_a_coercible_param():
 # ---------------------------------------------------------------------------
 
 _PAGINATED_ROUTES = [
+    # Bus triage (archiver#271): the page and both section partials. The DLQ
+    # section renders its dormant state here (no broker client in tests), which
+    # still parses and clamps the window.
+    "/dashboard/bus-triage",
+    "/dashboard/bus-triage/outbox",
+    "/dashboard/bus-triage/dlq/content.revisions.dlq",
     "/dashboard/domains/",
     "/dashboard/info-items/",
     "/dashboard/info-sources/",

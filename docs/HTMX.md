@@ -215,7 +215,9 @@ Rules:
 - **An action outside the section syncs on `#the-section:drop`** - `closest` finds nothing from outside (the picker's *Replicate now* prompt, archiver#308); `outside_action_sync_violations` checks it.
 - Each screen asserts `poll_sync_violations(fragment, wrapper_id) == []` (`tests/dashboard/conftest.py`) against its poll fragment. That holds the templates to the attributes; `tests/js/htmx-poll-sync.test.js` holds the vendored htmx to what they are relied on to do. It has to: the `drop`-aborts-an-abortable-poll rule is htmx 2.0.8's implementation, not its documented contract - the docs say `drop` ignores a request while one is in flight - so a vendor bump could undo it with every Python test green.
 
-Used by `info_items/_rep_spec_assignments.html` and `rep_specs/_assignments.html`.
+Used by `info_items/_rep_spec_assignments.html` and `rep_specs/_assignments.html`. The Bus
+triage sections (`bus_triage/_*_section.html`, archiver#271) take the action half without a
+poll: every request inside, Re-list and paging included, syncs on `#<section>:drop`.
 
 ## Blocks that share a section
 

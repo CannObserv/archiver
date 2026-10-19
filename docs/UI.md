@@ -15,9 +15,10 @@ The other parts of this reference, under the same living-doc rule:
 - [COMPONENTS.md](COMPONENTS.md) - the Alpine.js component catalogue.
 - [STYLE.md](STYLE.md) - design tokens and component classes.
 - [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md), [ORG_ROW.md](ORG_ROW.md),
-  [REGISTER.md](REGISTER.md), [HEALTH_ROW.md](HEALTH_ROW.md) - one screen's
-  internals each: the InfoItem hub and its Organization row, the register
-  wizard, the home screen's health row.
+  [REGISTER.md](REGISTER.md), [HEALTH_ROW.md](HEALTH_ROW.md),
+  [BUS_TRIAGE.md](BUS_TRIAGE.md) - one screen's internals each: the InfoItem
+  hub and its Organization row, the register wizard, the home screen's health
+  row, the Bus triage screen.
   The hub's action routes are [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
 > **AGENTS.md enforcement:** a Jinja2 template change, a new or changed
@@ -34,6 +35,7 @@ The other parts of this reference, under the same living-doc rule:
 ```
 /dashboard/                          Home - CTA, health strip, Recent Activity, domain overview
 /dashboard/registry-audit            Registry Audit - stored documents the current schemas reject
+/dashboard/bus-triage                Bus Triage - dead-lettered outbox rows and archiver's DLQs
 /dashboard/domains/                  Domains list
 /dashboard/domains/{name}            Domain detail - notes, status, linked sources
 /dashboard/register                  Register Information Item - 4-step flow
