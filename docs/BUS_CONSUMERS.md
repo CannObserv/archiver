@@ -169,6 +169,11 @@ recorded; the command closes **only** when `terminal` is true.
 - **The co-core pin and these branches ship together.** Once a type decodes, the
   handler's fall-through acks it as foreign: an outcome with no branch is lost,
   not quarantined.
+- **One exception, unreachable today: the capture pair.** `capture_stored` /
+  `capture_failed` (cannobserv#571) decode since co-core 0.37.1 and have no
+  branch, so they take that ack (archiver#397). Archiver is the only issuer of
+  `content.capture` and issues nothing yet, so no outcome can arrive; the
+  branches land with the producer (archiver#380).
 
 **The reaper** (`src/core/changes/replication_reaper.py`) closes the silent case
 MUST-6 names: Replicator does not guarantee that every command either succeeds or
