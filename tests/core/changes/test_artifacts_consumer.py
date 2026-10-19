@@ -324,7 +324,7 @@ def _capture_frame(event_type: str, payload: dict) -> dict[str, str]:
         "occurred_at": occurred_at,
         "command_id": "cmd-capture-1",
         "url": "https://example.com/artifacts",
-        "info_source_id": "01KTVPAV7RW8TDZH88A43AFT04",
+        "info_source_id": "01K2E0CCCCCCCCCCCCCCCCCCCC",
         **payload,
     }
     return {
