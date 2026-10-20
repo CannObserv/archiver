@@ -353,5 +353,19 @@ def test_a_badge_link_keeps_its_variant_colour_on_hover() -> None:
     the hover colour skips badges and an underline is their affordance instead."""
     css = _CSS.read_text()
     assert _rule("a:hover", css) == "", "a bare a:hover recolours every badge link"
-    assert "color" in _rule("a:not(.badge):hover", css)
+    assert "color" in _rule("a:where(:not(.badge)):hover", css)
     assert "underline" in _rule("a.badge:hover", css)
+
+
+def test_the_global_link_hover_stays_at_element_specificity() -> None:
+    """``:where()`` keeps the global link hover at (0,1,1), as a bare ``a:hover`` was.
+
+    ``a:not(.badge):hover`` - the first cut of the rule above - is (0,2,1). It beat
+    every class-level hover written to beat (0,1,1): the topbar brand turned
+    brand-dark on the brand-coloured bar (about 1.3:1, the name all but gone)
+    and the sidebar links lost their hover colour.
+    """
+    css = _CSS.read_text()
+    assert _rule("a:not(.badge):hover", css) == "", "(0,2,1) outranks class hovers"
+    for selector in (".topbar__brand:hover", ".sidebar__link:hover"):
+        assert "color" in _rule(selector, css), f"{selector} must still set its colour"

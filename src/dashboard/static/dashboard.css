@@ -224,8 +224,10 @@ a {
   color: var(--color-brand);
   text-decoration: underline;
 }
-/* Not on a badge: its variant owns its colour, and this rule would outrank it. */
-a:not(.badge):hover { color: var(--color-brand-dark); }
+/* Not on a badge: its variant owns its colour, and this rule would outrank it.
+   :where() keeps the specificity at (0,1,1), as a bare a:hover was, so every
+   class-level hover (.topbar__brand, .sidebar__link) still wins. */
+a:where(:not(.badge)):hover { color: var(--color-brand-dark); }
 a:focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
