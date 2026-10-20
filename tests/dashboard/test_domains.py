@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 import pytest
+from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
@@ -136,6 +138,36 @@ async def test_domain_detail_source_count_is_total_not_page(client, session):
     assert r.status_code == 200
     # Page shows 2 rows but the heading must report the full total.
     assert "Information Sources (3)" in r.text
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_source_pages_partition_tied_rows(client, session):
+    """Tied ``created_at`` breaks by ``info_source_id DESC``, so two pages neither
+    skip nor repeat a row (archiver#149). Rows go in ascending-id order, so heap
+    order - what an untiebroken sort returns - is the reverse of the rule."""
+    host = "tie-page.example.com"
+    session.add(_make_domain(host))
+    await session.flush()
+    stamp = datetime(2026, 1, 1, tzinfo=UTC)
+    ids = sorted(ULID() for _ in range(4))
+    for i in ids:
+        src = _make_source(f"https://{host}/s-{i}", host)
+        src.info_source_id, src.created_at = i, stamp
+        session.add(src)
+        await session.flush()
+
+    def urls(html: str) -> list[str]:
+        return list(dict.fromkeys(re.findall(rf"https://{re.escape(host)}/s-\w+", html)))
+
+    pages = []
+    for offset in (0, 2):
+        r = await client.get(f"/dashboard/domains/{host}?limit=2&offset={offset}", headers=_HEADERS)
+        assert r.status_code == 200
+        pages.append(urls(r.text))
+    assert pages == [
+        [f"https://{host}/s-{i}" for i in sorted(ids, reverse=True)[:2]],
+        [f"https://{host}/s-{i}" for i in sorted(ids, reverse=True)[2:]],
+    ]
 
 
 @pytest.mark.asyncio

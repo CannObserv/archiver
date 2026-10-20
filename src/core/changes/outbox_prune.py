@@ -141,7 +141,7 @@ async def prune_batch(session: AsyncSession, *, cutoff: datetime, batch_size: in
             ChangesOutboxRow.published_at < cutoff,
             ChangesOutboxRow.dead_lettered_at.is_(None),
         )
-        .order_by(ChangesOutboxRow.published_at)
+        .order_by(ChangesOutboxRow.published_at, ChangesOutboxRow.id)
         .limit(batch_size)
     )
     result = await session.execute(

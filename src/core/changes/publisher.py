@@ -310,7 +310,11 @@ async def drain_once(
                 ChangesOutboxRow.published_at.is_(None),
                 ChangesOutboxRow.dead_lettered_at.is_(None),
             )
-            .order_by(ChangesOutboxRow.created_at)
+            # The id tiebreak makes the batch deterministic, not causal: ULIDs are not
+            # monotonic within a millisecond, so two same-instant rows may publish in
+            # either creation order. A consumer needing causal order needs a sequence
+            # column (archiver#149).
+            .order_by(ChangesOutboxRow.created_at, ChangesOutboxRow.id)
             .limit(batch_size)
         )
         rows = list(result.scalars())

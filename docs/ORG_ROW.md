@@ -37,7 +37,8 @@ works with Power Map dormant: `link_org` never asks Power Map to unlink.
 ## The type-ahead
 
 It opens on **local suggestions**: orgs linked to other items on this item's
-domains (active bindings' `domain_name`), most-linked first, the item's own org
+domains (active bindings' `domain_name`), most-linked first, then by name and
+`pm_org_id` so equal counts and names list stably (archiver#149), the item's own org
 left out, no Power Map call. From two characters `GET /dashboard/power-map/orgs`
 (300ms debounce, `hx-sync="this:replace"`) searches Power Map, limit 10,
 archived excluded; under two it answers with the local suggestions again.

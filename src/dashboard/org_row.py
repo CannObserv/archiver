@@ -169,7 +169,7 @@ async def local_org_options(session: AsyncSession, item: InfoItem) -> list[OrgOp
             InfoItem.info_item_id != item.info_item_id,
         )
         .group_by(PmOrganization.pm_org_id)
-        .order_by(linked.desc(), PmOrganization.name)
+        .order_by(linked.desc(), PmOrganization.name, PmOrganization.pm_org_id)
         .limit(LOCAL_OPTIONS_LIMIT)
     )
     if item.pm_org_id is not None:

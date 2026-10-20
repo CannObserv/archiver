@@ -34,7 +34,7 @@ _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templ
 
 async def _get_user_keys(session: AsyncSession, user: AppUser) -> list[ApiKey]:
     result = await session.execute(
-        select(ApiKey).where(ApiKey.user_id == user.id).order_by(ApiKey.created_at)
+        select(ApiKey).where(ApiKey.user_id == user.id).order_by(ApiKey.created_at, ApiKey.id)
     )
     return list(result.scalars().all())
 

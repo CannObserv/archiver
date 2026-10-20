@@ -418,7 +418,11 @@ async def dashboard_index(
     recent_revisions = list(
         (
             await session.execute(
-                select(SourceRevision).order_by(SourceRevision.captured_at.desc()).limit(10)
+                select(SourceRevision)
+                .order_by(
+                    SourceRevision.captured_at.desc(), SourceRevision.source_revision_id.desc()
+                )
+                .limit(10)
             )
         )
         .scalars()
@@ -510,7 +514,7 @@ async def _get_domain_overview(session: AsyncSession) -> list[_DomainRow]:
             select(InfoSource.domain_name, func.count().label("cnt"))
             .where(InfoSource.domain_name.is_not(None))
             .group_by(InfoSource.domain_name)
-            .order_by(func.count().desc())
+            .order_by(func.count().desc(), InfoSource.domain_name)
             .limit(10)
         )
     ).all()
