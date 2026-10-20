@@ -35,6 +35,8 @@ STATUS = "http://status.test:9000"
 MONITOR = "01M46EXP45TVCVAMQXK043N1Q7"
 KEY = "sk-test-0123456789abcdef"
 CHECKIN = f"{STATUS}/api/v1/monitors/{MONITOR}/checkin"
+#: ``Heartbeat._in_thread``'s thread name, which the ``status`` drain joins by.
+CHECKIN_THREAD = "liveness-checkin"
 
 
 @pytest.fixture
@@ -55,14 +57,22 @@ def status(respx_mock):
     can start one just before the cancel. ``httpx.post`` then builds its client for
     tens of ms before it sends, and unjoined, that post outlives ``respx_mock``. It
     lands on the next test's route, or on the network (archiver#406). This teardown
-    runs before ``respx_mock``'s, so every post lands here.
+    runs before ``respx_mock``'s, so every post lands here. Each post's thread name
+    is checked too: renamed, the drain would match nothing and pass silently.
     """
+    posters: set[str] = set()
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        posters.add(threading.current_thread().name)
+        return httpx.Response(202, json={})
+
     before = set(threading.enumerate())
-    yield respx_mock.post(CHECKIN).mock(return_value=httpx.Response(202, json={}))
+    yield respx_mock.post(CHECKIN).mock(side_effect=answer)
     for thread in set(threading.enumerate()) - before:
-        if thread.name == "liveness-checkin":
+        if thread.name == CHECKIN_THREAD:
             thread.join(liveness.TIMEOUT_SECONDS)
             assert not thread.is_alive(), "a check-in outlived its test's Status stub"
+    assert posters <= {CHECKIN_THREAD}, f"undrained check-in threads: {posters}"
 
 
 @pytest.fixture
