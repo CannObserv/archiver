@@ -78,7 +78,7 @@ def status(respx_mock):
 
 @pytest.fixture
 def live_env(monkeypatch, tmp_path: Path):
-    """A unit's view: the monitor id, the key as a credential, a stubbed Status."""
+    """A unit's view: the monitor id, the key as a credential, Status's URL (``status``)."""
     monkeypatch.delenv("ARCHIVER_REDIS_URL", raising=False)
     monkeypatch.delenv("ARCHIVER_BUS_CONSUMER", raising=False)
     (tmp_path / CREDENTIAL_NAME).write_text(f"{KEY}\n")
