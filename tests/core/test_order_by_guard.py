@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from functools import cache
 from pathlib import Path
 
 from sqlalchemy import Column, Index, Integer, MetaData, Table, Text, UniqueConstraint
@@ -101,33 +102,42 @@ def _is_total(call: ast.Call) -> bool:
     return any(key <= columns for table in tables for key in _unique_keys(table))
 
 
-def order_by_violations(source: str, relpath: Path) -> list[str]:
-    """Every ``order_by`` in *source* whose keys do not include a unique key."""
-    found: list[tuple[int, str]] = []
-    for node in ast.walk(ast.parse(source)):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "order_by"
-            and node.args
-        ):
-            continue
-        written = ", ".join(ast.unparse(a) for a in node.args)
-        if (str(relpath), written) in ALLOWED or _is_total(node):
-            continue
-        found.append((node.func.end_lineno or node.lineno, f"order_by({written})"))
+def _order_by_calls(tree: ast.AST) -> list[tuple[ast.Call, str]]:
+    """Each ``.order_by(...)`` call with arguments, beside its keys as written."""
+    return [
+        (node, ", ".join(ast.unparse(a) for a in node.args))
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "order_by"
+        and node.args
+    ]
+
+
+def _violations(calls: list[tuple[ast.Call, str]], relpath: Path) -> list[str]:
+    found = [
+        (node.func.end_lineno or node.lineno, f"order_by({written})")
+        for node, written in calls
+        if (str(relpath), written) not in ALLOWED and not _is_total(node)
+    ]
     return [f"{relpath}:{line} {what}" for line, what in sorted(found)]
 
 
+def order_by_violations(source: str, relpath: Path) -> list[str]:
+    """Every ``order_by`` in *source* whose keys do not include a unique key."""
+    return _violations(_order_by_calls(ast.parse(source)), relpath)
+
+
+@cache
 def _sweep() -> tuple[list[str], Counter[tuple[str, str]]]:
+    """One parse of ``src/``, shared by the tests below."""
     violations: list[str] = []
     seen: Counter[tuple[str, str]] = Counter()
     for path in sorted(SRC.rglob("*.py")):
-        source, rel = path.read_text(), path.relative_to(ROOT)
-        violations += order_by_violations(source, rel)
-        for node in ast.walk(ast.parse(source)):
-            if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "order_by":
-                seen[(str(rel), ", ".join(ast.unparse(a) for a in node.args))] += 1
+        rel = path.relative_to(ROOT)
+        calls = _order_by_calls(ast.parse(path.read_text()))
+        violations += _violations(calls, rel)
+        seen.update((str(rel), written) for _, written in calls)
     return violations, seen
 
 
