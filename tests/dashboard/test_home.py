@@ -670,9 +670,10 @@ async def test_health_consumers_timeout_title_names_the_bound(client, monkeypatc
 _TRIAGE_LINK = re.compile(r'<a href="/dashboard/bus-triage" class="badge badge--[a-z]+"[^>]*>')
 
 
-def _assert_triage_link(html: str, badge: str, text: str) -> None:
+def _assert_triage_link(html: str, badge: str, text: str, variant: str) -> None:
     """One badge, an <a> to the screen, named for a reader that sees it out of context."""
     [tag] = _TRIAGE_LINK.findall(html)
+    assert f'class="badge badge--{variant}"' in tag, tag
     assert f'aria-label="{badge}: {text} - open Bus triage"' in tag, tag
     assert "<span" not in html
     assert html.endswith(f">{text}</a>")
@@ -728,25 +729,25 @@ async def _outbox_dead_lettered(monkeypatch, session):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("arrange", "text"),
+    ("arrange", "text", "variant"),
     [
-        (_outbox_dormant, "not draining"),
-        (_outbox_init_failed, "not draining (init failed)"),
-        (_outbox_error, "error"),
-        (_outbox_ok, "ok"),
-        (_outbox_backlog, "backlog"),
-        (_outbox_dead_lettered, "1 dead-lettered"),
+        (_outbox_dormant, "not draining", "muted"),
+        (_outbox_init_failed, "not draining (init failed)", "danger"),
+        (_outbox_error, "error", "danger"),
+        (_outbox_ok, "ok", "success"),
+        (_outbox_backlog, "backlog", "warning"),
+        (_outbox_dead_lettered, "1 dead-lettered", "danger"),
     ],
 )
 async def test_health_outbox_links_to_bus_triage_in_every_state(
-    client, session, monkeypatch, arrange, text
+    client, session, monkeypatch, arrange, text, variant
 ):
     """The screen is reachable from the badge whatever it reads, not only when it
     reads "N dead-lettered" - the outbox section works even with the bus dormant."""
     await arrange(monkeypatch, session)
     r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
     assert r.status_code == 200
-    _assert_triage_link(r.text, "Outbox", text)
+    _assert_triage_link(r.text, "Outbox", text, variant)
 
 
 class _DownRedis:
@@ -807,27 +808,27 @@ async def _consumers_running(monkeypatch, redis):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("arrange", "text"),
+    ("arrange", "text", "variant"),
     [
-        (_consumers_not_configured, "not configured"),
-        (_consumers_init_failed, "init failed"),
-        (_consumers_gated_off, "gated off"),
-        (_consumers_not_started, "not started"),
-        (_consumers_stopped, "stopped"),
-        (_consumers_lag_unknown, "lag unknown"),
-        (_consumers_dead_lettered, "1 dead-lettered"),
-        (_consumers_group_missing, "group missing"),
-        (_consumers_lagging, "lagging"),
-        (_consumers_running, "running"),
+        (_consumers_not_configured, "not configured", "muted"),
+        (_consumers_init_failed, "init failed", "danger"),
+        (_consumers_gated_off, "gated off", "muted"),
+        (_consumers_not_started, "not started", "danger"),
+        (_consumers_stopped, "stopped", "danger"),
+        (_consumers_lag_unknown, "lag unknown", "warning"),
+        (_consumers_dead_lettered, "1 dead-lettered", "danger"),
+        (_consumers_group_missing, "group missing", "warning"),
+        (_consumers_lagging, "lagging", "warning"),
+        (_consumers_running, "running", "success"),
     ],
 )
 async def test_health_consumers_links_to_bus_triage_in_every_state(
-    client, monkeypatch, fake_redis, arrange, text
+    client, monkeypatch, fake_redis, arrange, text, variant
 ):
     await arrange(monkeypatch, fake_redis)
     r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
     assert r.status_code == 200
-    _assert_triage_link(r.text, "Consumers", text)
+    _assert_triage_link(r.text, "Consumers", text, variant)
 
 
 @pytest.mark.asyncio
