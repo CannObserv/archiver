@@ -19,6 +19,7 @@ result, which holds only for to-one joins; raw SQL ``ORDER BY`` is not parsed.
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from pathlib import Path
 
 from sqlalchemy import Column, Index, Table, UniqueConstraint
@@ -117,15 +118,15 @@ def order_by_violations(source: str, relpath: Path) -> list[str]:
     return [f"{relpath}:{line} {what}" for line, what in sorted(found)]
 
 
-def _sweep() -> tuple[list[str], set[tuple[str, str]]]:
+def _sweep() -> tuple[list[str], Counter[tuple[str, str]]]:
     violations: list[str] = []
-    seen: set[tuple[str, str]] = set()
+    seen: Counter[tuple[str, str]] = Counter()
     for path in sorted(SRC.rglob("*.py")):
         source, rel = path.read_text(), path.relative_to(ROOT)
         violations += order_by_violations(source, rel)
         for node in ast.walk(ast.parse(source)):
             if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "order_by":
-                seen.add((str(rel), ", ".join(ast.unparse(a) for a in node.args)))
+                seen[(str(rel), ", ".join(ast.unparse(a) for a in node.args))] += 1
     return violations, seen
 
 
@@ -136,10 +137,11 @@ def test_every_order_by_in_src_is_total():
     )
 
 
-def test_every_allowlist_entry_still_names_a_site():
-    """A stale entry would silently pre-approve whatever lands under its text next."""
+def test_every_allowlist_entry_names_exactly_one_site():
+    """A stale entry would pre-approve whatever lands under its text next, and a
+    shared one approves a second site its reason was never written for (CR 1)."""
     _, seen = _sweep()
-    assert set(ALLOWED) - seen == set()
+    assert {key: seen[key] for key in ALLOWED} == dict.fromkeys(ALLOWED, 1)
 
 
 def test_the_sweep_sees_order_by_sites():
