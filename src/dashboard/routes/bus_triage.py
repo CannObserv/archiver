@@ -77,18 +77,19 @@ from src.dashboard.bus_triage import (
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
-from src.dashboard.routes.index import INIT_FAILED_DETAIL, bus_init_failed
+from src.dashboard.routes.index import BUS_TRIAGE_HREF, INIT_FAILED_DETAIL, bus_init_failed
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as RedisAsync
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/dashboard/bus-triage")
+router = APIRouter(prefix=BUS_TRIAGE_HREF)
 
 _templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
-PAGE_PATH = "/dashboard/bus-triage"
+PAGE_PATH = BUS_TRIAGE_HREF
+"""The screen's path, defined once in ``index.py``, where the badges link to it."""
 OUTBOX_QUEUE = "changes_outbox"
 """The audit line's ``queue`` for an outbox action: the table, as journald knows it."""
 
