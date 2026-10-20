@@ -34,9 +34,10 @@ conflation #147 exists to remove.
 muted "not draining" with no `ARCHIVER_REDIS_URL` (publisher dormant - dev's
 default - so a stale backlog is not ill health), danger "not draining (init
 failed)" when the URL is set, which is exactly when a stale backlog *is* ill
-health. Otherwise danger "N dead-lettered" if any poison row, warning
-"backlog" if the oldest live unpublished row exceeds 300s, else success "ok";
-`title` carries `depth=N oldest=Ns dead_lettered=N` in the drain states.
+health. Otherwise danger "error" if the stats query raises (its message in `title`),
+danger "N dead-lettered" if any poison row, warning "backlog" if the oldest live
+unpublished row exceeds 300s, else success "ok"; `title` carries `depth=N oldest=Ns
+dead_lettered=N` in the drain states.
 **Every state is an `<a>` to `/dashboard/bus-triage`** ([BUS_TRIAGE.md](BUS_TRIAGE.md),
 archiver#271), so the screen is reachable from the dashboard whatever the badge reads -
 including dormant and init-failed, when the no-client branches outrank the count but the
