@@ -344,3 +344,99 @@ def test_the_header_content_column_can_shrink_below_its_contents() -> None:
     assert "overflow-wrap: anywhere" in title, (
         "a URL has no soft wrap opportunity; without one the narrowed box overflows"
     )
+
+
+_SETS_COLOUR = re.compile(r"(?:^|[;\s])color\s*:")
+_APPROVED_LINK_HOVER = "a:where(:not(.badge)):hover"
+
+
+def _all_rules(css: str) -> list[tuple[str, str]]:
+    """Every innermost ``selectors { declarations }`` pair, ``@media`` bodies included.
+
+    ``[^{}]`` cannot span a brace, so an at-rule's own ``{`` ends its prelude and
+    the rules inside it match on their own.
+    """
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return [(m.group(1).strip(), m.group(2)) for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css)]
+
+
+def _split_selectors(selectors: str) -> list[str]:
+    """A selector list split on its top-level commas - not those inside ``:where(...)``."""
+    parts, depth, current = [], 0, ""
+    for ch in selectors:
+        depth += (ch == "(") - (ch == ")")
+        if ch == "," and depth == 0:
+            parts.append(current)
+            current = ""
+        else:
+            current += ch
+    return [" ".join(p.split()) for p in [*parts, current] if p.strip()]
+
+
+def _generic_link_hover_colours(css: str) -> list[str]:
+    """Selectors that recolour a hovered anchor without naming a class of their own.
+
+    Only the subject compound matters (``.main-content a:hover`` targets every
+    link in it). One with a class qualifier - ``.topbar__brand``, say - is that
+    component's own hover; ``.badge`` does not count as one, since recolouring a
+    badge is exactly the bug.
+    """
+    found = []
+    for selectors, declarations in _all_rules(css):
+        if not _SETS_COLOUR.search(declarations):
+            continue
+        for selector in _split_selectors(selectors):
+            subject = re.split(r"\s*[\s>+~]\s*", selector)[-1]
+            top_level = re.sub(r"\([^()]*\)", "", subject)
+            if not re.match(r"a(?![\w-])", top_level) or ":hover" not in top_level:
+                continue
+            classes = set(re.findall(r"\.([\w-]+)", top_level)) - {"badge"}
+            if not classes:
+                found.append(selector)
+    return found
+
+
+def test_a_badge_link_keeps_its_variant_colour_on_hover() -> None:
+    """The one generic link-hover colour skips badges; a badge link underlines.
+
+    A bare ``a:hover`` (0,1,1) outranks ``.badge--danger`` (0,1,0): a red
+    "dead-lettered" badge turned brand purple under the pointer. Since archiver#271
+    links both bus badges in every state, the hover colour skips every badge link
+    and an underline is their affordance. Scanned across every rule and selector
+    list, so ``a:hover, a:active {...}`` or ``.main-content a:hover`` cannot bring
+    the recolour back unseen.
+    """
+    css = _CSS.read_text()
+    assert _generic_link_hover_colours(css) == [_APPROVED_LINK_HOVER]
+    assert "underline" in _rule("a.badge:hover", css)
+
+
+def test_the_global_link_hover_stays_at_element_specificity() -> None:
+    """``:where()`` keeps the global link hover at (0,1,1), as a bare ``a:hover`` was.
+
+    ``a:not(.badge):hover`` - the first cut - is (0,2,1). It beat every class-level
+    hover written to beat (0,1,1): the topbar brand turned brand-dark on the
+    brand-coloured bar (about 1.3:1, the name all but gone) and the sidebar links
+    lost their hover colour. The scan above admits only the ``:where()`` spelling;
+    this pins the two hovers it exists to protect.
+    """
+    css = _CSS.read_text()
+    for selector in (".topbar__brand:hover", ".sidebar__link:hover"):
+        assert _SETS_COLOUR.search(_rule(selector, css)), f"{selector} must still set its colour"
+
+
+def test_the_link_hover_scan_sees_each_way_back_in() -> None:
+    """Non-vacuity for the scan: each spelling the earlier tests missed is caught."""
+    clean = _CSS.read_text()
+    for regression in (
+        "a:hover,\na:active { color: red; }",
+        "a:is(:not(.badge)):hover { color: red; }",
+        ".main-content a:hover { color: red; }",
+        "a.badge:hover { color: red; }",
+    ):
+        assert _generic_link_hover_colours(clean + "\n" + regression) != [_APPROVED_LINK_HOVER], (
+            regression
+        )
+    assert _generic_link_hover_colours(clean + "\na:hover { background-color: red; }") == [
+        _APPROVED_LINK_HOVER
+    ], "background-color is not color"

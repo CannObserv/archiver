@@ -37,7 +37,7 @@ The same sweep the badge runs, once per load.
 
 **GET `/dashboard/bus-triage`** (`bus_triage/index.html` + `_outbox_section.html` /
 `_dlq_section.html`, archiver#271) - the page the Outbox and Consumers badges link to in
-their "N dead-lettered" state: one section for dead-lettered outbox rows, one per
+every state: one section for dead-lettered outbox rows, one per
 `TRIAGE_DLQS` queue. Section partials **GET `/dashboard/bus-triage/outbox`** and
 **`/dashboard/bus-triage/dlq/{dlq}`**; row actions **POST `.../outbox/{row_id}/rearm`**,
 **`.../outbox/{row_id}/discard`**, **`.../dlq/{dlq}/{entry_id}/reprocess`** and

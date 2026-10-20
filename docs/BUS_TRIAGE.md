@@ -7,8 +7,8 @@ screen is a UI over the existing rules, not a new policy: [BUS.md](BUS.md) § tr
 dead-lettered outbox rows, and [BUS_CONSUMERS.md](BUS_CONSUMERS.md) § DLQ triage.
 
 **GET `/dashboard/bus-triage`** (`bus_triage/index.html`) - the page the
-Outbox and Consumers badges link to in their "N dead-lettered" state; no sidebar entry. One
-section for the outbox (`bus_triage/_outbox_section.html`, `#triage-outbox`) and one per
+Outbox and Consumers badges link to, in every state ([HEALTH_ROW.md](HEALTH_ROW.md)); no
+sidebar entry. One section for the outbox (`bus_triage/_outbox_section.html`, `#triage-outbox`) and one per
 queue in `dlq_triage.TRIAGE_DLQS` (`bus_triage/_dlq_section.html`,
 `#triage-dlq-<dlq with dots as dashes>`), so a new owned group appears by itself. All
 sections render server-side on load; each is also its own partial, which its Re-list and
