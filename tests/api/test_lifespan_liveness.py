@@ -2,7 +2,7 @@
 
 ``CO_ARCHIVER_LIVE_MONITOR_ID`` lives only in ``deploy/archiver.service``, and the
 key only in its ``$CREDENTIALS_DIRECTORY``, so every other process is off. Status
-is respx here: never the network, never the real monitor or key.
+is respx here, for every test: never the network, never the real monitor or key.
 
 Covers:
 1. No monitor id: off, no task, the service starts
@@ -18,12 +18,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from pathlib import Path
 from unittest.mock import patch
 
 import httpx
 import pytest
-import respx
 from fakeredis import aioredis as fakeredis_aio
 
 from src.api import main
@@ -45,6 +45,24 @@ def fake_bus():
         side_effect=lambda *_a, **_k: fakeredis_aio.FakeRedis(),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def status(respx_mock):
+    """Status, stubbed, with every check-in this test started finished inside the stub.
+
+    Cancelling the heartbeat never stops a check-in thread, and a tick due at once
+    can start one just before the cancel. ``httpx.post`` then builds its client for
+    tens of ms before it sends, and unjoined, that post outlives ``respx_mock``. It
+    lands on the next test's route, or on the network (archiver#406). This teardown
+    runs before ``respx_mock``'s, so every post lands here.
+    """
+    before = set(threading.enumerate())
+    yield respx_mock.post(CHECKIN).mock(return_value=httpx.Response(202, json={}))
+    for thread in set(threading.enumerate()) - before:
+        if thread.name == "liveness-checkin":
+            thread.join(liveness.TIMEOUT_SECONDS)
+            assert not thread.is_alive(), "a check-in outlived its test's Status stub"
 
 
 @pytest.fixture
@@ -87,20 +105,20 @@ async def test_a_monitor_without_its_key_is_off_and_the_service_runs(
     ) in _messages(caplog)
 
 
-@respx.mock
-async def test_on_checks_in_for_every_expected_loop(live_env, fake_bus, test_engine, caplog):
+async def test_on_checks_in_for_every_expected_loop(
+    live_env, fake_bus, test_engine, status, caplog
+):
     live_env.setenv("ARCHIVER_REDIS_URL", "redis://localhost:6379/15")
     live_env.setenv("ARCHIVER_BUS_CONSUMER", "1")
-    route = respx.post(CHECKIN).mock(return_value=httpx.Response(202, json={}))
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
         async with lifespan(app):
             assert app.state.liveness_task is not None
             # The consumers' first blocking read is up to 5 s on the fake bus.
             async with asyncio.timeout(15):
-                while not route.called:
+                while not status.called:
                     await asyncio.sleep(0.01)
     assert (logging.INFO, f"liveness: on {MONITOR}") in _messages(caplog)
-    body = json.loads(route.calls[0].request.content)
+    body = json.loads(status.calls[0].request.content)
     assert body["status"] == "ok"
     assert set(body["variables"]) == {
         "build",
@@ -112,10 +130,8 @@ async def test_on_checks_in_for_every_expected_loop(live_env, fake_bus, test_eng
     }
 
 
-@respx.mock
-async def test_on_without_the_bus_is_silence(live_env, test_engine, caplog):
+async def test_on_without_the_bus_is_silence(live_env, test_engine, status, caplog):
     """Only the unit sets the id, and production without a bus is broken."""
-    route = respx.post(CHECKIN).mock(return_value=httpx.Response(202, json={}))
     with caplog.at_level(logging.INFO, logger="src.core.liveness"):
         async with lifespan(app):
             async with asyncio.timeout(5):
@@ -123,18 +139,16 @@ async def test_on_without_the_bus_is_silence(live_env, test_engine, caplog):
                     m == "bus loops not progressing; not checking in" for _, m in _messages(caplog)
                 ):
                     await asyncio.sleep(0.01)
-    assert not route.called
+    assert not status.called
     (record,) = [r for r in caplog.records if r.getMessage().startswith("bus loops not")]
     assert record.reasons == ["publisher: not started"]
 
 
-@respx.mock
 async def test_the_heartbeat_is_cancelled_before_the_bus_stops(
     live_env, fake_bus, test_engine, monkeypatch
 ):
     """A check-in taken while the loops wind down would report a dying service."""
     live_env.setenv("ARCHIVER_REDIS_URL", "redis://localhost:6379/15")
-    respx.post(CHECKIN).mock(return_value=httpx.Response(202, json={}))
     seen: list[bool] = []
     async with lifespan(app):
         heartbeat = app.state.liveness_task

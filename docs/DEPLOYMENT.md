@@ -273,8 +273,10 @@ which turned that same SIGTERM into exit code 143.
 env file: a hand-run server would check in for production. The key is the tenant's,
 shared with drift and backup, handed over as the `status-checkin-key` credential, with
 the empty `SetCredential=` fallback. Each check-in runs in a daemon thread, bounded at
-15 s, one attempt per tick, so a hung Status never delays a publish or an ack. Startup
-says which state it is in:
+15 s, one attempt per tick, so a hung Status never delays a publish or an ack. A stop
+cancels the heartbeat but never joins a check-in already in flight (#406). That post may
+land after the stop, but its reading was taken while the loops ran, and a join would add
+up to 15 s to every stop. Startup says which state it is in:
 
 | Journal | Meaning |
 |---|---|
