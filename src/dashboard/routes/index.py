@@ -221,9 +221,11 @@ async def dashboard_health_registry(
         return _badge("danger", "error", detail=html_escape(reason))
     detail = html_escape(f"{report.checked} documents checked")
     if report.findings:
+        text = f"{len(report.findings)} invalid"
+        label = html_escape(f"Registry: {text} - open Registry audit")
         return HTMLResponse(
-            f'<a href="/dashboard/registry-audit" class="badge badge--warning" title="{detail}">'
-            f"{len(report.findings)} invalid</a>"
+            f'<a href="/dashboard/registry-audit" class="badge badge--warning" '
+            f'aria-label="{label}" title="{detail}">{text}</a>'
         )
     return _badge("success", "ok", detail=detail)
 

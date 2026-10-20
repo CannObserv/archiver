@@ -76,6 +76,9 @@ async def test_registry_badge_counts_invalid_documents_and_links_the_list(client
     assert "badge--warning" in r.text
     assert "1 invalid" in r.text
     assert 'href="/dashboard/registry-audit"' in r.text
+    # Named for a reader that meets it out of context, as the bus badges are
+    # (archiver#271): "1 invalid" alone says nothing about where it goes.
+    assert 'aria-label="Registry: 1 invalid - open Registry audit"' in r.text
 
 
 @pytest.mark.asyncio
