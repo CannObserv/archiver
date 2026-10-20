@@ -22,7 +22,7 @@ import ast
 from collections import Counter
 from pathlib import Path
 
-from sqlalchemy import Column, Index, Table, UniqueConstraint
+from sqlalchemy import Column, Index, Integer, MetaData, Table, Text, UniqueConstraint
 
 from src.core.models import Base
 
@@ -52,7 +52,8 @@ def _unique_keys(table: Table) -> list[frozenset[Column]]:
             if index.dialect_options["postgresql"].get("where") is None:
                 keys.append(frozenset(index.columns))
     keys += [frozenset([c]) for c in table.columns if c.unique]
-    return [k for k in keys if k]
+    # UNIQUE admits many NULLs, so a key over a nullable column can still tie.
+    return [k for k in keys if k and not any(c.nullable for c in k)]
 
 
 _MAPPERS = {m.class_.__name__: m for m in Base.registry.mappers}
@@ -176,6 +177,20 @@ def test_a_partial_unique_index_is_not_a_unique_key():
     assert _check("q = select(X).order_by(InfoItemSource.info_item_id)\n") == [
         "src/x.py:1 order_by(InfoItemSource.info_item_id)"
     ]
+
+
+def test_a_nullable_unique_key_is_not_a_total_order():
+    """Postgres UNIQUE admits many NULLs, so NULL rows still tie (CR 2)."""
+    table = Table(
+        "planted",
+        MetaData(),
+        Column("id", Integer, primary_key=True),
+        Column("code", Text, nullable=True, unique=True),
+        Column("slug", Text, nullable=False, unique=True),
+    )
+    keys = _unique_keys(table)
+    assert frozenset([table.c.code]) not in keys
+    assert frozenset([table.c.slug]) in keys
 
 
 def test_a_pk_in_any_direction_passes():
