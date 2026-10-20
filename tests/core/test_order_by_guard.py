@@ -12,6 +12,9 @@ own metadata decides), or every ``group_by`` key of the same chain, which is
 unique per result row. Anything else - a timestamp, a name, an aggregate, a
 label - is a violation unless ``ALLOWED`` carries it with a reason.
 
+Both spellings are swept: the ``.order_by(...)`` method and the ``order_by=``
+keyword (``relationship``, ``.over``), where ties reshuffle a collection or a rank.
+
 Limits accepted: a key unique in its table is taken as unique in a joined
 result, which holds only for to-one joins; raw SQL ``ORDER BY`` is not parsed.
 """
@@ -30,12 +33,12 @@ from src.core.models import Base
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 
-# (file, the order_by keys as written) -> why the order is already total.
+# (file, the sort as written: "order_by(...)" or "order_by=...") -> why it is already total.
 ALLOWED: dict[tuple[str, str], str] = {
-    ("src/dashboard/routes/info_items.py", "PmOrganization.name"): (
+    ("src/dashboard/routes/info_items.py", "order_by(PmOrganization.name)"): (
         "selects only PmOrganization.name, so tied rows are identical output"
     ),
-    ("src/core/services/source_revision.py", "InfoItemSource.info_item_id"): (
+    ("src/core/services/source_revision.py", "order_by(InfoItemSource.info_item_id)"): (
         "filtered to active bindings, where uq_info_item_sources_active makes info_item_id unique"
     ),
 }
@@ -82,9 +85,11 @@ def _column(node: ast.expr) -> Column | None:
     return None
 
 
-def _group_by_keys(order_by: ast.Call) -> set[str] | None:
+def _group_by_keys(call: ast.Call) -> set[str] | None:
     """The ``group_by`` keys earlier in the same method chain, if any."""
-    node = order_by.func.value  # type: ignore[attr-defined]
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    node = call.func.value
     while isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         if node.func.attr == "group_by":
             return {ast.unparse(a) for a in node.args}
@@ -92,9 +97,8 @@ def _group_by_keys(order_by: ast.Call) -> set[str] | None:
     return None
 
 
-def _is_total(call: ast.Call) -> bool:
-    keys = [_strip_direction(a) for a in call.args]
-    grouped = _group_by_keys(call)
+def _is_total(written_keys: list[ast.expr], grouped: set[str] | None) -> bool:
+    keys = [_strip_direction(a) for a in written_keys]
     if grouped and grouped <= {ast.unparse(k) for k in keys}:
         return True
     columns = {c for c in map(_column, keys) if c is not None}
@@ -102,23 +106,36 @@ def _is_total(call: ast.Call) -> bool:
     return any(key <= columns for table in tables for key in _unique_keys(table))
 
 
-def _order_by_calls(tree: ast.AST) -> list[tuple[ast.Call, str]]:
-    """Each ``.order_by(...)`` call with arguments, beside its keys as written."""
-    return [
-        (node, ", ".join(ast.unparse(a) for a in node.args))
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "order_by"
-        and node.args
-    ]
+# (keys, the chain's group_by keys if any, line, the sort as written)
+_Site = tuple[list[ast.expr], set[str] | None, int, str]
 
 
-def _violations(calls: list[tuple[ast.Call, str]], relpath: Path) -> list[str]:
+def _order_by_calls(tree: ast.AST) -> list[_Site]:
+    """Each sort: ``.order_by(...)`` with arguments, and any ``order_by=`` keyword
+    (``relationship``, ``.over``, ``aggregate_order_by``). A keyword sort has no
+    method chain, so no ``group_by`` keys."""
+    sites: list[_Site] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr == "order_by" and node.args:
+            written = f"order_by({', '.join(ast.unparse(a) for a in node.args)})"
+            line = func.end_lineno or node.lineno
+            sites.append((node.args, _group_by_keys(node), line, written))
+        for kw in node.keywords:
+            if kw.arg == "order_by":
+                v = kw.value
+                keys = list(v.elts) if isinstance(v, ast.List | ast.Tuple) else [v]
+                sites.append((keys, None, kw.lineno, f"order_by={ast.unparse(v)}"))
+    return sites
+
+
+def _violations(sites: list[_Site], relpath: Path) -> list[str]:
     found = [
-        (node.func.end_lineno or node.lineno, f"order_by({written})")
-        for node, written in calls
-        if (str(relpath), written) not in ALLOWED and not _is_total(node)
+        (line, written)
+        for keys, grouped, line, written in sites
+        if (str(relpath), written) not in ALLOWED and not _is_total(keys, grouped)
     ]
     return [f"{relpath}:{line} {what}" for line, what in sorted(found)]
 
@@ -135,9 +152,9 @@ def _sweep() -> tuple[list[str], Counter[tuple[str, str]]]:
     seen: Counter[tuple[str, str]] = Counter()
     for path in sorted(SRC.rglob("*.py")):
         rel = path.relative_to(ROOT)
-        calls = _order_by_calls(ast.parse(path.read_text()))
-        violations += _violations(calls, rel)
-        seen.update((str(rel), written) for _, written in calls)
+        sites = _order_by_calls(ast.parse(path.read_text()))
+        violations += _violations(sites, rel)
+        seen.update((str(rel), written) for *_, written in sites)
     return violations, seen
 
 
@@ -241,3 +258,16 @@ def test_the_allowlist_matches_by_file():
     planted = "q = select(PmOrganization.name).order_by(PmOrganization.name)\n"
     assert order_by_violations(planted, Path("src/dashboard/routes/info_items.py")) == []
     assert _check(planted) == ["src/x.py:1 order_by(PmOrganization.name)"]
+
+
+def test_the_keyword_spelling_is_caught():
+    """``relationship(order_by=…)`` and ``.over(order_by=…)`` tie the same way (CR 7)."""
+    planted = (
+        "r = relationship(ApiKey, order_by=ApiKey.created_at)\n"
+        "w = func.row_number().over(partition_by=X.y, order_by=[SourceRevision.captured_at])\n"
+        "ok = func.row_number().over(order_by=(ApiKey.created_at, ApiKey.id))\n"
+    )
+    assert _check(planted) == [
+        "src/x.py:1 order_by=ApiKey.created_at",
+        "src/x.py:2 order_by=[SourceRevision.captured_at]",
+    ]
