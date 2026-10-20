@@ -234,7 +234,7 @@ async def reap_open_persists(
                     PersistCommand.closed_at.is_(None),
                     PersistCommand.issued_at <= cutoff,
                 )
-                .order_by(PersistCommand.issued_at)
+                .order_by(PersistCommand.issued_at, PersistCommand.command_id)
             )
         )
         .scalars()

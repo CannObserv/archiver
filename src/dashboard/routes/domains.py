@@ -146,7 +146,7 @@ async def detail_domain(
             await session.execute(
                 select(InfoSource)
                 .where(InfoSource.domain_name == name)
-                .order_by(InfoSource.created_at.desc())
+                .order_by(InfoSource.created_at.desc(), InfoSource.info_source_id.desc())
                 .offset(page.offset)
                 .limit(page.limit + 1)
             )

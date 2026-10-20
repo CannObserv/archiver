@@ -188,6 +188,19 @@ What the guard cannot see is a tightening of an *existing* validator; that is
 this rule's job, and the Registry badge's after deploy
 ([HEALTH_ROW.md](HEALTH_ROW.md)).
 
+## Query ordering - every `order_by` is a total order
+
+**End every `order_by` in a primary or unique key.** Rows tied on every sort key
+come back in plan order, which changes with heap layout: a list ordered by
+`created_at` alone reshuffles between identical requests, and an offset-paginated
+one skips or repeats rows across pages. The tiebreak is the model's primary key
+(`created_at.desc(), info_item_id.desc()`); a grouped query may end in its full
+`group_by` key instead. A ULID tiebreak makes the order stable, not causal: python-ulid
+is not monotonic within a millisecond. `tests/core/test_order_by_guard.py` scans every
+`.order_by(...)` and `order_by=` keyword in `src/` against the models' own key metadata; a site that is total for
+another reason goes in its `ALLOWED` map with that reason. archiver#149: the
+`find_info_item` test flaked about one run in twelve on a `created_at` tie.
+
 ## Dashboard living docs - which doc a change requires
 
 **Dashboard living docs:** each doc is scoped to what it actually documents -

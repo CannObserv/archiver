@@ -96,7 +96,9 @@ async def _detail_context(
             await session.execute(
                 select(SourceRevision)
                 .where(SourceRevision.info_source_id == src.info_source_id)
-                .order_by(SourceRevision.captured_at.desc())
+                .order_by(
+                    SourceRevision.captured_at.desc(), SourceRevision.source_revision_id.desc()
+                )
                 .limit(50)
             )
         )

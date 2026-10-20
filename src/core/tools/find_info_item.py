@@ -13,7 +13,8 @@ from src.core.models import InfoItem
 async def find_info_item(session: AsyncSession, query: str, *, limit: int = 20) -> list[InfoItem]:
     """Return InfoItems whose name or description contains ``query`` (case-insensitive).
 
-    Ordered by ``created_at DESC`` so the newest matches surface first. Empty
+    Ordered by ``created_at DESC, info_item_id DESC`` so the newest matches surface
+    first and ties resolve the same way every time (archiver#149). Empty
     ``query`` raises ``ValueError`` — the route layer should validate before
     calling so the API contract returns 422 on empty/missing input.
     """
@@ -28,7 +29,7 @@ async def find_info_item(session: AsyncSession, query: str, *, limit: int = 20) 
                 InfoItem.description.ilike(pattern),
             )
         )
-        .order_by(InfoItem.created_at.desc())
+        .order_by(InfoItem.created_at.desc(), InfoItem.info_item_id.desc())
         .limit(limit)
     )
     result = await session.execute(stmt)
