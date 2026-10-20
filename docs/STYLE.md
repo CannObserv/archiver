@@ -81,7 +81,7 @@ All tokens are CSS custom properties on `:root`. The canonical source is `src/da
 - Minimum touch target: 44 × 44 px (enforced by `min-height: 44px`).
 
 ### Badges & Status
-- `.badge`, `.badge--primary/success/warning/danger/info/neutral/muted` - small inline label. `primary` is brand-subtle bg + brand text (use for the domain badge / brand-tagged labels). `neutral` and `muted` are synonyms (same visual - surface-alt bg, muted text); prefer `muted` for "not configured / disabled" states. `.badge` sets `text-decoration:none` so badges used as `<a>` links don't render underlined.
+- `.badge`, `.badge--primary/success/warning/danger/info/neutral/muted` - small inline label. `primary` is brand-subtle bg + brand text (use for the domain badge / brand-tagged labels). `neutral` and `muted` are synonyms (same visual - surface-alt bg, muted text); prefer `muted` for "not configured / disabled" states. `.badge` sets `text-decoration:none` so badges used as `<a>` links don't render underlined; `a.badge:hover` underlines instead, and the global link hover colour is `a:not(.badge):hover`, so a badge link keeps its variant colour under the pointer (archiver#271: the Outbox and Consumers badges link in every state).
 - `.badge--sm` - extra-compact size (use in tight contexts like tab count indicators).
 - `.status-pill--cached/expired/missing` - SourceRevision cache state.
 

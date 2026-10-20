@@ -224,7 +224,8 @@ a {
   color: var(--color-brand);
   text-decoration: underline;
 }
-a:hover { color: var(--color-brand-dark); }
+/* Not on a badge: its variant owns its colour, and this rule would outrank it. */
+a:not(.badge):hover { color: var(--color-brand-dark); }
 a:focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
@@ -487,6 +488,8 @@ p:last-child { margin-bottom: 0; }
   white-space: nowrap;
   text-decoration: none; /* badges are often <a>; suppress default link underline */
 }
+/* A badge link's hover affordance: underline, keeping the variant colour (archiver#271). */
+a.badge:hover { text-decoration: underline; }
 .badge--primary { background: var(--color-brand-subtle); color: var(--color-brand); }
 .badge--success { background: var(--color-success-bg); color: var(--color-success); }
 .badge--warning { background: var(--color-warning-bg); color: var(--color-warning); }

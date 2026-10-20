@@ -344,3 +344,14 @@ def test_the_header_content_column_can_shrink_below_its_contents() -> None:
     assert "overflow-wrap: anywhere" in title, (
         "a URL has no soft wrap opportunity; without one the narrowed box overflows"
     )
+
+
+def test_a_badge_link_keeps_its_variant_colour_on_hover() -> None:
+    """The global link hover recolours text, and ``a:hover`` (0,1,1) outranks
+    ``.badge--danger`` (0,1,0): a red "dead-lettered" badge turned brand purple
+    under the pointer. Since archiver#271 links both bus badges in every state,
+    the hover colour skips badges and an underline is their affordance instead."""
+    css = _CSS.read_text()
+    assert _rule("a:hover", css) == "", "a bare a:hover recolours every badge link"
+    assert "color" in _rule("a:not(.badge):hover", css)
+    assert "underline" in _rule("a.badge:hover", css)
