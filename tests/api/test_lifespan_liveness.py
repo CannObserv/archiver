@@ -58,7 +58,8 @@ def status(respx_mock):
     tens of ms before it sends, and unjoined, that post outlives ``respx_mock``. It
     lands on the next test's route, or on the network (archiver#406). This teardown
     runs before ``respx_mock``'s, so every post lands here. Each post's thread name
-    is checked too: renamed, the drain would match nothing and pass silently.
+    is checked too: renamed, the drain would match nothing and pass silently. Only a
+    post that reaches the stub is seen, so test 3's check-in is what trips it.
     """
     posters: set[str] = set()
 
