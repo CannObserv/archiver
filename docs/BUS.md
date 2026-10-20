@@ -100,7 +100,7 @@ the terminal state; nothing expires one on its own, because an untriaged
 incident record ageing out silently is worse than a permanent warning.
 `src/core/changes/outbox_triage.py`, behind the dashboard's **Bus triage**
 screen (`/dashboard/bus-triage`, archiver#271 - the Outbox badge links there in
-its "N dead-lettered" state; per-row Rearm and Discard, logged with the acting
+every state; per-row Rearm and Discard, logged with the acting
 user) and three operator routes, every write by explicit row id:
 
 ```bash

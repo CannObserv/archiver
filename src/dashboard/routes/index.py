@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from functools import partial
 from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -59,16 +60,27 @@ async def dashboard_health_partial(
     return HTMLResponse('<span class="badge badge--success">ok</span>')
 
 
-# Where a badge's "N dead-lettered" state links (archiver#271, D2): the screen
-# that clears it, linked in that state only, as the Registry badge does.
+# Where the Outbox and Consumers badges link, in every state (archiver#271): the
+# screen that triages what they report. Linked whatever the badge reads, so the
+# screen is reachable from the dashboard while there is nothing to triage too -
+# and while the bus is dormant or broken, when its outbox section still works.
 BUS_TRIAGE_HREF = "/dashboard/bus-triage"
 
 
-def _badge(variant: str, text: str, *, detail: str = "", href: str = "") -> HTMLResponse:
-    """One badge - a link when ``href`` is given. ``detail`` must already be HTML-escaped."""
+def _badge(variant: str, text: str, *, detail: str = "", triage_for: str = "") -> HTMLResponse:
+    """One badge. ``detail`` must already be HTML-escaped.
+
+    ``triage_for`` is the health-row label of a badge that links to the Bus triage
+    screen ("Outbox", "Consumers"). The link's accessible name carries it, because
+    a link read out of context as just "ok" says nothing about where it goes.
+    """
     title = f' title="{detail}"' if detail else ""
-    if href:
-        return HTMLResponse(f'<a href="{href}" class="badge badge--{variant}"{title}>{text}</a>')
+    if triage_for:
+        label = html_escape(f"{triage_for}: {text} - open Bus triage")
+        return HTMLResponse(
+            f'<a href="{BUS_TRIAGE_HREF}" class="badge badge--{variant}" '
+            f'aria-label="{label}"{title}>{text}</a>'
+        )
     return HTMLResponse(f'<span class="badge badge--{variant}"{title}>{text}</span>')
 
 
@@ -89,7 +101,7 @@ def bus_init_failed() -> bool:
     return bool(os.environ.get("ARCHIVER_REDIS_URL", "").strip())
 
 
-def _no_client_badge() -> HTMLResponse:
+def _no_client_badge(*, triage_for: str = "") -> HTMLResponse:
     """The badge for ``app.state.redis_client is None``, split by *why*.
 
     The lifespan nulls the client both when ``ARCHIVER_REDIS_URL`` is unset (the
@@ -98,15 +110,17 @@ def _no_client_badge() -> HTMLResponse:
     the configuration-as-state conflation archiver#147 exists to remove,
     surviving in a rarer branch - a broken production bus wearing the dev
     server's vocabulary. The URL is read here as configuration, which is all it
-    is asked to answer (CR round 1, finding 3).
+    is asked to answer (CR round 1, finding 3). Shared by the Redis badge, which
+    never links, and the Consumers badge, which passes ``triage_for``.
     """
     if bus_init_failed():
         return _badge(
             "danger",
             "init failed",
             detail=html_escape(INIT_FAILED_DETAIL),
+            triage_for=triage_for,
         )
-    return _badge("muted", "not configured")
+    return _badge("muted", "not configured", triage_for=triage_for)
 
 
 @router.get("/health/redis", response_class=HTMLResponse)
@@ -142,28 +156,27 @@ async def dashboard_health_outbox(
     design; #112 CR round 1, finding 1). danger "not draining (init failed)"
     when the URL *is* set: bus init raised, which is exactly when a stale
     backlog is ill health rather than dormancy (#147 CR round 2, finding 10).
-    danger: any dead-lettered (poison) row - needs an operator; links to the
-    Bus triage screen (archiver#271).
+    danger: any dead-lettered (poison) row - needs an operator.
     warning: oldest live unpublished row older than the backlog threshold -
     the drain is not keeping up or Redis has been down a while.
     success otherwise; the title carries the raw numbers in every drain state.
+    Every state links to the Bus triage screen (archiver#271).
     """
+    badge = partial(_badge, triage_for="Outbox")
     if redis is None:
         if bus_init_failed():
-            return _badge(
+            return badge(
                 "danger",
                 "not draining (init failed)",
                 detail=html_escape(INIT_FAILED_DETAIL),
             )
-        return _badge("muted", "not draining")
+        return badge("muted", "not draining")
     try:
         stats = await collect_outbox_stats(session)
     except Exception as exc:
         reason = str(exc)
         logger.warning("Outbox health check failed", extra={"error": reason})
-        return HTMLResponse(
-            f'<span class="badge badge--danger" title="{html_escape(reason)}">error</span>'
-        )
+        return badge("danger", "error", detail=html_escape(reason))
 
     age = stats.oldest_unpublished_age_seconds
     parts = [f"depth={stats.unpublished_count}"]
@@ -172,15 +185,14 @@ async def dashboard_health_outbox(
     parts.append(f"dead_lettered={stats.dead_lettered_count}")
     detail = html_escape(" ".join(parts))
     if stats.dead_lettered_count:
-        return _badge(
+        return badge(
             "danger",
             f"{stats.dead_lettered_count} dead-lettered",
             detail=detail,
-            href=BUS_TRIAGE_HREF,
         )
     if age is not None and age > BACKLOG_WARN_AGE_SECONDS:
-        return HTMLResponse(f'<span class="badge badge--warning" title="{detail}">backlog</span>')
-    return HTMLResponse(f'<span class="badge badge--success" title="{detail}">ok</span>')
+        return badge("warning", "backlog", detail=detail)
+    return badge("success", "ok", detail=detail)
 
 
 @router.get("/health/registry", response_class=HTMLResponse)
@@ -295,15 +307,17 @@ async def dashboard_health_consumers(
     ``OWNED_GROUPS`` list the rest of archiver's bus surface does. The broker's
     own alerting lives in CannObserv/broker now (archiver#193 D6) and debounces
     across two ticks; this panel deliberately shows one instant, because an
-    operator can refresh.
+    operator can refresh. Every state links to the Bus triage screen
+    (archiver#271).
     """
+    badge = partial(_badge, triage_for="Consumers")
     if redis is None:
-        return _no_client_badge()
+        return _no_client_badge(triage_for="Consumers")
     if not consumer_enabled(os.environ.get("ARCHIVER_BUS_CONSUMER")):
         # The one state that *is* configuration, reported as configuration: the
         # gate is what makes the dev server bus-dormant by design, so off is
         # muted, not a warning. Everything below this line is measured.
-        return _badge("muted", "gated off")
+        return badge("muted", "gated off")
 
     states = {
         name: _task_state(getattr(request.app.state, attr, None))
@@ -358,29 +372,27 @@ async def dashboard_health_consumers(
     # the thing an operator has to act on.
     statuses = {status for status, _reason in states.values()}
     if _TaskStatus.NOT_STARTED in statuses:
-        return _badge("danger", "not started", detail=detail)
+        return badge("danger", "not started", detail=detail)
     if _TaskStatus.STOPPED in statuses:
-        return _badge("danger", "stopped", detail=detail)
+        return badge("danger", "stopped", detail=detail)
     if lag_error:
         # The consumers are demonstrably alive, but the depths are unknown -
         # which must not render as measured zeroes. The Redis badge alongside
         # carries the broker's own reachability.
-        return _badge("warning", "lag unknown", detail=detail)
+        return badge("warning", "lag unknown", detail=detail)
 
     dead_lettered = sum(lag.dlq_depth for lag in lags.values())
     if dead_lettered:
         # Actionable even while both consumers run normally: every entry is a
         # frame the registry decided it could never use (archiver#162).
-        return _badge(
-            "danger", f"{dead_lettered} dead-lettered", detail=detail, href=BUS_TRIAGE_HREF
-        )
+        return badge("danger", f"{dead_lettered} dead-lettered", detail=detail)
     if any(lag.pending is None for lag in lags.values()):
-        return _badge("warning", "group missing", detail=detail)
+        return badge("warning", "group missing", detail=detail)
     if any(lag.pending for lag in lags.values()):
         # Raw depth, not the timer's two-tick rule: that debounces a periodic
         # alarm, where a dashboard shows one instant and the operator refreshes.
-        return _badge("warning", "lagging", detail=detail)
-    return _badge("success", "running", detail=detail)
+        return badge("warning", "lagging", detail=detail)
+    return badge("success", "running", detail=detail)
 
 
 @router.get("/", response_class=HTMLResponse)

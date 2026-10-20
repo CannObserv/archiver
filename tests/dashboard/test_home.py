@@ -1,6 +1,7 @@
 """Tests for /dashboard/ home page (Epic 7 + #49 redesign)."""
 
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -298,25 +299,6 @@ async def test_health_outbox_danger_on_dead_lettered(client, session):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("stale", "label"), [(False, "ok"), (True, "backlog")])
-async def test_health_outbox_links_only_when_dead_lettered(client, session, stale, label):
-    """D2: the badge links in its "N dead-lettered" state only, as Registry does."""
-    _configure_bus()
-    if stale:
-        session.add(
-            ChangesOutboxRow(
-                topic="info.changes",
-                payload={"event_type": "irrelevant"},
-                created_at=datetime.now(UTC) - timedelta(hours=1),
-            )
-        )
-        await session.flush()
-    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
-    assert f">{label}</span>" in r.text
-    assert "bus-triage" not in r.text
-
-
-@pytest.mark.asyncio
 async def test_health_outbox_unauthenticated_redirects(client):
     r = await client.get("/dashboard/health/outbox", follow_redirects=False)
     assert r.status_code == 307
@@ -451,17 +433,6 @@ async def test_health_consumers_danger_on_a_nonempty_dlq(client, monkeypatch, fa
     assert "badge--danger" in r.text
     assert "1 dead-lettered" in r.text
     assert '<a href="/dashboard/bus-triage"' in r.text
-
-
-@pytest.mark.asyncio
-async def test_health_consumers_links_only_when_dead_lettered(client, monkeypatch, fake_redis):
-    """A stopped consumer outranks a DLQ depth; its badge is not the triage link."""
-    await _provision_groups(fake_redis)
-    await fake_redis.xadd("content.revisions.dlq", {"k": "v"})
-    _consumers(monkeypatch, fake_redis, revisions=_dead_task(), artifacts=_live_task())
-    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
-    assert "stopped" in r.text
-    assert "bus-triage" not in r.text
 
 
 @pytest.mark.asyncio
@@ -690,3 +661,182 @@ async def test_health_consumers_timeout_title_names_the_bound(client, monkeypatc
     assert "lag unknown" in r.text
     assert "exceeded 0.05s" in r.text
     assert "TimeoutError()" not in r.text
+
+
+# ---------------------------------------------------------------------------
+# Both bus badges link to the Bus triage screen in every state (archiver#271)
+# ---------------------------------------------------------------------------
+
+_TRIAGE_LINK = re.compile(r'<a href="/dashboard/bus-triage" class="badge badge--[a-z]+"[^>]*>')
+
+
+def _assert_triage_link(html: str, badge: str, text: str) -> None:
+    """One badge, an <a> to the screen, named for a reader that sees it out of context."""
+    [tag] = _TRIAGE_LINK.findall(html)
+    assert f'aria-label="{badge}: {text} - open Bus triage"' in tag, tag
+    assert "<span" not in html
+    assert html.endswith(f">{text}</a>")
+
+
+async def _outbox_dormant(monkeypatch, session):
+    monkeypatch.delenv("ARCHIVER_REDIS_URL", raising=False)
+    app.dependency_overrides[get_redis_client] = lambda: None
+
+
+async def _outbox_init_failed(monkeypatch, session):
+    monkeypatch.setenv("ARCHIVER_REDIS_URL", "redis://127.0.0.1:6380/0")
+    app.dependency_overrides[get_redis_client] = lambda: None
+
+
+async def _outbox_error(monkeypatch, session):
+    _configure_bus()
+
+    async def broken(_session):
+        raise RuntimeError("stats unavailable")
+
+    monkeypatch.setattr(index_routes, "collect_outbox_stats", broken)
+
+
+async def _outbox_ok(monkeypatch, session):
+    _configure_bus()
+
+
+async def _outbox_backlog(monkeypatch, session):
+    _configure_bus()
+    session.add(
+        ChangesOutboxRow(
+            topic="info.changes",
+            payload={"event_type": "irrelevant"},
+            created_at=datetime.now(UTC) - timedelta(hours=1),
+        )
+    )
+    await session.flush()
+
+
+async def _outbox_dead_lettered(monkeypatch, session):
+    _configure_bus()
+    session.add(
+        ChangesOutboxRow(
+            topic="info.changes",
+            payload={"event_type": "poison"},
+            created_at=datetime.now(UTC),
+            dead_lettered_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("arrange", "text"),
+    [
+        (_outbox_dormant, "not draining"),
+        (_outbox_init_failed, "not draining (init failed)"),
+        (_outbox_error, "error"),
+        (_outbox_ok, "ok"),
+        (_outbox_backlog, "backlog"),
+        (_outbox_dead_lettered, "1 dead-lettered"),
+    ],
+)
+async def test_health_outbox_links_to_bus_triage_in_every_state(
+    client, session, monkeypatch, arrange, text
+):
+    """The screen is reachable from the badge whatever it reads, not only when it
+    reads "N dead-lettered" - the outbox section works even with the bus dormant."""
+    await arrange(monkeypatch, session)
+    r = await client.get("/dashboard/health/outbox", headers=_HEADERS)
+    assert r.status_code == 200
+    _assert_triage_link(r.text, "Outbox", text)
+
+
+class _DownRedis:
+    def __getattr__(self, name):
+        async def _raise(*a, **kw):
+            raise ConnectionError("refused")
+
+        return _raise
+
+
+async def _consumers_not_configured(monkeypatch, redis):
+    monkeypatch.delenv("ARCHIVER_REDIS_URL", raising=False)
+    _consumers(monkeypatch, None, revisions=None, artifacts=None, gate=None)
+
+
+async def _consumers_init_failed(monkeypatch, redis):
+    monkeypatch.setenv("ARCHIVER_REDIS_URL", "redis://127.0.0.1:6380/0")
+    _consumers(monkeypatch, None, revisions=None, artifacts=None)
+
+
+async def _consumers_gated_off(monkeypatch, redis):
+    _consumers(monkeypatch, redis, revisions=None, artifacts=None, gate=None)
+
+
+async def _consumers_not_started(monkeypatch, redis):
+    _consumers(monkeypatch, redis, revisions=None, artifacts=_live_task())
+
+
+async def _consumers_stopped(monkeypatch, redis):
+    _consumers(monkeypatch, redis, revisions=_dead_task(), artifacts=_live_task())
+
+
+async def _consumers_lag_unknown(monkeypatch, redis):
+    _consumers(monkeypatch, _DownRedis(), revisions=_live_task(), artifacts=_live_task())
+
+
+async def _consumers_dead_lettered(monkeypatch, redis):
+    await _provision_groups(redis)
+    await redis.xadd("content.revisions.dlq", {"k": "v"})
+    _consumers(monkeypatch, redis, revisions=_live_task(), artifacts=_live_task())
+
+
+async def _consumers_group_missing(monkeypatch, redis):
+    _consumers(monkeypatch, redis, revisions=_live_task(), artifacts=_live_task())
+
+
+async def _consumers_lagging(monkeypatch, redis):
+    await _provision_groups(redis)
+    await redis.xadd(CONTENT_REVISIONS, {"k": "v"})
+    await redis.xreadgroup(REVISIONS_GROUP, "c1", {CONTENT_REVISIONS: ">"}, count=10)
+    _consumers(monkeypatch, redis, revisions=_live_task(), artifacts=_live_task())
+
+
+async def _consumers_running(monkeypatch, redis):
+    await _provision_groups(redis)
+    _consumers(monkeypatch, redis, revisions=_live_task(), artifacts=_live_task())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("arrange", "text"),
+    [
+        (_consumers_not_configured, "not configured"),
+        (_consumers_init_failed, "init failed"),
+        (_consumers_gated_off, "gated off"),
+        (_consumers_not_started, "not started"),
+        (_consumers_stopped, "stopped"),
+        (_consumers_lag_unknown, "lag unknown"),
+        (_consumers_dead_lettered, "1 dead-lettered"),
+        (_consumers_group_missing, "group missing"),
+        (_consumers_lagging, "lagging"),
+        (_consumers_running, "running"),
+    ],
+)
+async def test_health_consumers_links_to_bus_triage_in_every_state(
+    client, monkeypatch, fake_redis, arrange, text
+):
+    await arrange(monkeypatch, fake_redis)
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+    assert r.status_code == 200
+    _assert_triage_link(r.text, "Consumers", text)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url", ["", "redis://127.0.0.1:6380/0"])
+async def test_the_redis_badge_never_links(client, monkeypatch, url):
+    """It shares the no-client badge with Consumers, but it is the broker's
+    reachability, not a queue: nothing on the triage screen answers it."""
+    monkeypatch.setenv("ARCHIVER_REDIS_URL", url)
+    app.dependency_overrides[get_redis_client] = lambda: None
+    r = await client.get("/dashboard/health/redis", headers=_HEADERS)
+    assert "<a " not in r.text
+    assert "bus-triage" not in r.text
