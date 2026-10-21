@@ -65,6 +65,31 @@ def test_spec_the_registry_no_longer_holds_is_the_flag():
     assert result == SpecComparison(match=SUPERSEDED, position=None)
 
 
+def test_adding_ignore_selectors_is_a_spec_change():
+    """A changed ``ignore_selectors`` needs no mechanism of its own (#378).
+
+    It moves ``spec1:``, so a revision Watcher extracted under the spec before the
+    edit compares as superseded and one under the edited spec as current: "our
+    spec changed", told apart from "the origin changed".
+    """
+    before = {
+        "schema_version": 1,
+        "extraction": {"algorithm": "css", "selector": "div.content"},
+        "fingerprint": {},
+    }
+    after = {
+        **before,
+        "extraction": {**before["extraction"], "ignore_selectors": [".last-updated"]},
+    }
+
+    assert compare_spec_fingerprint(spec_fingerprint(before), [after]) == SpecComparison(
+        match=SUPERSEDED, position=None
+    )
+    assert compare_spec_fingerprint(spec_fingerprint(after), [after]) == SpecComparison(
+        match="current", position=0
+    )
+
+
 def test_duplicate_specs_report_the_first_position():
     """A source_specs list may legitimately repeat a spec — one fingerprint, two indices."""
     result = compare_spec_fingerprint(spec_fingerprint(PRIMARY), [PRIMARY, FALLBACK, PRIMARY])

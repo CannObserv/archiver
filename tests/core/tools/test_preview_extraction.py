@@ -215,7 +215,7 @@ class TestPreviewExtractionPageTitle:
 
 
 class TestPreviewExtractionRefusedAlgorithm:
-    """co-core 0.32 refuses a spec no extractor honours (cannobserv#523, #317)."""
+    """No extractor honours ``regex`` (cannobserv#523, #317); ``jsonpath`` waits on #356."""
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(("algorithm", "selector"), [("regex", "kept"), ("jsonpath", "$.a")])
@@ -233,8 +233,9 @@ class TestPreviewExtractionRefusedAlgorithm:
     @pytest.mark.parametrize(
         ("content", "content_type", "selector"),
         [
-            (HTML_FIXTURE, "text/html", "//div"),  # xpath on HTML, until cannobserv#557
             (RSS_FIXTURE, "application/rss+xml", "//item["),  # an invalid expression
+            (HTML_FIXTURE, "text/html", "//div["),  # on HTML too (cannobserv#557)
+            (HTML_FIXTURE, "text/html", "//div | //div/@class"),  # elements mixed with others
         ],
     )
     async def test_extractor_refusal_reported_at_extraction(self, content, content_type, selector):
@@ -250,6 +251,97 @@ class TestPreviewExtractionRefusedAlgorithm:
             )
         assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
         assert exc_info.value.errors[0]["message"]
+
+
+class TestPreviewExtractionXpathOnHtml:
+    """co-core 0.38 honours ``xpath`` on HTML (cannobserv#557, #355)."""
+
+    @staticmethod
+    def _spec(algorithm: str, selector: str) -> dict:
+        return {
+            "schema_version": 1,
+            "extraction": {"algorithm": algorithm, "selector": selector},
+            "fingerprint": {},
+        }
+
+    @pytest.mark.asyncio
+    async def test_xpath_on_html_returns_its_matches(self):
+        result = await preview_extraction(
+            _stub_fetcher(), DEFAULT_URL, self._spec("xpath", "//div[@class='target']")
+        )
+        assert [c.text for c in result.chunks] == ["kept content"]
+
+    @pytest.mark.asyncio
+    async def test_xpath_and_css_picking_the_same_elements_fingerprint_identically(self):
+        """Switching a spec between the two algorithms moves ``spec1:``, not the content."""
+        by_xpath = await preview_extraction(
+            _stub_fetcher(), DEFAULT_URL, self._spec("xpath", "//div[@class='target']")
+        )
+        by_css = await preview_extraction(
+            _stub_fetcher(), DEFAULT_URL, self._spec("css", ".target")
+        )
+        assert by_xpath.computed_fingerprint == by_css.computed_fingerprint
+
+
+IGNORE_FIXTURE = (
+    b"<html><body><div class='target'><p>kept content</p>"
+    b"<p class='stamp'>Last updated 2026-10-21</p></div><div>dropped content</div></body></html>"
+)
+
+
+class TestPreviewExtractionIgnoreSelectors:
+    """``extraction.ignore_selectors`` strips noise before the selection (cannobserv#570, #378)."""
+
+    @staticmethod
+    def _spec(algorithm: str, selector: str | None = None, ignore=(".stamp",)) -> dict:
+        extraction = {"algorithm": algorithm, "ignore_selectors": list(ignore)}
+        if selector is not None:
+            extraction["selector"] = selector
+        return {"schema_version": 1, "extraction": extraction, "fingerprint": {}}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("algorithm", "selector"),
+        [("css", ".target"), ("xpath", "//div[@class='target']"), ("full_page", None)],
+    )
+    async def test_removed_before_the_selection(self, algorithm, selector):
+        result = await preview_extraction(
+            _stub_fetcher(IGNORE_FIXTURE), DEFAULT_URL, self._spec(algorithm, selector)
+        )
+        text = " ".join(c.text for c in result.chunks)
+        assert "kept content" in text
+        assert "Last updated" not in text
+
+    @pytest.mark.asyncio
+    async def test_changes_the_fingerprint_of_the_same_bytes(self):
+        """The extracted fingerprint moves with the spec: the discontinuity #378 names."""
+        plain = await preview_extraction(_stub_fetcher(IGNORE_FIXTURE), DEFAULT_URL, VALID_CSS_SPEC)
+        stripped = await preview_extraction(
+            _stub_fetcher(IGNORE_FIXTURE), DEFAULT_URL, self._spec("css", ".target")
+        )
+        assert plain.computed_fingerprint != stripped.computed_fingerprint
+
+    @pytest.mark.asyncio
+    async def test_refused_on_a_feed_at_extraction(self):
+        """Only HTML honours them; the schema can't see the media type, co-core can."""
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(RSS_FIXTURE, content_type="application/rss+xml"),
+                DEFAULT_URL,
+                self._spec("full_page"),
+            )
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
+        # co-core's refusal, not the schema's "additional properties" one (CR 4).
+        assert "cannot honour ignore_selectors" in exc_info.value.errors[0]["message"]
+
+    @pytest.mark.asyncio
+    async def test_uncompilable_one_refused_at_extraction(self):
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(IGNORE_FIXTURE), DEFAULT_URL, self._spec("css", ".target", ["p[["])
+            )
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
+        assert "ignore_selectors CSS selector" in exc_info.value.errors[0]["message"]
 
 
 class TestPreviewExtractionDispatch:
@@ -364,16 +456,22 @@ class TestPreviewExtractionDispatch:
 
 class TestPreviewExtractionBadSelector:
     @pytest.mark.asyncio
-    async def test_malformed_css_selector_raises_source_spec_validation_error(self):
-        """soupsieve's SelectorSyntaxError is no ValueError; it must not surface as a 500."""
+    @pytest.mark.parametrize("selector", ["div[[", "div::before"])
+    async def test_uncompilable_css_selector_raises_source_spec_validation_error(self, selector):
+        """co-core 0.38 refuses a selector soupsieve can't compile, a pseudo-element included.
+
+        Before it, a malformed one raised soupsieve's own error and a pseudo-element a
+        bare ``NotImplementedError``, which escaped the preview as a 500 (cannobserv#570).
+        """
         spec = {
             "schema_version": 1,
-            "extraction": {"algorithm": "css", "selector": "div[["},
+            "extraction": {"algorithm": "css", "selector": selector},
             "fingerprint": {},
         }
         with pytest.raises(SourceSpecValidationError) as exc_info:
             await preview_extraction(_stub_fetcher(), DEFAULT_URL, spec)
-        assert [e["path"] for e in exc_info.value.errors] == ["/extraction/selector"]
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
+        assert "selectors CSS selector" in exc_info.value.errors[0]["message"]
 
 
 class TestPreviewExtractionOffLoop:

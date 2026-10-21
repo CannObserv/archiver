@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://watcher.exe.xyz/schemas/source-spec/v1.json",
   "title": "Source Specification v1",
-  "description": "Extraction specification for an InfoSource. Each InfoSource holds a source_specs list; all specs are evaluated against the same fetch group (the InfoSource URL's fetched bytes, not chained off primary extracted output). The first spec is the primary extraction strategy; additional specs are cross-check alternatives for selector-rot detection. All specs in a list must share a content-kind family (html_text: css|xpath|full_page). Every algorithm here reaches a co-core extractor that honours it; which media types honour it is the extractor's to say: css on HTML only, xpath on XML only (on HTML after cannobserv#557), full_page on anything, one line per item on an RSS or Atom root. regex and jsonpath are refused by co-core (jsonpath returns with cannobserv#354). The URL is a separate InfoSource field, not part of this spec.",
+  "description": "Extraction specification for an InfoSource. Each InfoSource holds a source_specs list; all specs are evaluated against the same fetch group (the InfoSource URL's fetched bytes, not chained off primary extracted output). The first spec is the primary extraction strategy; additional specs are cross-check alternatives for selector-rot detection. All specs in a list must share a content-kind family (html_text: css|xpath|full_page). Every algorithm here reaches a co-core extractor that honours it; which media types honour it is the extractor's to say: css on HTML only, xpath on HTML and XML (HTML since co-core 0.38, cannobserv#557), full_page on anything, one line per item on an RSS or Atom root. regex is refused by co-core; jsonpath, which co-core 0.38 honours on JSON (cannobserv#354), waits on archiver#356. The URL is a separate InfoSource field, not part of this spec.",
   "type": "object",
   "required": ["schema_version", "extraction", "fingerprint"],
   "additionalProperties": false,
@@ -14,7 +14,13 @@
       "additionalProperties": false,
       "properties": {
         "algorithm": {"enum": ["css", "xpath", "full_page"]},
-        "selector": {"type": "string"}
+        "selector": {"type": "string"},
+        "ignore_selectors": {
+          "description": "CSS selectors removed from the page before the selection, under any algorithm: timestamps, 'last updated' footers, ads, session tokens (cannobserv#570, archiver#378). Only HTML honours them. On an XML feed, PDF or spreadsheet co-core refuses a spec that carries them; this schema can't see the media type, so the preview reports that at /extraction and Processor as extraction_error. Omit the key for none: [] extracts as an absent key does but fingerprints as a different spec, so it is refused here.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "\\S"}
+        }
       },
       "allOf": [
         {

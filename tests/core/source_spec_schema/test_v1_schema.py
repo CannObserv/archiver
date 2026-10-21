@@ -50,10 +50,10 @@ def test_xpath_spec_valid(validator):
     ("algorithm", "selector"), [("jsonpath", "$.data[*].value"), ("regex", "Agenda.*")]
 )
 def test_algorithm_no_extractor_honours_rejected(validator, algorithm, selector):
-    """co-core 0.32 refuses ``regex`` and ``jsonpath`` (cannobserv#523, #317).
+    """No extractor honours ``regex`` (cannobserv#523, #317); ``jsonpath`` waits on #356.
 
-    A spec that validates here must reach an extractor that honours it; ``jsonpath``
-    returns with cannobserv#354.
+    co-core 0.38 honours ``jsonpath`` again (cannobserv#354), but archiver's schema
+    accepts it, and the json family, only with #356.
     """
     doc = {
         "schema_version": 1,
@@ -115,3 +115,33 @@ def test_css_empty_selector_still_valid(validator):
         "fingerprint": {},
     }
     validator.validate(doc)
+
+
+def _with_ignore(algorithm: str, ignore_selectors) -> dict:
+    extraction = {"algorithm": algorithm, "ignore_selectors": ignore_selectors}
+    if algorithm != "full_page":
+        extraction["selector"] = "//main" if algorithm == "xpath" else "main"
+    return {"schema_version": 1, "extraction": extraction, "fingerprint": {}}
+
+
+@pytest.mark.parametrize("algorithm", ["css", "xpath", "full_page"])
+def test_ignore_selectors_valid_under_every_algorithm(validator, algorithm):
+    """co-core 0.38 removes them before the selection under all three (cannobserv#570, #378)."""
+    validator.validate(_with_ignore(algorithm, [".timestamp", "#ad-slot"]))
+
+
+@pytest.mark.parametrize(
+    "ignore_selectors",
+    [
+        [],  # minItems: [] extracts as an absent key does, but moves spec1:
+        [""],
+        ["   "],
+        [".ok", 1],
+        ".timestamp",
+        None,
+    ],
+)
+def test_malformed_ignore_selectors_rejected(validator, ignore_selectors):
+    """What co-core's translator refuses, plus ``[]``: a second spelling of "none"."""
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(_with_ignore("css", ignore_selectors))

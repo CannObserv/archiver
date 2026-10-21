@@ -307,6 +307,62 @@ async def test_suggest_specs_returns_existing_selectors(client, session):
     assert "schema_version" in r.text
 
 
+@pytest.mark.asyncio
+async def test_suggest_specs_keeps_specs_apart_by_ignore_selectors(client, session):
+    """Two specs differing only in ``ignore_selectors`` are two suggestions (#378).
+
+    Grouped by algorithm and selector alone, the chip carried whichever came first,
+    so picking "css: #main" could silently add, or drop, the other's exclusions.
+    """
+    session.add(Domain(name="ignoreme.example.com"))
+    await session.flush()
+    plain = {"algorithm": "css", "selector": "#main"}
+    stripped = {**plain, "ignore_selectors": [".stamp", "#ad"]}
+    for path, extraction in (("a", plain), ("b", stripped)):
+        session.add(
+            InfoSource(
+                url=f"https://ignoreme.example.com/{path}",
+                source_specs=[{"schema_version": 1, "extraction": extraction, "fingerprint": {}}],
+                domain_name="ignoreme.example.com",
+            )
+        )
+    await session.flush()
+
+    r = await client.get(
+        "/dashboard/register/suggest-specs?url=https://ignoreme.example.com/c",
+        headers=_HEADERS,
+    )
+    island = re.search(r'<script type="application/json">(.*?)</script>', r.text, re.S)
+    chips = {c["label"]: json.loads(c["value"])[0]["extraction"] for c in json.loads(island[1])}
+    assert chips == {"css: #main": plain, 'css: #main, ignoring [".stamp", "#ad"]': stripped}
+
+
+@pytest.mark.asyncio
+async def test_suggest_specs_labels_tell_ignore_lists_apart(client, session):
+    """``["div .a"]`` and ``["div", ".a"]`` need distinct labels: the chips key on them (CR 1)."""
+    session.add(Domain(name="labelme.example.com"))
+    await session.flush()
+    for path, ignore in (("a", ["div .a"]), ("b", ["div", ".a"]), ("c", [".préface"])):
+        extraction = {"algorithm": "css", "selector": "#main", "ignore_selectors": ignore}
+        session.add(
+            InfoSource(
+                url=f"https://labelme.example.com/{path}",
+                source_specs=[{"schema_version": 1, "extraction": extraction, "fingerprint": {}}],
+                domain_name="labelme.example.com",
+            )
+        )
+    await session.flush()
+
+    r = await client.get(
+        "/dashboard/register/suggest-specs?url=https://labelme.example.com/d",
+        headers=_HEADERS,
+    )
+    island = re.search(r'<script type="application/json">(.*?)</script>', r.text, re.S)
+    labels = {c["label"] for c in json.loads(island[1])}
+    assert len(labels) == 3
+    assert 'css: #main, ignoring [".préface"]' in labels  # readable, not \u-escaped (CR 9)
+
+
 # ---------------------------------------------------------------------------
 # Happy path — POST /dashboard/register (atomic submit)
 # ---------------------------------------------------------------------------
@@ -723,11 +779,11 @@ async def test_preview_returns_error_partial_on_invalid_spec(client):
 
 @pytest.mark.asyncio
 async def test_preview_renders_a_spec_refusal_as_path_and_message(client):
-    """xpath on HTML is refused (#317); the operator sees co-core's message, not a dict repr."""
+    """An invalid xpath is refused (#317); the operator sees co-core's message, not a dict repr."""
     original = app.state.fetch_driver
     app.state.fetch_driver = _StubFetcher(_PREVIEW_HTML)
     spec = (
-        '[{"schema_version":1,"extraction":{"algorithm":"xpath","selector":"//div"},'
+        '[{"schema_version":1,"extraction":{"algorithm":"xpath","selector":"//div["},'
         '"fingerprint":{}}]'
     )
     try:

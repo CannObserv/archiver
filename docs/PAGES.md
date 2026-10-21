@@ -77,14 +77,17 @@ Case A/B/C card for the URL; empty body when `url` is blank. Case B's card is
 the reuse choice ([REGISTER.md](REGISTER.md)).
 
 **GET `/dashboard/register/suggest-specs?url=`** - HTMX partial: top-5 selector
-suggestions from the URL's domain.
+suggestions from the URL's domain, grouped by algorithm, selector and
+`ignore_selectors` (#378), so a chip never carries another spec's exclusions.
 
 **POST `/dashboard/register/preview`** - HTMX partial: attempts a preview
 extraction for `url` + `source_specs`, through the extractor Processor would
 dispatch for the response's media type (#317). A spec that extractor refuses
-(`css` on XML, `xpath` on HTML until cannobserv#557) renders as an error, one `path: message` line per validation error. Step 2's
-help text names those limits: CSS for HTML pages, XPath for XML and feeds only,
-full-page for anything.
+(`css` on XML, an invalid `xpath`) renders as an error, one `path: message` line per validation error. Step 2's
+help text names those limits: CSS for HTML pages, XPath for HTML pages, XML and
+feeds, full-page for anything. It also names `extraction.ignore_selectors` (#378),
+typed into the JSON: HTML only, and left out rather than `[]`. Step 2 has no field
+of its own for it; a structured editor is #54's.
 
 **POST `/dashboard/register`** - the submit. Form fields `url`, `source_specs`,
 `name`, `description`, `cadence`, `watch_active`, `source_choice` (Case B: an

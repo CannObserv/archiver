@@ -32,7 +32,6 @@ from co_core.pure.extract.dispatch import extractor_for_essence
 from co_core.pure.extract.html import HtmlExtractor
 from co_core.pure.extract.xml_feed import XmlExtractor
 from co_core_aio.fetch import AsyncFetchDriver
-from soupsieve import SelectorSyntaxError
 
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 
@@ -119,8 +118,8 @@ async def preview_extraction(
     Raises:
         SourceSpecValidationError: if the document fails schema validation, or
             co-core refuses it for this body (``UnsupportedExtractionError``:
-            ``css`` on XML, ``xpath`` on HTML, cannobserv#523), or its CSS
-            selector doesn't parse.
+            ``css`` on XML, an invalid ``xpath``, cannobserv#523), or one of its
+            CSS selectors doesn't compile (cannobserv#570).
         TargetUnreachableError: if the HTTP fetch fails (route layer → 422).
         ExtractionFailedError: if the extractor can't parse the body (route layer → 422).
     """
@@ -138,13 +137,9 @@ async def preview_extraction(
             _extract, fetch_result.content, fetch_result.headers, url, source_spec
         )
     except UnsupportedExtractionError as e:
-        # The algorithm's fault for this body (css on XML) or the selector's (an
-        # invalid xpath); co-core's message says which.
+        # The algorithm's fault for this body (css on XML) or a selector's (an
+        # invalid xpath, an uncompilable CSS selector); co-core's message says which.
         raise SourceSpecValidationError([{"path": "/extraction", "message": str(e)}]) from e
-    except SelectorSyntaxError as e:
-        raise SourceSpecValidationError(
-            [{"path": "/extraction/selector", "message": str(e)}]
-        ) from e
     except ValueError as e:
         raise ExtractionFailedError(str(e)) from e
 
