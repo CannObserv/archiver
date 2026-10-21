@@ -83,10 +83,13 @@ suggestions from the URL's domain, grouped by algorithm, selector and
 **POST `/dashboard/register/preview`** - HTMX partial: attempts a preview
 extraction for `url` + `source_specs`, through the extractor Processor would
 dispatch for the response's media type (#317). A spec that extractor refuses
-(`css` on XML, an invalid `xpath`) renders as an error, one `path: message` line per validation error. Step 2's
+(`css` on XML, `jsonpath` on HTML, an invalid `xpath`) renders as an error, one `path: message` line per validation error. A
+selector that matches nothing (zero chunks) renders "The selector matched nothing", not an empty
+success (#356); `full_page` with no text keeps "No content extracted". Step 2's
 help text names those limits: CSS for HTML pages, XPath for HTML pages, XML and
-feeds, full-page for anything. It also names `extraction.ignore_selectors` (#378),
-typed into the JSON: HTML only, and left out rather than `[]`. Step 2 has no field
+feeds, JSONPath for JSON only (#356), full-page for anything (on JSON: keys sorted, compacted), and that JSONPath and full-page
+don't give the same text for a JSON string. It also names `extraction.ignore_selectors` (#378),
+typed into the JSON: HTML only, never with JSONPath, and left out rather than `[]`. Step 2 has no field
 of its own for it; a structured editor is #54's.
 
 **POST `/dashboard/register`** - the submit. Form fields `url`, `source_specs`,
@@ -156,7 +159,7 @@ that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-sources/`** - paginated list. Query params: `url_contains` (ilike filter on the `url` column), `limit`, `offset`.
 
-**GET `/dashboard/info-sources/new`** - create form. Fields: `url` (text input) + `source_specs` (JSON array textarea, validates JSON on blur).
+**GET `/dashboard/info-sources/new`** - create form. Fields: `url` (text input) + `source_specs` (JSON array textarea, validates JSON on blur); its hint names the family rule: `css` (HTML), `xpath` (HTML and XML) or `jsonpath` (JSON), with `full_page` pairing with either (#356).
 
 **POST `/dashboard/info-sources/new`** - form fields: `url` (string), `source_specs` (JSON array string). Calls `create_info_source`. 303 to detail on success; re-renders the form with an `errors` dict on `InvalidUrlError`, `InvalidSourceSpecError`, `MixedAlgorithmFamilyError`.
 

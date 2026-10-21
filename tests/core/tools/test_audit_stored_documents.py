@@ -114,6 +114,62 @@ async def test_sweep_finds_empty_source_specs_list(session):
     assert finding.index is None
 
 
+def _spec(algorithm: str, selector: str) -> dict:
+    return {
+        "schema_version": 1,
+        "extraction": {"algorithm": algorithm, "selector": selector},
+        "fingerprint": {},
+    }
+
+
+@pytest.mark.asyncio
+async def test_sweep_finds_a_list_that_mixes_families(session):
+    """The write paths refuse ``[css, jsonpath]`` (#356 D3), so a stored one cannot round-trip."""
+    src = InfoSource(
+        url="https://example.com/c356", source_specs=[_spec("css", "main"), _spec("jsonpath", "$")]
+    )
+    session.add(src)
+    await session.flush()
+
+    report = await audit_stored_documents(session)
+
+    [finding] = _mine(report.findings, src.info_source_id)
+    assert finding.kind == "source_spec"
+    assert finding.index is None
+    assert "mix content-kind families" in finding.errors[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_sweep_lets_full_page_pair_with_either_family(session):
+    """``full_page`` is family-neutral (#356 D1)."""
+    srcs = [
+        InfoSource(url="https://example.com/d356", source_specs=[_spec(a, s), _valid_spec()])
+        for a, s in [("jsonpath", "$"), ("xpath", "//a")]
+    ]
+    session.add_all(srcs)
+    await session.flush()
+
+    report = await audit_stored_documents(session)
+
+    assert _mine(report.findings, *(s.info_source_id for s in srcs)) == []
+
+
+@pytest.mark.asyncio
+async def test_sweep_judges_family_only_once_every_entry_validates(session):
+    """The write path's order: an entry the schema refuses is the finding, not the mix."""
+    src = InfoSource(
+        url="https://example.com/f356",
+        source_specs=[_spec("jsonpath", "$"), _spec("regex", "x"), _spec("css", "main")],
+    )
+    session.add(src)
+    await session.flush()
+
+    report = await audit_stored_documents(session)
+
+    [finding] = _mine(report.findings, src.info_source_id)
+    assert finding.index == 1
+
+
 @pytest.mark.asyncio
 async def test_sweep_finds_invalid_watch_spec(session):
     # ``active`` in the document is the mistake the watch_spec schema exists to refuse.

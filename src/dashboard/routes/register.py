@@ -355,6 +355,10 @@ async def preview(
         result = await preview_extraction(fetch_driver, canonical, spec)
         text_preview = "\n".join(c.text[:200] for c in result.chunks[:3] if c.text)[:500]
         suggested_name = result.page_title[:200]
+        # Zero chunks under a selector is a miss, not an empty page (#356): Processor
+        # publishes it as an empty extraction rather than an error (processor#37). An
+        # empty css selector is the whole page, so it has nothing to miss (CR 5).
+        no_match = not result.chunks and bool(spec["extraction"].get("selector"))
 
         return _templates.TemplateResponse(
             request,
@@ -362,6 +366,7 @@ async def preview(
             {
                 "user": user,
                 "text_preview": text_preview,
+                "no_match": no_match,
                 "fingerprint": (result.computed_fingerprint or "")[:24],
                 "errors": [],
                 "suggested_name": suggested_name,

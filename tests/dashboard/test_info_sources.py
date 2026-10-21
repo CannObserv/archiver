@@ -299,6 +299,15 @@ async def test_new_returns_form(client):
     assert "text/html" in r.headers["content-type"]
 
 
+@pytest.mark.asyncio
+async def test_new_form_says_full_page_pairs_with_either_family(client):
+    """The family rule's hint names the neutral algorithm (#356 D1)."""
+    r = await client.get(_NEW_URL, headers=_HEADERS)
+    assert "full_page pairs with either" in r.text
+    # co-core refuses css on XML; only xpath reads both (CR 9).
+    assert "css (HTML), xpath (HTML and XML)" in r.text
+
+
 # ---------------------------------------------------------------------------
 # POST /dashboard/info-sources/new
 # ---------------------------------------------------------------------------

@@ -6,7 +6,6 @@ import pytest
 from sqlalchemy import select
 
 from src.core.models import InfoSource
-from src.core.source_spec_schema.families import ALGORITHM_FAMILIES
 from src.core.tools.create_info_source import (
     CreateInfoSourceError,
     InvalidSourceSpecError,
@@ -102,14 +101,19 @@ async def test_invalid_spec_element_rejected(session):
 
 
 @pytest.mark.asyncio
-async def test_mixed_algorithm_families_rejected(session, monkeypatch):
+async def test_mixed_algorithm_families_rejected(session):
     """All specs must share a content-kind family."""
-    # No two schema algorithms differ in family today (#317 pruned ``jsonpath``),
-    # so stand one in until cannobserv#354 brings ``json`` back.
-    monkeypatch.setitem(ALGORITHM_FAMILIES, "xpath", "json")
-    specs = [_spec("full_page"), _spec("xpath", "//x")]
-    with pytest.raises(MixedAlgorithmFamilyError):
+    specs = [_spec("css"), _spec("jsonpath", "$.items[*]")]
+    with pytest.raises(MixedAlgorithmFamilyError, match=r"\['html_text', 'json'\]"):
         await create_info_source(session, url="https://example.com/p", source_specs=specs)
+
+
+@pytest.mark.asyncio
+async def test_full_page_pairs_with_jsonpath(session):
+    """``full_page`` is family-neutral (#356 D1): on a JSON body both specs read the same bytes."""
+    specs = [_spec("full_page"), _spec("jsonpath", "$.items[*]")]
+    src = await create_info_source(session, url="https://example.com/p.json", source_specs=specs)
+    assert [s["extraction"]["algorithm"] for s in src.source_specs] == ["full_page", "jsonpath"]
 
 
 # ---------------------------------------------------------------------------

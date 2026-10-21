@@ -243,7 +243,8 @@ async def preview_extraction_route(
 
     Returns 422 with the standard error envelope: ``kind="schema"`` when the spec
     fails validation or no extractor honours it on this body (``css`` on XML,
-    an invalid ``xpath``), ``kind="domain"`` with ``code`` ``target_unreachable`` or
+    ``jsonpath`` on HTML, ``css`` or ``xpath`` on JSON, an invalid ``xpath`` or
+    ``jsonpath``), ``kind="domain"`` with ``code`` ``target_unreachable`` or
     ``extraction_failed`` (the body would not parse).
     """
     try:

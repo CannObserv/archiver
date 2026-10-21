@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.models import InfoSource
-from src.core.source_spec_schema.families import family_for
+from src.core.source_spec_schema.families import families_of
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 from src.core.tools.get_or_create_domain import get_or_create_domain
 from src.core.url_canonicalization import canonicalize_url
@@ -77,10 +77,10 @@ async def create_info_source(
         raise InvalidSourceSpecError(all_errors)
 
     # 4. Enforce same content-kind family across all specs
-    families = {family_for(spec["extraction"]["algorithm"]) for spec in source_specs}
+    families = families_of(spec["extraction"]["algorithm"] for spec in source_specs)
     if len(families) > 1:
         raise MixedAlgorithmFamilyError(
-            f"source_specs mix content-kind families: {families!r}. "
+            f"source_specs mix content-kind families: {sorted(families)!r}. "
             "All specs must use the same family."
         )
 

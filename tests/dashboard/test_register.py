@@ -233,6 +233,16 @@ async def test_register_page_has_summary_bar(client):
 
 
 @pytest.mark.asyncio
+async def test_step_2_help_names_jsonpath_for_json_only(client):
+    """co-core 0.38 honours ``jsonpath`` on JSON bodies only (cannobserv#354, #356)."""
+    r = await client.get("/dashboard/register", headers=_HEADERS)
+    assert "JSONPath (JSON only" in r.text
+    # full_page on JSON is canonical JSON, not the page's own formatting (#356 CR 2).
+    assert "keys sorted" in r.text
+    assert "raw JSON" not in r.text
+
+
+@pytest.mark.asyncio
 async def test_summary_bar_is_labelled_group(client):
     """The summary bar is exposed to AT as a labelled group (#53 CR round 2)."""
     r = await client.get("/dashboard/register", headers=_HEADERS)
@@ -701,14 +711,15 @@ _PREVIEW_SPEC = '[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fi
 
 
 class _StubFetcher:
-    def __init__(self, content: bytes) -> None:
+    def __init__(self, content: bytes, content_type: str = "text/html") -> None:
         self._content = content
+        self._content_type = content_type
 
     async def execute(self, effect) -> FetchResult:
         return FetchResult(
             content=self._content,
             status_code=200,
-            headers={"content-type": "text/html"},
+            headers={"content-type": self._content_type},
             duration_ms=5,
             fetcher_used="http",
         )
@@ -764,6 +775,60 @@ async def test_preview_no_suggested_name_when_no_title(client):
         app.state.fetch_driver = original
     assert r.status_code == 200
     assert "Suggested name" not in r.text
+
+
+async def _preview(client, fetcher: _StubFetcher, extraction: str):
+    original = app.state.fetch_driver
+    app.state.fetch_driver = fetcher
+    spec = f'[{{"schema_version":1,"extraction":{extraction},"fingerprint":{{}}}}]'
+    try:
+        return await client.post(
+            "/dashboard/register/preview",
+            headers=_HEADERS,
+            data={"url": "https://example.com/page", "source_specs": spec},
+        )
+    finally:
+        app.state.fetch_driver = original
+
+
+@pytest.mark.asyncio
+async def test_preview_shows_jsonpath_matches_on_json(client):
+    """co-core 0.38 extracts JSON (cannobserv#354, #356): the excerpt is the matched node."""
+    fetcher = _StubFetcher(b'{"items": [{"title": "Agenda"}]}', "application/json")
+    r = await _preview(client, fetcher, '{"algorithm":"jsonpath","selector":"$.items[*].title"}')
+    assert r.status_code == 200
+    assert "Extraction successful" in r.text
+    assert "Agenda" in r.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "content_type", "extraction"),
+    [
+        (b'{"a": 1}', "application/json", '{"algorithm":"jsonpath","selector":"$.nope"}'),
+        (_PREVIEW_HTML, "text/html", '{"algorithm":"css","selector":".nope"}'),
+    ],
+    ids=["jsonpath", "css"],
+)
+async def test_preview_says_a_selector_matched_nothing(client, content, content_type, extraction):
+    """Zero chunks is not an error (processor#37), but must not read as a good empty page (#356)."""
+    r = await _preview(client, _StubFetcher(content, content_type), extraction)
+    assert r.status_code == 200
+    assert "The selector matched nothing" in r.text
+    assert "Extraction successful" not in r.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extraction",
+    ['{"algorithm":"full_page"}', '{"algorithm":"css","selector":""}'],
+    ids=["full_page", "empty-css"],
+)
+async def test_preview_with_no_selector_says_no_content(client, extraction):
+    """No selector to blame: ``full_page``, or an empty css selector (the whole page; CR 5)."""
+    r = await _preview(client, _StubFetcher(b"<html><body></body></html>"), extraction)
+    assert "No content extracted" in r.text
+    assert "matched nothing" not in r.text
 
 
 @pytest.mark.asyncio
