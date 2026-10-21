@@ -331,7 +331,8 @@ class TestPreviewExtractionIgnoreSelectors:
                 self._spec("full_page"),
             )
         assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
-        assert "ignore_selectors" in exc_info.value.errors[0]["message"]
+        # co-core's refusal, not the schema's "additional properties" one (CR 4).
+        assert "cannot honour ignore_selectors" in exc_info.value.errors[0]["message"]
 
     @pytest.mark.asyncio
     async def test_uncompilable_one_refused_at_extraction(self):
