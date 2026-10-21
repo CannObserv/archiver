@@ -250,7 +250,7 @@ async def test_get_by_id_requires_api_key(client):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("algorithm", ["regex", "jsonpath"])
 async def test_post_refused_algorithm_returns_422_schema(client, algorithm):
-    """co-core 0.32 refuses ``regex`` and ``jsonpath``; the schema follows (#317)."""
+    """No extractor honours ``regex`` (#317); the schema refuses ``jsonpath`` until #356."""
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,

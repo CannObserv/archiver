@@ -215,7 +215,7 @@ class TestPreviewExtractionPageTitle:
 
 
 class TestPreviewExtractionRefusedAlgorithm:
-    """co-core 0.32 refuses a spec no extractor honours (cannobserv#523, #317)."""
+    """No extractor honours ``regex`` (cannobserv#523, #317); ``jsonpath`` waits on #356."""
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(("algorithm", "selector"), [("regex", "kept"), ("jsonpath", "$.a")])
