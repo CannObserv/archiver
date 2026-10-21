@@ -103,6 +103,7 @@ async def test_post_invalid_spec_element_returns_422(client):
 
 @pytest.mark.asyncio
 async def test_post_mixed_families_returns_422(client):
+    """A domain refusal now; until #356 the schema refused ``jsonpath`` itself (CR 8)."""
     specs = [_spec("css"), _spec("jsonpath", "$.items[*]")]
     resp = await client.post(
         "/api/v1/info-sources",
@@ -110,6 +111,7 @@ async def test_post_mixed_families_returns_422(client):
         json={"url": "https://example.com/p", "source_specs": specs},
     )
     assert resp.status_code == 422
+    assert resp.json()["detail"]["kind"] == "domain"
 
 
 @pytest.mark.asyncio
