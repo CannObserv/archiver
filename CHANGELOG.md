@@ -20,7 +20,7 @@ service-only patch does not require an SDK bump.
 
 ## v4.31.0 (2026-10-21)
 
-[service] **co-core 0.37.1 → 0.38.0: `xpath` on HTML (archiver#355) and `extraction.ignore_selectors` (archiver#378).** Routes and schemas are unchanged. The `archiver-client` surface is unchanged too: one docstring was regenerated (`preview-extraction`'s refusal list), so there's no SDK bump.
+[service] **co-core 0.37.1 → 0.38.0: `xpath` on HTML (archiver#355) and `extraction.ignore_selectors` (archiver#378).** Route signatures and Pydantic schemas are unchanged, but every route that takes a SourceSpec now accepts the new key: `POST /info-sources`, `PATCH /info-sources/{id}/source-specs`, `POST /info-items`' `initial_source_specs`, `validate-source-spec` and `preview-extraction`. The `archiver-client` surface is unchanged too: one docstring was regenerated (`preview-extraction`'s refusal list), so there's no SDK bump.
 
 - **`xpath` on HTML** now previews its matches (cannobserv#557). Processor has extracted it since 2026-10-20. An xpath and a css selector that pick the same elements give the same fingerprint. Still a **422** `kind="schema"` at `/extraction`: an invalid expression, or a node-set that mixes elements with other nodes.
 - **SourceSpec v1 accepts `extraction.ignore_selectors`.** It is additive, so `schema_version` stays 1. The value is a non-empty list of non-blank CSS selectors, removed before the selection under `css`, `xpath` and `full_page` (cannobserv#570).
