@@ -307,7 +307,8 @@ async def suggest_specs(
             algo, selector, ignore = key
             display = f"{algo}: {selector}" if selector else algo
             if ignore:
-                display += f", ignoring {' '.join(ignore)}"
+                # As JSON: a selector may hold spaces or commas, and the chips key on the label.
+                display += f", ignoring {json.dumps(list(ignore))}"
             value = json.dumps([spec_by_key[key]])
             suggestions.append({"label": display, "frequency": freq, "value": value})
 
