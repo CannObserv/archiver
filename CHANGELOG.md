@@ -18,6 +18,18 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.31.0 (2026-10-21)
+
+[service] **co-core 0.37.1 → 0.38.0: `xpath` on HTML (archiver#355) and `extraction.ignore_selectors` (archiver#378).** Routes and schemas are unchanged. The `archiver-client` surface is unchanged too: one docstring was regenerated (`preview-extraction`'s refusal list), so there's no SDK bump.
+
+- **`xpath` on HTML** now previews its matches (cannobserv#557). Processor has extracted it since 2026-10-20. An xpath and a css selector that pick the same elements give the same fingerprint. Still a **422** `kind="schema"` at `/extraction`: an invalid expression, or a node-set that mixes elements with other nodes.
+- **SourceSpec v1 accepts `extraction.ignore_selectors`.** It is additive, so `schema_version` stays 1. The value is a non-empty list of non-blank CSS selectors, removed before the selection under `css`, `xpath` and `full_page` (cannobserv#570).
+  - `[]` is refused, because it extracts as an absent key does but fingerprints as a different spec.
+  - Only HTML honours the key. On a feed, PDF or spreadsheet, the preview answers a 422 at `/extraction`, and Processor records `extraction_error`. The schema can't see the media type, so a spec created through the API stores fine either way.
+  - Adding or editing the key moves `spec1:`: revisions extracted under the old spec compare `superseded`.
+- **An uncompilable CSS selector** in `selector` or `ignore_selectors` is a 422 at **`/extraction`**. It used to be at `/extraction/selector`. A pseudo-element (`::before`), which used to escape as a 500, now gets the same 422.
+- **Lock:** co-core and co-core-aio 0.38.0, with `python-jsonpath` 2.2.2 and `regex` 2026.9.29, all at Processor's locked versions. The direct `soupsieve` pin is gone, because co-core 0.38 declares it itself (still 2.10). Preview fingerprints for all five production sources match their latest revisions on both locks.
+
 ## v4.30.1 (2026-10-19)
 
 [service] **co-core 0.32 → 0.37.1** (archiver#397), so **`info_item_primary_changed` keys on an occurrence** (archiver#394). Routes, schemas and `archiver-client` are unchanged; no SDK bump.
