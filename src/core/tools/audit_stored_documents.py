@@ -34,7 +34,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from src.core.models import InfoItem, InfoItemRepSpec, InfoSource, RepSpec
 from src.core.rep_fields_schema.validator import linked_org_key_errors, validate_rep_fields
 from src.core.rep_spec_schema.validator import validate_rep_spec
-from src.core.source_spec_schema.families import families_of, family_for
+from src.core.source_spec_schema.families import families_of
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 from src.core.watch_spec_schema.validator import validate_watch_spec
 
@@ -198,7 +198,7 @@ KINDS: tuple[DocumentKind, ...] = (
     DocumentKind(
         "source_spec",
         InfoSource.source_specs,
-        (validate_source_spec, families_of, family_for),
+        (validate_source_spec, families_of),
         select(InfoSource.info_source_id, InfoSource.source_specs, false()).order_by(
             InfoSource.info_source_id
         ),
@@ -241,6 +241,9 @@ EXEMPT_VALIDATORS: dict[str, str] = {
     ),
     "src.core.rep_fields_schema.validator.check_required_fields": (
         "the presence half of validate_rep_fields_against_spec; same reason"
+    ),
+    "src.core.source_spec_schema.families.family_for": (
+        "applied through families_of, the list rule the write paths and this sweep call"
     ),
 }
 """Public ``*_schema`` functions the sweep deliberately does not apply, with why."""
