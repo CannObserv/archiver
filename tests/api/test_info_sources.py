@@ -248,6 +248,36 @@ async def test_get_by_id_requires_api_key(client):
 
 
 @pytest.mark.asyncio
+async def test_post_accepts_ignore_selectors(client):
+    """SourceSpec v1's ``extraction.ignore_selectors`` reaches the route and is stored (#378)."""
+    spec = _spec("css", "div.content")
+    spec["extraction"]["ignore_selectors"] = [".last-updated"]
+    resp = await client.post(
+        "/api/v1/info-sources",
+        headers=HEADERS,
+        json={"url": "https://example.com/ignore", "source_specs": [spec]},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["source_specs"] == [spec]
+
+
+@pytest.mark.asyncio
+async def test_post_empty_ignore_selectors_returns_422_at_the_key(client):
+    """``[]`` would fingerprint apart from an absent key, so it is refused (#378)."""
+    spec = _spec("css", "div.content")
+    spec["extraction"]["ignore_selectors"] = []
+    resp = await client.post(
+        "/api/v1/info-sources",
+        headers=HEADERS,
+        json={"url": "https://example.com/ignore", "source_specs": [spec]},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "schema"
+    assert [e["path"] for e in detail["errors"]] == ["/source_specs/0/extraction/ignore_selectors"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("algorithm", ["regex", "jsonpath"])
 async def test_post_refused_algorithm_returns_422_schema(client, algorithm):
     """No extractor honours ``regex`` (#317); the schema refuses ``jsonpath`` until #356."""
