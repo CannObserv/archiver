@@ -34,6 +34,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from src.core.models import InfoItem, InfoItemRepSpec, InfoSource, RepSpec
 from src.core.rep_fields_schema.validator import linked_org_key_errors, validate_rep_fields
 from src.core.rep_spec_schema.validator import validate_rep_spec
+from src.core.source_spec_schema.families import families_of, family_for
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 from src.core.watch_spec_schema.validator import validate_watch_spec
 
@@ -115,15 +116,23 @@ def _errors(validate: Callable[[object], tuple[bool, list[ValidationError]]], do
 
 
 def _source_specs_findings(row_id: str, specs: object) -> list[Finding]:
-    """The checks ``update_info_source_specs`` runs before it writes."""
+    """The checks ``update_info_source_specs`` runs before it writes: each entry, then the mix."""
     if not isinstance(specs, list) or not specs:
         message = "at least one spec is required" if specs == [] else "must be a JSON array"
         return [Finding("source_spec", row_id, None, [{"path": "", "message": message}])]
-    return [
+    findings = [
         Finding("source_spec", row_id, i, errors)
         for i, spec in enumerate(specs)
         if (errors := _errors(validate_source_spec, spec))
     ]
+    if findings:
+        return findings
+    # Only once every entry validates, as the write path orders it (#356 D3).
+    families = families_of(spec["extraction"]["algorithm"] for spec in specs)
+    if len(families) > 1:
+        message = f"source_specs mix content-kind families: {sorted(families)!r}"
+        return [Finding("source_spec", row_id, None, [{"path": "", "message": message}])]
+    return []
 
 
 def _watch_spec_findings(row_id: str, document: object) -> list[Finding]:
@@ -189,7 +198,7 @@ KINDS: tuple[DocumentKind, ...] = (
     DocumentKind(
         "source_spec",
         InfoSource.source_specs,
-        (validate_source_spec,),
+        (validate_source_spec, families_of, family_for),
         select(InfoSource.info_source_id, InfoSource.source_specs, false()).order_by(
             InfoSource.info_source_id
         ),
@@ -232,10 +241,6 @@ EXEMPT_VALIDATORS: dict[str, str] = {
     ),
     "src.core.rep_fields_schema.validator.check_required_fields": (
         "the presence half of validate_rep_fields_against_spec; same reason"
-    ),
-    "src.core.source_spec_schema.families.family_for": (
-        "the mixed-family list rule; one family exists today, so no stored list can mix. "
-        "A second family is a tightening the rule covers"
     ),
 }
 """Public ``*_schema`` functions the sweep deliberately does not apply, with why."""
