@@ -307,6 +307,36 @@ async def test_suggest_specs_returns_existing_selectors(client, session):
     assert "schema_version" in r.text
 
 
+@pytest.mark.asyncio
+async def test_suggest_specs_keeps_specs_apart_by_ignore_selectors(client, session):
+    """Two specs differing only in ``ignore_selectors`` are two suggestions (#378).
+
+    Grouped by algorithm and selector alone, the chip carried whichever came first,
+    so picking "css: #main" could silently add, or drop, the other's exclusions.
+    """
+    session.add(Domain(name="ignoreme.example.com"))
+    await session.flush()
+    plain = {"algorithm": "css", "selector": "#main"}
+    stripped = {**plain, "ignore_selectors": [".stamp", "#ad"]}
+    for path, extraction in (("a", plain), ("b", stripped)):
+        session.add(
+            InfoSource(
+                url=f"https://ignoreme.example.com/{path}",
+                source_specs=[{"schema_version": 1, "extraction": extraction, "fingerprint": {}}],
+                domain_name="ignoreme.example.com",
+            )
+        )
+    await session.flush()
+
+    r = await client.get(
+        "/dashboard/register/suggest-specs?url=https://ignoreme.example.com/c",
+        headers=_HEADERS,
+    )
+    island = re.search(r'<script type="application/json">(.*?)</script>', r.text, re.S)
+    chips = {c["label"]: json.loads(c["value"])[0]["extraction"] for c in json.loads(island[1])}
+    assert chips == {"css: #main": plain, "css: #main, ignoring .stamp #ad": stripped}
+
+
 # ---------------------------------------------------------------------------
 # Happy path — POST /dashboard/register (atomic submit)
 # ---------------------------------------------------------------------------

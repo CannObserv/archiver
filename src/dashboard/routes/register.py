@@ -284,15 +284,17 @@ async def suggest_specs(
             .scalars()
             .all()
         )
-        # Count (algorithm, selector) combos; keep a representative spec for each.
+        # Count (algorithm, selector, ignore_selectors) combos; keep a representative
+        # spec for each. ignore_selectors is in the key so a chip never carries
+        # another spec's exclusions (#378).
         counter: Counter = Counter()
-        spec_by_key: dict[tuple[str, str], dict] = {}
+        spec_by_key: dict[tuple[str, str, tuple[str, ...]], dict] = {}
         for src in src_rows:
             for spec in src.source_specs or []:
                 ext = spec.get("extraction", {})
                 algo = ext.get("algorithm", "")
                 selector = ext.get("selector", "") or ""
-                key = (algo, selector)
+                key = (algo, selector, tuple(ext.get("ignore_selectors") or ()))
                 counter[key] += 1
                 if key not in spec_by_key:
                     spec_by_key[key] = {
@@ -301,9 +303,12 @@ async def suggest_specs(
                         "fingerprint": spec.get("fingerprint", {}),
                     }
 
-        for (algo, selector), freq in counter.most_common(5):
+        for key, freq in counter.most_common(5):
+            algo, selector, ignore = key
             display = f"{algo}: {selector}" if selector else algo
-            value = json.dumps([spec_by_key[(algo, selector)]])
+            if ignore:
+                display += f", ignoring {' '.join(ignore)}"
+            value = json.dumps([spec_by_key[key]])
             suggestions.append({"label": display, "frequency": freq, "value": value})
 
     return _templates.TemplateResponse(

@@ -149,7 +149,11 @@ document; the dashboard's Registry badge reports the count
   cross-check alternatives for selector-rot detection. Each spec: `{schema_version, extraction,
   fingerprint}` — no `target` section; URL is on the InfoSource directly. `extraction.algorithm`
   is `css | xpath | full_page`, all one family (`source_spec_schema/v1.json`, `families.py`);
-  which media type honours which is co-core's extractor's call (#317).
+  which media type honours which is co-core's extractor's call (#317). Optional
+  `extraction.ignore_selectors` (#378): a non-empty list of CSS selectors removed before the
+  selection. Only HTML honours it, which the schema can't check: on a feed, PDF or
+  spreadsheet the preview refuses it at `/extraction` and Processor records an
+  `extraction_error`. `[]` is refused, because it extracts as an absent key does but moves `spec1:`.
   `last_observed_at TIMESTAMPTZ NULL` (archiver#151) — when Watcher last **successfully
   extracted** this source, changed or unchanged: "verified current as of T". A provenance fact,
   materially stronger than "no record of a change", which conflates *verified same* with *never

@@ -14,7 +14,13 @@
       "additionalProperties": false,
       "properties": {
         "algorithm": {"enum": ["css", "xpath", "full_page"]},
-        "selector": {"type": "string"}
+        "selector": {"type": "string"},
+        "ignore_selectors": {
+          "description": "CSS selectors removed from the page before the selection, under any algorithm: timestamps, 'last updated' footers, ads, session tokens (cannobserv#570, archiver#378). Only HTML honours them. On an XML feed, PDF or spreadsheet co-core refuses a spec that carries them; this schema can't see the media type, so the preview reports that at /extraction and Processor as extraction_error. Omit the key for none: [] extracts as an absent key does but fingerprints as a different spec, so it is refused here.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "\\S"}
+        }
       },
       "allOf": [
         {

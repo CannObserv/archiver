@@ -283,6 +283,66 @@ class TestPreviewExtractionXpathOnHtml:
         assert by_xpath.computed_fingerprint == by_css.computed_fingerprint
 
 
+IGNORE_FIXTURE = (
+    b"<html><body><div class='target'><p>kept content</p>"
+    b"<p class='stamp'>Last updated 2026-10-21</p></div><div>dropped content</div></body></html>"
+)
+
+
+class TestPreviewExtractionIgnoreSelectors:
+    """``extraction.ignore_selectors`` strips noise before the selection (cannobserv#570, #378)."""
+
+    @staticmethod
+    def _spec(algorithm: str, selector: str | None = None, ignore=(".stamp",)) -> dict:
+        extraction = {"algorithm": algorithm, "ignore_selectors": list(ignore)}
+        if selector is not None:
+            extraction["selector"] = selector
+        return {"schema_version": 1, "extraction": extraction, "fingerprint": {}}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("algorithm", "selector"),
+        [("css", ".target"), ("xpath", "//div[@class='target']"), ("full_page", None)],
+    )
+    async def test_removed_before_the_selection(self, algorithm, selector):
+        result = await preview_extraction(
+            _stub_fetcher(IGNORE_FIXTURE), DEFAULT_URL, self._spec(algorithm, selector)
+        )
+        text = " ".join(c.text for c in result.chunks)
+        assert "kept content" in text
+        assert "Last updated" not in text
+
+    @pytest.mark.asyncio
+    async def test_changes_the_fingerprint_of_the_same_bytes(self):
+        """The extracted fingerprint moves with the spec: the discontinuity #378 names."""
+        plain = await preview_extraction(_stub_fetcher(IGNORE_FIXTURE), DEFAULT_URL, VALID_CSS_SPEC)
+        stripped = await preview_extraction(
+            _stub_fetcher(IGNORE_FIXTURE), DEFAULT_URL, self._spec("css", ".target")
+        )
+        assert plain.computed_fingerprint != stripped.computed_fingerprint
+
+    @pytest.mark.asyncio
+    async def test_refused_on_a_feed_at_extraction(self):
+        """Only HTML honours them; the schema can't see the media type, co-core can."""
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(RSS_FIXTURE, content_type="application/rss+xml"),
+                DEFAULT_URL,
+                self._spec("full_page"),
+            )
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
+        assert "ignore_selectors" in exc_info.value.errors[0]["message"]
+
+    @pytest.mark.asyncio
+    async def test_uncompilable_one_refused_at_extraction(self):
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(IGNORE_FIXTURE), DEFAULT_URL, self._spec("css", ".target", ["p[["])
+            )
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
+        assert "ignore_selectors CSS selector" in exc_info.value.errors[0]["message"]
+
+
 class TestPreviewExtractionDispatch:
     """The preview extracts as Processor does: essence -> extractor (#317)."""
 
