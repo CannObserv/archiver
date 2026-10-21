@@ -104,7 +104,7 @@ async def test_invalid_spec_element_rejected(session):
 async def test_mixed_algorithm_families_rejected(session):
     """All specs must share a content-kind family."""
     specs = [_spec("css"), _spec("jsonpath", "$.items[*]")]
-    with pytest.raises(MixedAlgorithmFamilyError):
+    with pytest.raises(MixedAlgorithmFamilyError, match=r"\['html_text', 'json'\]"):
         await create_info_source(session, url="https://example.com/p", source_specs=specs)
 
 

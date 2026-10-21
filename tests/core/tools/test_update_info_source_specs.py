@@ -68,7 +68,8 @@ async def test_invalid_spec_rejected(session, source):
 
 @pytest.mark.asyncio
 async def test_mixed_families_rejected(session, source):
-    with pytest.raises(MixedAlgorithmFamilyError):
+    """The message names the families sorted, not in a set's hash-seeded order (#356 CR 1)."""
+    with pytest.raises(MixedAlgorithmFamilyError, match=r"\['html_text', 'json'\]"):
         await update_info_source_specs(
             session,
             info_source_id=source.info_source_id,

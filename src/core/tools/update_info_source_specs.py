@@ -62,7 +62,9 @@ async def update_info_source_specs(
 
     families = families_of(spec["extraction"]["algorithm"] for spec in source_specs)
     if len(families) > 1:
-        raise MixedAlgorithmFamilyError(f"source_specs mix content-kind families: {families!r}")
+        raise MixedAlgorithmFamilyError(
+            f"source_specs mix content-kind families: {sorted(families)!r}"
+        )
 
     src.source_specs = list(source_specs)
     await db.flush()

@@ -80,7 +80,7 @@ async def create_info_source(
     families = families_of(spec["extraction"]["algorithm"] for spec in source_specs)
     if len(families) > 1:
         raise MixedAlgorithmFamilyError(
-            f"source_specs mix content-kind families: {families!r}. "
+            f"source_specs mix content-kind families: {sorted(families)!r}. "
             "All specs must use the same family."
         )
 
