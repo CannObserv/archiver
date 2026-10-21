@@ -8,6 +8,7 @@ import pytest
 from src.core.source_spec_schema.families import (
     ALGORITHM_FAMILIES,
     UnknownAlgorithmError,
+    families_of,
     family_for,
 )
 
@@ -15,14 +16,40 @@ from src.core.source_spec_schema.families import (
 def test_html_text_family_members():
     assert family_for("css") == "html_text"
     assert family_for("xpath") == "html_text"
-    assert family_for("full_page") == "html_text"
 
 
-@pytest.mark.parametrize("algorithm", ["regex", "jsonpath"])
-def test_refused_algorithms_have_no_family(algorithm):
-    """No extractor honours them (cannobserv#523, #317), so the schema drops them."""
+def test_jsonpath_is_the_json_family():
+    """co-core 0.38 honours ``jsonpath`` on JSON bodies (cannobserv#354, #356)."""
+    assert family_for("jsonpath") == "json"
+
+
+def test_full_page_is_family_neutral():
+    """``full_page`` honours every media type co-core dispatches, JSON included (#356 D1)."""
+    assert family_for("full_page") is None
+
+
+def test_refused_algorithm_has_no_family():
+    """No extractor honours ``regex`` (cannobserv#523, #317), so the schema drops it."""
     with pytest.raises(UnknownAlgorithmError):
-        family_for(algorithm)
+        family_for("regex")
+
+
+@pytest.mark.parametrize(
+    ("algorithms", "families"),
+    [
+        (["css", "xpath"], {"html_text"}),
+        (["full_page", "jsonpath"], {"json"}),
+        (["jsonpath", "full_page", "css"], {"json", "html_text"}),
+        (["full_page"], set()),
+    ],
+)
+def test_families_of_drops_the_neutral_algorithm(algorithms, families):
+    assert families_of(algorithms) == families
+
+
+def test_families_of_raises_on_an_unknown_algorithm():
+    with pytest.raises(UnknownAlgorithmError):
+        families_of(["css", "regex"])
 
 
 def test_unknown_algorithm_raises():

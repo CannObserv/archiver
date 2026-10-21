@@ -4,7 +4,6 @@ import pytest
 from ulid import ULID
 
 from src.core.models import InfoSource
-from src.core.source_spec_schema.families import ALGORITHM_FAMILIES
 from src.core.tools.update_info_source_specs import (
     InfoSourceNotFoundError,
     InvalidSourceSpecError,
@@ -68,13 +67,24 @@ async def test_invalid_spec_rejected(session, source):
 
 
 @pytest.mark.asyncio
-async def test_mixed_families_rejected(session, source, monkeypatch):
-    # No two schema algorithms differ in family today (#317 pruned ``jsonpath``),
-    # so stand one in until cannobserv#354 brings ``json`` back.
-    monkeypatch.setitem(ALGORITHM_FAMILIES, "xpath", "json")
+async def test_mixed_families_rejected(session, source):
     with pytest.raises(MixedAlgorithmFamilyError):
         await update_info_source_specs(
             session,
             info_source_id=source.info_source_id,
-            source_specs=[_spec("full_page"), _spec("xpath", "//x")],
+            source_specs=[_spec("jsonpath", "$.items[*]"), _spec("xpath", "//x")],
         )
+
+
+@pytest.mark.asyncio
+async def test_full_page_pairs_with_jsonpath(session, source):
+    """``full_page`` is family-neutral (#356 D1)."""
+    updated = await update_info_source_specs(
+        session,
+        info_source_id=source.info_source_id,
+        source_specs=[_spec("jsonpath", "$.items[*]"), _spec("full_page")],
+    )
+    assert [s["extraction"]["algorithm"] for s in updated.source_specs] == [
+        "jsonpath",
+        "full_page",
+    ]

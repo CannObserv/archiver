@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import InfoSource
-from src.core.source_spec_schema.families import family_for
+from src.core.source_spec_schema.families import families_of
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 
 
@@ -60,7 +60,7 @@ async def update_info_source_specs(
     if all_errors:
         raise InvalidSourceSpecError(all_errors)
 
-    families = {family_for(spec["extraction"]["algorithm"]) for spec in source_specs}
+    families = families_of(spec["extraction"]["algorithm"] for spec in source_specs)
     if len(families) > 1:
         raise MixedAlgorithmFamilyError(f"source_specs mix content-kind families: {families!r}")
 

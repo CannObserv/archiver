@@ -46,22 +46,40 @@ def test_xpath_spec_valid(validator):
     validator.validate(doc)
 
 
-@pytest.mark.parametrize(
-    ("algorithm", "selector"), [("jsonpath", "$.data[*].value"), ("regex", "Agenda.*")]
-)
-def test_algorithm_no_extractor_honours_rejected(validator, algorithm, selector):
-    """No extractor honours ``regex`` (cannobserv#523, #317); ``jsonpath`` waits on #356.
-
-    co-core 0.38 honours ``jsonpath`` again (cannobserv#354), but archiver's schema
-    accepts it, and the json family, only with #356.
-    """
+def test_jsonpath_spec_valid(validator):
+    """co-core 0.38 honours ``jsonpath`` on JSON (cannobserv#354, #356)."""
     doc = {
         "schema_version": 1,
-        "extraction": {"algorithm": algorithm, "selector": selector},
+        "extraction": {"algorithm": "jsonpath", "selector": "$.data[*].value"},
+        "fingerprint": {},
+    }
+    validator.validate(doc)
+
+
+def test_algorithm_no_extractor_honours_rejected(validator):
+    """No extractor honours ``regex`` (cannobserv#523, #317)."""
+    doc = {
+        "schema_version": 1,
+        "extraction": {"algorithm": "regex", "selector": "Agenda.*"},
         "fingerprint": {},
     }
     with pytest.raises(jsonschema.ValidationError):
         validator.validate(doc)
+
+
+@pytest.mark.parametrize(
+    "extraction",
+    [
+        {"algorithm": "jsonpath"},
+        {"algorithm": "jsonpath", "selector": ""},
+        {"algorithm": "jsonpath", "selector": "$.a", "ignore_selectors": [".ad"]},
+    ],
+    ids=["no-selector", "empty-selector", "ignore-selectors"],
+)
+def test_jsonpath_refusals_the_schema_can_see(validator, extraction):
+    """co-core refuses each whatever the body (#356 D2); syntax stays co-core's, at /extraction."""
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate({"schema_version": 1, "extraction": extraction, "fingerprint": {}})
 
 
 def test_css_missing_selector_rejected(validator):
@@ -125,7 +143,7 @@ def _with_ignore(algorithm: str, ignore_selectors) -> dict:
 
 
 @pytest.mark.parametrize("algorithm", ["css", "xpath", "full_page"])
-def test_ignore_selectors_valid_under_every_algorithm(validator, algorithm):
+def test_ignore_selectors_valid_under_every_html_algorithm(validator, algorithm):
     """co-core 0.38 removes them before the selection under all three (cannobserv#570, #378)."""
     validator.validate(_with_ignore(algorithm, [".timestamp", "#ad-slot"]))
 

@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.source_spec_schema.families import ALGORITHM_FAMILIES
-
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
@@ -104,17 +102,27 @@ async def test_post_invalid_spec_element_returns_422(client):
 
 
 @pytest.mark.asyncio
-async def test_post_mixed_families_returns_422(client, monkeypatch):
-    # No two schema algorithms differ in family today (#317 pruned ``jsonpath``),
-    # so stand one in until cannobserv#354 brings ``json`` back.
-    monkeypatch.setitem(ALGORITHM_FAMILIES, "xpath", "json")
-    specs = [_spec("full_page"), _spec("xpath", "//x")]
+async def test_post_mixed_families_returns_422(client):
+    specs = [_spec("css"), _spec("jsonpath", "$.items[*]")]
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
         json={"url": "https://example.com/p", "source_specs": specs},
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_jsonpath_beside_full_page_returns_201(client):
+    """``jsonpath`` is back (#356), and ``full_page`` pairs with it (D1)."""
+    specs = [_spec("jsonpath", "$.items[*].title"), _spec("full_page")]
+    resp = await client.post(
+        "/api/v1/info-sources",
+        headers=HEADERS,
+        json={"url": "https://example.com/feed.json", "source_specs": specs},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["source_specs"] == specs
 
 
 @pytest.mark.asyncio
@@ -278,13 +286,12 @@ async def test_post_empty_ignore_selectors_returns_422_at_the_key(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("algorithm", ["regex", "jsonpath"])
-async def test_post_refused_algorithm_returns_422_schema(client, algorithm):
-    """No extractor honours ``regex`` (#317); the schema refuses ``jsonpath`` until #356."""
+async def test_post_refused_algorithm_returns_422_schema(client):
+    """No extractor honours ``regex`` (#317)."""
     resp = await client.post(
         "/api/v1/info-sources",
         headers=HEADERS,
-        json={"url": "https://example.com/p", "source_specs": [_spec(algorithm)]},
+        json={"url": "https://example.com/p", "source_specs": [_spec("regex")]},
     )
     assert resp.status_code == 422
     detail = resp.json()["detail"]

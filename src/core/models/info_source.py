@@ -16,8 +16,8 @@ class InfoSource(Base):
     ``source_specs`` is a mutable ordered list of extraction specs. The first
     element is the primary strategy; subsequent elements are cross-check
     alternatives for selector-rot detection. All specs must share a content-kind
-    family (validated at write time by ``create_info_source`` /
-    ``update_info_source_specs``).
+    family; ``full_page`` pairs with any (validated at write time by
+    ``create_info_source`` / ``update_info_source_specs``; ``families.py``).
 
     Multiple InfoSources may share the same URL when different InfoItems derive
     distinct semantic content from that URL using different extraction strategies.

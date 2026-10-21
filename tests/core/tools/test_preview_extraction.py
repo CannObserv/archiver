@@ -215,14 +215,13 @@ class TestPreviewExtractionPageTitle:
 
 
 class TestPreviewExtractionRefusedAlgorithm:
-    """No extractor honours ``regex`` (cannobserv#523, #317); ``jsonpath`` waits on #356."""
+    """No extractor honours ``regex`` (cannobserv#523, #317)."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(("algorithm", "selector"), [("regex", "kept"), ("jsonpath", "$.a")])
-    async def test_refused_algorithm_fails_schema(self, algorithm, selector):
+    async def test_refused_algorithm_fails_schema(self):
         spec = {
             "schema_version": 1,
-            "extraction": {"algorithm": algorithm, "selector": selector},
+            "extraction": {"algorithm": "regex", "selector": "kept"},
             "fingerprint": {},
         }
         with pytest.raises(SourceSpecValidationError) as exc_info:
@@ -488,3 +487,97 @@ class TestPreviewExtractionOffLoop:
         monkeypatch.setattr(HtmlExtractor, "extract", _spy)
         await preview_extraction(_stub_fetcher(), DEFAULT_URL, VALID_FULL_PAGE_SPEC)
         assert seen and seen[0] != threading.get_ident()
+
+
+JSON_FIXTURE = b'{"items": [{"title": "A  b"}, {"title": "C"}], "count": 2}'
+
+
+class TestPreviewExtractionJson:
+    """co-core 0.38 extracts JSON bodies (cannobserv#354, #356)."""
+
+    @staticmethod
+    def _spec(selector: str | None = None) -> dict:
+        extraction = {"algorithm": "full_page"}
+        if selector is not None:
+            extraction = {"algorithm": "jsonpath", "selector": selector}
+        return {"schema_version": 1, "extraction": extraction, "fingerprint": {}}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content_type", ["application/json", "application/ld+json", "application/vnd.api+json"]
+    )
+    async def test_jsonpath_previews_its_matches(self, content_type):
+        """One chunk per node, labelled with its normalized path; strings whitespace-normalized."""
+        result = await preview_extraction(
+            _stub_fetcher(JSON_FIXTURE, content_type=content_type),
+            DEFAULT_URL,
+            self._spec("$.items[*].title"),
+        )
+        assert [(c.label, c.text) for c in result.chunks] == [
+            ("$['items'][0]['title']", "A b"),
+            ("$['items'][1]['title']", "C"),
+        ]
+        assert result.page_title == ""
+
+    @pytest.mark.asyncio
+    async def test_json_url_breaks_a_missing_content_type(self):
+        result = await preview_extraction(
+            _stub_fetcher(JSON_FIXTURE, content_type=None),
+            "https://example.com/feed.json",
+            self._spec("$.count"),
+        )
+        assert [c.text for c in result.chunks] == ["2"]
+
+    @pytest.mark.asyncio
+    async def test_full_page_on_json_is_one_canonical_chunk(self):
+        """Canonical JSON keeps string whitespace: not the text ``jsonpath`` gives."""
+        result = await preview_extraction(
+            _stub_fetcher(JSON_FIXTURE, content_type="application/json"), DEFAULT_URL, self._spec()
+        )
+        [chunk] = result.chunks
+        assert chunk.label == "$"
+        assert '"A  b"' in chunk.text
+
+    @pytest.mark.asyncio
+    async def test_no_match_is_zero_chunks_not_an_error(self):
+        """Processor publishes an empty extraction for it, not an error (processor#37)."""
+        result = await preview_extraction(
+            _stub_fetcher(JSON_FIXTURE, content_type="application/json"),
+            DEFAULT_URL,
+            self._spec("$.nope"),
+        )
+        assert result.chunks == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("content", "content_type", "spec"),
+        [
+            (HTML_FIXTURE, "text/html", {"algorithm": "jsonpath", "selector": "$.a"}),
+            (JSON_FIXTURE, "application/json", {"algorithm": "css", "selector": ".a"}),
+            (JSON_FIXTURE, "application/json", {"algorithm": "xpath", "selector": "//a"}),
+            (JSON_FIXTURE, "application/json", {"algorithm": "jsonpath", "selector": "$.a | $.b"}),
+            (
+                JSON_FIXTURE,
+                "application/json",
+                {"algorithm": "full_page", "ignore_selectors": [".a"]},
+            ),
+        ],
+        ids=["jsonpath-on-html", "css-on-json", "xpath-on-json", "not-rfc9535", "ignore-on-json"],
+    )
+    async def test_extractor_refusal_reported_at_extraction(self, content, content_type, spec):
+        doc = {"schema_version": 1, "extraction": spec, "fingerprint": {}}
+        with pytest.raises(SourceSpecValidationError) as exc_info:
+            await preview_extraction(
+                _stub_fetcher(content, content_type=content_type), DEFAULT_URL, doc
+            )
+        assert [e["path"] for e in exc_info.value.errors] == ["/extraction"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("content", [b"{nope", b'{"a": NaN}'])
+    async def test_unparseable_json_fails_extraction(self, content):
+        with pytest.raises(ExtractionFailedError, match="Failed to parse JSON"):
+            await preview_extraction(
+                _stub_fetcher(content, content_type="application/json"),
+                DEFAULT_URL,
+                self._spec("$.a"),
+            )
