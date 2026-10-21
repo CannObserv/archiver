@@ -819,11 +819,14 @@ async def test_preview_says_a_selector_matched_nothing(client, content, content_
 
 
 @pytest.mark.asyncio
-async def test_preview_full_page_with_no_text_says_no_content(client):
-    """``full_page`` has no selector to blame."""
-    r = await _preview(
-        client, _StubFetcher(b"<html><body></body></html>"), '{"algorithm":"full_page"}'
-    )
+@pytest.mark.parametrize(
+    "extraction",
+    ['{"algorithm":"full_page"}', '{"algorithm":"css","selector":""}'],
+    ids=["full_page", "empty-css"],
+)
+async def test_preview_with_no_selector_says_no_content(client, extraction):
+    """No selector to blame: ``full_page``, or an empty css selector (the whole page; CR 5)."""
+    r = await _preview(client, _StubFetcher(b"<html><body></body></html>"), extraction)
     assert "No content extracted" in r.text
     assert "matched nothing" not in r.text
 
