@@ -723,11 +723,11 @@ async def test_preview_returns_error_partial_on_invalid_spec(client):
 
 @pytest.mark.asyncio
 async def test_preview_renders_a_spec_refusal_as_path_and_message(client):
-    """xpath on HTML is refused (#317); the operator sees co-core's message, not a dict repr."""
+    """An invalid xpath is refused (#317); the operator sees co-core's message, not a dict repr."""
     original = app.state.fetch_driver
     app.state.fetch_driver = _StubFetcher(_PREVIEW_HTML)
     spec = (
-        '[{"schema_version":1,"extraction":{"algorithm":"xpath","selector":"//div"},'
+        '[{"schema_version":1,"extraction":{"algorithm":"xpath","selector":"//div["},'
         '"fingerprint":{}}]'
     )
     try:
