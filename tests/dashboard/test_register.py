@@ -342,7 +342,7 @@ async def test_suggest_specs_labels_tell_ignore_lists_apart(client, session):
     """``["div .a"]`` and ``["div", ".a"]`` need distinct labels: the chips key on them (CR 1)."""
     session.add(Domain(name="labelme.example.com"))
     await session.flush()
-    for path, ignore in (("a", ["div .a"]), ("b", ["div", ".a"])):
+    for path, ignore in (("a", ["div .a"]), ("b", ["div", ".a"]), ("c", [".préface"])):
         extraction = {"algorithm": "css", "selector": "#main", "ignore_selectors": ignore}
         session.add(
             InfoSource(
@@ -354,11 +354,13 @@ async def test_suggest_specs_labels_tell_ignore_lists_apart(client, session):
     await session.flush()
 
     r = await client.get(
-        "/dashboard/register/suggest-specs?url=https://labelme.example.com/c",
+        "/dashboard/register/suggest-specs?url=https://labelme.example.com/d",
         headers=_HEADERS,
     )
     island = re.search(r'<script type="application/json">(.*?)</script>', r.text, re.S)
-    assert len({c["label"] for c in json.loads(island[1])}) == 2
+    labels = {c["label"] for c in json.loads(island[1])}
+    assert len(labels) == 3
+    assert 'css: #main, ignoring [".préface"]' in labels  # readable, not \u-escaped (CR 9)
 
 
 # ---------------------------------------------------------------------------
