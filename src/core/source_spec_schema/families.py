@@ -7,8 +7,8 @@ because every spec in the list extracts from the same fetched bytes (the
 ``src/core/source_spec_schema/v1.json`` description). The check is per list,
 not across an InfoItem's sources: an item has one primary (#392).
 
-``css`` and ``xpath`` select from HTML and XML (``html_text``); ``jsonpath``
-from JSON (``json``, cannobserv#354, #356). ``full_page`` is family-neutral
+``css`` (HTML) and ``xpath`` (HTML and XML) select from markup (``html_text``);
+``jsonpath`` from JSON (``json``, cannobserv#354, #356). ``full_page`` is family-neutral
 (#356 D1): co-core honours it on every media type it dispatches, so it pairs
 with either family. ``regex`` stays out, because co-core refuses it (#317).
 """

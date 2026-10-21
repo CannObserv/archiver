@@ -159,7 +159,7 @@ that screen. The entries below stay the inventory line for each route.
 
 **GET `/dashboard/info-sources/`** - paginated list. Query params: `url_contains` (ilike filter on the `url` column), `limit`, `offset`.
 
-**GET `/dashboard/info-sources/new`** - create form. Fields: `url` (text input) + `source_specs` (JSON array textarea, validates JSON on blur); its hint names the family rule: `css`/`xpath` or `jsonpath`, with `full_page` pairing with either (#356).
+**GET `/dashboard/info-sources/new`** - create form. Fields: `url` (text input) + `source_specs` (JSON array textarea, validates JSON on blur); its hint names the family rule: `css` (HTML), `xpath` (HTML and XML) or `jsonpath` (JSON), with `full_page` pairing with either (#356).
 
 **POST `/dashboard/info-sources/new`** - form fields: `url` (string), `source_specs` (JSON array string). Calls `create_info_source`. 303 to detail on success; re-renders the form with an `errors` dict on `InvalidUrlError`, `InvalidSourceSpecError`, `MixedAlgorithmFamilyError`.
 
