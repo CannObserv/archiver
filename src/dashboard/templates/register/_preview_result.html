@@ -18,6 +18,8 @@
   {% if fingerprint %}
   <p class="text-sm text-muted">Fingerprint: <code>{{ fingerprint }}…</code></p>
   {% endif %}
+  {% elif no_match %}
+  <p class="text-sm text-danger">The selector matched nothing: no content extracted.</p>
   {% else %}
   <p class="text-sm text-muted">No content extracted.</p>
   {% endif %}

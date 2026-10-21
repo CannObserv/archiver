@@ -36,7 +36,7 @@
                   placeholder='[{"schema_version":1,"extraction":{"algorithm":"full_page"},"fingerprint":{}}]'>{{ source_specs_raw }}</textarea>
         <p class="text-sm text-muted" id="source-specs-hint">
           JSON array of extraction specs. Each element: <code>{"schema_version":1,"extraction":{"algorithm":"..."},"fingerprint":{}}</code>.
-          All specs must use the same content-kind family.
+          All specs must use the same content-kind family: css and xpath (HTML and XML), or jsonpath (JSON); full_page pairs with either.
         </p>
         {% if errors.source_specs %}
         <p class="alert alert--error">{{ errors.source_specs }}</p>
