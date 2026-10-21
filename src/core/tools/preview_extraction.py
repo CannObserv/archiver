@@ -119,8 +119,8 @@ async def preview_extraction(
     Raises:
         SourceSpecValidationError: if the document fails schema validation, or
             co-core refuses it for this body (``UnsupportedExtractionError``:
-            ``css`` on XML, ``xpath`` on HTML, cannobserv#523), or its CSS
-            selector doesn't parse.
+            ``css`` on XML, an invalid ``xpath``, cannobserv#523), or one of its
+            CSS selectors doesn't compile (cannobserv#570).
         TargetUnreachableError: if the HTTP fetch fails (route layer → 422).
         ExtractionFailedError: if the extractor can't parse the body (route layer → 422).
     """

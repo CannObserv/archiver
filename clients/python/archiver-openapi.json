@@ -6978,7 +6978,7 @@
     },
     "/api/v1/tools/preview-extraction": {
       "post": {
-        "description": "Validate, fetch, extract, and fingerprint with a candidate SourceSpec.\n\nComposes ``validate_source_spec`` + ``fetch_and_render`` + the extractor\nProcessor would dispatch for the response's media type (RSS/Atom: one line\nper item) + the canonical-text fingerprint, so an authoring agent can verify\nthe spec yields the expected content before persisting.\n\nReturns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec\nfails validation or no extractor honours it on this body (``css`` on XML,\n``xpath`` on HTML), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or\n``extraction_failed`` (the body would not parse).",
+        "description": "Validate, fetch, extract, and fingerprint with a candidate SourceSpec.\n\nComposes ``validate_source_spec`` + ``fetch_and_render`` + the extractor\nProcessor would dispatch for the response's media type (RSS/Atom: one line\nper item) + the canonical-text fingerprint, so an authoring agent can verify\nthe spec yields the expected content before persisting.\n\nReturns 422 with the standard error envelope: ``kind=\"schema\"`` when the spec\nfails validation or no extractor honours it on this body (``css`` on XML,\nan invalid ``xpath``), ``kind=\"domain\"`` with ``code`` ``target_unreachable`` or\n``extraction_failed`` (the body would not parse).",
         "operationId": "preview_extraction_route_api_v1_tools_preview_extraction_post",
         "requestBody": {
           "content": {

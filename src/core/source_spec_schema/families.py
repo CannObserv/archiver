@@ -7,7 +7,8 @@ fetched bytes (the "InfoItem = fetch group" invariant; see
 ``src/core/source_spec_schema/v1.json`` description).
 
 One family today: ``regex`` and ``jsonpath`` left with co-core 0.32, which
-refuses them (#317). ``json`` returns with ``jsonpath`` (cannobserv#354).
+refused them (#317). co-core 0.38 honours ``jsonpath`` again (cannobserv#354);
+``json`` returns with it in #356.
 """
 
 from typing import Literal

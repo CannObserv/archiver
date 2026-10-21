@@ -21,8 +21,8 @@ dependencies = [
     "jinja2>=3.1.0,<4",
     "aiofiles>=24.1.0,<25",
     "python-multipart>=0.0.9,<1",
-    "co-core[extract]>=0.37,<0.38",
-    "co-core-aio[bus]>=0.37,<0.38",
+    "co-core[extract]>=0.38,<0.39",
+    "co-core-aio[bus]>=0.38,<0.39",
     "archiver-client",
     "power-map-client",
     "google-cloud-storage>=2,<4",  # the nightly backup's bucket (archiver#233)

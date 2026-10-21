@@ -50,10 +50,10 @@ def test_xpath_spec_valid(validator):
     ("algorithm", "selector"), [("jsonpath", "$.data[*].value"), ("regex", "Agenda.*")]
 )
 def test_algorithm_no_extractor_honours_rejected(validator, algorithm, selector):
-    """co-core 0.32 refuses ``regex`` and ``jsonpath`` (cannobserv#523, #317).
+    """No extractor honours ``regex`` (cannobserv#523, #317); ``jsonpath`` waits on #356.
 
-    A spec that validates here must reach an extractor that honours it; ``jsonpath``
-    returns with cannobserv#354.
+    co-core 0.38 honours ``jsonpath`` again (cannobserv#354), but archiver's schema
+    accepts it, and the json family, only with #356.
     """
     doc = {
         "schema_version": 1,
