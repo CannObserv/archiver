@@ -237,6 +237,9 @@ async def test_step_2_help_names_jsonpath_for_json_only(client):
     """co-core 0.38 honours ``jsonpath`` on JSON bodies only (cannobserv#354, #356)."""
     r = await client.get("/dashboard/register", headers=_HEADERS)
     assert "JSONPath (JSON only" in r.text
+    # full_page on JSON is canonical JSON, not the page's own formatting (#356 CR 2).
+    assert "keys sorted" in r.text
+    assert "raw JSON" not in r.text
 
 
 @pytest.mark.asyncio

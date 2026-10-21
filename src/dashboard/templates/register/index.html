@@ -90,7 +90,7 @@
     <div x-show="step===2" style="display:none;">
       <h2 style="margin-bottom:var(--space-2);">Step 2: Selector</h2>
       <p class="text-muted text-sm" style="margin-bottom:var(--space-3);">
-        Specify the content selection method: CSS (HTML pages), XPath (HTML pages, XML and feeds), JSONPath (JSON only; RFC 9535, one excerpt line per matched value), or full-page (anything; an RSS or Atom feed gives one line per item, a JSON document one block of its raw JSON). JSONPath tidies the whitespace inside a string value and full-page keeps it, so the two don't read alike. To strip noise such as timestamps or ads first, add <code>"ignore_selectors": [".timestamp", …]</code> to <code>extraction</code> (HTML pages only, never with JSONPath; leave it out for none). Use suggestions from the same domain if available.
+        Specify the content selection method: CSS (HTML pages), XPath (HTML pages, XML and feeds), JSONPath (JSON only; RFC 9535, one excerpt line per matched value), or full-page (anything; an RSS or Atom feed gives one line per item, a JSON document one block of its JSON, keys sorted and compacted). JSONPath tidies the whitespace inside a string value and full-page keeps it, so the two don't read alike. To strip noise such as timestamps or ads first, add <code>"ignore_selectors": [".timestamp", …]</code> to <code>extraction</code> (HTML pages only, never with JSONPath; leave it out for none). Use suggestions from the same domain if available.
       </p>
 
       {% if errors.source_specs %}

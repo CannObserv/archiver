@@ -87,7 +87,7 @@ dispatch for the response's media type (#317). A spec that extractor refuses
 selector that matches nothing (zero chunks) renders "The selector matched nothing", not an empty
 success (#356); `full_page` with no text keeps "No content extracted". Step 2's
 help text names those limits: CSS for HTML pages, XPath for HTML pages, XML and
-feeds, JSONPath for JSON only (#356), full-page for anything, and that JSONPath and full-page
+feeds, JSONPath for JSON only (#356), full-page for anything (on JSON: keys sorted, compacted), and that JSONPath and full-page
 don't give the same text for a JSON string. It also names `extraction.ignore_selectors` (#378),
 typed into the JSON: HTML only, never with JSONPath, and left out rather than `[]`. Step 2 has no field
 of its own for it; a structured editor is #54's.
