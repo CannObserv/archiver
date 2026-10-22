@@ -171,8 +171,12 @@ connection string is all that changes to point at a different broker.
 
 Both are producer-side, and both are the *source of truth* for a warning
 threshold in the broker repo's probe (see `docs/BUS-HEALTH.md` there,
-"Mirrored constants"): a change here that is not mirrored leaves that threshold
-stale-low, so it warns early rather than going quiet.
+"Mirrored constants"). Only a **raise** that is not mirrored is safe: the
+threshold goes stale-low, so it warns early rather than going quiet. An
+unmirrored **lowering** splits by stream. For `info.changes`, the threshold
+goes stale-high and misses the range between the two (CannObserv/broker#40).
+For `info.registry`, the mirror also bounds broker's `entries-removed` check
+(CannObserv/broker#42), so that check fires at each trim at the real cap.
 
 - **`ARCHIVER_REDIS_STREAM_MAXLEN`** (default 100000) caps `info.changes`
   operator-side, via a periodic `XTRIM ... MAXLEN ~ N` on the drain loop.

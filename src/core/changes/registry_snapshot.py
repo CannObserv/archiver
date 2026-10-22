@@ -81,18 +81,25 @@ DEFAULT_REGISTRY_STREAM_MAXLEN = 50_000
 Mirrored across the repo boundary (archiver#196), exactly as
 ``DEFAULT_STREAM_MAXLEN`` in ``publisher.py`` is: CannObserv/broker's
 ``src/broker/bus_health.py`` carries this number as ``REGISTRY_PRODUCER_MAXLEN``
-and names this constant as the source of truth, unable to import it. Raising it
-here and not there leaves that probe's WARN threshold stale-*low* - it fires
-early rather than going quiet, the safe direction, but fix it. Index: that
+and names this constant as the source of truth, unable to import it. Index: that
 repo's ``docs/BUS-HEALTH.md``, "Mirrored constants".
 
-**What that mirror is and is not, narrowed with broker-agent 2026-09-23.** It
-feeds one check: ``REGISTRY_WARN_LENGTH = with_margin(REGISTRY_PRODUCER_MAXLEN)``,
-the stream-too-*long* ceiling. It deliberately does **not** feed the shrink check
-(CannObserv/broker#42), which carries no cap at all - ``entries-added - length``
-with ``max-deleted-entry-id`` needs no threshold, which is why it is the right
-signal for a stream getting shorter. Do not delete the pointer above on the
-strength of #42; the ceiling still depends on it.
+**What that mirror feeds: two checks, not one.** It feeds the stream-too-*long*
+ceiling, ``REGISTRY_WARN_LENGTH = with_margin(REGISTRY_PRODUCER_MAXLEN)``. It
+also bounds the scope of the shrink check (``entries-removed``,
+CannObserv/broker#42). That check's trigger has no threshold:
+``entries-added - length`` rising between ticks, with ``max-deleted-entry-id``
+to tell an XTRIM from an XDEL. But it reports only while the stream is **under**
+the mirrored cap. ``MAXLEN ~`` never leaves fewer than the cap, so a removal
+under it cannot be the cap. Without that bound, every legitimate trim would be
+a finding once the stream reached the cap.
+
+So a move of the cap here, unmirrored, is loud in both directions, with one
+exception: a raise inside the margin. **Lowered**, ``entries-removed`` fires at
+each trim at the real cap. **Raised past the 10% margin**, the ceiling goes
+stale-*low* and fires early, the safe direction, but fix it. **Within the
+margin**, neither fires. Do not delete the pointer above on the strength of
+#42: both checks depend on it.
 
 And the mirror's real hazard is not this literal, it is
 ``ARCHIVER_REGISTRY_STREAM_MAXLEN`` below: naming a source is not enough when an
