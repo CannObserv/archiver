@@ -163,11 +163,14 @@ TRIM_INTERVAL_ITERATIONS = 20
 # unset. See resolve_stream_maxlen for the parse contract.
 #
 # MIRRORED ACROSS THE REPO BOUNDARY (archiver#196). CannObserv/broker's
-# ``src/broker/bus_health.py`` carries this number as ``FACT_PRODUCER_MAXLEN``,
-# naming this constant as the source of truth - across a repo boundary it
-# cannot import it. Raising it here without raising it there leaves broker's
+# ``src/broker/bus_health.py`` carries this number as ``CHANGES_PRODUCER_MAXLEN``
+# (``FACT_PRODUCER_MAXLEN`` until CannObserv/broker#60), reaching info.changes
+# only, and names this constant as the source of truth - across a repo boundary
+# it cannot import it. Raising it here without raising it there leaves broker's
 # WARN threshold stale-*low*, which fires early rather than going quiet; the
-# safe direction, but fix it. Its index is that repo's ``docs/BUS-HEALTH.md``,
+# safe direction, but fix it. Lowering it is the unsafe one: the threshold goes
+# stale-*high* and the range between the two is unreported
+# (CannObserv/broker#40). Its index is that repo's ``docs/BUS-HEALTH.md``,
 # "Mirrored constants", which deploy/README.md points at and which also covers
 # ``DEFAULT_REGISTRY_STREAM_MAXLEN`` and Watcher's LWW cap.
 DEFAULT_STREAM_MAXLEN = 100_000
