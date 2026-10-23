@@ -332,7 +332,9 @@ scripts/                       deploy.sh (build a release from a pushed main com
                                each probe bounded by ARCHIVER_REDIS_FLOOR_TIMEOUT) +
                                dev_server.sh (ONLY sanctioned way to start the
                                8001 dev server; refuses to resolve onto the
-                               production DB — see "Server Lifecycle")
+                               production DB — see "Server Lifecycle") +
+                               audit_lock.sh (report-only uv audit of both locks,
+                               runtime and dev apart; archiver#420, DEPLOYMENT.md)
 deploy/                        README.md (install instructions) + systemd units, all
                                running /srv/archiver/live and installed by deploy.sh:
                                archiver.service +
@@ -391,7 +393,10 @@ skills-vendor/                 Git submodules for external skill repos
                                CHANGELOG.md — path-triggered, not commit-type;
                                opt out via `no-changelog` PR label).
                                Triggers on push/PR to main.
-.github/dependabot.yml         Weekly github-actions bumps of ci.yml's SHA pins
+                               audit.yml — scripts/audit_lock.sh on push, PR, weekly
+                               and dispatch; report-only, outside deploy.sh's gate
+                               (#420; DEPLOYMENT.md "Lock audit")
+.github/dependabot.yml         Weekly github-actions bumps of the workflows' SHA pins
                                (#192); see DEPLOYMENT.md "Dependabot"
 .pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks
                                + test_check_changelog.sh (pre-commit stage), plus a pre-push guard

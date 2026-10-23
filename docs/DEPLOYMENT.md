@@ -411,12 +411,25 @@ A rollback to a pre-floor release trusts the root again.
 
 ## Dependabot (archiver#192)
 
-`.github/dependabot.yml` bumps `ci.yml`'s SHA-pinned actions weekly; `uv` is out (no
-wheelhouse for the updater), the generated `context-cadence.yml` excluded. A bot PR lands
+`.github/dependabot.yml` bumps the workflows' SHA-pinned actions weekly; `uv` is out (no
+wheelhouse for the updater; § Lock audit covers the locks), the generated
+`context-cadence.yml` excluded. A bot PR lands
 like any other, merge commit on green CI, with **no CHANGELOG entry and no deploy**: it
 touches only `.github/`. Red at WIF auth: suspect the bot run's credentials, not the bump.
 Read release notes for silent default flips (setup-uv v9 `prune-cache`,
 `tests/ci/test_workflow_pins.py`).
+
+## Lock audit (archiver#420)
+
+Nothing re-locks on its own, so `.github/workflows/audit.yml` runs `scripts/audit_lock.sh`
+(push, PR, Mondays, dispatch): `uv audit --frozen` against `uv.lock` and
+`clients/python/uv.lock`, each as runtime (`--no-dev`) and dev (`--only-dev`), four warning
+titles. **Report-only**, exit 0 always, and outside `deploy.sh`'s gate (which reads `ci.yml`
+runs alone): read the run's annotations. `<lock> runtime advisories` → sync the wheelhouse,
+`uv lock --upgrade-package <name>` (SDK lock: from `clients/python/`), deploy for the root
+lock; `uv lock --dry-run` first shows whether the fix fits the caps. `audit did not run` is
+an OSV or uv failure, never clean. The dev titles stand until a dev re-lock (virtualenv,
+filelock, openapi-python-client 0.29). Run it by hand from any checkout: no wheelhouse needed.
 
 ## Power Map SDK (git tag)
 
