@@ -33,16 +33,17 @@ def test_pyproject_constrains_the_floor() -> None:
     assert f"certifi>={FLOOR}" in uv.get("constraint-dependencies", [])
 
 
-def _locks() -> list[str]:
-    """Every tracked ``uv.lock``: the SDK's runs CI's SDK job, and #418 missed it (#420)."""
-    return [path for path in tracked_files() if path.rsplit("/", 1)[-1] == "uv.lock"]
+# Every tracked lock: the SDK's runs CI's SDK job, and #418 missed it (#420).
+LOCKS = ("uv.lock", "clients/python/uv.lock")
 
 
-def test_both_locks_are_found() -> None:
-    assert {"uv.lock", "clients/python/uv.lock"} <= set(_locks()), _locks()
+def test_locks_names_every_tracked_lock() -> None:
+    """A new lock fails here until it is added, and so floored."""
+    tracked = {path for path in tracked_files() if path.rsplit("/", 1)[-1] == "uv.lock"}
+    assert tracked == set(LOCKS)
 
 
-@pytest.mark.parametrize("path", _locks())
+@pytest.mark.parametrize("path", LOCKS)
 def test_lock_resolves_at_or_above_the_floor(path: str) -> None:
     lock = tomllib.loads((ROOT / path).read_text())
     (locked,) = [p["version"] for p in lock["package"] if p["name"] == "certifi"]
