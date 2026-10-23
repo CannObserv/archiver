@@ -6,7 +6,8 @@ jobs save holds co-core unpacked from the private wheelhouse, and archiver is
 public: a fork's pull request can restore a cache saved on ``main``. Dependabot
 moves setup-uv past v9 with CI green, so the default would flip silently.
 ``uv cache prune --ci`` drops every pre-built wheel, co-core's included, so
-every setup-uv step in every workflow states it. It keeps a wheel *built from
+every setup-uv step that saves a cache, in every workflow, states it; one with
+``enable-cache: false`` saves none (audit.yml, #420). It keeps a wheel *built from
 source*, so the prune covers co-core only while uv.lock pins it to a wheel: the
 lock check below holds that premise. Ported from CannObserv/broker#88.
 
