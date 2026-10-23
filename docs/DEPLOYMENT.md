@@ -1,8 +1,8 @@
 # archiver — Deployment & Configuration
 
 Releases and `scripts/deploy.sh`, the drift check, the service user, reading
-production, wheelhouse reproducibility and the timers. The environment variable
-reference and the dev server's internals are [ENVIRONMENT.md](ENVIRONMENT.md).
+production, wheelhouse reproducibility, Dependabot and the timers. The environment
+variable reference and the dev server's internals are [ENVIRONMENT.md](ENVIRONMENT.md).
 The host's place on the tailnet - node identity, the ACL, why there is no
 tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
 
@@ -411,18 +411,12 @@ A rollback to a pre-floor release trusts the root again.
 
 ## Dependabot (archiver#192)
 
-`.github/dependabot.yml` proposes **action bumps only**, weekly: every `uses:` in `ci.yml`
-pins a commit SHA with a `# vX.Y.Z` comment, and Dependabot moves both. `context-cadence.yml`
-is excluded (the installer re-renders it, gregoryfoster/skills#373); `uv` is out because
-Dependabot's updater cannot sync the wheelhouse. Every runtime specifier carries an upper
-bound (`tests/test_dependency_caps.py`); nothing proposes crossing one yet.
-
-A Dependabot PR lands like any other: merge commit once CI is green by job. It touches only
-`.github/`, so it needs **no CHANGELOG entry and no deploy** (no contract path, nothing in
-drift's runtime list). Red at the WIF auth step: suspect the Dependabot run's credential
-context (`vars.GCP_WIF_PROVIDER`, the OIDC token), not the bump. A bump that changes behaviour takes fix commits pushed onto its branch.
-Read the action's release notes, not the diff: `tests/ci/test_workflow_pins.py` exists
-because setup-uv v9 flipped `prune-cache` silently.
+`.github/dependabot.yml` bumps `ci.yml`'s SHA-pinned actions weekly; `uv` is out (no
+wheelhouse for the updater), the generated `context-cadence.yml` excluded. A bot PR lands
+like any other, merge commit on green CI, with **no CHANGELOG entry and no deploy**: it
+touches only `.github/`. Red at WIF auth: suspect the bot run's credentials, not the bump.
+Read release notes for silent default flips (setup-uv v9 `prune-cache`,
+`tests/ci/test_workflow_pins.py`).
 
 ## Power Map SDK (git tag)
 
