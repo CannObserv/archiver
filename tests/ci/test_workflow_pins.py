@@ -1,4 +1,4 @@
-"""ci.yml pins its runner and its cache behaviour on purpose (#192).
+"""The workflows pin their cache behaviour, and ci.yml its runner, on purpose (#192).
 
 **The cache.** setup-uv v9 flipped ``prune-cache`` to ``false`` (v5's
 ``action.yml`` defaults it ``true``). Unpruned, the uv cache the lint and test
@@ -6,9 +6,9 @@ jobs save holds co-core unpacked from the private wheelhouse, and archiver is
 public: a fork's pull request can restore a cache saved on ``main``. Dependabot
 moves setup-uv past v9 with CI green, so the default would flip silently.
 ``uv cache prune --ci`` drops every pre-built wheel, co-core's included, so
-each step states it. It keeps a wheel *built from source*, so the prune covers
-co-core only while uv.lock pins it to a wheel: the lock check below holds that
-premise. Ported from CannObserv/broker#88.
+every setup-uv step in every workflow states it. It keeps a wheel *built from
+source*, so the prune covers co-core only while uv.lock pins it to a wheel: the
+lock check below holds that premise. Ported from CannObserv/broker#88.
 
 **The runner.** ``ubuntu-24.04``, not ``ubuntu-latest``: CI matches the deploy
 host's distro. ``ubuntu-latest`` moves to 26.04 on GitHub's schedule, between
