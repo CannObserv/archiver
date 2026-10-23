@@ -19,7 +19,7 @@ concurrency:
 jobs:
   lint:
     name: lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # WIF: mint an OIDC token for google-github-actions/auth to impersonate the
     # read-only co-pypi-reader SA and pull the cannobserv wheelhouse
     # (archiver#72/#75). Scoped to this job so client-drift never gains it.
@@ -27,12 +27,15 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
+          # Stated, not defaulted: v9 flipped it to false, and the cache holds
+          # co-core from the private wheelhouse in a public repo (#192).
+          prune-cache: true
 
       - name: Install Python
         run: uv python install 3.12
@@ -42,7 +45,7 @@ jobs:
       # Identity Federation — the read-scoped `github-ci` provider impersonating
       # the objectViewer-only co-pypi-reader SA — then sync before `uv sync`.
       - name: Authenticate to Google Cloud (WIF, read-only)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: co-pypi-reader@co-gcs.iam.gserviceaccount.com
@@ -66,7 +69,7 @@ jobs:
         run: uv run --no-project --python 3.12 python scripts/check_version_lockstep.py
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: "npm"
@@ -82,7 +85,7 @@ jobs:
 
   test:
     name: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # WIF: mint an OIDC token for google-github-actions/auth (see the lint job).
     permissions:
       contents: read
@@ -106,12 +109,13 @@ jobs:
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/archiver_test
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
+          prune-cache: true
 
       - name: Install Python
         run: uv python install 3.12
@@ -121,7 +125,7 @@ jobs:
       # Identity Federation — the read-scoped `github-ci` provider impersonating
       # the objectViewer-only co-pypi-reader SA — then sync before `uv sync`.
       - name: Authenticate to Google Cloud (WIF, read-only)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: co-pypi-reader@co-gcs.iam.gserviceaccount.com
@@ -147,14 +151,15 @@ jobs:
 
   client-drift:
     name: client-drift
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
+          prune-cache: true
 
       - name: Install Python
         run: uv python install 3.12
@@ -176,7 +181,7 @@ jobs:
 
   changelog:
     name: changelog
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # pull-requests: read — the push branch resolves the merged PR's labels
     # via the commits/{sha}/pulls API so a `no-changelog` opt-out survives
     # the merge (archiver#91). Job-level grant; the workflow default is
@@ -188,7 +193,7 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 

@@ -409,6 +409,21 @@ three plus the installed version. For the next distrust: raise the floor in each
 fail verification from `/srv/archiver/live/.venv/bin/python -I` with httpx and requests.
 A rollback to a pre-floor release trusts the root again.
 
+## Dependabot (archiver#192)
+
+`.github/dependabot.yml` proposes **action bumps only**, weekly: every `uses:` in `ci.yml`
+pins a commit SHA with a `# vX.Y.Z` comment, and Dependabot moves both. `context-cadence.yml`
+is excluded (the installer re-renders it, gregoryfoster/skills#373); `uv` is out because
+Dependabot's updater cannot sync the wheelhouse. Every runtime specifier carries an upper
+bound (`tests/test_dependency_caps.py`); nothing proposes crossing one yet.
+
+A Dependabot PR lands like any other: merge commit once CI is green by job. It touches only
+`.github/`, so it needs **no CHANGELOG entry and no deploy** (no contract path, nothing in
+drift's runtime list). Red at the WIF auth step: suspect the Dependabot run's credential
+context (`vars.GCP_WIF_PROVIDER`, the OIDC token), not the bump. A bump that changes behaviour takes fix commits pushed onto its branch.
+Read the action's release notes, not the diff: `tests/ci/test_workflow_pins.py` exists
+because setup-uv v9 flipped `prune-cache` silently.
+
 ## Power Map SDK (git tag)
 
 `power-map-client` (archiver#304) is **not** a wheelhouse package: it resolves as a uv git
