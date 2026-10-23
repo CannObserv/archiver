@@ -12,16 +12,18 @@ import tomllib
 from pathlib import Path
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def _uncapped(pyproject: dict) -> list[str]:
-    sourced = set(pyproject.get("tool", {}).get("uv", {}).get("sources", {}))
+    sources = pyproject.get("tool", {}).get("uv", {}).get("sources", {})
+    sourced = {canonicalize_name(name) for name in sources}
     found = []
     for spec in pyproject["project"]["dependencies"]:
         req = Requirement(spec)
-        if req.name in sourced:
+        if canonicalize_name(req.name) in sourced:
             continue
         if not any(s.operator in {"<", "<=", "==", "~="} for s in req.specifier):
             found.append(spec)
@@ -39,3 +41,12 @@ def test_the_check_flags_a_floor_only_specifier_and_spares_a_sourced_one() -> No
         "tool": {"uv": {"sources": {"archiver-client": {"path": "clients/python"}}}},
     }
     assert _uncapped(pyproject) == ["redis>=5"]
+
+
+def test_a_sourced_name_matches_across_spellings() -> None:
+    """PEP 503 names: ``Power_Map_Client`` in sources is ``power-map-client`` here."""
+    pyproject = {
+        "project": {"dependencies": ["power-map-client"]},
+        "tool": {"uv": {"sources": {"Power_Map_Client": {"git": "https://example.invalid"}}}},
+    }
+    assert _uncapped(pyproject) == []
