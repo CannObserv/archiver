@@ -30,6 +30,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "openapi-python-client>=0.21,<1",
+    "packaging>=24,<27",           # tests/test_certifi_floor.py compares versions (archiver#418)
     "pre-commit>=4.5.1,<5",
     "pytest>=9.1.1,<10",
     "pytest-asyncio>=1.3.0,<2",
@@ -113,6 +114,10 @@ packages = ["src"]
 # named wheelhouse artifact (find-links locks by filename, not hash; content
 # integrity rests on the GCS bucket's immutability + access control).
 find-links = ["./.wheelhouse"]
+# A security floor on a transitive dependency: httpx and requests verify TLS
+# against certifi's bundle, and 2026.10.19 drops eMudhra's compromised chain
+# (archiver#418). tests/test_certifi_floor.py fails a lock below it.
+constraint-dependencies = ["certifi>=2026.10.19"]
 
 [tool.uv.sources]
 archiver-client = { path = "clients/python", editable = true }

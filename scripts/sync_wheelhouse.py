@@ -1,4 +1,4 @@
-"""Mirror the private cannobserv package index into the local wheelhouse.
+r"""Mirror the private cannobserv package index into the local wheelhouse.
 
 Downloads every object under ``gs://co-gcs-pypi/wheels/`` into ``./.wheelhouse``
 (repo root), skipping any file already present with a matching size. ``uv``
@@ -8,7 +8,8 @@ then resolves ``co-core`` / ``co-core-aio`` from that directory via the
 Runs standalone, *before* ``uv sync`` — it must not import the project (whose
 deps are what the wheelhouse provides), so invoke it in an isolated env:
 
-    uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
+    uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' \
+      python scripts/sync_wheelhouse.py
 
 Authentication is Application Default Credentials. On the VM/deploy that is the
 service-account key at ``GOOGLE_APPLICATION_CREDENTIALS``, which belongs in
