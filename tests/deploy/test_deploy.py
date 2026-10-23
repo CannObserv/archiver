@@ -44,6 +44,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.test_certifi_floor import FLOOR as CERTIFI_FLOOR
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = REPO_ROOT / "scripts" / "deploy.sh"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -604,6 +606,14 @@ class TestWheels:
         assert f"GAC={GAC} " in fetch
         assert "python scripts/sync_wheelhouse.py" in fetch
         assert index_of(world.calls(), "sync_wheelhouse") < index_of(world.calls(), " sync --")
+
+    def test_the_fetch_floors_certifi_itself(self, world):
+        """The fetch's env is ``--no-project``, so pyproject's certifi constraint
+        never reaches it, and uv reuses a cached env (archiver#418): without its
+        own floor the release's private wheels arrive over a G3-trusting bundle."""
+        assert_ok(world.run())
+        (fetch,) = uv_calls(world, "sync_wheelhouse")
+        assert f" --with certifi>={CERTIFI_FLOOR} " in fetch
 
     def test_the_fetched_wheels_are_removed_once_the_venv_is_built(self, world):
         assert_ok(world.run())

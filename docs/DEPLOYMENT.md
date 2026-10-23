@@ -406,8 +406,9 @@ check or the Power Map follower; a deploy does. certifi is transitive, so a
 `[tool.uv] constraint-dependencies` floor holds it, and `tests/test_certifi_floor.py`
 fails a pyproject, lock or installed version below it. For the next distrust:
 
-1. Raise the floor in `pyproject.toml` and `FLOOR` in the test to the certifi
-   release that carries it.
+1. Raise the floor in `pyproject.toml`, `FLOOR` in the test, and `scripts/deploy.sh`'s
+   wheelhouse fetch (a `--no-project` env, which pyproject's constraint doesn't reach)
+   to the certifi release that carries it. `tests/deploy/test_deploy.py` checks the third.
 2. `uv lock --upgrade-package certifi`, then deploy (§ Releases). `systemctl restart`
    alone changes nothing: the bundle is in the venv.
 3. From `/srv/archiver/live/.venv/bin/python -I`, `httpx.get` and `requests.get` of the
