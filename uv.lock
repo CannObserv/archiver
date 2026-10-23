@@ -123,7 +123,7 @@ requires-dist = [
     { name = "python-json-logger", specifier = ">=4.0.0,<5" },
     { name = "python-multipart", specifier = ">=0.0.9,<1" },
     { name = "python-ulid", specifier = ">=3.0.0,<4" },
-    { name = "redis", extras = ["hiredis"], specifier = ">=5" },
+    { name = "redis", extras = ["hiredis"], specifier = ">=5,<8" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0,<3" },
     { name = "uvicorn", specifier = ">=0.34.0,<1" },
 ]
