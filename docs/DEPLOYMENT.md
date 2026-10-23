@@ -400,20 +400,14 @@ via co-core".
 
 ## TLS trust (archiver#418)
 
-httpx and requests verify against **certifi's bundle in the release's venv**, not
-`/etc/ssl`. An apt or exe.dev CA fix doesn't reach the API, the backup, the drift
-check or the Power Map follower; a deploy does. certifi is transitive, so a
-`[tool.uv] constraint-dependencies` floor holds it, and `tests/test_certifi_floor.py`
-fails a pyproject, lock or installed version below it. For the next distrust:
-
-1. Raise the floor in `pyproject.toml`, `FLOOR` in the test, and `scripts/deploy.sh`'s
-   wheelhouse fetch (a `--no-project` env, which pyproject's constraint doesn't reach)
-   to the certifi release that carries it. `tests/deploy/test_deploy.py` checks the third.
-2. `uv lock --upgrade-package certifi`, then deploy (§ Releases). `systemctl restart`
-   alone changes nothing: the bundle is in the venv.
-3. From `/srv/archiver/live/.venv/bin/python -I`, `httpx.get` and `requests.get` of the
-   advisory's test host must both fail certificate verification. A rollback to a
-   release built before the floor trusts the distrusted root again.
+httpx and requests verify against **certifi in the release's venv**, not `/etc/ssl`, so
+an OS CA fix reaches none of the units; a deploy does. certifi is transitive: a `[tool.uv]
+constraint-dependencies` floor holds it, and every `uv run --no-project` wheelhouse fetch
+(which that floor doesn't reach) repeats it. `tests/test_certifi_floor.py` checks all
+three plus the installed version. For the next distrust: raise the floor in each place and
+`FLOOR`, `uv lock --upgrade-package certifi`, deploy, then the advisory's test host must
+fail verification from `/srv/archiver/live/.venv/bin/python -I` with httpx and requests.
+A rollback to a pre-floor release trusts the root again.
 
 ## Power Map SDK (git tag)
 
