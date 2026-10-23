@@ -32,14 +32,16 @@ LOCK = REPO_ROOT / "uv.lock"
 OS_RELEASE = Path("/etc/os-release")
 
 
-def _jobs() -> dict[str, dict]:
-    return yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]
+def _jobs(workflow: Path = CI) -> dict[str, dict]:
+    return yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"]
 
 
 def _setup_uv_steps() -> list[dict]:
+    """Every setup-uv step in every workflow: a new one saves a cache too."""
     return [
         step
-        for job in _jobs().values()
+        for workflow in sorted(CI.parent.glob("*.y*ml"))
+        for job in _jobs(workflow).values()
         for step in job.get("steps", [])
         if step.get("uses", "").split("@")[0] == "astral-sh/setup-uv"
     ]
@@ -48,7 +50,7 @@ def _setup_uv_steps() -> list[dict]:
 def test_every_setup_uv_step_prunes_the_cache_it_saves() -> None:
     """co-core's private source stays out of a public repo's Actions cache."""
     steps = _setup_uv_steps()
-    assert steps, "no setup-uv step found in ci.yml: the derivation broke"
+    assert steps, "no setup-uv step found in .github/workflows/: the derivation broke"
     bad = [s.get("with", {}) for s in steps if s.get("with", {}).get("prune-cache") is not True]
     assert not bad, f"setup-uv steps without `prune-cache: true`: {bad}"
 
