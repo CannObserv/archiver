@@ -8,14 +8,23 @@ chain to; 2026.10.19 drops it. Nothing imports certifi, so the floor is a uv
 constraint, and a re-lock below it fails here. Ported from CannObserv/provisioner#79.
 """
 
+import re
 import tomllib
 from importlib.metadata import version
 from pathlib import Path
 
 from packaging.version import Version
 
+from tests.scripts._skills_lists import tracked_files
+
 FLOOR = "2026.10.19"
 ROOT = Path(__file__).resolve().parent.parent
+
+# The wheelhouse fetch runs in `uv run --no-project`, which pyproject's constraint
+# never reaches, so each copy of the command floors certifi itself. Dated records
+# (plans, the changelog) keep the command as it was.
+FETCH = re.compile(r"uv run --no-project[^\n]*?scripts/sync_wheelhouse\.py")
+DATED = ("docs/plans/", "CHANGELOG.md")
 
 
 def test_pyproject_constrains_the_floor() -> None:
@@ -31,3 +40,16 @@ def test_lock_resolves_at_or_above_the_floor() -> None:
 
 def test_installed_at_or_above_the_floor() -> None:
     assert Version(version("certifi")) >= Version(FLOOR), version("certifi")
+
+
+def test_every_wheelhouse_fetch_floors_certifi() -> None:
+    fetches = []
+    for path in tracked_files():
+        file = ROOT / path
+        if path.startswith(DATED) or not file.is_file():
+            continue
+        text = re.sub(r"\\\n\s*", " ", file.read_text(errors="replace"))
+        fetches += [(path, cmd) for cmd in FETCH.findall(text)]
+    assert len({path for path, _ in fetches}) >= 6, fetches
+    unfloored = [path for path, cmd in fetches if f"--with 'certifi>={FLOOR}'" not in cmd]
+    assert not unfloored, unfloored

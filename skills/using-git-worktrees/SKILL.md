@@ -150,7 +150,7 @@ The wheelhouse is gitignored and does not come with the worktree:
 
 ```bash
 set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS, and nothing else (#341)
-uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
+uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
 ```
 
 **Env separation.** `/etc/archiver/.env` is root's alone (archiver#339): nothing in it reaches a worktree, or any agent shell. `.env` is gitignored, so a fresh worktree has none — and without it `TEST_DATABASE_URL` is unset:

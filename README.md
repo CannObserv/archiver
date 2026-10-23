@@ -23,7 +23,7 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 # co-core / co-core-aio resolve from a wheelhouse mirrored from the private GCS
 # index (see AGENTS.md → Environment & Tooling); populate it before uv sync:
 set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS (#341)
-uv run --no-project --with 'google-cloud-storage>=2,<4' python scripts/sync_wheelhouse.py
+uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
 uv sync
 bash scripts/dev_server.sh
 ```
