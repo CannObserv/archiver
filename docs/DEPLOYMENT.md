@@ -422,15 +422,12 @@ Read release notes for silent default flips (setup-uv v9 `prune-cache`,
 
 ## Lock audit (archiver#420)
 
-Nothing re-locks on its own, so `.github/workflows/audit.yml` runs `scripts/audit_lock.sh`
-(push, PR, Mondays, dispatch): `uv audit --frozen` against `uv.lock` and
-`clients/python/uv.lock`, each as runtime (`--no-dev`) and dev (`--only-dev`), four warning
-titles. **Report-only**, exit 0 always, and outside `deploy.sh`'s gate (which reads `ci.yml`
-runs alone): read the run's annotations. `<lock> runtime advisories` → sync the wheelhouse,
-`uv lock --upgrade-package <name>` (SDK lock: from `clients/python/`), deploy for the root
-lock; `uv lock --dry-run` first shows whether the fix fits the caps. `audit did not run` is
-an OSV or uv failure, never clean. The dev titles stand until a dev re-lock (virtualenv,
-filelock, openapi-python-client 0.29). Run it by hand from any checkout: no wheelhouse needed.
+`.github/workflows/audit.yml` runs `scripts/audit_lock.sh` (push, PR, Mondays): `uv audit
+--frozen` on `uv.lock` and `clients/python/uv.lock`, runtime and dev under separate warning
+titles. **Report-only** and outside `deploy.sh`'s gate: read the annotations. `<lock> runtime
+advisories` → `uv lock --upgrade-package <name>` in that lock's directory (root: wheelhouse
+synced; deploy after). `audit did not run` is never clean. Dev titles stand until a dev
+re-lock. By hand: any checkout, no wheelhouse.
 
 ## Power Map SDK (git tag)
 
