@@ -354,8 +354,8 @@ build_release() {
   # D10: the release's own sync_wheelhouse.py fetches the private wheels into
   # its .wheelhouse, with the credential from deploy.env alone. Not the
   # checkout's .wheelhouse: find-links locks by filename, without a hash.
-  # certifi is floored here too: a --no-project env ignores pyproject's
-  # constraint, and uv reuses a cached env (#418, docs/DEPLOYMENT.md § TLS trust).
+  # certifi is floored here too: pyproject's constraint never reaches a
+  # --no-project env (#418, docs/DEPLOYMENT.md § TLS trust).
   creds="$(env_value deploy.env GOOGLE_APPLICATION_CREDENTIALS)"
   [[ -n "$creds" ]] || die "no GOOGLE_APPLICATION_CREDENTIALS in $ENV_DIR/deploy.env; nothing switched"
   (cd "$release" && GOOGLE_APPLICATION_CREDENTIALS="$creds" \

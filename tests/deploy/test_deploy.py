@@ -609,8 +609,8 @@ class TestWheels:
 
     def test_the_fetch_floors_certifi_itself(self, world):
         """The fetch's env is ``--no-project``, so pyproject's certifi constraint
-        never reaches it, and uv reuses a cached env (archiver#418): without its
-        own floor the release's private wheels arrive over a G3-trusting bundle."""
+        never reaches it (archiver#418): without its own floor, only resolution
+        order keeps the bundle the private wheels arrive over current."""
         assert_ok(world.run())
         (fetch,) = uv_calls(world, "sync_wheelhouse")
         assert f" --with certifi>={CERTIFI_FLOOR} " in fetch
