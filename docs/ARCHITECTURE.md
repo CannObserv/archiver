@@ -21,7 +21,8 @@ Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-
 - `tests/` mirrors `src/`; `tests/deploy/` pins host contracts - `deploy.sh`
   end to end, installed units against the live release, the needrestart drop-in
   and the memory reservation, the production read role (#348), and the SocratiCode
-  client config and server pin.
+  client config and server pin. `tests/ci/` pins `.github/`: the Dependabot config,
+  the action SHA pins, the runner image and the uv cache prune (#192).
 
 ```
 src/api/                       FastAPI routes, deps, schemas, serializers
@@ -390,6 +391,8 @@ skills-vendor/                 Git submodules for external skill repos
                                CHANGELOG.md — path-triggered, not commit-type;
                                opt out via `no-changelog` PR label).
                                Triggers on push/PR to main.
+.github/dependabot.yml         Weekly github-actions bumps of ci.yml's SHA pins
+                               (#192); see DEPLOYMENT.md "Dependabot"
 .pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks
                                + test_check_changelog.sh (pre-commit stage), plus a pre-push guard
                                (scripts/check_changelog_on_push.sh) that mirrors

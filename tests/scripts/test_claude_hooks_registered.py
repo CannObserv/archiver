@@ -201,7 +201,7 @@ VENDORED_HOOKS = [
 def _submodule_checked_out() -> bool:
     """Whether ``skills-vendor/gregoryfoster-skills`` has content.
 
-    CI checks out with ``actions/checkout@v5`` and no ``submodules:`` input, so
+    CI checks out with ``actions/checkout`` and no ``submodules:`` input, so
     the submodule directory is empty there and every vendor symlink dangles -
     the state ``.skills/doctor.sh`` exists to repair, and the reason
     ``skills-submodule-update.sh`` has dangled in every CI run to date without

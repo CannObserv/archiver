@@ -1,8 +1,8 @@
 # archiver — Deployment & Configuration
 
 Releases and `scripts/deploy.sh`, the drift check, the service user, reading
-production, wheelhouse reproducibility and the timers. The environment variable
-reference and the dev server's internals are [ENVIRONMENT.md](ENVIRONMENT.md).
+production, wheelhouse reproducibility, Dependabot and the timers. The environment
+variable reference and the dev server's internals are [ENVIRONMENT.md](ENVIRONMENT.md).
 The host's place on the tailnet - node identity, the ACL, why there is no
 tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
 
@@ -408,6 +408,15 @@ three plus the installed version. For the next distrust: raise the floor in each
 `FLOOR`, `uv lock --upgrade-package certifi`, deploy, then the advisory's test host must
 fail verification from `/srv/archiver/live/.venv/bin/python -I` with httpx and requests.
 A rollback to a pre-floor release trusts the root again.
+
+## Dependabot (archiver#192)
+
+`.github/dependabot.yml` bumps `ci.yml`'s SHA-pinned actions weekly; `uv` is out (no
+wheelhouse for the updater), the generated `context-cadence.yml` excluded. A bot PR lands
+like any other, merge commit on green CI, with **no CHANGELOG entry and no deploy**: it
+touches only `.github/`. Red at WIF auth: suspect the bot run's credentials, not the bump.
+Read release notes for silent default flips (setup-uv v9 `prune-cache`,
+`tests/ci/test_workflow_pins.py`).
 
 ## Power Map SDK (git tag)
 
