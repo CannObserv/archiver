@@ -13,6 +13,7 @@ import tomllib
 from importlib.metadata import version
 from pathlib import Path
 
+import pytest
 from packaging.version import Version
 
 from tests.scripts._skills_lists import tracked_files
@@ -32,8 +33,18 @@ def test_pyproject_constrains_the_floor() -> None:
     assert f"certifi>={FLOOR}" in uv.get("constraint-dependencies", [])
 
 
-def test_lock_resolves_at_or_above_the_floor() -> None:
-    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+def _locks() -> list[str]:
+    """Every tracked ``uv.lock``: the SDK's runs CI's SDK job, and #418 missed it (#420)."""
+    return [path for path in tracked_files() if path.rsplit("/", 1)[-1] == "uv.lock"]
+
+
+def test_both_locks_are_found() -> None:
+    assert {"uv.lock", "clients/python/uv.lock"} <= set(_locks()), _locks()
+
+
+@pytest.mark.parametrize("path", _locks())
+def test_lock_resolves_at_or_above_the_floor(path: str) -> None:
+    lock = tomllib.loads((ROOT / path).read_text())
     (locked,) = [p["version"] for p in lock["package"] if p["name"] == "certifi"]
     assert Version(locked) >= Version(FLOOR), locked
 
