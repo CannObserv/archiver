@@ -23,7 +23,7 @@ service-only patch does not require an SDK bump.
 [both] **Both locks re-locked clear of runtime advisories, and a weekly lock audit (archiver#420).** Routes, schemas and the `archiver-client` surface are unchanged, so there's no SDK bump. No specifier moved: every fix was inside the existing caps.
 
 - **Service lock (`uv.lock`):** starlette 1.0.0 → 1.9.0, pypdf 6.19.0 → 6.21.2, python-multipart 0.0.29 → 0.0.32, anyio 4.13.0 → 4.14.2, idna 3.13 → 3.20, mako 1.3.12 → 1.4.3. That clears 37 OSV findings in the runtime packages: 21 unique advisories at filing, plus pypdf's 3 later ones.
-  - **Urlencoded forms now get starlette's limits (1.3.1):** 1000 fields and 1 MB per field. Past either, the request is a 400. Before, only multipart had them. The dashboard's largest form, the rep-fields grid, allows 333 rows.
+  - **Urlencoded forms now get starlette's limits (1.3.1):** 1000 fields and 1 MB per field. Past either, the request is a 400. Before, only multipart had them. The dashboard's largest form, the rep-fields grid (`PATCH …/rep-fields`: three fields a row plus three), now caps at 332 rows.
   - **`;` no longer separates urlencoded fields (python-multipart 0.0.30).** Browsers and htmx percent-encode it, so no dashboard form changes.
   - **pypdf 6.20 changes standard-mode text extraction** for some fonts and table layouts. A PDF preview's fingerprint can differ from Processor's until Processor moves to the same pypdf.
 - **SDK lock (`clients/python/uv.lock`, CI only; consumers resolve from `pyproject.toml`):** certifi 2026.4.22 → 2026.10.23, which drops the compromised eMudhra chain (#418 missed this copy). Also anyio 4.14.2 and idna 3.20. `tests/test_certifi_floor.py` now checks every tracked `uv.lock`.
