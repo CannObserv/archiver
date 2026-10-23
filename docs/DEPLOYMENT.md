@@ -398,6 +398,22 @@ no `cannobserv`/`co-core-sync` (heavy google/trello deps). Archiver depends on
 (fetch) and `co_core.pure.extract` (extract + fingerprint); see "Content-acquisition
 via co-core".
 
+## TLS trust (archiver#418)
+
+httpx and requests verify against **certifi's bundle in the release's venv**, not
+`/etc/ssl`. An apt or exe.dev CA fix doesn't reach the API, the backup, the drift
+check or the Power Map follower; a deploy does. certifi is transitive, so a
+`[tool.uv] constraint-dependencies` floor holds it, and `tests/test_certifi_floor.py`
+fails a pyproject, lock or installed version below it. For the next distrust:
+
+1. Raise the floor in `pyproject.toml` and `FLOOR` in the test to the certifi
+   release that carries it.
+2. `uv lock --upgrade-package certifi`, then deploy (§ Releases). `systemctl restart`
+   alone changes nothing: the bundle is in the venv.
+3. From `/srv/archiver/live/.venv/bin/python -I`, `httpx.get` and `requests.get` of the
+   advisory's test host must both fail certificate verification. A rollback to a
+   release built before the floor trusts the distrusted root again.
+
 ## Power Map SDK (git tag)
 
 `power-map-client` (archiver#304) is **not** a wheelhouse package: it resolves as a uv git
