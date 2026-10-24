@@ -9,7 +9,7 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
@@ -20,6 +20,23 @@ from src.core.services.registry_announcement import INFO_REGISTRY_TOPIC, announc
 
 _SPECS = [{"schema_version": 1, "extraction": {"algorithm": "css", "selector": "body"}}]
 HOST = "policy.example.test"
+
+
+@pytest.fixture(autouse=True)
+async def _sweep_outbox(test_engine, committed_rows):
+    """CR 16: a committed test item's outbox rows go even when the test fails
+    before tracking them. Torn down before ``committed_rows``, which it wraps."""
+    yield
+    item_ids = [str(pk) for model, pk in committed_rows if model is InfoItem]
+    if item_ids:
+        async with test_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "DELETE FROM information.changes_outbox"
+                    " WHERE topic = :topic AND payload->>'info_item_id' = ANY(:ids)"
+                ),
+                {"topic": INFO_REGISTRY_TOPIC, "ids": item_ids},
+            )
 
 
 async def _item_on(session, host: str = HOST, *, watch_active: bool | None = True) -> InfoItem:
