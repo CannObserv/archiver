@@ -146,6 +146,7 @@ def test_notes_fill_an_empty_field_and_never_overwrite_a_different_one():
         (_export({"a.example": _watcher(min_interval=-1)}), "min_interval"),
         (_export({"a.example": _watcher(min_interval="1")}), "min_interval"),
         (_export({"a.example": _watcher(min_interval=True)}), "min_interval"),
+        (_export({"a.example": _watcher(min_interval=10**400)}), "min_interval"),  # CR 19
         (
             _export({"a.example": _watcher(default_schedule_config={"interval": "6 hours"})}),
             "6 hours",

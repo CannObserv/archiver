@@ -133,6 +133,23 @@ def _cadence(raw: Any, problems: list[str], host: str) -> dict | None:
     return doc
 
 
+def _seconds(raw: Any) -> float | None:
+    """``raw`` as finite seconds ``>= 0``, or ``None``. A JSON integer too big for
+    a float is refused, not a traceback (CR 19)."""
+    if isinstance(raw, bool) or not isinstance(raw, int | float):
+        return None
+    try:
+        value = float(raw)
+    except OverflowError:
+        return None
+    return value if math.isfinite(value) and value >= 0 else None
+
+
+def _brief(raw: Any) -> str:
+    text = repr(raw)
+    return text if len(text) <= 40 else f"{text[:37]}..."
+
+
 def _desired(host: str, row: Any, problems: list[str]) -> _Desired | None:
     before = len(problems)
     if not isinstance(host, str) or not _HOST.match(host):
@@ -144,14 +161,11 @@ def _desired(host: str, row: Any, problems: list[str]) -> _Desired | None:
     if missing:
         problems.append(f"{host}: missing {missing}")
         return None
-    interval = row["min_interval"]
-    if (
-        isinstance(interval, bool)
-        or not isinstance(interval, int | float)
-        or not math.isfinite(interval)
-        or interval < 0
-    ):
-        problems.append(f"{host}: min_interval {interval!r} is not a finite number >= 0")
+    interval = _seconds(row["min_interval"])
+    if interval is None:
+        problems.append(
+            f"{host}: min_interval {_brief(row['min_interval'])} is not a finite number >= 0"
+        )
     cadence = _cadence(row["default_schedule_config"], problems, host)
     if row["notes"] is not None and not isinstance(row["notes"], str):
         problems.append(f"{host}: notes {row['notes']!r} is not a string")
@@ -162,7 +176,7 @@ def _desired(host: str, row: Any, problems: list[str]) -> _Desired | None:
     if len(problems) > before:
         return None
     return _Desired(
-        min_interval_seconds=float(interval),
+        min_interval_seconds=interval,
         default_watch_spec=cadence,
         notes=row["notes"] or None,
         is_active=row["is_active"],
