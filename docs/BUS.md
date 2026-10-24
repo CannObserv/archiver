@@ -221,7 +221,12 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   back mutation leaves no orphaned announcement. Emit rule: an item with an
   active primary binding and non-empty `source_specs` announces **live**;
   previously-announced without one announces **revoked**; never-announced
-  sourceless items emit nothing and keep generation `0`. Pause and cadence writes
+  sourceless items emit nothing and keep generation `0`. A live announcement's
+  `active` is resolved: `false` when the announcing source's host is suspended
+  (an inactive or archived `Domain`), otherwise `watch_active`, `null` included
+  (`domain_suspended` / `resolved_active`, archiver#360). Both emit paths share
+  that rule, and a suspension flip (`src/core/services/domain_policy.py`) announces
+  every item whose resolved `active` moved. Pause and cadence writes
   (`announce_policy_change`) announce only a live item: on an unannounceable one
   they emit nothing, since policy cannot change announceability (archiver#167).
   Binding and spec writes skip an item whose last announcement was already a
