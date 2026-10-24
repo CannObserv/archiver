@@ -19,6 +19,7 @@ concurrent deltas, and defeat apply-iff-greater.
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -36,9 +37,10 @@ from src.core.changes.registry_snapshot import (
     resolve_registry_maxlen,
     resolve_snapshot_interval,
 )
-from src.core.models import InfoItem, InfoItemSource, InfoSource, RevokedInfoItem
+from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource, RevokedInfoItem
 
 _SPECS = [{"schema_version": 1, "extraction": {"algorithm": "css", "selector": "body"}}]
+_HOSTS = ".snapshot.test"  # suffix of every Domain this module commits
 
 
 @pytest.fixture
@@ -70,6 +72,7 @@ async def clean_tables(test_engine):
         await conn.execute(text(f"TRUNCATE TABLE {tables}"))
         await conn.execute(text("DELETE FROM information.info_items"))
         await conn.execute(text("DELETE FROM information.info_sources"))
+        await conn.execute(text(f"DELETE FROM information.domains WHERE name LIKE '%{_HOSTS}'"))
 
 
 async def _seed(session_factory) -> dict:
@@ -122,6 +125,51 @@ async def test_full_set_covers_live_revoked_and_deleted(session_factory, publish
 
     for p in payloads.values():
         payload_from_dict(p)  # every published entry honours the contract
+
+
+@pytest.mark.asyncio
+async def test_full_set_resolves_each_items_host_through_the_shared_rule(
+    session_factory, publisher, fake_redis
+):
+    """archiver#360: the snapshot and the delta path resolve ``active`` alike.
+
+    Suspended host → ``false``; active host and row-less host → ``watch_active``,
+    ``NULL`` kept as ``NULL``.
+    """
+    cases = {
+        "off": (Domain(name=f"off{_HOSTS}", is_active=False), True),
+        "archived": (Domain(name=f"archived{_HOSTS}", archived_at=datetime.now(UTC)), None),
+        "on": (Domain(name=f"on{_HOSTS}"), None),
+        "norow": (None, True),
+    }
+    ids = {}
+    async with session_factory() as s:
+        for label, (domain, watch_active) in cases.items():
+            if domain is not None:
+                s.add(domain)
+            item = InfoItem(name=label, watch_active=watch_active, announcement_generation=1)
+            source = InfoSource(
+                url=f"https://{label}{_HOSTS}/x",
+                source_specs=_SPECS,
+                domain_name=f"{label}{_HOSTS}",
+            )
+            s.add_all([item, source])
+            await s.flush()
+            s.add(
+                InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+            )
+            ids[label] = str(item.info_item_id)
+        await s.commit()
+
+    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+
+    active = {p["info_item_id"]: p["active"] for p in await _stream_payloads(fake_redis)}
+    assert {label: active[i] for label, i in ids.items()} == {
+        "off": False,
+        "archived": False,
+        "on": None,
+        "norow": True,
+    }
 
 
 @pytest.mark.asyncio

@@ -48,6 +48,8 @@ unannounceable item revoked; every deleted item (``revoked_info_items``)
 revoked. Never-announced keys are absent — no consumer knows them. The
 announceability rule is shared with the delta path via the builders in
 ``src.core.services.registry_announcement``, so the two paths cannot drift.
+So is the host rule (archiver#360): each live row carries its source's
+``Domain`` from the same query, judged by the same ``domain_suspended``.
 """
 
 from __future__ import annotations
@@ -60,11 +62,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.logging import get_logger
-from src.core.models import InfoItem, InfoItemSource, InfoSource, RevokedInfoItem
+from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource, RevokedInfoItem
 from src.core.services.registry_announcement import (
     INFO_REGISTRY_TOPIC,
     build_live_announcement,
     build_tombstone,
+    domain_suspended,
     source_is_announceable,
 )
 
@@ -145,21 +148,24 @@ def resolve_registry_maxlen(raw: str | None) -> int:
 
 
 async def _collect_full_set(session: AsyncSession) -> tuple[list, list]:
-    """Return (live [(item, source)], revoked [(info_item_id, generation)])."""
+    """Return (live [(item, source, domain)], revoked [(info_item_id, generation)])."""
     bound = (
         await session.execute(
-            select(InfoItem, InfoSource)
+            select(InfoItem, InfoSource, Domain)
             .join(InfoItemSource, InfoItemSource.info_item_id == InfoItem.info_item_id)
             .join(InfoSource, InfoSource.info_source_id == InfoItemSource.info_source_id)
+            .outerjoin(Domain, Domain.name == InfoSource.domain_name)
             .where(InfoItemSource.deactivated_at.is_(None))
         )
     ).all()
-    live = [(item, source) for item, source in bound if source_is_announceable(source)]
+    live = [
+        (item, source, domain) for item, source, domain in bound if source_is_announceable(source)
+    ]
     # Bound to a spec-less source: unannounceable-as-live, same rule as the
     # delta path — revoked if ever announced.
     specless = [
         (item.info_item_id, item.announcement_generation)
-        for item, source in bound
+        for item, source, _domain in bound
         if not source_is_announceable(source) and item.announcement_generation > 0
     ]
 
@@ -205,7 +211,7 @@ async def publish_full_set(
     """
     async with session_factory() as session:
         live, revoked = await _collect_full_set(session)
-        for item, _source in live:
+        for item, _source, _domain in live:
             if item.announcement_generation <= 0:
                 logger.warning(
                     "Announceable item republished at generation 0 — a mutation "
@@ -214,9 +220,12 @@ async def publish_full_set(
                 )
         events = [
             build_live_announcement(
-                item=item, source=source, generation=item.announcement_generation
+                item=item,
+                source=source,
+                generation=item.announcement_generation,
+                host_suspended=domain_suspended(domain),
             )
-            for item, source in live
+            for item, source, domain in live
         ] + [
             build_tombstone(info_item_id=info_item_id, generation=generation)
             for info_item_id, generation in revoked

@@ -1,20 +1,41 @@
-"""Domain — minimal registry of known hostnames."""
+"""Domain — the registry's per-host policy: lifecycle, politeness floor, default cadence."""
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
 
 from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
 
+DEFAULT_MIN_INTERVAL_SECONDS = 1.0
+"""Watcher's ``DEFAULT_MIN_INTERVAL``, so an imported host and a new one agree."""
+
 
 class Domain(Base, TimestampMixin):
-    """Known hostname with lifecycle state and operator notes.
+    """Known hostname; Archiver is its sole owner (archiver#360, design D4).
 
     ``name`` is the hostname (e.g. ``regulations.cannabis.ca.gov``). Unique.
-    Rate-limiter columns (min_interval, max_concurrency, etc.) are Watcher-owned
-    and intentionally absent here.
+
+    **Suspension is intent.** ``is_active = false`` or a set ``archived_at``
+    suspends the host: every item announced on it resolves ``active = false`` on
+    ``info.registry`` (``domain_suspended`` in
+    ``src.core.services.registry_announcement``, the one predicate). Watcher's
+    host-local ``domain_suspended`` stays there as break-glass.
+
+    **Two dark fields.** Stored and editable, read by nothing yet:
+
+    - ``min_interval_seconds`` — request spacing for the host, in seconds. It
+      takes effect when Archiver produces ``content.fetch-policy`` (#366, flip
+      F1); until then Watcher's value is live, and the re-import before F1
+      overwrites an edit made here.
+    - ``default_watch_spec`` — a WatchSpec v1 document carrying ``interval``,
+      the domain tier of cadence resolution (#364, flip F2). ``NULL`` is "no
+      domain default".
+
+    Per-host fetch headers (#376) and a fetch timeout (#377) get their own
+    columns when they come: neither field here is a policy blob to extend.
     """
 
     __tablename__ = "domains"
@@ -26,8 +47,21 @@ class Domain(Base, TimestampMixin):
         Boolean, nullable=False, default=True, server_default="true"
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    min_interval_seconds: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=DEFAULT_MIN_INTERVAL_SECONDS,
+        server_default="1.0",
+    )
+    # none_as_null: an unset cadence persists as SQL NULL, not the JSONB 'null'.
+    default_watch_spec: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("name", name="uq_domains_name"),
+        CheckConstraint(
+            "min_interval_seconds >= 0 AND min_interval_seconds < 'Infinity'"
+            " AND min_interval_seconds <> 'NaN'",
+            name="ck_domains_min_interval_seconds",
+        ),
         {"schema": "information"},
     )
