@@ -362,3 +362,47 @@ async def test_a_plain_domain_update_does_not_block_an_announce(test_engine, com
             await announcer.rollback()
             await editor.rollback()
     assert len(mine) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"notes": "n"},
+        {"min_interval_seconds": 2.0},
+        {"default_watch_spec": {"schema_version": 1, "interval": "1d"}},
+    ],
+)
+async def test_a_write_that_cannot_flip_takes_no_item_locks(test_engine, committed_rows, changes):
+    """CR 13: only is_active/archived_at can flip suspension; nothing else may
+    block item writes across the host."""
+    host = "nolock.example.test"
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        domain = Domain(name=host)
+        item = InfoItem(name="nolock", watch_active=True)
+        source = InfoSource(url=f"https://{host}/x", source_specs=_SPECS, domain_name=host)
+        setup.add_all([domain, item, source])
+        await setup.flush()
+        binding = InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=source.info_source_id
+        )
+        setup.add(binding)
+        await setup.commit()
+        committed_rows += [
+            (Domain, domain.id),
+            (InfoSource, source.info_source_id),
+            (InfoItem, item.info_item_id),
+            (InfoItemSource, binding.id),
+        ]
+
+    async with factory() as holder, factory() as writer:
+        try:
+            await holder.execute(
+                select(InfoItem).where(InfoItem.info_item_id == item.info_item_id).with_for_update()
+            )
+            await asyncio.wait_for(update_domain(writer, host, changes, create=False), timeout=3)
+            await writer.commit()
+        finally:
+            await writer.rollback()
+            await holder.rollback()

@@ -12,7 +12,8 @@ archive and restore all come through ``update_domain``.
 write that flips nothing — notes, ``min_interval_seconds``, the cadence,
 archiving an already-inactive host — emits nothing (the #167 rule).
 
-**Lock order: items, then the Domain row** — the order every announce takes
+**Lock order: items, then the Domain row** — for a write that touches
+``SUSPENSION_COLUMNS``; any other write locks the row alone. The order every announce takes
 them in (``registry_announcement``'s module docstring). Locking the items first
 would still miss one bound to the host while this write waited for the row, so
 the host's items are re-read once the row is held: any announce that bound one
@@ -72,6 +73,9 @@ async def _host_items(session: AsyncSession, name: str, *, lock: bool) -> list[U
     return list((await session.execute(stmt)).scalars())
 
 
+SUSPENSION_COLUMNS = frozenset({"is_active", "archived_at"})
+"""The only columns ``domain_suspended`` reads; a write touching neither cannot flip."""
+
 _ATTEMPTS = 3
 """How many times the write re-locks before it locks a newcomer after the row."""
 
@@ -103,6 +107,15 @@ async def update_domain(
     unknown = set(changes) - WRITABLE_COLUMNS
     if unknown:
         raise ValueError(f"not writable on a Domain: {sorted(unknown)}")
+
+    if not changes.keys() & SUSPENSION_COLUMNS:
+        # Cannot flip, so nothing to announce and no item lock to take (CR 13).
+        domain = await _lock_row(session, name, create=create)
+        if domain is not None:
+            for column, value in changes.items():
+                setattr(domain, column, value)
+            await session.flush()
+        return domain
 
     locked = await _host_items(session, name, lock=True)
     for attempt in range(_ATTEMPTS):
