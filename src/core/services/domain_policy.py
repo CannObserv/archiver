@@ -12,9 +12,9 @@ archive and restore all come through ``update_domain``.
 write that flips nothing — notes, ``min_interval_seconds``, the cadence,
 archiving an already-inactive host — emits nothing (the #167 rule).
 
-**Lock order: items, then the Domain row** — for a write that touches
-``SUSPENSION_COLUMNS``; any other write locks the row alone. The order every announce takes
-them in (``registry_announcement``'s module docstring). Locking the items first
+**Lock order: items, then the Domain row**, the order every announce takes
+them in (``registry_announcement``'s module docstring), for a write that
+touches ``SUSPENSION_COLUMNS``; any other write locks the row alone. Locking the items first
 would still miss one bound to the host while this write waited for the row, so
 the host's items are re-read once the row is held: any announce that bound one
 held the row ``FOR KEY SHARE``, so it has committed by then and the re-read

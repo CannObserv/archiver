@@ -27,8 +27,10 @@ It sits behind:
 A flip announces the items whose resolved `active` moved, in the write's transaction, through the
 policy path (never a tombstone). A write that flips nothing emits nothing.
 
-The lock order is items, then the row, everywhere. The newcomer retry and the accepted limit for a
-host with no row are in that module's docstring.
+The lock order is items, then the row, except for one case: a host that is still gaining items
+after the write's three tries locks them after the row, with Postgres's deadlock detector as the
+backstop. A write that can't flip suspension locks only the row. The newcomer retry and the
+accepted limit for a host with no row are in that module's docstring.
 
 ## The two dark fields
 
