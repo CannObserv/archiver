@@ -54,6 +54,9 @@ async def _until_a_backend_waits_on_a_lock(test_engine, *, timeout: float = 5.0)
                     )
                 )
             ).scalar_one()
+            # pg_stat_activity is snapshotted once per transaction: end it, or
+            # every later poll re-reads the first, pre-wait view.
+            await conn.rollback()
             if waiting:
                 return True
             await asyncio.sleep(0.05)
