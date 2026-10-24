@@ -192,7 +192,7 @@ async def test_a_binding_committed_while_the_write_waits_is_announced_inactive(
         binder.add(binding)
         await binder.flush()
         committed_rows.append((InfoItemSource, binding.id))
-        await announce_info_item(binder, item_id)  # holds the Domain row FOR SHARE
+        await announce_info_item(binder, item_id)  # holds the Domain row FOR KEY SHARE
         writer = asyncio.create_task(_deactivate())
         try:
             await asyncio.sleep(0.3)
@@ -226,7 +226,7 @@ async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
     """CR 2 (archiver#360): newcomers are locked before the Domain row, never after.
 
     Item N is bound to the host after the write locked the host's items. An
-    announce on N holds N and then wants the row ``FOR SHARE``. If the write took
+    announce on N holds N and then wants the row ``FOR KEY SHARE``. If the write took
     the row and then waited on N, Postgres would abort one of them as a deadlock.
     The write releases the row (savepoint), locks N in item order, and retries,
     so both commit and N ends up announced inactive.
@@ -317,3 +317,48 @@ async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
         committed_rows += [(ChangesOutboxRow, r.id) for r in old_rows]
     last = max(mine, key=lambda r: r.payload["generation"])
     assert last.payload["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_plain_domain_update_does_not_block_an_announce(test_engine, committed_rows):
+    """CR 7: announces take the row FOR KEY SHARE, which only ``update_domain``'s
+    FOR UPDATE conflicts with - a notes edit in flight must not stall them."""
+    host = "keyshare.example.test"
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        domain = Domain(name=host)
+        item = InfoItem(name="keyshare", watch_active=True)
+        source = InfoSource(url=f"https://{host}/x", source_specs=_SPECS, domain_name=host)
+        setup.add_all([domain, item, source])
+        await setup.flush()
+        binding = InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=source.info_source_id
+        )
+        setup.add(binding)
+        await setup.commit()
+        committed_rows += [
+            (Domain, domain.id),
+            (InfoSource, source.info_source_id),
+            (InfoItem, item.info_item_id),
+            (InfoItemSource, binding.id),
+        ]
+
+    async with factory() as editor, factory() as announcer:
+        try:
+            row = (await editor.execute(select(Domain).where(Domain.name == host))).scalar_one()
+            row.notes = "in flight"
+            await editor.flush()  # holds the row FOR NO KEY UPDATE, uncommitted
+
+            await asyncio.wait_for(announce_info_item(announcer, item.info_item_id), timeout=3)
+            rows = (
+                await announcer.execute(
+                    select(ChangesOutboxRow).where(ChangesOutboxRow.topic == INFO_REGISTRY_TOPIC)
+                )
+            ).scalars()
+            mine = [r for r in rows if r.payload["info_item_id"] == str(item.info_item_id)]
+            await announcer.commit()
+            committed_rows += [(ChangesOutboxRow, r.id) for r in mine]
+        finally:
+            await announcer.rollback()
+            await editor.rollback()
+    assert len(mine) == 1

@@ -62,7 +62,7 @@ host's state as a required argument, the delta path reads the ``Domain`` rows
 beside the sources, and the snapshot outer-joins them.
 
 **Lock order: items, then domains.** Every announce locks its items, then reads
-their hosts' ``Domain`` rows ``FOR SHARE``; a domain write
+their hosts' ``Domain`` rows ``FOR KEY SHARE``; a domain write
 (``src.core.services.domain_policy``) locks the host's items, then the row
 ``FOR UPDATE``. One order, so no cycle, and an announce racing a suspension
 flip either waits for it or is waited on — it never builds from a state the
@@ -275,7 +275,7 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
     behind it and the state read is the state announced. It is taken in id
     order: two fan-outs over overlapping item sets acquire their row locks in
     the same sequence, so neither can hold one the other is waiting on. The
-    hosts' ``Domain`` rows are read ``FOR SHARE`` after it — the module
+    hosts' ``Domain`` rows are read ``FOR KEY SHARE`` after it — the module
     docstring's lock order.
     """
     if not item_ids:
@@ -318,7 +318,9 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
                     select(Domain)
                     .where(Domain.name.in_(hosts))
                     .order_by(Domain.name)
-                    .with_for_update(read=True)
+                    # KEY SHARE: only update_domain's FOR UPDATE conflicts, so a
+                    # notes edit never stalls an announce (CR 7, #360).
+                    .with_for_update(read=True, key_share=True)
                     # The session may already hold this Domain (every source
                     # create loads it); without this the wait above would end
                     # on the stale object, not the committed row (CR 1, #360).

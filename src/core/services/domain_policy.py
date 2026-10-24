@@ -16,7 +16,7 @@ archiving an already-inactive host — emits nothing (the #167 rule).
 them in (``registry_announcement``'s module docstring). Locking the items first
 would still miss one bound to the host while this write waited for the row, so
 the host's items are re-read once the row is held: any announce that bound one
-held the row ``FOR SHARE``, so it has committed by then and the re-read
+held the row ``FOR KEY SHARE``, so it has committed by then and the re-read
 sees it. A newcomer is never locked *after* the row, which would invert the
 order and deadlock against an announce holding it (CR 2): the row is taken in a
 savepoint, given back, and the newcomers locked first, then the row again. Only
