@@ -218,6 +218,7 @@ async def detail_domain(
             "limit": page.limit,
             "offset": page.offset,
             "cadence_labels": CADENCE_LABELS,
+            "stored_interval": _stored_interval(domain),
             "items": item_rows,
             "item_total": item_total,
             "item_has_more": item_has_more,
@@ -278,6 +279,18 @@ async def update_notes(
 # ---------------------------------------------------------------------------
 
 
+def _stored_interval(domain: Domain) -> str | None:
+    """The stored cadence's ``interval``, or ``None``.
+
+    Tolerates a hand-edited non-object ``default_watch_spec`` (CR 18): the
+    stored-document sweep flags it, and this page is where it gets fixed, so it
+    must not 500 here.
+    """
+    spec = domain.default_watch_spec
+    interval = spec.get("interval") if isinstance(spec, dict) else None
+    return interval if isinstance(interval, str) else None
+
+
 def _policy_refusal(domain: Domain, min_interval_seconds: str, default_interval: str) -> str | None:
     """Why the posted policy is refused, or ``None`` when it may be stored.
 
@@ -292,7 +305,7 @@ def _policy_refusal(domain: Domain, min_interval_seconds: str, default_interval:
         return "The minimum interval must be a number of seconds."
     if not math.isfinite(seconds) or seconds < 0:
         return "The minimum interval must be a finite number of seconds, 0 or more."
-    stored = (domain.default_watch_spec or {}).get("interval")
+    stored = _stored_interval(domain)
     if default_interval and default_interval not in CADENCE_OPTIONS and default_interval != stored:
         return f"“{default_interval}” is not one of the offered cadences."
     if default_interval:
@@ -347,7 +360,13 @@ async def update_fetch_policy(
     response = _templates.TemplateResponse(
         request,
         "domains/_policy_partial.html",
-        {"user": user, "domain": domain, "cadence_labels": CADENCE_LABELS, "swapped": True},
+        {
+            "user": user,
+            "domain": domain,
+            "cadence_labels": CADENCE_LABELS,
+            "stored_interval": _stored_interval(domain),
+            "swapped": True,
+        },
     )
     flash = (
         {"level": "success", "body": "Fetch policy saved."}

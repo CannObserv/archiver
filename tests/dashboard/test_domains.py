@@ -811,3 +811,22 @@ async def test_fetch_policy_404_when_the_domain_goes_between_read_and_write(
         data={"min_interval_seconds": "2", "default_interval": ""},
     )
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored", [["6h"], "6h", 6])
+async def test_a_hand_edited_non_object_cadence_does_not_break_the_page(client, session, stored):
+    """CR 18: the sweep flags such a row; the page is where the operator fixes it."""
+    session.add(_make_domain("policy-odd-shape.example.com", default_watch_spec=stored))
+    await session.flush()
+
+    page = await client.get("/dashboard/domains/policy-odd-shape.example.com", headers=_HEADERS)
+    assert page.status_code == 200
+    assert re.search(r'<option value=""\s+selected', page.text)
+
+    r = await client.post(
+        "/dashboard/domains/policy-odd-shape.example.com/fetch-policy",
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"min_interval_seconds": "1", "default_interval": "1d"},
+    )
+    assert '"level": "success"' in r.headers["HX-Trigger"]

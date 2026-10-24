@@ -7,10 +7,10 @@
 
    The cadence select offers the dashboard's vocabulary (src/dashboard/cadence.py)
    plus the stored interval when it is outside it (an import or an API write),
-   so re-saving never refuses the value already there.
+   so re-saving never refuses the value already there. `stored_interval` comes
+   from the route (`_stored_interval`), which tolerates a malformed stored row.
 
    Progressive enhancement: method/action fallback posts the same form. #}
-{% set stored_interval = (domain.default_watch_spec or {}).get("interval") %}
 <div id="policy-section" style="margin-top:var(--space-4);">
   <h2 id="domain-policy-heading" tabindex="-1" class="notes-heading">Fetch policy</h2>
   <p class="text-muted text-sm" style="margin:0 0 var(--space-2);">
