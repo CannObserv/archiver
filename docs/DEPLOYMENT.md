@@ -403,20 +403,31 @@ via co-core".
 httpx and requests verify against **certifi in the release's venv**, not `/etc/ssl`, so
 an OS CA fix reaches none of the units; a deploy does. certifi is transitive: a `[tool.uv]
 constraint-dependencies` floor holds it, and every `uv run --no-project` wheelhouse fetch
-(which that floor doesn't reach) repeats it. `tests/test_certifi_floor.py` checks all
-three plus the installed version. For the next distrust: raise the floor in each place and
-`FLOOR`, `uv lock --upgrade-package certifi`, deploy, then the advisory's test host must
+(which that floor doesn't reach) repeats it. `tests/test_certifi_floor.py` checks the constraint,
+the fetches, every tracked `uv.lock` (the SDK's too, #420) and the installed version. For the
+next distrust: raise the floor in each place and `FLOOR`, `uv lock --upgrade-package certifi`
+at the root and in `clients/python/`, deploy, then the advisory's test host must
 fail verification from `/srv/archiver/live/.venv/bin/python -I` with httpx and requests.
 A rollback to a pre-floor release trusts the root again.
 
 ## Dependabot (archiver#192)
 
-`.github/dependabot.yml` bumps `ci.yml`'s SHA-pinned actions weekly; `uv` is out (no
-wheelhouse for the updater), the generated `context-cadence.yml` excluded. A bot PR lands
+`.github/dependabot.yml` bumps the workflows' SHA-pinned actions weekly; `uv` is out (no
+wheelhouse for the updater; § Lock audit covers the locks), the generated
+`context-cadence.yml` excluded. A bot PR lands
 like any other, merge commit on green CI, with **no CHANGELOG entry and no deploy**: it
 touches only `.github/`. Red at WIF auth: suspect the bot run's credentials, not the bump.
 Read release notes for silent default flips (setup-uv v9 `prune-cache`,
 `tests/ci/test_workflow_pins.py`).
+
+## Lock audit (archiver#420)
+
+`.github/workflows/audit.yml` runs `scripts/audit_lock.sh` (push, PR, Mondays): `uv audit
+--frozen` on `uv.lock` and `clients/python/uv.lock`, runtime and dev under separate warning
+titles. **Report-only** and outside `deploy.sh`'s gate: read the annotations. `<lock> runtime
+advisories` → `uv lock --upgrade-package <name>` in that lock's directory (root: wheelhouse
+synced; deploy after). `audit did not run` is never clean. Dev titles stand until a dev
+re-lock. By hand: any checkout, no wheelhouse.
 
 ## Power Map SDK (git tag)
 

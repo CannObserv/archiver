@@ -6,7 +6,8 @@ jobs save holds co-core unpacked from the private wheelhouse, and archiver is
 public: a fork's pull request can restore a cache saved on ``main``. Dependabot
 moves setup-uv past v9 with CI green, so the default would flip silently.
 ``uv cache prune --ci`` drops every pre-built wheel, co-core's included, so
-every setup-uv step in every workflow states it. It keeps a wheel *built from
+every setup-uv step that saves a cache, in every workflow, states it; one with
+``enable-cache: false`` saves none (audit.yml, #420). It keeps a wheel *built from
 source*, so the prune covers co-core only while uv.lock pins it to a wheel: the
 lock check below holds that premise. Ported from CannObserv/broker#88.
 
@@ -47,12 +48,40 @@ def _setup_uv_steps() -> list[dict]:
     ]
 
 
+def _unpruned(steps: list[dict]) -> list[dict]:
+    """The steps that save a cache without pruning it. ``enable-cache: false``
+    saves none, so it has nothing to prune (audit.yml, #420); any other value,
+    or none, saves one."""
+    withs = [step.get("with", {}) for step in steps]
+    return [
+        w for w in withs if w.get("enable-cache") is not False and w.get("prune-cache") is not True
+    ]
+
+
 def test_every_setup_uv_step_prunes_the_cache_it_saves() -> None:
     """co-core's private source stays out of a public repo's Actions cache."""
     steps = _setup_uv_steps()
     assert steps, "no setup-uv step found in .github/workflows/: the derivation broke"
-    bad = [s.get("with", {}) for s in steps if s.get("with", {}).get("prune-cache") is not True]
-    assert not bad, f"setup-uv steps without `prune-cache: true`: {bad}"
+    bad = _unpruned(steps)
+    assert not bad, f"setup-uv steps that save a cache without `prune-cache: true`: {bad}"
+
+
+@pytest.mark.parametrize(
+    ("with_", "unpruned"),
+    [
+        ({"enable-cache": True, "prune-cache": True}, False),
+        ({"enable-cache": True}, True),
+        ({}, True),
+        ({"enable-cache": "auto"}, True),
+        ({"enable-cache": False}, False),
+        ({"enable-cache": "false"}, True),
+    ],
+)
+def test_only_a_step_that_saves_nothing_skips_the_prune(with_: dict, unpruned: bool) -> None:
+    """setup-uv defaults ``enable-cache`` to ``auto`` (on, on GitHub's runners), so
+    only an explicit YAML ``false`` exempts a step; a quoted ``"false"`` is a
+    string to YAML and to this check, and fails safe."""
+    assert bool(_unpruned([{"with": with_}])) is unpruned
 
 
 def _wheelhouse_packages_without_a_wheel(lock: Path) -> list[str]:

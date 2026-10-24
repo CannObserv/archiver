@@ -18,6 +18,17 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.32.1 (2026-10-23)
+
+[both] **Both locks re-locked clear of runtime advisories, and a weekly lock audit (archiver#420).** Routes, schemas and the `archiver-client` surface are unchanged, so there's no SDK bump. No specifier moved: every fix was inside the existing caps.
+
+- **Service lock (`uv.lock`):** starlette 1.0.0 → 1.9.0, pypdf 6.19.0 → 6.21.2, python-multipart 0.0.29 → 0.0.32, anyio 4.13.0 → 4.14.2, idna 3.13 → 3.20, mako 1.3.12 → 1.4.3. That clears 37 OSV findings in the runtime packages: 21 unique advisories at filing, plus pypdf's 3 later ones.
+  - **Urlencoded forms now get starlette's limits (1.3.1):** 1000 fields and 1 MB per field. Past either, the request is a 400. Before, only multipart had them. The dashboard's largest form, the rep-fields grid (`PATCH …/rep-fields`: three fields a row plus three), now caps at 332 rows.
+  - **`;` no longer separates urlencoded fields (python-multipart 0.0.30).** Browsers and htmx percent-encode it, so no dashboard form changes.
+  - **pypdf 6.20 changes standard-mode text extraction** for some fonts and table layouts. A PDF preview's fingerprint can differ from Processor's until Processor moves to the same pypdf.
+- **SDK lock (`clients/python/uv.lock`, CI only; consumers resolve from `pyproject.toml`):** certifi 2026.4.22 → 2026.10.23, which drops the compromised eMudhra chain (#418 missed this copy). Also anyio 4.14.2 and idna 3.20. `tests/test_certifi_floor.py` now checks every tracked `uv.lock`.
+- **Lock audit:** `.github/workflows/audit.yml` runs `scripts/audit_lock.sh` on push, PR, every Monday and on dispatch. It audits both locks, runtime and dev under separate titles. It's **report-only**: findings are warning annotations plus the job summary, and the job never fails. It isn't part of the deploy's CI gate. The dev group's known findings (virtualenv, filelock, openapi-python-client) stand; they're out of this re-lock.
+
 ## v4.32.0 (2026-10-21)
 
 [service] **SourceSpec v1 accepts `jsonpath`, and `json` is a content-kind family again (archiver#356, cannobserv#354).** The `algorithm` enum widens to `css | xpath | jsonpath | full_page`; it is additive, so `schema_version` stays 1. Every route that takes a SourceSpec accepts it: `POST /info-sources`, `PATCH /info-sources/{id}/source-specs`, `POST /info-items`' `initial_source_specs`, `validate-source-spec` and `preview-extraction`. The `source_specs` field description and `preview-extraction`'s refusal list were regenerated into `archiver-client` as docstrings only, so there's no SDK bump. Processor has extracted `jsonpath` since 2026-10-20 (processor#37).
