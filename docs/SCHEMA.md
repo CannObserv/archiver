@@ -59,7 +59,6 @@ document; the dashboard's Registry badge reports the count
       fabricate a cadence for rows that never had one. Three of the four production WatchedItems
       carry no per-item cadence at all.
   - **`watch_active`** is per-item pause state, written via `PUT /info-items/{id}/watch-active`.
-    A suspended host overrides it on the wire (`Domain`, below).
     `true` schedules, `false` is registered-but-paused (keep the item, stop scheduling), and
     **`NULL` means the registry has no opinion yet** — not yet imported from Watcher. Defaulting
     it `true` would announce every paused item as unpaused the moment the producer lands.
@@ -144,32 +143,7 @@ document; the dashboard's Registry badge reports the count
     now)`; the last snapshot keeps rendering. Any later answer clears `missing_since`.
   - **No answer** → nothing changes. `succeeded_by`, `archived_at` and `active` are mirrored,
     never followed: re-linking to a successor is a human decision.
-- **`Domain`** (`domains`) — one row per hostname (`name`, unique). **Archiver is its sole owner**
-  (archiver#360, design D4). `info_sources.domain_name` names it with **no FK**: a host with no row
-  counts as active.
-  - **Suspension is intent.** `is_active = false` *or* a set `archived_at` suspends the host
-    (`domain_suspended`, `src/core/services/registry_announcement.py`, the one predicate, matching
-    Watcher's `is_suspended`). Every item whose active binding's source names the host announces
-    `active = false`. On an active host `watch_active` passes through, `NULL` included. Before #360
-    `is_active` was described as gating suggestions, but nothing read it.
-  - **One write path flips it:** `update_domain` (`src/core/services/domain_policy.py`), behind API
-    `PATCH`/archive/restore and the dashboard's archive/restore/fetch-policy. A flip announces the
-    items whose resolved `active` moved, in the write's transaction, and nothing else. Lock order:
-    the host's items, then the row. Every announce reads the host's row `FOR SHARE` after its item
-    locks, and the write re-reads the host's items once it holds the row, so a binding racing a
-    flip is announced with the flip's state.
-  - **`min_interval_seconds FLOAT NOT NULL DEFAULT 1.0`**: request spacing for the host, `CHECK`
-    finite and `>= 0` (`NaN` excluded explicitly, since Postgres sorts it above every number).
-    **Dark** until #366 publishes `content.fetch-policy` (flip F1). Until then Watcher's value is
-    live, and the pre-F1 re-import (`src/core/tools/import_watcher_domains.py`) overwrites it.
-  - **`default_watch_spec JSONB NULL`**: the domain tier of cadence, a WatchSpec v1 document that
-    carries `interval` (`NULL` = no domain default; a document without one is refused). **Dark**
-    until #364 resolves cadence (flip F2). It's stored in WatchSpec shape, never Watcher's
-    `ScheduleConfig`, so #364 merges like with like.
-  - **Room left, nothing built:** per-host fetch headers (#376) and a fetch timeout (#377) get their
-    own columns or table. Neither field above is a policy blob to extend.
-  - **`DELETE`** stays legal (409 while any InfoSource names the host). #366 draws fetch-policy
-    generations from a sequence, so a re-added host cannot go backwards (cannobserv#566).
+- **`Domain`** (`domains`) — per-host policy (#360): [DOMAINS.md](DOMAINS.md).
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are
