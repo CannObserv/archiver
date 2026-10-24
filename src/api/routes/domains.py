@@ -2,6 +2,10 @@
 
 Domains are upserted via PATCH (create-or-update). DELETE is guarded — a
 domain that has InfoSources referencing it cannot be deleted (409).
+
+PATCH, archive and restore go through ``update_domain``: each can suspend or
+resume the host, which re-announces its items on ``info.registry`` in the same
+transaction (archiver#360).
 """
 
 from __future__ import annotations
@@ -10,15 +14,16 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session
-from src.api.errors import raise_envelope
+from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.domain import DomainOut, DomainPatch
 from src.api.schemas.pagination import Page
 from src.core.models import InfoSource
 from src.core.models.domain import Domain
+from src.core.services.domain_policy import update_domain
+from src.core.watch_spec_schema.validator import validate_domain_watch_spec
 
 router = APIRouter(prefix="/domains", tags=["domains"])
 
@@ -30,6 +35,8 @@ def _domain_to_out(d: Domain) -> DomainOut:
         notes=d.notes,
         is_active=d.is_active,
         archived_at=d.archived_at,
+        min_interval_seconds=d.min_interval_seconds,
+        default_watch_spec=d.default_watch_spec,
         created_at=d.created_at,
         updated_at=d.updated_at,
     )
@@ -85,33 +92,36 @@ async def upsert_domain(
 ) -> DomainOut:
     """Upsert a Domain by hostname.
 
-    Creates on first call. Updates notes and/or is_active on subsequent calls.
+    Creates on first call. Updates only the fields sent; ``default_watch_spec:
+    null`` clears the cadence. A change to ``is_active`` that suspends or
+    resumes the host announces its items (archiver#360).
     """
-    now = datetime.now(UTC)
-    insert_values: dict = {"name": name, "updated_at": now}
+    changes: dict = {"updated_at": datetime.now(UTC)}
     if body.notes is not None:
-        insert_values["notes"] = body.notes
+        changes["notes"] = body.notes
     if body.is_active is not None:
-        insert_values["is_active"] = body.is_active
+        changes["is_active"] = body.is_active
+    if "min_interval_seconds" in body.model_fields_set:
+        changes["min_interval_seconds"] = body.min_interval_seconds
+    if "default_watch_spec" in body.model_fields_set:
+        if body.default_watch_spec is not None:
+            _check_default_watch_spec(body.default_watch_spec)
+        changes["default_watch_spec"] = body.default_watch_spec
 
-    update_values: dict = {"updated_at": now}
-    if body.notes is not None:
-        update_values["notes"] = body.notes
-    if body.is_active is not None:
-        update_values["is_active"] = body.is_active
-
-    stmt = (
-        pg_insert(Domain)
-        .values(**insert_values)
-        .on_conflict_do_update(index_elements=["name"], set_=update_values)
-    )
-    await session.execute(stmt)
-
-    result = await session.execute(select(Domain).where(Domain.name == name))
-    domain = result.scalar_one()
+    domain = await update_domain(session, name, changes, create=True)
     await session.commit()
     await session.refresh(domain)
     return _domain_to_out(domain)
+
+
+def _check_default_watch_spec(doc: dict) -> None:
+    """422 unless ``doc`` is a WatchSpec v1 document carrying ``interval``."""
+    ok, errors = validate_domain_watch_spec(doc)
+    if not ok:
+        raise_422(
+            "default_watch_spec failed validation (send null for no domain default)",
+            errors=[FieldError(path=e["path"], message=e["message"]) for e in errors],
+        )
 
 
 @router.delete("/{name}", status_code=204)
@@ -146,13 +156,10 @@ async def archive_domain(
     name: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> DomainOut:
-    """Set archived_at on a Domain."""
-    result = await session.execute(select(Domain).where(Domain.name == name))
-    domain = result.scalar_one_or_none()
+    """Set archived_at on a Domain; suspends the host (archiver#360)."""
+    domain = await update_domain(session, name, {"archived_at": datetime.now(UTC)}, create=False)
     if domain is None:
         raise_envelope(404, "lookup", "Domain not found")
-
-    domain.archived_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(domain)
     return _domain_to_out(domain)
@@ -163,13 +170,10 @@ async def restore_domain(
     name: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> DomainOut:
-    """Clear archived_at on a Domain."""
-    result = await session.execute(select(Domain).where(Domain.name == name))
-    domain = result.scalar_one_or_none()
+    """Clear archived_at on a Domain; resumes the host unless it is inactive."""
+    domain = await update_domain(session, name, {"archived_at": None}, create=False)
     if domain is None:
         raise_envelope(404, "lookup", "Domain not found")
-
-    domain.archived_at = None
     await session.commit()
     await session.refresh(domain)
     return _domain_to_out(domain)

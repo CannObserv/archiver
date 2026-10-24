@@ -108,6 +108,9 @@ from archiver_client.generated.api.source_revisions import (
 from archiver_client.generated.client import AuthenticatedClient
 from archiver_client.generated.models.domain_out import DomainOut
 from archiver_client.generated.models.domain_patch import DomainPatch
+from archiver_client.generated.models.domain_patch_default_watch_spec_type_0 import (
+    DomainPatchDefaultWatchSpecType0,
+)
 from archiver_client.generated.models.info_item_create import InfoItemCreate
 from archiver_client.generated.models.info_item_create_initial_source_specs_type_0_item import (
     InfoItemCreateInitialSourceSpecsType0Item,
@@ -762,15 +765,31 @@ class ArchiverClient:
         *,
         notes: str | None = None,
         is_active: bool | None = None,
+        min_interval_seconds: float | None = None,
+        default_watch_spec: dict | None = UNSET,
     ) -> DomainOut:
         """Create or update a Domain (upsert by hostname).
 
-        ``None`` fields are omitted from the PATCH body (left untouched
-        server-side), matching the pre-v4.2.0 behavior.
+        ``None`` for ``notes``, ``is_active`` or ``min_interval_seconds`` omits
+        the field (left untouched server-side), matching the pre-v4.2.0
+        behavior. ``default_watch_spec`` is the exception, since it can be
+        cleared: omit it to leave it untouched, pass ``None`` to clear it.
+
+        ``is_active=False`` suspends the host: its items are announced
+        ``active=false``. ``min_interval_seconds`` and ``default_watch_spec``
+        are stored but take effect only at flips F1 (#366) and F2 (#364).
         """
         body = DomainPatch(
             notes=notes if notes is not None else UNSET,
             is_active=is_active if is_active is not None else UNSET,
+            min_interval_seconds=(
+                min_interval_seconds if min_interval_seconds is not None else UNSET
+            ),
+            default_watch_spec=(
+                DomainPatchDefaultWatchSpecType0.from_dict(default_watch_spec)
+                if isinstance(default_watch_spec, dict)
+                else default_watch_spec
+            ),
         )
         response = await _upsert_domain.asyncio_detailed(
             client=self._gen_client, name=name, body=body
@@ -783,12 +802,12 @@ class ArchiverClient:
         _unwrap_no_content(response)
 
     async def archive_domain(self, name: str) -> DomainOut:
-        """Set archived_at on a Domain."""
+        """Set archived_at on a Domain; suspends the host."""
         response = await _archive_domain.asyncio_detailed(client=self._gen_client, name=name)
         return _unwrap(response)
 
     async def restore_domain(self, name: str) -> DomainOut:
-        """Clear archived_at on a Domain."""
+        """Clear archived_at on a Domain; resumes the host unless it is inactive."""
         response = await _restore_domain.asyncio_detailed(client=self._gen_client, name=name)
         return _unwrap(response)
 

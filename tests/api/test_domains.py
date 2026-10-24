@@ -235,3 +235,99 @@ async def test_list_info_sources_filter_by_domain_name(client):
     items = resp.json()["items"]
     assert all(i["domain_name"] == "filterdomain.example.com" for i in items)
     assert len(items) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Fetch-policy fields (archiver#360): stored and editable, dark until #366/#364
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_new_domain_carries_the_default_policy(client):
+    resp = await client.patch("/api/v1/domains/policy.example.com", headers=HEADERS, json={})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["min_interval_seconds"] == 1.0
+    assert body["default_watch_spec"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_sets_min_interval_and_cadence(client):
+    spec = {"schema_version": 1, "interval": "6h"}
+    resp = await client.patch(
+        "/api/v1/domains/policy.example.com",
+        headers=HEADERS,
+        json={"min_interval_seconds": 2.5, "default_watch_spec": spec},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["min_interval_seconds"] == 2.5
+    assert resp.json()["default_watch_spec"] == spec
+
+    got = (await client.get("/api/v1/domains/policy.example.com", headers=HEADERS)).json()
+    assert (got["min_interval_seconds"], got["default_watch_spec"]) == (2.5, spec)
+
+
+@pytest.mark.asyncio
+async def test_patch_omitting_a_field_leaves_it_and_null_clears_the_cadence(client):
+    spec = {"schema_version": 1, "interval": "1d"}
+    await client.patch(
+        "/api/v1/domains/keep.example.com",
+        headers=HEADERS,
+        json={"min_interval_seconds": 3.0, "default_watch_spec": spec},
+    )
+
+    kept = await client.patch(
+        "/api/v1/domains/keep.example.com", headers=HEADERS, json={"notes": "n"}
+    )
+    assert (kept.json()["min_interval_seconds"], kept.json()["default_watch_spec"]) == (3.0, spec)
+
+    cleared = await client.patch(
+        "/api/v1/domains/keep.example.com", headers=HEADERS, json={"default_watch_spec": None}
+    )
+    assert cleared.json()["default_watch_spec"] is None
+    assert cleared.json()["min_interval_seconds"] == 3.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"min_interval_seconds": -1}',
+        '{"min_interval_seconds": null}',
+        '{"min_interval_seconds": Infinity}',
+        '{"min_interval_seconds": NaN}',
+        '{"min_interval_seconds": "fast"}',
+    ],
+)
+async def test_patch_refuses_a_min_interval_that_is_not_finite_and_non_negative(client, raw):
+    resp = await client.patch(
+        "/api/v1/domains/bad.example.com",
+        headers={**HEADERS, "Content-Type": "application/json"},
+        content=raw,
+    )
+    assert resp.status_code == 422, resp.text
+    assert (await client.get("/api/v1/domains/bad.example.com", headers=HEADERS)).status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"schema_version": 1},  # no interval: NULL is how "no default" is said
+        {"schema_version": 1, "interval": "6 hours"},
+        {"schema_version": 1, "interval": "6h", "active": False},
+        {"schema_version": 2, "interval": "6h"},
+        {"interval": "6h"},  # Watcher's ScheduleConfig shape, not a WatchSpec
+    ],
+)
+async def test_patch_refuses_a_cadence_that_is_not_a_watch_spec_with_an_interval(client, spec):
+    resp = await client.patch(
+        "/api/v1/domains/badspec.example.com",
+        headers=HEADERS,
+        json={"default_watch_spec": spec},
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"]["kind"] == "schema"
+    assert (
+        await client.get("/api/v1/domains/badspec.example.com", headers=HEADERS)
+    ).status_code == 404

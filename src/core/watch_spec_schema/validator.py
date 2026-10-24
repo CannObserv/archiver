@@ -57,3 +57,22 @@ def validate_watch_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
             }
         )
     return (len(errors) == 0, errors)
+
+
+def validate_domain_watch_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
+    """Validate a Domain's default cadence (archiver#360). Returns (ok, errors).
+
+    A WatchSpec v1 document that also **carries ``interval``**: without one it
+    says nothing a ``NULL`` does not, and cadence resolution (#364) takes the
+    domain tier only when there is an interval to take. The API, the dashboard,
+    the Watcher import and the stored-document sweep all judge by this.
+    """
+    ok, errors = validate_watch_spec(doc)
+    if ok and "interval" not in doc:
+        errors = [
+            {
+                "path": "/interval",
+                "message": "a domain default needs an interval; NULL is no default",
+            }
+        ]
+    return (len(errors) == 0, errors)

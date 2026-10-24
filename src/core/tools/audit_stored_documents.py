@@ -31,12 +31,12 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
-from src.core.models import InfoItem, InfoItemRepSpec, InfoSource, RepSpec
+from src.core.models import Domain, InfoItem, InfoItemRepSpec, InfoSource, RepSpec
 from src.core.rep_fields_schema.validator import linked_org_key_errors, validate_rep_fields
 from src.core.rep_spec_schema.validator import validate_rep_spec
 from src.core.source_spec_schema.families import families_of
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
-from src.core.watch_spec_schema.validator import validate_watch_spec
+from src.core.watch_spec_schema.validator import validate_domain_watch_spec, validate_watch_spec
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +184,11 @@ def _judge_watch_spec(row_id: str, document: object, _flag: bool) -> list[Findin
     return _watch_spec_findings(row_id, document)
 
 
+def _judge_domain_watch_spec(row_id: str, document: object, _flag: bool) -> list[Finding]:
+    errors = _errors(validate_domain_watch_spec, document)
+    return [Finding("domain_watch_spec", row_id, None, errors)] if errors else []
+
+
 def _judge_rep_fields(row_id: str, bag: object, linked: bool) -> list[Finding]:
     return _rep_fields_findings(row_id, bag, linked=linked)
 
@@ -211,6 +216,16 @@ KINDS: tuple[DocumentKind, ...] = (
         (validate_watch_spec,),
         select(InfoItem.info_item_id, InfoItem.watch_spec, false()).order_by(InfoItem.info_item_id),
         _judge_watch_spec,
+    ),
+    DocumentKind(
+        "domain_watch_spec",
+        Domain.default_watch_spec,
+        (validate_domain_watch_spec,),
+        # NULL is "no domain default", not a document to judge.
+        select(Domain.id, Domain.default_watch_spec, false())
+        .where(Domain.default_watch_spec.is_not(None))
+        .order_by(Domain.id),
+        _judge_domain_watch_spec,
     ),
     DocumentKind(
         "rep_fields",

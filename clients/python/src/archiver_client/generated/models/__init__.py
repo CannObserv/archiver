@@ -11,7 +11,9 @@ from .discard_dead_letters_response import DiscardDeadLettersResponse
 from .discard_outbox_rows_request import DiscardOutboxRowsRequest
 from .discard_outbox_rows_response import DiscardOutboxRowsResponse
 from .domain_out import DomainOut
+from .domain_out_default_watch_spec_type_0 import DomainOutDefaultWatchSpecType0
 from .domain_patch import DomainPatch
+from .domain_patch_default_watch_spec_type_0 import DomainPatchDefaultWatchSpecType0
 from .envelope_response import EnvelopeResponse
 from .error_envelope import ErrorEnvelope
 from .error_envelope_data_type_0 import ErrorEnvelopeDataType0
@@ -107,7 +109,9 @@ __all__ = (
     "DiscardOutboxRowsRequest",
     "DiscardOutboxRowsResponse",
     "DomainOut",
+    "DomainOutDefaultWatchSpecType0",
     "DomainPatch",
+    "DomainPatchDefaultWatchSpecType0",
     "EnvelopeResponse",
     "ErrorEnvelope",
     "ErrorEnvelopeDataType0",

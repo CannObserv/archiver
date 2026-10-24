@@ -35,7 +35,14 @@ from src.core.services.registry_announcement import (
 )
 
 WRITABLE_COLUMNS = frozenset(
-    {"notes", "is_active", "archived_at", "min_interval_seconds", "default_watch_spec"}
+    {
+        "notes",
+        "is_active",
+        "archived_at",
+        "min_interval_seconds",
+        "default_watch_spec",
+        "updated_at",
+    }
 )
 
 
