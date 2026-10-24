@@ -791,3 +791,23 @@ async def test_fetch_policy_404_when_absent(client):
 
 def _domain_q(name: str):
     return select(Domain).where(Domain.name == name)
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_404_when_the_domain_goes_between_read_and_write(
+    client, session, monkeypatch
+):
+    """CR 4: a delete landing after the 404 check must not become a 500."""
+    session.add(_make_domain("policy-gone.example.com"))
+    await session.flush()
+
+    async def _gone(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("src.dashboard.routes.domains.update_domain", _gone)
+    r = await client.post(
+        "/dashboard/domains/policy-gone.example.com/fetch-policy",
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"min_interval_seconds": "2", "default_interval": ""},
+    )
+    assert r.status_code == 404

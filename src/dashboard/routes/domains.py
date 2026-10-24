@@ -336,6 +336,8 @@ async def update_fetch_policy(
             },
             create=False,
         )
+        if domain is None:  # deleted since the read above (CR 4)
+            raise DashboardNotFound(f"Domain {name!r} not found")
         await session.commit()
         await session.refresh(domain)
 
