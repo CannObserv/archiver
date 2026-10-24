@@ -39,6 +39,27 @@ async def _sweep_outbox(test_engine, committed_rows):
             )
 
 
+async def _until_a_backend_waits_on_a_lock(test_engine, *, timeout: float = 5.0) -> bool:
+    """CR 17: proof that a session is blocked on a lock, not merely unfinished."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    async with test_engine.connect() as conn:
+        while loop.time() < deadline:
+            waiting = (
+                await conn.execute(
+                    text(
+                        "SELECT count(*) FROM pg_stat_activity"
+                        " WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                        " AND pid <> pg_backend_pid()"
+                    )
+                )
+            ).scalar_one()
+            if waiting:
+                return True
+            await asyncio.sleep(0.05)
+    return False
+
+
 async def _item_on(session, host: str = HOST, *, watch_active: bool | None = True) -> InfoItem:
     item = InfoItem(name=f"on {host}", watch_active=watch_active, announcement_generation=1)
     source = InfoSource(url=f"https://{host}/x", source_specs=_SPECS, domain_name=host)
@@ -212,8 +233,7 @@ async def test_a_binding_committed_while_the_write_waits_is_announced_inactive(
         await announce_info_item(binder, item_id)  # holds the Domain row FOR KEY SHARE
         writer = asyncio.create_task(_deactivate())
         try:
-            await asyncio.sleep(0.3)
-            waited = not writer.done()
+            waited = await _until_a_backend_waits_on_a_lock(test_engine)
             await binder.commit()
             await asyncio.wait_for(writer, timeout=10)
         finally:
@@ -305,7 +325,9 @@ async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
                 select(InfoItem).where(InfoItem.info_item_id == new_id).with_for_update()
             )
             release.set()
-            await asyncio.sleep(0.5)  # the write reaches N and waits on it
+            # The write reaches N and blocks on it; only then may the announce
+            # ask for the row, which is what would close the old cycle.
+            assert await _until_a_backend_waits_on_a_lock(test_engine)
             await announce_info_item(announcer, new_id)
             await announcer.commit()
             await asyncio.wait_for(writer, timeout=10)
