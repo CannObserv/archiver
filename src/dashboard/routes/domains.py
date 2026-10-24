@@ -17,6 +17,7 @@ from src.api.deps import get_db_session
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
 from src.core.services.domain_policy import update_domain
+from src.core.services.registry_announcement import domain_suspended
 from src.core.watch_spec_schema.validator import validate_domain_watch_spec
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
@@ -219,6 +220,7 @@ async def detail_domain(
             "offset": page.offset,
             "cadence_labels": CADENCE_LABELS,
             "stored_interval": _stored_interval(domain),
+            "suspended": domain_suspended(domain),
             "items": item_rows,
             "item_total": item_total,
             "item_has_more": item_has_more,

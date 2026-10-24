@@ -830,3 +830,23 @@ async def test_a_hand_edited_non_object_cadence_does_not_break_the_page(client, 
         data={"min_interval_seconds": "1", "default_interval": "1d"},
     )
     assert '"level": "success"' in r.headers["HX-Trigger"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kwargs", "shown"),
+    [
+        ({"is_active": False}, True),
+        ({"archived_at": datetime(2026, 10, 24, tzinfo=UTC)}, True),
+        ({}, False),
+    ],
+)
+async def test_the_suspension_line_follows_domain_suspended(client, session, kwargs, shown):
+    """CR 20: the page asks the one predicate rather than re-spelling it."""
+    name = f"susp-{len(kwargs)}-{shown}.example.com"
+    session.add(_make_domain(name, **kwargs))
+    await session.flush()
+
+    r = await client.get(f"/dashboard/domains/{name}", headers=_HEADERS)
+
+    assert ("announced paused" in r.text) is shown

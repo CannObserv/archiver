@@ -56,7 +56,7 @@
 
     {# Suspension is intent (archiver#360): say what it does on the wire. Its own
        line, not inside the Status cell, which is too narrow to hold it. #}
-    {% if domain.archived_at or not domain.is_active %}
+    {% if suspended %}
     <p class="text-muted text-sm" style="margin:var(--space-2) 0 0;">Suspended: every item on this host is announced paused.</p>
     {% endif %}
 
