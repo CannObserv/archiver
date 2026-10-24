@@ -130,6 +130,9 @@ _OUTBOUND_SERVICE_ENV_VARS = (
     # key is read from: with both, a lifespan test would check in for production.
     "CO_ARCHIVER_LIVE_MONITOR_ID",
     "CREDENTIALS_DIRECTORY",
+    # The Watcher domain import's credential (#360): its --base-url has no
+    # default, but a test that forgot to inject ``environ`` must not hold a key.
+    "ARCHIVER_API_KEY",
 )
 for _var in _OUTBOUND_SERVICE_ENV_VARS:
     os.environ.pop(_var, None)
