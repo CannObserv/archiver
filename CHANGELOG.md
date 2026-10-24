@@ -33,7 +33,7 @@ service-only patch does not require an SDK bump.
 - **New fields, additive on `DomainOut` and `DomainPatch`.** Both are stored and editable but **dark**: no producer reads them yet.
   - `min_interval_seconds`: float, finite, `>= 0`, NOT NULL, default `1.0` (Watcher's default). It takes effect when Archiver produces `content.fetch-policy` (#366, flip F1). Until then Watcher's value is live, and the re-import before F1 overwrites an edit.
   - `default_watch_spec`: a WatchSpec v1 document that must carry `interval`, or `null`. It takes effect with cadence resolution (#364, flip F2).
-  - **On `PATCH`:** an omitted field is untouched, `default_watch_spec: null` clears it, and `min_interval_seconds: null`, a negative, `Infinity` or `NaN` is a 422.
+  - **On `PATCH`:** an omitted field is untouched, `default_watch_spec: null` clears it, and `min_interval_seconds: null`, a negative, `Infinity` or `NaN` is a 422. A `PATCH` that races a `DELETE` of the same host answers 409 `conflict`.
 - **SDK 5.12.0:** `upsert_domain(…, min_interval_seconds=None, default_watch_spec=UNSET)`. Passing `default_watch_spec=None` clears it, and omitting it leaves it alone. `DomainOut` gains both fields, so this SDK needs service ≥ 4.33.0 to parse a Domain.
 - **Importer:** `python -m src.core.tools.import_watcher_domains --base-url URL [--dry-run]` reads Watcher's export on stdin and upserts by host through the API. It's operator-run.
 - **Dashboard** (no contract change):
