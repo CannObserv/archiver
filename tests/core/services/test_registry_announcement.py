@@ -840,3 +840,52 @@ async def test_announce_policy_changes_counts_only_what_it_emitted(session):
     emitted = await announce_policy_changes(session, [live.info_item_id, unbound.info_item_id])
 
     assert emitted == 1
+
+
+@pytest.mark.asyncio
+async def test_an_announce_reads_the_domain_fresh_not_from_the_identity_map(
+    test_engine, committed_rows
+):
+    """CR 1 (archiver#360): a Domain the session already loaded must be re-read.
+
+    Every source-creation path loads the host's Domain first
+    (``get_or_create_domain``). If the announce's share-locked read handed that
+    object back unrefreshed, a suspension committed meanwhile would be ignored and
+    the item announced active at a generation the snapshot can never correct.
+    """
+    host = "stale.example.test"
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        domain = Domain(name=host)
+        item = InfoItem(name="stale", watch_active=True)
+        source = InfoSource(url=f"https://{host}/x", source_specs=_SPECS, domain_name=host)
+        setup.add_all([domain, item, source])
+        await setup.flush()
+        binding = InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=source.info_source_id
+        )
+        setup.add(binding)
+        await setup.commit()
+        committed_rows += [
+            (Domain, domain.id),
+            (InfoSource, source.info_source_id),
+            (InfoItem, item.info_item_id),
+            (InfoItemSource, binding.id),
+        ]
+
+    async with factory() as announcer:
+        loaded = (await announcer.execute(select(Domain).where(Domain.name == host))).scalar_one()
+        assert loaded.is_active is True
+        async with factory() as operator:
+            (
+                await operator.execute(select(Domain).where(Domain.name == host))
+            ).scalar_one().is_active = False
+            await operator.commit()
+
+        await announce_info_item(announcer, item.info_item_id)
+        rows = await _outbox_rows(announcer)
+        mine = [r for r in rows if r.payload["info_item_id"] == str(item.info_item_id)]
+        await announcer.commit()
+        committed_rows += [(ChangesOutboxRow, r.id) for r in mine]
+
+    assert [r.payload["active"] for r in mine] == [False]

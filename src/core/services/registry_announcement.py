@@ -319,6 +319,10 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
                     .where(Domain.name.in_(hosts))
                     .order_by(Domain.name)
                     .with_for_update(read=True)
+                    # The session may already hold this Domain (every source
+                    # create loads it); without this the wait above would end
+                    # on the stale object, not the committed row (CR 1, #360).
+                    .execution_options(populate_existing=True)
                 )
             ).scalars()
         }
