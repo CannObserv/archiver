@@ -1,8 +1,9 @@
-"""Dashboard — Domain pages (list, detail, archive/restore, notes edit)."""
+"""Dashboard — Domain pages (list, detail, archive/restore, notes and fetch-policy edit)."""
 
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_db_session
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
+from src.core.services.domain_policy import update_domain
+from src.core.watch_spec_schema.validator import validate_domain_watch_spec
+from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, clamp_pagination, pagination
@@ -213,6 +217,7 @@ async def detail_domain(
             "has_more": has_more,
             "limit": page.limit,
             "offset": page.offset,
+            "cadence_labels": CADENCE_LABELS,
             "items": item_rows,
             "item_total": item_total,
             "item_has_more": item_has_more,
@@ -269,6 +274,89 @@ async def update_notes(
 
 
 # ---------------------------------------------------------------------------
+# POST /dashboard/domains/{name}/fetch-policy  (HTMX inline save, archiver#360)
+# ---------------------------------------------------------------------------
+
+
+def _policy_refusal(domain: Domain, min_interval_seconds: str, default_interval: str) -> str | None:
+    """Why the posted policy is refused, or ``None`` when it may be stored.
+
+    The cadence is held to the dashboard's vocabulary, like the item cadence
+    editor, except that the interval already stored passes: an imported or
+    API-set value must not strand the operator on re-save. The API takes the
+    full grammar.
+    """
+    try:
+        seconds = float(min_interval_seconds)
+    except ValueError:
+        return "The minimum interval must be a number of seconds."
+    if not math.isfinite(seconds) or seconds < 0:
+        return "The minimum interval must be a finite number of seconds, 0 or more."
+    stored = (domain.default_watch_spec or {}).get("interval")
+    if default_interval and default_interval not in CADENCE_OPTIONS and default_interval != stored:
+        return f"“{default_interval}” is not one of the offered cadences."
+    if default_interval:
+        ok, _errors = validate_domain_watch_spec(
+            {"schema_version": 1, "interval": default_interval}
+        )
+        if not ok:
+            return f"“{default_interval}” is not a valid interval."
+    return None
+
+
+@router.post("/{name}/fetch-policy")
+async def update_fetch_policy(
+    name: str,
+    request: Request,
+    min_interval_seconds: str = Form(default=""),
+    default_interval: str = Form(default=""),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Store the host's minimum interval and default cadence (both dark until F1/F2).
+
+    An empty ``default_interval`` clears the cadence. HTMX requests get the
+    re-rendered ``_policy_partial.html`` and a toast, success or refusal; a
+    refusal writes nothing. Non-HTMX requests get POST→303 back to detail, the
+    notes row's fallback - a refusal is then silent (the page shows the stored
+    values), the price of a no-JS path on an operator screen.
+    """
+    domain = await _get_domain_or_404(name, session)
+    refusal = _policy_refusal(domain, min_interval_seconds.strip(), default_interval.strip())
+    if refusal is None:
+        interval = default_interval.strip()
+        domain = await update_domain(
+            session,
+            name,
+            {
+                "min_interval_seconds": float(min_interval_seconds),
+                "default_watch_spec": (
+                    {"schema_version": 1, "interval": interval} if interval else None
+                ),
+            },
+            create=False,
+        )
+        await session.commit()
+        await session.refresh(domain)
+
+    if not request.headers.get("HX-Request"):
+        return RedirectResponse(url=f"/dashboard/domains/{name}", status_code=303)
+
+    response = _templates.TemplateResponse(
+        request,
+        "domains/_policy_partial.html",
+        {"user": user, "domain": domain, "cadence_labels": CADENCE_LABELS, "swapped": True},
+    )
+    flash = (
+        {"level": "success", "body": "Fetch policy saved."}
+        if refusal is None
+        else {"level": "error", "body": refusal}
+    )
+    response.headers["HX-Trigger"] = json.dumps({"showFlash": flash})
+    return response
+
+
+# ---------------------------------------------------------------------------
 # POST /dashboard/domains/{name}/archive
 # POST /dashboard/domains/{name}/restore
 # ---------------------------------------------------------------------------
@@ -280,9 +368,9 @@ async def archive_domain(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Archive a domain; redirect to detail."""
-    domain = await _get_domain_or_404(name, session)
-    domain.archived_at = datetime.now(UTC)
+    """Archive a domain, suspending its host (archiver#360); redirect to detail."""
+    await _get_domain_or_404(name, session)
+    await update_domain(session, name, {"archived_at": datetime.now(UTC)}, create=False)
     await session.commit()
     return RedirectResponse(url=f"/dashboard/domains/{name}", status_code=303)
 
@@ -293,8 +381,8 @@ async def restore_domain(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Restore an archived domain; redirect to detail."""
-    domain = await _get_domain_or_404(name, session)
-    domain.archived_at = None
+    """Restore an archived domain, resuming its host unless inactive; redirect to detail."""
+    await _get_domain_or_404(name, session)
+    await update_domain(session, name, {"archived_at": None}, create=False)
     await session.commit()
     return RedirectResponse(url=f"/dashboard/domains/{name}", status_code=303)

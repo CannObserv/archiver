@@ -6,6 +6,7 @@ import re
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import select
 from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemSource, InfoSource
@@ -636,3 +637,157 @@ async def test_domain_detail_item_pagination_params_clamp(client, session):
     )
     assert r.status_code == 200
     assert "items-clamp.example.com item 0" in r.text
+
+
+# ---------------------------------------------------------------------------
+# Fetch policy (archiver#360): stored, editable, dark until F1/F2
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_shows_fetch_policy_and_says_it_is_dark(client, session):
+    session.add(
+        _make_domain(
+            "policy-view.example.com",
+            min_interval_seconds=2.5,
+            default_watch_spec={"schema_version": 1, "interval": "6h"},
+        )
+    )
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/policy-view.example.com", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert 'id="policy-section"' in r.text
+    assert 'value="2.5"' in r.text
+    assert re.search(r'<option value="6h"\s+selected', r.text)
+    assert "#366" in r.text and "#364" in r.text  # where each takes effect
+
+
+@pytest.mark.asyncio
+async def test_domain_detail_says_a_suspended_host_pauses_its_items(client, session):
+    session.add(_make_domain("suspended-view.example.com", is_active=False))
+    await session.flush()
+
+    r = await client.get("/dashboard/domains/suspended-view.example.com", headers=_HEADERS)
+
+    assert "announced paused" in r.text
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_save_stores_both_fields_and_flashes(client, session):
+    session.add(_make_domain("policy-save.example.com"))
+    await session.flush()
+
+    r = await client.post(
+        "/dashboard/domains/policy-save.example.com/fetch-policy",
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"min_interval_seconds": "3", "default_interval": "1d"},
+    )
+
+    assert r.status_code == 200
+    assert 'id="policy-section"' in r.text
+    assert '"level": "success"' in r.headers["HX-Trigger"]
+    domain = (await session.execute(_domain_q("policy-save.example.com"))).scalar_one()
+    await session.refresh(domain)
+    assert domain.min_interval_seconds == 3.0
+    assert domain.default_watch_spec == {"schema_version": 1, "interval": "1d"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_empty_interval_clears_the_cadence(client, session):
+    session.add(
+        _make_domain(
+            "policy-clear.example.com", default_watch_spec={"schema_version": 1, "interval": "6h"}
+        )
+    )
+    await session.flush()
+
+    await client.post(
+        "/dashboard/domains/policy-clear.example.com/fetch-policy",
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"min_interval_seconds": "1", "default_interval": ""},
+    )
+
+    domain = (await session.execute(_domain_q("policy-clear.example.com"))).scalar_one()
+    await session.refresh(domain)
+    assert domain.default_watch_spec is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"min_interval_seconds": "-1", "default_interval": ""},
+        {"min_interval_seconds": "inf", "default_interval": ""},
+        {"min_interval_seconds": "nan", "default_interval": ""},
+        {"min_interval_seconds": "fast", "default_interval": ""},
+        {"min_interval_seconds": "", "default_interval": ""},
+        {"min_interval_seconds": "1", "default_interval": "13h"},  # not offered
+    ],
+)
+async def test_fetch_policy_refuses_bad_input_and_writes_nothing(client, session, data):
+    session.add(_make_domain("policy-bad.example.com"))
+    await session.flush()
+
+    r = await client.post(
+        "/dashboard/domains/policy-bad.example.com/fetch-policy",
+        headers={**_HEADERS, "HX-Request": "true"},
+        data=data,
+    )
+
+    assert r.status_code == 200
+    assert '"level": "error"' in r.headers["HX-Trigger"]
+    domain = (await session.execute(_domain_q("policy-bad.example.com"))).scalar_one()
+    await session.refresh(domain)
+    assert (domain.min_interval_seconds, domain.default_watch_spec) == (1.0, None)
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_keeps_a_stored_interval_the_dropdown_does_not_offer(client, session):
+    """An imported or API-set interval re-saves; only a new unoffered one is refused."""
+    session.add(
+        _make_domain(
+            "policy-odd.example.com", default_watch_spec={"schema_version": 1, "interval": "13h"}
+        )
+    )
+    await session.flush()
+
+    page = await client.get("/dashboard/domains/policy-odd.example.com", headers=_HEADERS)
+    assert re.search(r'<option value="13h"\s+selected', page.text)
+
+    r = await client.post(
+        "/dashboard/domains/policy-odd.example.com/fetch-policy",
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"min_interval_seconds": "2", "default_interval": "13h"},
+    )
+    assert '"level": "success"' in r.headers["HX-Trigger"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_without_htmx_redirects(client, session):
+    session.add(_make_domain("policy-nojs.example.com"))
+    await session.flush()
+
+    r = await client.post(
+        "/dashboard/domains/policy-nojs.example.com/fetch-policy",
+        headers=_HEADERS,
+        data={"min_interval_seconds": "2", "default_interval": ""},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/dashboard/domains/policy-nojs.example.com"
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_404_when_absent(client):
+    r = await client.post(
+        "/dashboard/domains/nope.example.com/fetch-policy",
+        headers=_HEADERS,
+        data={"min_interval_seconds": "2", "default_interval": ""},
+    )
+    assert r.status_code == 404
+
+
+def _domain_q(name: str):
+    return select(Domain).where(Domain.name == name)

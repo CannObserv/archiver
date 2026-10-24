@@ -79,6 +79,7 @@ class TestIntervals:
 class TestStates:
     def test_not_watching_when_outside_the_announced_set(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=False,
             item=make_item(),
             status=None,
@@ -90,7 +91,12 @@ class TestStates:
     def test_no_status_is_the_fourth_state(self):
         """Announced but Watcher has never reported: not paused, not healthy."""
         ctx = build_watch_context(
-            is_announceable=True, item=make_item(), status=None, last_changed_at=None, now=NOW
+            suspended_by=None,
+            is_announceable=True,
+            item=make_item(),
+            status=None,
+            last_changed_at=None,
+            now=NOW,
         )
         assert ctx["state"] == "no_status"
         assert ctx["health_ok"] is False
@@ -98,6 +104,7 @@ class TestStates:
 
     def test_no_status_still_shows_announced_cadence_and_last_changed(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=None,
@@ -109,6 +116,7 @@ class TestStates:
 
     def test_watching_with_status_row(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=make_status(),
@@ -124,6 +132,7 @@ class TestHealthRule:
     def test_only_ok_is_healthy(self):
         for value in ("error", "degraded", "some-future-token"):
             ctx = build_watch_context(
+                suspended_by=None,
                 is_announceable=True,
                 item=make_item(),
                 status=make_status(health=value),
@@ -135,6 +144,7 @@ class TestHealthRule:
 
     def test_paused_is_a_state_not_absence(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=make_status(applied_active=False),
@@ -149,6 +159,7 @@ class TestNextDue:
     def test_derives_from_attempt_plus_announced_interval(self):
         # last attempt 2h ago, daily cadence → due in 22h
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=make_status(),
@@ -162,6 +173,7 @@ class TestNextDue:
         """Deriving from the announcement alone reports a schedule Watcher is
         not running (epic open hole #2)."""
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=make_status(applied_interval="1h"),
@@ -175,6 +187,7 @@ class TestNextDue:
 
     def test_no_interval_no_next_due(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(watch_spec={"schema_version": 1}),
             status=make_status(),
@@ -185,6 +198,7 @@ class TestNextDue:
 
     def test_no_attempt_no_next_due(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=make_status(last_attempt_at=None),
@@ -197,6 +211,7 @@ class TestNextDue:
 class TestPendingToggle:
     def test_desired_pause_not_yet_applied(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(watch_active=False),
             status=make_status(applied_active=True),
@@ -207,6 +222,7 @@ class TestPendingToggle:
 
     def test_no_hint_when_aligned_or_no_opinion(self):
         aligned = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(watch_active=True),
             status=make_status(applied_active=True),
@@ -215,6 +231,7 @@ class TestPendingToggle:
         )
         assert aligned["pending_toggle"] is None
         no_opinion = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(watch_active=None),
             status=make_status(applied_active=False),
@@ -227,6 +244,7 @@ class TestPendingToggle:
 class TestDrift:
     def test_in_sync(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(announcement_generation=7),
             status=make_status(applied_generation=7),
@@ -244,6 +262,7 @@ class TestDrift:
 
     def test_drift_below_threshold_is_not_an_alert(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(announcement_generation=9, announced_at=NOW - timedelta(minutes=5)),
             status=make_status(applied_generation=7),
@@ -256,6 +275,7 @@ class TestDrift:
 
     def test_drift_past_threshold_alerts(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(announcement_generation=9, announced_at=NOW - timedelta(minutes=40)),
             status=make_status(applied_generation=7),
@@ -267,6 +287,7 @@ class TestDrift:
 
     def test_never_announced_has_no_drift_line(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(announcement_generation=0, announced_at=None),
             status=make_status(applied_generation=0),
@@ -278,6 +299,7 @@ class TestDrift:
     def test_drift_without_announced_at_has_no_age_and_no_alert(self):
         """Pre-#151 rows never stamped announced_at; drift still shows, unaged."""
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(announcement_generation=9, announced_at=None),
             status=make_status(applied_generation=7),
@@ -305,6 +327,7 @@ class TestAnnounceabilityPrecedence:
         leave the operator no way to see the item is no longer covered.
         """
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=False,
             item=make_item(),
             status=make_status(),
@@ -317,6 +340,7 @@ class TestAnnounceabilityPrecedence:
         """The same guard stops a dropped item's last-known health rendering as
         if it were current."""
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=False,
             item=make_item(),
             status=make_status(health="error", applied_active=False),
@@ -335,6 +359,7 @@ class TestAnnounceabilityPrecedence:
         than failing. Announceability is the key that survives.
         """
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=make_status(),
@@ -346,6 +371,7 @@ class TestAnnounceabilityPrecedence:
     def test_announceable_without_a_report_is_no_status_not_not_watching(self):
         """The two states stay distinguishable — #151's contract."""
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=None,
@@ -360,6 +386,7 @@ class TestDriftAhead:
         """A restored-from-backup registry can sit *behind* the consumer.
         Rendering that as ✓ fails in the silent direction."""
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(announcement_generation=5),
             status=make_status(applied_generation=7),
@@ -372,6 +399,7 @@ class TestDriftAhead:
 
     def test_in_sync_is_not_flagged_ahead(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(announcement_generation=7),
             status=make_status(applied_generation=7),
@@ -394,6 +422,7 @@ class TestPathologicalInterval:
 
     def test_absurd_interval_yields_no_next_due_instead_of_raising(self):
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=make_status(applied_interval="99999999999d"),
@@ -408,6 +437,7 @@ class TestPathologicalInterval:
         """Out of range for scheduling is not the same as untrue — the operator
         should still see what Watcher reported."""
         ctx = build_watch_context(
+            suspended_by=None,
             is_announceable=True,
             item=make_item(),
             status=make_status(applied_interval="99999999999d"),
@@ -419,3 +449,43 @@ class TestPathologicalInterval:
     def test_parse_rejects_out_of_range_but_accepts_long_sane_ones(self):
         assert parse_interval_seconds("99999999999d") is None
         assert parse_interval_seconds("365d") == 365 * 86400
+
+
+class TestHostSuspension:
+    """archiver#360: a suspended host announces every item paused.
+
+    The panel's desired state is the *announced* one, so an item whose host is
+    suspended reads as intentionally paused, never as a resume that Watcher
+    failed to apply.
+    """
+
+    def _ctx(self, *, watch_active, applied_active, suspended_by):
+        return build_watch_context(
+            suspended_by=suspended_by,
+            is_announceable=True,
+            item=make_item(watch_active=watch_active),
+            status=make_status(applied_active=applied_active),
+            last_changed_at=None,
+            now=NOW,
+        )
+
+    def test_applied_pause_on_a_suspended_host_is_not_a_pending_resume(self):
+        ctx = self._ctx(watch_active=True, applied_active=False, suspended_by="off.example")
+        assert ctx["pending_toggle"] is None
+        assert ctx["desired_active"] is False
+        assert ctx["suspended_by"] == "off.example"
+
+    def test_suspension_not_yet_applied_is_a_pending_pause(self):
+        ctx = self._ctx(watch_active=True, applied_active=True, suspended_by="off.example")
+        assert ctx["pending_toggle"] == "pause"
+
+    def test_an_active_host_keeps_the_items_own_desired_state(self):
+        ctx = self._ctx(watch_active=True, applied_active=False, suspended_by=None)
+        assert ctx["pending_toggle"] == "resume"
+        assert ctx["desired_active"] is True
+        assert ctx["suspended_by"] is None
+
+    def test_unknown_desired_state_on_a_suspended_host_resolves_paused(self):
+        ctx = self._ctx(watch_active=None, applied_active=True, suspended_by="off.example")
+        assert ctx["desired_active"] is False
+        assert ctx["pending_toggle"] == "pause"

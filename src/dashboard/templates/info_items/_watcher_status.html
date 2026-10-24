@@ -23,6 +23,10 @@
   <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;">
     <span class="badge badge--muted" style="font-size:0.7rem;">NO STATUS YET</span>
     <span class="text-muted text-sm">Watcher hasn't reported on this item.</span>
+    {% if has_active_source and watch.suspended_by %}
+    <span class="text-muted text-sm">Announced paused: host
+      <a href="/dashboard/domains/{{ watch.suspended_by }}">{{ watch.suspended_by }}</a> is suspended.</span>
+    {% endif %}
     {% if watch.cadence %}
     <span class="text-muted text-sm">Cadence: {{ watch.cadence }}</span>
     {% endif %}
@@ -83,7 +87,11 @@
 
     {# Gated on announceability, not on a Watcher link: announcing policy for an
        item that cannot announce live emits a tombstone and burns a generation. #}
-    {% if has_active_source %}
+    {% if has_active_source and watch.suspended_by %}
+    {# archiver#360: a suspended host overrides the item's pause state. #}
+    <span class="text-muted text-sm">Paused: host
+      <a href="/dashboard/domains/{{ watch.suspended_by }}">{{ watch.suspended_by }}</a> is suspended</span>
+    {% elif has_active_source %}
     <form hx-post="/dashboard/info-items/{{ item_id }}/toggle-watch-active"
           hx-target="#watcher-status-strip"
           hx-swap="outerHTML"

@@ -59,6 +59,11 @@
     </div>
   </div>
   <p class="text-muted text-sm" style="margin:0 0 var(--space-3);">Watcher hasn't reported on this item yet.</p>
+  {% if has_active_source and watch.suspended_by %}
+  {# archiver#360: announced paused already, whatever Watcher reports later. #}
+  <p class="text-muted text-sm" style="margin:0 0 var(--space-3);">Announced paused: host
+    <a href="/dashboard/domains/{{ watch.suspended_by }}">{{ watch.suspended_by }}</a> is suspended.</p>
+  {% endif %}
 
   <div class="watch-panel__fields">
     {# Cadence is editable here too, not only once Watcher has reported (CR
@@ -79,7 +84,14 @@
      key, so the gate and the state agree by construction rather than by
      coincidence, and the header is empty only in a state this branch cannot
      reach. #}
-  {% if has_active_source %}
+  {% if has_active_source and watch.suspended_by %}
+  {# archiver#360: the host's suspension overrides this item's own pause state,
+     so a toggle here would change nothing on the wire. #}
+  <div class="watch-panel__header">
+    <span class="text-muted text-sm">Paused: host
+      <a href="/dashboard/domains/{{ watch.suspended_by }}">{{ watch.suspended_by }}</a> is suspended</span>
+  </div>
+  {% elif has_active_source %}
   <div class="watch-panel__header">
     {# Focus the section heading: this button is about to be destroyed by the
        refresh its own response triggers, dropping keyboard focus to <body>.

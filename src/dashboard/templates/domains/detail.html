@@ -54,10 +54,17 @@
       </div>
     </div>
 
+    {# Suspension is intent (archiver#360): say what it does on the wire. Its own
+       line, not inside the Status cell, which is too narrow to hold it. #}
+    {% if domain.archived_at or not domain.is_active %}
+    <p class="text-muted text-sm" style="margin:var(--space-2) 0 0;">Suspended: every item on this host is announced paused.</p>
+    {% endif %}
+
     {# Notes lives inside the header panel (#176) — read-only by default, Edit
        flips it to the textarea. The partial owns #notes-section, the HTMX swap
        target, so it is included bare rather than wrapped. #}
     {% include "domains/_notes_partial.html" %}
+    {% include "domains/_policy_partial.html" %}
   </div>
 
   {# Linked Information Items — the items these sources back, one hop out via

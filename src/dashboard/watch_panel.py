@@ -34,6 +34,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, TypedDict
 
+from src.core.services.registry_announcement import resolved_active
 from src.dashboard.cadence import CADENCE_LABELS
 
 if TYPE_CHECKING:
@@ -137,6 +138,7 @@ class WatchPanelContext(TypedDict):
     health_ok: bool
     applied_active: bool | None
     desired_active: bool | None
+    suspended_by: str | None
     pending_toggle: str | None
     cadence: str
     applied_cadence: str
@@ -182,6 +184,7 @@ def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContex
 
 def build_watch_context(
     *,
+    suspended_by: str | None,
     is_announceable: bool,
     item: InfoItem,
     status: WatchStatus | None,
@@ -196,8 +199,15 @@ def build_watch_context(
     because deriving it needs the DB and this function is deliberately pure.
     Required, not defaulted: either default would be a silent wrong answer for
     half the corpus.
+
+    ``suspended_by`` is the announcing source's host when its Domain is
+    inactive or archived, else ``None`` (archiver#360) - required for the same
+    reason. ``desired_active`` is then the *announced* ``active``, ``false``
+    whatever the item's own ``watch_active``: compared against Watcher's applied
+    pause, the item's own value would read as a resume that never lands.
     """
     announced_interval = (item.watch_spec or {}).get("interval")
+    desired_active = resolved_active(item.watch_active, host_suspended=suspended_by is not None)
 
     # Announceability is checked *before* the cache row, not after. A status row
     # can outlive the fact it describes — an item dropped from the announced set
@@ -219,7 +229,8 @@ def build_watch_context(
             health=None,
             health_ok=False,
             applied_active=None,
-            desired_active=item.watch_active,
+            desired_active=desired_active,
+            suspended_by=suspended_by,
             pending_toggle=None,
             cadence=format_interval(announced_interval),
             applied_cadence="",
@@ -255,16 +266,17 @@ def build_watch_context(
     )
 
     pending_toggle: str | None = None
-    if item.watch_active is not None and status.applied_active is not None:
-        if item.watch_active != status.applied_active:
-            pending_toggle = "resume" if item.watch_active else "pause"
+    if desired_active is not None and status.applied_active is not None:
+        if desired_active != status.applied_active:
+            pending_toggle = "resume" if desired_active else "pause"
 
     return WatchPanelContext(
         state="watching",
         health=status.health,
         health_ok=status.health == "ok",
         applied_active=status.applied_active,
-        desired_active=item.watch_active,
+        desired_active=desired_active,
+        suspended_by=suspended_by,
         pending_toggle=pending_toggle,
         cadence=format_interval(announced_interval),
         applied_cadence=format_interval(status.applied_interval),
