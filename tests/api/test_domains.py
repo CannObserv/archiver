@@ -331,3 +331,18 @@ async def test_patch_refuses_a_cadence_that_is_not_a_watch_spec_with_an_interval
     assert (
         await client.get("/api/v1/domains/badspec.example.com", headers=HEADERS)
     ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_racing_a_delete_is_a_409_not_a_500(client, monkeypatch):
+    """CR 15: a DELETE committing between the upsert's insert and its row lock."""
+
+    async def _deleted(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("src.api.routes.domains.update_domain", _deleted)
+    resp = await client.patch(
+        "/api/v1/domains/race.example.com", headers=HEADERS, json={"notes": "n"}
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["kind"] == "conflict"

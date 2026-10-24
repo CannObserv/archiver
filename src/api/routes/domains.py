@@ -109,6 +109,8 @@ async def upsert_domain(
         changes["default_watch_spec"] = body.default_watch_spec
 
     domain = await update_domain(session, name, changes, create=True)
+    if domain is None:  # a DELETE landed between the upsert's insert and its lock (CR 15)
+        raise_envelope(409, "conflict", "Domain was deleted concurrently; retry the upsert.")
     await session.commit()
     await session.refresh(domain)
     return _domain_to_out(domain)
