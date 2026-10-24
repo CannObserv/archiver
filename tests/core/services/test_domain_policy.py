@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.models import ChangesOutboxRow, InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
+from src.core.services import domain_policy
 from src.core.services.domain_policy import update_domain
 from src.core.services.registry_announcement import INFO_REGISTRY_TOPIC, announce_info_item
 
@@ -215,4 +216,104 @@ async def test_a_binding_committed_while_the_write_waits_is_announced_inactive(
         committed_rows += [(ChangesOutboxRow, r.id) for r in mine]
         last = max(mine, key=lambda r: r.payload["generation"])
     assert [r.payload["active"] for r in mine] == [True, False]
+    assert last.payload["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
+    test_engine, committed_rows, monkeypatch
+):
+    """CR 2 (archiver#360): newcomers are locked before the Domain row, never after.
+
+    Item N is bound to the host after the write locked the host's items. An
+    announce on N holds N and then wants the row ``FOR SHARE``. If the write took
+    the row and then waited on N, Postgres would abort one of them as a deadlock.
+    The write releases the row (savepoint), locks N in item order, and retries,
+    so both commit and N ends up announced inactive.
+    """
+    host = "newcomer.example.test"
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        domain = Domain(name=host)
+        old = InfoItem(name="old", watch_active=True)
+        new = InfoItem(name="new", watch_active=True)
+        source = InfoSource(url=f"https://{host}/x", source_specs=_SPECS, domain_name=host)
+        setup.add_all([domain, old, new, source])
+        await setup.flush()
+        old_binding = InfoItemSource(
+            info_item_id=old.info_item_id, info_source_id=source.info_source_id
+        )
+        setup.add(old_binding)
+        await setup.commit()
+        committed_rows += [
+            (Domain, domain.id),
+            (InfoSource, source.info_source_id),
+            (InfoItem, old.info_item_id),
+            (InfoItem, new.info_item_id),
+            (InfoItemSource, old_binding.id),
+        ]
+        new_id = new.info_item_id
+
+    paused, release = asyncio.Event(), asyncio.Event()
+    real_host_items = domain_policy._host_items
+    calls = 0
+
+    async def _pausing_host_items(session, name, *, lock):
+        nonlocal calls
+        result = await real_host_items(session, name, lock=lock)
+        calls += 1
+        if calls == 1:  # after the first item lock, before the row lock
+            paused.set()
+            await release.wait()
+        return result
+
+    monkeypatch.setattr(domain_policy, "_host_items", _pausing_host_items)
+
+    async def _deactivate() -> None:
+        async with factory() as s:
+            await update_domain(s, host, {"is_active": False}, create=False)
+            await s.commit()
+
+    writer = asyncio.create_task(_deactivate())
+    async with factory() as binder, factory() as announcer:
+        try:
+            await asyncio.wait_for(paused.wait(), timeout=5)
+            binding = InfoItemSource(info_item_id=new_id, info_source_id=source.info_source_id)
+            binder.add(binding)
+            await binder.commit()
+            committed_rows.append((InfoItemSource, binding.id))
+
+            # The announce holds N first, as _announce_many does.
+            await announcer.execute(
+                select(InfoItem).where(InfoItem.info_item_id == new_id).with_for_update()
+            )
+            release.set()
+            await asyncio.sleep(0.5)  # the write reaches N and waits on it
+            await announce_info_item(announcer, new_id)
+            await announcer.commit()
+            await asyncio.wait_for(writer, timeout=10)
+        finally:
+            release.set()
+            writer.cancel()
+            await announcer.rollback()
+
+    async with factory() as check:
+        rows = (
+            await check.execute(
+                select(ChangesOutboxRow).where(ChangesOutboxRow.topic == INFO_REGISTRY_TOPIC)
+            )
+        ).scalars()
+        mine = [r for r in rows if r.payload["info_item_id"] == str(new_id)]
+        committed_rows += [(ChangesOutboxRow, r.id) for r in mine]
+        old_rows = [
+            r
+            for r in (
+                await check.execute(
+                    select(ChangesOutboxRow).where(ChangesOutboxRow.topic == INFO_REGISTRY_TOPIC)
+                )
+            ).scalars()
+            if r.payload["info_item_id"] == str(old.info_item_id)
+        ]
+        committed_rows += [(ChangesOutboxRow, r.id) for r in old_rows]
+    last = max(mine, key=lambda r: r.payload["generation"])
     assert last.payload["active"] is False
