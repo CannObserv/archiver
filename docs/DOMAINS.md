@@ -3,6 +3,8 @@
 `Domain` (`domains`) holds one row per hostname (`name`, unique). **Archiver is its sole owner**
 (archiver#360, design D4 in watcher `docs/plans/2026-10-14-headless-watcher-and-cohort-boundaries-design.md`).
 `info_sources.domain_name` names a host with **no FK**, so a host with no row counts as active.
+`PATCH` therefore refuses a name no source could carry (`is_canonical_hostname`, CR 22):
+an `Example.com` row would make suspension a silent no-op.
 Routes and the SDK: [API.md](API.md). The dashboard rows: [PAGES.md](PAGES.md) § Domain pages.
 
 ## Suspension is intent

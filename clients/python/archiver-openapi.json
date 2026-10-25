@@ -2916,7 +2916,7 @@
         ]
       },
       "patch": {
-        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates only the fields sent; ``default_watch_spec:\nnull`` clears the cadence. A change to ``is_active`` that suspends or\nresumes the host announces its items (archiver#360).",
+        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates only the fields sent; ``default_watch_spec:\nnull`` clears the cadence. ``name`` must be a canonical host name - the\nlowercase, port-less form an InfoSource is filed under - or it is a 422.\nA change to ``is_active`` that suspends or resumes the host announces its\nitems (archiver#360).",
         "operationId": "upsert_domain_api_v1_domains__name__patch",
         "parameters": [
           {

@@ -346,3 +346,16 @@ async def test_patch_racing_a_delete_is_a_409_not_a_500(client, monkeypatch):
     )
     assert resp.status_code == 409
     assert resp.json()["detail"]["kind"] == "conflict"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "canonical"),
+    [("Example.com", "example.com"), ("example.com:8080", "example.com")],
+)
+async def test_patch_refuses_a_name_no_source_could_carry(client, name, canonical):
+    """CR 22: a row no source matches would make suspension a silent no-op."""
+    resp = await client.patch(f"/api/v1/domains/{name}", headers=HEADERS, json={})
+    assert resp.status_code == 422, resp.text
+    assert canonical in resp.json()["detail"]["message"]
+    assert (await client.get(f"/api/v1/domains/{name}", headers=HEADERS)).status_code == 404

@@ -6,7 +6,7 @@ constraint coherent and prevents duplicate sources for cosmetically-different UR
 
 from __future__ import annotations
 
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 
 def canonicalize_url(url: str, *, strip_query_keys: list[str] | None = None) -> str:
@@ -42,3 +42,25 @@ def canonicalize_url(url: str, *, strip_query_keys: list[str] | None = None) -> 
         query = urlencode(keep)
 
     return urlunsplit((scheme, netloc, canonical_path, query, ""))
+
+
+def source_hostname(url: str) -> str | None:
+    """The host an InfoSource on ``url`` is filed under (``info_sources.domain_name``).
+
+    Canonical URL, then ``urlparse``'s hostname: lowercased, without port or
+    userinfo. Raises ValueError like ``canonicalize_url``.
+    """
+    return urlparse(canonicalize_url(url)).hostname
+
+
+def is_canonical_hostname(name: str) -> bool:
+    """Whether ``name`` is a host some InfoSource could be filed under.
+
+    A Domain row under any other spelling (``Example.com``, ``host:8080``)
+    matches no source, so suspending it would suppress nothing (archiver#360,
+    CR 22). The test is the round trip through ``source_hostname``.
+    """
+    try:
+        return bool(name) and source_hostname(f"https://{name}/") == name
+    except ValueError:
+        return False

@@ -105,8 +105,10 @@ def sync_detailed(
      Upsert a Domain by hostname.
 
     Creates on first call. Updates only the fields sent; ``default_watch_spec:
-    null`` clears the cadence. A change to ``is_active`` that suspends or
-    resumes the host announces its items (archiver#360).
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
 
     Args:
         name (str):
@@ -147,8 +149,10 @@ def sync(
      Upsert a Domain by hostname.
 
     Creates on first call. Updates only the fields sent; ``default_watch_spec:
-    null`` clears the cadence. A change to ``is_active`` that suspends or
-    resumes the host announces its items (archiver#360).
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
 
     Args:
         name (str):
@@ -184,8 +188,10 @@ async def asyncio_detailed(
      Upsert a Domain by hostname.
 
     Creates on first call. Updates only the fields sent; ``default_watch_spec:
-    null`` clears the cadence. A change to ``is_active`` that suspends or
-    resumes the host announces its items (archiver#360).
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
 
     Args:
         name (str):
@@ -224,8 +230,10 @@ async def asyncio(
      Upsert a Domain by hostname.
 
     Creates on first call. Updates only the fields sent; ``default_watch_spec:
-    null`` clears the cadence. A change to ``is_active`` that suspends or
-    resumes the host announces its items (archiver#360).
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
 
     Args:
         name (str):

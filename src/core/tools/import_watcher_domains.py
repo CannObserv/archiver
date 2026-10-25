@@ -41,7 +41,6 @@ import asyncio
 import json
 import math
 import os
-import re
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -51,6 +50,7 @@ import httpx
 from archiver_client import ArchiverClient, InformationError
 
 from src.core.models.domain import DEFAULT_MIN_INTERVAL_SECONDS
+from src.core.url_canonicalization import is_canonical_hostname
 from src.core.watch_spec_schema.validator import validate_domain_watch_spec
 
 EXIT_OK = 0
@@ -60,7 +60,6 @@ EXIT_ERROR = 2
 API_KEY_ENV = "ARCHIVER_API_KEY"
 EXPORT_SCHEMA_VERSION = 1
 _FIELDS = ("min_interval", "default_schedule_config", "notes", "is_active", "archived_at")
-_HOST = re.compile(r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
 _PAGE = 500
 
 
@@ -152,7 +151,7 @@ def _brief(raw: Any) -> str:
 
 def _desired(host: str, row: Any, problems: list[str]) -> _Desired | None:
     before = len(problems)
-    if not isinstance(host, str) or not _HOST.match(host):
+    if not isinstance(host, str) or not is_canonical_hostname(host):
         problems.append(f"{host!r}: not a host name")
     if not isinstance(row, dict):
         problems.append(f"{host}: not an object")

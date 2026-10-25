@@ -23,6 +23,7 @@ from src.api.schemas.pagination import Page
 from src.core.models import InfoSource
 from src.core.models.domain import Domain
 from src.core.services.domain_policy import update_domain
+from src.core.url_canonicalization import is_canonical_hostname, source_hostname
 from src.core.watch_spec_schema.validator import validate_domain_watch_spec
 
 router = APIRouter(prefix="/domains", tags=["domains"])
@@ -93,9 +94,13 @@ async def upsert_domain(
     """Upsert a Domain by hostname.
 
     Creates on first call. Updates only the fields sent; ``default_watch_spec:
-    null`` clears the cadence. A change to ``is_active`` that suspends or
-    resumes the host announces its items (archiver#360).
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
     """
+    if not is_canonical_hostname(name):
+        _refuse_non_canonical(name)
     changes: dict = {"updated_at": datetime.now(UTC)}
     if body.notes is not None:
         changes["notes"] = body.notes
@@ -114,6 +119,24 @@ async def upsert_domain(
     await session.commit()
     await session.refresh(domain)
     return _domain_to_out(domain)
+
+
+def _refuse_non_canonical(name: str) -> None:
+    """422 for a name no InfoSource could be filed under (CR 22).
+
+    Such a row would match no source, so suspending it would suppress nothing
+    while reading as done. The message names the spelling a source would carry.
+    """
+    try:
+        hint = source_hostname(f"https://{name}/")
+    except ValueError:
+        hint = None
+    suggestion = f"; did you mean {hint!r}?" if hint and hint != name else ""
+    raise_422(
+        f"{name!r} is not a canonical host name (lowercase, no port or path){suggestion}",
+        kind="domain",
+        errors=[FieldError(path="/name", message="not a canonical host name")],
+    )
 
 
 def _check_default_watch_spec(doc: dict) -> None:
