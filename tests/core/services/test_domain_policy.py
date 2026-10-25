@@ -39,19 +39,23 @@ async def _sweep_outbox(test_engine, committed_rows):
             )
 
 
-async def _until_a_backend_waits_on_a_lock(test_engine, *, timeout: float = 5.0) -> bool:
-    """CR 17: proof that a session is blocked on a lock, not merely unfinished."""
+async def _until_waiting_on_a_lock(
+    test_engine, pid: asyncio.Future, *, timeout: float = 5.0
+) -> bool:
+    """CR 17/25: proof that *this* backend is blocked on a lock, not merely
+    unfinished - and not some other backend in the test database."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
+    backend = await asyncio.wait_for(pid, timeout=timeout)
     async with test_engine.connect() as conn:
         while loop.time() < deadline:
             waiting = (
                 await conn.execute(
                     text(
                         "SELECT count(*) FROM pg_stat_activity"
-                        " WHERE datname = current_database() AND wait_event_type = 'Lock'"
-                        " AND pid <> pg_backend_pid()"
-                    )
+                        " WHERE pid = :pid AND wait_event_type = 'Lock'"
+                    ),
+                    {"pid": backend},
                 )
             ).scalar_one()
             # pg_stat_activity is snapshotted once per transaction: end it, or
@@ -61,6 +65,14 @@ async def _until_a_backend_waits_on_a_lock(test_engine, *, timeout: float = 5.0)
                 return True
             await asyncio.sleep(0.05)
     return False
+
+
+async def _deactivating(factory, host: str, pid: asyncio.Future) -> None:
+    """Deactivate ``host`` in a session of its own, publishing its backend pid."""
+    async with factory() as s:
+        pid.set_result((await s.execute(text("SELECT pg_backend_pid()"))).scalar_one())
+        await update_domain(s, host, {"is_active": False}, create=False)
+        await s.commit()
 
 
 async def _item_on(session, host: str = HOST, *, watch_active: bool | None = True) -> InfoItem:
@@ -221,11 +233,7 @@ async def test_a_binding_committed_while_the_write_waits_is_announced_inactive(
         ]
         item_id = item.info_item_id
 
-    async def _deactivate() -> None:
-        async with factory() as s:
-            await update_domain(s, host, {"is_active": False}, create=False)
-            await s.commit()
-
+    pid = asyncio.get_running_loop().create_future()
     binding = InfoItemSource(info_item_id=item_id, info_source_id=source.info_source_id)
     # Whatever fails, release both transactions: an open one holds row locks
     # that would hang teardown and every later test.
@@ -234,9 +242,9 @@ async def test_a_binding_committed_while_the_write_waits_is_announced_inactive(
         await binder.flush()
         committed_rows.append((InfoItemSource, binding.id))
         await announce_info_item(binder, item_id)  # holds the Domain row FOR KEY SHARE
-        writer = asyncio.create_task(_deactivate())
+        writer = asyncio.create_task(_deactivating(factory, host, pid))
         try:
-            waited = await _until_a_backend_waits_on_a_lock(test_engine)
+            waited = await _until_waiting_on_a_lock(test_engine, pid)
             await binder.commit()
             await asyncio.wait_for(writer, timeout=10)
         finally:
@@ -309,12 +317,8 @@ async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
 
     monkeypatch.setattr(domain_policy, "_host_items", _pausing_host_items)
 
-    async def _deactivate() -> None:
-        async with factory() as s:
-            await update_domain(s, host, {"is_active": False}, create=False)
-            await s.commit()
-
-    writer = asyncio.create_task(_deactivate())
+    pid = asyncio.get_running_loop().create_future()
+    writer = asyncio.create_task(_deactivating(factory, host, pid))
     async with factory() as binder, factory() as announcer:
         try:
             await asyncio.wait_for(paused.wait(), timeout=5)
@@ -330,7 +334,7 @@ async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
             release.set()
             # The write reaches N and blocks on it; only then may the announce
             # ask for the row, which is what would close the old cycle.
-            assert await _until_a_backend_waits_on_a_lock(test_engine)
+            assert await _until_waiting_on_a_lock(test_engine, pid)
             await announce_info_item(announcer, new_id)
             await announcer.commit()
             await asyncio.wait_for(writer, timeout=10)
