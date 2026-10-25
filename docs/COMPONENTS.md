@@ -106,13 +106,12 @@ only ever posted over HTMX.
 Reveal-once panel for a newly created API key.
 
 **State:**
-- `rawKey: string` - the one-time raw key value (set via `x-init`).
 - `copied: boolean` - clipboard copy feedback.
 
 **Methods:**
-- `copy()` - write `rawKey` to clipboard, set `copied = true` for 2 s.
+- `copy()` - write the text of `x-ref="key"` to the clipboard, set `copied = true` for 2 s.
 
-**Usage:** `x-data="apiKeyReveal" x-init="rawKey = '{{ new_raw_key }}'"` on the reveal section returned by `POST /dashboard/settings/api-keys`. `rawKey` is assigned directly in `x-init` (direct property assignment through the Alpine reactive proxy - do not use a method call from `x-init` as `this` is unbound). The raw key is embedded server-side in the one-time render; it is not stored client-side beyond the DOM lifetime.
+**Usage:** `x-data="apiKeyReveal"` on the reveal section returned by `POST /dashboard/settings/api-keys`, holding `<code x-ref="key">{{ new_raw_key }}</code>`. The key is server-rendered text (autoescaped), so it shows without JS and Copy reads exactly what is shown. Never quote it into an Alpine expression: `x-init="rawKey = {{ new_raw_key | tojson }}"` ended the attribute at `tojson`'s opening double quote, so the box rendered empty from #37 until the fix (`tests/js/api-key-reveal.test.js`). It is not stored client-side beyond the DOM lifetime.
 
 ## `infoItemWizard`
 
