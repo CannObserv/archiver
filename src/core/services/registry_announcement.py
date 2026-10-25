@@ -320,8 +320,8 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
                     select(Domain)
                     .where(Domain.name.in_(hosts))
                     .order_by(Domain.name)
-                    # KEY SHARE: only update_domain's FOR UPDATE conflicts, so a
-                    # notes edit never stalls an announce (CR 7, #360).
+                    # KEY SHARE: only a suspension write's FOR UPDATE conflicts;
+                    # notes and policy-field saves never stall an announce (CR 7, 24).
                     .with_for_update(read=True, key_share=True)
                     # The session may already hold this Domain (every source
                     # create loads it); without this the wait above would end

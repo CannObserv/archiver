@@ -448,3 +448,43 @@ async def test_a_write_that_cannot_flip_takes_no_item_locks(test_engine, committ
         finally:
             await writer.rollback()
             await holder.rollback()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "changes",
+    [{"notes": "n"}, {"min_interval_seconds": 3.0}, {"default_watch_spec": None}],
+)
+async def test_a_non_flipping_update_domain_does_not_block_an_announce(
+    test_engine, committed_rows, changes
+):
+    """CR 24: the fast path takes FOR NO KEY UPDATE, which an announce's KEY SHARE
+    does not wait on - only a write that can flip holds the row FOR UPDATE."""
+    host = "fastpath.example.test"
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        domain = Domain(name=host)
+        item = InfoItem(name="fastpath", watch_active=True)
+        source = InfoSource(url=f"https://{host}/x", source_specs=_SPECS, domain_name=host)
+        setup.add_all([domain, item, source])
+        await setup.flush()
+        binding = InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=source.info_source_id
+        )
+        setup.add(binding)
+        await setup.commit()
+        committed_rows += [
+            (Domain, domain.id),
+            (InfoSource, source.info_source_id),
+            (InfoItem, item.info_item_id),
+            (InfoItemSource, binding.id),
+        ]
+
+    async with factory() as writer, factory() as announcer:
+        try:
+            await update_domain(writer, host, changes, create=False)  # uncommitted
+            await asyncio.wait_for(announce_info_item(announcer, item.info_item_id), timeout=3)
+            await announcer.commit()
+        finally:
+            await announcer.rollback()
+            await writer.rollback()

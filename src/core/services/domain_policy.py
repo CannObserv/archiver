@@ -14,7 +14,8 @@ archiving an already-inactive host — emits nothing (the #167 rule).
 
 **Lock order: items, then the Domain row**, the order every announce takes
 them in (``registry_announcement``'s module docstring), for a write that
-touches ``SUSPENSION_COLUMNS``; any other write locks the row alone. Locking the items first
+touches ``SUSPENSION_COLUMNS``; any other write locks the row alone, ``FOR NO
+KEY UPDATE``, which announces never wait on. Locking the items first
 would still miss one bound to the host while this write waited for the row, so
 the host's items are re-read once the row is held: any announce that bound one
 held the row ``FOR KEY SHARE``, so it has committed by then and the re-read
@@ -80,7 +81,15 @@ _ATTEMPTS = 3
 """How many times the write re-locks before it locks a newcomer after the row."""
 
 
-async def _lock_row(session: AsyncSession, name: str, *, create: bool) -> Domain | None:
+async def _lock_row(
+    session: AsyncSession, name: str, *, create: bool, can_flip: bool = True
+) -> Domain | None:
+    """Insert the row if asked, then lock it.
+
+    ``FOR UPDATE`` for a write that can flip suspension: it is what an
+    announce's ``FOR KEY SHARE`` waits on. Any other write takes ``FOR NO KEY
+    UPDATE``, which announces do not wait on (CR 24).
+    """
     if create:
         await session.execute(
             pg_insert(Domain).values(name=name).on_conflict_do_nothing(index_elements=["name"])
@@ -89,7 +98,7 @@ async def _lock_row(session: AsyncSession, name: str, *, create: bool) -> Domain
         await session.execute(
             select(Domain)
             .where(Domain.name == name)
-            .with_for_update()
+            .with_for_update(key_share=not can_flip)
             .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
@@ -110,7 +119,7 @@ async def update_domain(
 
     if not changes.keys() & SUSPENSION_COLUMNS:
         # Cannot flip, so nothing to announce and no item lock to take (CR 13).
-        domain = await _lock_row(session, name, create=create)
+        domain = await _lock_row(session, name, create=create, can_flip=False)
         if domain is not None:
             for column, value in changes.items():
                 setattr(domain, column, value)
