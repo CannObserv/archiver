@@ -62,9 +62,11 @@ host's state as a required argument, the delta path reads the ``Domain`` rows
 beside the sources, and the snapshot outer-joins them.
 
 **Lock order: items, then domains.** Every announce locks its items, then reads
-their hosts' ``Domain`` rows ``FOR KEY SHARE``; a domain write
+their hosts' ``Domain`` rows ``FOR KEY SHARE``; a suspension write
 (``src.core.services.domain_policy``) locks the host's items, then the row
-``FOR UPDATE``. One order, so no cycle - the single exception is a host still
+``FOR UPDATE``. Any other domain write locks the row alone, ``FOR NO KEY
+UPDATE``, which an announce never waits on (CR 24, 31). One order, so no
+cycle - the single exception is a host still
 gaining items after the write's three tries (``domain_policy``), where
 Postgres's deadlock detector is the backstop - and an announce racing a suspension
 flip either waits for it or is waited on — it never builds from a state the
