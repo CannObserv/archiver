@@ -361,7 +361,8 @@ async def test_patch_refuses_a_name_no_source_could_carry(client, name, canonica
     """CR 22: a row no source matches would make suspension a silent no-op."""
     resp = await client.patch(f"/api/v1/domains/{name}", headers=HEADERS, json={})
     assert resp.status_code == 422, resp.text
-    assert canonical in resp.json()["detail"]["message"]
+    # The hint itself: the echoed name alone contains "example.com" (CR 33).
+    assert f"did you mean {canonical!r}" in resp.json()["detail"]["message"]
     assert (await client.get(f"/api/v1/domains/{name}", headers=HEADERS)).status_code == 404
 
 
