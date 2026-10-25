@@ -26,7 +26,6 @@ import json
 from collections import Counter
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -55,7 +54,7 @@ from src.core.tools.update_info_source_specs import (
     MixedAlgorithmFamilyError as UpdateMixedFamilyError,
 )
 from src.core.tools.update_info_source_specs import update_info_source_specs
-from src.core.url_canonicalization import canonicalize_url
+from src.core.url_canonicalization import canonicalize_url, source_hostname
 from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS, DEFAULT_CADENCE
 from src.dashboard.deps import get_dashboard_user
@@ -132,7 +131,7 @@ async def _check_url(session: AsyncSession, canonical: str) -> dict[str, Any]:
     candidate (archiver#51): its revision count, a specs summary, and any
     errors the current schema finds in its stored specs (#164).
     """
-    hostname = urlparse(canonical).hostname or ""
+    hostname = source_hostname(canonical) or ""
     domain_row = (
         await session.execute(select(Domain).where(Domain.name == hostname))
     ).scalar_one_or_none()
@@ -267,7 +266,7 @@ async def suggest_specs(
     if url:
         try:
             canonical = canonicalize_url(url)
-            hostname = urlparse(canonical).hostname or ""
+            hostname = source_hostname(canonical) or ""
         except ValueError:
             pass
 
