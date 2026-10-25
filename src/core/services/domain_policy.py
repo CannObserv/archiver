@@ -81,6 +81,12 @@ _ATTEMPTS = 3
 """How many times the write re-locks before it locks a newcomer after the row."""
 
 
+async def _insert_if_absent(session: AsyncSession, name: str) -> None:
+    await session.execute(
+        pg_insert(Domain).values(name=name).on_conflict_do_nothing(index_elements=["name"])
+    )
+
+
 async def _lock_row(
     session: AsyncSession, name: str, *, create: bool, can_flip: bool = True
 ) -> Domain | None:
@@ -91,9 +97,9 @@ async def _lock_row(
     UPDATE``, which announces do not wait on (CR 24).
     """
     if create:
-        await session.execute(
-            pg_insert(Domain).values(name=name).on_conflict_do_nothing(index_elements=["name"])
-        )
+        # A DELETE committing between this and the lock leaves no row: None,
+        # which the API answers with a 409 (CR 15, 26).
+        await _insert_if_absent(session, name)
     return (
         await session.execute(
             select(Domain)

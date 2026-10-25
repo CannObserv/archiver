@@ -492,3 +492,34 @@ async def test_a_non_flipping_update_domain_does_not_block_an_announce(
         finally:
             await announcer.rollback()
             await writer.rollback()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changes", [{"is_active": False}, {"notes": "n"}])
+async def test_a_create_racing_a_delete_returns_none(
+    test_engine, committed_rows, monkeypatch, changes
+):
+    """CR 26: the row is deleted and committed between the upsert's insert (a no-op,
+    the row existed) and its lock. The write sees no row and says so - the API
+    turns that into a 409 (CR 15) - rather than inventing one."""
+    host = "deleted-mid-upsert.example.test"
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        domain = Domain(name=host)
+        setup.add(domain)
+        await setup.commit()
+        committed_rows.append((Domain, domain.id))
+
+    real_insert = domain_policy._insert_if_absent
+
+    async def _insert_then_lose_the_row(session, name):
+        await real_insert(session, name)
+        async with test_engine.begin() as other:
+            await other.execute(
+                text("DELETE FROM information.domains WHERE name = :n"), {"n": name}
+            )
+
+    monkeypatch.setattr(domain_policy, "_insert_if_absent", _insert_then_lose_the_row)
+    async with factory() as s:
+        assert await update_domain(s, host, changes, create=True) is None
+        await s.rollback()
