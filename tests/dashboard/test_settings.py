@@ -1,5 +1,8 @@
 """Tests for GET/POST/DELETE/PATCH /dashboard/settings/api-keys."""
 
+import hashlib
+from html.parser import HTMLParser
+
 import pytest
 from sqlalchemy import select
 
@@ -71,6 +74,53 @@ async def test_post_create_key_returns_200_with_raw_key(client, session):
     result = await session.execute(select(ApiKey).where(ApiKey.label == "New key"))
     api_key = result.scalar_one_or_none()
     assert api_key is not None
+
+
+class _RevealedKey(HTMLParser):
+    """The text of the ``<code>`` inside the one-time reveal region, and every
+    attribute name the parser saw there (a stray one means broken quoting)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._depth = 0
+        self._in_code = False
+        self.text = ""
+        self.attr_names: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if self._depth or dict(attrs).get("aria-label") == "New API key":
+            self._depth += 1
+            self.attr_names += [name for name, _ in attrs]
+        self._in_code = self._in_code or (self._depth > 0 and tag == "code")
+
+    def handle_endtag(self, tag):
+        if self._depth:
+            self._depth -= 1
+        if tag == "code":
+            self._in_code = False
+
+    def handle_data(self, data):
+        if self._in_code:
+            self.text += data
+
+
+@pytest.mark.asyncio
+async def test_post_create_key_shows_the_raw_key_as_text(client, session):
+    """The reveal box shows the key itself, server-rendered, so copying never
+    depends on quoting it into an Alpine expression. ``x-init="rawKey =
+    {{ key | tojson }}"`` ended the attribute at the key's opening quote, and
+    the box rendered empty from #37 until this fix."""
+    response = await client.post(_URL, data={"label": "Shown key"}, headers=_HEADERS)
+    assert response.status_code == 200
+    stored = (
+        await session.execute(select(ApiKey).where(ApiKey.label == "Shown key"))
+    ).scalar_one()
+
+    reveal = _RevealedKey()
+    reveal.feed(response.text)
+    shown = reveal.text.strip()
+    assert hashlib.sha256(shown.encode()).hexdigest() == stored.key_hash
+    assert not [n for n in reveal.attr_names if n.startswith("co_")], reveal.attr_names
 
 
 @pytest.mark.asyncio
