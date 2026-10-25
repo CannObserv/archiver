@@ -5,7 +5,7 @@ Suspension is intent: an inactive or archived ``Domain`` resolves
 ``src.core.services.registry_announcement``). So a write that flips it is a
 policy write on each of those items, and it announces them in its own
 transaction — the API ``PATCH``, archive and restore, and the dashboard's
-archive and restore all come through ``update_domain``.
+archive, restore and fetch-policy save all come through ``update_domain``.
 
 **Only what changed is announced.** A flip touches the items whose resolved
 ``active`` moves: announceable, and ``watch_active`` not already ``false``. A
