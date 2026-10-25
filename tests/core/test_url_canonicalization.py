@@ -47,6 +47,7 @@ def test_invalid_url_raises():
         ("https://LCB.wa.gov/x", "lcb.wa.gov"),
         ("https://example.com:8080/x", "example.com"),
         ("https://user@example.com/", "example.com"),
+        ("https://[2001:DB8::1]:443/x", "2001:db8::1"),  # CR 23: brackets stripped
     ],
 )
 def test_source_hostname_is_what_create_info_source_files_a_source_under(url, host):
@@ -63,6 +64,10 @@ def test_source_hostname_is_what_create_info_source_files_a_source_under(url, ho
         ("user@example.com", False),
         ("example.com/path", False),
         ("", False),
+        ("2001:db8::1", True),  # CR 23: IPv6, as create_info_source files it
+        ("::1", True),
+        ("[::1]", False),
+        ("2001:DB8::1", False),
     ],
 )
 def test_a_domain_name_is_canonical_only_if_a_source_could_carry_it(name, ok):

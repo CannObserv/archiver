@@ -131,6 +131,11 @@ def _refuse_non_canonical(name: str) -> None:
         hint = source_hostname(f"https://{name}/")
     except ValueError:
         hint = None
+    if hint and ":" in name:  # an IPv6 spelling; "host:8080" -> "host" stays a useful hint
+        try:
+            hint = source_hostname(f"https://[{name}]/")
+        except ValueError:
+            pass
     suggestion = f"; did you mean {hint!r}?" if hint and hint != name else ""
     raise_422(
         f"{name!r} is not a canonical host name (lowercase, no port or path){suggestion}",

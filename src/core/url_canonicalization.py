@@ -60,7 +60,10 @@ def is_canonical_hostname(name: str) -> bool:
     matches no source, so suspending it would suppress nothing (archiver#360,
     CR 22). The test is the round trip through ``source_hostname``.
     """
+    # An IPv6 literal is filed without its brackets, so it round-trips with them
+    # (CR 23); a bracketed non-IP such as "host:8080" raises, so it still fails.
+    authority = f"[{name}]" if ":" in name else name
     try:
-        return bool(name) and source_hostname(f"https://{name}/") == name
+        return bool(name) and source_hostname(f"https://{authority}/") == name
     except ValueError:
         return False

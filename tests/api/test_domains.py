@@ -351,7 +351,11 @@ async def test_patch_racing_a_delete_is_a_409_not_a_500(client, monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("name", "canonical"),
-    [("Example.com", "example.com"), ("example.com:8080", "example.com")],
+    [
+        ("Example.com", "example.com"),
+        ("example.com:8080", "example.com"),
+        ("2001:DB8::1", "2001:db8::1"),  # CR 23: the hint keeps IPv6 whole
+    ],
 )
 async def test_patch_refuses_a_name_no_source_could_carry(client, name, canonical):
     """CR 22: a row no source matches would make suspension a silent no-op."""
@@ -359,3 +363,10 @@ async def test_patch_refuses_a_name_no_source_could_carry(client, name, canonica
     assert resp.status_code == 422, resp.text
     assert canonical in resp.json()["detail"]["message"]
     assert (await client.get(f"/api/v1/domains/{name}", headers=HEADERS)).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_accepts_an_ipv6_host_as_sources_carry_it(client):
+    """CR 23: create_info_source files https://[2001:db8::1]/ under 2001:db8::1."""
+    resp = await client.patch("/api/v1/domains/2001:db8::1", headers=HEADERS, json={})
+    assert resp.status_code == 200, resp.text
