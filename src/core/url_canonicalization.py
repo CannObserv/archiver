@@ -58,7 +58,10 @@ def is_canonical_hostname(name: str) -> bool:
 
     A Domain row under any other spelling (``Example.com``, ``host:8080``)
     matches no source, so suspending it would suppress nothing (archiver#360,
-    CR 22). The test is the round trip through ``source_hostname``.
+    CR 22). The test is the round trip through ``source_hostname`` and nothing
+    stricter: it refuses case, port, userinfo and path, but not a name that
+    is no valid DNS host (``a_b.com``) - such a URL files its source under
+    exactly that name, so the Domain must be able to match it (CR 30).
     """
     # An IPv6 literal is filed without its brackets, so it round-trips with them
     # (CR 23); a bracketed non-IP such as "host:8080" raises, so it still fails.
