@@ -112,9 +112,7 @@ async def test_post_create_key_shows_the_raw_key_as_text(client, session):
     the box rendered empty from #37 until this fix."""
     response = await client.post(_URL, data={"label": "Shown key"}, headers=_HEADERS)
     assert response.status_code == 200
-    stored = (
-        await session.execute(select(ApiKey).where(ApiKey.label == "Shown key"))
-    ).scalar_one()
+    stored = (await session.execute(select(ApiKey).where(ApiKey.label == "Shown key"))).scalar_one()
 
     reveal = _RevealedKey()
     reveal.feed(response.text)
