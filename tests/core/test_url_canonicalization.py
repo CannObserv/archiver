@@ -1,6 +1,10 @@
 import pytest
 
-from src.core.url_canonicalization import canonicalize_url
+from src.core.url_canonicalization import (
+    canonicalize_url,
+    is_canonical_hostname,
+    source_hostname,
+)
 
 
 @pytest.mark.parametrize(
@@ -32,3 +36,39 @@ def test_strip_query_keys_preserves_order():
 def test_invalid_url_raises():
     with pytest.raises(ValueError):
         canonicalize_url("not a url")
+
+
+# --- The host a source is filed under (archiver#360, CR 22) ---
+
+
+@pytest.mark.parametrize(
+    ("url", "host"),
+    [
+        ("https://LCB.wa.gov/x", "lcb.wa.gov"),
+        ("https://example.com:8080/x", "example.com"),
+        ("https://user@example.com/", "example.com"),
+        ("https://[2001:DB8::1]:443/x", "2001:db8::1"),  # CR 23: brackets stripped
+    ],
+)
+def test_source_hostname_is_what_create_info_source_files_a_source_under(url, host):
+    assert source_hostname(url) == host
+
+
+@pytest.mark.parametrize(
+    ("name", "ok"),
+    [
+        ("lcb.wa.gov", True),
+        ("bücher.de", True),
+        ("Example.com", False),
+        ("example.com:8080", False),
+        ("user@example.com", False),
+        ("example.com/path", False),
+        ("", False),
+        ("2001:db8::1", True),  # CR 23: IPv6, as create_info_source files it
+        ("::1", True),
+        ("[::1]", False),
+        ("2001:DB8::1", False),
+    ],
+)
+def test_a_domain_name_is_canonical_only_if_a_source_could_carry_it(name, ok):
+    assert is_canonical_hostname(name) is ok

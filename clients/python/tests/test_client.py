@@ -101,6 +101,8 @@ def _domain_payload(
     notes: str | None = None,
     is_active: bool = True,
     archived_at: str | None = None,
+    min_interval_seconds: float = 1.0,
+    default_watch_spec: dict | None = None,
 ) -> dict:
     return {
         "id": "01HZZ0000000000000000000AA",
@@ -108,6 +110,8 @@ def _domain_payload(
         "notes": notes,
         "is_active": is_active,
         "archived_at": archived_at,
+        "min_interval_seconds": min_interval_seconds,
+        "default_watch_spec": default_watch_spec,
         "created_at": _TS,
         "updated_at": _TS,
     }
@@ -813,6 +817,38 @@ async def test_upsert_domain_omits_unset_fields(client):
     sent_body = route.calls[0].request.read()
     assert b'"notes"' not in sent_body
     assert b'"is_active"' not in sent_body
+
+
+@pytest.mark.asyncio
+async def test_upsert_domain_sends_the_fetch_policy_fields(client):
+    spec = {"schema_version": 1, "interval": "6h"}
+    with respx.mock:
+        route = respx.patch(f"{BASE_URL}/api/v1/domains/example.com").mock(
+            return_value=httpx.Response(
+                200, json=_domain_payload(min_interval_seconds=2.5, default_watch_spec=spec)
+            )
+        )
+        out = await client.upsert_domain(
+            "example.com", min_interval_seconds=2.5, default_watch_spec=spec
+        )
+    assert json.loads(route.calls[0].request.read()) == {
+        "min_interval_seconds": 2.5,
+        "default_watch_spec": spec,
+    }
+    assert out.min_interval_seconds == 2.5
+    assert out.default_watch_spec.to_dict() == spec
+
+
+@pytest.mark.asyncio
+async def test_upsert_domain_none_cadence_clears_and_omitted_leaves_it(client):
+    with respx.mock:
+        route = respx.patch(f"{BASE_URL}/api/v1/domains/example.com").mock(
+            return_value=httpx.Response(200, json=_domain_payload())
+        )
+        await client.upsert_domain("example.com", default_watch_spec=None)
+        await client.upsert_domain("example.com")
+    assert json.loads(route.calls[0].request.read()) == {"default_watch_spec": None}
+    assert json.loads(route.calls[1].request.read()) == {}
 
 
 @pytest.mark.asyncio

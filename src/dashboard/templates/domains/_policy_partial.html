@@ -1,0 +1,60 @@
+{# Fetch policy — a row of the domain header .entity-card (archiver#360),
+   swapped in place by the HTMX save (id target), like the notes row above it.
+
+   Both fields are DARK: stored and editable, read by nothing yet. The copy
+   says where each takes effect so an operator does not edit one expecting a
+   change on the wire.
+
+   The cadence select offers the dashboard's vocabulary (src/dashboard/cadence.py)
+   plus the stored interval when it is outside it (an import or an API write),
+   so re-saving never refuses the value already there. `stored_interval` comes
+   from the route (`_stored_interval`), which tolerates a malformed stored row.
+
+   Progressive enhancement: method/action fallback posts the same form. #}
+<div id="policy-section" style="margin-top:var(--space-4);">
+  <h2 id="domain-policy-heading" tabindex="-1" class="notes-heading">Fetch policy</h2>
+  <p class="text-muted text-sm" style="margin:0 0 var(--space-2);">
+    Stored, not yet live. The minimum interval takes effect when Archiver publishes
+    <code>content.fetch-policy</code> (#366, flip F1); until then Watcher's value applies,
+    and the re-import before F1 overwrites an edit made here. The default cadence takes
+    effect with cadence resolution (#364, flip F2).
+  </p>
+  <form class="field-row" style="align-items:flex-end;"
+        hx-post="/dashboard/domains/{{ domain.name }}/fetch-policy"
+        hx-target="#policy-section" hx-swap="outerHTML"
+        method="POST" action="/dashboard/domains/{{ domain.name }}/fetch-policy">
+    <div>
+      <label class="form-label" for="policy-min-interval">Minimum interval (seconds)</label>
+      <input id="policy-min-interval" name="min_interval_seconds" type="number"
+             min="0" step="any" required
+             class="form-input form-input--inline"
+             value="{{ domain.min_interval_seconds }}">
+    </div>
+    <div>
+      <label class="form-label" for="policy-cadence">Default cadence</label>
+      <select id="policy-cadence" name="default_interval" class="form-select form-select--sm">
+        <option value=""{% if not stored_interval %} selected{% endif %}>None (no domain default)</option>
+        {% for value, label in cadence_labels.items() %}
+        <option value="{{ value }}"{% if value == stored_interval %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+        {% if stored_interval and stored_interval not in cadence_labels %}
+        <option value="{{ stored_interval }}" selected>{{ stored_interval }}</option>
+        {% endif %}
+      </select>
+    </div>
+    <div class="field-row__actions">
+      <button type="submit" class="btn btn--sm btn--primary">Save</button>
+    </div>
+  </form>
+
+  {% if swapped %}
+  {# Swap response only: move focus off the removed Save button to the heading
+     (docs/SCREENS.md HTMX mutations). Never on full page load. #}
+  <script>
+    (function () {
+      var h = document.getElementById("domain-policy-heading");
+      if (h) { h.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>

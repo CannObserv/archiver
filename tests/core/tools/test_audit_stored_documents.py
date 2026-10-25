@@ -22,7 +22,7 @@ import pytest
 from sqlalchemy import JSON, text
 from ulid import ULID
 
-from src.core.models import InfoItem, InfoItemRepSpec, InfoSource, RepSpec
+from src.core.models import Domain, InfoItem, InfoItemRepSpec, InfoSource, RepSpec
 from src.core.models.base import Base
 from src.core.models.pm_organization import PmOrganization
 from src.core.tools.audit_stored_documents import (
@@ -182,6 +182,26 @@ async def test_sweep_finds_invalid_watch_spec(session):
     [finding] = _mine(report.findings, item.info_item_id)
     assert finding.kind == "watch_spec"
     assert finding.index is None
+
+
+@pytest.mark.asyncio
+async def test_sweep_judges_a_domain_cadence_as_its_write_path_does(session):
+    """archiver#360: a WatchSpec v1 document that must carry ``interval``; NULL is no default."""
+    bad = Domain(name="bad.audit360.test", default_watch_spec={"schema_version": 1, "x": 1})
+    bare = Domain(name="bare.audit360.test", default_watch_spec={"schema_version": 1})
+    good = Domain(
+        name="good.audit360.test", default_watch_spec={"schema_version": 1, "interval": "6h"}
+    )
+    unset = Domain(name="unset.audit360.test")
+    session.add_all([bad, bare, good, unset])
+    await session.flush()
+
+    report = await audit_stored_documents(session)
+
+    found = {f.row_id: f for f in _mine(report.findings, bad.id, bare.id, good.id, unset.id)}
+    assert set(found) == {str(bad.id), str(bare.id)}
+    assert {f.kind for f in found.values()} == {"domain_watch_spec"}
+    assert "interval" in found[str(bare.id)].errors[0]["message"]
 
 
 @pytest.mark.asyncio
@@ -439,6 +459,7 @@ async def _seed_one_invalid_of_each_kind(session) -> None:
                 url="https://example.com/e164", source_specs=[_valid_spec(), _legacy_spec()]
             ),
             RepSpec(provider="gcs", name="r164", schema_version=1, document={"provider": 5}),
+            Domain(name="e164.example.test", default_watch_spec={"schema_version": 1}),
             spec,
             item,
         ]

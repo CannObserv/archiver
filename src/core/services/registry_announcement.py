@@ -51,6 +51,27 @@ ambiguous and the drift detector read an unapplied item as clean. Keep the bump
 above the build; do not add a path that emits a generation it read rather than
 incremented. ``0`` in the *column* still means never announced.
 
+**A suspended host resolves ``active=false``** (archiver#360, design D4). An
+inactive or archived ``Domain`` — ``domain_suspended``, the one predicate —
+overrides ``watch_active`` on every item whose *announcing* source (the active
+binding's) names that host; ``resolved_active`` applies it. On an active host
+``watch_active`` passes through unchanged, ``NULL`` included: "no opinion yet"
+is not "active". A host with no ``Domain`` row is active (``domain_name`` has
+no FK). Both emit paths resolve here: ``build_live_announcement`` takes the
+host's state as a required argument, the delta path reads the ``Domain`` rows
+beside the sources, and the snapshot outer-joins them.
+
+**Lock order: items, then domains.** Every announce locks its items, then reads
+their hosts' ``Domain`` rows ``FOR KEY SHARE``; a suspension write
+(``src.core.services.domain_policy``) locks the host's items, then the row
+``FOR UPDATE``. Any other domain write locks the row alone, ``FOR NO KEY
+UPDATE``, which an announce never waits on (CR 24, 31). One order, so no
+cycle - the single exception is a host still
+gaining items after the write's three tries (``domain_policy``), where
+Postgres's deadlock detector is the backstop - and an announce racing a suspension
+flip either waits for it or is waited on — it never builds from a state the
+flip is about to replace.
+
 **Deletion** (``announce_info_item_revoked``) additionally records a
 ``RevokedInfoItem`` row, because the item row is about to be gone and the
 snapshot's full-set republish must keep tombstoning the key — absence from a
@@ -68,6 +89,7 @@ from ulid import ULID
 
 from src.core.models import (
     ChangesOutboxRow,
+    Domain,
     InfoItem,
     InfoItemSource,
     InfoSource,
@@ -77,14 +99,31 @@ from src.core.models import (
 INFO_REGISTRY_TOPIC = INFO_REGISTRY
 
 
+def domain_suspended(domain: Domain | None) -> bool:
+    """Whether ``domain`` suspends its host: inactive or archived.
+
+    Watcher's ``Domain.is_suspended``, the same two states. ``None`` (no row
+    for the host) is not suspended. #366's fetch-policy tombstone reads this
+    too, so ``info.registry`` and ``content.fetch-policy`` cannot disagree.
+    """
+    return domain is not None and (domain.archived_at is not None or not domain.is_active)
+
+
+def resolved_active(watch_active: bool | None, *, host_suspended: bool) -> bool | None:
+    """The announced ``active``: ``False`` on a suspended host, else ``watch_active``."""
+    return False if host_suspended else watch_active
+
+
 def build_live_announcement(
-    *, item: InfoItem, source: InfoSource, generation: int
+    *, item: InfoItem, source: InfoSource, generation: int, host_suspended: bool
 ) -> RegistryAnnouncementEmit:
     """One payload shape for both emit paths — delta (here) and snapshot.
 
     Two builders would drift, and the failure directions differ: a delta that
     diverges dead-letters loudly in the outbox build phase, but the snapshot
     publishes directly, so its divergence would reach the stream.
+    ``host_suspended`` is required for the same reason: a default would let one
+    path forget the host.
     """
     return RegistryAnnouncementEmit(
         occurred_at=datetime.now(UTC),
@@ -93,7 +132,7 @@ def build_live_announcement(
         info_source_id=str(source.info_source_id),
         url=source.url,
         source_specs=source.source_specs,
-        active=item.watch_active,
+        active=resolved_active(item.watch_active, host_suspended=host_suspended),
         watch_spec=item.watch_spec,
     )
 
@@ -218,17 +257,30 @@ async def announce_policy_change(session: AsyncSession, info_item_id: ULID) -> b
     return await _announce_many(session, [info_item_id], revoke=False) > 0
 
 
+async def announce_policy_changes(session: AsyncSession, item_ids: Sequence[ULID]) -> int:
+    """``announce_policy_change`` over a set, in one batch; returns how many emitted.
+
+    The domain fan-out's entry point (archiver#360): a suspension flip is a
+    policy write on every item of the host — it changes ``active``, never
+    announceability.
+    """
+    return await _announce_many(session, item_ids, revoke=False)
+
+
 async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, revoke: bool) -> int:
     """Announce each item's current state; returns how many announcements went out.
 
     The one emit path, for a single item and a fan-out alike, in a fixed number
-    of statements however many items: lock, read the active sources, bump, and
-    hydrate the live items (CR round 3, #14). Missing ids are skipped silently.
+    of statements however many items: lock, read the active sources, read
+    their hosts, bump, and hydrate the live items (CR round 3, #14). Missing ids
+    are skipped silently.
 
     The lock comes first, so a concurrent binding or policy write serializes
     behind it and the state read is the state announced. It is taken in id
     order: two fan-outs over overlapping item sets acquire their row locks in
-    the same sequence, so neither can hold one the other is waiting on.
+    the same sequence, so neither can hold one the other is waiting on. The
+    hosts' ``Domain`` rows are read ``FOR KEY SHARE`` after it — the module
+    docstring's lock order.
     """
     if not item_ids:
         return 0
@@ -261,6 +313,29 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
         .all()
     )
 
+    hosts = sorted({s.domain_name for s in sources.values() if s.domain_name is not None})
+    domains = (
+        {
+            d.name: d
+            for d in (
+                await session.execute(
+                    select(Domain)
+                    .where(Domain.name.in_(hosts))
+                    .order_by(Domain.name)
+                    # KEY SHARE: only a suspension write's FOR UPDATE conflicts;
+                    # notes and policy-field saves never stall an announce (CR 7, 24).
+                    .with_for_update(read=True, key_share=True)
+                    # The session may already hold this Domain (every source
+                    # create loads it); without this the wait above would end
+                    # on the stale object, not the committed row (CR 1, #360).
+                    .execution_options(populate_existing=True)
+                )
+            ).scalars()
+        }
+        if hosts
+        else {}
+    )
+
     live: list[ULID] = []
     tombstoned: list[ULID] = []
     for info_item_id, current, already_revoked in locked:
@@ -288,10 +363,12 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
     )
     for info_item_id, _current, _revoked in locked:
         if info_item_id in items:
+            source = sources[info_item_id]
             event = build_live_announcement(
                 item=items[info_item_id],
-                source=sources[info_item_id],
+                source=source,
                 generation=generations[info_item_id],
+                host_suspended=domain_suspended(domains.get(source.domain_name)),
             )
         elif info_item_id in generations:
             event = build_tombstone(info_item_id=info_item_id, generation=generations[info_item_id])

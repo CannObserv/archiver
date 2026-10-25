@@ -663,3 +663,54 @@ async def test_api_policy_set_before_binding_rides_the_first_live_announcement(c
     assert payload["revoked"] is False
     assert payload["watch_spec"] == {"schema_version": 1, "interval": "6h"}
     assert payload["active"] is False
+
+
+# --- Domain suspension (archiver#360) ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_domain_patch_deactivation_announces_its_items_inactive(client, session):
+    item_id, _source_id = await _make_bound_item(client)
+
+    resp = await client.patch(
+        "/api/v1/domains/example.com", headers=HEADERS, json={"is_active": False}
+    )
+    assert resp.status_code == 200, resp.text
+
+    rows = sorted(await _registry_rows(session), key=lambda p: p["generation"])
+    assert rows[-1]["info_item_id"] == item_id
+    assert rows[-1]["active"] is False
+    assert rows[-1]["revoked"] is False
+
+
+@pytest.mark.asyncio
+async def test_domain_patch_that_flips_nothing_announces_nothing(client, session):
+    await _make_bound_item(client)
+    before = len(await _registry_rows(session))
+
+    resp = await client.patch(
+        "/api/v1/domains/example.com",
+        headers=HEADERS,
+        json={"is_active": True, "notes": "n", "min_interval_seconds": 4.0},
+    )
+    assert resp.status_code == 200, resp.text
+
+    assert len(await _registry_rows(session)) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix", ["/api/v1/domains", "/dashboard/domains"])
+async def test_domain_archive_and_restore_announce_both_ways(client, session, prefix):
+    item_id, _source_id = await _make_bound_item(client)
+    headers = HEADERS if prefix.startswith("/api") else DASH_HEADERS
+    resting = (await _registry_rows(session))[-1]["active"]
+
+    for action in ("archive", "restore"):
+        resp = await client.post(
+            f"{prefix}/example.com/{action}", headers=headers, follow_redirects=False
+        )
+        assert resp.status_code in (200, 303), resp.text
+
+    rows = sorted(await _registry_rows(session), key=lambda p: p["generation"])
+    assert [r["info_item_id"] for r in rows[-2:]] == [item_id, item_id]
+    assert [r["active"] for r in rows[-2:]] == [False, resting]

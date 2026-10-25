@@ -18,6 +18,29 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.33.0 (2026-10-24)
+
+[both] **Domains: Archiver becomes the sole owner of per-host policy (archiver#360, design D4).** Migration `173c1af91def`; SDK 5.12.0.
+
+- **`is_active` changes meaning (not additive).** An inactive *or* archived Domain now suspends its host. Every Information Item announced on that host goes out on `info.registry` with `active=false`, whatever its own `watch_active`. Before this, `is_active` was described as gating suggestions, but nothing read it.
+  - **Which host counts:** the host of the item's active binding.
+  - **On an active host,** `watch_active` passes through unchanged, `null` included.
+  - **A host with no Domain row** counts as active.
+- **A suspension flip announces in the same transaction.** `PATCH /domains/{name}` (`is_active`), `POST …/archive`, `POST …/restore` and the dashboard's archive/restore each re-announce every item whose resolved `active` changed, through the policy path. They never tombstone.
+  - A write that flips nothing emits nothing: notes, the new fields, or archiving an already-inactive host.
+  - The hourly snapshot resolves `active` by the same rule.
+  - At deploy all 3 production domains are active, so no frame changes.
+- **New fields, additive on `DomainOut` and `DomainPatch`.** Both are stored and editable but **dark**: no producer reads them yet.
+  - `min_interval_seconds`: float, finite, `>= 0`, NOT NULL, default `1.0` (Watcher's default). It takes effect when Archiver produces `content.fetch-policy` (#366, flip F1). Until then Watcher's value is live, and the re-import before F1 overwrites an edit.
+  - `default_watch_spec`: a WatchSpec v1 document that must carry `interval`, or `null`. It takes effect with cadence resolution (#364, flip F2).
+  - **On `PATCH`:** an omitted field is untouched, `default_watch_spec: null` clears it, and `min_interval_seconds: null`, a negative, `Infinity` or `NaN` is a 422. A `PATCH` that races a `DELETE` of the same host answers 409 `conflict`.
+- **`PATCH /domains/{name}` now refuses a non-canonical name (tightening, not additive).** `Example.com`, `host:8080` or `user@host` is a 422 (`kind: domain`), and the message names the canonical spelling. Such a row matched no InfoSource, so suspending it would have suppressed nothing. The rule is the round trip through the hostname a source is filed under (`is_canonical_hostname`). All production names already pass.
+- **SDK 5.12.0:** `upsert_domain(…, min_interval_seconds=None, default_watch_spec=UNSET)`. Passing `default_watch_spec=None` clears it, and omitting it leaves it alone. `DomainOut` gains both fields, so this SDK needs service ≥ 4.33.0 to parse a Domain.
+- **Importer:** `python -m src.core.tools.import_watcher_domains --base-url URL [--dry-run]` reads Watcher's export on stdin and upserts by host through the API. It's operator-run.
+- **Dashboard** (no contract change):
+  - domain detail gains a **Fetch policy** row, and its status says that a suspended host announces its items paused;
+  - the item watch panel compares Watcher's applied pause with the *announced* `active`, so a suspended host no longer reads as "Resume pending". It also hides Pause/Resume while the host is suspended.
+
 ## v4.32.1 (2026-10-23)
 
 [both] **Both locks re-locked clear of runtime advisories, and a weekly lock audit (archiver#420).** Routes, schemas and the `archiver-client` surface are unchanged, so there's no SDK bump. No specifier moved: every fix was inside the existing caps.

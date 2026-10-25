@@ -92,7 +92,7 @@ def sync_detailed(
 ) -> Response[DomainOut | EnvelopeResponse]:
     """Restore Domain
 
-     Clear archived_at on a Domain.
+     Clear archived_at on a Domain; resumes the host unless it is inactive.
 
     Args:
         name (str):
@@ -123,7 +123,7 @@ def sync(
 ) -> DomainOut | EnvelopeResponse | None:
     """Restore Domain
 
-     Clear archived_at on a Domain.
+     Clear archived_at on a Domain; resumes the host unless it is inactive.
 
     Args:
         name (str):
@@ -149,7 +149,7 @@ async def asyncio_detailed(
 ) -> Response[DomainOut | EnvelopeResponse]:
     """Restore Domain
 
-     Clear archived_at on a Domain.
+     Clear archived_at on a Domain; resumes the host unless it is inactive.
 
     Args:
         name (str):
@@ -178,7 +178,7 @@ async def asyncio(
 ) -> DomainOut | EnvelopeResponse | None:
     """Restore Domain
 
-     Clear archived_at on a Domain.
+     Clear archived_at on a Domain; resumes the host unless it is inactive.
 
     Args:
         name (str):

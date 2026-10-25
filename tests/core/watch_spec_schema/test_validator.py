@@ -1,6 +1,12 @@
 """WatchSpec validator wrapper tests."""
 
-from src.core.watch_spec_schema.validator import DEFAULT_WATCH_SPEC, validate_watch_spec
+import pytest
+
+from src.core.watch_spec_schema.validator import (
+    DEFAULT_WATCH_SPEC,
+    validate_domain_watch_spec,
+    validate_watch_spec,
+)
 
 
 def test_validate_watch_spec_ok_without_interval():
@@ -78,3 +84,22 @@ def test_default_watch_spec_is_valid_and_carries_no_interval():
     ok, errs = validate_watch_spec(DEFAULT_WATCH_SPEC)
     assert ok is True, errs
     assert "interval" not in DEFAULT_WATCH_SPEC
+
+
+# --- A Domain's default cadence (archiver#360) ---
+
+
+@pytest.mark.parametrize(
+    ("doc", "ok"),
+    [
+        ({"schema_version": 1, "interval": "6h"}, True),
+        ({"schema_version": 1}, False),  # no interval: NULL says "no default"
+        ({"schema_version": 1, "interval": "6 hours"}, False),
+        ({"schema_version": 1, "interval": "6h", "active": False}, False),
+        ({"interval": "6h"}, False),  # Watcher's ScheduleConfig shape
+    ],
+)
+def test_domain_watch_spec_is_a_watch_spec_that_carries_an_interval(doc, ok):
+    valid, errors = validate_domain_watch_spec(doc)
+    assert valid is ok
+    assert bool(errors) is not ok

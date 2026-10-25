@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core.models import InfoItem, SourceRevision, WatchStatus
+from src.core.models import Domain, InfoItem, SourceRevision, WatchStatus
 
 _HEADERS = {"X-ExeDev-UserID": "ext-section", "X-ExeDev-Email": "section@example.com"}
 _STATUS_TS = datetime(2026, 6, 11, 11, 0, tzinfo=UTC)
@@ -692,3 +692,53 @@ async def test_both_actions_move_focus_to_the_heading(client, session, bind_sour
     handlers = r.text.count("watcher-heading")
     assert handlers == 2, f"expected the pause and cadence forms to move focus, found {handlers}"
     assert "hx-on::after-request" in r.text
+
+
+# ---------------------------------------------------------------------------
+# Host suspension (archiver#360)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("partial", ["watcher-section", "watcher-status"])
+async def test_item_on_a_suspended_host_says_so_and_offers_no_toggle(
+    client, session, bind_source, partial
+):
+    host = f"suspended-{partial}.example.test"
+    session.add(Domain(name=host, is_active=False))
+    item = InfoItem(name="suspended", watch_active=True)
+    session.add(item)
+    await session.flush()
+    src = await bind_source(session, item, slug=partial)
+    src.domain_name = host
+    _seed_status(session, item, applied_active=False)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/{partial}", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert f'href="/dashboard/domains/{host}"' in r.text
+    assert "suspended" in r.text
+    assert "toggle-watch-active" not in r.text
+    assert "Resume pending" not in r.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("partial", ["watcher-section", "watcher-status"])
+async def test_no_status_item_on_a_suspended_host_says_so_too(
+    client, session, bind_source, partial
+):
+    """Announced but never reported: still announced paused, so say why."""
+    host = f"suspended-nostatus-{partial}.example.test"
+    session.add(Domain(name=host, archived_at=_STATUS_TS))
+    item = InfoItem(name="suspended-nostatus", watch_active=True)
+    session.add(item)
+    await session.flush()
+    src = await bind_source(session, item, slug=f"nostatus-{partial}")
+    src.domain_name = host
+    await session.flush()
+
+    r = await client.get(f"/dashboard/info-items/{item.info_item_id}/{partial}", headers=_HEADERS)
+
+    assert "NO STATUS YET" in r.text
+    assert f'href="/dashboard/domains/{host}"' in r.text

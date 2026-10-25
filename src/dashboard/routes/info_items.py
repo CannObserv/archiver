@@ -18,6 +18,7 @@ from src.api.deps import get_db_session, get_power_map
 from src.api.errors import raise_envelope
 from src.core.logging import get_logger
 from src.core.models import (
+    Domain,
     InfoItem,
     InfoItemRepSpec,
     InfoItemSource,
@@ -35,6 +36,7 @@ from src.core.services.registry_announcement import (
     announce_info_item,
     announce_policy_change,
     announceable_specs_clause,
+    domain_suspended,
     is_announceable,
 )
 from src.core.services.replication_issuance import (
@@ -1699,7 +1701,21 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
     ).one()  # an aggregate with no GROUP BY yields exactly one row, even on empty input
     last_changed_at = aggregate.last_changed_at
     has_active_source = aggregate.has_active_source
+    # The announcing source's host, judged by the rule the announcement uses
+    # (archiver#360): a suspended host announces the item paused.
+    host = (
+        await session.execute(
+            select(Domain)
+            .join(InfoSource, InfoSource.domain_name == Domain.name)
+            .join(InfoItemSource, InfoItemSource.info_source_id == InfoSource.info_source_id)
+            .where(
+                InfoItemSource.info_item_id == item.info_item_id,
+                InfoItemSource.deactivated_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
     watch = build_watch_context(
+        suspended_by=host.name if domain_suspended(host) else None,
         is_announceable=has_active_source,
         item=item,
         status=status,

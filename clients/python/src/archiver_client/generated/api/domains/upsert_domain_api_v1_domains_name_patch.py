@@ -104,11 +104,19 @@ def sync_detailed(
 
      Upsert a Domain by hostname.
 
-    Creates on first call. Updates notes and/or is_active on subsequent calls.
+    Creates on first call. Updates only the fields sent; ``default_watch_spec:
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
 
     Args:
         name (str):
         body (DomainPatch): Request body for PATCH /domains/{name} — upsert fields.
+
+            An omitted field is left as it is. ``default_watch_spec: null`` clears the
+            cadence; ``min_interval_seconds`` cannot be null (every host carries an
+            explicit policy).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -140,11 +148,19 @@ def sync(
 
      Upsert a Domain by hostname.
 
-    Creates on first call. Updates notes and/or is_active on subsequent calls.
+    Creates on first call. Updates only the fields sent; ``default_watch_spec:
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
 
     Args:
         name (str):
         body (DomainPatch): Request body for PATCH /domains/{name} — upsert fields.
+
+            An omitted field is left as it is. ``default_watch_spec: null`` clears the
+            cadence; ``min_interval_seconds`` cannot be null (every host carries an
+            explicit policy).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -171,11 +187,19 @@ async def asyncio_detailed(
 
      Upsert a Domain by hostname.
 
-    Creates on first call. Updates notes and/or is_active on subsequent calls.
+    Creates on first call. Updates only the fields sent; ``default_watch_spec:
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
 
     Args:
         name (str):
         body (DomainPatch): Request body for PATCH /domains/{name} — upsert fields.
+
+            An omitted field is left as it is. ``default_watch_spec: null`` clears the
+            cadence; ``min_interval_seconds`` cannot be null (every host carries an
+            explicit policy).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -205,11 +229,19 @@ async def asyncio(
 
      Upsert a Domain by hostname.
 
-    Creates on first call. Updates notes and/or is_active on subsequent calls.
+    Creates on first call. Updates only the fields sent; ``default_watch_spec:
+    null`` clears the cadence. ``name`` must be a canonical host name - the
+    lowercase, port-less form an InfoSource is filed under - or it is a 422.
+    A change to ``is_active`` that suspends or resumes the host announces its
+    items (archiver#360).
 
     Args:
         name (str):
         body (DomainPatch): Request body for PATCH /domains/{name} — upsert fields.
+
+            An omitted field is left as it is. ``default_watch_spec: null`` clears the
+            cadence; ``min_interval_seconds`` cannot be null (every host carries an
+            explicit policy).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

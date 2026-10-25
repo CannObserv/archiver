@@ -15,10 +15,12 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 |---|---|---|
 | List Domains | `GET /domains?is_active=&archived=&limit=&offset=` | `list_domains(is_active=None, archived=None, limit=None, offset=None)` |
 | Get a Domain | `GET /domains/{name}` | `get_domain(name)` |
-| Upsert a Domain | `PATCH /domains/{name}` | `upsert_domain(name, notes=None, is_active=None)` |
+| Upsert a Domain | `PATCH /domains/{name}` | `upsert_domain(name, notes=None, is_active=None, min_interval_seconds=None, default_watch_spec=UNSET)` |
 | Delete a Domain | `DELETE /domains/{name}` | `delete_domain(name)` (409 if sources exist) |
 | Archive a Domain | `POST /domains/{name}/archive` | `archive_domain(name)` |
 | Restore a Domain | `POST /domains/{name}/restore` | `restore_domain(name)` |
+
+**Suspension (archiver#360):** `is_active=false` on `PATCH`, or `archive`, suspends the host. Every item announced on it goes out on `info.registry` with `active=false`, in the write's transaction. `restore`, or `is_active=true`, resumes it, unless the other state still suspends it. A write that flips nothing announces nothing. `min_interval_seconds` (finite, `>= 0`, default `1.0`; `null` is a 422) and `default_watch_spec` (WatchSpec v1 with `interval`, or `null` to clear) are **stored but dark** until #366 (F1) and #364 (F2). An omitted field is left as it is. `PATCH` refuses a non-canonical name (uppercase, port, userinfo) with a 422. The contract: [DOMAINS.md](DOMAINS.md).
 
 `InfoSourceOut` gains `domain_name: str | None` (hostname auto-set from URL at create time).
 `GET /info-sources` gains `?domain_name=` filter.

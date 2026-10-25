@@ -235,3 +235,139 @@ async def test_list_info_sources_filter_by_domain_name(client):
     items = resp.json()["items"]
     assert all(i["domain_name"] == "filterdomain.example.com" for i in items)
     assert len(items) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Fetch-policy fields (archiver#360): stored and editable, dark until #366/#364
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_new_domain_carries_the_default_policy(client):
+    resp = await client.patch("/api/v1/domains/policy.example.com", headers=HEADERS, json={})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["min_interval_seconds"] == 1.0
+    assert body["default_watch_spec"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_sets_min_interval_and_cadence(client):
+    spec = {"schema_version": 1, "interval": "6h"}
+    resp = await client.patch(
+        "/api/v1/domains/policy.example.com",
+        headers=HEADERS,
+        json={"min_interval_seconds": 2.5, "default_watch_spec": spec},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["min_interval_seconds"] == 2.5
+    assert resp.json()["default_watch_spec"] == spec
+
+    got = (await client.get("/api/v1/domains/policy.example.com", headers=HEADERS)).json()
+    assert (got["min_interval_seconds"], got["default_watch_spec"]) == (2.5, spec)
+
+
+@pytest.mark.asyncio
+async def test_patch_omitting_a_field_leaves_it_and_null_clears_the_cadence(client):
+    spec = {"schema_version": 1, "interval": "1d"}
+    await client.patch(
+        "/api/v1/domains/keep.example.com",
+        headers=HEADERS,
+        json={"min_interval_seconds": 3.0, "default_watch_spec": spec},
+    )
+
+    kept = await client.patch(
+        "/api/v1/domains/keep.example.com", headers=HEADERS, json={"notes": "n"}
+    )
+    assert (kept.json()["min_interval_seconds"], kept.json()["default_watch_spec"]) == (3.0, spec)
+
+    cleared = await client.patch(
+        "/api/v1/domains/keep.example.com", headers=HEADERS, json={"default_watch_spec": None}
+    )
+    assert cleared.json()["default_watch_spec"] is None
+    assert cleared.json()["min_interval_seconds"] == 3.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"min_interval_seconds": -1}',
+        '{"min_interval_seconds": null}',
+        '{"min_interval_seconds": Infinity}',
+        '{"min_interval_seconds": NaN}',
+        '{"min_interval_seconds": "fast"}',
+    ],
+)
+async def test_patch_refuses_a_min_interval_that_is_not_finite_and_non_negative(client, raw):
+    resp = await client.patch(
+        "/api/v1/domains/bad.example.com",
+        headers={**HEADERS, "Content-Type": "application/json"},
+        content=raw,
+    )
+    assert resp.status_code == 422, resp.text
+    assert (await client.get("/api/v1/domains/bad.example.com", headers=HEADERS)).status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"schema_version": 1},  # no interval: NULL is how "no default" is said
+        {"schema_version": 1, "interval": "6 hours"},
+        {"schema_version": 1, "interval": "6h", "active": False},
+        {"schema_version": 2, "interval": "6h"},
+        {"interval": "6h"},  # Watcher's ScheduleConfig shape, not a WatchSpec
+    ],
+)
+async def test_patch_refuses_a_cadence_that_is_not_a_watch_spec_with_an_interval(client, spec):
+    resp = await client.patch(
+        "/api/v1/domains/badspec.example.com",
+        headers=HEADERS,
+        json={"default_watch_spec": spec},
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"]["kind"] == "schema"
+    assert (
+        await client.get("/api/v1/domains/badspec.example.com", headers=HEADERS)
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_racing_a_delete_is_a_409_not_a_500(client, monkeypatch):
+    """CR 15: a DELETE committing between the upsert's insert and its row lock."""
+
+    async def _deleted(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("src.api.routes.domains.update_domain", _deleted)
+    resp = await client.patch(
+        "/api/v1/domains/race.example.com", headers=HEADERS, json={"notes": "n"}
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["kind"] == "conflict"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "canonical"),
+    [
+        ("Example.com", "example.com"),
+        ("example.com:8080", "example.com"),
+        ("2001:DB8::1", "2001:db8::1"),  # CR 23: the hint keeps IPv6 whole
+    ],
+)
+async def test_patch_refuses_a_name_no_source_could_carry(client, name, canonical):
+    """CR 22: a row no source matches would make suspension a silent no-op."""
+    resp = await client.patch(f"/api/v1/domains/{name}", headers=HEADERS, json={})
+    assert resp.status_code == 422, resp.text
+    # The hint itself: the echoed name alone contains "example.com" (CR 33).
+    assert f"did you mean {canonical!r}" in resp.json()["detail"]["message"]
+    assert (await client.get(f"/api/v1/domains/{name}", headers=HEADERS)).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_accepts_an_ipv6_host_as_sources_carry_it(client):
+    """CR 23: create_info_source files https://[2001:db8::1]/ under 2001:db8::1."""
+    resp = await client.patch("/api/v1/domains/2001:db8::1", headers=HEADERS, json={})
+    assert resp.status_code == 200, resp.text

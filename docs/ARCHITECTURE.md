@@ -173,6 +173,11 @@ src/core/                      Domain logic
                                dashboard's assignment tables (archiver#171), so
                                a public_url with an automated writer can say
                                which occasion wrote it.
+                               domain_policy.py (update_domain) is the one write
+                               that can suspend or resume a host (#360): API
+                               PATCH/archive/restore and the dashboard's
+                               archive/restore/fetch-policy, announcing the
+                               host's items when suspension flips.
   spec_match.py                Compares an observed spec_fingerprint against the
                                InfoSource's own source_specs via co-core's shared
                                derivation (cannobserv#309). Every uncertain branch
@@ -227,6 +232,9 @@ src/core/                      Domain logic
                                follower (archiver#305, moved here by #327):
                                refresh_linked_orgs + the timer's main, beside
                                the other writers of the effective bag.
+                               import_watcher_domains.py imports Watcher's
+                               domains export through the API (#360, design
+                               D4): operator-run, --dry-run first, idempotent.
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
                                own copy and there is NO parity requirement; see

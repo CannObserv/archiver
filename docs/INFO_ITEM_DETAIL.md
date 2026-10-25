@@ -42,7 +42,7 @@ from any section's partial, so a fix in the Watcher or Fields section clears it 
 
    **`Last changed` left the panel in archiver#181.** The two authored rows hold six fields and there is no seventh slot; Revision History further down this same screen already carries every `captured_at`, so the value left the summary rather than the screen.
 
-   A **Paused** badge shows when `applied_active` is false, and a "Pause/Resume pending" badge when the item's desired `watch_active` differs from what Watcher reports applied.
+   A **Paused** badge shows when `applied_active` is false, and a "Pause/Resume pending" badge when the item's desired state differs from what Watcher reports applied. **Desired is the announced `active`, not `watch_active` (archiver#360).** On a suspended host (an inactive or archived Domain) it is `false`. Otherwise a pause that Watcher applied would read as a resume that never lands. `build_watch_context` takes `suspended_by` (that host, or `None`) as a required argument, like `is_announceable`. While the host is suspended, both partials replace Pause/Resume with "Paused: host <link> is suspended": a toggle would write a `watch_active` the wire ignores until the host resumes. `no_status` carries "Announced paused: host <link> is suspended." in the same case.
 
    **The SDK actions are gone (archiver#142).** "Begin Watching", "Check now", and "Re-sync" each rode an outbound HTTP call, along with the 409-adoption recovery and the stale-link reconcile behind them. Nothing replaces them individually: reconciliation is level-triggered off `info.registry`, so there is no per-item push to retry, no remote id to adopt or clear, and no provisioning gesture to repeat. While paused the toggle reads "Resume".
 

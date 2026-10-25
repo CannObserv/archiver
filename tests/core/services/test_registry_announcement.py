@@ -32,14 +32,18 @@ from src.core.models import (
     InfoSource,
     RevokedInfoItem,
 )
+from src.core.models.domain import Domain
 from src.core.services.registry_announcement import (
     INFO_REGISTRY_TOPIC,
     announce_for_info_source,
     announce_info_item,
     announce_info_item_revoked,
     announce_policy_change,
+    announce_policy_changes,
     announceable_specs_clause,
+    domain_suspended,
     is_announceable,
+    resolved_active,
     source_is_announceable,
 )
 
@@ -699,3 +703,189 @@ async def test_concurrent_bumps_yield_distinct_generations(test_engine, committe
             committed_rows.append((ChangesOutboxRow, r.id))
 
     assert generations == [1, 2]
+
+
+# --- Domain suspension (archiver#360) ----------------------------------------
+#
+# A suspended host (inactive or archived Domain) resolves ``active=false`` on
+# every item announced on it. ``NULL`` survives an active host: "no opinion yet"
+# is not "active".
+
+
+async def _make_item_on_host(
+    session, host: str, *, watch_active: bool | None = True, domain: Domain | None = None
+) -> InfoItem:
+    if domain is not None:
+        session.add(domain)
+    item = InfoItem(name=f"on {host}", watch_active=watch_active)
+    source = InfoSource(url=f"https://{host}/doc", source_specs=_SPECS, domain_name=host)
+    session.add_all([item, source])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    await session.flush()
+    return item
+
+
+@pytest.mark.parametrize(
+    ("domain", "expected"),
+    [
+        (None, False),
+        (Domain(name="h", is_active=True), False),
+        (Domain(name="h", is_active=False), True),
+        (Domain(name="h", is_active=True, archived_at=datetime(2026, 10, 24, tzinfo=UTC)), True),
+        (Domain(name="h", is_active=False, archived_at=datetime(2026, 10, 24, tzinfo=UTC)), True),
+    ],
+)
+def test_domain_suspended_is_inactive_or_archived_and_a_missing_row_is_not(domain, expected):
+    assert domain_suspended(domain) is expected
+
+
+@pytest.mark.parametrize(
+    ("watch_active", "suspended", "expected"),
+    [
+        (True, False, True),
+        (False, False, False),
+        (None, False, None),
+        (True, True, False),
+        (False, True, False),
+        (None, True, False),
+    ],
+)
+def test_resolved_active_keeps_null_on_an_active_host(watch_active, suspended, expected):
+    assert resolved_active(watch_active, host_suspended=suspended) is expected
+
+
+@pytest.mark.asyncio
+async def test_item_on_an_inactive_host_announces_inactive(session):
+    item = await _make_item_on_host(
+        session, "off.example.test", domain=Domain(name="off.example.test", is_active=False)
+    )
+
+    await announce_info_item(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["active"] is False
+    payload_from_dict(row.payload)
+
+
+@pytest.mark.asyncio
+async def test_item_on_an_archived_host_announces_inactive(session):
+    item = await _make_item_on_host(
+        session,
+        "gone.example.test",
+        domain=Domain(name="gone.example.test", archived_at=datetime.now(UTC)),
+    )
+
+    await announce_policy_change(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["active"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("watch_active", [True, None])
+async def test_item_on_an_active_or_rowless_host_announces_its_own_state(session, watch_active):
+    item = await _make_item_on_host(
+        session,
+        "on.example.test",
+        watch_active=watch_active,
+        domain=Domain(name="on.example.test"),
+    )
+    other = await _make_item_on_host(session, "norow.example.test", watch_active=watch_active)
+
+    await announce_info_item(session, item.info_item_id)
+    await announce_info_item(session, other.info_item_id)
+
+    assert [r.payload["active"] for r in await _outbox_rows(session)] == [
+        watch_active,
+        watch_active,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_host_is_the_active_bindings_not_a_superseded_ones(session):
+    """Which host counts: the source the item announces, not every source it had."""
+    item = await _make_item_on_host(
+        session, "old.example.test", domain=Domain(name="old.example.test", is_active=False)
+    )
+    old = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    old.deactivated_at = datetime.now(UTC)
+    new_source = InfoSource(
+        url="https://new.example.test/doc", source_specs=_SPECS, domain_name="new.example.test"
+    )
+    session.add(new_source)
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=new_source.info_source_id)
+    )
+    await session.flush()
+
+    await announce_info_item(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["active"] is True
+
+
+@pytest.mark.asyncio
+async def test_announce_policy_changes_counts_only_what_it_emitted(session):
+    live = await _make_item_on_host(session, "count.example.test")
+    unbound = await _make_item(session, name="unbound", bound=False)
+
+    emitted = await announce_policy_changes(session, [live.info_item_id, unbound.info_item_id])
+
+    assert emitted == 1
+
+
+@pytest.mark.asyncio
+async def test_an_announce_reads_the_domain_fresh_not_from_the_identity_map(
+    test_engine, committed_rows
+):
+    """CR 1 (archiver#360): a Domain the session already loaded must be re-read.
+
+    Every source-creation path loads the host's Domain first
+    (``get_or_create_domain``). If the announce's share-locked read handed that
+    object back unrefreshed, a suspension committed meanwhile would be ignored and
+    the item announced active at a generation the snapshot can never correct.
+    """
+    host = "stale.example.test"
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        domain = Domain(name=host)
+        item = InfoItem(name="stale", watch_active=True)
+        source = InfoSource(url=f"https://{host}/x", source_specs=_SPECS, domain_name=host)
+        setup.add_all([domain, item, source])
+        await setup.flush()
+        binding = InfoItemSource(
+            info_item_id=item.info_item_id, info_source_id=source.info_source_id
+        )
+        setup.add(binding)
+        await setup.commit()
+        committed_rows += [
+            (Domain, domain.id),
+            (InfoSource, source.info_source_id),
+            (InfoItem, item.info_item_id),
+            (InfoItemSource, binding.id),
+        ]
+
+    async with factory() as announcer:
+        loaded = (await announcer.execute(select(Domain).where(Domain.name == host))).scalar_one()
+        assert loaded.is_active is True
+        async with factory() as operator:
+            (
+                await operator.execute(select(Domain).where(Domain.name == host))
+            ).scalar_one().is_active = False
+            await operator.commit()
+
+        await announce_info_item(announcer, item.info_item_id)
+        rows = await _outbox_rows(announcer)
+        mine = [r for r in rows if r.payload["info_item_id"] == str(item.info_item_id)]
+        await announcer.commit()
+        committed_rows += [(ChangesOutboxRow, r.id) for r in mine]
+
+    assert [r.payload["active"] for r in mine] == [False]

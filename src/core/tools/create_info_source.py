@@ -6,15 +6,13 @@ Centralizes URL canonicalization, spec validation, and content-kind family enfor
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.models import InfoSource
 from src.core.source_spec_schema.families import families_of
 from src.core.source_spec_schema.validator import ValidationError, validate_source_spec
 from src.core.tools.get_or_create_domain import get_or_create_domain
-from src.core.url_canonicalization import canonicalize_url
+from src.core.url_canonicalization import canonicalize_url, source_hostname
 
 
 class CreateInfoSourceError(Exception):
@@ -84,7 +82,7 @@ async def create_info_source(
             "All specs must use the same family."
         )
 
-    hostname = urlparse(canonical_url).hostname
+    hostname = source_hostname(canonical_url)
     domain_name: str | None = None
     if hostname:
         domain = await get_or_create_domain(db, hostname)

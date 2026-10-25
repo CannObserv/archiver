@@ -143,6 +143,7 @@ document; the dashboard's Registry badge reports the count
     now)`; the last snapshot keeps rendering. Any later answer clears `missing_since`.
   - **No answer** → nothing changes. `succeeded_by`, `archived_at` and `active` are mirrored,
     never followed: re-linking to a successor is a human decision.
+- **`Domain`** (`domains`) — per-host policy (#360): [DOMAINS.md](DOMAINS.md).
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are

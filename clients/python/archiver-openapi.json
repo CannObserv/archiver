@@ -375,7 +375,7 @@
                 "type": "null"
               }
             ],
-            "description": "Set when the domain is archived.",
+            "description": "Set when the domain is archived; an archived host is suspended.",
             "title": "Archived At"
           },
           "created_at": {
@@ -384,15 +384,33 @@
             "title": "Created At",
             "type": "string"
           },
+          "default_watch_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Dark until cadence resolution (#364, flip F2) reads it.",
+            "title": "Default Watch Spec"
+          },
           "id": {
             "description": "ULID identifying this Domain.",
             "title": "Id",
             "type": "string"
           },
           "is_active": {
-            "description": "True when active and included in suggestions.",
+            "description": "Suspension lever (archiver#360). false suspends the host: every Information Item announced on it goes out with active=false on info.registry, whatever its own watch_active. Archiving suspends it too.",
             "title": "Is Active",
             "type": "boolean"
+          },
+          "min_interval_seconds": {
+            "description": "Minimum spacing between requests to this host, in seconds (finite, >= 0; default 1.0). Dark until Archiver produces content.fetch-policy (#366, flip F1): until then Watcher's value is live, and the re-import before F1 overwrites an edit made here.",
+            "title": "Min Interval Seconds",
+            "type": "number"
           },
           "name": {
             "description": "Hostname (e.g. regulations.cannabis.ca.gov).",
@@ -424,6 +442,8 @@
           "notes",
           "is_active",
           "archived_at",
+          "min_interval_seconds",
+          "default_watch_spec",
           "created_at",
           "updated_at"
         ],
@@ -432,8 +452,21 @@
       },
       "DomainPatch": {
         "additionalProperties": false,
-        "description": "Request body for PATCH /domains/{name} \u2014 upsert fields.",
+        "description": "Request body for PATCH /domains/{name} \u2014 upsert fields.\n\nAn omitted field is left as it is. ``default_watch_spec: null`` clears the\ncadence; ``min_interval_seconds`` cannot be null (every host carries an\nexplicit policy).",
         "properties": {
+          "default_watch_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Dark until cadence resolution (#364, flip F2) reads it.",
+            "title": "Default Watch Spec"
+          },
           "is_active": {
             "anyOf": [
               {
@@ -443,8 +476,14 @@
                 "type": "null"
               }
             ],
-            "description": "Gates inclusion in suggestions.",
+            "description": "Suspension lever (archiver#360). false suspends the host: every Information Item announced on it goes out with active=false on info.registry, whatever its own watch_active. Archiving suspends it too.",
             "title": "Is Active"
+          },
+          "min_interval_seconds": {
+            "description": "Minimum spacing between requests to this host, in seconds (finite, >= 0; default 1.0). Dark until Archiver produces content.fetch-policy (#366, flip F1): until then Watcher's value is live, and the re-import before F1 overwrites an edit made here.",
+            "minimum": 0.0,
+            "title": "Min Interval Seconds",
+            "type": "number"
           },
           "notes": {
             "anyOf": [
@@ -2507,7 +2546,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.32.1"
+    "version": "4.33.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2877,7 +2916,7 @@
         ]
       },
       "patch": {
-        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates notes and/or is_active on subsequent calls.",
+        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates only the fields sent; ``default_watch_spec:\nnull`` clears the cadence. ``name`` must be a canonical host name - the\nlowercase, port-less form an InfoSource is filed under - or it is a 422.\nA change to ``is_active`` that suspends or resumes the host announces its\nitems (archiver#360).",
         "operationId": "upsert_domain_api_v1_domains__name__patch",
         "parameters": [
           {
@@ -2995,7 +3034,7 @@
     },
     "/api/v1/domains/{name}/archive": {
       "post": {
-        "description": "Set archived_at on a Domain.",
+        "description": "Set archived_at on a Domain; suspends the host (archiver#360).",
         "operationId": "archive_domain_api_v1_domains__name__archive_post",
         "parameters": [
           {
@@ -3103,7 +3142,7 @@
     },
     "/api/v1/domains/{name}/restore": {
       "post": {
-        "description": "Clear archived_at on a Domain.",
+        "description": "Clear archived_at on a Domain; resumes the host unless it is inactive.",
         "operationId": "restore_domain_api_v1_domains__name__restore_post",
         "parameters": [
           {
