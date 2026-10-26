@@ -25,8 +25,9 @@ period is the repair. An unpublishable host is skipped with a warning.
 stream is ``+xadd`` only (CannObserv/broker#93), so it never joins
 ``trim_topics``. The cap is ``max(resolved, RETAINED_FULL_SETS × set size)``,
 and only the complete set may compute that floor (``publish_policy_events``).
-Deltas carry the last complete set's cap through ``topic_maxlen``: a delta at
-the bare default would trim the stream back below the floor.
+Deltas carry the last complete set's cap through ``topic_maxlen``, and none
+before the first set: a delta at the bare default would trim the stream back
+below the floor.
 
 **Three numbers are mirrored on the broker node** (``src/broker/bus_health.py``):
 ``DEFAULT_FETCH_POLICY_STREAM_MAXLEN`` as ``LWW_PRODUCER_MAXLEN``,

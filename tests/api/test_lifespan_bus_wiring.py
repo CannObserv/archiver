@@ -636,21 +636,28 @@ async def test_fetch_policy_flag_starts_the_full_set_and_caps_the_deltas(
     fp_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
     fp_env.setenv(fetch_policy.PRODUCER_ENV, "1")
     captured: dict = {}
+    handed: dict = {}
 
     async def _capture(**kwargs):
         captured.update(kwargs)
 
-    with patch("src.core.changes.publisher.run", side_effect=_capture):
+    async def _full_set(**kwargs):
+        handed.update(kwargs)
+
+    with (
+        patch("src.core.changes.publisher.run", side_effect=_capture),
+        patch("src.core.changes.fetch_policy_snapshot.run", side_effect=_full_set),
+    ):
         async with lifespan(app):
-            task = app.state.fetch_policy_task
-            assert task is not None
-            assert not task.done()
-        assert task.done()
+            assert app.state.fetch_policy_task is not None
 
     # Retention rides the XADD; the +xadd-only grant forbids XTRIM (broker#93).
     assert captured["trim_topics"] == frozenset({"info.changes"})
-    assert set(captured["topic_maxlen"]) == {"info.registry", "content.fetch-policy"}
-    assert captured["topic_maxlen"]["content.fetch-policy"] >= 500
+    # CR 4: no cap until a complete set computes one. A delta drained before
+    # the first set carries no MAXLEN, so it can never trim below the floor;
+    # the full-set task fills the very mapping the drain reads.
+    assert set(captured["topic_maxlen"]) == {"info.registry"}
+    assert handed["topic_maxlen"] is captured["topic_maxlen"]
 
 
 @pytest.mark.asyncio

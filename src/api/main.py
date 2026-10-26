@@ -232,16 +232,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 os.environ.get("ARCHIVER_OUTBOX_RETENTION_DAYS")
             )
             # Per-publish caps, read by the drain per row. content.fetch-policy
-            # joins only while it produces (archiver#366); its full-set task
-            # replaces the entry with each complete set's floored cap, so a
-            # delta never trims the stream below RETAINED_FULL_SETS sets.
+            # (archiver#366) gets its entry from its full-set task, after each
+            # complete set: only a complete set may compute the floor. A delta
+            # drained before the first one carries no MAXLEN - a few extra
+            # entries, never a trim below RETAINED_FULL_SETS sets (CR 4).
             topic_maxlen: dict[str, int] = {registry_topic: registry_maxlen}
-            if fetch_policy_on:
-                topic_maxlen[fetch_policy.FETCH_POLICY_TOPIC] = (
-                    fetch_policy_snapshot.resolve_fetch_policy_maxlen(
-                        os.environ.get("ARCHIVER_FETCH_POLICY_STREAM_MAXLEN")
-                    )
-                )
             pub_task = asyncio.create_task(
                 outbox_publisher.run(
                     session_factory=session_factory,
