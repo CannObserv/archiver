@@ -1,21 +1,29 @@
-"""Domain writes that can suspend or resume a host (archiver#360).
+"""Domain writes that announce on a host's items (archiver#360, #364).
 
-Suspension is intent: an inactive or archived ``Domain`` resolves
-``active=false`` on every item announced on its host (``domain_suspended``,
-``src.core.services.registry_announcement``). So a write that flips it is a
+Two Domain fields reach ``info.registry``. Suspension is intent: an inactive or
+archived ``Domain`` resolves ``active=false`` on every item announced on its
+host (``domain_suspended``, ``src.core.services.registry_announcement``). The
+default cadence is the domain tier of the announced interval
+(``src.core.services.cadence_resolution``, #364). So a write to either is a
 policy write on each of those items, and it announces them in its own
 transaction — the API ``PATCH``, archive and restore, and the dashboard's
 archive, restore and fetch-policy save all come through ``update_domain``.
 
-**Only what changed is announced.** A flip touches the items whose resolved
-``active`` moves: announceable, and ``watch_active`` not already ``false``. A
-write that flips nothing — notes, ``min_interval_seconds``, the cadence,
+**Only what changed is announced.** A suspension flip touches the items whose
+resolved ``active`` moves: ``watch_active`` not already ``false``. A cadence
+change touches the items whose resolved interval moves: those with no
+``interval`` of their own. Either way only announceable items go out. A write
+that moves nothing — notes, ``min_interval_seconds``, the same cadence again,
 archiving an already-inactive host — emits nothing (the #167 rule).
 
 **Lock order: items, then the Domain row**, the order every announce takes
 them in (``registry_announcement``'s module docstring), for a write that
-touches ``SUSPENSION_COLUMNS``; any other write locks the row alone, ``FOR NO
-KEY UPDATE``, which announces never wait on. Locking the items first
+touches ``ANNOUNCING_COLUMNS``; any other write locks the row alone, ``FOR NO
+KEY UPDATE``, which announces never wait on. An announcing write must hold the
+row ``FOR UPDATE``, not merely lock the items first: a binding's announce
+holds the row only ``FOR KEY SHARE``, and the newcomer re-read below finds its
+item only because the write waited for it (#364 moved the cadence onto this
+path; #360's CR 13 and CR 24 had it on the other). Locking the items first
 would still miss one bound to the host while this write waited for the row, so
 the host's items are re-read once the row is held: any announce that bound one
 held the row ``FOR KEY SHARE``, so it has committed by then and the re-read
@@ -46,6 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource
+from src.core.services.cadence_resolution import domain_interval, item_interval
 from src.core.services.fetch_policy import (
     announce_domain,
     announce_domain_deleted,
@@ -86,8 +95,11 @@ async def _host_items(session: AsyncSession, name: str, *, lock: bool) -> list[U
     return list((await session.execute(stmt)).scalars())
 
 
-SUSPENSION_COLUMNS = frozenset({"is_active", "archived_at"})
-"""The only columns ``domain_suspended`` reads; a write touching neither cannot flip."""
+ANNOUNCING_COLUMNS = frozenset({"is_active", "archived_at", "default_watch_spec"})
+"""The columns an announcement reads: ``domain_suspended``'s two and the cadence tier.
+
+A write touching none of them cannot change what any item announces.
+"""
 
 _ATTEMPTS = 3
 """How many times the write re-locks before it locks a newcomer after the row."""
@@ -105,11 +117,11 @@ async def _insert_if_absent(session: AsyncSession, name: str) -> bool:
 
 
 async def _lock_row(
-    session: AsyncSession, name: str, *, create: bool, can_flip: bool = True
+    session: AsyncSession, name: str, *, create: bool, announces: bool = True
 ) -> tuple[Domain | None, bool]:
     """Insert the row if asked, then lock it; returns ``(row, inserted)``.
 
-    ``FOR UPDATE`` for a write that can flip suspension: it is what an
+    ``FOR UPDATE`` for a write that can change an announcement: it is what an
     announce's ``FOR KEY SHARE`` waits on. Any other write takes ``FOR NO KEY
     UPDATE``, which announces do not wait on (CR 24).
     """
@@ -120,7 +132,7 @@ async def _lock_row(
         await session.execute(
             select(Domain)
             .where(Domain.name == name)
-            .with_for_update(key_share=not can_flip)
+            .with_for_update(key_share=not announces)
             .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
@@ -142,19 +154,20 @@ async def _apply(
 async def update_domain(
     session: AsyncSession, name: str, changes: Mapping[str, Any], *, create: bool
 ) -> Domain | None:
-    """Apply ``changes`` to the host's Domain and announce what a flip changed.
+    """Apply ``changes`` to the host's Domain and announce the items it moved.
 
     ``create`` inserts the row when absent (the API's upsert); otherwise a
     missing row returns ``None`` and writes nothing. A row-less host counts as
-    active, so creating it inactive is a flip. The caller commits.
+    active with no default cadence, so creating it inactive, or with a cadence,
+    moves its items. The caller commits.
     """
     unknown = set(changes) - WRITABLE_COLUMNS
     if unknown:
         raise ValueError(f"not writable on a Domain: {sorted(unknown)}")
 
-    if not changes.keys() & SUSPENSION_COLUMNS:
-        # Cannot flip, so nothing to announce and no item lock to take (CR 13).
-        domain, inserted = await _lock_row(session, name, create=create, can_flip=False)
+    if not changes.keys() & ANNOUNCING_COLUMNS:
+        # Cannot announce, so no item lock to take (CR 13).
+        domain, inserted = await _lock_row(session, name, create=create, announces=False)
         if domain is not None:
             await _apply(session, domain, changes, inserted=inserted)
         return domain
@@ -179,33 +192,43 @@ async def update_domain(
         await savepoint.rollback()
         locked = await _host_items(session, name, lock=True)
 
-    # A row this call inserted was absent a moment ago, and absent is active.
-    was_suspended = domain_suspended(domain)
+    # A row this call inserted was absent a moment ago: active, no cadence.
+    was_suspended, was_interval = domain_suspended(domain), domain_interval(domain)
     await _apply(session, domain, changes, inserted=inserted)
     await savepoint.commit()
-    if domain_suspended(domain) != was_suspended:
-        await _announce_flip(session, locked)
+    await _announce_moved(
+        session,
+        locked,
+        suspension=domain_suspended(domain) != was_suspended,
+        cadence=domain_interval(domain) != was_interval,
+    )
     return domain
 
 
-async def _announce_flip(session: AsyncSession, items: Sequence[ULID]) -> int:
-    """Announce every item on the host whose resolved ``active`` just moved."""
-    if not items:
+async def _announce_moved(
+    session: AsyncSession, items: Sequence[ULID], *, suspension: bool, cadence: bool
+) -> int:
+    """Announce every item on the host whose resolved ``active`` or interval moved.
+
+    A suspension flip moves the items not already paused; a domain-tier change
+    moves the items with no ``interval`` of their own. ``announce_policy_changes``
+    then drops any that cannot announce live.
+    """
+    if not items or not (suspension or cadence):
         return 0
-    moved = (
-        (
-            await session.execute(
-                select(InfoItem.info_item_id)
-                .where(
-                    InfoItem.info_item_id.in_(items),
-                    InfoItem.watch_active.is_distinct_from(False),
-                )
-                .order_by(InfoItem.info_item_id)
-            )
+    rows = (
+        await session.execute(
+            select(InfoItem.info_item_id, InfoItem.watch_active, InfoItem.watch_spec)
+            .where(InfoItem.info_item_id.in_(items))
+            .order_by(InfoItem.info_item_id)
         )
-        .scalars()
-        .all()
-    )
+    ).all()
+    moved = [
+        info_item_id
+        for info_item_id, watch_active, watch_spec in rows
+        if (suspension and watch_active is not False)
+        or (cadence and item_interval(watch_spec, info_item_id=info_item_id) is None)
+    ]
     return await announce_policy_changes(session, moved)
 
 

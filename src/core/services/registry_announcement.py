@@ -61,16 +61,22 @@ no FK). Both emit paths resolve here: ``build_live_announcement`` takes the
 host's state as a required argument, the delta path reads the ``Domain`` rows
 beside the sources, and the snapshot outer-joins them.
 
+**The announced ``watch_spec`` is resolved, not stored** (archiver#364, design
+C-e). The same ``Domain`` row supplies the cadence's domain tier:
+``resolve_interval`` takes the item's own ``interval``, else the host's
+``default_watch_spec`` interval, else none (Watcher's system default). The
+stored ``info_items.watch_spec`` stays the item's own intent.
+
 **Lock order: items, then domains.** Every announce locks its items, then reads
-their hosts' ``Domain`` rows ``FOR KEY SHARE``; a suspension write
-(``src.core.services.domain_policy``) locks the host's items, then the row
-``FOR UPDATE``. Any other domain write locks the row alone, ``FOR NO KEY
-UPDATE``, which an announce never waits on (CR 24, 31). One order, so no
-cycle - the single exception is a host still
-gaining items after the write's three tries (``domain_policy``), where
-Postgres's deadlock detector is the backstop - and an announce racing a suspension
-flip either waits for it or is waited on — it never builds from a state the
-flip is about to replace.
+their hosts' ``Domain`` rows ``FOR KEY SHARE``; an announcing write
+(``src.core.services.domain_policy``: suspension or the default cadence) locks
+the host's items, then the row ``FOR UPDATE``. Any other domain write locks the
+row alone, ``FOR NO KEY UPDATE``, which an announce never waits on (CR 24, 31).
+One order, so no cycle - the single exception is a host still gaining items
+after the write's three tries (``domain_policy``), where Postgres's deadlock
+detector is the backstop - and an announce racing an announcing write either
+waits for it or is waited on — it never builds from a state the write is about
+to replace.
 
 **Deletion** (``announce_info_item_revoked``) additionally records a
 ``RevokedInfoItem`` row, because the item row is about to be gone and the
@@ -95,6 +101,7 @@ from src.core.models import (
     InfoSource,
     RevokedInfoItem,
 )
+from src.core.services.cadence_resolution import resolve_interval
 
 INFO_REGISTRY_TOPIC = INFO_REGISTRY
 
@@ -115,15 +122,17 @@ def resolved_active(watch_active: bool | None, *, host_suspended: bool) -> bool 
 
 
 def build_live_announcement(
-    *, item: InfoItem, source: InfoSource, generation: int, host_suspended: bool
+    *, item: InfoItem, source: InfoSource, generation: int, domain: Domain | None
 ) -> RegistryAnnouncementEmit:
     """One payload shape for both emit paths — delta (here) and snapshot.
 
     Two builders would drift, and the failure directions differ: a delta that
     diverges dead-letters loudly in the outbox build phase, but the snapshot
     publishes directly, so its divergence would reach the stream.
-    ``host_suspended`` is required for the same reason: a default would let one
-    path forget the host.
+    ``domain`` - the Domain row of ``source``'s host, ``None`` when it has none -
+    is required for the same reason: a default would let one path forget the
+    host. It decides both ``active`` (suspension) and the cadence's domain tier:
+    ``watch_spec`` is the *resolved* document (archiver#364), not the stored one.
     """
     return RegistryAnnouncementEmit(
         occurred_at=datetime.now(UTC),
@@ -132,8 +141,8 @@ def build_live_announcement(
         info_source_id=str(source.info_source_id),
         url=source.url,
         source_specs=source.source_specs,
-        active=resolved_active(item.watch_active, host_suspended=host_suspended),
-        watch_spec=item.watch_spec,
+        active=resolved_active(item.watch_active, host_suspended=domain_suspended(domain)),
+        watch_spec=resolve_interval(profile=None, item=item, domain=domain).watch_spec(),
     )
 
 
@@ -322,8 +331,9 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
                     select(Domain)
                     .where(Domain.name.in_(hosts))
                     .order_by(Domain.name)
-                    # KEY SHARE: only a suspension write's FOR UPDATE conflicts;
-                    # notes and policy-field saves never stall an announce (CR 7, 24).
+                    # KEY SHARE: only an announcing write's FOR UPDATE conflicts
+                    # (suspension, the default cadence); notes and interval saves
+                    # never stall an announce (CR 7, 24; archiver#364).
                     .with_for_update(read=True, key_share=True)
                     # The session may already hold this Domain (every source
                     # create loads it); without this the wait above would end
@@ -368,7 +378,7 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
                 item=items[info_item_id],
                 source=source,
                 generation=generations[info_item_id],
-                host_suspended=domain_suspended(domains.get(source.domain_name)),
+                domain=domains.get(source.domain_name),
             )
         elif info_item_id in generations:
             event = build_tombstone(info_item_id=info_item_id, generation=generations[info_item_id])

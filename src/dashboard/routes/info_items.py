@@ -36,7 +36,6 @@ from src.core.services.registry_announcement import (
     announce_info_item,
     announce_policy_change,
     announceable_specs_clause,
-    domain_suspended,
     is_announceable,
 )
 from src.core.services.replication_issuance import (
@@ -1701,8 +1700,9 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
     ).one()  # an aggregate with no GROUP BY yields exactly one row, even on empty input
     last_changed_at = aggregate.last_changed_at
     has_active_source = aggregate.has_active_source
-    # The announcing source's host, judged by the rule the announcement uses
-    # (archiver#360): a suspended host announces the item paused.
+    # The announcing source's host, judged by the rules the announcement uses:
+    # a suspended host announces the item paused (archiver#360), and its default
+    # cadence is the interval an item without its own inherits (archiver#364).
     host = (
         await session.execute(
             select(Domain)
@@ -1715,7 +1715,7 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
         )
     ).scalar_one_or_none()
     watch = build_watch_context(
-        suspended_by=host.name if domain_suspended(host) else None,
+        host=host,
         is_announceable=has_active_source,
         item=item,
         status=status,
@@ -1732,8 +1732,9 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
         # — ``watching`` and ``no_status`` — because those are the states in
         # which a cadence is a live question; ``not_watching`` has no
         # announceable source by definition, and ``degraded`` shows an error.
-        # ``cadence_value`` is the announced interval, "" meaning delegate. Its
-        # *label* is not passed separately: ``watch["cadence"]`` is already
+        # ``cadence_value`` is the item's *own* interval, "" meaning inherit
+        # (archiver#364: the host's default, else Watcher's). Its label is not
+        # passed separately: ``watch["own_cadence"]`` is already
         # ``format_interval`` of the same value, and a second formatter here
         # disagreed with it on any interval outside the offered four (CR round 1,
         # finding 1) - `30m` rendered `~30 min` in the panel and `30m` in the row.
@@ -1900,12 +1901,12 @@ async def set_watch_cadence(
     registration and then display-only, because the live value was Watcher's and
     the dashboard had nothing local to edit.
 
-    The empty selection means *delegate* — the document keeps only
-    ``schema_version`` and the consumer applies its own default, which may be a
-    per-domain one rather than a global constant. That is why this replaces the
-    whole document instead of merging: a merge would make "delegate"
-    unreachable once an interval had ever been set, the same reasoning the API's
-    whole-document ``PUT /watch-spec`` gives.
+    The empty selection means *inherit* — the document keeps only
+    ``schema_version``, and the announcement resolves the host's default
+    cadence, else none, so Watcher applies its own (archiver#364). That is why
+    this replaces the whole document instead of merging: a merge would make
+    "inherit" unreachable once an interval had ever been set, the same
+    reasoning the API's whole-document ``PUT /watch-spec`` gives.
 
     ``interval`` is validated against the dashboard's offered vocabulary, not
     just the schema. The schema admits any ``^[0-9]+[smhd]$``; the dropdown is a
@@ -1922,15 +1923,15 @@ async def set_watch_cadence(
         response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _UNANNOUNCEABLE_FLASH))
         return response
 
-    # The item's *own* announced interval passes even when the dropdown does not
+    # The item's *own* stored interval passes even when the dropdown does not
     # offer it (CR round 1, finding 2). The guard is aimed at a hand-posted value
-    # the dashboard never offered; re-submitting what the item already announces
+    # the dashboard never offered; re-submitting the item's own interval
     # is a no-op, and refusing it would strand the operator on every item the API
     # configured through the full grammar. Nothing is loosened by this: an
     # interval that reaches the write still has to satisfy the schema below, so a
     # hand-edited row holding garbage is refused there rather than announced.
-    announced_interval = (item.watch_spec or {}).get("interval") or ""
-    if interval and interval not in CADENCE_OPTIONS and interval != announced_interval:
+    own_interval = (item.watch_spec or {}).get("interval") or ""
+    if interval and interval not in CADENCE_OPTIONS and interval != own_interval:
         response = await _render_watcher_section(request, session=session, item=item)
         response.headers["HX-Trigger"] = _watcher_hx_trigger(
             ("error", f"“{interval}” is not one of the offered cadences.")

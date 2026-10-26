@@ -49,7 +49,8 @@ revoked. Never-announced keys are absent — no consumer knows them. The
 announceability rule is shared with the delta path via the builders in
 ``src.core.services.registry_announcement``, so the two paths cannot drift.
 So is the host rule (archiver#360): each live row carries its source's
-``Domain`` from the same query, judged by the same ``domain_suspended``.
+``Domain`` from the same query, handed to the same builder, which judges
+suspension and resolves the cadence's domain tier from it (archiver#364).
 """
 
 from __future__ import annotations
@@ -67,7 +68,6 @@ from src.core.services.registry_announcement import (
     INFO_REGISTRY_TOPIC,
     build_live_announcement,
     build_tombstone,
-    domain_suspended,
     source_is_announceable,
 )
 
@@ -223,7 +223,7 @@ async def publish_full_set(
                 item=item,
                 source=source,
                 generation=item.announcement_generation,
-                host_suspended=domain_suspended(domain),
+                domain=domain,
             )
             for item, source, domain in live
         ] + [

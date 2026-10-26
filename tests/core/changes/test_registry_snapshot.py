@@ -173,6 +173,42 @@ async def test_full_set_resolves_each_items_host_through_the_shared_rule(
 
 
 @pytest.mark.asyncio
+async def test_full_set_announces_the_resolved_cadence(session_factory, publisher, fake_redis):
+    """archiver#364: the snapshot resolves cadence through the same builder.
+
+    Item tier, then the host's default, then nothing (Watcher's default).
+    """
+    cases = {
+        "own": ({"schema_version": 1, "interval": "1h"}, {"schema_version": 1, "interval": "6h"}),
+        "inherits": ({"schema_version": 1}, {"schema_version": 1, "interval": "6h"}),
+        "neither": ({"schema_version": 1}, None),
+    }
+    ids = {}
+    async with session_factory() as s:
+        for label, (own, default) in cases.items():
+            host = f"cadence-{label}{_HOSTS}"
+            s.add(Domain(name=host, default_watch_spec=default))
+            item = InfoItem(name=label, watch_spec=own, announcement_generation=1)
+            source = InfoSource(url=f"https://{host}/x", source_specs=_SPECS, domain_name=host)
+            s.add_all([item, source])
+            await s.flush()
+            s.add(
+                InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+            )
+            ids[label] = str(item.info_item_id)
+        await s.commit()
+
+    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+
+    specs = {p["info_item_id"]: p["watch_spec"] for p in await _stream_payloads(fake_redis)}
+    assert {label: specs[i] for label, i in ids.items()} == {
+        "own": {"schema_version": 1, "interval": "1h"},
+        "inherits": {"schema_version": 1, "interval": "6h"},
+        "neither": {"schema_version": 1},
+    }
+
+
+@pytest.mark.asyncio
 async def test_snapshot_reads_generations_and_never_bumps(session_factory, publisher, fake_redis):
     ids = await _seed(session_factory)
 

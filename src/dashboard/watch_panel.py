@@ -20,7 +20,13 @@ is non-healthy and renders verbatim. Never test ``health != "error"``.
 **Next due** derives from ``last_attempt_at`` (a failing item attempts on
 schedule while ``last_observed_at`` stands still) plus ``applied_interval``
 where present — the cadence Watcher is actually running — falling back to the
-announced ``watch_spec`` interval. ``next_due_at`` is deliberately not on the
+announced interval.
+
+**Cadence is the resolved interval** (archiver#364): the item's own, else its
+host's default, else none (Watcher's default) - ``resolve_interval``, the
+function the announcement itself is built with. Reading the stored
+``watch_spec`` instead showed no cadence for an inheriting item, and could
+never flag its drift. ``next_due_at`` is deliberately not on the
 wire: it moves every cycle and would have made the stream activity-rate-scaled.
 
 **Drift.** ``info_items.announcement_generation`` against
@@ -34,11 +40,17 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, TypedDict
 
-from src.core.services.registry_announcement import resolved_active
+from src.core.services.cadence_resolution import (
+    domain_interval,
+    item_interval,
+    resolve_interval,
+)
+from src.core.services.registry_announcement import domain_suspended, resolved_active
 from src.dashboard.cadence import CADENCE_LABELS
 
 if TYPE_CHECKING:
     from src.core.models import InfoItem, WatchStatus
+    from src.core.models.domain import Domain
 
 # How long applied may lag announced before the panel escalates the drift line
 # to an alert. Delta propagation is seconds and the snapshot repair is hourly,
@@ -141,6 +153,9 @@ class WatchPanelContext(TypedDict):
     suspended_by: str | None
     pending_toggle: str | None
     cadence: str
+    cadence_tier: str | None
+    own_cadence: str
+    inherit_label: str
     applied_cadence: str
     cadence_drift: bool
     last_attempt_ago: str | None
@@ -182,9 +197,22 @@ def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContex
     )
 
 
+def inherit_label(host: Domain | None) -> str:
+    """What an item with no ``interval`` of its own announces, for the editor.
+
+    Names the host's default when it has one. Otherwise it is Watcher's own
+    default, deliberately left unnamed: printing Watcher's constant here would
+    be a mirror of it (watcher#159).
+    """
+    inherited = domain_interval(host)
+    if inherited is None:
+        return "Inherit: Watcher's default"
+    return f"Inherit: {format_interval(inherited) or inherited} (domain)"
+
+
 def build_watch_context(
     *,
-    suspended_by: str | None,
+    host: Domain | None,
     is_announceable: bool,
     item: InfoItem,
     status: WatchStatus | None,
@@ -200,13 +228,24 @@ def build_watch_context(
     Required, not defaulted: either default would be a silent wrong answer for
     half the corpus.
 
-    ``suspended_by`` is the announcing source's host when its Domain is
-    inactive or archived, else ``None`` (archiver#360) - required for the same
-    reason. ``desired_active`` is then the *announced* ``active``, ``false``
-    whatever the item's own ``watch_active``: compared against Watcher's applied
-    pause, the item's own value would read as a resume that never lands.
+    ``host`` is the announcing source's Domain row, ``None`` when it has none -
+    required for the same reason. It decides two things the announcement does.
+    A suspended host (archiver#360) names itself in ``suspended_by``, and
+    ``desired_active`` is then the *announced* ``active``, ``false`` whatever the
+    item's own ``watch_active``: compared against Watcher's applied pause, the
+    item's own value would read as a resume that never lands. Its default
+    cadence is the domain tier of the announced interval (archiver#364).
     """
-    announced_interval = (item.watch_spec or {}).get("interval")
+    suspended_by = host.name if domain_suspended(host) else None
+    resolved = resolve_interval(profile=None, item=item, domain=host)
+    announced_interval = resolved.interval
+    own = item_interval(item.watch_spec, info_item_id=item.info_item_id)
+    cadence_fields = {
+        "cadence": format_interval(announced_interval),
+        "cadence_tier": resolved.tier,
+        "own_cadence": format_interval(own),
+        "inherit_label": inherit_label(host),
+    }
     desired_active = resolved_active(item.watch_active, host_suspended=suspended_by is not None)
 
     # Announceability is checked *before* the cache row, not after. A status row
@@ -232,7 +271,7 @@ def build_watch_context(
             desired_active=desired_active,
             suspended_by=suspended_by,
             pending_toggle=None,
-            cadence=format_interval(announced_interval),
+            **cadence_fields,
             applied_cadence="",
             cadence_drift=False,
             last_attempt_ago=None,
@@ -278,7 +317,7 @@ def build_watch_context(
         desired_active=desired_active,
         suspended_by=suspended_by,
         pending_toggle=pending_toggle,
-        cadence=format_interval(announced_interval),
+        **cadence_fields,
         applied_cadence=format_interval(status.applied_interval),
         cadence_drift=cadence_drift,
         last_attempt_ago=format_age(status.last_attempt_at, now=now),
