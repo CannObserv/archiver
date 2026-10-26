@@ -127,18 +127,22 @@ class Step:
         return self.create or bool(self.patch) or self.archive is not None
 
 
-def watcher_cadence(raw: Any, problems: list[str], host: str) -> dict | None:
-    """Watcher's ``{"interval": …}`` as a WatchSpec v1 document, or a problem."""
+def watcher_cadence(raw: Any, problems: list[str], subject: str) -> dict | None:
+    """Watcher's ``{"interval": …}`` as a WatchSpec v1 document, or a problem.
+
+    ``subject`` names the row in the problem: a host here, an InfoItem id in
+    ``import_watcher_item_cadence`` (archiver#364).
+    """
     if raw is None:
         return None
     if not isinstance(raw, dict) or set(raw) != {"interval"}:
-        problems.append(f"{host}: default_schedule_config {raw!r} is not {{'interval': …}}")
+        problems.append(f"{subject}: default_schedule_config {raw!r} is not {{'interval': …}}")
         return None
     doc = {"schema_version": 1, "interval": raw["interval"]}
     ok, errors = validate_domain_watch_spec(doc)
     if not ok:
         detail = "; ".join(e["message"] for e in errors)
-        problems.append(f"{host}: default_schedule_config: {detail}")
+        problems.append(f"{subject}: default_schedule_config: {detail}")
         return None
     return doc
 
