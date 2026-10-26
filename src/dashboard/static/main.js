@@ -146,18 +146,18 @@ document.addEventListener("alpine:init", function () {
     });
 
     /**
-     * API key reveal — shows the raw key once after creation.
+     * API key reveal — copies the raw key shown once after creation. The key is
+     * the server-rendered text of `x-ref="key"`, so it shows without JS too.
      * @returns {object} Alpine component data.
      */
     window.Alpine.data("apiKeyReveal", function () {
         return {
-            rawKey: "",
             copied: false,
 
             copy: function () {
                 var self = this;
                 if (!navigator.clipboard) { return; }
-                navigator.clipboard.writeText(self.rawKey).then(function () {
+                navigator.clipboard.writeText(self.$refs.key.textContent.trim()).then(function () {
                     self.copied = true;
                     setTimeout(function () { self.copied = false; }, 2000);
                 });

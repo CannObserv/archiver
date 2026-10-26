@@ -12,14 +12,16 @@
     </button>
   </div>
 
-  {# One-time raw key reveal — shown only immediately after creation. #}
+  {# One-time raw key reveal — shown only immediately after creation. The key is
+     server-rendered text that Copy reads back; never quote it into an Alpine
+     expression (tojson's double quotes ended x-init early: an empty box, #37). #}
   {% if new_raw_key %}
-  <div x-data="apiKeyReveal" x-init="rawKey = {{ new_raw_key | tojson }}"
+  <div x-data="apiKeyReveal"
        class="alert alert--success"
        role="region" aria-label="New API key">
     <p class="alert__title">New API key — copy it now. It will not be shown again.</p>
     <div class="code-block" style="display:flex;align-items:center;gap:var(--space-2);">
-      <code x-text="rawKey" style="flex:1;word-break:break-all;"></code>
+      <code x-ref="key" style="flex:1;word-break:break-all;">{{ new_raw_key }}</code>
       <button type="button" class="btn btn--sm btn--secondary"
               @click="copy()"
               :aria-label="copied ? 'Copied' : 'Copy key'">

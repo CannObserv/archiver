@@ -196,7 +196,7 @@ The list, create form, detail screen and their routes:
 
 **GET** - lists the current user's keys. Table columns: Label, Prefix, Last Used, Actions. The create form starts collapsed; "+ Add key" in the header expands it.
 
-**POST** - creates a key (`label` form field required). Returns the full page with `new_raw_key` in the template context so `apiKeyReveal` shows the raw key once; the create form collapses (`showForm` resets to false) and the reveal panel appears above the table. After navigation the raw key is gone.
+**POST** - creates a key (`label` form field required). Returns the full page with `new_raw_key` in the template context, rendered as the reveal box's text (Copy reads it back, `apiKeyReveal`) and shown once; the create form collapses (`showForm` resets to false) and the reveal panel appears above the table. After navigation the raw key is gone.
 
 A blank label - spaces, which pass the input's `required` attribute - returns the page **at 200** with `HX-Trigger: showFlash` at `error` level and no key created. It was a `raise_422` until archiver#178, and since the form is boosted htmx discarded the response whole: the button looked dead.
 
