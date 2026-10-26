@@ -144,6 +144,21 @@ async def test_delete_domain_204(client):
 
 
 @pytest.mark.asyncio
+async def test_delete_domain_404_when_absent(client, session):
+    """CR 9: the route maps delete_domain's False to a 404, and writes nothing."""
+    resp = await client.delete("/api/v1/domains/never-there.example.com", headers=HEADERS)
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["kind"] == "lookup"
+    assert (
+        await session.execute(
+            select(FetchPolicyTombstone).where(
+                FetchPolicyTombstone.host == "never-there.example.com"
+            )
+        )
+    ).scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
 async def test_delete_tombstones_the_host_and_a_re_add_orders_above_it(
     client, session, monkeypatch
 ):
