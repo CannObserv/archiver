@@ -130,3 +130,20 @@ async def test_fetch_policy_generation_is_not_null(session):
                 " WHERE name = 'nn.example.com'"
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_the_generation_sequence_hands_out_values_one_at_a_time(session):
+    """CR 15: with CACHE > 1 each backend pre-allocates a block, so a later save
+    on a host could draw below an earlier one, and every consumer would drop
+    the newer frame (co-core FetchPolicyState obligation 3)."""
+    cache = (
+        await session.execute(
+            text(
+                "SELECT cache_size FROM pg_sequences"
+                " WHERE schemaname = 'information'"
+                " AND sequencename = 'fetch_policy_generation_seq'"
+            )
+        )
+    ).scalar_one()
+    assert cache == 1

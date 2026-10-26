@@ -30,7 +30,12 @@ One sequence for every host, never a per-row counter: a hostname is a reusable
 natural key, so a counter restarting with a re-added row would land below the
 deleted host's tombstone and every consumer would skip the host (co-core
 ``FetchPolicyState`` obligation 3). Deletes draw from it too
-(``FetchPolicyTombstone.generation``)."""
+(``FetchPolicyTombstone.generation``).
+
+``CACHE 1`` (Postgres's default) is load-bearing, and pinned by
+``test_the_generation_sequence_hands_out_values_one_at_a_time``. With a larger
+cache each backend pre-allocates its own block, so a later save on a host could
+draw below an earlier one, and consumers would drop the newer frame."""
 
 
 class Domain(Base, TimestampMixin):
