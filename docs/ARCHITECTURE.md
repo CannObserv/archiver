@@ -181,6 +181,8 @@ src/core/                      Domain logic
                                PATCH/archive/restore and the dashboard's
                                archive/restore/fetch-policy, announcing the
                                host's items when suspension flips.
+                               delete_domain is the delete: it locks the row
+                               before drawing the tombstone's generation (#366).
                                fetch_policy.py is content.fetch-policy's delta
                                half (#366): draws the host's generation from
                                one sequence when its frame changes, writes the
