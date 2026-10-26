@@ -1,7 +1,7 @@
 # archiver — Schema: bus-state tables
 
 Per-table contracts and invariants for the tables that record what archiver put on, or read
-from, the change bus: the revocation record, the replicate and persist command ledgers, the
+from, the change bus: the revocation records, the replicate and persist command ledgers, the
 outbox, and the watch-status cache with its tail cursor. Split from [SCHEMA.md](SCHEMA.md), which
 keeps the registry tables; identifiers are verbatim there and here.
 
@@ -14,6 +14,13 @@ keeps the registry tables; identifiers are verbatim there and here.
   design. Rows are kept forever; the table grows only with deletions. Same shape and reason as
   Watcher's consumer-side table (watcher#254): every key keeps a left-hand side for
   apply-iff-greater whether or not it still has a row.
+- **`FetchPolicyTombstone`** (`fetch_policy_tombstones`) - a deleted host and the generation
+  its `content.fetch-policy` tombstone carries (archiver#366). Written by `DELETE
+  /domains/{name}` in the delete's transaction, at a value drawn from
+  `fetch_policy_generation_seq`; every full set republishes it, so trimming never ages the
+  tombstone out. `host` is the primary key, so a second delete moves the row up. A re-add
+  removes the row in its own transaction, at both insert sites. Same as Watcher's
+  `fetch_policy_tombstones`, plus `generation`. Bounded by the count of deleted hosts.
 - **`ReplicationCommand`** (`replication_commands`) — one `content.replicate` occasion and what
   became of it (archiver#169). Written in the *same transaction* as the revision insert and the
   outbox row, which is what makes "revision recorded" and "replication requested" inseparable.

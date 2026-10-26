@@ -2,7 +2,8 @@
 
 Everything Archiver puts on the Redis bus: the outbox producer and
 the four streams it publishes - `info.changes`, `info.registry`,
-`content.replicate`, `content.persist`. What it takes off - `content.revisions`,
+`content.replicate`, `content.persist` - plus `content.fetch-policy`, dark
+until F1. What it takes off - `content.revisions`,
 `content.artifacts`, `info.watch-status` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
 below serves both. HTTP routes and their SDK wrappers live in [API.md](API.md);
@@ -44,7 +45,7 @@ One seam survives that split with no test spanning it: the broker config's
 `_TRANSIENT_PUBLISH_ERRORS` are **one decision**, and each repo names the other
 in a comment (R5).
 
-## Producing - the outbox, the envelope, and the four published streams
+## Producing - the outbox, the envelope, and the published streams
 
 **Change-bus producer (co-core bus, archiver#106):** Writes rows to
 `information.changes_outbox` in the same transaction (the **outbox stays
@@ -358,6 +359,11 @@ contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
   (`src/core/replication/permanent_store.py`) with no expiry skip, which is what
   lets a manual *Replicate now* publish stable content long after its temp blob
   expired.
+
+**`content.fetch-policy` (archiver#366)** - a fifth producer surface, config/state,
+built dark until flip F1 (`ARCHIVER_FETCH_POLICY_PRODUCER`, unit-only): outbox deltas
+plus a 300 s full set, cap on the `XADD` (`+xadd`-only grant, broker#93). Contract and
+F1 runbook: [DOMAINS.md](DOMAINS.md).
 
 `source_revision_captured` schema_version is now **2** - `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 

@@ -18,6 +18,15 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.34.0 (2026-10-26)
+
+[service] **`content.fetch-policy` producer, built and dark until flip F1 (archiver#366).** Migration `44b797877fdb`. No API shape change, so the SDK stays at 5.12.0.
+
+- **Nothing reaches the stream until `ARCHIVER_FETCH_POLICY_PRODUCER` is set.** Only `deploy/archiver.service` sets it, at F1, once Watcher's producer has stopped (CannObserv/watcher#374). With the flag on, the service publishes a full set at startup and every 300 s (every Domain, plus every deleted host's tombstone) and an outbox delta in each write that changes a host's frame.
+- **Migration `44b797877fdb`** adds the sequence `fetch_policy_generation_seq`; `domains.fetch_policy_generation BIGINT NOT NULL`, backfilled from the sequence with a distinct value per row; and the table `fetch_policy_tombstones (host, generation, revoked_at)`. It is expand-only: the previous release's inserts take the column default.
+- **`DELETE /api/v1/domains/{name}` now records the host's tombstone** in the same transaction, at a freshly drawn generation. It now locks the row first, so it waits behind an in-flight write to the same host rather than racing it. The response is unchanged. A later re-add, by `PATCH` or by a source create on the host, draws a higher generation and removes the tombstone.
+- **Generations advance while dark.** An interval save on a live host, a suspension flip, an insert and a delete each draw one. Notes, the cadence, and an interval save on a suspended host don't.
+
 ## v4.33.0 (2026-10-24)
 
 [both] **Domains: Archiver becomes the sole owner of per-host policy (archiver#360, design D4).** Migration `173c1af91def`; SDK 5.12.0.

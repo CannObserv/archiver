@@ -142,6 +142,10 @@ for _var in _OUTBOUND_SERVICE_ENV_VARS:
 # test records also write a persist command and an outbox row, and counts that
 # pass in CI would fail on this VM. Tests that need it set it (archiver#276).
 os.environ.pop("ARCHIVER_PERSIST_ISSUANCE", None)
+# Same for the content.fetch-policy producer (archiver#366): set in a shell, every
+# domain write a test makes would also queue an outbox row. Tests that need it
+# set it.
+os.environ.pop("ARCHIVER_FETCH_POLICY_PRODUCER", None)
 
 
 def _run_alembic_upgrade() -> None:

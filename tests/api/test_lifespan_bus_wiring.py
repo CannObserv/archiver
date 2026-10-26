@@ -29,6 +29,7 @@ from src.api import main
 from src.api.main import app, lifespan
 from src.core.changes import bus_client
 from src.core.changes.outbox_prune import DEFAULT_RETENTION_DAYS
+from src.core.services import fetch_policy
 
 FAKE_REDIS_URL = "redis://localhost:6379/15"
 
@@ -593,3 +594,82 @@ async def test_publisher_start_line_redacts_the_broker_credential(
     assert len(start_lines) == 1, "the publisher start line did not report a broker"
     assert start_lines[0]["redis_url"] == "redis://archiver:***@broker:6379/0"
     assert "hunter2" not in repr(infos)
+
+
+# --- content.fetch-policy, dark until F1 (archiver#366) ----------------------
+
+
+@pytest.fixture
+def fp_env(bus_env):
+    bus_env.delenv(fetch_policy.PRODUCER_ENV, raising=False)
+    return bus_env
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_stays_dark_without_the_flag(
+    fp_env, bus_client_calls, test_engine, caplog
+):
+    """Redis alone is not authority to produce: until F1, Watcher's producer
+    still runs, and no ACL refuses a second writer (CannObserv/broker#93)."""
+    fp_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    app.state.fetch_policy_task = "stale-from-a-previous-lifespan"
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+
+    with (
+        caplog.at_level("INFO"),
+        patch("src.core.changes.publisher.run", side_effect=_capture),
+    ):
+        async with lifespan(app):
+            assert app.state.fetch_policy_task is None
+
+    assert set(captured["topic_maxlen"]) == {"info.registry"}
+    assert "content.fetch-policy producer is dark" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_flag_starts_the_full_set_and_caps_the_deltas(
+    fp_env, bus_client_calls, test_engine
+):
+    fp_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    fp_env.setenv(fetch_policy.PRODUCER_ENV, "1")
+    captured: dict = {}
+    handed: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+
+    async def _full_set(**kwargs):
+        handed.update(kwargs)
+
+    with (
+        patch("src.core.changes.publisher.run", side_effect=_capture),
+        patch("src.core.changes.fetch_policy_snapshot.run", side_effect=_full_set),
+    ):
+        async with lifespan(app):
+            assert app.state.fetch_policy_task is not None
+
+    # Retention rides the XADD; the +xadd-only grant forbids XTRIM (broker#93).
+    assert captured["trim_topics"] == frozenset({"info.changes"})
+    # CR 4: no cap until a complete set computes one. A delta drained before
+    # the first set carries no MAXLEN, so it can never trim below the floor;
+    # the full-set task fills the very mapping the drain reads.
+    assert set(captured["topic_maxlen"]) == {"info.registry"}
+    assert handed["topic_maxlen"] is captured["topic_maxlen"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_flag_without_a_bus_is_an_error(fp_env, test_engine, caplog):
+    """No bus, no tick: say it once, loudly, at startup."""
+    fp_env.setenv(fetch_policy.PRODUCER_ENV, "1")
+    app.state.fetch_policy_task = "stale-from-a-previous-lifespan"
+
+    async with lifespan(app):
+        assert app.state.fetch_policy_task is None
+
+    errors = [
+        r for r in caplog.records if r.levelname == "ERROR" and "content.fetch-policy" in r.message
+    ]
+    assert len(errors) == 1

@@ -26,6 +26,7 @@ from src.core.build import build_id
 from src.core.changes import (
     artifacts_consumer,
     bus_client,
+    fetch_policy_snapshot,
     outbox_prune,
     registry_snapshot,
     replication_reaper,
@@ -41,6 +42,7 @@ from src.core.db_safety import (
 )
 from src.core.logging import configure_logging, get_logger
 from src.core.power_map import power_map_from_env
+from src.core.services import fetch_policy
 from src.dashboard.main import register_dashboard
 
 configure_logging()
@@ -106,6 +108,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       That gate exists because a group consumer removes messages from
       production's PEL; a groupless tail removes nothing, so a stray tail is
       harmless.
+    - Optionally starts the ``content.fetch-policy`` full set (archiver#366)
+      when ``ARCHIVER_FETCH_POLICY_PRODUCER`` is also set, which only
+      ``deploy/archiver.service`` may do, at flip F1. Dark until then: a
+      second producer beside Watcher's is nothing an ACL refuses.
     - Optionally starts the liveness heartbeat (archiver#297) when
       ``CO_ARCHIVER_LIVE_MONITOR_ID`` and the ``status-checkin-key`` credential
       are both present, which only ``deploy/archiver.service`` provides. It
@@ -163,6 +169,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     reaper_task: asyncio.Task | None = None
     reaper_stop_event: asyncio.Event | None = None
     snapshot_task: asyncio.Task | None = None
+    fetch_policy_task: asyncio.Task | None = None
+    fetch_policy_on = fetch_policy.producer_enabled()
     watch_status_task: asyncio.Task | None = None
     reachability_task: asyncio.Task | None = None
 
@@ -223,6 +231,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             retention_days = outbox_prune.resolve_retention_days(
                 os.environ.get("ARCHIVER_OUTBOX_RETENTION_DAYS")
             )
+            # Per-publish caps, read by the drain per row. content.fetch-policy
+            # (archiver#366) gets its entry from its full-set task, after each
+            # complete set: only a complete set may compute the floor. A delta
+            # drained before the first one carries no MAXLEN - a few extra
+            # entries, never a trim below RETAINED_FULL_SETS sets (CR 4).
+            topic_maxlen: dict[str, int] = {registry_topic: registry_maxlen}
             pub_task = asyncio.create_task(
                 outbox_publisher.run(
                     session_factory=session_factory,
@@ -244,8 +258,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     # Nor is it in topic_maxlen, the cap broker's ACL cannot
                     # refuse. maxmemory is its only bound until archiver#267's
                     # trigger fires (docs/BUS.md, content.replicate).
+                    # content.fetch-policy is absent too: its grant is +xadd
+                    # only (CannObserv/broker#93), so its cap rides the XADD.
                     trim_topics=frozenset({outbox_publisher.CHANGE_STREAM_TOPIC}),
-                    topic_maxlen={registry_topic: registry_maxlen},
+                    topic_maxlen=topic_maxlen,
                     retention_days=retention_days,
                     progress=stamps.get("publisher"),
                 )
@@ -283,6 +299,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             snapshot_task.add_done_callback(_bus_task_exit_logger("registry_snapshot", stop_event))
             app.state.registry_snapshot_task = snapshot_task
             app.state.registry_snapshot_trigger = snapshot_trigger
+
+            # --- content.fetch-policy full set (archiver#366), dark until F1 ---
+            # Same client and stop event as the snapshot. A full set at
+            # startup, then every five minutes (broker mirrors the period).
+            if fetch_policy_on:
+                fetch_policy_task = asyncio.create_task(
+                    fetch_policy_snapshot.run(
+                        session_factory=session_factory,
+                        publisher=AsyncBusPublisher(redis_client),
+                        stop_event=stop_event,
+                        topic_maxlen=topic_maxlen,
+                    )
+                )
+                fetch_policy_task.add_done_callback(
+                    _bus_task_exit_logger("fetch_policy", stop_event)
+                )
+                logger.info("content.fetch-policy producer started")
+            app.state.fetch_policy_task = fetch_policy_task
         except Exception:
             logger.exception("Failed to initialise outbox publisher; skipping")
             redis_client = None
@@ -291,6 +325,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.publisher_stop_event = None
             app.state.registry_snapshot_task = None
             app.state.registry_snapshot_trigger = None
+            app.state.fetch_policy_task = None
             # The task keeps running to its ERROR line - a broker that is down
             # is exactly what an operator needs told, and init failing for some
             # *other* reason does not make that less true. Only the handle is
@@ -405,10 +440,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.revisions_consumer_task = None
         app.state.registry_snapshot_task = None
         app.state.registry_snapshot_trigger = None
+        app.state.fetch_policy_task = None
         app.state.watch_status_task = None
         app.state.artifacts_consumer_task = None
         app.state.bus_reachability_task = None
         logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumers disabled")
+
+    # One line either way, so the journal says which side of F1 this process is on.
+    if not fetch_policy_on:
+        logger.info(
+            "content.fetch-policy producer is dark (%s unset; Watcher produces until F1)",
+            fetch_policy.PRODUCER_ENV,
+        )
+    elif app.state.fetch_policy_task is None:
+        logger.error(
+            "content.fetch-policy producer is enabled but has no bus; nothing is published "
+            "and Replicator paces every host at its own default"
+        )
 
     # --- Replication reaper (archiver#170, MUST-6) ---
     # Outside the Redis branch on purpose: it touches no broker at all. A command
@@ -457,6 +505,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if redis_url:
             loops["watch_status_tail"] = (watch_status_task, stamps["watch_status_tail"])
             tasks["registry_snapshot"] = snapshot_task
+            if fetch_policy_on:
+                tasks["fetch_policy"] = fetch_policy_task
         if consumers_on:
             loops["revisions_consumer"] = (consumer_task, stamps["revisions_consumer"])
             loops["artifacts_consumer"] = (artifacts_task, stamps["artifacts_consumer"])
@@ -493,6 +543,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             pub_task,
             consumer_task,
             snapshot_task,
+            fetch_policy_task,
             watch_status_task,
             artifacts_task,
             reaper_task,

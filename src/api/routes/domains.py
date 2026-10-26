@@ -5,7 +5,8 @@ domain that has InfoSources referencing it cannot be deleted (409).
 
 PATCH, archive and restore go through ``update_domain``: each can suspend or
 resume the host, which re-announces its items on ``info.registry`` in the same
-transaction (archiver#360).
+transaction (archiver#360). Each of them, and DELETE, carries the host's
+``content.fetch-policy`` frame when it changes (archiver#366).
 """
 
 from __future__ import annotations
@@ -13,15 +14,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session
 from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.domain import DomainOut, DomainPatch
 from src.api.schemas.pagination import Page
-from src.core.models import InfoSource
 from src.core.models.domain import Domain
+from src.core.services import domain_policy
 from src.core.services.domain_policy import update_domain
 from src.core.url_canonicalization import is_canonical_hostname, source_hostname
 from src.core.watch_spec_schema.validator import validate_domain_watch_spec
@@ -160,24 +161,19 @@ async def delete_domain(
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a Domain. Returns 409 if InfoSources reference it."""
-    result = await session.execute(select(Domain).where(Domain.name == name))
-    domain = result.scalar_one_or_none()
-    if domain is None:
-        raise_envelope(404, "lookup", "Domain not found")
-
-    count = (
-        await session.execute(
-            select(func.count()).select_from(InfoSource).where(InfoSource.domain_name == name)
-        )
-    ).scalar_one()
-    if count > 0:
+    # Records the host's content.fetch-policy tombstone in this transaction
+    # (archiver#366). Not in the docstring: that is the OpenAPI description.
+    try:
+        deleted = await domain_policy.delete_domain(session, name)
+    except domain_policy.DomainInUse as e:
         raise_envelope(
             409,
             "conflict",
-            f"Domain has {count} InfoSource(s) referencing it; deactivate them first.",
+            f"Domain has {e.count} InfoSource(s) referencing it; deactivate them first.",
+            source_exc=e,
         )
-
-    await session.delete(domain)
+    if not deleted:
+        raise_envelope(404, "lookup", "Domain not found")
     await session.commit()
 
 

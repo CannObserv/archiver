@@ -248,10 +248,11 @@ async def test_rearm_rejects_a_row_that_still_does_not_build(session_factory):
     assert after.publish_attempts == 100_000
 
 
-@pytest.mark.parametrize("topic", ["info.registry", "content.replicate"])
+@pytest.mark.parametrize("topic", ["info.registry", "content.replicate", "content.fetch-policy"])
 async def test_rearm_refuses_topics_where_a_late_publish_is_wrong(session_factory, topic):
-    """info.registry: the hourly snapshot is the repair. content.replicate: the
-    reaper may have abandoned the command; re-issuing is #171's, with a fresh id."""
+    """info.registry and content.fetch-policy (archiver#366): the periodic full
+    set is the repair. content.replicate: the reaper may have abandoned the
+    command; re-issuing is #171's, with a fresh id."""
     row = await _insert(session_factory, topic=topic)
 
     async with session_factory() as session:

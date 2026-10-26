@@ -13,6 +13,10 @@ Covers:
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
+
+from src.core.models import ChangesOutboxRow, Domain, FetchPolicyTombstone
+from src.core.services import fetch_policy
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -137,6 +141,91 @@ async def test_delete_domain_204(client):
     assert resp.status_code == 204
     gone = await client.get("/api/v1/domains/deleteme.example.com", headers=HEADERS)
     assert gone.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_domain_404_when_absent(client, session):
+    """CR 9: the route maps delete_domain's False to a 404, and writes nothing."""
+    resp = await client.delete("/api/v1/domains/never-there.example.com", headers=HEADERS)
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["kind"] == "lookup"
+    assert (
+        await session.execute(
+            select(FetchPolicyTombstone).where(
+                FetchPolicyTombstone.host == "never-there.example.com"
+            )
+        )
+    ).scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_delete_tombstones_the_host_and_a_re_add_orders_above_it(
+    client, session, monkeypatch
+):
+    """archiver#366: the delete records the host's tombstone at a fresh
+    generation, and re-adding it draws higher and clears the tombstone."""
+    monkeypatch.setenv(fetch_policy.PRODUCER_ENV, "1")
+    host = "fp-delete.example.com"
+    await client.patch(f"/api/v1/domains/{host}", headers=HEADERS, json={})
+    live = (
+        await session.execute(select(Domain.fetch_policy_generation).where(Domain.name == host))
+    ).scalar_one()
+
+    assert (await client.delete(f"/api/v1/domains/{host}", headers=HEADERS)).status_code == 204
+    tombstone = (
+        await session.execute(select(FetchPolicyTombstone).where(FetchPolicyTombstone.host == host))
+    ).scalar_one()
+    assert tombstone.generation > live
+
+    await client.patch(f"/api/v1/domains/{host}", headers=HEADERS, json={})
+    readded = (
+        await session.execute(select(Domain.fetch_policy_generation).where(Domain.name == host))
+    ).scalar_one()
+    assert readded > tombstone.generation
+    assert (
+        await session.execute(select(FetchPolicyTombstone).where(FetchPolicyTombstone.host == host))
+    ).scalar_one_or_none() is None
+
+    frames = (
+        (
+            await session.execute(
+                select(ChangesOutboxRow.payload)
+                .where(ChangesOutboxRow.topic == fetch_policy.FETCH_POLICY_TOPIC)
+                .where(ChangesOutboxRow.payload["host"].astext == host)
+                .order_by(ChangesOutboxRow.created_at, ChangesOutboxRow.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [(f["revoked"], f["generation"]) for f in frames] == [
+        (False, live),
+        (True, tombstone.generation),
+        (False, readded),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_delete_records_no_tombstone(client, session):
+    await client.post(
+        "/api/v1/info-sources",
+        headers=HEADERS,
+        json={
+            "url": "https://fp-nodelete.example.com/path",
+            "source_specs": [
+                {"schema_version": 1, "extraction": {"algorithm": "full_page"}, "fingerprint": {}}
+            ],
+        },
+    )
+    resp = await client.delete("/api/v1/domains/fp-nodelete.example.com", headers=HEADERS)
+    assert resp.status_code == 409
+    assert (
+        await session.execute(
+            select(FetchPolicyTombstone).where(
+                FetchPolicyTombstone.host == "fp-nodelete.example.com"
+            )
+        )
+    ).scalar_one_or_none() is None
 
 
 @pytest.mark.asyncio

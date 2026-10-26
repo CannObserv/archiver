@@ -11,6 +11,7 @@ from ulid import ULID
 
 from src.core.models import InfoItem, InfoItemSource, InfoSource
 from src.core.models.domain import Domain
+from src.core.services import fetch_policy
 
 _HEADERS = {"X-ExeDev-UserID": "ext-dom", "X-ExeDev-Email": "dom@example.com"}
 
@@ -662,6 +663,34 @@ async def test_domain_detail_shows_fetch_policy_and_says_it_is_dark(client, sess
     assert 'value="2.5"' in r.text
     assert re.search(r'<option value="6h"\s+selected', r.text)
     assert "#366" in r.text and "#364" in r.text  # where each takes effect
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flag", [None, "1"])
+async def test_fetch_policy_copy_follows_the_producer_flag(client, session, monkeypatch, flag):
+    """archiver#366: the interval's copy reads true on both sides of F1."""
+    if flag is None:
+        monkeypatch.delenv(fetch_policy.PRODUCER_ENV, raising=False)
+    else:
+        monkeypatch.setenv(fetch_policy.PRODUCER_ENV, flag)
+    session.add(_make_domain("policy-flag.example.com"))
+    await session.flush()
+
+    detail = await client.get("/dashboard/domains/policy-flag.example.com", headers=_HEADERS)
+    saved = await client.post(
+        "/dashboard/domains/policy-flag.example.com/fetch-policy",
+        headers={**_HEADERS, "HX-Request": "true"},
+        data={"min_interval_seconds": "2", "default_interval": ""},
+    )
+
+    for text in (detail.text, saved.text):
+        if flag is None:
+            assert "until then Watcher's value applies" in text
+            assert "Archiver publishes it on" not in text
+        else:
+            assert "Watcher's value applies" not in text
+            assert "Archiver publishes it on <code>content.fetch-policy</code>" in text
+        assert "#364" in text  # the cadence stays dark until F2 either way
 
 
 @pytest.mark.asyncio

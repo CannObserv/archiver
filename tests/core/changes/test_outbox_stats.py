@@ -43,10 +43,11 @@ async def _insert_row(
     created_at: datetime,
     published_at: datetime | None = None,
     dead_lettered_at: datetime | None = None,
+    topic: str = "info.changes",
 ) -> ChangesOutboxRow:
     async with session_factory() as session:
         row = ChangesOutboxRow(
-            topic="info.changes",
+            topic=topic,
             payload={"event_type": "irrelevant"},
             created_at=created_at,
             published_at=published_at,
@@ -93,6 +94,23 @@ async def test_counts_partition_by_row_state(session_factory):
     # Oldest LIVE row is 30s old - the 3h-old dead-lettered row must not leak
     # into the age, or a retired poison row would look like a wedged backlog.
     assert stats.oldest_unpublished_age_seconds == pytest.approx(30.0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("topic", ["info.registry", "content.replicate", "content.fetch-policy"])
+async def test_every_topic_counts_alike(session_factory, topic):
+    """The probe is topic-agnostic, so a topic added later (archiver#366's
+    content.fetch-policy) is covered without an edit here."""
+    await _insert_row(session_factory, created_at=_NOW - timedelta(seconds=40), topic=topic)
+    await _insert_row(
+        session_factory,
+        created_at=_NOW - timedelta(hours=1),
+        dead_lettered_at=_NOW - timedelta(minutes=30),
+        topic=topic,
+    )
+    async with session_factory() as session:
+        stats = await collect_outbox_stats(session, now=_NOW)
+    assert (stats.unpublished_count, stats.dead_lettered_count) == (1, 1)
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ lives here.
 
 ## Current model (Phase 4 — Archiver v2)
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate` and `content.persist` via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](BUS.md) and [docs/BUS_CONSUMERS.md](BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate` and `content.persist` via an internal outbox publisher, with `content.fetch-policy` built but dark until flip F1 (#366); consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](BUS.md) and [docs/BUS_CONSUMERS.md](BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
 
@@ -133,7 +133,10 @@ src/core/                      Domain logic
                                bypassing the outbox (no transactional obligation
                                to carry), no retry (the next period is the
                                repair), reading generations without bumping
-                               (#141). The event
+                               (#141). fetch_policy_snapshot.py is the same
+                               for content.fetch-policy (#366): every Domain
+                               and tombstone each 300 s, the cap floored at
+                               ten complete sets. The event
                                payload models live in co-core since #106, not
                                here. watch_status_consumer.py tails
                                info.watch-status groupless (AsyncBusTailReader,
@@ -178,6 +181,14 @@ src/core/                      Domain logic
                                PATCH/archive/restore and the dashboard's
                                archive/restore/fetch-policy, announcing the
                                host's items when suspension flips.
+                               delete_domain is the delete: it locks the row
+                               before drawing the tombstone's generation (#366).
+                               fetch_policy.py is content.fetch-policy's delta
+                               half (#366): draws the host's generation from
+                               one sequence when its frame changes, writes the
+                               outbox row only while
+                               ARCHIVER_FETCH_POLICY_PRODUCER is set (dark until
+                               F1), and records a deleted host's tombstone.
   spec_match.py                Compares an observed spec_fingerprint against the
                                InfoSource's own source_specs via co-core's shared
                                derivation (cannobserv#309). Every uncertain branch
