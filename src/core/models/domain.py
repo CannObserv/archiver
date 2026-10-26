@@ -49,12 +49,13 @@ class Domain(Base, TimestampMixin):
     ``src.core.services.registry_announcement``, the one predicate). Watcher's
     host-local ``domain_suspended`` stays there as break-glass.
 
-    **Two dark fields.** Stored and editable, read by nothing yet:
+    **Two dark fields.** Stored and editable; nothing consumes them until their flip:
 
-    - ``min_interval_seconds`` — request spacing for the host, in seconds. It
-      takes effect when Archiver produces ``content.fetch-policy`` (#366, flip
-      F1); until then Watcher's value is live, and the re-import before F1
-      overwrites an edit made here.
+    - ``min_interval_seconds`` — request spacing for the host, in seconds.
+      Archiver publishes it on ``content.fetch-policy`` once
+      ``ARCHIVER_FETCH_POLICY_PRODUCER`` is set (#366, flip F1); until then
+      Watcher's value is live, and the re-import before F1 overwrites an edit
+      made here.
     - ``default_watch_spec`` — a WatchSpec v1 document carrying ``interval``,
       the domain tier of cadence resolution (#364, flip F2). ``NULL`` is "no
       domain default".
