@@ -15,12 +15,15 @@ same announce path as an operator's.
 Then the same without ``--dry-run``. There is no default ``--base-url``, so
 nothing reaches production by accident.
 
-**Until the flips, Watcher's value wins** for ``min_interval`` (until F1,
-#366), the cadence (until F2, #364), ``is_active`` and archived-ness. Watcher
-re-exports before each flip, and the import is re-run then: it is idempotent,
-and a host already matching is not written. **Notes** fill an empty field only.
-A note that differs from Archiver's is reported and left alone, since Archiver
-has always edited its own.
+**Until the flips, Watcher's value wins** for the cadence (until F2, #364),
+``is_active`` and archived-ness. Watcher re-exports before each flip, and the
+import is re-run then: it is idempotent, and a host already matching is not
+written. **``min_interval`` flipped at F1 (#438)**, yet this still writes
+Watcher's: a re-run before F2 overwrites any interval edited in Archiver since
+F1. Check the ``--dry-run`` for ``min_interval_seconds`` changes first.
+
+**Notes** fill an empty field only. A note that differs from Archiver's is
+reported and left alone, since Archiver has always edited its own.
 
 Archive and restore go through the API, so a newly archived host carries
 Archiver's ``archived_at``, not Watcher's.
