@@ -523,7 +523,6 @@ class TestResolvedCadence:
     def test_an_inheriting_item_shows_the_domain_default(self):
         ctx = self._ctx(own={"schema_version": 1}, host=_host(_SIX_HOURS))
         assert ctx["cadence"] == "Every 6 hours"
-        assert ctx["cadence_tier"] == "domain"
         assert ctx["own_cadence"] == ""
         assert ctx["inherit_label"] == "Inherit: Every 6 hours (domain)"
 
@@ -543,7 +542,6 @@ class TestResolvedCadence:
     def test_the_items_own_interval_wins_and_the_editor_still_names_the_inheritance(self):
         ctx = self._ctx(own={"schema_version": 1, "interval": "1h"}, host=_host(_SIX_HOURS))
         assert ctx["cadence"] == "Hourly"
-        assert ctx["cadence_tier"] == "item"
         assert ctx["own_cadence"] == "Hourly"
         assert ctx["inherit_label"] == "Inherit: Every 6 hours (domain)"
 
@@ -551,7 +549,6 @@ class TestResolvedCadence:
         """Archiver does not mirror Watcher's system default (watcher#159)."""
         ctx = self._ctx(own={"schema_version": 1}, host=None, status=False)
         assert ctx["cadence"] == ""
-        assert ctx["cadence_tier"] is None
         assert ctx["inherit_label"] == "Inherit: Watcher's default"
 
     def test_a_suspended_host_still_supplies_its_cadence(self):

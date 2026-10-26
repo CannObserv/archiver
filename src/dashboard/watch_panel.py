@@ -153,7 +153,6 @@ class WatchPanelContext(TypedDict):
     suspended_by: str | None
     pending_toggle: str | None
     cadence: str
-    cadence_tier: str | None
     own_cadence: str
     inherit_label: str
     applied_cadence: str
@@ -277,7 +276,6 @@ def build_watch_context(
             suspended_by=suspended_by,
             pending_toggle=None,
             cadence=cadence,
-            cadence_tier=resolved.tier,
             own_cadence=own_cadence,
             inherit_label=inherits,
             applied_cadence="",
@@ -326,7 +324,6 @@ def build_watch_context(
         suspended_by=suspended_by,
         pending_toggle=pending_toggle,
         cadence=cadence,
-        cadence_tier=resolved.tier,
         own_cadence=own_cadence,
         inherit_label=inherits,
         applied_cadence=format_interval(status.applied_interval),
