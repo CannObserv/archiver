@@ -237,12 +237,9 @@ def build_watch_context(
     announced_interval = resolved.interval
     # The item tier is valid exactly when it won: read once, warned once (CR 6).
     own = resolved.interval if resolved.tier == "item" else None
-    cadence_fields = {
-        "cadence": format_interval(announced_interval),
-        "cadence_tier": resolved.tier,
-        "own_cadence": format_interval(own),
-        "inherit_label": inherit_label(host),
-    }
+    cadence = format_interval(announced_interval)
+    own_cadence = format_interval(own)
+    inherits = inherit_label(host)
     desired_active = resolved_active(item.watch_active, host_suspended=suspended_by is not None)
 
     # Announceability is checked *before* the cache row, not after. A status row
@@ -268,7 +265,10 @@ def build_watch_context(
             desired_active=desired_active,
             suspended_by=suspended_by,
             pending_toggle=None,
-            **cadence_fields,
+            cadence=cadence,
+            cadence_tier=resolved.tier,
+            own_cadence=own_cadence,
+            inherit_label=inherits,
             applied_cadence="",
             cadence_drift=False,
             last_attempt_ago=None,
@@ -314,7 +314,10 @@ def build_watch_context(
         desired_active=desired_active,
         suspended_by=suspended_by,
         pending_toggle=pending_toggle,
-        **cadence_fields,
+        cadence=cadence,
+        cadence_tier=resolved.tier,
+        own_cadence=own_cadence,
+        inherit_label=inherits,
         applied_cadence=format_interval(status.applied_interval),
         cadence_drift=cadence_drift,
         last_attempt_ago=format_age(status.last_attempt_at, now=now),
