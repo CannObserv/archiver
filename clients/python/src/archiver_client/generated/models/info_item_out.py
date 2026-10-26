@@ -35,9 +35,9 @@ class InfoItemOut:
             from `org`.
         updated_at (datetime.datetime): UTC timestamp of the last update to the InfoItem.
         watch_spec (InfoItemOutWatchSpec): Cadence policy for this item (WatchSpec v1): '{"schema_version": 1,
-            "interval": "1d"}'. `interval` is optional — when absent the consumer applies its own default, which may be a
-            per-domain one rather than a global constant. Carries no pause state; see watch_active. Written via PUT /info-
-            items/{id}/watch-spec.
+            "interval": "1d"}'. The item's own intent: `interval` is optional, and when absent the item inherits its host's
+            default cadence, else Watcher's own. info.registry announces the resolved interval (archiver#364). Carries no
+            pause state; see watch_active. Written via PUT /info-items/{id}/watch-spec.
         dashboard_url (None | str | Unset): Absolute URL of this item's Archiver dashboard detail page. Null when
             ARCHIVER_PUBLIC_BASE_URL is not configured on the server.
         info_item_rep_specs (list[InfoItemRepSpecOut] | Unset): Effective-dated RepSpec assignments for this InfoItem.

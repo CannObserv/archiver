@@ -17,8 +17,8 @@ class InfoItemWatchSpecPut:
     """Request body for PUT /info-items/{id}/watch-spec.
 
     Replaces the whole document — this is not a merge. Omitting ``interval`` is
-    how "the consumer applies its own default" is expressed, so a merge would
-    make that state unreachable once an interval had been set.
+    how "inherit" is expressed (the host's default cadence, else Watcher's own),
+    so a merge would make that state unreachable once an interval had been set.
 
     Carries cadence only. Pause state has its own route (``PUT /watch-active``)
     precisely so this body keeps one absence rule instead of two.

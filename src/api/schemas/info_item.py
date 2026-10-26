@@ -62,8 +62,8 @@ class InfoItemWatchSpecPut(BaseModel):
     """Request body for PUT /info-items/{id}/watch-spec.
 
     Replaces the whole document — this is not a merge. Omitting ``interval`` is
-    how "the consumer applies its own default" is expressed, so a merge would
-    make that state unreachable once an interval had been set.
+    how "inherit" is expressed (the host's default cadence, else Watcher's own),
+    so a merge would make that state unreachable once an interval had been set.
 
     Carries cadence only. Pause state has its own route (``PUT /watch-active``)
     precisely so this body keeps one absence rule instead of two.
@@ -278,9 +278,10 @@ class InfoItemOut(BaseModel):
     watch_spec: dict[str, Any] = Field(
         description=(
             "Cadence policy for this item (WatchSpec v1): "
-            '\'{"schema_version": 1, "interval": "1d"}\'. `interval` is optional — '
-            "when absent the consumer applies its own default, which may be a per-domain "
-            "one rather than a global constant. Carries no pause state; see watch_active. "
+            '\'{"schema_version": 1, "interval": "1d"}\'. The item\'s own intent: '
+            "`interval` is optional, and when absent the item inherits its host's default "
+            "cadence, else Watcher's own. info.registry announces the resolved interval "
+            "(archiver#364). Carries no pause state; see watch_active. "
             "Written via PUT /info-items/{id}/watch-spec."
         )
     )

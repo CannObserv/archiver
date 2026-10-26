@@ -961,8 +961,10 @@ async def put_watch_spec(
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
-    "the consumer applies its own default" — a merge would make that state
-    unreachable once an interval had been set.
+    "inherit" — the host's default cadence, else Watcher's own (archiver#364) —
+    and a merge would make that state unreachable once an interval had been set.
+    The stored document is the item's own intent; ``info.registry`` announces
+    the resolved interval.
 
     Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
     one absence rule and keeps pausing from becoming a read-modify-write of a

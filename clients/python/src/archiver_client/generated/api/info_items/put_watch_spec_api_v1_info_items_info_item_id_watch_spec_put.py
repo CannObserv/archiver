@@ -106,8 +106,10 @@ def sync_detailed(
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
-    \"the consumer applies its own default\" — a merge would make that state
-    unreachable once an interval had been set.
+    \"inherit\" — the host's default cadence, else Watcher's own (archiver#364) —
+    and a merge would make that state unreachable once an interval had been set.
+    The stored document is the item's own intent; ``info.registry`` announces
+    the resolved interval.
 
     Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
     one absence rule and keeps pausing from becoming a read-modify-write of a
@@ -127,8 +129,8 @@ def sync_detailed(
         body (InfoItemWatchSpecPut): Request body for PUT /info-items/{id}/watch-spec.
 
             Replaces the whole document — this is not a merge. Omitting ``interval`` is
-            how "the consumer applies its own default" is expressed, so a merge would
-            make that state unreachable once an interval had been set.
+            how "inherit" is expressed (the host's default cadence, else Watcher's own),
+            so a merge would make that state unreachable once an interval had been set.
 
             Carries cadence only. Pause state has its own route (``PUT /watch-active``)
             precisely so this body keeps one absence rule instead of two.
@@ -165,8 +167,10 @@ def sync(
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
-    \"the consumer applies its own default\" — a merge would make that state
-    unreachable once an interval had been set.
+    \"inherit\" — the host's default cadence, else Watcher's own (archiver#364) —
+    and a merge would make that state unreachable once an interval had been set.
+    The stored document is the item's own intent; ``info.registry`` announces
+    the resolved interval.
 
     Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
     one absence rule and keeps pausing from becoming a read-modify-write of a
@@ -186,8 +190,8 @@ def sync(
         body (InfoItemWatchSpecPut): Request body for PUT /info-items/{id}/watch-spec.
 
             Replaces the whole document — this is not a merge. Omitting ``interval`` is
-            how "the consumer applies its own default" is expressed, so a merge would
-            make that state unreachable once an interval had been set.
+            how "inherit" is expressed (the host's default cadence, else Watcher's own),
+            so a merge would make that state unreachable once an interval had been set.
 
             Carries cadence only. Pause state has its own route (``PUT /watch-active``)
             precisely so this body keeps one absence rule instead of two.
@@ -219,8 +223,10 @@ async def asyncio_detailed(
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
-    \"the consumer applies its own default\" — a merge would make that state
-    unreachable once an interval had been set.
+    \"inherit\" — the host's default cadence, else Watcher's own (archiver#364) —
+    and a merge would make that state unreachable once an interval had been set.
+    The stored document is the item's own intent; ``info.registry`` announces
+    the resolved interval.
 
     Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
     one absence rule and keeps pausing from becoming a read-modify-write of a
@@ -240,8 +246,8 @@ async def asyncio_detailed(
         body (InfoItemWatchSpecPut): Request body for PUT /info-items/{id}/watch-spec.
 
             Replaces the whole document — this is not a merge. Omitting ``interval`` is
-            how "the consumer applies its own default" is expressed, so a merge would
-            make that state unreachable once an interval had been set.
+            how "inherit" is expressed (the host's default cadence, else Watcher's own),
+            so a merge would make that state unreachable once an interval had been set.
 
             Carries cadence only. Pause state has its own route (``PUT /watch-active``)
             precisely so this body keeps one absence rule instead of two.
@@ -276,8 +282,10 @@ async def asyncio(
 
     A whole-document PUT rather than a general InfoItem PATCH: the document is
     validated as a unit, and omitting ``interval`` is the only way to express
-    \"the consumer applies its own default\" — a merge would make that state
-    unreachable once an interval had been set.
+    \"inherit\" — the host's default cadence, else Watcher's own (archiver#364) —
+    and a merge would make that state unreachable once an interval had been set.
+    The stored document is the item's own intent; ``info.registry`` announces
+    the resolved interval.
 
     Cadence only. Pause state is ``PUT /watch-active``, which keeps this body to
     one absence rule and keeps pausing from becoming a read-modify-write of a
@@ -297,8 +305,8 @@ async def asyncio(
         body (InfoItemWatchSpecPut): Request body for PUT /info-items/{id}/watch-spec.
 
             Replaces the whole document — this is not a merge. Omitting ``interval`` is
-            how "the consumer applies its own default" is expressed, so a merge would
-            make that state unreachable once an interval had been set.
+            how "inherit" is expressed (the host's default cadence, else Watcher's own),
+            so a merge would make that state unreachable once an interval had been set.
 
             Carries cadence only. Pause state has its own route (``PUT /watch-active``)
             precisely so this body keeps one absence rule instead of two.
