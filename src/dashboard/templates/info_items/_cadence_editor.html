@@ -63,8 +63,9 @@
 <div class="field-row-group" x-data="editableField">
   <label class="field-row__label" for="cadence-{{ item_id }}">Announced cadence</label>
 
-  {# View mode: the announced policy, which is not necessarily what row one
-     shows - that cell leads with the interval Watcher reports *applied*. #}
+  {# View mode: the item's own cadence, or what it inherits (archiver#364) -
+     not necessarily what row one shows, which leads with the interval Watcher
+     reports *applied*. #}
   <div class="field-row" x-show="!editing">
     <div class="field-row__readout">{{ cadence_display }}</div>
     <div class="field-row__actions">
