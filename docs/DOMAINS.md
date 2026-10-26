@@ -99,6 +99,8 @@ must draw above its own tombstone.
   sites redraw after the insert. `delete_domain` locks the row before drawing, so a save that held
   it first orders below the tombstone.
 - **Dark or not, it advances,** so the first full set at F1 carries current values.
+- **Gaps are expected.** `ON CONFLICT DO NOTHING` still evaluates the default, so every `PATCH`
+  of an existing host burns a value, and an insert draws twice. Only order matters on the wire.
 
 ### The F1 runbook - archiver's half
 
