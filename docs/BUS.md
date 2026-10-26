@@ -223,15 +223,12 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   active primary binding and non-empty `source_specs` announces **live**;
   previously-announced without one announces **revoked**; never-announced
   sourceless items emit nothing and keep generation `0`. A live announcement's
-  `active` is resolved: `false` when the announcing source's host is suspended
-  (an inactive or archived `Domain`), otherwise `watch_active`, `null` included
-  (`domain_suspended` / `resolved_active`, archiver#360). Its `watch_spec` is
-  resolved too, not stored: the item's own `interval`, else the host's
-  `default_watch_spec` interval, else none, and Watcher applies its own default
-  (`resolve_interval`, archiver#364). It is always WatchSpec v1, and Watcher, the
-  one consumer, reads it as its top tier. Both emit paths share both rules, and a
-  suspension flip or a default-cadence change (`src/core/services/domain_policy.py`)
-  announces every item whose resolved `active` or interval moved. Pause and cadence writes
+  `active` is resolved: `false` on a suspended host, else `watch_active`, `null`
+  included (`resolved_active`, archiver#360). Its `watch_spec` is
+  resolved, not stored: the item's `interval`, else the host's default, else none
+  (`resolve_interval`, archiver#364). Both paths share both rules; a suspension flip
+  or default-cadence change (`domain_policy.py`) announces each item whose resolved
+  `active` or interval moved. Pause and cadence writes
   (`announce_policy_change`) announce only a live item: on an unannounceable one
   they emit nothing, since policy cannot change announceability (archiver#167).
   Binding and spec writes skip an item whose last announcement was already a
