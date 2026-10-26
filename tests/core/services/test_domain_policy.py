@@ -636,7 +636,10 @@ async def test_a_non_flipping_update_domain_does_not_block_an_announce(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("changes", [{"is_active": False}, {"notes": "n"}])
+@pytest.mark.parametrize(
+    "changes",
+    [{"is_active": False}, {"notes": "n"}, {"default_watch_spec": _SIX_HOURS}],  # CR 9 (#364)
+)
 async def test_a_create_racing_a_delete_returns_none(
     test_engine, committed_rows, monkeypatch, changes
 ):
