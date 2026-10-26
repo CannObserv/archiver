@@ -1,17 +1,18 @@
 """The ``content.fetch-policy`` producer's delta half (archiver#366).
 
-Archiver takes over Watcher's producer at flip F1: one ``FetchPolicyState`` per
+Archiver took over Watcher's producer at flip F1 (archiver#438): one ``FetchPolicyState`` per
 host, last-write-wins, consumed by Replicator. Same shape as ``info.registry``
 (archiver#141): a delta through ``changes_outbox`` in the transaction that
 changes the host, plus a full set published directly on a timer
 (``src.core.changes.fetch_policy_snapshot``). This module owns the delta half
 and the one builder both halves share.
 
-**Dark until F1.** ``ARCHIVER_FETCH_POLICY_PRODUCER`` is set only in
-``deploy/archiver.service``, never in an env file (the ``ARCHIVER_BUS_CONSUMER``
-precedent): until Watcher's producer stops, a second writer would fight it and
-no ACL refuses two (CannObserv/broker#93). While it is off, generations still
-advance with every change, and nothing reaches the outbox.
+**Unit-only.** ``ARCHIVER_FETCH_POLICY_PRODUCER`` is set only in
+``deploy/archiver.service`` (since flip F1, archiver#438), never in an env file
+(the ``ARCHIVER_BUS_CONSUMER`` precedent): a second writer would fight it and no
+ACL refuses two (CannObserv/broker#93). Where it is off (every dev and test
+process), generations still advance with every change, and nothing reaches the
+outbox.
 
 **The frame** is ``(revoked, min_interval_seconds if live)``. A suspended host
 (``domain_suspended``, the predicate ``info.registry`` resolves ``active=false``

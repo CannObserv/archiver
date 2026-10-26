@@ -3,8 +3,10 @@
 
    The copy says where each field takes effect, so an operator does not edit
    one expecting a change on the wire. The minimum interval's sentence follows
-   `fetch_policy_live` (ARCHIVER_FETCH_POLICY_PRODUCER, archiver#366): dark
-   until flip F1, live after it. The cadence stays dark until F2 (#364).
+   `fetch_policy_live` (ARCHIVER_FETCH_POLICY_PRODUCER, archiver#366): set only
+   in archiver.service since flip F1 (#438), so production reads live and a
+   dev or test process says it does not publish. The cadence stays dark until
+   F2 (#364).
 
    The cadence select offers the dashboard's vocabulary (src/dashboard/cadence.py)
    plus the stored interval when it is outside it (an import or an API write),
@@ -19,9 +21,8 @@
     The minimum interval is live: Archiver publishes it on <code>content.fetch-policy</code>,
     and a save on an active host reaches Replicator with the next outbox drain.
     {% else %}
-    Stored, not yet live. The minimum interval takes effect when Archiver publishes
-    <code>content.fetch-policy</code> (#366, flip F1); until then Watcher's value applies,
-    and the re-import before F1 overwrites an edit made here.
+    Stored. This process does not publish <code>content.fetch-policy</code> (#366): only
+    the production service sets its producer flag, so a save here reaches no consumer.
     {% endif %}
     The default cadence takes effect with cadence resolution (#364, flip F2).
   </p>

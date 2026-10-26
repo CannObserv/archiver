@@ -408,7 +408,7 @@
             "type": "boolean"
           },
           "min_interval_seconds": {
-            "description": "Minimum spacing between requests to this host, in seconds (finite, >= 0; default 1.0). Dark until Archiver produces content.fetch-policy (#366, flip F1): until then Watcher's value is live, and the re-import before F1 overwrites an edit made here.",
+            "description": "Minimum spacing between requests to this host, in seconds (finite, >= 0; default 1.0). Live: Archiver publishes it on content.fetch-policy (#366, since flip F1), and a suspended host publishes revoked with no interval.",
             "title": "Min Interval Seconds",
             "type": "number"
           },
@@ -480,7 +480,7 @@
             "title": "Is Active"
           },
           "min_interval_seconds": {
-            "description": "Minimum spacing between requests to this host, in seconds (finite, >= 0; default 1.0). Dark until Archiver produces content.fetch-policy (#366, flip F1): until then Watcher's value is live, and the re-import before F1 overwrites an edit made here.",
+            "description": "Minimum spacing between requests to this host, in seconds (finite, >= 0; default 1.0). Live: Archiver publishes it on content.fetch-policy (#366, since flip F1), and a suspended host publishes revoked with no interval.",
             "minimum": 0.0,
             "title": "Min Interval Seconds",
             "type": "number"
@@ -2546,7 +2546,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.34.0"
+    "version": "4.35.0"
   },
   "openapi": "3.1.0",
   "paths": {

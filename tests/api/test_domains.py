@@ -327,7 +327,7 @@ async def test_list_info_sources_filter_by_domain_name(client):
 
 
 # ---------------------------------------------------------------------------
-# Fetch-policy fields (archiver#360): stored and editable, dark until #366/#364
+# Fetch-policy fields (archiver#360): interval live since F1 (#438), cadence dark until #364
 # ---------------------------------------------------------------------------
 
 

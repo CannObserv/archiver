@@ -29,8 +29,8 @@ class DomainOut:
         is_active (bool): Suspension lever (archiver#360). false suspends the host: every Information Item announced on
             it goes out with active=false on info.registry, whatever its own watch_active. Archiving suspends it too.
         min_interval_seconds (float): Minimum spacing between requests to this host, in seconds (finite, >= 0; default
-            1.0). Dark until Archiver produces content.fetch-policy (#366, flip F1): until then Watcher's value is live, and
-            the re-import before F1 overwrites an edit made here.
+            1.0). Live: Archiver publishes it on content.fetch-policy (#366, since flip F1), and a suspended host publishes
+            revoked with no interval.
         name (str): Hostname (e.g. regulations.cannabis.ca.gov).
         notes (None | str): Operator annotations.
         updated_at (datetime.datetime): UTC timestamp of the last update.

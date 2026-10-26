@@ -61,12 +61,12 @@ Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
 # sources it.
 Environment=ARCHIVER_BUS_CONSUMER=1
 
-# The content.fetch-policy producer (archiver#366) stays DARK until flip F1:
-# until Watcher's producer stops, a second writer fights it and no ACL refuses
-# two (CannObserv/broker#93). The F1 PR uncomments the line below; the deploy is
-# the auditable act (docs/DOMAINS.md, the F1 runbook). Same rule as above: never in
-# an env file.
-#Environment=ARCHIVER_FETCH_POLICY_PRODUCER=1
+# This unit is the content.fetch-policy producer (archiver#366), since flip F1
+# (archiver#438), which followed Watcher's producer stopping (CannObserv/watcher#374).
+# One producer at a time: a second writer fights this one, and no ACL refuses
+# two (CannObserv/broker#93). Same rule as above: never in an env file, or every
+# process that sources it becomes a second producer.
+Environment=ARCHIVER_FETCH_POLICY_PRODUCER=1
 
 # The liveness heartbeat (archiver#297): checks in `ok` to co-archiver-live
 # (tenant co-archiver, CannObserv/status#47) every 5 min while every expected

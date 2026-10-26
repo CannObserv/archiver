@@ -12,9 +12,8 @@ _IS_ACTIVE = (
 )
 _MIN_INTERVAL = (
     "Minimum spacing between requests to this host, in seconds (finite, >= 0; "
-    "default 1.0). Dark until Archiver produces content.fetch-policy (#366, flip "
-    "F1): until then Watcher's value is live, and the re-import before F1 "
-    "overwrites an edit made here."
+    "default 1.0). Live: Archiver publishes it on content.fetch-policy (#366, "
+    "since flip F1), and a suspended host publishes revoked with no interval."
 )
 _DEFAULT_WATCH_SPEC = (
     "Default cadence for Information Items on this host: a WatchSpec v1 document "

@@ -18,6 +18,14 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.35.0 (2026-10-26)
+
+[service] **Flip F1: Archiver produces `content.fetch-policy` (archiver#438, #366).** `deploy/archiver.service` now sets `ARCHIVER_FETCH_POLICY_PRODUCER=1`. This merged only after Watcher's producer stopped (CannObserv/watcher#374) and the pre-F1 re-import came back clean, so there is one producer at a time. No route, shape or migration change: `archiver-client` stays at 5.12.0. The OpenAPI snapshot and two generated docstrings change with the description.
+
+- **`min_interval_seconds` is live.** Its description on `DomainOut` and `DomainPatch` drops "Dark until … F1". An interval save on an active host reaches Replicator with the next outbox drain. `default_watch_spec` stays dark until cadence resolution (#364, flip F2).
+- **At startup the service logs `content.fetch-policy producer started`.** It then publishes a full set every 300 s: every Domain, plus every deleted host's tombstone.
+- **The flag stays unit-only.** A process without it (any dev server or test run) publishes nothing. Its startup line and the dashboard's Fetch policy copy now say that "this process" doesn't publish, rather than that Watcher still does.
+
 ## v4.34.0 (2026-10-26)
 
 [service] **`content.fetch-policy` producer, built and dark until flip F1 (archiver#366).** Migration `44b797877fdb`. No API shape change, so the SDK stays at 5.12.0.
