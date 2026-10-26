@@ -556,3 +556,18 @@ class TestResolvedCadence:
         ctx = self._ctx(own={"schema_version": 1}, host=_host(_SIX_HOURS, is_active=False))
         assert ctx["suspended_by"] == "cadence.example"
         assert ctx["cadence"] == "Every 6 hours"
+
+
+def test_a_malformed_item_document_warns_once_per_render(caplog):
+    """CR 6: the panel reads the item tier once, through the resolver."""
+    with caplog.at_level("WARNING"):
+        ctx = build_watch_context(
+            host=None,
+            is_announceable=True,
+            item=make_item(watch_spec={"schema_version": 1, "interval": "banana"}),
+            status=None,
+            last_changed_at=None,
+            now=NOW,
+        )
+    assert ctx["own_cadence"] == ""
+    assert len(caplog.records) == 1

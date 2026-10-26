@@ -40,11 +40,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, TypedDict
 
-from src.core.services.cadence_resolution import (
-    domain_interval,
-    item_interval,
-    resolve_interval,
-)
+from src.core.services.cadence_resolution import domain_interval, resolve_interval
 from src.core.services.registry_announcement import domain_suspended, resolved_active
 from src.dashboard.cadence import CADENCE_LABELS
 
@@ -239,7 +235,8 @@ def build_watch_context(
     suspended_by = host.name if domain_suspended(host) else None
     resolved = resolve_interval(profile=None, item=item, domain=host)
     announced_interval = resolved.interval
-    own = item_interval(item.watch_spec, info_item_id=item.info_item_id)
+    # The item tier is valid exactly when it won: read once, warned once (CR 6).
+    own = resolved.interval if resolved.tier == "item" else None
     cadence_fields = {
         "cadence": format_interval(announced_interval),
         "cadence_tier": resolved.tier,
