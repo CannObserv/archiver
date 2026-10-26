@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from src.core.models.domain import Domain
 from src.dashboard.watch_panel import (
     build_watch_context,
@@ -570,4 +572,23 @@ def test_a_malformed_item_document_warns_once_per_render(caplog):
             now=NOW,
         )
     assert ctx["own_cadence"] == ""
+    assert len(caplog.records) == 1
+
+
+@pytest.mark.parametrize(
+    "own",
+    [{"schema_version": 1}, {"schema_version": 1, "interval": "1h"}],
+)
+def test_a_malformed_domain_default_warns_once_per_render(own, caplog):
+    """CR 10: the editor's label reuses the resolver's domain tier where it read one."""
+    with caplog.at_level("WARNING"):
+        ctx = build_watch_context(
+            host=_host({"interval": "6h"}),  # Watcher's shape: no schema_version
+            is_announceable=True,
+            item=make_item(watch_spec=own),
+            status=None,
+            last_changed_at=None,
+            now=NOW,
+        )
+    assert ctx["inherit_label"] == "Inherit: Watcher's default"
     assert len(caplog.records) == 1

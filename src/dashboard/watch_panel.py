@@ -40,7 +40,11 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, TypedDict
 
-from src.core.services.cadence_resolution import domain_interval, resolve_interval
+from src.core.services.cadence_resolution import (
+    ResolvedInterval,
+    domain_interval,
+    resolve_interval,
+)
 from src.core.services.registry_announcement import domain_suspended, resolved_active
 from src.dashboard.cadence import CADENCE_LABELS
 
@@ -193,14 +197,21 @@ def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContex
     )
 
 
-def inherit_label(host: Domain | None) -> str:
+def inherit_label(host: Domain | None, resolved: ResolvedInterval) -> str:
     """What an item with no ``interval`` of its own announces, for the editor.
 
     Names the host's default when it has one. Otherwise it is Watcher's own
     default, deliberately left unnamed: printing Watcher's constant here would
     be a mirror of it (watcher#159).
+
+    The domain tier is re-read only when a higher tier won, so
+    ``resolve_interval`` never reached it: a malformed default warns once per
+    render, not twice (CR 10). Otherwise the resolver's answer is the domain's.
     """
-    inherited = domain_interval(host)
+    if resolved.tier in ("domain", None):
+        inherited = resolved.interval
+    else:
+        inherited = domain_interval(host)
     if inherited is None:
         return "Inherit: Watcher's default"
     return f"Inherit: {format_interval(inherited) or inherited} (domain)"
@@ -239,7 +250,7 @@ def build_watch_context(
     own = resolved.interval if resolved.tier == "item" else None
     cadence = format_interval(announced_interval)
     own_cadence = format_interval(own)
-    inherits = inherit_label(host)
+    inherits = inherit_label(host, resolved)
     desired_active = resolved_active(item.watch_active, host_suspended=suspended_by is not None)
 
     # Announceability is checked *before* the cache row, not after. A status row
