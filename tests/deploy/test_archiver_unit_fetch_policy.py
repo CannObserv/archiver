@@ -18,7 +18,7 @@ def test_the_unit_keeps_the_producer_dark_until_f1() -> None:
         for line in REPO_UNIT.read_text().splitlines()
         if re.match(rf"\s*Environment=.*\b{FLAG}=", line)
     ]
-    assert active == [], "F1 is a deliberate PR (docs/BUS.md, the F1 runbook), not a drive-by"
+    assert active == [], "F1 is a deliberate PR (docs/DOMAINS.md, the F1 runbook), not a drive-by"
 
 
 def test_the_unit_carries_the_line_f1_uncomments() -> None:

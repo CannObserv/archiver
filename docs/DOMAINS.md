@@ -42,7 +42,7 @@ Both are stored and editable. The interval goes live at F1, the cadence at F2.
   - The `CHECK` requires a finite value `>= 0`. `NaN` is excluded explicitly, since Postgres sorts
     it above every number.
   - Archiver publishes it on `content.fetch-policy` once `ARCHIVER_FETCH_POLICY_PRODUCER` is set
-    (#366, flip F1). [BUS.md](BUS.md) has the stream and the F1 runbook.
+    (#366, flip F1): § `content.fetch-policy` below.
   - Until then, Watcher's value is live, and the pre-F1 re-import
     (`src/core/tools/import_watcher_domains.py`) overwrites an edit. The dashboard's copy follows
     the flag, so it reads true on both sides of F1.
@@ -53,25 +53,69 @@ Both are stored and editable. The interval goes live at F1, the cadence at F2.
   - It's stored in WatchSpec shape, never Watcher's `ScheduleConfig`, so #364 merges like with
     like.
 
-## The fetch-policy generation (#366)
+## `content.fetch-policy` (#366) - built, dark until F1
 
-`domains.fetch_policy_generation BIGINT NOT NULL` orders the host's `content.fetch-policy` frames.
-It comes from one sequence, `fetch_policy_generation_seq`, never a per-row counter: a hostname is
-a reusable natural key, so a re-added host must draw above its own tombstone (cannobserv#566).
+Archiver takes over Watcher's producer (watcher `src/core/fetch_policy.py`): one
+`FetchPolicyState` per host (`FetchPolicyEmit` at emit), keyed by the `host` field, read
+grouplessly from `0-0` by Replicator through co-core's `fetch_policy_supersedes`
+(CannObserv/replicator#136).
 
-- **When it draws:** `src/core/services/fetch_policy.py`'s `announce_domain`, when the frame
-  changes or the row is new. The frame is `(revoked, min_interval_seconds if live)`, so an
-  interval save on a live host and a suspension flip draw. Notes and the cadence never draw, and
-  neither does an interval save on a suspended host; the restore carries the new value.
-- **Where:** `update_domain` (every flip and every interval save, both surfaces), and both insert
-  sites, `update_domain`'s `create=True` (`PATCH`, the importer) and `get_or_create_domain` (a
-  source create). `DELETE` draws the tombstone's value (`announce_domain_deleted`).
-- **After the lock, never from the column default.** A default is evaluated when an `INSERT … ON
-  CONFLICT` forms its tuple, before it waits on a concurrent delete of the same name; a value
-  drawn then can sit under the delete's tombstone. So every insert site redraws once the row is
-  its own. The default exists for `NOT NULL` and for the previous release's inserts.
-- **Dark or not, it advances.** The flag gates only the outbox row, so the first full set at F1
-  carries current values.
+- **Dark unless `ARCHIVER_FETCH_POLICY_PRODUCER` is set**, and only `deploy/archiver.service`
+  sets it, at F1: until Watcher's producer stops, a second writer would fight it, and no ACL
+  refuses two (broker#93). Dark, generations still advance and nothing reaches the outbox or the
+  stream. Startup logs which side of F1 the process is on; flag on without a bus is an ERROR.
+- **The frame** is `(revoked, min_interval_seconds if live)`. A suspended host (`domain_suspended`,
+  the predicate `info.registry` uses) is `revoked` with no interval, never a fake number; so is a
+  deleted host, from `fetch_policy_tombstones`.
+- **Deltas** ride the outbox (`src/core/services/fetch_policy.py`), in the transaction that
+  changed the host. **Full sets** go direct (`src/core/changes/fetch_policy_snapshot.py`): every
+  Domain plus every tombstone, at startup and every 300 s, generations read and never drawn. No
+  retry; an unpublishable host is skipped with a warning; a dead-lettered delta is discard-only.
+- **Retention rides the `XADD`.** The grant is `+xadd` only (broker#93): no `XTRIM`, no read-back.
+  The cap is `max(ARCHIVER_FETCH_POLICY_STREAM_MAXLEN or 500, 10 x set)`, computed only from a
+  complete set (its one caller pinned by `test_fetch_policy_snapshot_callers.py`). Deltas carry
+  the last set's cap, and none before the first.
+- **Mirrored on the broker** (`src/broker/bus_health.py`): 500 (`LWW_PRODUCER_MAXLEN`), 10
+  (`LWW_RETAINED_FULL_SETS`), 300 s (`LWW_REPUBLISH_PERIOD_SECONDS`, shared with
+  `info.watch-status`). File on CannObserv/broker before changing one; the period has no env
+  override for that reason.
+
+### The generation
+
+`domains.fetch_policy_generation BIGINT NOT NULL`, on every frame (cannobserv#566):
+`build_policy` refuses a frame without one, since co-core accepts `None` until cannobserv#579 and
+a consumer holding an ordered frame drops an unordered one silently. One sequence,
+`fetch_policy_generation_seq`, never a per-row counter: a hostname is reusable, so a re-added host
+must draw above its own tombstone.
+
+- **When it draws:** `announce_domain`, when the frame changes or the row is new. An interval save
+  on a live host and a suspension flip draw; notes, the cadence, and an interval save on a
+  suspended host don't (the restore carries the new value).
+- **Where:** `update_domain` (both surfaces), both insert sites (`update_domain`'s `create=True`
+  for `PATCH` and the importer; `get_or_create_domain` for a source create), and `delete_domain`,
+  which draws the tombstone's value.
+- **Only once the row is the transaction's.** A column default is evaluated when an `INSERT … ON
+  CONFLICT` forms its tuple, before it waits on a concurrent delete of the same name, so insert
+  sites redraw after the insert. `delete_domain` locks the row before drawing, so a save that held
+  it first orders below the tombstone.
+- **Dark or not, it advances,** so the first full set at F1 carries current values.
+
+### The F1 runbook - archiver's half
+
+The operator's go is recorded on CannObserv/watcher#368.
+
+1. Watcher's producer stops (CannObserv/watcher#374 deployed).
+2. Watcher re-exports; the operator re-imports (`python -m src.core.tools.import_watcher_domains`).
+   Read-back: a `--dry-run` of the same export prints no pending writes, so every host Watcher
+   published live is an Archiver Domain and the first full set orders it. A host only in Watcher's
+   tombstone table needs nothing: its last Watcher frame is already `revoked`.
+3. The flag PR uncomments `#Environment=ARCHIVER_FETCH_POLICY_PRODUCER=1` in
+   `deploy/archiver.service`; merge, then `scripts/deploy.sh`.
+4. The journal shows `content.fetch-policy producer started`, then `fetch-policy full set
+   published` with `published` = Domains + tombstones.
+5. Read-backs: no new `ignoring a fetch policy without a generation` lines in Replicator's journal
+   (CannObserv/replicator#135); no last-entry-age WARN from broker's probe (one is possible if
+   steps 1-4 took over 15 minutes).
 
 ## Left open
 

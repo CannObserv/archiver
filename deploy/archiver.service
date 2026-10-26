@@ -64,7 +64,7 @@ Environment=ARCHIVER_BUS_CONSUMER=1
 # The content.fetch-policy producer (archiver#366) stays DARK until flip F1:
 # until Watcher's producer stops, a second writer fights it and no ACL refuses
 # two (CannObserv/broker#93). The F1 PR uncomments the line below; the deploy is
-# the auditable act (docs/BUS.md, the F1 runbook). Same rule as above: never in
+# the auditable act (docs/DOMAINS.md, the F1 runbook). Same rule as above: never in
 # an env file.
 #Environment=ARCHIVER_FETCH_POLICY_PRODUCER=1
 
