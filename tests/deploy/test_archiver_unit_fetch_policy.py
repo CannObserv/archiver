@@ -1,8 +1,9 @@
-"""``archiver.service`` and the content.fetch-policy flag (archiver#366).
+"""``archiver.service`` and the content.fetch-policy flag (archiver#366, #438).
 
-The unit is the only place ``ARCHIVER_FETCH_POLICY_PRODUCER`` may be set, and
-until flip F1 it is not set there either: a second producer beside Watcher's is
-nothing an ACL refuses (CannObserv/broker#93). The F1 PR flips the first test.
+The unit is the only place ``ARCHIVER_FETCH_POLICY_PRODUCER`` may be set. Flip F1
+(archiver#438) set it there, once Watcher's producer had stopped
+(CannObserv/watcher#374): one producer at a time, and no ACL refuses a second
+(CannObserv/broker#93).
 """
 
 import re
@@ -12,14 +13,14 @@ REPO_UNIT = Path(__file__).resolve().parents[2] / "deploy" / "archiver.service"
 FLAG = "ARCHIVER_FETCH_POLICY_PRODUCER"
 
 
-def test_the_unit_keeps_the_producer_dark_until_f1() -> None:
+def test_the_unit_sets_the_producer_flag_once() -> None:
     active = [
-        line
+        line.strip()
         for line in REPO_UNIT.read_text().splitlines()
         if re.match(rf"\s*Environment=.*\b{FLAG}=", line)
     ]
-    assert active == [], "F1 is a deliberate PR (docs/DOMAINS.md, the F1 runbook), not a drive-by"
+    assert active == [f"Environment={FLAG}=1"]
 
 
-def test_the_unit_carries_the_line_f1_uncomments() -> None:
-    assert f"#Environment={FLAG}=1" in REPO_UNIT.read_text()
+def test_the_unit_no_longer_carries_the_commented_line() -> None:
+    assert f"#Environment={FLAG}" not in REPO_UNIT.read_text()

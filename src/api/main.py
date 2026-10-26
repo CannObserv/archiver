@@ -110,8 +110,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       harmless.
     - Optionally starts the ``content.fetch-policy`` full set (archiver#366)
       when ``ARCHIVER_FETCH_POLICY_PRODUCER`` is also set, which only
-      ``deploy/archiver.service`` may do, at flip F1. Dark until then: a
-      second producer beside Watcher's is nothing an ACL refuses.
+      ``deploy/archiver.service`` does (since flip F1, archiver#438): a second
+      producer is nothing an ACL refuses.
     - Optionally starts the liveness heartbeat (archiver#297) when
       ``CO_ARCHIVER_LIVE_MONITOR_ID`` and the ``status-checkin-key`` credential
       are both present, which only ``deploy/archiver.service`` provides. It
@@ -300,7 +300,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.registry_snapshot_task = snapshot_task
             app.state.registry_snapshot_trigger = snapshot_trigger
 
-            # --- content.fetch-policy full set (archiver#366), dark until F1 ---
+            # --- content.fetch-policy full set (archiver#366), unit-only (F1, #438) ---
             # Same client and stop event as the snapshot. A full set at
             # startup, then every five minutes (broker mirrors the period).
             if fetch_policy_on:
@@ -446,10 +446,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.bus_reachability_task = None
         logger.info("ARCHIVER_REDIS_URL not set — outbox publisher and bus consumers disabled")
 
-    # One line either way, so the journal says which side of F1 this process is on.
+    # One line either way, so the journal says whether this process produces.
     if not fetch_policy_on:
         logger.info(
-            "content.fetch-policy producer is dark (%s unset; Watcher produces until F1)",
+            "content.fetch-policy producer is dark (%s unset; this process does not publish)",
             fetch_policy.PRODUCER_ENV,
         )
     elif app.state.fetch_policy_task is None:

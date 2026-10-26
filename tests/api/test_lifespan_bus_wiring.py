@@ -596,7 +596,7 @@ async def test_publisher_start_line_redacts_the_broker_credential(
     assert "hunter2" not in repr(infos)
 
 
-# --- content.fetch-policy, dark until F1 (archiver#366) ----------------------
+# --- content.fetch-policy, unit-only (archiver#366, live since F1 #438) ------
 
 
 @pytest.fixture
@@ -609,8 +609,8 @@ def fp_env(bus_env):
 async def test_fetch_policy_stays_dark_without_the_flag(
     fp_env, bus_client_calls, test_engine, caplog
 ):
-    """Redis alone is not authority to produce: until F1, Watcher's producer
-    still runs, and no ACL refuses a second writer (CannObserv/broker#93)."""
+    """Redis alone is not authority to produce: only ``archiver.service`` holds
+    the flag, and no ACL refuses a second writer (CannObserv/broker#93)."""
     fp_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
     app.state.fetch_policy_task = "stale-from-a-previous-lifespan"
     captured: dict = {}
@@ -627,6 +627,8 @@ async def test_fetch_policy_stays_dark_without_the_flag(
 
     assert set(captured["topic_maxlen"]) == {"info.registry"}
     assert "content.fetch-policy producer is dark" in caplog.text
+    # Since F1 (#438) Watcher produces nowhere; a dev server must not claim it does.
+    assert "Watcher" not in caplog.text
 
 
 @pytest.mark.asyncio

@@ -36,16 +36,15 @@ accepted limit for a host with no row are in that module's docstring.
 
 ## The two policy fields
 
-Both are stored and editable. The interval goes live at F1, the cadence at F2.
+Both are stored and editable. The interval is live since F1 (#438); the cadence goes live at F2.
 
 - **`min_interval_seconds FLOAT NOT NULL DEFAULT 1.0`**: request spacing for the host.
   - The `CHECK` requires a finite value `>= 0`. `NaN` is excluded explicitly, since Postgres sorts
     it above every number.
-  - Archiver publishes it on `content.fetch-policy` once `ARCHIVER_FETCH_POLICY_PRODUCER` is set
-    (#366, flip F1): § `content.fetch-policy` below.
-  - Until then, Watcher's value is live, and the pre-F1 re-import
-    (`src/core/tools/import_watcher_domains.py`) overwrites an edit. The dashboard's copy follows
-    the flag, so it reads true on both sides of F1.
+  - Archiver publishes it on `content.fetch-policy` (#366), live since flip F1 (#438):
+    § `content.fetch-policy` below. Watcher no longer produces it (CannObserv/watcher#374).
+  - The dashboard's copy follows the process's `ARCHIVER_FETCH_POLICY_PRODUCER`: production reads
+    live, and a dev or test process, where it is unset, says it doesn't publish.
 - **`default_watch_spec JSONB NULL`**: the domain tier of cadence.
   - It is a WatchSpec v1 document that carries `interval`, judged by `validate_domain_watch_spec`.
     `NULL` means no domain default.
@@ -53,17 +52,17 @@ Both are stored and editable. The interval goes live at F1, the cadence at F2.
   - It's stored in WatchSpec shape, never Watcher's `ScheduleConfig`, so #364 merges like with
     like.
 
-## `content.fetch-policy` (#366) - built, dark until F1
+## `content.fetch-policy` (#366) - live since F1 (#438)
 
-Archiver takes over Watcher's producer (watcher `src/core/fetch_policy.py`): one
+Archiver took over Watcher's producer at F1 (watcher `src/core/fetch_policy.py`): one
 `FetchPolicyState` per host (`FetchPolicyEmit` at emit), keyed by the `host` field, read
 grouplessly from `0-0` by Replicator through co-core's `fetch_policy_supersedes`
 (CannObserv/replicator#136).
 
-- **Dark unless `ARCHIVER_FETCH_POLICY_PRODUCER` is set**, and only `deploy/archiver.service`
-  sets it, at F1: until Watcher's producer stops, a second writer would fight it, and no ACL
-  refuses two (broker#93). Dark, generations still advance and nothing reaches the outbox or the
-  stream. Startup logs which side of F1 the process is on; flag on without a bus is an ERROR.
+- **Unit-only.** Only `deploy/archiver.service` sets `ARCHIVER_FETCH_POLICY_PRODUCER` (since F1):
+  a second writer would fight it, and no ACL refuses two (broker#93). Unset, as in every dev and
+  test process, generations still advance and nothing reaches the outbox or the stream. Startup
+  logs whether the process produces; flag on without a bus is an ERROR.
 - **The frame** is `(revoked, min_interval_seconds if live)`. A suspended host (`domain_suspended`,
   the predicate `info.registry` uses) is `revoked` with no interval, never a fake number; so is a
   deleted host, from `fetch_policy_tombstones`.
@@ -98,7 +97,7 @@ must draw above its own tombstone.
   CONFLICT` forms its tuple, before it waits on a concurrent delete of the same name, so insert
   sites redraw after the insert. `delete_domain` locks the row before drawing, so a save that held
   it first orders below the tombstone.
-- **Dark or not, it advances,** so the first full set at F1 carries current values.
+- **Flag or not, it advances,** so the first full set at F1 carried current values.
 - **Gaps are expected.** `ON CONFLICT DO NOTHING` still evaluates the default, so every `PATCH`
   of an existing host burns a value, and an insert draws twice. Only order matters on the wire.
 

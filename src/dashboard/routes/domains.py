@@ -330,7 +330,7 @@ async def update_fetch_policy(
     user=Depends(get_dashboard_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Store the host's minimum interval and default cadence (both dark until F1/F2).
+    """Store the host's minimum interval (live since F1) and default cadence (dark until F2).
 
     An empty ``default_interval`` clears the cadence. HTMX requests get the
     re-rendered ``_policy_partial.html`` and a toast, success or refusal; a

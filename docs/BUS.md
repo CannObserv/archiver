@@ -1,9 +1,9 @@
 # archiver - change-bus contracts
 
 Everything Archiver puts on the Redis bus: the outbox producer and
-the four streams it publishes - `info.changes`, `info.registry`,
-`content.replicate`, `content.persist` - plus `content.fetch-policy`, dark
-until F1. What it takes off - `content.revisions`,
+the five streams it publishes - `info.changes`, `info.registry`,
+`content.replicate`, `content.persist` and, since flip F1 (#438),
+`content.fetch-policy`. What it takes off - `content.revisions`,
 `content.artifacts`, `info.watch-status` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
 below serves both. HTTP routes and their SDK wrappers live in [API.md](API.md);
@@ -11,7 +11,7 @@ these two files are the wire side of the same surface.
 
 ## The shared client's connection policy (archiver#193)
 
-All six bus loops share one client from `src/core/changes/bus_client.py`, never a
+All seven bus loops share one client from `src/core/changes/bus_client.py`, never a
 bare `from_url` - safe only on loopback. That module holds the reasoning; three
 facts that surprise:
 
@@ -360,10 +360,10 @@ contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
   lets a manual *Replicate now* publish stable content long after its temp blob
   expired.
 
-**`content.fetch-policy` (archiver#366)** - a fifth producer surface, config/state,
-built dark until flip F1 (`ARCHIVER_FETCH_POLICY_PRODUCER`, unit-only): outbox deltas
-plus a 300 s full set, cap on the `XADD` (`+xadd`-only grant, broker#93). Contract and
-F1 runbook: [DOMAINS.md](DOMAINS.md).
+**`content.fetch-policy` (archiver#366)** - the fifth producer surface, config/state,
+live since flip F1 (#438) behind `ARCHIVER_FETCH_POLICY_PRODUCER`, which only
+`archiver.service` sets: outbox deltas plus a 300 s full set, cap on the `XADD`
+(`+xadd`-only grant, broker#93). Contract and F1 runbook: [DOMAINS.md](DOMAINS.md).
 
 `source_revision_captured` schema_version is now **2** - `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 

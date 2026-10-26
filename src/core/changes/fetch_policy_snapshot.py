@@ -6,7 +6,7 @@ deltas ride the outbox (``src.core.services.fetch_policy``), and this task
 republishes the **entire host set** directly, every ``REPUBLISH_PERIOD_SECONDS``.
 Consumers replay from ``0-0`` at boot, so their view must be rebuildable from
 what the broker still holds. Only while ``ARCHIVER_FETCH_POLICY_PRODUCER`` is
-set: dark until flip F1.
+set, which only ``deploy/archiver.service`` does (since flip F1, archiver#438).
 
 The set: one frame per ``Domain`` (a suspended host ``revoked`` with no
 interval) and one ``revoked`` frame per ``fetch_policy_tombstones`` row, so a

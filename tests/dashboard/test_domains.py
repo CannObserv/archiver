@@ -641,12 +641,12 @@ async def test_domain_detail_item_pagination_params_clamp(client, session):
 
 
 # ---------------------------------------------------------------------------
-# Fetch policy (archiver#360): stored, editable, dark until F1/F2
+# Fetch policy (archiver#360): stored, editable; the interval live since F1 (#438)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_domain_detail_shows_fetch_policy_and_says_it_is_dark(client, session):
+async def test_domain_detail_shows_fetch_policy_and_where_each_takes_effect(client, session):
     session.add(
         _make_domain(
             "policy-view.example.com",
@@ -668,7 +668,10 @@ async def test_domain_detail_shows_fetch_policy_and_says_it_is_dark(client, sess
 @pytest.mark.asyncio
 @pytest.mark.parametrize("flag", [None, "1"])
 async def test_fetch_policy_copy_follows_the_producer_flag(client, session, monkeypatch, flag):
-    """archiver#366: the interval's copy reads true on both sides of F1."""
+    """archiver#366, #438: the interval's copy follows this process's flag.
+
+    Since F1 only ``archiver.service`` sets it, so the flag-off copy is a dev or
+    test process's, and Watcher no longer produces anywhere."""
     if flag is None:
         monkeypatch.delenv(fetch_policy.PRODUCER_ENV, raising=False)
     else:
@@ -685,7 +688,8 @@ async def test_fetch_policy_copy_follows_the_producer_flag(client, session, monk
 
     for text in (detail.text, saved.text):
         if flag is None:
-            assert "until then Watcher's value applies" in text
+            assert "This process does not publish" in text
+            assert "Watcher" not in text
             assert "Archiver publishes it on" not in text
         else:
             assert "Watcher's value applies" not in text
