@@ -269,9 +269,9 @@ async def announce_policy_change(session: AsyncSession, info_item_id: ULID) -> b
 async def announce_policy_changes(session: AsyncSession, item_ids: Sequence[ULID]) -> int:
     """``announce_policy_change`` over a set, in one batch; returns how many emitted.
 
-    The domain fan-out's entry point (archiver#360): a suspension flip is a
-    policy write on every item of the host — it changes ``active``, never
-    announceability.
+    The domain fan-out's entry point: a suspension flip (archiver#360) or a
+    default-cadence change (archiver#364) is a policy write on the host's items
+    — it changes ``active`` or the resolved interval, never announceability.
     """
     return await _announce_many(session, item_ids, revoke=False)
 
