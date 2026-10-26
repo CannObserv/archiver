@@ -25,10 +25,10 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "v1.json"
 DEFAULT_WATCH_SPEC: dict = {"schema_version": 1}
 """The cadence policy applied when nobody has expressed one.
 
-Deliberately carries no ``interval``: a resolved default here would fabricate a
-cadence for every item that has none, overriding the consumer's own default
-(which may be per-domain). Registration writes an explicit interval when the
-operator picks one; everything else leaves the choice to the consumer.
+Deliberately carries no ``interval``: a default here would fabricate a cadence
+for every item that has none, overriding what it inherits - its host's default
+cadence, else Watcher's own (archiver#364). Registration writes an explicit
+interval when the operator picks one; everything else inherits.
 
 Carries no ``active`` either — pause state is the sibling column
 ``info_items.watch_active``, whose ``NULL`` means "not yet imported from

@@ -11,7 +11,7 @@
     "interval": {
       "type": "string",
       "pattern": "^[0-9]+[smhd]$",
-      "description": "Watcher interval string. Optional: when absent, the consumer applies its own default, which may be a per-domain default_schedule_config rather than a global constant. The pattern is the grammar Watcher's parse_interval accepts; the narrower set the dashboard offers (1h/6h/1d/7d) lives in src/dashboard/cadence.py."
+      "description": "Watcher interval string. Optional: when absent from an item's stored document, the item inherits its host's default cadence (Archiver's Domain.default_watch_spec), else Watcher's own default; the announced document carries the resolved interval (archiver#364). The pattern is the grammar Watcher's parse_interval accepts; the narrower set the dashboard offers (1h/6h/1d/7d) lives in src/dashboard/cadence.py."
     }
   }
 }
