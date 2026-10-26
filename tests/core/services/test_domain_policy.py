@@ -706,8 +706,11 @@ async def test_a_delete_racing_an_interval_save_tombstones_above_it(test_engine,
     host = "fp-race.example.test"
     factory = async_sessionmaker(test_engine, expire_on_commit=False)
     async with factory() as setup:
-        setup.add(Domain(name=host))
+        domain = Domain(name=host)
+        setup.add(domain)
         await setup.commit()
+    # CR 12: torn down even when the test fails midway; each is a no-op once gone.
+    committed_rows += [(Domain, domain.id), (FetchPolicyTombstone, host)]
 
     pid: asyncio.Future = asyncio.get_running_loop().create_future()
 
@@ -735,6 +738,4 @@ async def test_a_delete_racing_an_interval_save_tombstones_above_it(test_engine,
                 select(FetchPolicyTombstone).where(FetchPolicyTombstone.host == host)
             )
         ).scalar_one()
-        await check.delete(tombstone)
-        await check.commit()
     assert tombstone.generation > saved
