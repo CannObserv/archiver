@@ -75,6 +75,9 @@ from archiver_client.generated.api.info_items import (
 from archiver_client.generated.api.info_items import (
     put_rep_fields_api_v1_info_items_info_item_id_rep_fields_put as _put_rep_fields,
 )
+from archiver_client.generated.api.info_items import (
+    put_watch_spec_api_v1_info_items_info_item_id_watch_spec_put as _put_watch_spec,
+)
 from archiver_client.generated.api.info_sources import (
     create_info_source_route_api_v1_info_sources_post as _create_info_source,
 )
@@ -132,6 +135,10 @@ from archiver_client.generated.models.info_item_rep_spec_public_url_patch import
 )
 from archiver_client.generated.models.info_item_source_create import InfoItemSourceCreate
 from archiver_client.generated.models.info_item_source_out import InfoItemSourceOut
+from archiver_client.generated.models.info_item_watch_spec_put import InfoItemWatchSpecPut
+from archiver_client.generated.models.info_item_watch_spec_put_document import (
+    InfoItemWatchSpecPutDocument,
+)
 from archiver_client.generated.models.info_source_create import InfoSourceCreate
 from archiver_client.generated.models.info_source_create_source_specs_item import (
     InfoSourceCreateSourceSpecsItem,
@@ -320,6 +327,21 @@ class ArchiverClient:
             allow_destination_change=allow_destination_change,
         )
         response = await _put_rep_fields.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id, body=body
+        )
+        return _unwrap(response)
+
+    async def set_watch_spec(self, info_item_id: str, document: dict[str, Any]) -> InfoItemOut:
+        """Replace an InfoItem's own cadence document, a WatchSpec v1 (not a merge).
+
+        Omitting ``interval`` makes the item inherit: its host's default cadence,
+        else Watcher's. The announcement carries the resolved interval, so the
+        returned ``watch_spec`` is the item's own document, not what was
+        announced. Raises ``NotFound`` or ``ValidationError`` (422, the stored
+        document unchanged).
+        """
+        body = InfoItemWatchSpecPut(document=InfoItemWatchSpecPutDocument.from_dict(document))
+        response = await _put_watch_spec.asyncio_detailed(
             client=self._gen_client, info_item_id=info_item_id, body=body
         )
         return _unwrap(response)

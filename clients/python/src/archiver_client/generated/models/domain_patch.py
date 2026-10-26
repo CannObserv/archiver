@@ -24,8 +24,9 @@ class DomainPatch:
 
         Attributes:
             default_watch_spec (DomainPatchDefaultWatchSpecType0 | None | Unset): Default cadence for Information Items on
-                this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Dark until cadence
-                resolution (#364, flip F2) reads it.
+                this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Live (#364): an item
+                on this host with no interval of its own announces this one on info.registry, and a change re-announces those
+                items.
             is_active (bool | None | Unset): Suspension lever (archiver#360). false suspends the host: every Information
                 Item announced on it goes out with active=false on info.registry, whatever its own watch_active. Archiving
                 suspends it too.

@@ -18,7 +18,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core.models import Domain, InfoItem, SourceRevision, WatchStatus
+from src.core.models import (
+    Domain,
+    InfoItem,
+    InfoItemSource,
+    InfoSource,
+    SourceRevision,
+    WatchStatus,
+)
 
 _HEADERS = {"X-ExeDev-UserID": "ext-section", "X-ExeDev-Email": "section@example.com"}
 _STATUS_TS = datetime(2026, 6, 11, 11, 0, tzinfo=UTC)
@@ -260,9 +267,9 @@ async def test_watcher_section_renders_the_cadence_editor_with_the_announced_val
     assert "watch-cadence" in r.text
     # The announced interval is the selected option, not merely present.
     assert '<option value="6h" selected>' in r.text
-    # "Delegate" stays reachable - it is the only way back to the consumer default.
+    # "Inherit" stays reachable - it is the only way back to the inherited cadence.
     assert 'value="" selected' not in r.text
-    assert "Consumer default" in r.text
+    assert "Inherit: Watcher&#39;s default" in r.text
 
 
 @pytest.mark.asyncio
@@ -475,7 +482,7 @@ async def test_cadence_readout_names_the_delegate_choice(client, session, bind_s
     )
     assert r.status_code == 200
     readout = r.text.split('class="field-row__readout"')[1].split("</div>")[0]
-    assert "Consumer default" in readout
+    assert "Inherit: Watcher&#39;s default" in readout
 
 
 @pytest.mark.asyncio
@@ -576,7 +583,7 @@ async def test_an_unparseable_stored_interval_still_shows_itself(client, session
     )
     assert r.status_code == 200
     assert "banana" in _readout(r.text)
-    assert "Consumer default" not in _readout(r.text)
+    assert "Inherit" not in _readout(r.text)
 
 
 @pytest.mark.asyncio
@@ -742,3 +749,50 @@ async def test_no_status_item_on_a_suspended_host_says_so_too(
 
     assert "NO STATUS YET" in r.text
     assert f'href="/dashboard/domains/{host}"' in r.text
+
+
+# ---------------------------------------------------------------------------
+# archiver#364 - an item inheriting its host's default cadence
+# ---------------------------------------------------------------------------
+
+_ANNOUNCEABLE = [{"schema_version": 1, "extraction": {"algorithm": "full_page"}}]
+
+
+async def _inheriting(client, session, *, slug: str, applied_interval: str):
+    host = f"{slug}.example.test"
+    session.add(
+        Domain(
+            name=host,
+            is_active=True,
+            default_watch_spec={"schema_version": 1, "interval": "6h"},
+        )
+    )
+    item = InfoItem(name=slug, watch_spec={"schema_version": 1})
+    src = InfoSource(url=f"https://{host}/x", source_specs=_ANNOUNCEABLE, domain_name=host)
+    session.add_all([item, src])
+    await session.flush()
+    session.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=src.info_source_id))
+    _seed_status(session, item, applied_interval=applied_interval)
+    await session.flush()
+    return await _section(client, item)
+
+
+@pytest.mark.asyncio
+async def test_an_inheriting_item_shows_and_offers_the_domain_default(client, session):
+    r = await _inheriting(client, session, slug="inherit-shown", applied_interval="6h")
+
+    assert r.status_code == 200
+    assert "Inherit: Every 6 hours (domain)" in _readout(r.text)
+    assert '<option value="" selected>Inherit: Every 6 hours (domain)</option>' in r.text
+    assert "Every 6 hours" in _row_one_cadence(r.text)
+    assert "badge--danger" not in _row_one_cadence(r.text)
+
+
+@pytest.mark.asyncio
+async def test_an_inheriting_item_flags_drift_against_the_domain_default(client, session):
+    """Before #364 the panel compared against the stored document, which has no
+    interval here, so this drift could never show."""
+    r = await _inheriting(client, session, slug="inherit-drift", applied_interval="1d")
+
+    assert r.status_code == 200
+    assert "announced Every 6 hours" in r.text

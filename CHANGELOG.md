@@ -18,6 +18,20 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.36.0 (2026-10-26)
+
+[both] **Cadence resolution: `info.registry` announces the resolved interval (archiver#364, design C-e).** No migration. SDK 5.13.0.
+
+- **The announced `watch_spec` is now the resolved document, not the stored one.** It's the item's own `interval`, else its host's `default_watch_spec` interval, else none, and then Watcher applies its own default. It's always `{"schema_version": 1, "interval": …}`, or `{"schema_version": 1}`, so it stays WatchSpec v1. `info_items.watch_spec` and `GET /info-items/{id}` keep the item's own intent. A malformed stored tier is skipped with a WARNING, never a 500 or a blocked announce.
+- **`default_watch_spec` is live (not additive).** Its description on `DomainOut` and `DomainPatch` drops "Dark until … F2". A `PATCH /domains/{name}` that changes it re-announces, in the same transaction, the host's announceable items that have no `interval` of their own. A change that moves no item's resolved interval emits nothing. The write now locks the host's items and then the row `FOR UPDATE`, as a suspension flip does.
+  - At deploy every production domain default is NULL, so no announcement changes.
+  - Watcher reads the announced interval as its top tier, so a domain default set before the item-cadence import overrides Watcher's own item cadence for an item with no Archiver interval. Run the import first.
+- **SDK 5.13.0:** `set_watch_spec(info_item_id, document)` wraps `PUT /info-items/{id}/watch-spec`. It's additive.
+- **Importers** (operator-run, no contract change):
+  - New: `python -m src.core.tools.import_watcher_item_cadence --base-url URL [--dry-run]`. It's fill-if-absent: Watcher's own item cadence is written only where Archiver's item has no `interval`, and a differing value is reported.
+  - `import_watcher_domains` no longer writes `min_interval_seconds` to an existing Domain (live since F1). It no longer overwrites or clears a set `default_watch_spec` (live since this release). A new host still takes Watcher's values, and each difference is reported.
+- **Dashboard:** the item watch panel shows the resolved cadence and flags drift against it. The cadence editor's blank option reads "Inherit: Every 6 hours (domain)" or "Inherit: Watcher's default". The domain page's Fetch policy copy says the default cadence is live.
+
 ## v4.35.0 (2026-10-26)
 
 [service] **Flip F1: Archiver produces `content.fetch-policy` (archiver#438, #366).** `deploy/archiver.service` now sets `ARCHIVER_FETCH_POLICY_PRODUCER=1`. This merged only after Watcher's producer stopped (CannObserv/watcher#374) and the pre-F1 re-import came back clean, so there is one producer at a time. No route, shape or migration change: `archiver-client` stays at 5.12.0. The OpenAPI snapshot and two generated docstrings change with the description.

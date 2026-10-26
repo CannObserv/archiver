@@ -394,7 +394,7 @@
                 "type": "null"
               }
             ],
-            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Dark until cadence resolution (#364, flip F2) reads it.",
+            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Live (#364): an item on this host with no interval of its own announces this one on info.registry, and a change re-announces those items.",
             "title": "Default Watch Spec"
           },
           "id": {
@@ -464,7 +464,7 @@
                 "type": "null"
               }
             ],
-            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Dark until cadence resolution (#364, flip F2) reads it.",
+            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Live (#364): an item on this host with no interval of its own announces this one on info.registry, and a change re-announces those items.",
             "title": "Default Watch Spec"
           },
           "is_active": {
@@ -2546,7 +2546,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.35.0"
+    "version": "4.36.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2916,7 +2916,7 @@
         ]
       },
       "patch": {
-        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates only the fields sent; ``default_watch_spec:\nnull`` clears the cadence. ``name`` must be a canonical host name - the\nlowercase, port-less form an InfoSource is filed under - or it is a 422.\nA change to ``is_active`` that suspends or resumes the host announces its\nitems (archiver#360).",
+        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates only the fields sent; ``default_watch_spec:\nnull`` clears the cadence. ``name`` must be a canonical host name - the\nlowercase, port-less form an InfoSource is filed under - or it is a 422.\nA change to ``is_active`` that suspends or resumes the host announces its\nitems (archiver#360), and so does a ``default_watch_spec`` change, to the\nitems with no interval of their own (archiver#364).",
         "operationId": "upsert_domain_api_v1_domains__name__patch",
         "parameters": [
           {

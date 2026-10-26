@@ -23,8 +23,8 @@ class DomainOut:
         archived_at (datetime.datetime | None): Set when the domain is archived; an archived host is suspended.
         created_at (datetime.datetime): UTC timestamp when the Domain was created.
         default_watch_spec (DomainOutDefaultWatchSpecType0 | None): Default cadence for Information Items on this host:
-            a WatchSpec v1 document that carries an interval, or null for no domain default. Dark until cadence resolution
-            (#364, flip F2) reads it.
+            a WatchSpec v1 document that carries an interval, or null for no domain default. Live (#364): an item on this
+            host with no interval of its own announces this one on info.registry, and a change re-announces those items.
         id (str): ULID identifying this Domain.
         is_active (bool): Suspension lever (archiver#360). false suspends the host: every Information Item announced on
             it goes out with active=false on info.registry, whatever its own watch_active. Archiving suspends it too.

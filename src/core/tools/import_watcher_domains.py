@@ -15,12 +15,16 @@ same announce path as an operator's.
 Then the same without ``--dry-run``. There is no default ``--base-url``, so
 nothing reaches production by accident.
 
-**Until the flips, Watcher's value wins** for the cadence (until F2, #364),
-``is_active`` and archived-ness. Watcher re-exports before each flip, and the
-import is re-run then: it is idempotent, and a host already matching is not
-written. **``min_interval`` flipped at F1 (#438)**, yet this still writes
-Watcher's: a re-run before F2 overwrites any interval edited in Archiver since
-F1. Check the ``--dry-run`` for ``min_interval_seconds`` changes first.
+**Until the flips, Watcher's value wins** for ``is_active`` and archived-ness.
+Watcher re-exports before each flip, and the import is re-run then: it is
+idempotent, and a host already matching is not written.
+
+**Archiver's value wins where it is the one that runs** (archiver#364, D5 and
+D5'). ``min_interval_seconds`` has been live since F1 (#438), so an existing
+host's is never written: Watcher's interval only fills a new host. The default
+cadence has been live since #364 (it outranks Watcher's own tiers on
+``info.registry``), so Watcher's only fills an empty one, and is never cleared.
+Either difference is reported and left alone.
 
 **Notes** fill an empty field only. A note that differs from Archiver's is
 reported and left alone, since Archiver has always edited its own.
@@ -112,6 +116,10 @@ class Step:
     patch: dict[str, Any] = field(default_factory=dict)
     archive: str | None = None  # "archive" | "restore"
     notes_conflict: bool = False
+    interval_conflict: bool = False
+    cadence_conflict: bool = False
+    watcher_interval: float | None = None
+    watcher_cadence: str | None = None
 
     @property
     def changed(self) -> bool:
@@ -119,7 +127,7 @@ class Step:
         return self.create or bool(self.patch) or self.archive is not None
 
 
-def _cadence(raw: Any, problems: list[str], host: str) -> dict | None:
+def watcher_cadence(raw: Any, problems: list[str], host: str) -> dict | None:
     """Watcher's ``{"interval": …}`` as a WatchSpec v1 document, or a problem."""
     if raw is None:
         return None
@@ -168,7 +176,7 @@ def _desired(host: str, row: Any, problems: list[str]) -> _Desired | None:
         problems.append(
             f"{host}: min_interval {_brief(row['min_interval'])} is not a finite number >= 0"
         )
-    cadence = _cadence(row["default_schedule_config"], problems, host)
+    cadence = watcher_cadence(row["default_schedule_config"], problems, host)
     if row["notes"] is not None and not isinstance(row["notes"], str):
         problems.append(f"{host}: notes {row['notes']!r} is not a string")
     if not isinstance(row["is_active"], bool):
@@ -214,10 +222,17 @@ def plan(document: Any, current: Mapping[str, Current]) -> list[Step]:
         have = current.get(host)
         step = Step(name=host, create=have is None)
         have = have or _ABSENT
-        if step.create or want.min_interval_seconds != have.min_interval_seconds:
+        if step.create:
             step.patch["min_interval_seconds"] = want.min_interval_seconds
+        elif want.min_interval_seconds != have.min_interval_seconds:
+            step.interval_conflict = True  # D5: live since F1, Archiver's wins
+            step.watcher_interval = want.min_interval_seconds
         if want.default_watch_spec != have.default_watch_spec:
-            step.patch["default_watch_spec"] = want.default_watch_spec
+            if have.default_watch_spec is None:
+                step.patch["default_watch_spec"] = want.default_watch_spec
+            else:
+                step.cadence_conflict = True  # D5': live since #364, Archiver's wins
+                step.watcher_cadence = _interval_of(want.default_watch_spec)
         if want.is_active != have.is_active:
             step.patch["is_active"] = want.is_active
         if want.notes is not None and want.notes != have.notes:
@@ -229,6 +244,10 @@ def plan(document: Any, current: Mapping[str, Current]) -> list[Step]:
             step.archive = "archive" if want.archived else "restore"
         steps.append(step)
     return steps
+
+
+def _interval_of(spec: dict | None) -> str | None:
+    return None if spec is None else spec.get("interval")
 
 
 def _describe(step: Step, current: Mapping[str, Current]) -> list[str]:
@@ -244,6 +263,16 @@ def _describe(step: Step, current: Mapping[str, Current]) -> list[str]:
         lines.append(f"{step.archive} {step.name}")
     if step.notes_conflict:
         lines.append(f"notes differ on {step.name}: kept Archiver's")
+    if step.interval_conflict:
+        lines.append(
+            f"min_interval_seconds differs on {step.name}: kept Archiver's"
+            f" {have.min_interval_seconds!r} (Watcher {step.watcher_interval!r})"
+        )
+    if step.cadence_conflict:
+        lines.append(
+            f"default cadence differs on {step.name}: kept Archiver's"
+            f" {_interval_of(have.default_watch_spec)!r} (Watcher {step.watcher_cadence!r})"
+        )
     if not step.changed:
         lines.append(f"unchanged {step.name}")
     return lines

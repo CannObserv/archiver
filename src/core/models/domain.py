@@ -49,14 +49,14 @@ class Domain(Base, TimestampMixin):
     ``src.core.services.registry_announcement``, the one predicate). Watcher's
     host-local ``domain_suspended`` stays there as break-glass.
 
-    **Two policy fields.** Stored and editable; each goes live at its flip:
+    **Two policy fields.** Stored, editable and live:
 
     - ``min_interval_seconds`` — request spacing for the host, in seconds.
       Archiver publishes it on ``content.fetch-policy`` (#366), live since flip
       F1 (#438).
     - ``default_watch_spec`` — a WatchSpec v1 document carrying ``interval``,
-      the domain tier of cadence resolution (#364, flip F2). ``NULL`` is "no
-      domain default".
+      the domain tier of cadence resolution (#364): an item with no ``interval``
+      of its own announces this one. ``NULL`` is "no domain default".
 
     **``fetch_policy_generation``** orders the host's ``content.fetch-policy``
     frames (#366). Drawn from ``FETCH_POLICY_GENERATION_SEQ`` on insert, and
