@@ -313,7 +313,7 @@ document; the dashboard's Registry badge reports the count
     `assign_rep_spec` refuses first (`DuplicateAssignmentError` → 409) under the RepSpec row lock;
     the index is the backstop for any other writer. Deactivated rows are history and may repeat, so
     reassigning after a deactivate is allowed. It is also the item-only active lookups' index (#311).
-- **Bus-state tables** — `revoked_info_items`, `replication_commands`, `persist_commands`,
+- **Bus-state tables** — `revoked_info_items`, `fetch_policy_tombstones`, `replication_commands`, `persist_commands`,
   `changes_outbox`, `watch_status`, `bus_tail_cursors`: [SCHEMA_BUS.md](SCHEMA_BUS.md).
 
 The Phase 1–3a `InfoSpec` model has been retired. Avoid any new references to `info_spec*` outside historical alembic migration files. The "Archiver" rename was service-name-only; `info_*` table prefix and `information` schema preserved per design decision.

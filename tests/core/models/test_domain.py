@@ -76,3 +76,57 @@ async def test_unset_cadence_is_sql_null_not_jsonb_null(session):
         )
     ).scalar_one()
     assert is_sql_null is True
+
+
+# --- fetch_policy_generation (archiver#366) ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_every_insert_draws_a_distinct_fetch_policy_generation(session):
+    """One sequence for every host: values never repeat, so a re-added host
+    cannot land on (or under) a generation an earlier frame already used."""
+    session.add_all([Domain(name="gen-a.example.com"), Domain(name="gen-b.example.com")])
+    await session.flush()
+    rows = (
+        await session.execute(
+            text(
+                "SELECT fetch_policy_generation FROM information.domains"
+                " WHERE name IN ('gen-a.example.com', 'gen-b.example.com')"
+            )
+        )
+    ).scalars()
+    values = list(rows)
+    assert len(values) == 2
+    assert all(v is not None and v >= 1 for v in values)
+    assert values[0] != values[1]
+
+
+@pytest.mark.asyncio
+async def test_an_insert_omitting_the_generation_takes_the_sequence(session):
+    """The previous release inserts without it (expand-only, archiver#330 D3)."""
+    await session.execute(
+        text("INSERT INTO information.domains (id, name) VALUES (:id, 'oldgen.example.com')"),
+        {"id": "01JZZZZZZZZZZZZZZZZZZZZZZY"},
+    )
+    value = (
+        await session.execute(
+            text(
+                "SELECT fetch_policy_generation FROM information.domains"
+                " WHERE name = 'oldgen.example.com'"
+            )
+        )
+    ).scalar_one()
+    assert value >= 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_policy_generation_is_not_null(session):
+    session.add(Domain(name="nn.example.com"))
+    await session.flush()
+    with pytest.raises(IntegrityError, match="fetch_policy_generation"):
+        await session.execute(
+            text(
+                "UPDATE information.domains SET fetch_policy_generation = NULL"
+                " WHERE name = 'nn.example.com'"
+            )
+        )

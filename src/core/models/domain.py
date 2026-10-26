@@ -2,7 +2,16 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    Sequence,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
@@ -11,6 +20,17 @@ from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
 
 DEFAULT_MIN_INTERVAL_SECONDS = 1.0
 """Watcher's ``DEFAULT_MIN_INTERVAL``, so an imported host and a new one agree."""
+
+FETCH_POLICY_GENERATION_SEQ = Sequence(
+    "fetch_policy_generation_seq", schema="information", metadata=Base.metadata
+)
+"""The one source of ``content.fetch-policy`` generations (archiver#366).
+
+One sequence for every host, never a per-row counter: a hostname is a reusable
+natural key, so a counter restarting with a re-added row would land below the
+deleted host's tombstone and every consumer would skip the host (co-core
+``FetchPolicyState`` obligation 3). Deletes draw from it too
+(``FetchPolicyTombstone.generation``)."""
 
 
 class Domain(Base, TimestampMixin):
@@ -34,6 +54,11 @@ class Domain(Base, TimestampMixin):
       the domain tier of cadence resolution (#364, flip F2). ``NULL`` is "no
       domain default".
 
+    **``fetch_policy_generation``** orders the host's ``content.fetch-policy``
+    frames (#366). Drawn from ``FETCH_POLICY_GENERATION_SEQ`` on insert, and
+    redrawn only when the host's frame changes, by
+    ``src.core.services.fetch_policy`` - never read-modify-written.
+
     Per-host fetch headers (#376) and a fetch timeout (#377) get their own
     columns when they come: neither field here is a policy blob to extend.
     """
@@ -52,6 +77,12 @@ class Domain(Base, TimestampMixin):
         nullable=False,
         default=DEFAULT_MIN_INTERVAL_SECONDS,
         server_default="1.0",
+    )
+    fetch_policy_generation: Mapped[int] = mapped_column(
+        BigInteger,
+        FETCH_POLICY_GENERATION_SEQ,
+        nullable=False,
+        server_default=FETCH_POLICY_GENERATION_SEQ.next_value(),
     )
     # none_as_null: an unset cadence persists as SQL NULL, not the JSONB 'null'.
     default_watch_spec: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)

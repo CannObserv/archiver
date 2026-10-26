@@ -34,16 +34,18 @@ after the write's three tries locks them after the row, with Postgres's deadlock
 backstop. A write that can't flip suspension locks only the row. The newcomer retry and the
 accepted limit for a host with no row are in that module's docstring.
 
-## The two dark fields
+## The two policy fields
 
-Both are stored and editable, and nothing reads them yet.
+Both are stored and editable. The interval goes live at F1, the cadence at F2.
 
 - **`min_interval_seconds FLOAT NOT NULL DEFAULT 1.0`**: request spacing for the host.
   - The `CHECK` requires a finite value `>= 0`. `NaN` is excluded explicitly, since Postgres sorts
     it above every number.
-  - It takes effect when #366 publishes `content.fetch-policy` (flip F1).
+  - Archiver publishes it on `content.fetch-policy` once `ARCHIVER_FETCH_POLICY_PRODUCER` is set
+    (#366, flip F1). [BUS.md](BUS.md) has the stream and the F1 runbook.
   - Until then, Watcher's value is live, and the pre-F1 re-import
-    (`src/core/tools/import_watcher_domains.py`) overwrites an edit.
+    (`src/core/tools/import_watcher_domains.py`) overwrites an edit. The dashboard's copy follows
+    the flag, so it reads true on both sides of F1.
 - **`default_watch_spec JSONB NULL`**: the domain tier of cadence.
   - It is a WatchSpec v1 document that carries `interval`, judged by `validate_domain_watch_spec`.
     `NULL` means no domain default.
@@ -51,9 +53,29 @@ Both are stored and editable, and nothing reads them yet.
   - It's stored in WatchSpec shape, never Watcher's `ScheduleConfig`, so #364 merges like with
     like.
 
+## The fetch-policy generation (#366)
+
+`domains.fetch_policy_generation BIGINT NOT NULL` orders the host's `content.fetch-policy` frames.
+It comes from one sequence, `fetch_policy_generation_seq`, never a per-row counter: a hostname is
+a reusable natural key, so a re-added host must draw above its own tombstone (cannobserv#566).
+
+- **When it draws:** `src/core/services/fetch_policy.py`'s `announce_domain`, when the frame
+  changes or the row is new. The frame is `(revoked, min_interval_seconds if live)`, so an
+  interval save on a live host and a suspension flip draw. Notes and the cadence never draw, and
+  neither does an interval save on a suspended host; the restore carries the new value.
+- **Where:** `update_domain` (every flip and every interval save, both surfaces), and both insert
+  sites, `update_domain`'s `create=True` (`PATCH`, the importer) and `get_or_create_domain` (a
+  source create). `DELETE` draws the tombstone's value (`announce_domain_deleted`).
+- **After the lock, never from the column default.** A default is evaluated when an `INSERT … ON
+  CONFLICT` forms its tuple, before it waits on a concurrent delete of the same name; a value
+  drawn then can sit under the delete's tombstone. So every insert site redraws once the row is
+  its own. The default exists for `NOT NULL` and for the previous release's inserts.
+- **Dark or not, it advances.** The flag gates only the outbox row, so the first full set at F1
+  carries current values.
+
 ## Left open
 
 - Per-host fetch headers (#376) and a fetch timeout (#377) will get their own columns or table.
   Neither field above is a policy blob to extend.
-- `DELETE` stays legal: it's a 409 while any InfoSource names the host. #366 draws fetch-policy
-  generations from a sequence, so a re-added host cannot go backwards (cannobserv#566).
+- `DELETE` stays legal: it's a 409 while any InfoSource names the host. The host's
+  `content.fetch-policy` tombstone is recorded in `fetch_policy_tombstones` (#366).

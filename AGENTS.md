@@ -235,7 +235,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - layout tree; co-core acquisition wiring
 - [docs/API.md](docs/API.md) - every HTTP route, its SDK wrapper, pagination
-- [docs/BUS.md](docs/BUS.md) - the outbox producer; the four streams published
+- [docs/BUS.md](docs/BUS.md) - the outbox producer; the four streams published, a fifth built dark until F1
 - [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the three streams consumed; consumer naming
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md); domains and host suspension: [docs/DOMAINS.md](docs/DOMAINS.md)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the drift check, the service user, wheelhouse

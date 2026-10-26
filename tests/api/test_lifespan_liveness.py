@@ -11,6 +11,7 @@ Covers:
 4. On, bus-dormant: the publisher is still expected, so silence
 5. The heartbeat is cancelled first at shutdown
 6. An unreadable REVISION still starts the service
+7. The fetch-policy full set is watched only while it produces (archiver#366)
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from fakeredis import aioredis as fakeredis_aio
 from src.api import main
 from src.api.main import app, lifespan
 from src.core import liveness
+from src.core.services import fetch_policy
 from src.core.status_checkin import CREDENTIAL_NAME
 
 STATUS = "http://status.test:9000"
@@ -179,3 +181,29 @@ async def test_an_unreadable_revision_never_stops_the_service(live_env, test_eng
     monkeypatch.setattr(main, "build_id", _unreadable)
     async with lifespan(app):
         assert app.state.liveness_task is not None
+
+
+async def test_the_fetch_policy_task_is_watched_only_while_it_produces(
+    live_env, fake_bus, test_engine, monkeypatch
+):
+    """archiver#366: like the registry snapshot, a dead full-set task is
+    silence. Dark, it is not expected at all."""
+    live_env.setenv("ARCHIVER_REDIS_URL", "redis://localhost:6379/15")
+    gates: list[dict] = []
+    real_gate = liveness.Gate
+
+    def _spy(**kwargs):
+        gates.append(kwargs["tasks"])
+        return real_gate(**kwargs)
+
+    monkeypatch.setattr(liveness, "Gate", _spy)
+    live_env.delenv(fetch_policy.PRODUCER_ENV, raising=False)
+    async with lifespan(app):
+        pass
+    live_env.setenv(fetch_policy.PRODUCER_ENV, "1")
+    async with lifespan(app):
+        produced = app.state.fetch_policy_task
+
+    dark, on = gates
+    assert "fetch_policy" not in dark
+    assert on["fetch_policy"] is produced

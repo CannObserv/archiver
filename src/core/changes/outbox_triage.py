@@ -47,11 +47,13 @@ REARMABLE_TOPICS: frozenset[str] = frozenset({CHANGE_STREAM_TOPIC})
 """Topics whose dead-lettered rows may go back to the drain.
 
 ``info.changes`` is a fact stream whose consumers dedupe on the envelope key, so
-a late publish is just late. The other two are refused:
+a late publish is just late. Every other topic is refused, among them:
 
 - ``info.registry`` - per-item last-write-wins state. The hourly full-set
   snapshot republishes current state, and a stale delta loses on generation
   anyway. The repair already happened; discard the row.
+- ``content.fetch-policy`` (archiver#366) - per-host last-write-wins, the same
+  argument on a five-minute full set.
 - ``content.replicate`` - a command. The reaper abandons one after its horizon
   and never re-issues, because a second artifact in a permanent store has no way
   back. A rearmed row could publish a command whose ``replication_commands`` row

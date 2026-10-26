@@ -5,6 +5,7 @@ from src.core.models.app_user import AppUser
 from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
 from src.core.models.changes_outbox import ChangesOutboxRow
 from src.core.models.domain import Domain
+from src.core.models.fetch_policy_tombstone import FetchPolicyTombstone
 from src.core.models.info_item import InfoItem
 from src.core.models.info_item_rep_spec import InfoItemRepSpec
 from src.core.models.info_item_source import InfoItemSource
@@ -24,6 +25,7 @@ __all__ = [
     "BusTailCursor",
     "ChangesOutboxRow",
     "Domain",
+    "FetchPolicyTombstone",
     "InfoItem",
     "InfoItemRepSpec",
     "InfoItemSource",

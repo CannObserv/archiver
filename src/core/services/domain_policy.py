@@ -28,17 +28,29 @@ a host still gaining items after three tries locks them after the row.
 it inactive while a binding to it announces can miss that one item, since the
 binding's share lock matches nothing. Every source create makes the row
 (``get_or_create_domain``), and production had no row-less sources at #360.
+
+**The host's ``content.fetch-policy`` frame rides the same write** (archiver#366).
+When the frame changes - an interval save on a live host, a suspension flip -
+or this call inserted the row, ``announce_domain`` draws the next generation
+under the row lock already held and queues the frame. It takes no other lock,
+so the order above stands. ``delete_domain`` locks the row before it draws
+the tombstone's value, so a save that held the row first always orders below it.
 """
 
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource
+from src.core.services.fetch_policy import (
+    announce_domain,
+    announce_domain_deleted,
+    policy_frame,
+)
 from src.core.services.registry_announcement import (
     announce_policy_changes,
     domain_suspended,
@@ -81,26 +93,30 @@ _ATTEMPTS = 3
 """How many times the write re-locks before it locks a newcomer after the row."""
 
 
-async def _insert_if_absent(session: AsyncSession, name: str) -> None:
-    await session.execute(
-        pg_insert(Domain).values(name=name).on_conflict_do_nothing(index_elements=["name"])
+async def _insert_if_absent(session: AsyncSession, name: str) -> bool:
+    """Insert the host's row unless it exists; returns whether this call inserted it."""
+    inserted = await session.execute(
+        pg_insert(Domain)
+        .values(name=name)
+        .on_conflict_do_nothing(index_elements=["name"])
+        .returning(Domain.id)
     )
+    return inserted.first() is not None
 
 
 async def _lock_row(
     session: AsyncSession, name: str, *, create: bool, can_flip: bool = True
-) -> Domain | None:
-    """Insert the row if asked, then lock it.
+) -> tuple[Domain | None, bool]:
+    """Insert the row if asked, then lock it; returns ``(row, inserted)``.
 
     ``FOR UPDATE`` for a write that can flip suspension: it is what an
     announce's ``FOR KEY SHARE`` waits on. Any other write takes ``FOR NO KEY
     UPDATE``, which announces do not wait on (CR 24).
     """
-    if create:
-        # A DELETE committing between this and the lock leaves no row: None,
-        # which the API answers with a 409 (CR 15, 26).
-        await _insert_if_absent(session, name)
-    return (
+    # A DELETE committing between this and the lock leaves no row: None,
+    # which the API answers with a 409 (CR 15, 26).
+    inserted = create and await _insert_if_absent(session, name)
+    domain = (
         await session.execute(
             select(Domain)
             .where(Domain.name == name)
@@ -108,6 +124,19 @@ async def _lock_row(
             .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
+    return domain, inserted
+
+
+async def _apply(
+    session: AsyncSession, domain: Domain, changes: Mapping[str, Any], *, inserted: bool
+) -> None:
+    """Write ``changes`` and announce the host's fetch-policy frame if it moved."""
+    before = policy_frame(domain)
+    for column, value in changes.items():
+        setattr(domain, column, value)
+    await session.flush()
+    if inserted or policy_frame(domain) != before:
+        await announce_domain(session, domain)
 
 
 async def update_domain(
@@ -125,17 +154,15 @@ async def update_domain(
 
     if not changes.keys() & SUSPENSION_COLUMNS:
         # Cannot flip, so nothing to announce and no item lock to take (CR 13).
-        domain = await _lock_row(session, name, create=create, can_flip=False)
+        domain, inserted = await _lock_row(session, name, create=create, can_flip=False)
         if domain is not None:
-            for column, value in changes.items():
-                setattr(domain, column, value)
-            await session.flush()
+            await _apply(session, domain, changes, inserted=inserted)
         return domain
 
     locked = await _host_items(session, name, lock=True)
     for attempt in range(_ATTEMPTS):
         savepoint = await session.begin_nested()
-        domain = await _lock_row(session, name, create=create)
+        domain, inserted = await _lock_row(session, name, create=create)
         if domain is None:
             await savepoint.commit()
             return None
@@ -154,9 +181,7 @@ async def update_domain(
 
     # A row this call inserted was absent a moment ago, and absent is active.
     was_suspended = domain_suspended(domain)
-    for column, value in changes.items():
-        setattr(domain, column, value)
-    await session.flush()
+    await _apply(session, domain, changes, inserted=inserted)
     await savepoint.commit()
     if domain_suspended(domain) != was_suspended:
         await _announce_flip(session, locked)
@@ -182,3 +207,46 @@ async def _announce_flip(session: AsyncSession, items: Sequence[ULID]) -> int:
         .all()
     )
     return await announce_policy_changes(session, moved)
+
+
+class DomainInUse(Exception):
+    """The host still has InfoSources naming it; nothing was deleted."""
+
+    def __init__(self, count: int):
+        super().__init__(f"{count} InfoSource(s) reference the domain")
+        self.count = count
+
+
+async def delete_domain(session: AsyncSession, name: str) -> bool:
+    """Delete the host's row and record its ``content.fetch-policy`` tombstone.
+
+    Returns ``False`` when there is no row. Raises ``DomainInUse`` while any
+    InfoSource names the host. The row is locked **before** the tombstone's
+    generation is drawn (archiver#366): a write that holds it - an interval
+    save mid-transaction - has drawn its own value by then and commits first,
+    so the tombstone always orders above it. Drawn before the lock, it could
+    land below that save's live frame, and every consumer would keep the
+    deleted host live. No items to lock: a host with sources is refused. The
+    caller commits.
+    """
+    domain = (
+        await session.execute(
+            select(Domain)
+            .where(Domain.name == name)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if domain is None:
+        return False
+    count = (
+        await session.execute(
+            select(func.count()).select_from(InfoSource).where(InfoSource.domain_name == name)
+        )
+    ).scalar_one()
+    if count:
+        raise DomainInUse(count)
+    await announce_domain_deleted(session, name)
+    await session.delete(domain)
+    await session.flush()
+    return True

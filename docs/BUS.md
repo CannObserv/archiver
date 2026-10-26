@@ -2,7 +2,8 @@
 
 Everything Archiver puts on the Redis bus: the outbox producer and
 the four streams it publishes - `info.changes`, `info.registry`,
-`content.replicate`, `content.persist`. What it takes off - `content.revisions`,
+`content.replicate`, `content.persist` - plus a fifth built but dark until
+flip F1, `content.fetch-policy` (archiver#366). What it takes off - `content.revisions`,
 `content.artifacts`, `info.watch-status` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
 below serves both. HTTP routes and their SDK wrappers live in [API.md](API.md);
@@ -44,7 +45,7 @@ One seam survives that split with no test spanning it: the broker config's
 `_TRANSIENT_PUBLISH_ERRORS` are **one decision**, and each repo names the other
 in a comment (R5).
 
-## Producing - the outbox, the envelope, and the four published streams
+## Producing - the outbox, the envelope, and the published streams
 
 **Change-bus producer (co-core bus, archiver#106):** Writes rows to
 `information.changes_outbox` in the same transaction (the **outbox stays
@@ -358,6 +359,72 @@ contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
   (`src/core/replication/permanent_store.py`) with no expiry skip, which is what
   lets a manual *Replicate now* publish stable content long after its temp blob
   expired.
+
+**`content.fetch-policy` - per-host request spacing (archiver#366). Built, dark
+until flip F1.** A fifth producer surface, config/state kind, taking over
+Watcher's producer (watcher `src/core/fetch_policy.py`). One
+`FetchPolicyState` per host (`FetchPolicyEmit` at emit), keyed by the `host`
+payload field; consumer: Replicator's workers, groupless, replaying from `0-0`
+and applying through co-core's `fetch_policy_supersedes` (CannObserv/replicator#136).
+
+- **Dark unless `ARCHIVER_FETCH_POLICY_PRODUCER` is set**, and only
+  `deploy/archiver.service` sets it, at F1 ([ENVIRONMENT.md](ENVIRONMENT.md)). Until
+  Watcher's producer stops, a second writer would fight it, and no ACL refuses
+  two (broker#93). While dark, generations still advance with every change; no
+  outbox row and no full set goes out. A startup line says which side of F1 the
+  process is on; flag on with no bus is an ERROR.
+- **The frame:** a live host carries `min_interval_seconds`
+  (`domains.min_interval_seconds`); a suspended host (`domain_suspended`, the
+  predicate `info.registry` resolves `active=false` by) carries `revoked=true` and
+  no interval, never a fake number; a deleted host carries the same, from
+  `fetch_policy_tombstones`. [DOMAINS.md](DOMAINS.md) has the write sites.
+- **`generation` on every frame**, tombstones and full sets included
+  (cannobserv#566): `build_policy` refuses a frame without one, since co-core
+  accepts `None` until cannobserv#579 and a consumer holding an ordered frame
+  drops an unordered one silently. Drawn from one sequence,
+  `fetch_policy_generation_seq`, only once the row is the transaction's, and only
+  when the frame changes or the row is new. One sequence means a re-added host
+  draws above its own tombstone.
+- **Deltas** ride the outbox, written by `src/core/services/fetch_policy.py` in
+  the transaction that changed the host. **Full sets** bypass it
+  (`src/core/changes/fetch_policy_snapshot.py`): every Domain plus every
+  tombstone, at startup and every 300 s, generations read and never drawn.
+  **No retry** - the next period is the repair; an unpublishable host is skipped
+  with a warning. A dead-lettered delta is discard-only on `/dashboard/bus-triage`.
+- **Retention rides the `XADD`.** The grant is `+xadd ~content.fetch-policy`
+  only (broker#93): no `XTRIM`, no read-back, so the stream never joins
+  `trim_topics` and archiver cannot see it. The cap is
+  `max(ARCHIVER_FETCH_POLICY_STREAM_MAXLEN or 500, 10 x set)`; only the complete
+  set computes the floor (`publish_policy_events`, its one caller pinned by
+  `tests/core/changes/test_fetch_policy_snapshot_callers.py`), and deltas carry
+  the last complete set's cap through `topic_maxlen`.
+- **Three numbers are mirrored on the broker** (`src/broker/bus_health.py`):
+  the default cap 500 (`LWW_PRODUCER_MAXLEN`), 10 sets (`LWW_RETAINED_FULL_SETS`)
+  and the 300 s period (`LWW_REPUBLISH_PERIOD_SECONDS`, shared with
+  `info.watch-status`). File on CannObserv/broker before changing any; the period
+  has no env override for that reason. Observers: broker's probe and
+  Replicator's journal.
+
+**The F1 runbook - archiver's half.** The operator's go is recorded on
+CannObserv/watcher#368.
+
+1. Watcher's producer stops (CannObserv/watcher#374 deployed).
+2. Watcher re-exports and the operator re-imports
+   (`python -m src.core.tools.import_watcher_domains`; [DOMAINS.md](DOMAINS.md)).
+   Read-back: a `--dry-run` of the same export prints no pending writes, so
+   every host Watcher published live is an Archiver Domain and the first full
+   set orders it. A host only in Watcher's tombstone table needs nothing: its
+   last Watcher frame is already `revoked`.
+3. The flag PR: uncomment `Environment=ARCHIVER_FETCH_POLICY_PRODUCER=1` in
+   `deploy/archiver.service`; merge, then `scripts/deploy.sh`.
+4. The first full set goes out at startup: the journal shows
+   `content.fetch-policy producer started`, then `fetch-policy full set
+   published` with `published` equal to Domains plus tombstones.
+5. Read-backs:
+   - Replicator's journal: no new `ignoring a fetch policy without a
+     generation` lines (CannObserv/replicator#135).
+   - Broker's probe: no last-entry-age WARN. It can fire once if the gap
+     between steps 1 and 4 passed 15 minutes.
 
 `source_revision_captured` schema_version is now **2** - `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 
