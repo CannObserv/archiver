@@ -177,10 +177,14 @@ src/core/                      Domain logic
                                a public_url with an automated writer can say
                                which occasion wrote it.
                                domain_policy.py (update_domain) is the one write
-                               that can suspend or resume a host (#360): API
+                               that can suspend or resume a host (#360) or change
+                               its default cadence (#364): API
                                PATCH/archive/restore and the dashboard's
                                archive/restore/fetch-policy, announcing the
-                               host's items when suspension flips.
+                               host's items whose resolved state moved.
+                               cadence_resolution.py (resolve_interval) is the
+                               announced interval: profile slot (#365), item,
+                               domain default (#364).
                                delete_domain is the delete: it locks the row
                                before drawing the tombstone's generation (#366).
                                fetch_policy.py is content.fetch-policy's delta
@@ -247,6 +251,8 @@ src/core/                      Domain logic
                                import_watcher_domains.py imports Watcher's
                                domains export through the API (#360, design
                                D4): operator-run, --dry-run first, idempotent.
+                               import_watcher_item_cadence.py does the same for
+                               the items' own cadence, fill-if-absent (#364).
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
                                own copy and there is NO parity requirement; see

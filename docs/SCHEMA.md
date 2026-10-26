@@ -51,9 +51,10 @@ document; the dashboard's Registry badge reports the count
     not an entity: there is no `watch_specs` table, and the announcement carries it resolved so
     a future reusable-policy table stays an Archiver-internal change.
     - `schema_version` (required, const 1); `interval` (optional) — a Watcher interval string.
-      **Absent means "the consumer applies its own default"**, which may be a per-domain
-      `default_schedule_config` rather than a global constant, so absence is a real state and
-      never a value to fill in. The schema validates the grammar `^[0-9]+[smhd]$`; the narrower
+      **Absent means "inherit"**: the item announces its host's `default_watch_spec` interval,
+      else none and Watcher applies its own default (archiver#364). So absence is a real state
+      and never a value to fill in. **The column is the item's own intent; the announcement
+      carries the resolved document** (`src/core/services/cadence_resolution.py`). The schema validates the grammar `^[0-9]+[smhd]$`; the narrower
       set the dashboard offers lives in `src/dashboard/cadence.py`.
     - Server default `{"schema_version": 1}` — deliberately no interval, so the migration cannot
       fabricate a cadence for rows that never had one. Three of the four production WatchedItems
@@ -72,6 +73,8 @@ document; the dashboard's Registry badge reports the count
   - Real values arrived via a one-time import from Watcher (archiver#150); since the
     control-plane cutover (archiver#158) the dashboard writes them directly and they are
     authoritative. The import script and the SDK it read through are gone (archiver#142).
+    Watcher's own item cadences are filled in, where an item has no `interval`, by
+    `import_watcher_item_cadence` (archiver#364).
   - **Boundary:** a WatchSpec is *per-item cadence*. `content.fetch-policy` (cannobserv#285) is
     *per-host spacing* — different key, stream, owner, and consumer. They are not the same knob.
 
