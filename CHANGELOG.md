@@ -36,7 +36,7 @@ service-only patch does not require an SDK bump.
 - **Dashboard:**
   - The item list and the detail Overview show an `archived` badge.
   - On an archived item, the watch panel replaces Pause/Resume with Restore and shows an `Archived` badge rather than Paused, with no pending badge.
-  - Otherwise the panel offers Archive. It does so in every state except `degraded`.
+  - Otherwise the panel offers "Archive watch", in every state except `degraded`. The label isn't bare "Archive" because the same page replicates to archive.org.
   - Both actions are full-page POST→303.
 
 ## v4.36.0 (2026-10-26)

@@ -78,6 +78,8 @@ async def test_an_unarchived_watched_item_offers_archive_beside_the_toggle(
 
     assert "toggle-watch-active" in text
     assert f'action="/dashboard/info-items/{item.info_item_id}/archive"' in text
+    # CR 6: the page also replicates to archive.org; say which archive this is.
+    assert ">Archive watch</button>" in text
     assert "/restore" not in text
 
 
