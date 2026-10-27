@@ -14,6 +14,7 @@ def _get_kwargs(
     *,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
+    archived: bool | None | Unset = UNSET,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
@@ -21,6 +22,13 @@ def _get_kwargs(
     params["limit"] = limit
 
     params["offset"] = offset
+
+    json_archived: bool | None | Unset
+    if isinstance(archived, Unset):
+        json_archived = UNSET
+    else:
+        json_archived = archived
+    params["archived"] = json_archived
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -98,6 +106,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
+    archived: bool | None | Unset = UNSET,
 ) -> Response[EnvelopeResponse | PageInfoItemOut]:
     """List Info Items
 
@@ -110,6 +119,8 @@ def sync_detailed(
     Args:
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
+        archived (bool | None | Unset): When true, return only archived items; when false, only
+            unarchived. Omitted returns both (archiver#361).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -122,6 +133,7 @@ def sync_detailed(
     kwargs = _get_kwargs(
         limit=limit,
         offset=offset,
+        archived=archived,
     )
 
     response = client.get_httpx_client().request(
@@ -136,6 +148,7 @@ def sync(
     client: AuthenticatedClient,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
+    archived: bool | None | Unset = UNSET,
 ) -> EnvelopeResponse | PageInfoItemOut | None:
     """List Info Items
 
@@ -148,6 +161,8 @@ def sync(
     Args:
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
+        archived (bool | None | Unset): When true, return only archived items; when false, only
+            unarchived. Omitted returns both (archiver#361).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -161,6 +176,7 @@ def sync(
         client=client,
         limit=limit,
         offset=offset,
+        archived=archived,
     ).parsed
 
 
@@ -169,6 +185,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
+    archived: bool | None | Unset = UNSET,
 ) -> Response[EnvelopeResponse | PageInfoItemOut]:
     """List Info Items
 
@@ -181,6 +198,8 @@ async def asyncio_detailed(
     Args:
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
+        archived (bool | None | Unset): When true, return only archived items; when false, only
+            unarchived. Omitted returns both (archiver#361).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -193,6 +212,7 @@ async def asyncio_detailed(
     kwargs = _get_kwargs(
         limit=limit,
         offset=offset,
+        archived=archived,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -205,6 +225,7 @@ async def asyncio(
     client: AuthenticatedClient,
     limit: int | Unset = 100,
     offset: int | Unset = 0,
+    archived: bool | None | Unset = UNSET,
 ) -> EnvelopeResponse | PageInfoItemOut | None:
     """List Info Items
 
@@ -217,6 +238,8 @@ async def asyncio(
     Args:
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
+        archived (bool | None | Unset): When true, return only archived items; when false, only
+            unarchived. Omitted returns both (archiver#361).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -231,5 +254,6 @@ async def asyncio(
             client=client,
             limit=limit,
             offset=offset,
+            archived=archived,
         )
     ).parsed

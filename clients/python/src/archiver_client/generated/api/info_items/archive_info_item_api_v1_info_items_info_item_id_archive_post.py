@@ -1,0 +1,219 @@
+from http import HTTPStatus
+from typing import Any
+from urllib.parse import quote
+
+import httpx
+
+from ... import errors
+from ...client import AuthenticatedClient, Client
+from ...models.envelope_response import EnvelopeResponse
+from ...models.info_item_out import InfoItemOut
+from ...types import Response
+
+
+def _get_kwargs(
+    info_item_id: str,
+) -> dict[str, Any]:
+
+    _kwargs: dict[str, Any] = {
+        "method": "post",
+        "url": "/api/v1/info-items/{info_item_id}/archive".format(
+            info_item_id=quote(str(info_item_id), safe=""),
+        ),
+    }
+
+    return _kwargs
+
+
+def _parse_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> EnvelopeResponse | InfoItemOut | None:
+    if response.status_code == 200:
+        response_200 = InfoItemOut.from_dict(response.json())
+
+        return response_200
+
+    if response.status_code == 400:
+        response_400 = EnvelopeResponse.from_dict(response.json())
+
+        return response_400
+
+    if response.status_code == 401:
+        response_401 = EnvelopeResponse.from_dict(response.json())
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = EnvelopeResponse.from_dict(response.json())
+
+        return response_403
+
+    if response.status_code == 404:
+        response_404 = EnvelopeResponse.from_dict(response.json())
+
+        return response_404
+
+    if response.status_code == 409:
+        response_409 = EnvelopeResponse.from_dict(response.json())
+
+        return response_409
+
+    if response.status_code == 422:
+        response_422 = EnvelopeResponse.from_dict(response.json())
+
+        return response_422
+
+    if response.status_code == 500:
+        response_500 = EnvelopeResponse.from_dict(response.json())
+
+        return response_500
+
+    if client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+    else:
+        return None
+
+
+def _build_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Response[EnvelopeResponse | InfoItemOut]:
+    return Response(
+        status_code=HTTPStatus(response.status_code),
+        content=response.content,
+        headers=response.headers,
+        parsed=_parse_response(client=client, response=response),
+    )
+
+
+def sync_detailed(
+    info_item_id: str,
+    *,
+    client: AuthenticatedClient,
+) -> Response[EnvelopeResponse | InfoItemOut]:
+    """Archive Info Item
+
+     Archive an InfoItem's watch (archiver#361); it announces ``active=false``.
+
+    Watch-only: the item stays listed and editable, and keeps its own
+    ``watch_active``, which restore returns it to. Idempotent - an archived item
+    keeps its first ``archived_at`` and announces nothing. Announced only while
+    the item can announce live (archiver#167). Delete does not require it.
+
+    Args:
+        info_item_id (str):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[EnvelopeResponse | InfoItemOut]
+    """
+
+    kwargs = _get_kwargs(
+        info_item_id=info_item_id,
+    )
+
+    response = client.get_httpx_client().request(
+        **kwargs,
+    )
+
+    return _build_response(client=client, response=response)
+
+
+def sync(
+    info_item_id: str,
+    *,
+    client: AuthenticatedClient,
+) -> EnvelopeResponse | InfoItemOut | None:
+    """Archive Info Item
+
+     Archive an InfoItem's watch (archiver#361); it announces ``active=false``.
+
+    Watch-only: the item stays listed and editable, and keeps its own
+    ``watch_active``, which restore returns it to. Idempotent - an archived item
+    keeps its first ``archived_at`` and announces nothing. Announced only while
+    the item can announce live (archiver#167). Delete does not require it.
+
+    Args:
+        info_item_id (str):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        EnvelopeResponse | InfoItemOut
+    """
+
+    return sync_detailed(
+        info_item_id=info_item_id,
+        client=client,
+    ).parsed
+
+
+async def asyncio_detailed(
+    info_item_id: str,
+    *,
+    client: AuthenticatedClient,
+) -> Response[EnvelopeResponse | InfoItemOut]:
+    """Archive Info Item
+
+     Archive an InfoItem's watch (archiver#361); it announces ``active=false``.
+
+    Watch-only: the item stays listed and editable, and keeps its own
+    ``watch_active``, which restore returns it to. Idempotent - an archived item
+    keeps its first ``archived_at`` and announces nothing. Announced only while
+    the item can announce live (archiver#167). Delete does not require it.
+
+    Args:
+        info_item_id (str):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[EnvelopeResponse | InfoItemOut]
+    """
+
+    kwargs = _get_kwargs(
+        info_item_id=info_item_id,
+    )
+
+    response = await client.get_async_httpx_client().request(**kwargs)
+
+    return _build_response(client=client, response=response)
+
+
+async def asyncio(
+    info_item_id: str,
+    *,
+    client: AuthenticatedClient,
+) -> EnvelopeResponse | InfoItemOut | None:
+    """Archive Info Item
+
+     Archive an InfoItem's watch (archiver#361); it announces ``active=false``.
+
+    Watch-only: the item stays listed and editable, and keeps its own
+    ``watch_active``, which restore returns it to. Idempotent - an archived item
+    keeps its first ``archived_at`` and announces nothing. Announced only while
+    the item can announce live (archiver#167). Delete does not require it.
+
+    Args:
+        info_item_id (str):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        EnvelopeResponse | InfoItemOut
+    """
+
+    return (
+        await asyncio_detailed(
+            info_item_id=info_item_id,
+            client=client,
+        )
+    ).parsed

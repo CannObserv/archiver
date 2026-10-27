@@ -74,6 +74,8 @@ which calls the same core functions without these routes.
 | Link / unlink a Power Map org | `PUT /info-items/{id}/org` | `set_org(info_item_id, pm_org_id, allow_destination_change=False)` |
 | Replace an item's cadence policy | `PUT /info-items/{id}/watch-spec` | `set_watch_spec` (SDK 5.13.0, archiver#364) |
 | Pause / resume an item | `PUT /info-items/{id}/watch-active` | generated only (no hand-written wrapper — no SDK consumer yet) |
+| Archive an item's watch | `POST /info-items/{id}/archive` | `archive_info_item(info_item_id)` (SDK 5.14.0, archiver#361) |
+| Restore an item's watch | `POST /info-items/{id}/restore` | `restore_info_item(info_item_id)` (SDK 5.14.0, archiver#361) |
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
@@ -202,6 +204,15 @@ means "consumer default", while pause state has no omitted case at all (`NULL` i
 never having written). Splitting them also keeps a dashboard pause from becoming a read-modify-write
 of a cadence document it does not otherwise touch. `watch_spec` and `watch_active` are both additive
 on `InfoItemOut`. Contract and rationale: [SCHEMA.md](SCHEMA.md).
+
+**Watch lifecycle (archiver#361):** `POST /info-items/{id}/archive` and `/restore`, the Domain
+routes' shape, return the `InfoItemOut`; a missing item is a 404 envelope. Archive sets
+`archived_at` and announces `active=false`; restore clears it and announces the item's own
+`watch_active`, so a paused item stays paused. Both are idempotent - archive keeps its first
+timestamp, and a call that changes nothing announces nothing - and announce only an announceable
+item, like the policy PUTs. `PUT /watch-active` on an archived item is accepted and stored; the wire
+stays `active=false` until restore. Archive is watch-only and does not gate delete.
+`GET /info-items?archived=true|false` filters on it; omitted returns both.
 
 **Pagination:** `GET /info-items`, `GET /info-sources`, and `GET /rep-specs` return a `Page` envelope — `{items, has_more, limit, offset}`. All accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` / `list_rep_specs` return `PageInfoItemOut` / `PageInfoSourceOut` / `PageRepSpecOut`; pass `limit`/`offset` to forward to the server.
 

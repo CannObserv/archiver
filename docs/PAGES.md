@@ -114,7 +114,7 @@ each route.
 
 ## Information Items (`/dashboard/info-items/`)
 
-**GET `/dashboard/info-items/`** - paginated list with optional `name_contains` search. Filter panel: search input (flex-fill) + Search button (right-aligned via `margin-left:auto`). Columns: name (link to detail), Information Source (primary source URL linked to InfoSource detail; `-` if none), Observed (max `captured_at` of the primary source's revisions, `%Y-%m-%d %H:%M`; `-` if none).
+**GET `/dashboard/info-items/`** - paginated list with optional `name_contains` search. Filter panel: search input (flex-fill) + Search button (right-aligned via `margin-left:auto`). Columns: name (link to detail, followed by an `archived` `badge--warning` while the item's watch is archived - archived items stay listed, the Domain list's precedent, archiver#361), Information Source (primary source URL linked to InfoSource detail; `-` if none), Observed (max `captured_at` of the primary source's revisions, `%Y-%m-%d %H:%M`; `-` if none).
 
 **GET `/dashboard/info-items/new`** - 301 redirect to `/dashboard/register`.
 
@@ -132,6 +132,8 @@ that screen. The entries below stay the inventory line for each route.
 **GET `/dashboard/info-items/{id}/watcher-section`** - the section 3 partial (its anatomy is in [INFO_ITEM_DETAIL.md](INFO_ITEM_DETAIL.md)), same local render. Loaded on page init via `hx-trigger="load"` and re-fetched on the `watcherUpdated` body event. The section's `<h2>` is a plain heading - the Watcher deeplink it used to carry retired with archiver#142.
 
 **POST `/dashboard/info-items/{id}/toggle-watch-active`** - pauses or resumes by writing `info_items.watch_active` and announcing it (archiver#158); no SDK call. Form field `active` is the desired target state ("true" → resume, anything else → pause); the button submits the opposite of the current *applied* state. On an unannounceable item (no active source with specs) it writes nothing and re-renders with an error flash (archiver#167). Gating, applied-state lag, and the failure path: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
+
+**POST `/dashboard/info-items/{id}/archive`**, **POST `/dashboard/info-items/{id}/restore`** - the watch lifecycle (archiver#361), through `info_item_lifecycle`, the service behind `POST /api/v1/info-items/{id}/archive` and `/restore`: archive sets `archived_at` and announces `active=false`; restore clears it and announces the item's own `watch_active`. No form fields. 303 to detail - full-page by design, since the Overview badge and the panel both move (SCREENS.md § *Allowed variant*); 404 for an unknown item. Contract: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
 **POST `/dashboard/info-items/{id}/watch-cadence`** - replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Refused like `toggle-watch-active` on an unannounceable item (archiver#167). Replace-vs-merge reasoning and the vocabulary gate: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
