@@ -17,7 +17,7 @@ The live/revoked/skip rule:
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from co_core.pure.adapters.bus.envelope import payload_from_dict, to_wire
@@ -31,6 +31,7 @@ from src.core.models import (
     InfoItemSource,
     InfoSource,
     RevokedInfoItem,
+    TemporalProfile,
 )
 from src.core.models.domain import Domain
 from src.core.services.registry_announcement import (
@@ -1008,3 +1009,67 @@ async def test_a_host_move_resolves_against_the_new_hosts_default(session):
 
     (row,) = await _outbox_rows(session)
     assert row.payload["watch_spec"] == {"schema_version": 1, "interval": "1d"}
+
+
+# --- The profile tier (archiver#365) -----------------------------------------
+
+
+def _profile_for(item: InfoItem, resolved_interval: str | None) -> TemporalProfile:
+    return TemporalProfile(
+        info_item_id=item.info_item_id,
+        profile_type="event",
+        reference_date=date(2099, 1, 1),
+        rules=[{"days_before": 7, "interval": "1h"}],
+        post_action="deactivate",
+        resolved_interval=resolved_interval,
+        evaluated_on=date(2026, 10, 27),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored", "announced"),
+    [
+        ("1h", {"schema_version": 1, "interval": "1h"}),
+        (None, {"schema_version": 1, "interval": "7d"}),
+    ],
+)
+async def test_the_announcement_carries_the_profiles_stored_result(session, stored, announced):
+    """The profile tier wins over the item's own interval and the host's default;
+    a silent profile falls through to them (C-e)."""
+    host = "profile.example.test"
+    item = await _make_item_on_host(
+        session, host, domain=Domain(name=host, default_watch_spec=_SIX_HOURS)
+    )
+    item.watch_spec = {"schema_version": 1, "interval": "7d"}
+    session.add(_profile_for(item, stored))
+    await session.flush()
+
+    await announce_info_item(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["watch_spec"] == announced
+
+
+@pytest.mark.asyncio
+async def test_a_fan_out_reads_each_items_own_profile(session):
+    source = InfoSource(url="https://fan-profile.example.test/doc", source_specs=_SPECS)
+    with_profile, without = InfoItem(name="with"), InfoItem(name="without")
+    session.add_all([source, with_profile, without])
+    await session.flush()
+    for item in (with_profile, without):
+        session.add(
+            InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+        )
+    session.add(_profile_for(with_profile, "1h"))
+    await session.flush()
+
+    assert await announce_for_info_source(session, source.info_source_id) == 2
+
+    by_item = {
+        r.payload["info_item_id"]: r.payload["watch_spec"] for r in await _outbox_rows(session)
+    }
+    assert by_item == {
+        str(with_profile.info_item_id): {"schema_version": 1, "interval": "1h"},
+        str(without.info_item_id): {"schema_version": 1},
+    }

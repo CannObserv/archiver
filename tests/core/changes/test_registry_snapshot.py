@@ -19,7 +19,7 @@ concurrent deltas, and defeat apply-iff-greater.
 
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -37,7 +37,14 @@ from src.core.changes.registry_snapshot import (
     resolve_registry_maxlen,
     resolve_snapshot_interval,
 )
-from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource, RevokedInfoItem
+from src.core.models import (
+    Domain,
+    InfoItem,
+    InfoItemSource,
+    InfoSource,
+    RevokedInfoItem,
+    TemporalProfile,
+)
 
 _SPECS = [{"schema_version": 1, "extraction": {"algorithm": "css", "selector": "body"}}]
 _HOSTS = ".snapshot.test"  # suffix of every Domain this module commits
@@ -230,6 +237,43 @@ async def test_full_set_announces_the_resolved_cadence(session_factory, publishe
         "inherits": {"schema_version": 1, "interval": "6h"},
         "neither": {"schema_version": 1},
     }
+
+
+@pytest.mark.asyncio
+async def test_full_set_replays_the_profiles_stored_result(session_factory, publisher, fake_redis):
+    """archiver#365 (D1): the snapshot never reads the clock. This profile's
+    window ended long ago - evaluated today it would say nothing - but the
+    stored result is what the last delta announced, so it is what replays, at
+    the stored generation."""
+    async with session_factory() as s:
+        item = InfoItem(
+            name="profiled",
+            watch_spec={"schema_version": 1, "interval": "1d"},
+            announcement_generation=4,
+        )
+        source = InfoSource(url="https://example.test/profiled", source_specs=_SPECS)
+        s.add_all([item, source])
+        await s.flush()
+        s.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id))
+        s.add(
+            TemporalProfile(
+                info_item_id=item.info_item_id,
+                profile_type="event",
+                reference_date=date(2020, 1, 1),
+                rules=[{"days_before": 7, "interval": "1h"}],
+                post_action="deactivate",
+                resolved_interval="1h",
+                evaluated_on=date(2019, 12, 30),
+            )
+        )
+        await s.commit()
+        item_id = str(item.info_item_id)
+
+    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+
+    (payload,) = [p for p in await _stream_payloads(fake_redis) if p["info_item_id"] == item_id]
+    assert payload["watch_spec"] == {"schema_version": 1, "interval": "1h"}
+    assert payload["generation"] == 4
 
 
 @pytest.mark.asyncio

@@ -13,8 +13,12 @@ builder rather than on write keeps a domain-default change a fan-out of
 announcements instead of a rewrite of every inheriting item's row, and keeps
 "inherit" distinguishable from "set to the same value".
 
-**The profile slot is always ``None``** until #365 ports temporal profiles. It
-is in the signature now so that #365 changes the resolver, not every caller.
+**The profile tier is the profile's stored result** (archiver#365):
+``TemporalProfile.resolved_interval``, which only a profile write and the daily
+boundary job recompute. The resolver never reads the clock, so the hourly
+snapshot replays what the last delta announced, at its generation. A profile
+**overrides** the tiers below rather than taking the minimum: it can slow an
+item as well as speed one up.
 
 **A malformed tier is skipped, never raised.** Stored documents are validated on
 write only, so a hand-edited row (#360's CR 18) reaches here. The resolver runs
@@ -30,6 +34,8 @@ from typing import Literal
 from src.core.logging import get_logger
 from src.core.models import InfoItem
 from src.core.models.domain import Domain
+from src.core.models.temporal_profile import TemporalProfile
+from src.core.services.temporal_evaluation import interval_error
 from src.core.watch_spec_schema.validator import validate_domain_watch_spec, validate_watch_spec
 
 logger = get_logger(__name__)
@@ -82,13 +88,35 @@ def domain_interval(domain: Domain | None) -> str | None:
     return spec["interval"]
 
 
-def resolve_interval(*, profile: None, item: InfoItem, domain: Domain | None) -> ResolvedInterval:
+def profile_interval(profile: TemporalProfile | None, *, info_item_id: object) -> str | None:
+    """The profile tier: its stored ``resolved_interval``, or ``None``.
+
+    ``None`` for no profile, a silent one, or a malformed stored value (logged).
+    """
+    if profile is None or profile.resolved_interval is None:
+        return None
+    error = interval_error(profile.resolved_interval)
+    if error is not None:
+        logger.warning(
+            "TemporalProfile resolved_interval is malformed; its cadence tier is skipped",
+            extra={"info_item_id": str(info_item_id), "error": error},
+        )
+        return None
+    return profile.resolved_interval
+
+
+def resolve_interval(
+    *, profile: TemporalProfile | None, item: InfoItem, domain: Domain | None
+) -> ResolvedInterval:
     """Profile, then item, then domain; the first tier holding an interval wins.
 
-    ``domain`` is the Domain row of the host the item announces on (its active
-    binding's source), or ``None`` when the host has no row.
+    ``profile`` is the item's ``TemporalProfile`` row, or ``None`` when it has
+    none. ``domain`` is the Domain row of the host the item announces on (its
+    active binding's source), or ``None`` when the host has no row.
     """
-    del profile  # #365: a profile's interval wins over every tier below
+    from_profile = profile_interval(profile, info_item_id=item.info_item_id)
+    if from_profile is not None:
+        return ResolvedInterval(from_profile, "profile")
     own = item_interval(item.watch_spec, info_item_id=item.info_item_id)
     if own is not None:
         return ResolvedInterval(own, "item")

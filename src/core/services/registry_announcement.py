@@ -69,9 +69,11 @@ state. Watch-only: nothing else here reads it.
 
 **The announced ``watch_spec`` is resolved, not stored** (archiver#364, design
 C-e). The same ``Domain`` row supplies the cadence's domain tier:
-``resolve_interval`` takes the item's own ``interval``, else the host's
+``resolve_interval`` takes the item's temporal profile's stored result
+(archiver#365), else its own ``interval``, else the host's
 ``default_watch_spec`` interval, else none (Watcher's system default). The
-stored ``info_items.watch_spec`` stays the item's own intent.
+stored ``info_items.watch_spec`` stays the item's own intent. Both emit paths
+read the ``temporal_profiles`` row beside the item; neither reads the clock.
 
 **Lock order: items, then domains.** Every announce locks its items, then reads
 their hosts' ``Domain`` rows ``FOR KEY SHARE``; an announcing write
@@ -106,6 +108,7 @@ from src.core.models import (
     InfoItemSource,
     InfoSource,
     RevokedInfoItem,
+    TemporalProfile,
 )
 from src.core.services.cadence_resolution import resolve_interval
 
@@ -136,7 +139,12 @@ def resolved_active(
 
 
 def build_live_announcement(
-    *, item: InfoItem, source: InfoSource, generation: int, domain: Domain | None
+    *,
+    item: InfoItem,
+    source: InfoSource,
+    generation: int,
+    domain: Domain | None,
+    profile: TemporalProfile | None,
 ) -> RegistryAnnouncementEmit:
     """One payload shape for both emit paths — delta (here) and snapshot.
 
@@ -147,6 +155,8 @@ def build_live_announcement(
     is required for the same reason: a default would let one path forget the
     host. It decides both ``active`` (suspension) and the cadence's domain tier:
     ``watch_spec`` is the *resolved* document (archiver#364), not the stored one.
+    ``profile`` - the item's ``TemporalProfile``, ``None`` when it has none - is
+    required likewise: it is the cadence's top tier (archiver#365).
     """
     return RegistryAnnouncementEmit(
         occurred_at=datetime.now(UTC),
@@ -160,7 +170,7 @@ def build_live_announcement(
             archived=item.archived_at is not None,
             host_suspended=domain_suspended(domain),
         ),
-        watch_spec=resolve_interval(profile=None, item=item, domain=domain).watch_spec(),
+        watch_spec=resolve_interval(profile=profile, item=item, domain=domain).watch_spec(),
     )
 
 
@@ -379,24 +389,34 @@ async def _announce_many(session: AsyncSession, item_ids: Sequence[ULID], *, rev
         return 0
 
     generations = await _bump_generations(session, live=live, tombstoned=tombstoned)
-    items = (
+    # Each live item with its temporal profile, the cadence's top tier (#365):
+    # one statement however many items, like every other read here.
+    hydrated = (
         {
-            item.info_item_id: item
-            for item in (
-                await session.execute(select(InfoItem).where(InfoItem.info_item_id.in_(live)))
-            ).scalars()
+            item.info_item_id: (item, profile)
+            for item, profile in (
+                await session.execute(
+                    select(InfoItem, TemporalProfile)
+                    .outerjoin(
+                        TemporalProfile, TemporalProfile.info_item_id == InfoItem.info_item_id
+                    )
+                    .where(InfoItem.info_item_id.in_(live))
+                )
+            ).tuples()
         }
         if live
         else {}
     )
     for info_item_id, _current, _revoked in locked:
-        if info_item_id in items:
+        if info_item_id in hydrated:
+            item, profile = hydrated[info_item_id]
             source = sources[info_item_id]
             event = build_live_announcement(
-                item=items[info_item_id],
+                item=item,
                 source=source,
                 generation=generations[info_item_id],
                 domain=domains.get(source.domain_name),
+                profile=profile,
             )
         elif info_item_id in generations:
             event = build_tombstone(info_item_id=info_item_id, generation=generations[info_item_id])

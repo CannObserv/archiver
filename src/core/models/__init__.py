@@ -16,6 +16,7 @@ from src.core.models.rep_spec import RepSpec
 from src.core.models.replication_command import ReplicationCommand
 from src.core.models.revoked_info_item import RevokedInfoItem
 from src.core.models.source_revision import SourceRevision
+from src.core.models.temporal_profile import TemporalProfile
 from src.core.models.watch_status import BusTailCursor, WatchStatus
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "ReplicationCommand",
     "RevokedInfoItem",
     "SourceRevision",
+    "TemporalProfile",
     "TimestampMixin",
     "ULIDType",
     "WatchStatus",

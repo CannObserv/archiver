@@ -51,6 +51,9 @@ announceability rule is shared with the delta path via the builders in
 So is the host rule (archiver#360): each live row carries its source's
 ``Domain`` from the same query, handed to the same builder, which judges
 suspension and resolves the cadence's domain tier from it (archiver#364).
+Each live row carries the item's ``TemporalProfile`` too (archiver#365), whose
+*stored* result is the cadence's top tier: the snapshot never reads the clock,
+so it replays the interval the last delta announced, at that delta's generation.
 """
 
 from __future__ import annotations
@@ -63,7 +66,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.logging import get_logger
-from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource, RevokedInfoItem
+from src.core.models import (
+    Domain,
+    InfoItem,
+    InfoItemSource,
+    InfoSource,
+    RevokedInfoItem,
+    TemporalProfile,
+)
 from src.core.services.registry_announcement import (
     INFO_REGISTRY_TOPIC,
     build_live_announcement,
@@ -148,24 +158,27 @@ def resolve_registry_maxlen(raw: str | None) -> int:
 
 
 async def _collect_full_set(session: AsyncSession) -> tuple[list, list]:
-    """Return (live [(item, source, domain)], revoked [(info_item_id, generation)])."""
+    """Return (live [(item, source, domain, profile)], revoked [(info_item_id, generation)])."""
     bound = (
         await session.execute(
-            select(InfoItem, InfoSource, Domain)
+            select(InfoItem, InfoSource, Domain, TemporalProfile)
             .join(InfoItemSource, InfoItemSource.info_item_id == InfoItem.info_item_id)
             .join(InfoSource, InfoSource.info_source_id == InfoItemSource.info_source_id)
             .outerjoin(Domain, Domain.name == InfoSource.domain_name)
+            .outerjoin(TemporalProfile, TemporalProfile.info_item_id == InfoItem.info_item_id)
             .where(InfoItemSource.deactivated_at.is_(None))
         )
     ).all()
     live = [
-        (item, source, domain) for item, source, domain in bound if source_is_announceable(source)
+        (item, source, domain, profile)
+        for item, source, domain, profile in bound
+        if source_is_announceable(source)
     ]
     # Bound to a spec-less source: unannounceable-as-live, same rule as the
     # delta path — revoked if ever announced.
     specless = [
         (item.info_item_id, item.announcement_generation)
-        for item, source, _domain in bound
+        for item, source, _domain, _profile in bound
         if not source_is_announceable(source) and item.announcement_generation > 0
     ]
 
@@ -211,7 +224,7 @@ async def publish_full_set(
     """
     async with session_factory() as session:
         live, revoked = await _collect_full_set(session)
-        for item, _source, _domain in live:
+        for item, _source, _domain, _profile in live:
             if item.announcement_generation <= 0:
                 logger.warning(
                     "Announceable item republished at generation 0 — a mutation "
@@ -224,8 +237,9 @@ async def publish_full_set(
                 source=source,
                 generation=item.announcement_generation,
                 domain=domain,
+                profile=profile,
             )
-            for item, source, domain in live
+            for item, source, domain, profile in live
         ] + [
             build_tombstone(info_item_id=info_item_id, generation=generation)
             for info_item_id, generation in revoked
