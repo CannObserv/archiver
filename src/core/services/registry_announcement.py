@@ -54,8 +54,8 @@ incremented. ``0`` in the *column* still means never announced.
 **A suspended host resolves ``active=false``** (archiver#360, design D4). An
 inactive or archived ``Domain`` — ``domain_suspended``, the one predicate —
 overrides ``watch_active`` on every item whose *announcing* source (the active
-binding's) names that host; ``resolved_active`` applies it. On an active host
-``watch_active`` passes through unchanged, ``NULL`` included: "no opinion yet"
+binding's) names that host; ``resolved_active`` applies it. On an active host an
+unarchived item's ``watch_active`` passes through unchanged, ``NULL`` included: "no opinion yet"
 is not "active". A host with no ``Domain`` row is active (``domain_name`` has
 no FK). Both emit paths resolve here: ``build_live_announcement`` takes the
 host's state as a required argument, the delta path reads the ``Domain`` rows
