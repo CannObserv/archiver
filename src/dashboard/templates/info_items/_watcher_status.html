@@ -12,6 +12,7 @@
      more, it is a consequence of being in the announced set. Say what closes the
      gap instead of offering a control that cannot exist. #}
   <span class="text-muted text-sm">Not watching — bind an active source with extraction specs to announce this item.</span>
+  {% include "info_items/_watch_lifecycle.html" %}
 
 {% elif state == "degraded" %}
   {# `degraded` is unreachable from anything Watcher does — since archiver#142
@@ -33,6 +34,7 @@
     {% if watch.last_changed_ago %}
     <span class="text-muted text-sm">Last changed: {{ watch.last_changed_ago }}</span>
     {% endif %}
+    {% include "info_items/_watch_lifecycle.html" %}
   </div>
 
 {% else %}{# state == "watching" #}
@@ -42,7 +44,7 @@
           style="font-size:0.7rem;">{{ watch.health.upper() }}</span>
     {% endif %}
 
-    {% if watch.applied_active is false %}
+    {% if not watch.archived and watch.applied_active is false %}
     <span class="badge badge--muted" style="font-size:0.7rem;">Paused</span>
     {% endif %}
     {% if watch.pending_toggle %}
@@ -87,7 +89,10 @@
 
     {# Gated on announceability, not on a Watcher link: announcing policy for an
        item that cannot announce live emits a tombstone and burns a generation. #}
-    {% if has_active_source and watch.suspended_by %}
+    {% if watch.archived %}
+    {# archiver#361: archived overrides the item's pause state; Restore replaces the toggle. #}
+    {% include "info_items/_watch_lifecycle.html" %}
+    {% elif has_active_source and watch.suspended_by %}
     {# archiver#360: a suspended host overrides the item's pause state. #}
     <span class="text-muted text-sm">Paused: host
       <a href="/dashboard/domains/{{ watch.suspended_by }}">{{ watch.suspended_by }}</a> is suspended</span>

@@ -27,6 +27,7 @@ def make_item(**overrides):
         info_item_id="01JTESTITEM0000000000000000",
         watch_spec={"schema_version": 1, "interval": "1d"},
         watch_active=None,
+        archived_at=None,
         announcement_generation=3,
         announced_at=NOW - timedelta(minutes=5),
     )
@@ -494,6 +495,46 @@ class TestHostSuspension:
         ctx = self._ctx(watch_active=None, applied_active=True, suspended_by="off.example")
         assert ctx["desired_active"] is False
         assert ctx["pending_toggle"] == "pause"
+
+
+class TestArchived:
+    """archiver#361: an archived item announces ``active=false``.
+
+    Desired is the announced state, so Watcher's applied pause reads as settled,
+    never as a resume pending forever; the item's own ``watch_active`` is kept.
+    """
+
+    def _ctx(self, *, watch_active, applied_active, archived=True, status=True):
+        return build_watch_context(
+            host=None,
+            is_announceable=True,
+            item=make_item(watch_active=watch_active, archived_at=NOW if archived else None),
+            status=make_status(applied_active=applied_active) if status else None,
+            last_changed_at=None,
+            now=NOW,
+        )
+
+    @pytest.mark.parametrize("watch_active", [True, False, None])
+    def test_an_applied_pause_on_an_archived_item_is_not_pending(self, watch_active):
+        ctx = self._ctx(watch_active=watch_active, applied_active=False)
+        assert ctx["archived"] is True
+        assert ctx["desired_active"] is False
+        assert ctx["pending_toggle"] is None
+
+    def test_an_archive_not_yet_applied_is_a_pending_pause(self):
+        ctx = self._ctx(watch_active=True, applied_active=True)
+        assert ctx["pending_toggle"] == "pause"
+
+    def test_an_unarchived_item_says_so(self):
+        ctx = self._ctx(watch_active=True, applied_active=True, archived=False)
+        assert ctx["archived"] is False
+        assert ctx["desired_active"] is True
+
+    def test_no_status_carries_the_archive_too(self):
+        ctx = self._ctx(watch_active=True, applied_active=None, status=False)
+        assert ctx["state"] == "no_status"
+        assert ctx["archived"] is True
+        assert ctx["desired_active"] is False
 
 
 def _host(spec=None, *, is_active=True):
