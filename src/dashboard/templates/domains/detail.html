@@ -86,6 +86,9 @@
         <tr>
           <td class="data-table__cell">
             <a href="/dashboard/info-items/{{ item.info_item_id }}">{{ item.name }}</a>
+            {% if item.archived_at %}
+            <span class="badge badge--warning">archived</span>
+            {% endif %}
           </td>
           <td class="data-table__cell data-table__cell--muted text-sm">
             {{ item.owner or '—' }}
