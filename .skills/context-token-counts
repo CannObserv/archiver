@@ -3,27 +3,28 @@
 # The offline estimators prefer a file's own last exact measurement to the
 # repo-wide figure in .skills/context-token-ratio, falling back to it for a
 # file never counted exactly or since drifted far from the size recorded here.
-13194 5916 AGENTS.md
-19177 7838 docs/API.md
-32310 9227 docs/ARCHITECTURE.md
+13309 5976 AGENTS.md
+20041 8203 docs/API.md
+34977 9980 docs/ARCHITECTURE.md
 13588 5761 docs/BACKUP.md
-24887 9663 docs/BUS.md
+25713 10011 docs/BUS.md
 23909 9091 docs/BUS_CONSUMERS.md
 4994 2060 docs/BUS_TRIAGE.md
-24078 9572 docs/COMPONENTS.md
+24158 9613 docs/COMPONENTS.md
 18801 7046 docs/CONVENTIONS.md
-28849 11907 docs/DEPLOYMENT.md
-22680 9352 docs/ENVIRONMENT.md
+30853 12733 docs/DEPLOYMENT.md
+8669 3389 docs/DOMAINS.md
+24098 9979 docs/ENVIRONMENT.md
 6836 2661 docs/HEALTH_ROW.md
 22239 8119 docs/HTMX.md
 5138 1858 docs/INFO_ITEM_ACTIONS.md
-22790 8663 docs/INFO_ITEM_DETAIL.md
+24022 9078 docs/INFO_ITEM_DETAIL.md
 5874 2307 docs/ORG_ROW.md
-22928 9163 docs/PAGES.md
+25018 9955 docs/PAGES.md
 6133 2309 docs/REGISTER.md
 6317 2407 docs/REP_SPEC_PAGES.md
-26891 9912 docs/SCHEMA.md
-6664 2435 docs/SCHEMA_BUS.md
+27024 9999 docs/SCHEMA.md
+7260 2668 docs/SCHEMA_BUS.md
 21688 7829 docs/SCREENS.md
 16775 6620 docs/SKILLS.md
 18266 7070 docs/SOCRATICODE.md
