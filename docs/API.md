@@ -72,7 +72,7 @@ which calls the same core functions without these routes.
 | Public-URL writeback | `PATCH /info-items/{id}/rep-spec-assignments/{aid}` | `set_public_url(info_item_id, assignment_id, public_url)` |
 | Replace an item's rep_fields bag | `PUT /info-items/{id}/rep-fields` | `set_rep_fields(info_item_id, rep_fields, allow_destination_change=False)` |
 | Link / unlink a Power Map org | `PUT /info-items/{id}/org` | `set_org(info_item_id, pm_org_id, allow_destination_change=False)` |
-| Replace an item's cadence policy | `PUT /info-items/{id}/watch-spec` | generated only (no hand-written wrapper — no SDK consumer yet) |
+| Replace an item's cadence policy | `PUT /info-items/{id}/watch-spec` | `set_watch_spec` (SDK 5.13.0, archiver#364) |
 | Pause / resume an item | `PUT /info-items/{id}/watch-active` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
@@ -183,8 +183,10 @@ item that Watcher has reported on (a `watch_status` row exists) logs a WARNING n
 cleanup is discoverable from journald rather than only from this paragraph.
 
 `PUT /info-items/{id}/watch-spec` accepts `{document}` and **replaces** the cadence document whole
-— it is not a merge, because omitting `interval` is the only way to say "the consumer applies its
-own default" and a merge would make that state unreachable once an interval had been set. Invalid
+— it is not a merge, because omitting `interval` is the only way to say "inherit" (the host's
+default cadence, else Watcher's own) and a merge would make that state unreachable once an interval
+had been set. The stored document is the item's own intent; `info.registry` carries the resolved
+interval (archiver#364, [BUS.md](BUS.md)). Invalid
 documents return the 422 envelope with per-field errors and leave the stored policy untouched,
 including a pre-rework document that still nests `active` (rejected, not silently dropped).
 

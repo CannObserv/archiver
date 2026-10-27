@@ -319,6 +319,43 @@ async def test_assign_rep_spec(client):
 _REP_FIELDS_URL = f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/rep-fields"
 
 
+_WATCH_SPEC_URL = f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/watch-spec"
+
+
+@pytest.mark.asyncio
+async def test_set_watch_spec_puts_the_whole_document(client):
+    """archiver#364: the item-cadence import's write path."""
+    doc = {"schema_version": 1, "interval": "6h"}
+    with respx.mock:
+        route = respx.put(_WATCH_SPEC_URL).mock(
+            return_value=httpx.Response(200, json={**_info_item_payload(), "watch_spec": doc})
+        )
+        out = await client.set_watch_spec("01HZZ00000000000000000000A", doc)
+    assert json.loads(route.calls.last.request.content) == {"document": doc}
+    assert out.watch_spec.to_dict() == doc
+
+
+@pytest.mark.asyncio
+async def test_set_watch_spec_refusal_raises_validation_error(client):
+    with respx.mock:
+        respx.put(_WATCH_SPEC_URL).mock(
+            return_value=httpx.Response(
+                422,
+                json={
+                    "detail": {
+                        "kind": "domain",
+                        "message": "watch_spec failed schema validation",
+                        "errors": [{"path": "/interval", "message": "does not match"}],
+                    }
+                },
+            )
+        )
+        with pytest.raises(ValidationError):
+            await client.set_watch_spec(
+                "01HZZ00000000000000000000A", {"schema_version": 1, "interval": "x"}
+            )
+
+
 @pytest.mark.asyncio
 async def test_set_rep_fields_puts_the_whole_bag(client):
     bag = {"org": {"title": "WA LCB"}}

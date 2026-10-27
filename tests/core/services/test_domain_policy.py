@@ -73,12 +73,22 @@ async def _until_waiting_on_a_lock(
     return False
 
 
-async def _deactivating(factory, host: str, pid: asyncio.Future) -> None:
-    """Deactivate ``host`` in a session of its own, publishing its backend pid."""
+async def _writing(factory, host: str, pid: asyncio.Future, changes: dict) -> None:
+    """Apply ``changes`` to ``host`` in a session of its own, publishing its backend pid."""
     async with factory() as s:
         pid.set_result((await s.execute(text("SELECT pg_backend_pid()"))).scalar_one())
-        await update_domain(s, host, {"is_active": False}, create=False)
+        await update_domain(s, host, changes, create=False)
         await s.commit()
+
+
+_SIX_HOURS = {"schema_version": 1, "interval": "6h"}
+
+# The two announcing writes (archiver#360, #364), and what the newcomer's last
+# announcement must then say: a suspension, or the host's new default cadence.
+ANNOUNCING_WRITES = [
+    pytest.param({"is_active": False}, ("active", False), id="suspension"),
+    pytest.param({"default_watch_spec": _SIX_HOURS}, ("watch_spec", _SIX_HOURS), id="cadence"),
+]
 
 
 async def _item_on(session, host: str = HOST, *, watch_active: bool | None = True) -> InfoItem:
@@ -155,7 +165,6 @@ async def test_archive_and_restore_flip_suspension_too(session):
         {"archived_at": datetime(2026, 10, 24, tzinfo=UTC)},  # already inactive
         {"notes": "n"},
         {"min_interval_seconds": 5.0},
-        {"default_watch_spec": {"schema_version": 1, "interval": "6h"}},
         {"is_active": False},  # already inactive: no flip
     ],
 )
@@ -164,6 +173,125 @@ async def test_a_write_that_flips_nothing_emits_nothing(session, changes):
     await _item_on(session)
 
     await update_domain(session, HOST, changes, create=False)
+
+    assert await _announced(session) == {}
+
+
+async def _specs(session) -> dict[str, list]:
+    """Each item's announced ``watch_spec`` documents, in outbox order."""
+    rows = (
+        await session.execute(
+            select(ChangesOutboxRow.payload)
+            .where(ChangesOutboxRow.topic == INFO_REGISTRY_TOPIC)
+            .order_by(ChangesOutboxRow.id)
+        )
+    ).scalars()
+    out: dict[str, list] = {}
+    for payload in rows:
+        out.setdefault(payload["info_item_id"], []).append(payload["watch_spec"])
+    return out
+
+
+@pytest.mark.asyncio
+async def test_a_default_cadence_announces_only_the_items_that_inherit_it(session):
+    """D2 (archiver#364): a cadence write fans out to the host's items whose own
+    ``interval`` is absent. A paused item inherits too: cadence is not pause."""
+    session.add(Domain(name=HOST))
+    inherits = await _item_on(session)
+    paused = await _item_on(session, watch_active=False)
+    own = await _item_on(session)
+    own.watch_spec = {"schema_version": 1, "interval": "1h"}
+    elsewhere = await _item_on(session, "other.example.test")
+    await session.flush()
+
+    await update_domain(session, HOST, {"default_watch_spec": _SIX_HOURS}, create=False)
+
+    assert await _specs(session) == {
+        str(inherits.info_item_id): [_SIX_HOURS],
+        str(paused.info_item_id): [_SIX_HOURS],
+    }
+    assert str(own.info_item_id) not in await _specs(session)
+    assert str(elsewhere.info_item_id) not in await _specs(session)
+
+
+@pytest.mark.asyncio
+async def test_clearing_the_default_returns_inheriting_items_to_the_consumer_default(session):
+    session.add(Domain(name=HOST, default_watch_spec=_SIX_HOURS))
+    item = await _item_on(session)
+
+    await update_domain(session, HOST, {"default_watch_spec": None}, create=False)
+
+    assert await _specs(session) == {str(item.info_item_id): [{"schema_version": 1}]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        (_SIX_HOURS, _SIX_HOURS),  # re-saved unchanged
+        (None, None),
+        ({"interval": "6h"}, None),  # malformed (#360 CR 18) resolved to nothing already
+    ],
+)
+async def test_a_cadence_write_that_moves_no_resolved_interval_emits_nothing(
+    session, before, after
+):
+    """The #167 rule: what the wire would say is unchanged, so nothing is said."""
+    session.add(Domain(name=HOST, default_watch_spec=before))
+    await _item_on(session)
+
+    await update_domain(session, HOST, {"default_watch_spec": after}, create=False)
+
+    assert await _announced(session) == {}
+
+
+@pytest.mark.asyncio
+async def test_a_suspension_and_a_cadence_in_one_write_announce_each_item_once(session):
+    session.add(Domain(name=HOST))
+    inherits = await _item_on(session)
+    paused = await _item_on(session, watch_active=False)  # moves on cadence only
+    own = await _item_on(session)  # moves on suspension only
+    own.watch_spec = {"schema_version": 1, "interval": "1h"}
+    await session.flush()
+
+    await update_domain(
+        session,
+        HOST,
+        {"is_active": False, "default_watch_spec": _SIX_HOURS},
+        create=False,
+    )
+
+    assert await _announced(session) == {
+        str(inherits.info_item_id): [False],
+        str(paused.info_item_id): [False],
+        str(own.info_item_id): [False],
+    }
+    assert (await _specs(session))[str(inherits.info_item_id)] == [_SIX_HOURS]
+
+
+@pytest.mark.asyncio
+async def test_creating_a_row_with_a_default_fans_out_to_the_hosts_items(session):
+    """A row-less host has no domain tier, so a create carrying one moves it."""
+    item = await _item_on(session)
+
+    await update_domain(session, HOST, {"default_watch_spec": _SIX_HOURS}, create=True)
+
+    assert await _specs(session) == {str(item.info_item_id): [_SIX_HOURS]}
+
+
+@pytest.mark.asyncio
+async def test_an_unannounceable_item_is_not_announced_for_a_cadence_change(session):
+    session.add(Domain(name=HOST))
+    item = InfoItem(name="specless", announcement_generation=1)
+    source = InfoSource(url=f"https://{HOST}/empty", source_specs=[], domain_name=HOST)
+    session.add_all([item, source])
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id)
+    )
+    await session.flush()
+
+    await update_domain(session, HOST, {"default_watch_spec": _SIX_HOURS}, create=False)
 
     assert await _announced(session) == {}
 
@@ -212,17 +340,19 @@ async def test_unknown_columns_are_refused(session):
 
 
 @pytest.mark.asyncio
-async def test_a_binding_committed_while_the_write_waits_is_announced_inactive(
-    test_engine, committed_rows
+@pytest.mark.parametrize(("changes", "expect"), ANNOUNCING_WRITES)
+async def test_a_binding_committed_while_the_write_waits_is_announced_with_the_write(
+    test_engine, committed_rows, changes, expect
 ):
-    """The race the lock order exists for (archiver#360).
+    """The race the lock order exists for (archiver#360; a cadence write, #364).
 
     A binding transaction announces its item under a share lock on the host's
     Domain row. A deactivation that arrives meanwhile has already chosen its
     item set; it waits on that share lock, then re-reads the host's items and
     announces the newcomer too. Without the share lock it would not wait, and
     without the re-read it would miss the item: either way the item would stay
-    announced active on a suspended host at the higher generation.
+    announced active on a suspended host at the higher generation - or, for a
+    cadence write, on the old cadence.
     """
     host = "race.example.test"
     factory = async_sessionmaker(test_engine, expire_on_commit=False)
@@ -248,7 +378,7 @@ async def test_a_binding_committed_while_the_write_waits_is_announced_inactive(
         await binder.flush()
         committed_rows.append((InfoItemSource, binding.id))
         await announce_info_item(binder, item_id)  # holds the Domain row FOR KEY SHARE
-        writer = asyncio.create_task(_deactivating(factory, host, pid))
+        writer = asyncio.create_task(_writing(factory, host, pid, changes))
         try:
             waited = await _until_waiting_on_a_lock(test_engine, pid)
             await binder.commit()
@@ -269,13 +399,16 @@ async def test_a_binding_committed_while_the_write_waits_is_announced_inactive(
         mine = [r for r in rows if r.payload["info_item_id"] == str(item_id)]
         committed_rows += [(ChangesOutboxRow, r.id) for r in mine]
         last = max(mine, key=lambda r: r.payload["generation"])
-    assert [r.payload["active"] for r in mine] == [True, False]
-    assert last.payload["active"] is False
+    key, value = expect
+    assert len(mine) == 2
+    assert mine[0].payload[key] != value
+    assert last.payload[key] == value
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("changes", "expect"), ANNOUNCING_WRITES)
 async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
-    test_engine, committed_rows, monkeypatch
+    test_engine, committed_rows, monkeypatch, changes, expect
 ):
     """CR 2 (archiver#360): newcomers are locked before the Domain row, never after.
 
@@ -324,7 +457,7 @@ async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
     monkeypatch.setattr(domain_policy, "_host_items", _pausing_host_items)
 
     pid = asyncio.get_running_loop().create_future()
-    writer = asyncio.create_task(_deactivating(factory, host, pid))
+    writer = asyncio.create_task(_writing(factory, host, pid, changes))
     async with factory() as binder, factory() as announcer:
         try:
             await asyncio.wait_for(paused.wait(), timeout=5)
@@ -368,7 +501,8 @@ async def test_a_newcomer_held_by_an_announce_does_not_deadlock_the_write(
         ]
         committed_rows += [(ChangesOutboxRow, r.id) for r in old_rows]
     last = max(mine, key=lambda r: r.payload["generation"])
-    assert last.payload["active"] is False
+    key, value = expect
+    assert last.payload[key] == value
 
 
 @pytest.mark.asyncio
@@ -422,12 +556,13 @@ async def test_a_plain_domain_update_does_not_block_an_announce(test_engine, com
     [
         {"notes": "n"},
         {"min_interval_seconds": 2.0},
-        {"default_watch_spec": {"schema_version": 1, "interval": "1d"}},
     ],
 )
-async def test_a_write_that_cannot_flip_takes_no_item_locks(test_engine, committed_rows, changes):
-    """CR 13: only is_active/archived_at can flip suspension; nothing else may
-    block item writes across the host."""
+async def test_a_write_that_cannot_announce_takes_no_item_locks(
+    test_engine, committed_rows, changes
+):
+    """CR 13: only suspension and the default cadence announce (archiver#364);
+    nothing else may block item writes across the host."""
     host = "nolock.example.test"
     factory = async_sessionmaker(test_engine, expire_on_commit=False)
     async with factory() as setup:
@@ -463,7 +598,7 @@ async def test_a_write_that_cannot_flip_takes_no_item_locks(test_engine, committ
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "changes",
-    [{"notes": "n"}, {"min_interval_seconds": 3.0}, {"default_watch_spec": None}],
+    [{"notes": "n"}, {"min_interval_seconds": 3.0}],
 )
 async def test_a_non_flipping_update_domain_does_not_block_an_announce(
     test_engine, committed_rows, changes
@@ -501,7 +636,10 @@ async def test_a_non_flipping_update_domain_does_not_block_an_announce(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("changes", [{"is_active": False}, {"notes": "n"}])
+@pytest.mark.parametrize(
+    "changes",
+    [{"is_active": False}, {"notes": "n"}, {"default_watch_spec": _SIX_HOURS}],  # CR 9 (#364)
+)
 async def test_a_create_racing_a_delete_returns_none(
     test_engine, committed_rows, monkeypatch, changes
 ):

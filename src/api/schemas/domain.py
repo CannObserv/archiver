@@ -17,8 +17,9 @@ _MIN_INTERVAL = (
 )
 _DEFAULT_WATCH_SPEC = (
     "Default cadence for Information Items on this host: a WatchSpec v1 document "
-    "that carries an interval, or null for no domain default. Dark until cadence "
-    "resolution (#364, flip F2) reads it."
+    "that carries an interval, or null for no domain default. Live (#364): an "
+    "item on this host with no interval of its own announces this one on "
+    "info.registry, and a change re-announces those items."
 )
 
 

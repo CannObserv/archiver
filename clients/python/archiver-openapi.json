@@ -394,7 +394,7 @@
                 "type": "null"
               }
             ],
-            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Dark until cadence resolution (#364, flip F2) reads it.",
+            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Live (#364): an item on this host with no interval of its own announces this one on info.registry, and a change re-announces those items.",
             "title": "Default Watch Spec"
           },
           "id": {
@@ -464,7 +464,7 @@
                 "type": "null"
               }
             ],
-            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Dark until cadence resolution (#364, flip F2) reads it.",
+            "description": "Default cadence for Information Items on this host: a WatchSpec v1 document that carries an interval, or null for no domain default. Live (#364): an item on this host with no interval of its own announces this one on info.registry, and a change re-announces those items.",
             "title": "Default Watch Spec"
           },
           "is_active": {
@@ -1081,7 +1081,7 @@
           },
           "watch_spec": {
             "additionalProperties": true,
-            "description": "Cadence policy for this item (WatchSpec v1): '{\"schema_version\": 1, \"interval\": \"1d\"}'. `interval` is optional \u2014 when absent the consumer applies its own default, which may be a per-domain one rather than a global constant. Carries no pause state; see watch_active. Written via PUT /info-items/{id}/watch-spec.",
+            "description": "Cadence policy for this item (WatchSpec v1): '{\"schema_version\": 1, \"interval\": \"1d\"}'. The item's own intent: `interval` is optional, and when absent the item inherits its host's default cadence, else Watcher's own. info.registry announces the resolved interval (archiver#364). Carries no pause state; see watch_active. Written via PUT /info-items/{id}/watch-spec.",
             "title": "Watch Spec",
             "type": "object"
           }
@@ -1319,7 +1319,7 @@
       },
       "InfoItemWatchSpecPut": {
         "additionalProperties": false,
-        "description": "Request body for PUT /info-items/{id}/watch-spec.\n\nReplaces the whole document \u2014 this is not a merge. Omitting ``interval`` is\nhow \"the consumer applies its own default\" is expressed, so a merge would\nmake that state unreachable once an interval had been set.\n\nCarries cadence only. Pause state has its own route (``PUT /watch-active``)\nprecisely so this body keeps one absence rule instead of two.",
+        "description": "Request body for PUT /info-items/{id}/watch-spec.\n\nReplaces the whole document \u2014 this is not a merge. Omitting ``interval`` is\nhow \"inherit\" is expressed (the host's default cadence, else Watcher's own),\nso a merge would make that state unreachable once an interval had been set.\n\nCarries cadence only. Pause state has its own route (``PUT /watch-active``)\nprecisely so this body keeps one absence rule instead of two.",
         "properties": {
           "document": {
             "additionalProperties": true,
@@ -2546,7 +2546,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.35.0"
+    "version": "4.36.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2916,7 +2916,7 @@
         ]
       },
       "patch": {
-        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates only the fields sent; ``default_watch_spec:\nnull`` clears the cadence. ``name`` must be a canonical host name - the\nlowercase, port-less form an InfoSource is filed under - or it is a 422.\nA change to ``is_active`` that suspends or resumes the host announces its\nitems (archiver#360).",
+        "description": "Upsert a Domain by hostname.\n\nCreates on first call. Updates only the fields sent; ``default_watch_spec:\nnull`` clears the cadence. ``name`` must be a canonical host name - the\nlowercase, port-less form an InfoSource is filed under - or it is a 422.\nA change to ``is_active`` that suspends or resumes the host announces its\nitems (archiver#360), and so does a ``default_watch_spec`` change, to the\nitems with no interval of their own (archiver#364).",
         "operationId": "upsert_domain_api_v1_domains__name__patch",
         "parameters": [
           {
@@ -4767,7 +4767,7 @@
     },
     "/api/v1/info-items/{info_item_id}/watch-spec": {
       "put": {
-        "description": "Replace an InfoItem's cadence policy.\n\nA whole-document PUT rather than a general InfoItem PATCH: the document is\nvalidated as a unit, and omitting ``interval`` is the only way to express\n\"the consumer applies its own default\" \u2014 a merge would make that state\nunreachable once an interval had been set.\n\nCadence only. Pause state is ``PUT /watch-active``, which keeps this body to\none absence rule and keeps pausing from becoming a read-modify-write of a\ndocument the operator did not mean to touch.\n\nThe stored document is left untouched when validation fails \u2014 including for\na pre-rework client that still nests ``active``, which the schema rejects\nrather than silently dropping.\n\nOn an item that cannot announce live (no active binding, or a spec-less\nsource) the document is stored and **nothing is announced** (archiver#167):\npolicy cannot change announceability, so the key's announced state is\nunchanged, and the first live announcement after a bind carries it.",
+        "description": "Replace an InfoItem's cadence policy.\n\nA whole-document PUT rather than a general InfoItem PATCH: the document is\nvalidated as a unit, and omitting ``interval`` is the only way to express\n\"inherit\" \u2014 the host's default cadence, else Watcher's own (archiver#364) \u2014\nand a merge would make that state unreachable once an interval had been set.\nThe stored document is the item's own intent; ``info.registry`` announces\nthe resolved interval.\n\nCadence only. Pause state is ``PUT /watch-active``, which keeps this body to\none absence rule and keeps pausing from becoming a read-modify-write of a\ndocument the operator did not mean to touch.\n\nThe stored document is left untouched when validation fails \u2014 including for\na pre-rework client that still nests ``active``, which the schema rejects\nrather than silently dropping.\n\nOn an item that cannot announce live (no active binding, or a spec-less\nsource) the document is stored and **nothing is announced** (archiver#167):\npolicy cannot change announceability, so the key's announced state is\nunchanged, and the first live announcement after a bind carries it.",
         "operationId": "put_watch_spec_api_v1_info_items__info_item_id__watch_spec_put",
         "parameters": [
           {

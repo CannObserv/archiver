@@ -16,7 +16,9 @@ def test_min_interval_reads_live_since_f1(model) -> None:
 
 
 @pytest.mark.parametrize("model", [DomainOut, DomainPatch])
-def test_default_watch_spec_stays_dark_until_f2(model) -> None:
+def test_default_watch_spec_is_live_on_info_registry(model) -> None:
+    """archiver#364: the domain tier is announced from the first frame."""
     text = model.model_fields["default_watch_spec"].description
 
-    assert "Dark until cadence resolution (#364, flip F2)" in text
+    assert "info.registry" in text
+    assert "Dark until" not in text

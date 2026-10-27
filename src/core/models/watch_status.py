@@ -46,7 +46,7 @@ class WatchStatus(Base, TimestampMixin):
     applied_interval: Mapped[str | None] = mapped_column(Text, nullable=True)
     """The cadence actually in use. ``None`` means Watcher's own default is in
     force — a reportable state, not a missing value. Next-due derives from this
-    where present, falling back to the announced ``watch_spec`` interval.
+    where present, falling back to the announced (resolved, archiver#364) interval.
 
     ``Text``, not a bounded ``String``: co-core types it as an unconstrained
     ``str``, and a width narrower than the contract turns a longer-than-expected

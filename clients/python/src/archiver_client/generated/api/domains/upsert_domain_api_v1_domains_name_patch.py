@@ -108,7 +108,8 @@ def sync_detailed(
     null`` clears the cadence. ``name`` must be a canonical host name - the
     lowercase, port-less form an InfoSource is filed under - or it is a 422.
     A change to ``is_active`` that suspends or resumes the host announces its
-    items (archiver#360).
+    items (archiver#360), and so does a ``default_watch_spec`` change, to the
+    items with no interval of their own (archiver#364).
 
     Args:
         name (str):
@@ -152,7 +153,8 @@ def sync(
     null`` clears the cadence. ``name`` must be a canonical host name - the
     lowercase, port-less form an InfoSource is filed under - or it is a 422.
     A change to ``is_active`` that suspends or resumes the host announces its
-    items (archiver#360).
+    items (archiver#360), and so does a ``default_watch_spec`` change, to the
+    items with no interval of their own (archiver#364).
 
     Args:
         name (str):
@@ -191,7 +193,8 @@ async def asyncio_detailed(
     null`` clears the cadence. ``name`` must be a canonical host name - the
     lowercase, port-less form an InfoSource is filed under - or it is a 422.
     A change to ``is_active`` that suspends or resumes the host announces its
-    items (archiver#360).
+    items (archiver#360), and so does a ``default_watch_spec`` change, to the
+    items with no interval of their own (archiver#364).
 
     Args:
         name (str):
@@ -233,7 +236,8 @@ async def asyncio(
     null`` clears the cadence. ``name`` must be a canonical host name - the
     lowercase, port-less form an InfoSource is filed under - or it is a 422.
     A change to ``is_active`` that suspends or resumes the host announces its
-    items (archiver#360).
+    items (archiver#360), and so does a ``default_watch_spec`` change, to the
+    items with no interval of their own (archiver#364).
 
     Args:
         name (str):

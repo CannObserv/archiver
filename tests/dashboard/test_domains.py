@@ -694,7 +694,10 @@ async def test_fetch_policy_copy_follows_the_producer_flag(client, session, monk
         else:
             assert "Watcher's value applies" not in text
             assert "Archiver publishes it on <code>content.fetch-policy</code>" in text
-        assert "#364" in text  # the cadence stays dark until F2 either way
+        # The cadence is live wherever the process runs (#364): announced on
+        # info.registry, which has no producer flag.
+        assert "announced on <code>info.registry</code>" in text
+        assert "flip F2" not in text
 
 
 @pytest.mark.asyncio

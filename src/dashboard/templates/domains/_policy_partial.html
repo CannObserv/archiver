@@ -5,8 +5,8 @@
    one expecting a change on the wire. The minimum interval's sentence follows
    `fetch_policy_live` (ARCHIVER_FETCH_POLICY_PRODUCER, archiver#366): set only
    in archiver.service since flip F1 (#438), so production reads live and a
-   dev or test process says it does not publish. The cadence stays dark until
-   F2 (#364).
+   dev or test process says it does not publish. The cadence is live in every
+   process (#364): it rides info.registry, which has no producer flag.
 
    The cadence select offers the dashboard's vocabulary (src/dashboard/cadence.py)
    plus the stored interval when it is outside it (an import or an API write),
@@ -24,7 +24,8 @@
     Stored. This process does not publish <code>content.fetch-policy</code> (#366): only
     the production service sets its producer flag, so a save here reaches no consumer.
     {% endif %}
-    The default cadence takes effect with cadence resolution (#364, flip F2).
+    The default cadence is live (#364): it is announced on <code>info.registry</code>
+    for this host's items that set no cadence of their own, and a save re-announces them.
   </p>
   <form class="field-row" style="align-items:flex-end;"
         hx-post="/dashboard/domains/{{ domain.name }}/fetch-policy"

@@ -21,22 +21,24 @@ Routes and the SDK: [API.md](API.md). The dashboard rows: [PAGES.md](PAGES.md) Â
 
 ## One write path
 
-`update_domain` (`src/core/services/domain_policy.py`) is the only write that can flip suspension.
-It sits behind:
+`update_domain` (`src/core/services/domain_policy.py`) is the only write that can flip suspension
+or change the default cadence. It sits behind:
 - the API's `PATCH`, archive and restore;
 - the dashboard's archive, restore and fetch-policy save.
 
-A flip announces the items whose resolved `active` moved, in the write's transaction, through the
-policy path (never a tombstone). A write that flips nothing emits nothing.
+It announces the items whose resolved `active` or interval moved, in the write's transaction,
+through the policy path (never a tombstone). A write that moves neither emits nothing.
 
-The lock order is items, then the row, except for one case: a host that is still gaining items
-after the write's three tries locks them after the row, with Postgres's deadlock detector as the
-backstop. A write that can't flip suspension locks only the row. The newcomer retry and the
+The lock order is items, then the row `FOR UPDATE`, except for one case: a host that is still
+gaining items after the write's three tries locks them after the row, with Postgres's deadlock
+detector as the backstop. A write touching neither suspension nor the cadence (notes, the
+interval) locks only the row, `FOR NO KEY UPDATE`. The dashboard's fetch-policy form posts both
+fields, so its saves take the item locks too. The newcomer retry and the
 accepted limit for a host with no row are in that module's docstring.
 
 ## The two policy fields
 
-Both are stored and editable. The interval is live since F1 (#438); the cadence goes live at F2.
+Both are stored, editable and live: the interval since F1 (#438), the cadence since #364.
 
 - **`min_interval_seconds FLOAT NOT NULL DEFAULT 1.0`**: request spacing for the host.
   - The `CHECK` requires a finite value `>= 0`. `NaN` is excluded explicitly, since Postgres sorts
@@ -48,9 +50,15 @@ Both are stored and editable. The interval is live since F1 (#438); the cadence 
 - **`default_watch_spec JSONB NULL`**: the domain tier of cadence.
   - It is a WatchSpec v1 document that carries `interval`, judged by `validate_domain_watch_spec`.
     `NULL` means no domain default.
-  - It takes effect when #364 resolves cadence (flip F2).
-  - It's stored in WatchSpec shape, never Watcher's `ScheduleConfig`, so #364 merges like with
-    like.
+  - **Cadence resolution** (#364, `src/core/services/cadence_resolution.py`): an item announces
+    its own `interval`, else this one, else none (Watcher's default). A change re-announces the
+    host's items that have no `interval` of their own. A malformed stored document is skipped
+    with a WARNING, never raised.
+  - Watcher reads the announced interval as its top tier, so before F2 this outranks Watcher's own
+    item cadence on an item with no Archiver interval. `import_watcher_item_cadence` fills those
+    first.
+  - It's stored in WatchSpec shape, never Watcher's `ScheduleConfig`, so resolution merges like
+    with like.
 
 ## `content.fetch-policy` (#366) - live since F1 (#438)
 
@@ -107,6 +115,8 @@ The operator's go is recorded on CannObserv/watcher#368.
 
 1. Watcher's producer stops (CannObserv/watcher#374 deployed).
 2. Watcher re-exports; the operator re-imports (`python -m src.core.tools.import_watcher_domains`).
+   Since #364 the importer writes Watcher's interval and cadence to a new host only. On an
+   existing one, Archiver's live value wins, and a difference is reported.
    Read-back: a `--dry-run` of the same export prints no pending writes, so every host Watcher
    published live is an Archiver Domain and the first full set orders it. A host only in Watcher's
    tombstone table needs nothing: its last Watcher frame is already `revoked`.

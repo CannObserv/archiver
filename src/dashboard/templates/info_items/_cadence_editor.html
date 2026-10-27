@@ -17,10 +17,16 @@
   drift the two disagree. Two fields both reading "Cadence" left no way to tell
   which was which.
 
-  The display label is `watch.cadence` - `format_interval` of the same value the
-  select carries - and never a second lookup against `cadence_options` (CR round
-  1, finding 1): that vocabulary holds four of the intervals the schema admits,
-  so rebuilding the label here rendered `30m` beside row one's `~30 min`.
+  The display label is `watch.own_cadence` - `format_interval` of the same value
+  the select carries - and never a second lookup against `cadence_options` (CR
+  round 1, finding 1): that vocabulary holds four of the intervals the schema
+  admits, so rebuilding the label here rendered `30m` beside row one's `~30 min`.
+
+  Edits the item's *own* interval (archiver#364). Blank inherits, and
+  `watch.inherit_label` says from where: "Inherit: Every 6 hours (domain)" for a
+  host with a default cadence, else "Inherit: Watcher's default", unnamed so
+  Archiver does not mirror Watcher's constant. Row one shows the resolved
+  interval, which is what the announcement carries.
 
   The edit half carries the inline `display:none` FOUC hint - the
   `settings/_api_key_row.html` trade rather than the `domains/_notes_partial.html`
@@ -40,26 +46,26 @@
   sits in no_status until Watcher's first status frame, which is exactly when an
   operator wants to revise the cadence they just picked. `not_watching` has no
   announceable source by definition and `degraded` shows an error, so neither
-  includes this. The blank option is "delegate" - the consumer applies its own
-  default, which may be a per-domain one rather than a global constant, and it
-  is only reachable because the route replaces the document instead of merging
-  into it.
+  includes this. The blank option is "inherit", only reachable because the
+  route replaces the document instead of merging into it.
 
   Vocabulary comes from src/dashboard/cadence.py via the route context, not a
   literal list here; the schema admits more intervals than the dropdown offers.
 #}
 {# One value, three renderings to keep in step: the readout, the option the
-   select carries, and row one's cell. `watch.cadence` is the first two.
+   select carries, and row one's cell. `watch.own_cadence` is the first two;
+   row one is the resolved interval, the same value whenever the item sets one.
    Falling through to `cadence_value` covers a stored interval outside the
    grammar, where `format_interval` yields "" - only a hand-edited row reaches
    that, but the fallback is what keeps the readout honest instead of quietly
-   reporting a set policy as delegated. #}
-{% set cadence_display = watch.cadence or cadence_value or "Consumer default" %}
+   reporting a set policy as inherited. #}
+{% set cadence_display = watch.own_cadence or cadence_value or watch.inherit_label %}
 <div class="field-row-group" x-data="editableField">
   <label class="field-row__label" for="cadence-{{ item_id }}">Announced cadence</label>
 
-  {# View mode: the announced policy, which is not necessarily what row one
-     shows - that cell leads with the interval Watcher reports *applied*. #}
+  {# View mode: the item's own cadence, or what it inherits (archiver#364) -
+     not necessarily what row one shows, which leads with the interval Watcher
+     reports *applied*. #}
   <div class="field-row" x-show="!editing">
     <div class="field-row__readout">{{ cadence_display }}</div>
     <div class="field-row__actions">
@@ -86,12 +92,12 @@
             name="interval"
             x-ref="field"
             class="form-select form-select--sm">
-      <option value=""{% if not cadence_value %} selected{% endif %}>Consumer default</option>
+      <option value=""{% if not cadence_value %} selected{% endif %}>{{ watch.inherit_label }}</option>
       {# An announced interval the dropdown does not offer is still stored policy,
          and a control that cannot show its own value destroys it (CR round 1,
          finding 2): with no option matching, the browser selects index 0 -
-         "Consumer default" - so Edit then Save, touching nothing, replaced the
-         policy with delegate and announced it. The route accepts this value back
+         inherit - so Edit then Save, touching nothing, replaced the policy with
+         inherit and announced it. The route accepts this value back
          for the same reason it is offered. #}
       {% if cadence_value and cadence_value not in cadence_options %}
       <option value="{{ cadence_value }}" selected>{{ cadence_display }}</option>

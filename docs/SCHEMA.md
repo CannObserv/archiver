@@ -51,13 +51,11 @@ document; the dashboard's Registry badge reports the count
     not an entity: there is no `watch_specs` table, and the announcement carries it resolved so
     a future reusable-policy table stays an Archiver-internal change.
     - `schema_version` (required, const 1); `interval` (optional) — a Watcher interval string.
-      **Absent means "the consumer applies its own default"**, which may be a per-domain
-      `default_schedule_config` rather than a global constant, so absence is a real state and
-      never a value to fill in. The schema validates the grammar `^[0-9]+[smhd]$`; the narrower
+      **Absent means "inherit"** the host's default, else Watcher's (archiver#364): a real state,
+      never a value to fill in. The column is intent; the announcement carries the resolved one. The schema validates the grammar `^[0-9]+[smhd]$`; the narrower
       set the dashboard offers lives in `src/dashboard/cadence.py`.
     - Server default `{"schema_version": 1}` — deliberately no interval, so the migration cannot
-      fabricate a cadence for rows that never had one. Three of the four production WatchedItems
-      carry no per-item cadence at all.
+      fabricate a cadence for rows that never had one.
   - **`watch_active`** is per-item pause state, written via `PUT /info-items/{id}/watch-active`.
     `true` schedules, `false` is registered-but-paused (keep the item, stop scheduling), and
     **`NULL` means the registry has no opinion yet** — not yet imported from Watcher. Defaulting

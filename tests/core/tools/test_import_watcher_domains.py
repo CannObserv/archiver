@@ -76,32 +76,55 @@ def test_hosts_already_matching_need_nothing_and_a_new_one_is_created():
     assert by_host["new.example"].patch == {"min_interval_seconds": 1.0}
 
 
-def test_watcher_wins_for_min_interval_cadence_and_active():
+def test_watcher_wins_for_active():
+    (step,) = plan(_export({"a.example": _watcher(is_active=False)}), {"a.example": _current()})
+    assert step.patch == {"is_active": False}
+
+
+def test_archivers_live_interval_and_cadence_are_kept_and_reported():
+    """D5 and D5' (archiver#364): since F1 the interval, and since #364 the
+    cadence, are what runs - Archiver's. A differing Watcher value is reported."""
     (step,) = plan(
         _export(
-            {
-                "a.example": _watcher(
-                    min_interval=2.5,
-                    default_schedule_config={"interval": "6h"},
-                    is_active=False,
-                )
-            }
+            {"a.example": _watcher(min_interval=2.5, default_schedule_config={"interval": "6h"})}
         ),
         {"a.example": _current(default_watch_spec={"schema_version": 1, "interval": "1d"})},
     )
-    assert step.patch == {
-        "min_interval_seconds": 2.5,
-        "default_watch_spec": {"schema_version": 1, "interval": "6h"},
-        "is_active": False,
-    }
+    assert step.patch == {}
+    assert step.changed is False
+    assert (step.interval_conflict, step.cadence_conflict) == (True, True)
 
 
-def test_a_null_watcher_cadence_clears_archivers():
+def test_a_null_watcher_cadence_leaves_archivers_and_reports_it():
     (step,) = plan(
         _export({"a.example": _watcher()}),
         {"a.example": _current(default_watch_spec={"schema_version": 1, "interval": "1d"})},
     )
-    assert step.patch == {"default_watch_spec": None}
+    assert step.patch == {}
+    assert step.cadence_conflict is True
+
+
+def test_a_watcher_cadence_fills_an_empty_archiver_default():
+    (step,) = plan(
+        _export({"a.example": _watcher(default_schedule_config={"interval": "6h"})}),
+        {"a.example": _current()},
+    )
+    assert step.patch == {"default_watch_spec": {"schema_version": 1, "interval": "6h"}}
+    assert step.cadence_conflict is False
+
+
+def test_a_new_host_takes_watchers_interval_and_cadence():
+    (step,) = plan(
+        _export(
+            {"new.example": _watcher(min_interval=2.5, default_schedule_config={"interval": "6h"})}
+        ),
+        {},
+    )
+    assert step.create is True
+    assert step.patch == {
+        "min_interval_seconds": 2.5,
+        "default_watch_spec": {"schema_version": 1, "interval": "6h"},
+    }
 
 
 def test_archived_ness_follows_watcher():
@@ -270,11 +293,11 @@ def test_a_real_run_applies_the_plan_and_a_rerun_is_a_no_op():
 
     assert code == EXIT_OK
     assert client.writes == [
-        ("upsert", "a.example", {"min_interval_seconds": 2.0}),
         ("archive", "b.example"),
         ("upsert", "d.example", {"min_interval_seconds": 1.0}),
     ]
-    assert "1 created, 2 updated, 1 unchanged" in out
+    assert "min_interval_seconds differs on a.example: kept Archiver's 1.0 (Watcher 2.0)" in out
+    assert "1 created, 1 updated, 2 unchanged" in out
 
     client.writes.clear()
     code, out, _err = _run(document, client)
@@ -282,14 +305,15 @@ def test_a_real_run_applies_the_plan_and_a_rerun_is_a_no_op():
     assert "0 created, 0 updated, 4 unchanged" in out
 
 
-def test_a_cleared_cadence_is_sent_as_an_explicit_null():
+def test_archivers_cadence_is_never_cleared_and_the_difference_is_printed():
     rows = _prod_like()
     rows["a.example"]["default_watch_spec"] = {"schema_version": 1, "interval": "1d"}
     client = FakeClient(rows)
 
-    _run(_export({"a.example": _watcher()}), client)
+    _code, out, _err = _run(_export({"a.example": _watcher()}), client)
 
-    assert client.writes == [("upsert", "a.example", {"default_watch_spec": None})]
+    assert client.writes == []
+    assert "default cadence differs on a.example: kept Archiver's '1d' (Watcher None)" in out
 
 
 def test_a_refused_file_writes_nothing_and_exits_refused():

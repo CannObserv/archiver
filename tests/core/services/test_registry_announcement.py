@@ -889,3 +889,97 @@ async def test_an_announce_reads_the_domain_fresh_not_from_the_identity_map(
         committed_rows += [(ChangesOutboxRow, r.id) for r in mine]
 
     assert [r.payload["active"] for r in mine] == [False]
+
+
+# --- Cadence resolution (archiver#364) ---------------------------------------
+
+_SIX_HOURS = {"schema_version": 1, "interval": "6h"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("own", "domain_spec", "announced"),
+    [
+        ({"schema_version": 1}, _SIX_HOURS, {"schema_version": 1, "interval": "6h"}),
+        (
+            {"schema_version": 1, "interval": "1h"},
+            _SIX_HOURS,
+            {"schema_version": 1, "interval": "1h"},
+        ),
+        ({"schema_version": 1}, None, {"schema_version": 1}),
+    ],
+)
+async def test_the_announcement_carries_the_resolved_watch_spec(
+    session, own, domain_spec, announced
+):
+    """D1: the stored document stays the item's intent; the wire carries the winner."""
+    host = "cadence.example.test"
+    item = await _make_item_on_host(
+        session, host, domain=Domain(name=host, default_watch_spec=domain_spec)
+    )
+    item.watch_spec = own
+    await session.flush()
+
+    await announce_info_item(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["watch_spec"] == announced
+    assert item.watch_spec == own
+    payload_from_dict(row.payload)
+
+
+@pytest.mark.asyncio
+async def test_a_rowless_host_announces_the_items_own_document(session):
+    item = await _make_item_on_host(session, "norow-cadence.example.test")
+
+    await announce_info_item(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["watch_spec"] == {"schema_version": 1}
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_domain_default_neither_raises_nor_blocks_the_announce(session):
+    """#360's CR 18: a hand-edited cell is skipped, and the announce goes out."""
+    host = "badcadence.example.test"
+    item = await _make_item_on_host(
+        session, host, domain=Domain(name=host, default_watch_spec={"interval": "6h"})
+    )
+
+    await announce_info_item(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["watch_spec"] == {"schema_version": 1}
+
+
+@pytest.mark.asyncio
+async def test_a_host_move_resolves_against_the_new_hosts_default(session):
+    """A primary swap to a source on another host re-reads that host's Domain."""
+    item = await _make_item_on_host(
+        session,
+        "from.example.test",
+        domain=Domain(name="from.example.test", default_watch_spec=_SIX_HOURS),
+    )
+    session.add(
+        Domain(name="to.example.test", default_watch_spec={"schema_version": 1, "interval": "1d"})
+    )
+    old = (
+        await session.execute(
+            select(InfoItemSource).where(InfoItemSource.info_item_id == item.info_item_id)
+        )
+    ).scalar_one()
+    old.deactivated_at = datetime.now(UTC)
+    new_source = InfoSource(
+        url="https://to.example.test/doc", source_specs=_SPECS, domain_name="to.example.test"
+    )
+    session.add(new_source)
+    await session.flush()
+    session.add(
+        InfoItemSource(info_item_id=item.info_item_id, info_source_id=new_source.info_source_id)
+    )
+    await session.flush()
+
+    await announce_info_item(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["watch_spec"] == {"schema_version": 1, "interval": "1d"}
