@@ -126,13 +126,24 @@ async def test_watch_active_on_an_archived_item_is_stored_and_the_wire_stays_ina
 
 
 @pytest.mark.asyncio
-async def test_delete_does_not_require_archive(client, session):
-    """Delete stays the revoked tombstone; Watcher's archive-first rule is dropped."""
+@pytest.mark.parametrize("archived", [False, True])
+async def test_delete_tombstones_whether_or_not_archived(client, session, archived):
+    """Delete stays the revoked tombstone: Watcher's archive-first rule is dropped,
+    and archiving first changes nothing about it (CR 12)."""
     item_id = await _make_item(client)
+    if archived:
+        await client.post(f"/api/v1/info-items/{item_id}/archive", headers=HEADERS)
 
     resp = await client.delete(f"/api/v1/info-items/{item_id}", headers=HEADERS)
 
     assert resp.status_code == 204
+    rows = (
+        await session.execute(
+            select(ChangesOutboxRow.payload).where(ChangesOutboxRow.topic == "info.registry")
+        )
+    ).scalars()
+    last = max((p for p in rows if p["info_item_id"] == item_id), key=lambda p: p["generation"])
+    assert last["revoked"] is True
 
 
 @pytest.mark.asyncio
