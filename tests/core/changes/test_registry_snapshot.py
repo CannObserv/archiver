@@ -173,6 +173,30 @@ async def test_full_set_resolves_each_items_host_through_the_shared_rule(
 
 
 @pytest.mark.asyncio
+async def test_full_set_announces_an_archived_item_inactive(session_factory, publisher, fake_redis):
+    """archiver#361: the snapshot replays what the delta said for an archived item."""
+    async with session_factory() as s:
+        item = InfoItem(
+            name="archived",
+            watch_active=True,
+            archived_at=datetime.now(UTC),
+            announcement_generation=1,
+        )
+        source = InfoSource(url="https://example.test/archived", source_specs=_SPECS)
+        s.add_all([item, source])
+        await s.flush()
+        s.add(InfoItemSource(info_item_id=item.info_item_id, info_source_id=source.info_source_id))
+        await s.commit()
+        item_id = str(item.info_item_id)
+
+    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+
+    (payload,) = [p for p in await _stream_payloads(fake_redis) if p["info_item_id"] == item_id]
+    assert payload["active"] is False
+    assert payload["revoked"] is False
+
+
+@pytest.mark.asyncio
 async def test_full_set_announces_the_resolved_cadence(session_factory, publisher, fake_redis):
     """archiver#364: the snapshot resolves cadence through the same builder.
 

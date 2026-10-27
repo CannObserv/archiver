@@ -61,6 +61,11 @@ no FK). Both emit paths resolve here: ``build_live_announcement`` takes the
 host's state as a required argument, the delta path reads the ``Domain`` rows
 beside the sources, and the snapshot outer-joins them.
 
+**An archived item resolves ``active=false``** (archiver#361, design D5). The
+item's own ``archived_at`` overrides ``watch_active`` like a suspended host
+does, and leaves it untouched, so restore returns the item to its own pause
+state. Watch-only: nothing else here reads it.
+
 **The announced ``watch_spec`` is resolved, not stored** (archiver#364, design
 C-e). The same ``Domain`` row supplies the cadence's domain tier:
 ``resolve_interval`` takes the item's own ``interval``, else the host's
@@ -116,9 +121,17 @@ def domain_suspended(domain: Domain | None) -> bool:
     return domain is not None and (domain.archived_at is not None or not domain.is_active)
 
 
-def resolved_active(watch_active: bool | None, *, host_suspended: bool) -> bool | None:
-    """The announced ``active``: ``False`` on a suspended host, else ``watch_active``."""
-    return False if host_suspended else watch_active
+def resolved_active(
+    watch_active: bool | None, *, archived: bool, host_suspended: bool
+) -> bool | None:
+    """The announced ``active``: ``False`` if archived or the host is suspended.
+
+    Otherwise ``watch_active``, ``NULL`` included. Every derivation goes through
+    here - the builder, the panel's desired state, the domain fan-out - so an
+    archived item (archiver#361) reads alike everywhere. Both overrides are
+    keyword-only and required: a default would let a caller forget one.
+    """
+    return False if archived or host_suspended else watch_active
 
 
 def build_live_announcement(
@@ -141,7 +154,11 @@ def build_live_announcement(
         info_source_id=str(source.info_source_id),
         url=source.url,
         source_specs=source.source_specs,
-        active=resolved_active(item.watch_active, host_suspended=domain_suspended(domain)),
+        active=resolved_active(
+            item.watch_active,
+            archived=item.archived_at is not None,
+            host_suspended=domain_suspended(domain),
+        ),
         watch_spec=resolve_interval(profile=None, item=item, domain=domain).watch_spec(),
     )
 

@@ -743,18 +743,43 @@ def test_domain_suspended_is_inactive_or_archived_and_a_missing_row_is_not(domai
 
 
 @pytest.mark.parametrize(
-    ("watch_active", "suspended", "expected"),
+    ("watch_active", "archived", "suspended", "expected"),
     [
-        (True, False, True),
-        (False, False, False),
-        (None, False, None),
-        (True, True, False),
-        (False, True, False),
-        (None, True, False),
+        (True, False, False, True),
+        (False, False, False, False),
+        (None, False, False, None),
+        (True, False, True, False),
+        (False, False, True, False),
+        (None, False, True, False),
+        # archiver#361: an archived item is inactive whatever its own state,
+        # and on either host.
+        (True, True, False, False),
+        (False, True, False, False),
+        (None, True, False, False),
+        (True, True, True, False),
     ],
 )
-def test_resolved_active_keeps_null_on_an_active_host(watch_active, suspended, expected):
-    assert resolved_active(watch_active, host_suspended=suspended) is expected
+def test_resolved_active_keeps_null_on_an_active_unarchived_item(
+    watch_active, archived, suspended, expected
+):
+    assert resolved_active(watch_active, archived=archived, host_suspended=suspended) is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("watch_active", [True, False, None])
+async def test_an_archived_item_announces_inactive_and_keeps_its_own_state(session, watch_active):
+    """archiver#361 D1: archive overrides ``watch_active`` on the wire and leaves
+    the column alone, so restore returns the item to its own state."""
+    item = await _make_item(session)
+    item.watch_active = watch_active
+    item.archived_at = datetime.now(UTC)
+    await session.flush()
+
+    await announce_info_item(session, item.info_item_id)
+
+    (row,) = await _outbox_rows(session)
+    assert row.payload["active"] is False
+    assert item.watch_active is watch_active
 
 
 @pytest.mark.asyncio

@@ -54,6 +54,16 @@ class InfoItem(Base, TimestampMixin):
     ``active`` on the announcement envelope beside ``revoked`` rather than
     inside the untyped policy dict.
     """
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """When the item's watch was archived (archiver#361), or ``NULL``.
+
+    Orthogonal to ``watch_active``, as ``domains.archived_at`` is to
+    ``is_active``: an archived item announces ``active=false`` whatever its own
+    pause state, and restore returns it to that state. The archived-vs-paused
+    distinction is Archiver-local - the wire carries only ``active``. Written
+    only by ``src.core.services.info_item_lifecycle``. Watch-only: authoring,
+    bindings, rep specs and replication ignore it.
+    """
     announcement_generation: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default="0", default=0
     )

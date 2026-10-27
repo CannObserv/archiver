@@ -10,7 +10,8 @@ transaction — the API ``PATCH``, archive and restore, and the dashboard's
 archive, restore and fetch-policy save all come through ``update_domain``.
 
 **Only what changed is announced.** A suspension flip touches the items whose
-resolved ``active`` moves: ``watch_active`` not already ``false``. A cadence
+resolved ``active`` moves: neither paused nor archived (archiver#361), asked
+of ``resolved_active``. A cadence
 change touches the items whose resolved interval moves: those with no
 ``interval`` of their own. Either way only announceable items go out. A write
 that moves nothing — notes, ``min_interval_seconds``, the same cadence again,
@@ -63,6 +64,7 @@ from src.core.services.fetch_policy import (
 from src.core.services.registry_announcement import (
     announce_policy_changes,
     domain_suspended,
+    resolved_active,
 )
 
 WRITABLE_COLUMNS = frozenset(
@@ -210,7 +212,7 @@ async def _announce_moved(
 ) -> int:
     """Announce every item on the host whose resolved ``active`` or interval moved.
 
-    A suspension flip moves the items not already paused; a domain-tier change
+    A suspension flip moves the items neither paused nor archived; a domain-tier change
     moves the items with no ``interval`` of their own. ``announce_policy_changes``
     then drops any that cannot announce live.
     """
@@ -218,18 +220,34 @@ async def _announce_moved(
         return 0
     rows = (
         await session.execute(
-            select(InfoItem.info_item_id, InfoItem.watch_active, InfoItem.watch_spec)
+            select(
+                InfoItem.info_item_id,
+                InfoItem.watch_active,
+                InfoItem.archived_at,
+                InfoItem.watch_spec,
+            )
             .where(InfoItem.info_item_id.in_(items))
             .order_by(InfoItem.info_item_id)
         )
     ).all()
     moved = [
         info_item_id
-        for info_item_id, watch_active, watch_spec in rows
-        if (suspension and watch_active is not False)
+        for info_item_id, watch_active, archived_at, watch_spec in rows
+        if (suspension and _active_follows_host(watch_active, archived=archived_at is not None))
         or (cadence and item_interval(watch_spec, info_item_id=info_item_id) is None)
     ]
     return await announce_policy_changes(session, moved)
+
+
+def _active_follows_host(watch_active: bool | None, *, archived: bool) -> bool:
+    """Whether the item's announced ``active`` moves when its host's suspension does.
+
+    Asked of ``resolved_active`` itself, not hand-written: a paused or an
+    archived item (archiver#361) is ``false`` on either side of the flip.
+    """
+    return resolved_active(watch_active, archived=archived, host_suspended=True) != (
+        resolved_active(watch_active, archived=archived, host_suspended=False)
+    )
 
 
 class DomainInUse(Exception):

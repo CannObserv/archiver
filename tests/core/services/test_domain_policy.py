@@ -148,6 +148,39 @@ async def test_reactivating_returns_each_item_to_its_own_state(session):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "flip", [{"is_active": False}, {"archived_at": datetime(2026, 10, 27, tzinfo=UTC)}]
+)
+async def test_a_suspension_flip_skips_an_archived_item(session, flip):
+    """archiver#361: an archived item announces ``false`` on either side of the
+    flip, so the fan-out leaves it alone - the shared resolver decides, not a
+    hand-written ``watch_active`` test."""
+    session.add(Domain(name=HOST))
+    on = await _item_on(session, watch_active=True)
+    archived = await _item_on(session, watch_active=True)
+    archived.archived_at = datetime.now(UTC)
+    await session.flush()
+
+    await update_domain(session, HOST, flip, create=False)
+
+    assert await _announced(session) == {str(on.info_item_id): [False]}
+
+
+@pytest.mark.asyncio
+async def test_a_default_cadence_still_reaches_an_archived_item(session):
+    """Archive is watch-only (D4): its resolved interval still moves, and stays
+    announced, so restore resumes on the cadence the host now has."""
+    session.add(Domain(name=HOST))
+    archived = await _item_on(session, watch_active=True)
+    archived.archived_at = datetime.now(UTC)
+    await session.flush()
+
+    await update_domain(session, HOST, {"default_watch_spec": _SIX_HOURS}, create=False)
+
+    assert await _specs(session) == {str(archived.info_item_id): [_SIX_HOURS]}
+
+
+@pytest.mark.asyncio
 async def test_archive_and_restore_flip_suspension_too(session):
     session.add(Domain(name=HOST))
     item = await _item_on(session)
