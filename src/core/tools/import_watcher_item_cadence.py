@@ -25,7 +25,14 @@ A filled item therefore announces the interval Watcher applies today, and its
 ``watch_status.applied_interval`` does not move.
 
 An item the export names but Archiver does not hold is reported and skipped.
-Temporal profiles and the throttle floor are #365's, not read here.
+
+**A temporal profile or a throttle floor refuses the file** (archiver#365, D5).
+There were 0 of each at the 2026-10-14 export, so nothing imports them: a
+profile is authored in Archiver (``PUT /info-items/{id}/temporal-profile``),
+and the floor is replaced by ``reduce_frequency`` writing the item's own 1d.
+One that appears before F2 would be lost when Watcher drops its profile code,
+so the refusal names the count and the ids; recreate it in Archiver, clear it
+in Watcher, then re-export. The pre-F2 re-export runs this check.
 
 **An archived Watcher item refuses the file** (archiver#361, D5). This used to
 import it like any other (#364: its cadence is still intent). Archive is now
@@ -65,6 +72,8 @@ EXIT_ERROR = 2
 API_KEY_ENV = "ARCHIVER_API_KEY"
 EXPORT_SCHEMA_VERSION = 1
 _FIELD = "default_schedule_config"
+_UNPORTED = {"temporal_profile": "temporal profile", "throttle_floor_interval": "throttle floor"}
+"""Export fields Archiver does not import (archiver#365 D5), and how a refusal names them."""
 
 
 class ImportRefused(ValueError):
@@ -115,6 +124,7 @@ def parse_export(document: Any) -> dict[str, str]:
         raise ImportRefused(problems)
     wanted: dict[str, str] = {}
     archived: list[str] = []
+    unported: dict[str, list[str]] = {label: [] for label in _UNPORTED.values()}
     for item_id, row in sorted(items.items()):
         if not _is_ulid(item_id):
             problems.append(f"{item_id!r}: not an InfoItem id")
@@ -124,6 +134,9 @@ def parse_export(document: Any) -> dict[str, str]:
             continue
         if row.get("archived_at") is not None:
             archived.append(item_id)
+        for field, label in _UNPORTED.items():
+            if row.get(field) is not None:
+                unported[label].append(item_id)
         if _FIELD not in row:
             problems.append(f"{item_id}: missing {_FIELD!r}")
             continue
@@ -135,6 +148,12 @@ def parse_export(document: Any) -> dict[str, str]:
             f"{len(archived)} archived item(s), not imported: archive is authored in "
             f"Archiver (archiver#361): {', '.join(archived)}"
         )
+    for label, ids in unported.items():
+        if ids:
+            problems.append(
+                f"{len(ids)} item(s) with a {label}, not imported: author it in "
+                f"Archiver (archiver#365): {', '.join(ids)}"
+            )
     if problems:
         raise ImportRefused(problems)
     return wanted
