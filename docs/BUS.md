@@ -223,14 +223,12 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   active primary binding and non-empty `source_specs` announces **live**;
   previously-announced without one announces **revoked**; never-announced
   sourceless items emit nothing and keep generation `0`. A live announcement's
-  `active` is resolved: `false` when the item is archived (`info_items.archived_at`,
-  archiver#361) or its host suspended (archiver#360), else `watch_active`, `null`
-  included (`resolved_active`). Its `watch_spec` is
+  `active` is resolved: `false` if archived (#361) or the host suspended (#360),
+  else `watch_active`, `null` included (`resolved_active`). Its `watch_spec` is
   resolved, not stored: the item's `interval`, else the host's default, else none
   (`resolve_interval`, archiver#364). Both paths share both rules; a suspension flip
   or default-cadence change (`domain_policy.py`) announces each item whose resolved
-  `active` or interval moved - an archived item's `active` does not move on a host flip.
-  Pause, cadence, archive and restore writes
+  `active` or interval moved. Pause, cadence, archive and restore writes
   (`announce_policy_change`) announce only a live item: on an unannounceable one
   they emit nothing, since policy cannot change announceability (archiver#167).
   Binding and spec writes skip an item whose last announcement was already a
