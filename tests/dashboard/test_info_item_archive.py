@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 import pytest
 from ulid import ULID
 
-from src.core.models import InfoItem, WatchStatus
+from src.core.models import Domain, InfoItem, WatchStatus
 
 _HEADERS = {"X-ExeDev-UserID": "ext-archive", "X-ExeDev-Email": "archive@example.com"}
 _TS = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
@@ -66,6 +66,37 @@ async def test_an_archived_item_offers_restore_instead_of_the_toggle(
     assert f'action="/dashboard/info-items/{item.info_item_id}/restore"' in text
     assert "toggle-watch-active" not in text
     assert "pending" not in text  # applied false is the announced state
+
+
+@pytest.mark.asyncio
+async def test_archived_takes_the_header_on_a_suspended_host_too(client, session, bind_source):
+    """CR 7: Restore is the action the item can offer, so it wins the header over
+    the host's suspended note."""
+    host = "archived-suspended.example.test"
+    session.add(Domain(name=host, is_active=False))
+    item = InfoItem(name="archived-suspended", watch_active=True, archived_at=_TS)
+    session.add(item)
+    await session.flush()
+    src = await bind_source(session, item, slug="archived-suspended")
+    src.domain_name = host
+    session.add(
+        WatchStatus(
+            info_item_id=item.info_item_id,
+            applied_generation=item.announcement_generation,
+            applied_active=False,
+            last_attempt_at=_TS,
+            last_observed_at=_TS,
+            health="ok",
+            occurred_at=_TS,
+        )
+    )
+    await session.flush()
+
+    text = await _get(client, item, "watcher-section")
+
+    header = text.split('class="watch-panel__header"', 1)[1].split("</div>", 1)[0]
+    assert f'action="/dashboard/info-items/{item.info_item_id}/restore"' in header
+    assert "is suspended" not in header
 
 
 @pytest.mark.asyncio
