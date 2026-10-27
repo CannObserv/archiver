@@ -21,13 +21,14 @@ knows the key, and co-core's validator would reject a live announcement without
 ``info_source_id``/``url``/``source_specs`` anyway - and its generation stays
 at 0, so ``> 0`` means "was announced" to the snapshot as well (archiver#167).
 
-**Policy writes announce through ``announce_policy_change``.** Pause and cadence
-cannot change announceability, so on an unannounceable item they leave the
-key's announced state exactly where it was: nothing to emit, no generation to
-burn. Re-tombstoning a revoked key on every stale-tab click is pure wire churn,
-and on a key no consumer ever held it is a tombstone the full set would then
-republish every period (archiver#167). It is *not* visible drift: the panel
-renders ``not_watching`` for an unannounceable item, which carries none.
+**Policy writes announce through ``announce_policy_change``.** Pause, cadence and
+archive/restore (archiver#361) cannot change announceability, so on an
+unannounceable item they leave the key's announced state exactly where it was:
+nothing to emit, no generation to burn. Re-tombstoning a revoked key on every
+stale-tab click is pure wire churn, and on a key no consumer ever held it is a
+tombstone the full set would then republish every period (archiver#167). It is
+*not* visible drift: the panel renders ``not_watching`` for an unannounceable
+item, which carries none.
 
 **The binding path skips an already-revoked key too** (archiver#293). A binding
 or spec mutation *can* change announceability, so it cannot skip on the kind of
@@ -273,7 +274,7 @@ async def announce_info_item(session: AsyncSession, info_item_id: ULID) -> None:
 
 
 async def announce_policy_change(session: AsyncSession, info_item_id: ULID) -> bool:
-    """Announce a pause or cadence write; returns whether anything was emitted.
+    """Announce a pause, cadence or archive/restore write; returns whether anything was emitted.
 
     Live when the item is announceable, otherwise nothing — no tombstone, no
     bump. A policy write never changes announceability, so an unannounceable
