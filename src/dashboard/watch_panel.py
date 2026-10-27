@@ -150,6 +150,7 @@ class WatchPanelContext(TypedDict):
     health_ok: bool
     applied_active: bool | None
     desired_active: bool | None
+    archived: bool
     suspended_by: str | None
     pending_toggle: str | None
     cadence: str
@@ -241,6 +242,10 @@ def build_watch_context(
     item's own ``watch_active``: compared against Watcher's applied pause, the
     item's own value would read as a resume that never lands. Its default
     cadence is the domain tier of the announced interval (archiver#364).
+
+    An archived item (archiver#361) resolves ``false`` the same way, through the
+    same ``resolved_active``, and says so in ``archived``: the partials replace
+    Pause/Resume with "Archived · Restore".
     """
     suspended_by = host.name if domain_suspended(host) else None
     resolved = resolve_interval(profile=None, item=item, domain=host)
@@ -250,7 +255,10 @@ def build_watch_context(
     cadence = format_interval(announced_interval)
     own_cadence = format_interval(own)
     inherits = inherit_label(host, resolved)
-    desired_active = resolved_active(item.watch_active, host_suspended=suspended_by is not None)
+    archived = item.archived_at is not None
+    desired_active = resolved_active(
+        item.watch_active, archived=archived, host_suspended=suspended_by is not None
+    )
 
     # Announceability is checked *before* the cache row, not after. A status row
     # can outlive the fact it describes — an item dropped from the announced set
@@ -273,6 +281,7 @@ def build_watch_context(
             health_ok=False,
             applied_active=None,
             desired_active=desired_active,
+            archived=archived,
             suspended_by=suspended_by,
             pending_toggle=None,
             cadence=cadence,
@@ -321,6 +330,7 @@ def build_watch_context(
         health_ok=status.health == "ok",
         applied_active=status.applied_active,
         desired_active=desired_active,
+        archived=archived,
         suspended_by=suspended_by,
         pending_toggle=pending_toggle,
         cadence=cadence,

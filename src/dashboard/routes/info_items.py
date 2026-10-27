@@ -32,6 +32,7 @@ from src.core.models import (
 from src.core.power_map import PowerMapClient, PowerMapUnavailableError
 from src.core.power_map.snapshots import OrgUnnamedError, load_org_values
 from src.core.rep_fields_schema.validator import validate_rep_fields
+from src.core.services import info_item_lifecycle
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_policy_change,
@@ -1838,15 +1839,15 @@ async def toggle_watch_active(
     ``info.watch-status`` — the lag window is the announcement round-trip and
     stays visible as generation drift rather than becoming invisible.
 
-    **The archived-item guard is deliberately gone.** Watcher used to reject
-    pause/resume on an archived WatchedItem with a 409, which this caught and
-    flashed. Archiver has no local notion of archived — only ``domains``
-    carries one — and the design settled that a Watcher-local pause is
-    *reverted* by reconciliation, with the break-glass being host-level
-    ``domain_suspended``, untouched because it is mechanism rather than policy.
-    Archive is the same shape: Watcher-local mechanism. It now surfaces as
-    ``applied_active != active`` on the return leg, which the panel already
-    renders — visible divergence instead of a silent rejection.
+    **An archived item is not refused** (archiver#361, D3). Archive is
+    Archiver's own state now - ``info_items.archived_at``, orthogonal to
+    ``watch_active`` - reversing #158, which called it Watcher-local mechanism
+    because Archiver then had no notion of it; the design of record (D5) moved
+    archive, restore and delete here. A toggle on an archived item stores the
+    intent, as ``is_active`` on an archived Domain is stored, and the wire stays
+    ``active=false`` until restore. Watcher's 409 is not ported. The panel
+    offers Restore instead of the toggle, so only a stale tab or a script
+    reaches this with an archived item.
     """
     item = await _resolve_item(item_id, session)
 
@@ -1880,6 +1881,41 @@ async def toggle_watch_active(
     response = await _render_status_partial(request, session=session, item=item)
     response.headers["HX-Trigger"] = _watcher_hx_trigger()
     return response
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/archive, /{item_id}/restore  (watch lifecycle, archiver#361)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{item_id}/archive")
+async def archive_info_item(
+    item_id: str,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> RedirectResponse:
+    """Archive the item's watch, announcing it inactive; redirect to detail.
+
+    A plain POST and 303, the Domain archive's shape (archiver#360): the
+    Overview badge and the panel both change, so the whole page re-renders.
+    """
+    item = await _resolve_item(item_id, session)
+    await info_item_lifecycle.archive_info_item(session, item.info_item_id)
+    await session.commit()
+    return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
+
+
+@router.post("/{item_id}/restore")
+async def restore_info_item(
+    item_id: str,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> RedirectResponse:
+    """Restore the item's watch to its own pause state; redirect to detail."""
+    item = await _resolve_item(item_id, session)
+    await info_item_lifecycle.restore_info_item(session, item.info_item_id)
+    await session.commit()
+    return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------

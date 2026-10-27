@@ -15,7 +15,8 @@ Routes and the SDK: [API.md](API.md). The dashboard rows: [PAGES.md](PAGES.md) Â
 
 - Every item whose **active binding's** source names a suspended host announces `active = false`
   on `info.registry`.
-- On an active host, `watch_active` passes through unchanged, `NULL` included.
+- On an active host, an unarchived item's `watch_active` passes through unchanged, `NULL`
+  included; an archived item announces `false` either way (#361).
 - Both emit paths resolve this way: the delta path and the hourly snapshot.
 - Before #360, `is_active` was described as gating suggestions, but nothing read it.
 

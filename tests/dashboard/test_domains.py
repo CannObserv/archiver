@@ -539,6 +539,23 @@ async def test_domain_detail_lists_information_items(client, session):
 
 
 @pytest.mark.asyncio
+async def test_domain_detail_badges_an_archived_item(client, session):
+    """archiver#361 CR 2: the host's item table marks an archived item, as the
+    item list and the item page do."""
+    host = "items-archived.example.com"
+    await _domain_with_items(session, host, 2)
+    item = (
+        await session.execute(select(InfoItem).where(InfoItem.name == f"{host} item 1"))
+    ).scalar_one()
+    item.archived_at = datetime.now(UTC)
+    await session.flush()
+
+    r = await client.get(f"/dashboard/domains/{host}", headers=_HEADERS)
+
+    assert r.text.count('<span class="badge badge--warning">archived</span>') == 1
+
+
+@pytest.mark.asyncio
 async def test_domain_detail_items_section_sits_between_header_and_sources(client, session):
     await _domain_with_items(session, "items-order.example.com", 1)
 

@@ -356,6 +356,58 @@ async def test_set_watch_spec_refusal_raises_validation_error(client):
             )
 
 
+_ITEM_URL = f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A"
+
+
+@pytest.mark.asyncio
+async def test_archive_info_item_posts_and_returns_the_item(client):
+    """archiver#361: the watch lifecycle's archive; ``archived_at`` rides the item."""
+    with respx.mock:
+        route = respx.post(f"{_ITEM_URL}/archive").mock(
+            return_value=httpx.Response(200, json={**_info_item_payload(), "archived_at": _TS})
+        )
+        out = await client.archive_info_item("01HZZ00000000000000000000A")
+    assert route.called
+    assert out.archived_at is not None
+
+
+@pytest.mark.asyncio
+async def test_restore_info_item_posts_and_returns_the_item(client):
+    with respx.mock:
+        route = respx.post(f"{_ITEM_URL}/restore").mock(
+            return_value=httpx.Response(200, json={**_info_item_payload(), "archived_at": None})
+        )
+        out = await client.restore_info_item("01HZZ00000000000000000000A")
+    assert route.called
+    assert out.archived_at is None
+
+
+@pytest.mark.asyncio
+async def test_archive_of_a_missing_item_raises_not_found(client):
+    with respx.mock:
+        respx.post(f"{_ITEM_URL}/archive").mock(
+            return_value=httpx.Response(
+                404, json={"detail": {"kind": "lookup", "message": "InfoItem not found"}}
+            )
+        )
+        with pytest.raises(NotFound):
+            await client.archive_info_item("01HZZ00000000000000000000A")
+
+
+@pytest.mark.asyncio
+async def test_list_info_items_forwards_the_archived_filter(client):
+    with respx.mock:
+        route = respx.get(f"{BASE_URL}/api/v1/info-items").mock(
+            return_value=httpx.Response(
+                200, json={"items": [], "has_more": False, "limit": 100, "offset": 0}
+            )
+        )
+        await client.list_info_items(archived=True)
+        assert route.calls.last.request.url.params.get("archived") == "true"
+        await client.list_info_items()
+        assert "archived" not in route.calls.last.request.url.params
+
+
 @pytest.mark.asyncio
 async def test_set_rep_fields_puts_the_whole_bag(client):
     bag = {"org": {"title": "WA LCB"}}

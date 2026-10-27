@@ -1,0 +1,19 @@
+{# Watch lifecycle control (archiver#361), one line: "Archived · Restore" on an archived
+   item, else Archive. Reads `item_id` and `watch.archived` from the including panel.
+   Plain POSTs that 303 back to the detail page (the Domain precedent, #360), so the
+   Overview's archived badge re-renders with the panel. Offered whether or not the item
+   is announceable: archive stores state either way and announces only what it can (#167).
+   Both are `.btn--secondary`: STYLE.md reserves `.btn--ghost` for the topbar. "Archive
+   watch", not "Archive": this page also replicates to archive.org, a permanent store. #}
+{% if watch.archived %}
+<span class="watch-lifecycle">
+  <span class="text-muted text-sm">Archived ·</span>
+  <form method="post" action="/dashboard/info-items/{{ item_id }}/restore" class="watch-lifecycle__form">
+    <button type="submit" class="btn btn--secondary btn--sm">Restore</button>
+  </form>
+</span>
+{% else %}
+<form method="post" action="/dashboard/info-items/{{ item_id }}/archive" class="watch-lifecycle__form">
+  <button type="submit" class="btn btn--secondary btn--sm">Archive watch</button>
+</form>
+{% endif %}

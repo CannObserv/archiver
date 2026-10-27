@@ -37,6 +37,9 @@
         <tr>
           <td class="data-table__cell">
             <a href="/dashboard/info-items/{{ row.item.info_item_id }}">{{ row.item.name }}</a>
+            {% if row.item.archived_at %}
+            <span class="badge badge--warning">archived</span>
+            {% endif %}
           </td>
           <td class="data-table__cell">
             {% if row.primary_info_source_id %}

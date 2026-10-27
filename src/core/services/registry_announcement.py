@@ -21,13 +21,14 @@ knows the key, and co-core's validator would reject a live announcement without
 ``info_source_id``/``url``/``source_specs`` anyway - and its generation stays
 at 0, so ``> 0`` means "was announced" to the snapshot as well (archiver#167).
 
-**Policy writes announce through ``announce_policy_change``.** Pause and cadence
-cannot change announceability, so on an unannounceable item they leave the
-key's announced state exactly where it was: nothing to emit, no generation to
-burn. Re-tombstoning a revoked key on every stale-tab click is pure wire churn,
-and on a key no consumer ever held it is a tombstone the full set would then
-republish every period (archiver#167). It is *not* visible drift: the panel
-renders ``not_watching`` for an unannounceable item, which carries none.
+**Policy writes announce through ``announce_policy_change``.** Pause, cadence and
+archive/restore (archiver#361) cannot change announceability, so on an
+unannounceable item they leave the key's announced state exactly where it was:
+nothing to emit, no generation to burn. Re-tombstoning a revoked key on every
+stale-tab click is pure wire churn, and on a key no consumer ever held it is a
+tombstone the full set would then republish every period (archiver#167). It is
+*not* visible drift: the panel renders ``not_watching`` for an unannounceable
+item, which carries none.
 
 **The binding path skips an already-revoked key too** (archiver#293). A binding
 or spec mutation *can* change announceability, so it cannot skip on the kind of
@@ -54,12 +55,17 @@ incremented. ``0`` in the *column* still means never announced.
 **A suspended host resolves ``active=false``** (archiver#360, design D4). An
 inactive or archived ``Domain`` — ``domain_suspended``, the one predicate —
 overrides ``watch_active`` on every item whose *announcing* source (the active
-binding's) names that host; ``resolved_active`` applies it. On an active host
-``watch_active`` passes through unchanged, ``NULL`` included: "no opinion yet"
+binding's) names that host; ``resolved_active`` applies it. On an active host an
+unarchived item's ``watch_active`` passes through unchanged, ``NULL`` included: "no opinion yet"
 is not "active". A host with no ``Domain`` row is active (``domain_name`` has
 no FK). Both emit paths resolve here: ``build_live_announcement`` takes the
 host's state as a required argument, the delta path reads the ``Domain`` rows
 beside the sources, and the snapshot outer-joins them.
+
+**An archived item resolves ``active=false``** (archiver#361, design D5). The
+item's own ``archived_at`` overrides ``watch_active`` like a suspended host
+does, and leaves it untouched, so restore returns the item to its own pause
+state. Watch-only: nothing else here reads it.
 
 **The announced ``watch_spec`` is resolved, not stored** (archiver#364, design
 C-e). The same ``Domain`` row supplies the cadence's domain tier:
@@ -116,9 +122,17 @@ def domain_suspended(domain: Domain | None) -> bool:
     return domain is not None and (domain.archived_at is not None or not domain.is_active)
 
 
-def resolved_active(watch_active: bool | None, *, host_suspended: bool) -> bool | None:
-    """The announced ``active``: ``False`` on a suspended host, else ``watch_active``."""
-    return False if host_suspended else watch_active
+def resolved_active(
+    watch_active: bool | None, *, archived: bool, host_suspended: bool
+) -> bool | None:
+    """The announced ``active``: ``False`` if archived or the host is suspended.
+
+    Otherwise ``watch_active``, ``NULL`` included. Every derivation goes through
+    here - the builder, the panel's desired state, the domain fan-out - so an
+    archived item (archiver#361) reads alike everywhere. Both overrides are
+    keyword-only and required: a default would let a caller forget one.
+    """
+    return False if archived or host_suspended else watch_active
 
 
 def build_live_announcement(
@@ -141,7 +155,11 @@ def build_live_announcement(
         info_source_id=str(source.info_source_id),
         url=source.url,
         source_specs=source.source_specs,
-        active=resolved_active(item.watch_active, host_suspended=domain_suspended(domain)),
+        active=resolved_active(
+            item.watch_active,
+            archived=item.archived_at is not None,
+            host_suspended=domain_suspended(domain),
+        ),
         watch_spec=resolve_interval(profile=None, item=item, domain=domain).watch_spec(),
     )
 
@@ -256,7 +274,7 @@ async def announce_info_item(session: AsyncSession, info_item_id: ULID) -> None:
 
 
 async def announce_policy_change(session: AsyncSession, info_item_id: ULID) -> bool:
-    """Announce a pause or cadence write; returns whether anything was emitted.
+    """Announce a pause, cadence or archive/restore write; returns whether anything was emitted.
 
     Live when the item is announceable, otherwise nothing — no tombstone, no
     bump. A policy write never changes announceability, so an unannounceable

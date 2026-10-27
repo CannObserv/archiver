@@ -18,15 +18,17 @@
             {{ copyable(item.info_item_id) }}
           </p>
           {% set primary_src = sources_by_id.get(iis_rows[0].info_source_id) if iis_rows else none %}
-          {% if primary_src and primary_src.domain_name %}
           <p style="margin:0;">
+            {% if primary_src and primary_src.domain_name %}
             <a href="/dashboard/domains/{{ primary_src.domain_name }}" class="badge badge--primary">{{ primary_src.domain_name }}</a>
-          </p>
-          {% else %}
-          <p style="margin:0;">
+            {% else %}
             <span class="badge badge--muted">No primary source</span>
+            {% endif %}
+            {# archiver#361: watch-only - the item stays editable; Restore is in the Watcher panel. #}
+            {% if item.archived_at %}
+            <span class="badge badge--warning">archived</span>
+            {% endif %}
           </p>
-          {% endif %}
         </div>
       </div>
 

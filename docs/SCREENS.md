@@ -238,7 +238,9 @@ badge, the inline Restore button beside it, *and* the presence of the
 `.danger-zone` block - three separate DOM regions, which HTMX would need
 `hx-swap-oob` or a body-spanning partial to cover. Contrast SourceRevision
 clear-cache, which swaps the one contiguous `#revision-card` partial. The 303
-also preserves correct back-button semantics for a state transition.
+also preserves correct back-button semantics for a state transition. InfoItem
+archive/restore (archiver#361) follows it: the Overview badge and the watch
+panel's control are disjoint regions.
 
 **Related-collection tables.** `.data-table` under an `<h2 class="section-heading">`
 carrying the row count (e.g. "Revision History (12)"). **Every `.data-table` sits

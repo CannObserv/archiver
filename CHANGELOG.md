@@ -18,6 +18,27 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.37.0 (2026-10-27)
+
+[both] **Watch lifecycle: archive and restore an InfoItem (archiver#361, design D5).** Migration `da4d2a2e19c7` adds `info_items.archived_at`. SDK 5.14.0.
+
+- **`info_items.archived_at TIMESTAMPTZ NULL`** is orthogonal to `watch_active`, as `domains.archived_at` is to `is_active`. It's expand-only and NULL on every existing row, so the deploy announces nothing.
+- **The announced `active` is `false` while the item is archived**, as it is on a suspended host, and otherwise `watch_active`. Restore returns the item to its own state: a paused item stays paused, and an active one resumes. Watcher forgets the pause on restore; Archiver deliberately doesn't. The delta, the snapshot, the watch panel and the domain fan-out all derive `active` through `resolved_active`. A host flip no longer re-announces an archived item, because its `active` doesn't move.
+- **`POST /info-items/{id}/archive`** and **`/restore`** return `InfoItemOut`, and a missing item is a 404.
+  - Both are idempotent: archive keeps its first `archived_at`, and a call that changes nothing announces nothing.
+  - A real transition announces once, so a restore always outranks the archive before it.
+  - On an unannounceable item, the state is stored and nothing is emitted (#167).
+  - `PUT /watch-active` on an archived item is accepted and stored, but the wire stays `active=false` until restore.
+  - Archive is watch-only. It doesn't gate delete, authoring, bindings, rep specs or replication.
+- **`InfoItemOut.archived_at`** is additive. **`GET /info-items?archived=true|false`** filters on it, and omitting it returns both.
+- **SDK 5.14.0:** `archive_info_item(info_item_id)` and `restore_info_item(info_item_id)` are new, and `list_info_items(..., archived=None)` gains a parameter. All additive.
+- **Importer** (operator-run, no contract change): `import_watcher_item_cadence` now refuses the whole file, naming the count and the ids, if any export item carries a non-null `archived_at`. Archive is authored in Archiver now. #364 imported an archived item's cadence like any other.
+- **Dashboard:**
+  - The item list and the detail Overview show an `archived` badge.
+  - On an archived item, the watch panel replaces Pause/Resume with Restore and shows an `Archived` badge rather than Paused, with no pending badge.
+  - Otherwise the panel offers "Archive watch", in every state except `degraded`. The label isn't bare "Archive" because the same page replicates to archive.org.
+  - Both actions are full-page POST→303.
+
 ## v4.36.0 (2026-10-26)
 
 [both] **Cadence resolution: `info.registry` announces the resolved interval (archiver#364, design C-e).** No migration. SDK 5.13.0.

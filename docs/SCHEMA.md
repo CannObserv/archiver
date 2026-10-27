@@ -60,6 +60,8 @@ document; the dashboard's Registry badge reports the count
     `true` schedules, `false` is registered-but-paused (keep the item, stop scheduling), and
     **`NULL` means the registry has no opinion yet** — not yet imported from Watcher. Defaulting
     it `true` would announce every paused item as unpaused the moment the producer lands.
+  - **`archived_at`** (#361): watch archive, orthogonal to `watch_active`; announces
+    `active=false`. Contract: `src/core/services/info_item_lifecycle.py`.
   - **Why not one column?** A policy document shared across items by the future reusable-policy
     table could not carry per-item pause state — pausing one item would pause all of them. And
     co-core's `RegistryAnnouncementState` types `active` on the announcement envelope beside

@@ -38,6 +38,9 @@ class InfoItemOut:
             "interval": "1d"}'. The item's own intent: `interval` is optional, and when absent the item inherits its host's
             default cadence, else Watcher's own. info.registry announces the resolved interval (archiver#364). Carries no
             pause state; see watch_active. Written via PUT /info-items/{id}/watch-spec.
+        archived_at (datetime.datetime | None | Unset): When the item's watch was archived, or null (archiver#361). An
+            archived item is announced inactive whatever its watch_active, which it keeps: restore returns it to that state.
+            Watch-only - the item stays listed and editable. Written via POST /info-items/{id}/archive and /restore.
         dashboard_url (None | str | Unset): Absolute URL of this item's Archiver dashboard detail page. Null when
             ARCHIVER_PUBLIC_BASE_URL is not configured on the server.
         info_item_rep_specs (list[InfoItemRepSpecOut] | Unset): Effective-dated RepSpec assignments for this InfoItem.
@@ -62,6 +65,7 @@ class InfoItemOut:
     rep_fields: InfoItemOutRepFields
     updated_at: datetime.datetime
     watch_spec: InfoItemOutWatchSpec
+    archived_at: datetime.datetime | None | Unset = UNSET
     dashboard_url: None | str | Unset = UNSET
     info_item_rep_specs: list[InfoItemRepSpecOut] | Unset = UNSET
     info_item_sources: list[InfoItemSourceOut] | Unset = UNSET
@@ -90,6 +94,14 @@ class InfoItemOut:
         updated_at = self.updated_at.isoformat()
 
         watch_spec = self.watch_spec.to_dict()
+
+        archived_at: None | str | Unset
+        if isinstance(self.archived_at, Unset):
+            archived_at = UNSET
+        elif isinstance(self.archived_at, datetime.datetime):
+            archived_at = self.archived_at.isoformat()
+        else:
+            archived_at = self.archived_at
 
         dashboard_url: None | str | Unset
         if isinstance(self.dashboard_url, Unset):
@@ -145,6 +157,8 @@ class InfoItemOut:
                 "watch_spec": watch_spec,
             }
         )
+        if archived_at is not UNSET:
+            field_dict["archived_at"] = archived_at
         if dashboard_url is not UNSET:
             field_dict["dashboard_url"] = dashboard_url
         if info_item_rep_specs is not UNSET:
@@ -194,6 +208,23 @@ class InfoItemOut:
         updated_at = isoparse(d.pop("updated_at"))
 
         watch_spec = InfoItemOutWatchSpec.from_dict(d.pop("watch_spec"))
+
+        def _parse_archived_at(data: object) -> datetime.datetime | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                archived_at_type_0 = isoparse(data)
+
+                return archived_at_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(datetime.datetime | None | Unset, data)
+
+        archived_at = _parse_archived_at(d.pop("archived_at", UNSET))
 
         def _parse_dashboard_url(data: object) -> None | str | Unset:
             if data is None:
@@ -268,6 +299,7 @@ class InfoItemOut:
             rep_fields=rep_fields,
             updated_at=updated_at,
             watch_spec=watch_spec,
+            archived_at=archived_at,
             dashboard_url=dashboard_url,
             info_item_rep_specs=info_item_rep_specs,
             info_item_sources=info_item_sources,

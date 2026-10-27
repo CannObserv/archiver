@@ -964,6 +964,19 @@
       },
       "InfoItemOut": {
         "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the item's watch was archived, or null (archiver#361). An archived item is announced inactive whatever its watch_active, which it keeps: restore returns it to that state. Watch-only - the item stays listed and editable. Written via POST /info-items/{id}/archive and /restore.",
+            "title": "Archived At"
+          },
           "created_at": {
             "description": "UTC timestamp when the InfoItem was created.",
             "format": "date-time",
@@ -2546,7 +2559,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.36.0"
+    "version": "4.37.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3276,6 +3289,24 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "description": "When true, return only archived items; when false, only unarchived. Omitted returns both (archiver#361).",
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When true, return only archived items; when false, only unarchived. Omitted returns both (archiver#361).",
+              "title": "Archived"
+            }
           }
         ],
         "responses": {
@@ -3690,6 +3721,114 @@
           }
         ],
         "summary": "Get Info Item",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/archive": {
+      "post": {
+        "description": "Archive an InfoItem's watch (archiver#361); it announces ``active=false``.\n\nWatch-only: the item stays listed and editable, and keeps its own\n``watch_active``, which restore returns it to. Idempotent - an archived item\nkeeps its first ``archived_at`` and announces nothing. Announced only while\nthe item can announce live (archiver#167). Delete does not require it.",
+        "operationId": "archive_info_item_api_v1_info_items__info_item_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Archive Info Item",
         "tags": [
           "info-items"
         ]
@@ -4642,6 +4781,114 @@
           }
         ],
         "summary": "Patch Rep Spec Assignment Public Url",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/restore": {
+      "post": {
+        "description": "Clear an InfoItem's archive (archiver#361); it announces its own ``watch_active``.\n\nA paused item stays paused; an active one resumes, unless its host is\nsuspended. Restoring an item that is not archived does nothing.",
+        "operationId": "restore_info_item_api_v1_info_items__info_item_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Restore Info Item",
         "tags": [
           "info-items"
         ]

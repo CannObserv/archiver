@@ -1,8 +1,8 @@
 {# Section 3 Watcher panel - loaded async via hx-get /watcher-section.
    Renders from LOCAL state (watch_status cache + item.watch_spec - archiver#151) and
    reaches Watcher not at all (archiver#142): the SDK actions retired with the HTTP edge.
-   What is left is Archiver's own control plane - pause/resume and cadence - which write
-   locally and announce.
+   What is left is Archiver's own control plane - pause/resume, cadence and the watch
+   lifecycle (archive/restore, archiver#361) - which write locally and announce.
    Root div carries hx-trigger="watcherUpdated from:body" so a pause/resume or cadence
    response (which sends HX-Trigger: {"watcherUpdated":{}}) causes this section to
    self-refresh without an explicit swap target.
@@ -27,8 +27,9 @@
   {# No "Begin Watching" button since archiver#142: watching is not an action any
      more, it is a consequence of being in the announced set. Say what closes the
      gap instead of offering a control that cannot exist. #}
-  <div style="display:flex;align-items:center;gap:var(--space-2);">
+  <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
     <span class="text-muted text-sm">Not watching - bind an active source with extraction specs to announce this item.</span>
+    {% include "info_items/_watch_lifecycle.html" %}
   </div>
 
 {% elif state == "degraded" %}
@@ -74,6 +75,8 @@
     {% if has_active_source %}
     {% include "info_items/_cadence_editor.html" %}
     {% endif %}
+    {# archiver#361: archive stores state before Watcher has ever reported, too. #}
+    <div>{% include "info_items/_watch_lifecycle.html" %}</div>
   </div>
 
 {% else %}{# state == "watching" #}
@@ -84,7 +87,18 @@
      key, so the gate and the state agree by construction rather than by
      coincidence, and the header is empty only in a state this branch cannot
      reach. #}
-  {% if has_active_source and watch.suspended_by %}
+  {% if watch.archived %}
+  {# archiver#361: archived overrides the item's own pause state on the wire, so
+     Restore takes the toggle's place - a toggle would write a `watch_active` the
+     wire ignores until restore. "Archived" is the Health cell's badge: the
+     header's gutter is sized for one button. Takes precedence over a suspended
+     host, because Restore is the action this item offers. #}
+  <div class="watch-panel__header">
+    <form method="post" action="/dashboard/info-items/{{ item_id }}/restore">
+      <button type="submit" class="btn btn--secondary btn--sm">Restore</button>
+    </form>
+  </div>
+  {% elif has_active_source and watch.suspended_by %}
   {# archiver#360: the host's suspension overrides this item's own pause state,
      so a toggle here would change nothing on the wire. #}
   <div class="watch-panel__header">
@@ -119,7 +133,9 @@
         {% else %}
         <span class="text-sm text-muted">-</span>
         {% endif %}
-        {% if watch.applied_active is false %}
+        {% if watch.archived %}
+        <span class="badge badge--warning" style="font-size:0.7rem;margin-left:var(--space-1);">Archived</span>
+        {% elif watch.applied_active is false %}
         <span class="badge badge--muted" style="font-size:0.7rem;margin-left:var(--space-1);">Paused</span>
         {% endif %}
         {% if watch.pending_toggle %}
@@ -183,6 +199,10 @@
        and burns a generation, which then reads as drift here. #}
     {% if has_active_source %}
     {% include "info_items/_cadence_editor.html" %}
+    {% endif %}
+    {# Archived items carry Restore in the header instead (archiver#361). #}
+    {% if not watch.archived %}
+    <div>{% include "info_items/_watch_lifecycle.html" %}</div>
     {% endif %}
   </div>
 {% endif %}

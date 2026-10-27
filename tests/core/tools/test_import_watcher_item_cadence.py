@@ -226,3 +226,30 @@ def test_no_api_key_is_an_error_before_anything_is_read():
 def test_base_url_is_required():
     with pytest.raises(SystemExit):
         main([], stdin=io.StringIO("{}"), environ={"ARCHIVER_API_KEY": "k"})
+
+
+def test_an_archived_watcher_item_refuses_the_whole_file_naming_the_count():
+    """archiver#361 D5: archive is authored in Archiver now, so an archived item in
+    the export is refused, not imported - even one with no cadence to import."""
+    document = _export(
+        {
+            A: _item({"interval": "1d"}),
+            B: _item(archived_at="2026-10-20T00:00:00Z"),
+            C: _item(archived_at="2026-10-21T00:00:00Z"),
+        }
+    )
+
+    with pytest.raises(ImportRefused, match="2 archived") as refused:
+        parse_export(document)
+    assert B in str(refused.value) and C in str(refused.value)
+    assert A not in str(refused.value)
+
+
+def test_a_refused_archive_exits_refused_and_writes_nothing():
+    client = FakeClient(_prod_like())
+    document = _export({A: _item({"interval": "1d"}, archived_at="2026-10-20T00:00:00Z")})
+
+    code, _out, err = _run(document, client, "--dry-run")
+
+    assert (code, client.writes) == (EXIT_REFUSED, [])
+    assert "1 archived" in err

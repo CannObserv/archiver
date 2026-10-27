@@ -1150,6 +1150,13 @@ a.badge:hover { text-decoration: underline; }
    about the grid they share (CR round 3, finding 12). Row two spends 6rem it
    does not need; the rows staying locked together is worth more. */
 .watch-panel__header ~ .detail-row { padding-right: 6rem; }
+/* Watch lifecycle (archiver#361): "Archived · Restore", or Archive, on one line. */
+.watch-lifecycle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.watch-lifecycle__form { display: inline; margin: 0; }
 /* Editable fields, one per row, below the read-only rows. */
 .watch-panel__fields {
   display: flex;

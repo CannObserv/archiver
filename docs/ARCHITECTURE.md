@@ -182,6 +182,7 @@ src/core/                      Domain logic
                                PATCH/archive/restore and the dashboard's
                                archive/restore/fetch-policy, announcing the
                                host's items whose resolved state moved.
+                               info_item_lifecycle.py: archive/restore (#361).
                                cadence_resolution.py (resolve_interval) is the
                                announced interval: profile slot (#365), item,
                                domain default (#364).

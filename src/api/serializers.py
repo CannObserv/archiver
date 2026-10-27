@@ -129,6 +129,7 @@ def info_item_to_out(
         org=pm_organization_to_out(org) if org is not None else None,
         watch_spec=item.watch_spec,
         watch_active=item.watch_active,
+        archived_at=item.archived_at,
         created_at=item.created_at,
         updated_at=item.updated_at,
         info_item_sources=[info_item_source_to_out(s) for s in (sources or [])],

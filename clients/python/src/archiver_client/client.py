@@ -46,6 +46,9 @@ from archiver_client.generated.api.info_items import (
     add_rep_spec_assignment_api_v1_info_items_info_item_id_rep_spec_assignments_post as _add_rep_spec,
 )
 from archiver_client.generated.api.info_items import (
+    archive_info_item_api_v1_info_items_info_item_id_archive_post as _archive_info_item,
+)
+from archiver_client.generated.api.info_items import (
     create_info_item_api_v1_info_items_post as _create_info_item,
 )
 from archiver_client.generated.api.info_items import (
@@ -77,6 +80,9 @@ from archiver_client.generated.api.info_items import (
 )
 from archiver_client.generated.api.info_items import (
     put_watch_spec_api_v1_info_items_info_item_id_watch_spec_put as _put_watch_spec,
+)
+from archiver_client.generated.api.info_items import (
+    restore_info_item_api_v1_info_items_info_item_id_restore_post as _restore_info_item,
 )
 from archiver_client.generated.api.info_sources import (
     create_info_source_route_api_v1_info_sources_post as _create_info_source,
@@ -257,18 +263,21 @@ class ArchiverClient:
         *,
         limit: int | None = None,
         offset: int | None = None,
+        archived: bool | None = None,
     ) -> PageInfoItemOut:
         """List InfoItems as a paginated envelope.
 
         ``limit`` and ``offset`` are forwarded to the server when set; omit to
         accept server defaults (limit=100, offset=0). Server caps ``limit`` at
-        500. The returned ``PageInfoItemOut`` carries ``items``, ``has_more``,
-        ``limit``, and ``offset``.
+        500. ``archived`` filters on the watch's archived state (archiver#361);
+        omitted returns both. The returned ``PageInfoItemOut`` carries
+        ``items``, ``has_more``, ``limit``, and ``offset``.
         """
         response = await _list_info_items.asyncio_detailed(
             client=self._gen_client,
             limit=UNSET if limit is None else limit,
             offset=UNSET if offset is None else offset,
+            archived=UNSET if archived is None else archived,
         )
         return _unwrap(response)
 
@@ -343,6 +352,29 @@ class ArchiverClient:
         body = InfoItemWatchSpecPut(document=InfoItemWatchSpecPutDocument.from_dict(document))
         response = await _put_watch_spec.asyncio_detailed(
             client=self._gen_client, info_item_id=info_item_id, body=body
+        )
+        return _unwrap(response)
+
+    async def archive_info_item(self, info_item_id: str) -> InfoItemOut:
+        """Archive an InfoItem's watch; it is announced inactive (archiver#361).
+
+        The item keeps its own ``watch_active``, which ``restore_info_item``
+        returns it to. Idempotent: an archived item keeps its first
+        ``archived_at``. Raises ``NotFound``.
+        """
+        response = await _archive_info_item.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id
+        )
+        return _unwrap(response)
+
+    async def restore_info_item(self, info_item_id: str) -> InfoItemOut:
+        """Clear an InfoItem's archive; it is announced with its own ``watch_active``.
+
+        A paused item stays paused. A no-op on an item that is not archived.
+        Raises ``NotFound``.
+        """
+        response = await _restore_info_item.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id
         )
         return _unwrap(response)
 
