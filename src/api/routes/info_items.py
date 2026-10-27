@@ -54,6 +54,7 @@ from src.core.rep_fields_schema.validator import (
     linked_org_key_errors,
     validate_rep_fields,
 )
+from src.core.services import info_item_lifecycle
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_info_item_revoked,
@@ -321,6 +322,13 @@ async def create_info_item(
 async def list_info_items(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0, le=2**63 - 1),
+    archived: bool | None = Query(
+        default=None,
+        description=(
+            "When true, return only archived items; when false, only unarchived. "
+            "Omitted returns both (archiver#361)."
+        ),
+    ),
     session: AsyncSession = Depends(get_db_session),
 ) -> Page[InfoItemOut]:
     """List InfoItems with offset pagination, including active sources and rep_spec assignments.
@@ -329,12 +337,12 @@ async def list_info_items(
     Active ``info_item_sources`` and ``info_item_rep_specs`` are batch-loaded in
     two additional queries (not N+1).
     """
-    stmt = (
-        select(InfoItem)
-        .order_by(InfoItem.created_at, InfoItem.info_item_id)
-        .offset(offset)
-        .limit(limit + 1)
-    )
+    stmt = select(InfoItem)
+    if archived is True:
+        stmt = stmt.where(InfoItem.archived_at.is_not(None))
+    elif archived is False:
+        stmt = stmt.where(InfoItem.archived_at.is_(None))
+    stmt = stmt.order_by(InfoItem.created_at, InfoItem.info_item_id).offset(offset).limit(limit + 1)
     rows = list((await session.execute(stmt)).scalars().all())
     has_more = len(rows) > limit
     rows = rows[:limit]
@@ -1024,6 +1032,55 @@ async def put_watch_active(
     item.watch_active = body.active
     await session.flush()
     await announce_policy_change(session, item.info_item_id)
+    await session.commit()
+    await session.refresh(item)
+    return await _item_out_with_active_relations(session, item)
+
+
+@router.post(
+    "/{info_item_id}/archive",
+    response_model=InfoItemOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def archive_info_item(
+    info_item_id: ULIDStr,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemOut:
+    """Archive an InfoItem's watch (archiver#361); it announces ``active=false``.
+
+    Watch-only: the item stays listed and editable, and keeps its own
+    ``watch_active``, which restore returns it to. Idempotent - an archived item
+    keeps its first ``archived_at`` and announces nothing. Announced only while
+    the item can announce live (archiver#167). Delete does not require it.
+    """
+    return await _lifecycle(session, info_item_id, archive=True)
+
+
+@router.post(
+    "/{info_item_id}/restore",
+    response_model=InfoItemOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def restore_info_item(
+    info_item_id: ULIDStr,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemOut:
+    """Clear an InfoItem's archive (archiver#361); it announces its own ``watch_active``.
+
+    A paused item stays paused; an active one resumes, unless its host is
+    suspended. Restoring an item that is not archived does nothing.
+    """
+    return await _lifecycle(session, info_item_id, archive=False)
+
+
+async def _lifecycle(session: AsyncSession, info_item_id: str, *, archive: bool) -> InfoItemOut:
+    """Archive or restore through the one service, then answer with the item."""
+    action = (
+        info_item_lifecycle.archive_info_item if archive else info_item_lifecycle.restore_info_item
+    )
+    item = await action(session, ULID.from_str(info_item_id))
+    if item is None:
+        raise_envelope(404, "lookup", "InfoItem not found")
     await session.commit()
     await session.refresh(item)
     return await _item_out_with_active_relations(session, item)

@@ -714,3 +714,22 @@ async def test_domain_archive_and_restore_announce_both_ways(client, session, pr
     rows = sorted(await _registry_rows(session), key=lambda p: p["generation"])
     assert [r["info_item_id"] for r in rows[-2:]] == [item_id, item_id]
     assert [r["active"] for r in rows[-2:]] == [False, resting]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix", ["/api/v1/info-items", "/dashboard/info-items"])
+async def test_item_archive_and_restore_announce_once_each(client, session, prefix):
+    """archiver#361: each real transition announces once; a repeat announces nothing."""
+    item_id, _source_id = await _make_bound_item(client)
+    headers = HEADERS if prefix.startswith("/api") else DASH_HEADERS
+    resting = (await _registry_rows(session))[-1]["active"]
+
+    for action in ("archive", "archive", "restore", "restore"):
+        resp = await client.post(
+            f"{prefix}/{item_id}/{action}", headers=headers, follow_redirects=False
+        )
+        assert resp.status_code in (200, 303), resp.text
+
+    rows = sorted(await _registry_rows(session), key=lambda p: p["generation"])
+    assert [r["active"] for r in rows] == [resting, False, resting]
+    assert [r["generation"] for r in rows] == [1, 2, 3]

@@ -24,9 +24,16 @@ value is reported and left alone: overwriting it would change a live cadence.
 A filled item therefore announces the interval Watcher applies today, and its
 ``watch_status.applied_interval`` does not move.
 
-An item the export names but Archiver does not hold is reported and skipped. An
-archived Watcher item is imported like any other: its cadence is still intent.
+An item the export names but Archiver does not hold is reported and skipped.
 Temporal profiles and the throttle floor are #365's, not read here.
+
+**An archived Watcher item refuses the file** (archiver#361, D5). This used to
+import it like any other (#364: its cadence is still intent). Archive is now
+Archiver's own state, authored here, and an item Watcher archived locally would
+come across as an unarchived item - announced active at the next write. The
+refusal names the count and the ids; restore the item in Watcher or archive it
+in Archiver, then re-export. 0 at the 2026-10-14 export; the pre-F2 re-export
+runs this check again.
 
 **Refusal is all-or-nothing.** The whole file is validated before anything is
 written, and every problem is reported. **Only item ids reach stdout**: the file
@@ -107,6 +114,7 @@ def parse_export(document: Any) -> dict[str, str]:
         problems.append("no items object")
         raise ImportRefused(problems)
     wanted: dict[str, str] = {}
+    archived: list[str] = []
     for item_id, row in sorted(items.items()):
         if not _is_ulid(item_id):
             problems.append(f"{item_id!r}: not an InfoItem id")
@@ -114,12 +122,19 @@ def parse_export(document: Any) -> dict[str, str]:
         if not isinstance(row, dict):
             problems.append(f"{item_id}: not an object")
             continue
+        if row.get("archived_at") is not None:
+            archived.append(item_id)
         if _FIELD not in row:
             problems.append(f"{item_id}: missing {_FIELD!r}")
             continue
         spec = watcher_cadence(row[_FIELD], problems, item_id)
         if spec is not None:
             wanted[item_id] = spec["interval"]
+    if archived:
+        problems.append(
+            f"{len(archived)} archived item(s), not imported: archive is authored in "
+            f"Archiver (archiver#361): {', '.join(archived)}"
+        )
     if problems:
         raise ImportRefused(problems)
     return wanted

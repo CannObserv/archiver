@@ -295,6 +295,15 @@ class InfoItemOut(BaseModel):
             "Written via PUT /info-items/{id}/watch-active."
         ),
     )
+    archived_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the item's watch was archived, or null (archiver#361). An archived "
+            "item is announced inactive whatever its watch_active, which it keeps: "
+            "restore returns it to that state. Watch-only - the item stays listed and "
+            "editable. Written via POST /info-items/{id}/archive and /restore."
+        ),
+    )
     created_at: datetime = Field(description="UTC timestamp when the InfoItem was created.")
     updated_at: datetime = Field(description="UTC timestamp of the last update to the InfoItem.")
     info_item_sources: list[InfoItemSourceOut] = Field(
