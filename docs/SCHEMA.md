@@ -9,9 +9,9 @@ release must run on the new schema. Add tables and columns nullable or with a
 default; a drop, a rename or a new `NOT NULL` without a default ships as two
 deploys: stop using it, then remove it.
 
-**Stored documents satisfy the current schema** (archiver#164). The four authored
-documents - `source_specs`, `watch_spec`, `rep_fields`, RepSpec `document` - are
-validated on write only, so a schema tightening ships with a data migration or with
+**Stored documents satisfy the current schema** (archiver#164). The authored documents -
+`source_specs`, `watch_spec`, `rep_fields`, RepSpec `document`, Domain `default_watch_spec`
+(#360) and subscription `content_config` (#363) - are validated on write only, so a schema tightening ships with a data migration or with
 the sweep's "0 affected" in its PR; for an assigned (frozen) RepSpec, a recorded #83
 exception or #95. The rule and its RepSpec carve-out: [CONVENTIONS.md](CONVENTIONS.md)
 § Schema tightenings. `src/core/tools/audit_stored_documents.py` re-judges every stored
