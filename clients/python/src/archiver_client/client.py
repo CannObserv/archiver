@@ -17,6 +17,7 @@ import datetime
 from types import TracebackType
 from typing import Any
 
+import attrs
 import httpx
 
 from archiver_client import tools as _tools
@@ -992,9 +993,11 @@ class ArchiverClient:
         Domain row; ``item``: ``info_item_id``), ``events``, ``remote_channel_id``,
         optional ``is_active``, ``content_config`` and ``imported_watcher_id``.
         The scope and ref are fixed after create. Raises ``ValidationError``
-        (422, nothing stored) or ``Conflict`` (a duplicate ``imported_watcher_id``).
-        Nothing sends.
+        (422, nothing stored) or ``Conflict`` (a duplicate ``imported_watcher_id``),
+        and ``ValueError`` before any call on a key the body does not have. Nothing
+        sends.
         """
+        _refuse_unsendable(NotificationSubscriptionCreate, subscription, "create")
         response = await _create_subscription.asyncio_detailed(
             client=self._gen_client, body=NotificationSubscriptionCreate.from_dict(subscription)
         )
@@ -1006,7 +1009,9 @@ class ArchiverClient:
         """Change ``title``, ``events``, ``remote_channel_id``, ``is_active`` or
         ``content_config`` - only the keys in ``changes``. ``content_config`` is
         replaced whole; ``None`` returns it to all defaults. Raises ``NotFound``
-        or ``ValidationError`` (including for any attempt to re-scope)."""
+        or ``ValidationError``. A key it cannot send - ``scope`` or its ref, say:
+        re-scope by deleting and creating - raises ``ValueError`` before any call."""
+        _refuse_unsendable(NotificationSubscriptionPatch, changes, "update")
         response = await _update_subscription.asyncio_detailed(
             client=self._gen_client,
             subscription_id=subscription_id,
@@ -1020,6 +1025,22 @@ class ArchiverClient:
             client=self._gen_client, subscription_id=subscription_id
         )
         _unwrap_no_content(response)
+
+
+def _refuse_unsendable(model: type, body: dict[str, Any], what: str) -> None:
+    """Raise ``ValueError`` on a key ``model`` would drop.
+
+    The generated ``from_dict`` ignores keys its model does not declare, so a
+    re-scope or a misspelt field would go out as a request that changes
+    nothing, and answer 200.
+    """
+    known = {field.name for field in attrs.fields(model)} - {"additional_properties"}
+    unknown = sorted(set(body) - known)
+    if unknown:
+        raise ValueError(
+            f"cannot {what} a notification subscription with {', '.join(unknown)};"
+            f" accepted: {', '.join(sorted(known))}"
+        )
 
 
 def _unwrap(response: Any) -> Any:

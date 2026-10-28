@@ -1283,3 +1283,23 @@ async def test_a_duplicate_import_key_raises_conflict(client):
         )
         with pytest.raises(Conflict):
             await client.create_notification_subscription(_SUB_BODY)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["scope", "domain", "imported_watcher_id", "titel"])
+async def test_update_notification_subscription_refuses_a_key_it_cannot_send(client, key):
+    """The generated model drops unknown keys, so a re-scope would 200 unchanged (#363)."""
+    with respx.mock:
+        route = respx.patch(f"{_SUBS_URL}/{_SUB_ID}")
+        with pytest.raises(ValueError, match=key):
+            await client.update_notification_subscription(_SUB_ID, {key: "x"})
+    assert not route.called
+
+
+@pytest.mark.asyncio
+async def test_create_notification_subscription_refuses_an_unknown_key(client):
+    with respx.mock:
+        route = respx.post(_SUBS_URL)
+        with pytest.raises(ValueError, match="channel_hint"):
+            await client.create_notification_subscription(_SUB_BODY | {"channel_hint": "#ops"})
+    assert not route.called

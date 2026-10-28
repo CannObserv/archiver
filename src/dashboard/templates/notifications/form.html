@@ -14,12 +14,12 @@
 {% macro option_block(prefix, opts, legend) %}
 <div style="display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);">
   {% for name, label in toggles %}
-  <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);cursor:pointer;">
+  <label class="text-sm" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-1);font-weight:normal;cursor:pointer;">
     <input type="checkbox" name="{{ prefix }}__{{ name }}" value="on"{% if opts and opts[name] %} checked{% endif %}>
     {{ label }}
   </label>
   {% endfor %}
-  <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);">
+  <label class="text-sm" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-1);font-weight:normal;">
     Diff snippet lines
     <input type="number" name="{{ prefix }}__diff_snippet_lines" min="1" max="200"
            value="{{ opts.diff_snippet_lines if opts else 25 }}" class="form-input form-input--sm"
@@ -71,7 +71,7 @@
         <legend class="form-label">Scope <span aria-hidden="true">*</span></legend>
         <div style="display:flex;gap:var(--space-4);">
           {% for s in scopes %}
-          <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);cursor:pointer;">
+          <label class="text-sm" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-1);font-weight:normal;cursor:pointer;">
             <input type="radio" name="scope" value="{{ s }}" x-model="scope"{% if values.scope == s %} checked{% endif %}>
             {{ {"global": "Global", "domain": "Domain", "item": "Item"}[s] }}
           </label>
@@ -104,7 +104,7 @@
         <legend class="form-label">Events <span aria-hidden="true">*</span></legend>
         <div style="display:flex;gap:var(--space-4);">
           {% for value, label in events %}
-          <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);cursor:pointer;">
+          <label class="text-sm" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-1);font-weight:normal;cursor:pointer;">
             <input type="checkbox" name="events" value="{{ value }}"{% if value in values.events %} checked{% endif %}>
             {{ label }}
           </label>
@@ -122,7 +122,7 @@
         </p>
       </div>
 
-      <label class="form-label" style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;">
+      <label class="form-label" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-2);cursor:pointer;">
         <input type="checkbox" name="is_active" value="on"{% if values.is_active %} checked{% endif %}>
         Active
       </label>
@@ -134,7 +134,7 @@
         {% for value, label in events %}
         {% set o = options.overrides[value] %}
         <div x-data='{ on: {{ (o is not none) | tojson }} }'>
-          <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);cursor:pointer;">
+          <label class="text-sm" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-1);font-weight:normal;cursor:pointer;">
             <input type="checkbox" name="override__{{ value }}" value="on" x-model="on"{% if o is not none %} checked{% endif %}>
             Own options for <strong>{{ label }}</strong>
           </label>

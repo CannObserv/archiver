@@ -46,7 +46,7 @@ service-only patch does not require an SDK bump.
   - `diff_snippet_lines` must be 1-200, and the toggles must be strict booleans;
   - `title_template`/`body_template` must parse in Jinja's `SandboxedEnvironment` (syntax only). A failure is a 422 naming the field and the error.
 - **`DELETE /domains/{name}`** also 409s while subscriptions name the Domain row, and the message names their count beside any InfoSources.
-- **SDK 5.16.0** adds `list_notification_subscriptions`, `get_notification_subscription`, `create_notification_subscription`, `update_notification_subscription` and `delete_notification_subscription`. `delete_domain`'s docstring names the new 409. All additive.
+- **SDK 5.16.0** adds `list_notification_subscriptions`, `get_notification_subscription`, `create_notification_subscription`, `update_notification_subscription` and `delete_notification_subscription`. The create and update wrappers raise `ValueError` before any call when a key isn't in the body model, because the generated `from_dict` would drop it silently and a re-scope would answer 200 unchanged. `delete_domain`'s docstring names the new 409. All additive.
 - **`audit_stored_documents`** sweeps `content_config` as kind `notification_content`.
 - **Importer** (operator-run): `python -m src.core.tools.import_watcher_notification_templates` works through the SDK.
   - It is keyed by Watcher's template id: it creates a subscription if absent and reports `differs` without overwriting.
