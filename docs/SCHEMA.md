@@ -144,17 +144,11 @@ document; the dashboard's Registry badge reports the count
   - **No answer** → nothing changes. `succeeded_by`, `archived_at` and `active` are mirrored,
     never followed: re-linking to a successor is a human decision.
 - **`Domain`** (`domains`) — per-host policy (#360): [DOMAINS.md](DOMAINS.md).
-- **`TemporalProfile`** (`temporal_profiles`, archiver#365) — an InfoItem's date-driven cadence,
-  ported from Watcher (design D5/D7). PK `info_item_id` (FK, `CASCADE`): one per item.
-  - Intent: `profile_type` (`event`/`deadline` take `reference_date`; `seasonal` an inclusive
-    `date_range_start`..`date_range_end`), `rules` JSONB (`[{days_before, interval}]`; seasonal one
-    `{interval}`), `post_action` (`reduce_frequency`/`deactivate`/`archive`), `is_active`. CHECKs
-    hold the enums and the date shape; `rules` is judged in Python (`temporal_evaluation`).
-  - **Result, persisted:** `resolved_interval` for the UTC day `evaluated_on`, the cadence's top
-    tier. Only a profile write and the daily boundary (`archiver-temporal-boundary.timer`)
-    compute it; the announce path and the snapshot read it and never the clock.
-  - **`fired_at`** makes the post-action one-shot; every accepted write clears it, so a write
-    whose window has ended is refused. Contract: `src/core/services/temporal_profiles.py`.
+- **`TemporalProfile`** (`temporal_profiles`, archiver#365) — an item's date-driven cadence, one
+  per item (PK `info_item_id`). Intent: `profile_type`, its dates, `rules`, `post_action`,
+  `is_active`. Result: `resolved_interval` for the UTC day `evaluated_on`, the cadence's top tier,
+  computed only by a profile write and the daily boundary; `fired_at` makes the post-action
+  one-shot. Contract: `src/core/services/temporal_profiles.py`.
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are

@@ -31,8 +31,7 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                docs/SCREENS.md for why the dashboard clamps where the API 422s;
                                watch_panel.py — pure watched-item panel context from local
                                state: states, health rule, next-due, drift, archiver#151;
-                               temporal_profile_form.py — the Temporal profile row's
-                               form parsing and readout, archiver#365;
+                               temporal_profile_form.py — the profile row, #365;
                                replication_actions.py — the manual-replication outcome→flash
                                translation shared by both screens that offer the action, and
                                the one place that records why a refusal is a 200 rather than
@@ -188,10 +187,8 @@ src/core/                      Domain logic
                                cadence_resolution.py (resolve_interval) is the
                                announced interval: the profile's stored result
                                (#365), item, domain default (#364).
-                               temporal_evaluation.py: pure profile semantics
-                               and validation; temporal_profiles.py: profile
-                               writes and the daily boundary, post-actions
-                               included (#365).
+                               temporal_evaluation.py, temporal_profiles.py:
+                               profile semantics, writes, boundary (#365).
                                delete_domain is the delete: it locks the row
                                before drawing the tombstone's generation (#366).
                                fetch_policy.py is content.fetch-policy's delta
@@ -260,8 +257,7 @@ src/core/                      Domain logic
                                D4): operator-run, --dry-run first, idempotent.
                                import_watcher_item_cadence.py does the same for
                                the items' own cadence, fill-if-absent (#364).
-                               temporal_boundary.py is the daily boundary
-                               timer's main (#365).
+                               temporal_boundary.py: the boundary timer (#365).
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
                                own copy and there is NO parity requirement; see
@@ -388,8 +384,7 @@ deploy/                        README.md (install instructions) + systemd units,
                                archiver-pm-org-refresh.service/.timer (the
                                Power Map org follower, archiver#305) +
                                archiver-drift.service/.timer (archiver#338) +
-                               archiver-temporal-boundary.service/.timer (the
-                               daily temporal-profile boundary, archiver#365) +
+                               archiver-temporal-boundary.service/.timer (#365) +
                                archiver-backup.service/.timer (the nightly dump,
                                as user archiver_backup; archiver#233). The #128 OOM lockstep now spans two
                                repos: the cap is in CannObserv/broker's drop-in,

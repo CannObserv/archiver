@@ -227,11 +227,8 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   else `watch_active`, `null` included (`resolved_active`). Its `watch_spec` is
   resolved, not stored: the item's temporal profile's stored result (archiver#365),
   else its `interval`, else the host's default, else none (`resolve_interval`,
-  archiver#364). **The interval can step with the date**: a profile's result is
-  recomputed by a profile write and the daily boundary (00:05 UTC), each announcing
-  only when it moved, so a step goes out as an ordinary delta at a new generation.
-  The resolver reads the stored result, never the clock, so a snapshot replays
-  the last delta's interval at its generation. Both paths share both rules; a suspension flip
+  archiver#364). A profile steps with the date as an ordinary delta (daily boundary);
+  the stored result, never the clock, is what a snapshot replays. Both paths share both rules; a suspension flip
   or default-cadence change (`domain_policy.py`) announces each item whose resolved
   `active` or interval moved. Pause, cadence, archive and restore writes
   (`announce_policy_change`) announce only a live item: on an unannounceable one
