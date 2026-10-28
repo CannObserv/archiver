@@ -184,8 +184,9 @@ async def delete_temporal_profile(session: AsyncSession, info_item_id: ULID | st
 
 @dataclass(frozen=True)
 class BoundaryOutcome:
-    """What one item's boundary evaluation did."""
+    """What one item's boundary evaluation did; ``found`` is false when no profile was left."""
 
+    found: bool = True
     moved: bool = False
     fired: str | None = None
     announced: bool = False
@@ -246,7 +247,7 @@ async def evaluate_at_boundary(
     item = await _lock_item(session, info_item_id)
     profile = await _profile(session, item.info_item_id) if item is not None else None
     if profile is None:
-        return BoundaryOutcome()
+        return BoundaryOutcome(found=False)
     errors = profile_errors(profile)
     if errors:
         logger.warning(
@@ -317,7 +318,7 @@ async def run_boundary(session: AsyncSession, *, today: date) -> dict[str, int]:
                 extra={"info_item_id": str(info_item_id)},
             )
             outcome = BoundaryOutcome(skipped=True)
-        counts["evaluated"] += 1
+        counts["evaluated"] += outcome.found
         counts["moved"] += outcome.moved
         counts["fired"] += outcome.fired is not None
         counts["announced"] += outcome.announced

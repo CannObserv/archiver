@@ -663,3 +663,14 @@ async def test_deactivate_on_an_archived_item_announces_nothing_when_nothing_mov
     assert outcome.fired == "deactivate" and not outcome.announced
     assert item.watch_active is False
     assert await _announced(session, item) == []
+
+
+@pytest.mark.asyncio
+async def test_a_profile_gone_by_its_turn_is_not_counted_as_evaluated(session):
+    """CR 6: one deleted between the listing and its evaluation - the journal's
+    counts are what the operator reads after a deploy."""
+    item = await _item(session)
+    await put_temporal_profile(session, item.info_item_id, _event(), today=date(2026, 4, 10))
+
+    assert not (await evaluate_at_boundary(session, ULID(), today=date(2026, 4, 10))).found
+    assert (await evaluate_at_boundary(session, item.info_item_id, today=date(2026, 4, 10))).found
