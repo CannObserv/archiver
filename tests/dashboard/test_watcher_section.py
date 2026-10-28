@@ -692,12 +692,15 @@ async def test_the_watcher_heading_is_a_focus_target(client, session, bind_sourc
 
 @pytest.mark.asyncio
 async def test_both_actions_move_focus_to_the_heading(client, session, bind_source):
-    """Pause and Save each destroy the button that was clicked."""
+    """Pause and each Save destroy the button that was clicked: the cadence form,
+    and the Temporal profile form (archiver#365; its Delete only with a profile)."""
     r = await _watching(client, session, bind_source, "focus-actions")
     assert r.status_code == 200
 
     handlers = r.text.count("watcher-heading")
-    assert handlers == 2, f"expected the pause and cadence forms to move focus, found {handlers}"
+    assert handlers == 3, (
+        f"expected the pause, cadence and profile forms to move focus, found {handlers}"
+    )
     assert "hx-on::after-request" in r.text
 
 

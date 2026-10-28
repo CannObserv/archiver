@@ -17,7 +17,7 @@ tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
   releases/<build>/            git archive of one origin/main commit + its own .venv;
                                root's, read-only; REVISION (12-char SHA) written last
   live -> releases/<build>     archiver.service, archiver-bus-health, archiver-pm-org-refresh,
-                               archiver-drift
+                               archiver-drift, archiver-temporal-boundary
 ```
 
 - **Nothing done in `/home/exedev/archiver` reaches a unit**: branch switches, uncommitted
@@ -457,6 +457,7 @@ logs: [deploy/README.md](../deploy/README.md).
 |---|---|---|---|---|
 | `archiver-bus-health` | 10 min | `python -m src.core.bus_health` | nothing (WARN-only outbox and schema probe, #130, #330) | never |
 | `archiver-pm-org-refresh` | 1 h | `python -m src.core.tools.refresh_orgs` | `pm_organizations`; `info_items.pm_org_id` on a merge (#305) | `ARCHIVER_POWER_MAP_API_KEY` unset: exits 0, no database |
+| `archiver-temporal-boundary` | 00:05 UTC, `Persistent=true` | `python -m src.core.tools.temporal_boundary` | `temporal_profiles`; an item's `watch_active`/`archived_at`/`watch_spec` on a post-action; `changes_outbox` (#365) | never; 0 profiles: logs the counts, emits nothing |
 | `archiver-drift` | 1 h | `python -m src.core.drift` | nothing local; one check-in to co-status (#338) | never; no key or monitor id: logs it, exits 1 |
 | `archiver-backup` | 03:17 UTC | `python -m src.core.backup` as `archiver_backup` | one object in `gs://co-gcs-archiver-backup`; one check-in to co-status (#233) | never; no monitor id: logs it, exits on the backup's own result |
 

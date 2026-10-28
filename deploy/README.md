@@ -20,6 +20,8 @@ user](../docs/DEPLOYMENT.md#the-service-user-archiver339)). `/etc/archiver/.env`
 | `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
 | `archiver-pm-org-refresh.service` | service (oneshot) | One sweep of the Power Map org follower: a conditional GET per linked org, applying renames, merges and misses to `pm_organizations` (#305). Exits 0 with no database access when `ARCHIVER_POWER_MAP_API_KEY` is unset. See *Power Map org follower* below. |
 | `archiver-pm-org-refresh.timer` | timer | Runs the follower hourly. Enable with `systemctl enable --now archiver-pm-org-refresh.timer`. |
+| `archiver-temporal-boundary.service` | service (oneshot) | The daily temporal-profile boundary (#365): recomputes every profile for the UTC day, fires due post-actions, and announces through the outbox what moved. Idempotent per day. See *Temporal-profile boundary* below. |
+| `archiver-temporal-boundary.timer` | timer | Runs it at 00:05 UTC, `Persistent=true`. Installed by `scripts/deploy.sh`; enable once with `sudo systemctl enable --now archiver-temporal-boundary.timer`. |
 | `archiver-drift.service` | service (oneshot) | The drift check (#338): asks GitHub whether live lags `origin/main` in code that runs, and checks in to Status's `co-archiver-drift`. No env file, no database; the Status key arrives as a `LoadCredential=`. See [docs/DEPLOYMENT.md § The drift check](../docs/DEPLOYMENT.md#the-drift-check-archiver338). |
 | `archiver-drift.timer` | timer | Runs the check hourly. `scripts/deploy.sh` installs it and never enables it: enable once with `sudo systemctl enable --now archiver-drift.timer`. |
 | `archiver-backup.service` | service (oneshot) | The nightly dump (#233): `pg_dump` of `archiver` as its own user **`archiver_backup`** (the one service not run as `archiver`: peer auth to a `pg_read_all_data` role, no database credential), verified, created create-only in `gs://co-gcs-archiver-backup`, then a check-in to Status's `co-archiver-backup`. No env file; the GCS and Status keys arrive as `LoadCredential=`. See [docs/BACKUP.md](../docs/BACKUP.md). |
@@ -267,6 +269,23 @@ and the first write-capable one outside `archiver.service`; it must never set
 database connection. `TimeoutStartSec=900` bounds a sweep well inside the
 hourly cadence. `tests/deploy/test_pm_org_refresh_units.py` pins all of that,
 plus installed-copy parity.
+
+### Temporal-profile boundary (#365)
+
+`archiver-temporal-boundary.{service,timer}` - a daily oneshot at 00:05 UTC running
+`python -m src.core.tools.temporal_boundary`. It recomputes every temporal profile
+for the UTC day, one transaction per item, fires a due post-action once, and
+announces on `info.registry` (through the outbox; no Redis here) only what moved, so
+a second run the same day emits nothing. `Persistent=true` runs a boundary the host
+missed as soon as it is back. It logs `temporal boundary finished` with counts, each
+firing at INFO, and a malformed profile at WARNING, skipped
+(`sudo journalctl -u archiver-temporal-boundary`). Semantics: `docs/SCHEMA.md`.
+
+The service holds the fourth sanctioned write-capable
+`Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1`, never `ARCHIVER_BUS_CONSUMER`.
+`--today YYYY-MM-DD` steps a disposable (`_dev`/`_test`) database across dates;
+against production any date but today's UTC exits 2 without writing.
+`tests/deploy/test_temporal_boundary_units.py` pins the units and installed-copy parity.
 
 ### `archiver.service`'s Redis floor check
 

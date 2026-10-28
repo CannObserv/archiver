@@ -906,6 +906,13 @@ a.badge:hover { text-decoration: underline; }
   min-height: 32px;
   font-size: var(--font-size-xs);
 }
+/* Its input twin (archiver#365, the Temporal profile row's dates and rules). */
+.form-input--sm {
+  width: auto;
+  padding: var(--space-1) var(--space-2);
+  min-height: 32px;
+  font-size: var(--font-size-xs);
+}
 .form-input--error,
 .form-select--error,
 .form-textarea--error {
@@ -1076,6 +1083,15 @@ a.badge:hover { text-decoration: underline; }
 }
 .field-row > .field-row__readout,
 .field-row > .form-select--sm { flex: 1 1 14rem; min-height: 32px; }
+/* Several labelled controls in one edit row (archiver#365, the Temporal
+   profile): they take the readout's share and wrap, the actions stay put. */
+.field-row__controls {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
 .field-row__actions {
   display: flex;
   gap: var(--space-2);

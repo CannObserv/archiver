@@ -144,7 +144,8 @@ with `psql -At` instead. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Reading pro
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
   `_test`.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
-  (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305) and
+  (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305;
+  the temporal-profile boundary, #365) and
   `scripts/deploy.sh`'s migration (#330). **Never in an env file** - it
   reopens the hole for every sourcing process.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;

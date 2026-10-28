@@ -225,8 +225,13 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   sourceless items emit nothing and keep generation `0`. A live announcement's
   `active` is resolved: `false` if archived (#361) or the host suspended (#360),
   else `watch_active`, `null` included (`resolved_active`). Its `watch_spec` is
-  resolved, not stored: the item's `interval`, else the host's default, else none
-  (`resolve_interval`, archiver#364). Both paths share both rules; a suspension flip
+  resolved, not stored: the item's temporal profile's stored result (archiver#365),
+  else its `interval`, else the host's default, else none (`resolve_interval`,
+  archiver#364). **The interval can step with the date**: a profile's result is
+  recomputed by a profile write and the daily boundary (00:05 UTC), each announcing
+  only when it moved, so a step goes out as an ordinary delta at a new generation.
+  The resolver reads the stored result, never the clock, so a snapshot replays
+  the last delta's interval at its generation. Both paths share both rules; a suspension flip
   or default-cadence change (`domain_policy.py`) announces each item whose resolved
   `active` or interval moved. Pause, cadence, archive and restore writes
   (`announce_policy_change`) announce only a live item: on an unannounceable one

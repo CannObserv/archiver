@@ -1,0 +1,96 @@
+{#
+  Temporal profile row (archiver#365) - one of the Watcher panel's editable
+  fields, beside the cadence editor and on its gate (has_active_source), in the
+  `watching` and `no_status` branches.
+
+  A view/edit row like the cadence editor, but several controls, so it cannot
+  use `editableField` (one `$refs.field`): an inline x-data holds `editing` and
+  the chosen type, which shows only that type's date inputs. Cancel resets the
+  form to its server-rendered values (`form.reset()`).
+
+  Rules are one text input - `30:6h, 7:1h` for event/deadline, a bare `2h` for
+  seasonal - parsed by `src/dashboard/temporal_profile_form.py`; every rule the
+  profile must meet is the service's (`ProfileInvalid`), shared with the API.
+  Save and Delete post over HTMX with hx-swap="none": the response fires
+  `watcherUpdated`, the section re-renders itself, and a refusal is a
+  `showFlash` - the cadence editor's contract.
+#}
+{% set p = profile.form if profile else {} %}
+<div class="field-row-group"
+     x-data="{ editing: false, ptype: '{{ p.profile_type or 'event' }}' }">
+  <span class="field-row__label" id="profile-label-{{ item_id }}">Temporal profile</span>
+
+  <div class="field-row" x-show="!editing">
+    <div class="field-row__readout">
+      {% if profile %}
+      {{ profile.summary }}<br>
+      <span class="text-sm text-muted">{{ profile.status }}</span>
+      {% else %}
+      <span class="text-muted">No profile</span>
+      {% endif %}
+    </div>
+    <div class="field-row__actions">
+      <button type="button" class="btn btn--sm btn--secondary"
+              @click="editing = true"
+              aria-label="Edit temporal profile">{{ "Edit" if profile else "Add" }}</button>
+      {% if profile %}
+      <form hx-post="/dashboard/info-items/{{ item_id }}/temporal-profile/delete"
+            hx-swap="none"
+            hx-confirm="Delete this temporal profile? The item's own or its host's cadence takes over."
+            hx-on::after-request="var h=document.getElementById('watcher-heading'); if (h) { h.focus(); }">
+        <button type="submit" class="btn btn--sm btn--secondary"
+                aria-label="Delete temporal profile">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <form class="field-row"
+        x-show="editing" style="display:none;"
+        aria-labelledby="profile-label-{{ item_id }}"
+        hx-post="/dashboard/info-items/{{ item_id }}/temporal-profile"
+        hx-swap="none"
+        hx-on::after-request="var h=document.getElementById('watcher-heading'); if (h) { h.focus(); }">
+    <div class="field-row__controls">
+      <label class="text-sm">Type
+        <select name="profile_type" class="form-select form-select--sm" x-model="ptype">
+          {% for value in ("event", "deadline", "seasonal") %}
+          <option value="{{ value }}"{% if (p.profile_type or "event") == value %} selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="text-sm" x-show="ptype !== 'seasonal'">Date (UTC)
+        <input type="date" name="reference_date" class="form-input form-input--sm"
+               value="{{ p.reference_date or '' }}">
+      </label>
+      <label class="text-sm" x-show="ptype === 'seasonal'">From
+        <input type="date" name="date_range_start" class="form-input form-input--sm"
+               value="{{ p.date_range_start or '' }}">
+      </label>
+      <label class="text-sm" x-show="ptype === 'seasonal'">To
+        <input type="date" name="date_range_end" class="form-input form-input--sm"
+               value="{{ p.date_range_end or '' }}">
+      </label>
+      <label class="text-sm">Rules
+        <input type="text" name="rules" class="form-input form-input--sm"
+               value="{{ profile.rules_text if profile else '' }}"
+               :placeholder="ptype === 'seasonal' ? '2h' : '30:6h, 7:1h'">
+      </label>
+      <label class="text-sm">Afterwards
+        <select name="post_action" class="form-select form-select--sm">
+          {% for value, label in (("reduce_frequency", "reduce frequency"), ("deactivate", "pause"), ("archive", "archive watch")) %}
+          <option value="{{ value }}"{% if p.post_action == value %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="text-sm">
+        <input type="checkbox" name="is_active"{% if not profile or p.is_active %} checked{% endif %}> Active
+      </label>
+    </div>
+    <div class="field-row__actions">
+      <button type="button" class="btn btn--sm btn--secondary"
+              @click="$el.form.reset(); ptype = $el.form.profile_type.value; editing = false">Cancel</button>
+      <button type="submit" class="btn btn--sm btn--primary">Save</button>
+    </div>
+  </form>
+</div>

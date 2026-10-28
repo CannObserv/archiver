@@ -27,12 +27,14 @@ from src.core.models import (
     ReplicationCommand,
     RepSpec,
     SourceRevision,
+    TemporalProfile,
     WatchStatus,
 )
 from src.core.power_map import PowerMapClient, PowerMapUnavailableError
 from src.core.power_map.snapshots import OrgUnnamedError, load_org_values
 from src.core.rep_fields_schema.validator import validate_rep_fields
 from src.core.services import info_item_lifecycle
+from src.core.services import temporal_profiles as profiles
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_policy_change,
@@ -45,6 +47,7 @@ from src.core.services.replication_issuance import (
     preview_occasion,
 )
 from src.core.services.replication_status import latest_commands_by_assignment
+from src.core.services.temporal_evaluation import utc_today
 from src.core.tools.assign_rep_spec import (
     DuplicateAssignmentError,
     RepFieldsIncompleteError,
@@ -115,6 +118,7 @@ from src.dashboard.replication_actions import (
     outcome_flash_header,
 )
 from src.dashboard.stored_documents import finding_views
+from src.dashboard.temporal_profile_form import fields_from_form, profile_view
 from src.dashboard.watch_panel import build_watch_context
 
 router = APIRouter(prefix="/dashboard/info-items")
@@ -1715,8 +1719,11 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
             )
         )
     ).scalar_one_or_none()
+    # The cadence's top tier (archiver#365): its stored result, never the clock.
+    profile = await session.get(TemporalProfile, item.info_item_id, populate_existing=True)
     watch = build_watch_context(
         host=host,
+        profile=profile,
         is_announceable=has_active_source,
         item=item,
         status=status,
@@ -1741,6 +1748,8 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
         # finding 1) - `30m` rendered `~30 min` in the panel and `30m` in the row.
         "cadence_options": CADENCE_LABELS,
         "cadence_value": (item.watch_spec or {}).get("interval") or "",
+        # The Temporal profile row (archiver#365), on the cadence editor's gate.
+        "profile": profile_view(profile),
     }
 
 
@@ -1916,6 +1925,73 @@ async def restore_info_item(
     await info_item_lifecycle.restore_info_item(session, item.info_item_id)
     await session.commit()
     return RedirectResponse(url=f"/dashboard/info-items/{item_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/temporal-profile, /{item_id}/temporal-profile/delete  (archiver#365)
+# ---------------------------------------------------------------------------
+
+
+async def _profile_response(
+    request: Request, session: AsyncSession, item: InfoItem, flash: tuple[str, str] | None = None
+) -> HTMLResponse:
+    response = await _render_watcher_section(request, session=session, item=item)
+    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
+    return response
+
+
+@router.post("/{item_id}/temporal-profile", response_class=HTMLResponse)
+async def save_temporal_profile(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Create or replace the item's temporal profile, through the API's service.
+
+    Answers like the cadence editor: the section, with ``watcherUpdated``, and a
+    refusal - unparseable text, or anything ``ProfileInvalid`` names - as a
+    ``showFlash`` with nothing stored. Gated on announceability like the cadence
+    editor (archiver#167); the service re-checks under the item lock.
+    """
+    item = await _resolve_item(item_id, session)
+    if not await is_announceable(session, item.info_item_id):
+        return await _profile_response(request, session, item, ("error", _UNANNOUNCEABLE_FLASH))
+
+    fields, problems = fields_from_form(dict(await request.form()))
+    if not problems:
+        try:
+            await profiles.put_temporal_profile(
+                session, item.info_item_id, fields, today=utc_today(datetime.now(UTC))
+            )
+            await session.commit()
+        except profiles.ProfileInvalid as e:
+            problems = [f"{path}: {message}" for path, message in e.errors]
+    if problems:
+        # Nothing was written: the service validates before it locks. No rollback,
+        # which would expire ``item`` under the render (MissingGreenlet).
+        return await _profile_response(
+            request, session, item, ("error", "Profile not saved — " + "; ".join(problems))
+        )
+    return await _profile_response(request, session, item)
+
+
+@router.post("/{item_id}/temporal-profile/delete", response_class=HTMLResponse)
+async def delete_temporal_profile(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Delete the item's temporal profile; the tier below takes over on the wire.
+
+    Not gated: removing a profile from an item that cannot announce changes
+    nothing on the wire, and must still be possible.
+    """
+    item = await _resolve_item(item_id, session)
+    await profiles.delete_temporal_profile(session, item.info_item_id)
+    await session.commit()
+    return await _profile_response(request, session, item)
 
 
 # ---------------------------------------------------------------------------
