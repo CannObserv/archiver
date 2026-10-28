@@ -2,8 +2,9 @@
 
 The two co-status checks that watch production from this repo: the drift check (is live
 behind `main` in code that runs?) and the service's liveness heartbeat. Split from
-[DEPLOYMENT.md](DEPLOYMENT.md), which keeps releases, the units and the timer roster; the nightly
-backup's check-in is [BACKUP.md](BACKUP.md).
+[DEPLOYMENT.md](DEPLOYMENT.md), which keeps releases, the service user and the timer roster; the
+units are [deploy/README.md](../deploy/README.md), and the nightly backup's check-in is
+[BACKUP.md](BACKUP.md).
 
 ## The drift check (archiver#338)
 
