@@ -20,7 +20,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | Archive a Domain | `POST /domains/{name}/archive` | `archive_domain(name)` |
 | Restore a Domain | `POST /domains/{name}/restore` | `restore_domain(name)` |
 
-**Suspension (archiver#360):** `is_active=false` on `PATCH`, or `archive`, suspends the host. Every item announced on it goes out on `info.registry` with `active=false`, in the write's transaction. `restore`, or `is_active=true`, resumes it, unless the other state still suspends it. A write that flips nothing announces nothing. `min_interval_seconds` (finite, `>= 0`, default `1.0`; `null` is a 422) and `default_watch_spec` (WatchSpec v1 with `interval`, or `null` to clear) are **stored but dark** until #366 (F1) and #364 (F2). An omitted field is left as it is. `PATCH` refuses a non-canonical name (uppercase, port, userinfo) with a 422. The contract: [DOMAINS.md](DOMAINS.md).
+**Suspension (archiver#360):** `is_active=false` on `PATCH`, or `archive`, suspends the host. Every item announced on it goes out on `info.registry` with `active=false`, in the write's transaction. `restore`, or `is_active=true`, resumes it, unless the other state still suspends it. A write that flips nothing announces nothing. `min_interval_seconds` (finite, `>= 0`, default `1.0`; `null` is a 422) is the host's `content.fetch-policy` frame (live since F1, #366/#438); `default_watch_spec` (WatchSpec v1 with `interval`, or `null` to clear) is the domain tier of the announced cadence (live since #364). An omitted field is left as it is. `PATCH` refuses a non-canonical name (uppercase, port, userinfo) with a 422. The contract: [DOMAINS.md](DOMAINS.md).
 
 `InfoSourceOut` gains `domain_name: str | None` (hostname auto-set from URL at create time).
 `GET /info-sources` gains `?domain_name=` filter.
@@ -76,6 +76,9 @@ which calls the same core functions without these routes.
 | Pause / resume an item | `PUT /info-items/{id}/watch-active` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Archive an item's watch | `POST /info-items/{id}/archive` | `archive_info_item(info_item_id)` (SDK 5.14.0, archiver#361) |
 | Restore an item's watch | `POST /info-items/{id}/restore` | `restore_info_item(info_item_id)` (SDK 5.14.0, archiver#361) |
+| Get an item's temporal profile | `GET /info-items/{id}/temporal-profile` | `get_temporal_profile(info_item_id)` (SDK 5.15.0, archiver#365) |
+| Create or replace it | `PUT /info-items/{id}/temporal-profile` | `set_temporal_profile(info_item_id, profile)` (SDK 5.15.0) |
+| Delete it | `DELETE /info-items/{id}/temporal-profile` | `delete_temporal_profile(info_item_id)` (SDK 5.15.0) |
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 
@@ -213,6 +216,12 @@ timestamp, and a call that changes nothing announces nothing - and announce only
 item, like the policy PUTs. `PUT /watch-active` on an archived item is accepted and stored; the wire
 stays `active=false` until restore. Archive is watch-only and does not gate delete.
 `GET /info-items?archived=true|false` filters on it; omitted returns both.
+
+**Temporal profiles (archiver#365):** one per item, a singular resource. `PUT` is a whole-document
+create-or-replace (no 409), evaluated for today (UTC): `resolved_interval` is the top tier of the
+announced cadence, announced when it moved. Shape errors and a window that has already ended (every
+write re-arms `fired_at`) are 422 envelopes with paths; a missing item, or a missing profile on
+`GET`/`DELETE`, is a 404. The daily boundary and the post-actions: [SCHEMA.md](SCHEMA.md).
 
 **Pagination:** `GET /info-items`, `GET /info-sources`, and `GET /rep-specs` return a `Page` envelope — `{items, has_more, limit, offset}`. All accept `limit` (default 100, max 500) and `offset` (default 0) query params. Ordering is stable: `(created_at, id)`. `has_more` is computed via a `limit+1` probe — no total count. SDK methods `list_info_items` / `list_info_sources` / `list_rep_specs` return `PageInfoItemOut` / `PageInfoSourceOut` / `PageRepSpecOut`; pass `limit`/`offset` to forward to the server.
 

@@ -1,0 +1,17 @@
+# Daily, just after the UTC day turns: a profile steps at 00:00Z, and this is
+# when Archiver announces it (archiver#365, D2). Installed by scripts/deploy.sh,
+# enabled once by hand.
+[Unit]
+Description=Archiver: daily temporal-profile boundary (archiver#365)
+
+[Timer]
+Unit=archiver-temporal-boundary.service
+# Persistent=true runs a boundary a reboot or outage skipped as soon as the
+# host is back; the run is idempotent per UTC day, so a catch-up that lands the
+# same day as a scheduled run emits nothing twice.
+OnCalendar=*-*-* 00:05:00 UTC
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

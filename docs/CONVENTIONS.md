@@ -211,7 +211,8 @@ applicable doc is a CR blocker.
   `src/dashboard/templates/`, or a new/changed dashboard route. It is the
   per-page inventory: what the screen renders, what the route returns. The
   RepSpec screens (`rep_specs/` templates, `/dashboard/rep-specs/` routes) live in
-  `docs/REP_SPEC_PAGES.md` instead.
+  `docs/REP_SPEC_PAGES.md` instead, and the source screens (`info_sources/` and
+  `source_revisions/`) in `docs/SOURCE_PAGES.md`.
 - `docs/COMPONENTS.md` - required for any change to a JS module under
   `src/dashboard/static/`. Alpine components are catalogued there; a module
   that is not an Alpine component (catalogued in `docs/UI.md` § Document-level

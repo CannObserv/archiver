@@ -12,7 +12,7 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 - [docs/API.md](docs/API.md) - every HTTP route and its SDK wrapper
 - [docs/BUS.md](docs/BUS.md) / [docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md) - the change-bus contracts, produced and consumed
 - [docs/SCHEMA.md](docs/SCHEMA.md) - per-table contracts and invariants; the bus-state tables: [docs/SCHEMA_BUS.md](docs/SCHEMA_BUS.md)
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the drift check, the service user, wheelhouse
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - releases, the service user, wheelhouse; the drift check and liveness: [docs/MONITORING.md](docs/MONITORING.md)
 - [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) - environment variables, the dev server
 - [docs/BACKUP.md](docs/BACKUP.md) - the nightly database dump to GCS and the restore runbook
 - [docs/UI.md](docs/UI.md) / [docs/HTMX.md](docs/HTMX.md) / [docs/PAGES.md](docs/PAGES.md) / [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md) / [docs/COMPONENTS.md](docs/COMPONENTS.md) / [docs/STYLE.md](docs/STYLE.md) - dashboard mechanics, HTMX patterns, page inventory, the InfoItem hub screen, Alpine components, and styling

@@ -1,7 +1,7 @@
 # Archiver's drift check (archiver#338): does live lag origin/main? Started
 # hourly by archiver-drift.timer. scripts/deploy.sh installs both from the
 # release, but never enables a new unit (archiver#330 D12): enable the timer
-# once by hand (docs/DEPLOYMENT.md § The drift check).
+# once by hand (docs/MONITORING.md § The drift check).
 #
 # Compares the live release's REVISION with main on GitHub and checks in to
 # Status's co-archiver-drift monitor (CannObserv/status#32): ok while live is
@@ -14,7 +14,7 @@
 # unit its exit code and nothing else.
 [Unit]
 Description=Archiver: does live lag origin/main? Check in to Status (archiver#338)
-Documentation=https://github.com/CannObserv/archiver/blob/main/docs/DEPLOYMENT.md
+Documentation=https://github.com/CannObserv/archiver/blob/main/docs/MONITORING.md
 Wants=network-online.target tailscaled.service
 After=network-online.target tailscaled.service
 

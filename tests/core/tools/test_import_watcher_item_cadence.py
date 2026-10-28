@@ -253,3 +253,48 @@ def test_a_refused_archive_exits_refused_and_writes_nothing():
 
     assert (code, client.writes) == (EXIT_REFUSED, [])
     assert "1 archived" in err
+
+
+_PROFILE = {
+    "profile_type": "event",
+    "reference_date": "2026-11-01",
+    "date_range_start": None,
+    "date_range_end": None,
+    "rules": [{"days_before": 7, "interval": "1h"}],
+    "post_action": "deactivate",
+    "is_active": True,
+}
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "label"),
+    [
+        ("temporal_profile", _PROFILE, "temporal profile"),
+        ("throttle_floor_interval", "1d", "throttle floor"),
+    ],
+)
+def test_a_profile_or_a_floor_refuses_the_whole_file_naming_the_count(field, value, label):
+    """archiver#365 D5: there were 0 of each at export, so nothing imports them.
+    One appearing before F2 is refused by name rather than silently lost when
+    Watcher drops its profile code."""
+    document = _export(
+        {A: _item({"interval": "1d"}), B: _item(**{field: value}), C: _item(**{field: value})}
+    )
+
+    with pytest.raises(ImportRefused, match=f"2 item\\(s\\) with a {label}") as refused:
+        parse_export(document)
+    assert B in str(refused.value) and C in str(refused.value)
+    assert A not in str(refused.value)
+
+
+def test_a_refused_profile_exits_refused_and_writes_nothing():
+    client = FakeClient(_prod_like())
+    document = _export(
+        {A: _item({"interval": "1d"}, temporal_profile=_PROFILE, throttle_floor_interval="1d")}
+    )
+
+    code, _out, err = _run(document, client, "--dry-run")
+
+    assert (code, client.writes) == (EXIT_REFUSED, [])
+    assert "1 item(s) with a temporal profile" in err
+    assert "1 item(s) with a throttle floor" in err

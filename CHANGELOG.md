@@ -18,6 +18,33 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.38.0 (2026-10-28)
+
+[both] **Temporal profiles: one per InfoItem, executed by Archiver (archiver#365, design D5/D7).** Migration `b7e3c95a1f20` adds `information.temporal_profiles`. SDK 5.15.0.
+
+- **`temporal_profiles`**, keyed by `info_item_id` (FK, `ON DELETE CASCADE`). It holds Watcher's fields (`profile_type` event/seasonal/deadline, `reference_date` or an inclusive `date_range_start`..`date_range_end`, `rules`, `post_action` reduce_frequency/deactivate/archive, `is_active`) plus the current result: `resolved_interval` for the UTC day `evaluated_on`, and `fired_at`. Expand-only and empty, so the deploy announces nothing.
+- **The profile is the top cadence tier** (C-e: profile → item → domain). It **overrides** the tiers below rather than taking the minimum, so it can slow an item as well as speed one up. The resolver reads the **stored** result and never the clock, so the hourly snapshot replays exactly what the last delta announced, at its generation. Only a profile write and the daily boundary recompute it, and each announces only when it moved.
+- **Semantics are Watcher's** (`cadence.py` at `127eeee`): event and deadline apply through the reference date inclusive, the smallest covering `days_before` wins, and seasonal applies on its range inclusive with its one rule. The post-action fires the day after the window, once.
+- **`GET` / `PUT` / `DELETE /info-items/{id}/temporal-profile`.** `PUT` is a whole-document create-or-replace that returns `TemporalProfileOut`, evaluated for today (UTC). It validates what Watcher never did, as 422 envelopes with paths:
+  - type ↔ date fields, and `start <= end`;
+  - a seasonal profile takes exactly one rule, without `days_before`;
+  - `days_before` is an integer ≥ 0, with no duplicates;
+  - intervals use WatchSpec v1's grammar and must be greater than zero;
+  - **a window that has already ended is refused**, because every accepted write clears `fired_at` (re-arm).
+  A missing item, or a missing profile on `GET`/`DELETE`, is a 404. On an unannounceable item the profile is stored and nothing is emitted (#167).
+- **Daily boundary** (`archiver-temporal-boundary.timer`, 00:05 UTC, `Persistent=true`; `python -m src.core.tools.temporal_boundary`). It recomputes every profile for the UTC day, one transaction per item, and is idempotent per day.
+  - **Post-actions fire regardless of the item's pause, archive or host state:**
+    - `deactivate` sets `watch_active=false`;
+    - `archive` goes through `info_item_lifecycle.archive_info_item`;
+    - `reduce_frequency` writes the item's own `interval: "1d"`, but only when its base (item → domain, profile excluded) is faster than 1d. It never speeds an item up, and there is no throttle-floor column.
+  - On the boundary day the item announces once, with its final state.
+  - A row that fails validation is skipped with a WARNING naming it.
+  - `--today` is for disposable databases only; against production any other date exits 2.
+- **The domain default-cadence fan-out** now skips an item whose profile wins.
+- **SDK 5.15.0:** `get_temporal_profile`, `set_temporal_profile(info_item_id, profile)` and `delete_temporal_profile` are new. `upsert_domain`'s docstring no longer calls `min_interval_seconds`/`default_watch_spec` dark. All additive.
+- **Importer** (operator-run): `import_watcher_item_cadence` refuses an export carrying a non-null `temporal_profile` or `throttle_floor_interval`, naming the count and the ids (D5). There were 0 of each at export.
+- **Dashboard:** the watch panel's Cadence cell names the profile tier, and a Temporal profile row views, edits and deletes the profile.
+
 ## v4.37.0 (2026-10-27)
 
 [both] **Watch lifecycle: archive and restore an InfoItem (archiver#361, design D5).** Migration `da4d2a2e19c7` adds `info_items.archived_at`. SDK 5.14.0.

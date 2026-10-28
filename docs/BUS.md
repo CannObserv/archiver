@@ -6,44 +6,8 @@ the five streams it publishes - `info.changes`, `info.registry`,
 `content.fetch-policy`. What it takes off - `content.revisions`,
 `content.artifacts`, `info.watch-status` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
-below serves both. HTTP routes and their SDK wrappers live in [API.md](API.md);
+both connect through is [BUS_CLIENT.md](BUS_CLIENT.md). HTTP routes and their SDK wrappers live in [API.md](API.md);
 these two files are the wire side of the same surface.
-
-## The shared client's connection policy (archiver#193)
-
-All seven bus loops share one client from `src/core/changes/bus_client.py`, never a
-bare `from_url` - safe only on loopback. That module holds the reasoning; three
-facts that surprise:
-
-- **`socket_timeout` has a floor.** redis-py does not extend it for a blocking
-  command, so a value at or below a loop's `BLOCK` raises on every *idle* read.
-  It derives from `read_windows.LONGEST_READ_BLOCK_MS` - a leaf module, so the
-  client stays upstream of the loops - whose claim a test audits by discovery.
-- **`socket_connect_timeout` bounds one attempt, not the call**:
-  `(retries + 1) x socket_connect_timeout`. Both clients take **zero** retries -
-  a redis-py retry re-sends the command, so one on `XADD` publishes a duplicate
-  the outbox cannot see. The loops own retry; the client has no opinion.
-- **`from_url` is lazy**, so an unreachable broker raises nothing at startup.
-  `probe_bus_reachable` PINGs once and logs at ERROR, detached, password
-  redacted - a down broker must not read as an idle one.
-
-**Why any of this is needed:** the broker stopped being `localhost` at #193 and
-is now a tailnet peer, so a partition is a thing that will actually happen
-rather than a thing the code merely tolerates. It still degrades rather than
-loses - the outbox is the durable buffer. The URL, the measured path, and the
-`default:` username that is load-bearing for `redis-cli` (archiver#195):
-[reference/tailscale.md](reference/tailscale.md).
-
-Consumer loops need no transient/poison classification of their own; what they do
-on a dropped connection is pinned by `tests/core/changes/test_bus_reconnect.py`.
-
-**The broker is not operated from this repo (#193 D6).** Its tuning, health
-probe, and stream inventory live in
-[CannObserv/broker](https://github.com/CannObserv/broker); archiver is a client.
-One seam survives that split with no test spanning it: the broker config's
-`maxmemory` cap and `OutOfMemoryError` being transient in
-`_TRANSIENT_PUBLISH_ERRORS` are **one decision**, and each repo names the other
-in a comment (R5).
 
 ## Producing - the outbox, the envelope, and the published streams
 
@@ -94,7 +58,7 @@ numbers are neither.
   progress for the service's liveness heartbeat (archiver#297). A loop that stops
   stamping, or exits, silences the check-in to co-status's `co-archiver-live`, and
   the silence pages. A broker outage still stamps; a database outage does not
-  ([DEPLOYMENT.md](DEPLOYMENT.md) § Liveness).
+  ([MONITORING.md](MONITORING.md) § Liveness).
 
 **Triaging dead-lettered outbox rows (archiver#191)** - the only way out of
 the terminal state; nothing expires one on its own, because an untriaged
@@ -225,8 +189,10 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   sourceless items emit nothing and keep generation `0`. A live announcement's
   `active` is resolved: `false` if archived (#361) or the host suspended (#360),
   else `watch_active`, `null` included (`resolved_active`). Its `watch_spec` is
-  resolved, not stored: the item's `interval`, else the host's default, else none
-  (`resolve_interval`, archiver#364). Both paths share both rules; a suspension flip
+  resolved, not stored: the item's temporal profile's stored result (archiver#365),
+  else its `interval`, else the host's default, else none (`resolve_interval`,
+  archiver#364). A profile steps with the date as an ordinary delta (daily boundary);
+  the stored result, never the clock, is what a snapshot replays. Both paths share both rules; a suspension flip
   or default-cadence change (`domain_policy.py`) announces each item whose resolved
   `active` or interval moved. Pause, cadence, archive and restore writes
   (`announce_policy_change`) announce only a live item: on an unannounceable one

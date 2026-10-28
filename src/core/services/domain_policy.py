@@ -11,8 +11,8 @@ archive, restore and fetch-policy save all come through ``update_domain``.
 
 **Only what changed is announced.** A suspension flip touches the items whose
 resolved ``active`` moves: neither paused nor archived (archiver#361), asked
-of ``resolved_active``. A cadence
-change touches the items whose resolved interval moves: those with no
+of ``resolved_active``. A cadence change touches the items whose resolved
+interval moves: those with no temporal-profile result (archiver#365) and no
 ``interval`` of their own. Either way only announceable items go out. A write
 that moves nothing — notes, ``min_interval_seconds``, the same cadence again,
 archiving an already-inactive host — emits nothing (the #167 rule).
@@ -54,8 +54,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource
-from src.core.services.cadence_resolution import domain_interval, item_interval
+from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource, TemporalProfile
+from src.core.services.cadence_resolution import domain_interval, resolve_interval
 from src.core.services.fetch_policy import (
     announce_domain,
     announce_domain_deleted,
@@ -213,30 +213,41 @@ async def _announce_moved(
     """Announce every item on the host whose resolved ``active`` or interval moved.
 
     A suspension flip moves the items neither paused nor archived; a domain-tier change
-    moves the items with no ``interval`` of their own. ``announce_policy_changes``
+    moves the items whose resolution reaches the domain tier - no profile result
+    (archiver#365) and no ``interval`` of their own. ``announce_policy_changes``
     then drops any that cannot announce live.
     """
     if not items or not (suspension or cadence):
         return 0
     rows = (
         await session.execute(
-            select(
-                InfoItem.info_item_id,
-                InfoItem.watch_active,
-                InfoItem.archived_at,
-                InfoItem.watch_spec,
-            )
+            select(InfoItem, TemporalProfile)
+            .outerjoin(TemporalProfile, TemporalProfile.info_item_id == InfoItem.info_item_id)
             .where(InfoItem.info_item_id.in_(items))
             .order_by(InfoItem.info_item_id)
+            # Entities, not columns: the session may hold stale copies (CR 1, #360).
+            .execution_options(populate_existing=True)
         )
-    ).all()
+    ).tuples()
     moved = [
-        info_item_id
-        for info_item_id, watch_active, archived_at, watch_spec in rows
-        if (suspension and _active_follows_host(watch_active, archived=archived_at is not None))
-        or (cadence and item_interval(watch_spec, info_item_id=info_item_id) is None)
+        item.info_item_id
+        for item, profile in rows
+        if (
+            suspension
+            and _active_follows_host(item.watch_active, archived=item.archived_at is not None)
+        )
+        or (cadence and _inherits_the_domain(item, profile))
     ]
     return await announce_policy_changes(session, moved)
+
+
+def _inherits_the_domain(item: InfoItem, profile: TemporalProfile | None) -> bool:
+    """Whether the item's resolution falls through to its host's default cadence.
+
+    Asked of ``resolve_interval`` with no host: no tier above the domain holds
+    an interval.
+    """
+    return resolve_interval(profile=profile, item=item, domain=None).tier is None
 
 
 def _active_follows_host(watch_active: bool | None, *, archived: bool) -> bool:

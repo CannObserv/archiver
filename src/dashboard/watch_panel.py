@@ -22,8 +22,9 @@ schedule while ``last_observed_at`` stands still) plus ``applied_interval``
 where present — the cadence Watcher is actually running — falling back to the
 announced interval.
 
-**Cadence is the resolved interval** (archiver#364): the item's own, else its
-host's default, else none (Watcher's default) - ``resolve_interval``, the
+**Cadence is the resolved interval** (archiver#364): the item's temporal
+profile's stored result (archiver#365), else its own, else its host's default,
+else none (Watcher's default) - ``resolve_interval``, the
 function the announcement itself is built with. Reading the stored
 ``watch_spec`` instead showed no cadence for an inheriting item, and could
 never flag its drift. ``next_due_at`` is deliberately not on the
@@ -46,10 +47,11 @@ from src.core.services.cadence_resolution import (
     resolve_interval,
 )
 from src.core.services.registry_announcement import domain_suspended, resolved_active
+from src.core.services.temporal_evaluation import MAX_INTERVAL_SECONDS
 from src.dashboard.cadence import CADENCE_LABELS
 
 if TYPE_CHECKING:
-    from src.core.models import InfoItem, WatchStatus
+    from src.core.models import InfoItem, TemporalProfile, WatchStatus
     from src.core.models.domain import Domain
 
 # How long applied may lag announced before the panel escalates the drift line
@@ -69,8 +71,9 @@ _UNIT_LABELS = {"s": "sec", "m": "min", "h": "hr", "d": "day"}
 # ``OverflowError`` out of the render (CR round 2, finding 11). The failure
 # would also have been sticky rather than transient: the value is persisted
 # before the panel ever reads it, so an unguarded raise breaks the page on
-# every subsequent load.
-_MAX_INTERVAL_SECONDS = 10 * 365 * 86400
+# every subsequent load. The constant is core's since #365, where profile writes
+# refuse past it too.
+_MAX_INTERVAL_SECONDS = MAX_INTERVAL_SECONDS
 
 
 def parse_interval_seconds(interval: str | None) -> int | None:
@@ -154,6 +157,7 @@ class WatchPanelContext(TypedDict):
     suspended_by: str | None
     pending_toggle: str | None
     cadence: str
+    cadence_tier: str | None
     own_cadence: str
     inherit_label: str
     applied_cadence: str
@@ -220,6 +224,7 @@ def inherit_label(host: Domain | None, resolved: ResolvedInterval) -> str:
 def build_watch_context(
     *,
     host: Domain | None,
+    profile: TemporalProfile | None,
     is_announceable: bool,
     item: InfoItem,
     status: WatchStatus | None,
@@ -243,12 +248,17 @@ def build_watch_context(
     item's own value would read as a resume that never lands. Its default
     cadence is the domain tier of the announced interval (archiver#364).
 
+    ``profile`` is the item's ``TemporalProfile`` row, ``None`` when it has
+    none - required likewise. Its stored result is the top tier (archiver#365),
+    and ``cadence_tier`` names whichever tier won, so the panel can say a
+    profile is setting the cadence.
+
     An archived item (archiver#361) resolves ``false`` the same way, through the
     same ``resolved_active``, and says so in ``archived``: the partials replace
     Pause/Resume with "Archived · Restore".
     """
     suspended_by = host.name if domain_suspended(host) else None
-    resolved = resolve_interval(profile=None, item=item, domain=host)
+    resolved = resolve_interval(profile=profile, item=item, domain=host)
     announced_interval = resolved.interval
     # The item tier is valid exactly when it won: read once, warned once (CR 6).
     own = resolved.interval if resolved.tier == "item" else None
@@ -285,6 +295,7 @@ def build_watch_context(
             suspended_by=suspended_by,
             pending_toggle=None,
             cadence=cadence,
+            cadence_tier=resolved.tier,
             own_cadence=own_cadence,
             inherit_label=inherits,
             applied_cadence="",
@@ -334,6 +345,7 @@ def build_watch_context(
         suspended_by=suspended_by,
         pending_toggle=pending_toggle,
         cadence=cadence,
+        cadence_tier=resolved.tier,
         own_cadence=own_cadence,
         inherit_label=inherits,
         applied_cadence=format_interval(status.applied_interval),

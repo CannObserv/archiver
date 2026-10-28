@@ -1,0 +1,40 @@
+[Unit]
+Description=Archiver temporal-profile boundary - one evaluation of every profile (archiver#365)
+# Not bound to archiver.service: the run needs Postgres alone. Announcements go
+# through the outbox, and the resident publisher drains them, so no Redis.
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+# archiver#339, as archiver.service.
+User=archiver
+Group=archiver
+# The live release, as archiver.service (archiver#330).
+WorkingDirectory=/srv/archiver/live
+
+# Same env as archiver.service, /etc/archiver/.env only: the database URL.
+EnvironmentFile=/etc/archiver/.env
+
+# The run writes temporal_profiles, info_items (a post-action) and
+# changes_outbox on the production database. src/core/db_safety.py gates that
+# connection; the opt-in lives HERE, in a unit, never in an env file - an
+# EnvironmentFile is sourced by every process that loads it, which is exactly
+# the hole the guard closes.
+Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1
+
+# ARCHIVER_BUS_CONSUMER is deliberately absent: the run opens no Redis
+# connection, and joining the archiver.revisions group from here would
+# silently swallow revisions (#139).
+
+# One short transaction per profile; minutes would mean a lock wait, and being
+# visibly killed beats hanging into the next day's run.
+TimeoutStartSec=600
+
+# The release's interpreter, not `uv run`: uv wants $HOME (archiver#339).
+ExecStart=/srv/archiver/live/.venv/bin/python -m src.core.tools.temporal_boundary
+
+# As archiver.service: nothing writes outside PrivateTmp, nothing reads /home.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes

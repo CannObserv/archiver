@@ -2377,6 +2377,249 @@
         "title": "SourceRevisionOut",
         "type": "object"
       },
+      "TemporalProfileOut": {
+        "description": "An InfoItem's temporal profile, with the result it resolved to last.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "date_range_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Range End"
+          },
+          "date_range_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Range Start"
+          },
+          "evaluated_on": {
+            "description": "The UTC day resolved_interval was computed for: the last write or daily boundary.",
+            "format": "date",
+            "title": "Evaluated On",
+            "type": "string"
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the post-action fired; null while it has not. A PUT clears it.",
+            "title": "Fired At"
+          },
+          "info_item_id": {
+            "title": "Info Item Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "post_action": {
+            "enum": [
+              "reduce_frequency",
+              "deactivate",
+              "archive"
+            ],
+            "title": "Post Action",
+            "type": "string"
+          },
+          "profile_type": {
+            "enum": [
+              "event",
+              "seasonal",
+              "deadline"
+            ],
+            "title": "Profile Type",
+            "type": "string"
+          },
+          "reference_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Date"
+          },
+          "resolved_interval": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The interval the profile contributes as of evaluated_on: the top tier of the announced cadence. null contributes none.",
+            "title": "Resolved Interval"
+          },
+          "rules": {
+            "description": "As stored: TemporalProfileRule objects (untyped here so a hand-edited row still reads back).",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "info_item_id",
+          "profile_type",
+          "reference_date",
+          "date_range_start",
+          "date_range_end",
+          "rules",
+          "post_action",
+          "is_active",
+          "resolved_interval",
+          "evaluated_on",
+          "fired_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TemporalProfileOut",
+        "type": "object"
+      },
+      "TemporalProfilePut": {
+        "additionalProperties": false,
+        "description": "Request body for PUT /info-items/{id}/temporal-profile: the whole profile.\n\nA create-or-replace, never a merge. ``event`` and ``deadline`` take a\n``reference_date`` and no range; ``seasonal`` takes an inclusive range and\nno ``reference_date``. Dates are UTC calendar days and absolute: nothing\nrecurs yearly. A profile whose window has already ended is refused - every\naccepted write re-arms the post-action, which would then fire again.",
+        "properties": {
+          "date_range_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Range End"
+          },
+          "date_range_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Range Start"
+          },
+          "is_active": {
+            "default": true,
+            "description": "The operator's switch: an inactive profile contributes no interval and never fires.",
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "post_action": {
+            "description": "Fired once, at the first daily boundary after the window: reduce_frequency sets the item's own interval to 1d if its base cadence is faster; deactivate pauses the item; archive archives its watch.",
+            "enum": [
+              "reduce_frequency",
+              "deactivate",
+              "archive"
+            ],
+            "title": "Post Action",
+            "type": "string"
+          },
+          "profile_type": {
+            "enum": [
+              "event",
+              "seasonal",
+              "deadline"
+            ],
+            "title": "Profile Type",
+            "type": "string"
+          },
+          "reference_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Date"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/TemporalProfileRule"
+            },
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile_type",
+          "post_action"
+        ],
+        "title": "TemporalProfilePut",
+        "type": "object"
+      },
+      "TemporalProfileRule": {
+        "additionalProperties": false,
+        "description": "One rule: from ``days_before`` the reference date, check every ``interval``.\n\nA seasonal profile takes exactly one rule, with no ``days_before``.",
+        "properties": {
+          "days_before": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "event/deadline: the rule applies from this many days before the reference date. The smallest days_before still covering the day wins.",
+            "title": "Days Before"
+          },
+          "interval": {
+            "description": "A WatchSpec v1 interval ('30m', '6h', '1d'), greater than zero.",
+            "title": "Interval",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interval"
+        ],
+        "title": "TemporalProfileRule",
+        "type": "object"
+      },
       "ValidateRepFieldsRequest": {
         "description": "Request body for POST /api/v1/tools/validate-rep-fields.",
         "properties": {
@@ -2559,7 +2802,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.37.0"
+    "version": "4.38.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -4889,6 +5132,329 @@
           }
         ],
         "summary": "Restore Info Item",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/temporal-profile": {
+      "delete": {
+        "description": "Delete the item's temporal profile; the tier below takes over on the wire.",
+        "operationId": "delete_temporal_profile_api_v1_info_items__info_item_id__temporal_profile_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Delete Temporal Profile",
+        "tags": [
+          "info-items"
+        ]
+      },
+      "get": {
+        "description": "The item's temporal profile; 404 when the item or its profile is missing.",
+        "operationId": "get_temporal_profile_api_v1_info_items__info_item_id__temporal_profile_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemporalProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Temporal Profile",
+        "tags": [
+          "info-items"
+        ]
+      },
+      "put": {
+        "description": "Create or replace the item's temporal profile.\n\nEvaluated for today (UTC) on write: the response's ``resolved_interval`` is\nwhat the item now announces at the top of its cadence (profile, item,\ndomain), and the write announces it when it moved. Every accepted write\nclears ``fired_at``, re-arming the post-action, so a profile whose window\nhas already ended is refused with a 422. Stored but not announced on an\nitem that cannot announce live (archiver#167).",
+        "operationId": "put_temporal_profile_api_v1_info_items__info_item_id__temporal_profile_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemporalProfilePut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemporalProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Temporal Profile",
         "tags": [
           "info-items"
         ]

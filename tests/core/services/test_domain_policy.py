@@ -6,7 +6,7 @@ flips nothing emits nothing (the #167 rule).
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import select, text
@@ -18,6 +18,7 @@ from src.core.models import (
     InfoItem,
     InfoItemSource,
     InfoSource,
+    TemporalProfile,
 )
 from src.core.models.domain import Domain
 from src.core.services import domain_policy, fetch_policy
@@ -245,6 +246,33 @@ async def test_a_default_cadence_announces_only_the_items_that_inherit_it(sessio
     }
     assert str(own.info_item_id) not in await _specs(session)
     assert str(elsewhere.info_item_id) not in await _specs(session)
+
+
+@pytest.mark.asyncio
+async def test_a_default_cadence_skips_an_item_whose_profile_wins(session):
+    """archiver#365: an item with no ``interval`` of its own does not inherit the
+    host's default while its temporal profile resolves one - the resolver's tier
+    decides, not the absence of an own interval. A silent profile inherits."""
+    session.add(Domain(name=HOST))
+    profiled = await _item_on(session)
+    silent = await _item_on(session)
+    for item, stored in ((profiled, "1h"), (silent, None)):
+        session.add(
+            TemporalProfile(
+                info_item_id=item.info_item_id,
+                profile_type="event",
+                reference_date=date(2099, 1, 1),
+                rules=[{"days_before": 7, "interval": "1h"}],
+                post_action="deactivate",
+                resolved_interval=stored,
+                evaluated_on=date(2026, 10, 27),
+            )
+        )
+    await session.flush()
+
+    await update_domain(session, HOST, {"default_watch_spec": _SIX_HOURS}, create=False)
+
+    assert await _specs(session) == {str(silent.info_item_id): [_SIX_HOURS]}
 
 
 @pytest.mark.asyncio

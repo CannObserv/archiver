@@ -31,6 +31,7 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                docs/SCREENS.md for why the dashboard clamps where the API 422s;
                                watch_panel.py — pure watched-item panel context from local
                                state: states, health rule, next-due, drift, archiver#151;
+                               temporal_profile_form.py — the profile row, #365;
                                replication_actions.py — the manual-replication outcome→flash
                                translation shared by both screens that offer the action, and
                                the one place that records why a refusal is a 200 rather than
@@ -184,8 +185,10 @@ src/core/                      Domain logic
                                host's items whose resolved state moved.
                                info_item_lifecycle.py: archive/restore (#361).
                                cadence_resolution.py (resolve_interval) is the
-                               announced interval: profile slot (#365), item,
-                               domain default (#364).
+                               announced interval: the profile's stored result
+                               (#365), item, domain default (#364).
+                               temporal_evaluation.py, temporal_profiles.py:
+                               profile semantics, writes, boundary (#365).
                                delete_domain is the delete: it locks the row
                                before drawing the tombstone's generation (#366).
                                fetch_policy.py is content.fetch-policy's delta
@@ -254,6 +257,7 @@ src/core/                      Domain logic
                                D4): operator-run, --dry-run first, idempotent.
                                import_watcher_item_cadence.py does the same for
                                the items' own cadence, fill-if-absent (#364).
+                               temporal_boundary.py: the boundary timer (#365).
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its
                                own copy and there is NO parity requirement; see
@@ -321,8 +325,8 @@ tests/                         Mirrors src/ structure; tests/integration/ for cr
                                with db_safety.py);
                                tests/deploy/ asserts the installed systemd artifacts match
                                deploy/ — archiver.service, the bus-health pair,
-                               the pm-org-refresh pair, the drift pair and the
-                               backup pair (each skips when absent, so CI passes) — and the
+                               the pm-org-refresh pair, the drift pair, the
+                               temporal-boundary pair and the backup pair (each skips when absent, so CI passes) — and the
                                needrestart drop-in against the live config chain
                                (archiver#278; asserts only on the archiver host),
                                the memory reservation's effective protection,
@@ -380,23 +384,13 @@ deploy/                        README.md (install instructions) + systemd units,
                                archiver-pm-org-refresh.service/.timer (the
                                Power Map org follower, archiver#305) +
                                archiver-drift.service/.timer (archiver#338) +
+                               archiver-temporal-boundary.service/.timer (#365) +
                                archiver-backup.service/.timer (the nightly dump,
                                as user archiver_backup; archiver#233). The #128 OOM lockstep now spans two
                                repos: the cap is in CannObserv/broker's drop-in,
                                the transient classification in publisher.py
-docs/                          Live reference docs — ARCHITECTURE.md, API.md,
-                               BUS.md, BUS_CONSUMERS.md, SCHEMA.md, SCHEMA_BUS.md,
-                               DEPLOYMENT.md, BACKUP.md, CONVENTIONS.md, SKILLS.md,
-                               ENVIRONMENT.md,
-                               SOCRATICODE.md, plus the
-                               dashboard living docs
-                               UI.md + SCREENS.md + PAGES.md +
-                               HTMX.md + REP_SPEC_PAGES.md +
-                               INFO_ITEM_DETAIL.md + ORG_ROW.md + REGISTER.md +
-                               INFO_ITEM_ACTIONS.md +
-                               HEALTH_ROW.md +
-                               COMPONENTS.md + STYLE.md
-                               (see "Dashboard living docs").
+docs/                          Live reference docs, the dashboard living docs
+                               among them (see "Dashboard living docs").
                                reference/ holds host-shaped facts that are not
                                about the code: tailscale.md (this node, the
                                ACL, why there is no tailnet-only bind).
@@ -456,7 +450,7 @@ Phase 1b landed — **no more mirror discipline for the acquisition pipeline.**
   `canonical_text_fingerprint`, in a worker thread.
 
 **The broker is CannObserv/broker's, not this repo's (#193 D6)**; the one seam
-that split left untested: [docs/BUS.md](BUS.md).
+that split left untested: [docs/BUS_CLIENT.md](BUS_CLIENT.md).
 
 ## Retired model (Phase 1–3a)
 

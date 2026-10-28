@@ -52,8 +52,9 @@ Both are stored, editable and live: the interval since F1 (#438), the cadence si
   - It is a WatchSpec v1 document that carries `interval`, judged by `validate_domain_watch_spec`.
     `NULL` means no domain default.
   - **Cadence resolution** (#364, `src/core/services/cadence_resolution.py`): an item announces
-    its own `interval`, else this one, else none (Watcher's default). A change re-announces the
-    host's items that have no `interval` of their own. A malformed stored document is skipped
+    its temporal profile's stored result (#365), else its own `interval`, else this one, else
+    none (Watcher's default). A change re-announces the host's items whose resolution reaches
+    this tier: no profile result and no `interval` of their own. A malformed stored document is skipped
     with a WARNING, never raised.
   - Watcher reads the announced interval as its top tier, so before F2 this outranks Watcher's own
     item cadence on an item with no Archiver interval. `import_watcher_item_cadence` fills those

@@ -268,6 +268,12 @@ EXEMPT_COLUMNS: dict[str, str] = {
     "replication_commands.object_options": (
         "a copy of a RepSpec's object_options taken at issuance; a wire record"
     ),
+    "temporal_profiles.rules": (
+        "judged with its whole row (temporal_evaluation.profile_errors), on write and "
+        "again daily by the boundary job, which skips a failing row with a WARNING "
+        "naming the item (archiver#365); a PUT replaces the whole profile, so nothing "
+        "is stranded"
+    ),
 }
 """JSON columns that hold no authored document, with why."""
 

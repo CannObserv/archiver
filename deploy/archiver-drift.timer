@@ -1,7 +1,7 @@
 # Hourly: Status's co-archiver-drift monitor expects a check-in every 3600 s,
 # with a grace of 5400 s, so one missed run is absorbed and two alarm
 # (CannObserv/status#32). Installed by scripts/deploy.sh, enabled once by hand
-# (archiver#330 D12; docs/DEPLOYMENT.md § The drift check).
+# (archiver#330 D12; docs/MONITORING.md § The drift check).
 [Unit]
 Description=Archiver: check hourly whether live lags origin/main (archiver#338)
 

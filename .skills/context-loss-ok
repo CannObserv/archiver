@@ -64,3 +64,28 @@ AGENTS.md :: retarget :: from outside the publisher, the one surface that surviv
 AGENTS.md :: retarget :: [docs/BUS.md](docs/BUS.md).
 AGENTS.md :: retarget :: DEPLOYMENT.md `--test-alert`.
 AGENTS.md :: retarget :: Skills live in `skills/` (agentskills.io) and `.claude/skills/` (Claude Code); overrides in `skills/` shadow the `skills-vendor/` submodules. Layout, triggers and the SessionStart hook rules: [docs/SKILLS.md](docs/SKILLS.md).
+# archiver#365 curation (2026-10-28): pointers this same change retargeted when it split
+# DEPLOYMENT (drift, liveness -> MONITORING), PAGES (source screens -> SOURCE_PAGES)
+# and BUS (shared client -> BUS_CLIENT).
+docs/DEPLOYMENT.md :: retarget :: Releases and `scripts/deploy.sh`, the drift check, the service user, reading
+docs/DEPLOYMENT.md :: retarget :: release's `REVISION`. The drift check reads no env file at all (§ The drift check).
+docs/PAGES.md :: retarget :: **GET `/dashboard/source-revisions/`** - paginated list ordered by `captured_at desc, source_revision_id` (ascending tiebreak, unlike the two above).
+docs/BUS.md :: retarget :: below serves both. HTTP routes and their SDK wrappers live in [API.md](API.md);
+docs/BUS.md :: retarget :: ([DEPLOYMENT.md](DEPLOYMENT.md) § Liveness).
+docs/ARCHITECTURE.md :: retarget :: that split left untested: [docs/BUS.md](BUS.md).
+# ARCHITECTURE's docs/ subtree enumerated the live docs by filename; every name it
+# listed is linked verbatim in AGENTS.md's Detail Docs index (checked file by file),
+# and the list had already drifted (no DOMAINS.md, BUS_TRIAGE.md).
+docs/ARCHITECTURE.md :: duplicate :: BUS.md, BUS_CONSUMERS.md, SCHEMA.md, SCHEMA_BUS.md,
+docs/ARCHITECTURE.md :: duplicate :: DEPLOYMENT.md, BACKUP.md, CONVENTIONS.md, SKILLS.md,
+docs/ARCHITECTURE.md :: duplicate :: ENVIRONMENT.md,
+docs/ARCHITECTURE.md :: duplicate :: SOCRATICODE.md, plus the
+docs/ARCHITECTURE.md :: duplicate :: UI.md + SCREENS.md + PAGES.md +
+docs/ARCHITECTURE.md :: duplicate :: HTMX.md + REP_SPEC_PAGES.md +
+docs/ARCHITECTURE.md :: duplicate :: INFO_ITEM_DETAIL.md + ORG_ROW.md + REGISTER.md +
+docs/ARCHITECTURE.md :: duplicate :: INFO_ITEM_ACTIONS.md +
+docs/ARCHITECTURE.md :: duplicate :: HEALTH_ROW.md +
+docs/ARCHITECTURE.md :: duplicate :: COMPONENTS.md + STYLE.md
+docs/ARCHITECTURE.md :: tighten :: docs/                          Live reference docs — ARCHITECTURE.md, API.md,
+docs/ARCHITECTURE.md :: tighten :: dashboard living docs
+docs/ARCHITECTURE.md :: tighten :: (see "Dashboard living docs").

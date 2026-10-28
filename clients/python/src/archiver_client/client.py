@@ -61,7 +61,13 @@ from archiver_client.generated.api.info_items import (
     delete_info_item_api_v1_info_items_info_item_id_delete as _delete_info_item,
 )
 from archiver_client.generated.api.info_items import (
+    delete_temporal_profile_api_v1_info_items_info_item_id_temporal_profile_delete as _delete_temporal_profile,
+)
+from archiver_client.generated.api.info_items import (
     get_info_item_api_v1_info_items_info_item_id_get as _get_info_item,
+)
+from archiver_client.generated.api.info_items import (
+    get_temporal_profile_api_v1_info_items_info_item_id_temporal_profile_get as _get_temporal_profile,
 )
 from archiver_client.generated.api.info_items import (
     list_info_items_api_v1_info_items_get as _list_info_items,
@@ -77,6 +83,9 @@ from archiver_client.generated.api.info_items import (
 )
 from archiver_client.generated.api.info_items import (
     put_rep_fields_api_v1_info_items_info_item_id_rep_fields_put as _put_rep_fields,
+)
+from archiver_client.generated.api.info_items import (
+    put_temporal_profile_api_v1_info_items_info_item_id_temporal_profile_put as _put_temporal_profile,
 )
 from archiver_client.generated.api.info_items import (
     put_watch_spec_api_v1_info_items_info_item_id_watch_spec_put as _put_watch_spec,
@@ -169,6 +178,8 @@ from archiver_client.generated.models.rep_spec_patch_document_type_0 import (
 from archiver_client.generated.models.source_revision_cache_patch import SourceRevisionCachePatch
 from archiver_client.generated.models.source_revision_create import SourceRevisionCreate
 from archiver_client.generated.models.source_revision_out import SourceRevisionOut
+from archiver_client.generated.models.temporal_profile_out import TemporalProfileOut
+from archiver_client.generated.models.temporal_profile_put import TemporalProfilePut
 from archiver_client.generated.types import UNSET
 
 
@@ -377,6 +388,42 @@ class ArchiverClient:
             client=self._gen_client, info_item_id=info_item_id
         )
         return _unwrap(response)
+
+    async def get_temporal_profile(self, info_item_id: str) -> TemporalProfileOut:
+        """An InfoItem's temporal profile (archiver#365). Raises ``NotFound`` when the
+        item or its profile is missing."""
+        response = await _get_temporal_profile.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id
+        )
+        return _unwrap(response)
+
+    async def set_temporal_profile(
+        self, info_item_id: str, profile: dict[str, Any]
+    ) -> TemporalProfileOut:
+        """Create or replace an InfoItem's temporal profile (the whole document).
+
+        ``profile`` is the ``TemporalProfilePut`` body: ``profile_type``,
+        ``reference_date`` or ``date_range_start``/``date_range_end`` (ISO
+        dates, UTC days), ``rules``, ``post_action``, optional ``is_active``.
+        Evaluated for today on write: ``resolved_interval`` is what the item now
+        announces at the top of its cadence. Every write re-arms the
+        post-action, so a window that has already ended is refused. Raises
+        ``NotFound`` or ``ValidationError`` (422, nothing stored).
+        """
+        response = await _put_temporal_profile.asyncio_detailed(
+            client=self._gen_client,
+            info_item_id=info_item_id,
+            body=TemporalProfilePut.from_dict(profile),
+        )
+        return _unwrap(response)
+
+    async def delete_temporal_profile(self, info_item_id: str) -> None:
+        """Delete an InfoItem's temporal profile; the item's own or its host's
+        cadence takes over. Raises ``NotFound``."""
+        response = await _delete_temporal_profile.asyncio_detailed(
+            client=self._gen_client, info_item_id=info_item_id
+        )
+        _unwrap_no_content(response)
 
     async def set_org(
         self,
@@ -830,8 +877,10 @@ class ArchiverClient:
         cleared: omit it to leave it untouched, pass ``None`` to clear it.
 
         ``is_active=False`` suspends the host: its items are announced
-        ``active=false``. ``min_interval_seconds`` and ``default_watch_spec``
-        are stored but take effect only at flips F1 (#366) and F2 (#364).
+        ``active=false``. ``min_interval_seconds`` is the host's
+        ``content.fetch-policy`` frame (#366); ``default_watch_spec`` is the
+        domain tier of the announced cadence for items with no interval of
+        their own (#364).
         """
         body = DomainPatch(
             notes=notes if notes is not None else UNSET,
