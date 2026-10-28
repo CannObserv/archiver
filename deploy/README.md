@@ -281,8 +281,8 @@ missed as soon as it is back. It logs `temporal boundary finished` with counts, 
 firing at INFO, and a malformed profile at WARNING, skipped
 (`sudo journalctl -u archiver-temporal-boundary`). Semantics: `docs/SCHEMA.md`.
 
-The service holds the fourth sanctioned write-capable
-`Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1`, never `ARCHIVER_BUS_CONSUMER`.
+The service holds the fourth sanctioned `Environment=ARCHIVER_ALLOW_PRODUCTION_DB=1`, and the
+second write-capable one outside `archiver.service`; never `ARCHIVER_BUS_CONSUMER`.
 `--today YYYY-MM-DD` steps a disposable (`_dev`/`_test`) database across dates;
 against production any date but today's UTC exits 2 without writing.
 `tests/deploy/test_temporal_boundary_units.py` pins the units and installed-copy parity.
