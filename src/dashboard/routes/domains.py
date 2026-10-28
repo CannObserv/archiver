@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db_session
-from src.core.models import InfoItem, InfoItemSource, InfoSource
+from src.core.models import InfoItem, InfoItemSource, InfoSource, NotificationSubscription
 from src.core.models.domain import Domain
 from src.core.services.domain_policy import update_domain
 from src.core.services.fetch_policy import producer_enabled
@@ -228,6 +228,15 @@ async def detail_domain(
             "item_has_more": item_has_more,
             "item_limit": item_page.limit,
             "item_offset": item_page.offset,
+            "subscriptions": list(
+                (
+                    await session.execute(
+                        select(NotificationSubscription)
+                        .where(NotificationSubscription.domain_id == domain.id)
+                        .order_by(NotificationSubscription.created_at, NotificationSubscription.id)
+                    )
+                ).scalars()
+            ),
         },
     )
 

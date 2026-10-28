@@ -11,22 +11,13 @@ from pydantic import (
     StringConstraints,
     field_validator,
 )
-from ulid import ULID
 
 from src.api.schemas.types import ULIDStr
 from src.core.models.notification_subscription import NotificationEvent, Scope
 from src.core.notifications.content_config import ContentConfig
+from src.core.services.notification_subscriptions import normalize_channel_id
 
-
-def _channel(value: str) -> str:
-    """ULID-shaped, normalized to the canonical uppercase spelling."""
-    try:
-        return str(ULID.from_str(value.upper()))
-    except ValueError as e:
-        raise ValueError(f"not a Notifier channel id (a 26-character ULID): {value!r}") from e
-
-
-ChannelId = Annotated[str, AfterValidator(_channel)]
+ChannelId = Annotated[str, AfterValidator(normalize_channel_id)]
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Events = Annotated[list[NotificationEvent], Field(min_length=1)]
 

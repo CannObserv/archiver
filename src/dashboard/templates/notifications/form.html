@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{% if sub %}Edit {{ sub.title }}{% else %}New subscription{% endif %}{% endblock %}
+
+{#- Create and edit a notification subscription (archiver#363, D5). One form for
+   both: `sub` is the row on edit, none on create.
+
+   - The scope and its ref are chosen on create only; on edit they show
+     read-only (re-scope = delete + create, as on the API).
+   - Content options: one fieldset per block, named `<block>__<option>`, with
+     `override__<event>` turning that event's block on (notification_form.py).
+   - The Jinja title/body templates are not here: they stay API-only until
+     #367's preview sits beside them, and an edit carries them over.
+   - No send or test control (#367). -#}
+{% macro option_block(prefix, opts, legend) %}
+<div style="display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);">
+  {% for name, label in toggles %}
+  <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);cursor:pointer;">
+    <input type="checkbox" name="{{ prefix }}__{{ name }}" value="on"{% if opts and opts[name] %} checked{% endif %}>
+    {{ label }}
+  </label>
+  {% endfor %}
+  <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);">
+    Diff snippet lines
+    <input type="number" name="{{ prefix }}__diff_snippet_lines" min="1" max="200"
+           value="{{ opts.diff_snippet_lines if opts else 25 }}" class="form-input form-input--sm"
+           style="width:5rem;" aria-label="{{ legend }}: diff snippet lines">
+  </label>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="entity-section" x-data='{ scope: {{ (values.scope or (sub.scope if sub else "global")) | tojson }} }'>
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">{% if sub %}Edit subscription{% else %}New subscription{% endif %}</h1>
+  </div>
+
+  {% if errors %}
+  <div class="alert alert--error" role="alert">
+    <ul style="margin:0;padding-left:var(--space-4);">
+      {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="filter-card">
+    <form method="POST"
+          action="{% if sub %}/dashboard/notifications/{{ sub.id }}/edit{% else %}/dashboard/notifications/new{% endif %}"
+          style="display:flex;flex-direction:column;gap:var(--space-3);">
+
+      <div>
+        <label for="sub-title" class="form-label">Title <span aria-hidden="true">*</span></label>
+        <input id="sub-title" type="text" name="title" value="{{ values.title }}"
+               class="form-input" maxlength="100" required autocomplete="off">
+      </div>
+
+      {% if sub %}
+      <div>
+        <span class="form-label">Scope</span>
+        <p class="text-sm" style="margin:0;">
+          {% if sub.scope == "global" %}Global: every item.
+          {% elif sub.scope == "domain" %}Domain: items on
+            <a href="/dashboard/domains/{{ domain_names.get(sub.domain_id) }}">{{ domain_names.get(sub.domain_id) }}</a>.
+          {% else %}Item:
+            <a href="/dashboard/info-items/{{ sub.info_item_id }}">{{ item_names.get(sub.info_item_id, sub.info_item_id) }}</a>.
+          {% endif %}
+          <span class="text-muted">Fixed after create: to re-scope, delete this and create another.</span>
+        </p>
+      </div>
+      {% else %}
+      <fieldset style="border:0;padding:0;margin:0;">
+        <legend class="form-label">Scope <span aria-hidden="true">*</span></legend>
+        <div style="display:flex;gap:var(--space-4);">
+          {% for s in scopes %}
+          <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);cursor:pointer;">
+            <input type="radio" name="scope" value="{{ s }}" x-model="scope"{% if values.scope == s %} checked{% endif %}>
+            {{ {"global": "Global", "domain": "Domain", "item": "Item"}[s] }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="text-sm text-muted" style="margin:var(--space-1) 0 0;">
+          Global hears every item; Domain, the items whose primary source is on that host; Item, one item.
+          Fixed after create.
+        </p>
+      </fieldset>
+
+      <div x-show="scope === 'domain'">
+        <label for="sub-domain" class="form-label">Domain</label>
+        <select id="sub-domain" name="domain" class="form-select">
+          <option value="">— Select domain —</option>
+          {% for name in domains %}
+          <option value="{{ name }}"{% if values.domain == name %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div x-show="scope === 'item'">
+        <label for="sub-item" class="form-label">Information Item id</label>
+        <input id="sub-item" type="text" name="info_item_id" value="{{ values.info_item_id }}"
+               class="form-input" maxlength="26" autocomplete="off" spellcheck="false">
+      </div>
+      {% endif %}
+
+      <fieldset style="border:0;padding:0;margin:0;">
+        <legend class="form-label">Events <span aria-hidden="true">*</span></legend>
+        <div style="display:flex;gap:var(--space-4);">
+          {% for value, label in events %}
+          <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);cursor:pointer;">
+            <input type="checkbox" name="events" value="{{ value }}"{% if value in values.events %} checked{% endif %}>
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div>
+        <label for="sub-channel" class="form-label">Notifier channel id <span aria-hidden="true">*</span></label>
+        <input id="sub-channel" type="text" name="remote_channel_id" value="{{ values.remote_channel_id }}"
+               class="form-input" maxlength="26" required autocomplete="off" spellcheck="false"
+               aria-describedby="sub-channel-hint">
+        <p class="text-sm text-muted" id="sub-channel-hint">
+          A channel in Archiver's Notifier tenant (a 26-character id). Only its shape is checked for now.
+        </p>
+      </div>
+
+      <label class="form-label" style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;">
+        <input type="checkbox" name="is_active" value="on"{% if values.is_active %} checked{% endif %}>
+        Active
+      </label>
+
+      <fieldset style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:var(--space-2);">
+        <legend class="form-label">Content</legend>
+        <p class="text-sm" style="margin:0;"><strong>Default</strong>, for every event without its own options:</p>
+        {{ option_block("default", options.default, "Default") }}
+        {% for value, label in events %}
+        {% set o = options.overrides[value] %}
+        <div x-data='{ on: {{ (o is not none) | tojson }} }'>
+          <label class="text-sm" style="display:flex;align-items:center;gap:var(--space-1);cursor:pointer;">
+            <input type="checkbox" name="override__{{ value }}" value="on" x-model="on"{% if o is not none %} checked{% endif %}>
+            Own options for <strong>{{ label }}</strong>
+          </label>
+          <div x-show="on" style="margin:var(--space-1) 0 0 var(--space-4);">
+            {{ option_block(value, o or options.default, label) }}
+          </div>
+        </div>
+        {% endfor %}
+        {% if options.templates %}
+        <p class="text-sm text-muted" style="margin:0;">
+          This subscription has a custom title or body template, set through the API. It is kept as is:
+          templates are edited through the API until the preview arrives (#367).
+        </p>
+        {% endif %}
+      </fieldset>
+
+      <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
+        <a href="/dashboard/notifications/" class="btn btn--ghost">Cancel</a>
+        <button type="submit" class="btn btn--primary">{% if sub %}Save{% else %}Create subscription{% endif %}</button>
+      </div>
+    </form>
+  </div>
+
+  {% if sub %}
+  <div class="danger-zone" style="margin-top:var(--space-4);">
+    <h3 style="margin-top:0;">Delete subscription</h3>
+    <p class="text-sm text-muted">Its channel stops hearing these events once dispatch is live.</p>
+    <form method="post" action="/dashboard/notifications/{{ sub.id }}/delete">
+      <button type="submit" class="btn btn--danger btn--sm"
+              onclick="return confirm('Delete this subscription?')">Delete</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

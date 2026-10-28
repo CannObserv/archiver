@@ -183,3 +183,18 @@ async def test_count_for_domain_counts_its_domain_scope_rows(session):
     await _sub(session)
 
     assert await subs.count_for_domain(session, domain.id) == 2
+
+
+@pytest.mark.asyncio
+async def test_notified_by_lists_each_subscription_once_with_the_events_it_hears(session):
+    domain = await _domain(session, "heard.example.com")
+    item = await _item(session, "heard.example.com")
+    g = await _sub(session, events=["watch_recovered", "change_detected"])
+    d = await _sub(session, "domain", domain_id=domain.id, events=["watch_error"])
+    await _sub(session, is_active=False)
+
+    heard = await subs.notified_by(session, item.info_item_id)
+
+    assert sorted((s.id, events) for s, events in heard) == sorted(
+        [(g.id, ["change_detected", "watch_recovered"]), (d.id, ["watch_error"])]
+    )

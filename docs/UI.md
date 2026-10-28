@@ -21,6 +21,8 @@ The other parts of this reference, under the same living-doc rule:
   hub and its Organization row, the register wizard, the home screen's health
   row, the Bus triage screen.
   The hub's action routes are [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
+- [NOTIFICATIONS.md](NOTIFICATIONS.md) - the Notifications page, with the model, API and
+  import behind it.
 
 > **AGENTS.md enforcement:** a Jinja2 template change, a new or changed
 > dashboard route, or a new Alpine.js component must update the doc it touches
@@ -43,6 +45,7 @@ The other parts of this reference, under the same living-doc rule:
 /dashboard/info-items/               Information Items list
 /dashboard/info-items/{id}           Information Item detail (hub page - 5-section scroll)
 /dashboard/info-items/new            → 301 redirect to /dashboard/register
+/dashboard/notifications/            Notification subscriptions, grouped by scope (+ /new, /{id}/edit)
 /dashboard/info-sources/             Information Sources list
 /dashboard/info-sources/{id}         Information Source detail
 /dashboard/info-sources/new          Create Information Source

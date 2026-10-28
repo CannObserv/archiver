@@ -144,6 +144,8 @@ document; the dashboard's Registry badge reports the count
   - **No answer** → nothing changes. `succeeded_by`, `archived_at` and `active` are mirrored,
     never followed: re-linking to a successor is a human decision.
 - **`Domain`** (`domains`) — per-host policy (#360): [DOMAINS.md](DOMAINS.md).
+- **`NotificationSubscription`** (`notification_subscriptions`, archiver#363) — who hears which
+  events, and how: [NOTIFICATIONS.md](NOTIFICATIONS.md).
 - **`TemporalProfile`** (`temporal_profiles`, archiver#365) — an item's date-driven cadence, one
   per item (PK `info_item_id`). Intent: `profile_type`, its dates, `rules`, `post_action`,
   `is_active`. Result: `resolved_interval` for the UTC day `evaluated_on`, the cadence's top tier,

@@ -59,6 +59,18 @@ class ImportKeyTaken(Exception):
     """Another subscription already carries this ``imported_watcher_id``."""
 
 
+def normalize_channel_id(value: str) -> str:
+    """A Notifier channel id, ULID-shaped, in canonical uppercase. Raises ``ValueError``.
+
+    Shape only: whether the channel exists is Notifier's, and #368's credential
+    is what will be able to ask.
+    """
+    try:
+        return str(ULID.from_str(value.strip().upper()))
+    except (AttributeError, ValueError) as e:
+        raise ValueError(f"not a Notifier channel id (a 26-character ULID): {value!r}") from e
+
+
 def canonical_events(events: Iterable[str]) -> list[str]:
     """``events`` de-duplicated, in declaration order. Raises ``SubscriptionRefused``."""
     wanted = set(events)
@@ -195,6 +207,20 @@ async def subscriptions_for(
         .order_by(NotificationSubscription.id)
     )
     return (await session.execute(stmt)).scalars().all()
+
+
+async def notified_by(
+    session: AsyncSession, info_item_id: ULID | str
+) -> list[tuple[NotificationSubscription, list[str]]]:
+    """Each subscription that hears the item, with the events it hears, in id order.
+
+    ``subscriptions_for`` once per event, so the item page shows its answer.
+    """
+    heard: dict[ULID, tuple[NotificationSubscription, list[str]]] = {}
+    for event in NOTIFICATION_EVENTS:
+        for sub in await subscriptions_for(session, info_item_id, event):
+            heard.setdefault(sub.id, (sub, []))[1].append(event)
+    return [heard[key] for key in sorted(heard)]
 
 
 async def count_for_domain(session: AsyncSession, domain_id: ULID | str) -> int:

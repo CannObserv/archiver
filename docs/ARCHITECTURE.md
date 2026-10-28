@@ -235,6 +235,7 @@ src/core/                      Domain logic
                                the no-HTTP-to-Watcher rule (#142); Power Map is
                                an identity source, not a sibling in the content
                                pipeline.
+  notifications/               Content options (archiver#363): docs/NOTIFICATIONS.md.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
                                set_rep_fields + the rep_fields_gate they share,
                                link_org, update_rep_spec, preview_extraction, etc.)

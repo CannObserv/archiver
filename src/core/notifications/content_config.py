@@ -19,7 +19,7 @@ from typing import Annotated, Any
 
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import AfterValidator, BaseModel, Field, StrictBool, StrictInt
+from pydantic import AfterValidator, BaseModel, Field, StrictBool, StrictInt, ValidationError
 
 from src.core.models.notification_subscription import NotificationEvent
 
@@ -71,6 +71,18 @@ class ContentConfig(BaseModel):
 
     default: ContentOptions = Field(default_factory=ContentOptions)
     overrides: dict[NotificationEvent, ContentOptions] = Field(default_factory=dict)
+
+
+def validate_content_config(document: Any) -> tuple[bool, list[dict[str, str]]]:
+    """``(ok, errors)`` in the stored-document sweep's shape (``audit_stored_documents``)."""
+    try:
+        ContentConfig.model_validate(document)
+    except ValidationError as e:
+        return False, [
+            {"path": "/" + "/".join(str(part) for part in err["loc"]), "message": err["msg"]}
+            for err in e.errors()
+        ]
+    return True, []
 
 
 def normalize_content_config(raw: dict[str, Any] | None) -> dict[str, Any]:

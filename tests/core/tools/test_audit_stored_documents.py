@@ -22,7 +22,14 @@ import pytest
 from sqlalchemy import JSON, text
 from ulid import ULID
 
-from src.core.models import Domain, InfoItem, InfoItemRepSpec, InfoSource, RepSpec
+from src.core.models import (
+    Domain,
+    InfoItem,
+    InfoItemRepSpec,
+    InfoSource,
+    NotificationSubscription,
+    RepSpec,
+)
 from src.core.models.base import Base
 from src.core.models.pm_organization import PmOrganization
 from src.core.tools.audit_stored_documents import (
@@ -202,6 +209,35 @@ async def test_sweep_judges_a_domain_cadence_as_its_write_path_does(session):
     assert set(found) == {str(bad.id), str(bare.id)}
     assert {f.kind for f in found.values()} == {"domain_watch_spec"}
     assert "interval" in found[str(bare.id)].errors[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_sweep_judges_notification_content_as_its_write_path_does(session):
+    """archiver#363: ContentConfig refuses unknown keys and unparseable Jinja; NULL is defaults."""
+
+    def sub(config):
+        return NotificationSubscription(
+            title="audit363",
+            scope="global",
+            events=["change_detected"],
+            remote_channel_id="01M5APS9R7A0QEDB9522MRA4CT",
+            content_config=config,
+        )
+
+    stale = sub({"default": {"include_significance": True}})
+    broken = sub({"overrides": {"watch_error": {"body_template": "{% if %}"}}})
+    good = sub({"default": {"include_domain": True}})
+    unset = sub(None)
+    session.add_all([stale, broken, good, unset])
+    await session.flush()
+
+    report = await audit_stored_documents(session)
+
+    found = {f.row_id: f for f in _mine(report.findings, stale.id, broken.id, good.id, unset.id)}
+    assert set(found) == {str(stale.id), str(broken.id)}
+    assert {f.kind for f in found.values()} == {"notification_content"}
+    assert found[str(stale.id)].errors[0]["path"] == "/default/include_significance"
+    assert "Jinja" in found[str(broken.id)].errors[0]["message"]
 
 
 @pytest.mark.asyncio
@@ -460,6 +496,13 @@ async def _seed_one_invalid_of_each_kind(session) -> None:
             ),
             RepSpec(provider="gcs", name="r164", schema_version=1, document={"provider": 5}),
             Domain(name="e164.example.test", default_watch_spec={"schema_version": 1}),
+            NotificationSubscription(
+                title="e363",
+                scope="global",
+                events=["watch_error"],
+                remote_channel_id="01M5APS9R7A0QEDB9522MRA4CT",
+                content_config={"default": {"include_significance": True}},
+            ),
             spec,
             item,
         ]

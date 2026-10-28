@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+
+{% block content %}
+{#- The Notifications page (archiver#363, D5): every subscription, grouped by
+   scope. Who hears a given item is its own page's "Notified by" row; this is
+   the list of what was declared. Nothing here sends (#367/#369). -#}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Notifications</h1>
+    <a href="/dashboard/notifications/new" class="btn btn--primary">New subscription</a>
+  </div>
+  <p class="text-sm text-muted">
+    Each subscription sends the events it names to one Notifier channel. The scopes add up:
+    an item hears every global subscription, its host's domain subscriptions and its own.
+    Nothing is sent yet; dispatch arrives with #369.
+  </p>
+
+  {% set headings = {"global": "Global", "domain": "Domain", "item": "Item"} %}
+  {% for scope, rows in groups.items() %}
+  <h2 class="section-heading">{{ headings[scope] }} ({{ rows | length }})</h2>
+  {% if rows %}
+  <div class="table-scroll" tabindex="0" role="region" aria-label="{{ headings[scope] }} subscriptions">
+    <table class="data-table" aria-label="{{ headings[scope] }} subscriptions">
+      <thead>
+        <tr>
+          <th class="data-table__th">Title</th>
+          {% if scope != "global" %}<th class="data-table__th">{{ headings[scope] }}</th>{% endif %}
+          <th class="data-table__th">Events</th>
+          <th class="data-table__th">Channel</th>
+          <th class="data-table__th">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sub in rows %}
+        <tr>
+          <td class="data-table__cell">
+            <a href="/dashboard/notifications/{{ sub.id }}/edit">{{ sub.title }}</a>
+          </td>
+          {% if scope == "domain" %}
+          {% set host = domain_names.get(sub.domain_id) %}
+          <td class="data-table__cell text-sm"><a href="/dashboard/domains/{{ host }}">{{ host }}</a></td>
+          {% elif scope == "item" %}
+          <td class="data-table__cell text-sm">
+            <a href="/dashboard/info-items/{{ sub.info_item_id }}">{{ item_names.get(sub.info_item_id, sub.info_item_id) }}</a>
+          </td>
+          {% endif %}
+          <td class="data-table__cell text-sm">{{ event_labels(sub.events) }}</td>
+          <td class="data-table__cell data-table__cell--muted text-sm"><code>{{ sub.remote_channel_id }}</code></td>
+          <td class="data-table__cell">
+            {% if sub.is_active %}
+            <span class="badge badge--success">active</span>
+            {% else %}
+            <span class="badge badge--muted">inactive</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No {{ headings[scope] | lower }} subscriptions{% if offset %} on this page{% endif %}.</p>
+  {% endif %}
+  {% endfor %}
+
+  {% if has_more or offset > 0 %}
+  <nav class="pagination" aria-label="Subscriptions pagination">
+    {% if offset > 0 %}
+    <a href="{{ '?limit=' ~ limit ~ '&offset=' ~ ([offset - limit, 0] | max) }}" class="btn btn--ghost">← Previous</a>
+    {% endif %}
+    {% if has_more %}
+    <a href="{{ '?limit=' ~ limit ~ '&offset=' ~ (offset + limit) }}" class="btn btn--ghost">Next →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}
