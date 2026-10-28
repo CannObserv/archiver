@@ -62,7 +62,11 @@ from pydantic import ValidationError
 from ulid import ULID
 
 from src.core.models.notification_subscription import NOTIFICATION_EVENTS
-from src.core.notifications.content_config import RETIRED_CONTENT_KEYS, normalize_content_config
+from src.core.notifications.content_config import (
+    RETIRED_CONTENT_KEYS,
+    ContentConfig,
+    normalize_content_config,
+)
 
 EXIT_OK = 0
 EXIT_REFUSED = 1
@@ -152,7 +156,11 @@ def _wanted(row: dict, tid: str, channels: Mapping[str, str], problems: list[str
     if item is not None and _ulid(item) is None:
         found.append("archiver_info_item_id is not an InfoItem id")
     events = row.get("events")
-    if not isinstance(events, list) or not events or not set(events) <= set(NOTIFICATION_EVENTS):
+    if (
+        not isinstance(events, list)
+        or not events
+        or not all(isinstance(e, str) and e in NOTIFICATION_EVENTS for e in events)
+    ):
         found.append(f"events must be a non-empty list of {', '.join(NOTIFICATION_EVENTS)}")
         events = []
     if not isinstance(row.get("is_active"), bool):
@@ -160,12 +168,16 @@ def _wanted(row: dict, tid: str, channels: Mapping[str, str], problems: list[str
     channel = row.get("remote_channel_id")
     if channel is None:
         found.append("no channel (remote_channel_id is null)")
+    elif not isinstance(channel, str):
+        found.append("remote_channel_id is not a channel id")
     elif channel not in channels:
         found.append(f"channel {channel} is not in --channel-map")
     config = _strip_retired(row.get("content_config"))
     if config is not None:
         try:
-            normalize_content_config(config)
+            # Not normalize_content_config: its ``raw or {}`` would pass a falsy
+            # non-object, which the API then refuses mid-run (CR 5a).
+            ContentConfig.model_validate(config)
         except ValidationError as e:
             where = ", ".join("/".join(map(str, err["loc"])) for err in e.errors())
             found.append(f"content_config does not validate ({where})")

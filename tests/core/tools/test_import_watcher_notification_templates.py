@@ -152,6 +152,27 @@ def test_anything_that_does_not_map_refuses_the_whole_file(document, match):
         parse_export(document, MAP)
 
 
+@pytest.mark.parametrize("config", [[], "", 0, False])
+def test_a_falsy_non_null_content_config_is_refused_not_sent(config):
+    """CR 5a: ``raw or {}`` passed these locally, and the API then 422'd mid-run."""
+    with pytest.raises(ImportRefused, match="content_config"):
+        parse_export(_export([_template(content_config=config)]), MAP)
+
+
+@pytest.mark.parametrize(
+    "overrides, match",
+    [
+        ({"events": [{"x": 1}]}, "events"),
+        ({"events": [["change_detected"]]}, "events"),
+        ({"remote_channel_id": {"id": W_SLACK}}, "channel"),
+    ],
+)
+def test_a_malformed_value_is_a_refusal_not_a_traceback(overrides, match):
+    """CR 5b: an unhashable event or channel raised TypeError."""
+    with pytest.raises(ImportRefused, match=match):
+        parse_export(_export([_template(**overrides)]), MAP)
+
+
 def test_every_problem_is_reported_not_just_the_first():
     with pytest.raises(ImportRefused) as refused:
         parse_export(
