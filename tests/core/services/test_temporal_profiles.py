@@ -642,3 +642,24 @@ async def test_a_put_missing_a_field_is_refused_by_name(session):
 
     with pytest.raises(ValueError, match="is_active"):
         await put_temporal_profile(session, item.info_item_id, fields, today=date(2026, 4, 10))
+
+
+@pytest.mark.asyncio
+async def test_deactivate_on_an_archived_item_announces_nothing_when_nothing_moves(session):
+    """CR 5: the wire's ``active`` is already false while archived; a silent
+    profile's deactivate stores the pause and spends no generation."""
+    item = await _item(session, own="1d")
+    await put_temporal_profile(
+        session,
+        item.info_item_id,
+        _event(rules=[], post_action="deactivate"),
+        today=date(2026, 4, 10),
+    )
+    item.archived_at = datetime(2026, 4, 12, tzinfo=UTC)
+    await session.flush()
+
+    outcome = await evaluate_at_boundary(session, item.info_item_id, today=date(2026, 4, 16))
+
+    assert outcome.fired == "deactivate" and not outcome.announced
+    assert item.watch_active is False
+    assert await _announced(session, item) == []

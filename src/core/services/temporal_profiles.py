@@ -54,7 +54,12 @@ from src.core.logging import get_logger
 from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource, TemporalProfile
 from src.core.services import info_item_lifecycle
 from src.core.services.cadence_resolution import resolve_interval
-from src.core.services.registry_announcement import announce_policy_change, is_announceable
+from src.core.services.registry_announcement import (
+    announce_policy_change,
+    domain_suspended,
+    is_announceable,
+    resolved_active,
+)
 from src.core.services.temporal_evaluation import (
     FieldErrors,
     evaluate,
@@ -216,6 +221,18 @@ async def _reduce_frequency(session: AsyncSession, item: InfoItem) -> bool:
     return True
 
 
+async def _deactivate(session: AsyncSession, item: InfoItem) -> bool:
+    """Pause the item; returns whether its announced ``active`` moved.
+
+    An archived item, or one on a suspended host, already announces ``false``.
+    """
+    suspended = domain_suspended(await _host(session, item.info_item_id))
+    archived = item.archived_at is not None
+    before = resolved_active(item.watch_active, archived=archived, host_suspended=suspended)
+    item.watch_active = False
+    return before is not False
+
+
 async def evaluate_at_boundary(
     session: AsyncSession, info_item_id: ULID | str, *, today: date
 ) -> BoundaryOutcome:
@@ -248,8 +265,7 @@ async def evaluate_at_boundary(
     if fired is not None:
         profile.fired_at = datetime.now(UTC)
         if fired == "deactivate":
-            changed = item.watch_active is not False
-            item.watch_active = False
+            changed = await _deactivate(session, item)
         elif fired == "reduce_frequency":
             changed = await _reduce_frequency(session, item)
         elif fired == "archive":
