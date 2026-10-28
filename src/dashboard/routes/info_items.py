@@ -1940,6 +1940,21 @@ async def _profile_response(
     return response
 
 
+async def _profile_write_failed(
+    request: Request, session: AsyncSession, item_id: str
+) -> HTMLResponse:
+    """The cadence editor's failure path: roll back, render ``degraded`` from the id.
+
+    From the path id, not the item: the rollback expires it, and reading it in
+    the template would emit IO and raise MissingGreenlet.
+    """
+    await session.rollback()
+    logger.exception("Local temporal-profile write failed for InfoItem %s", item_id)
+    response = _section_degraded(request, item_id, _POLICY_WRITE_FAILED_MSG)
+    response.headers["HX-Trigger"] = _watcher_hx_trigger(("error", _POLICY_WRITE_FAILED_FLASH))
+    return response
+
+
 @router.post("/{item_id}/temporal-profile", response_class=HTMLResponse)
 async def save_temporal_profile(
     item_id: str,
@@ -1967,6 +1982,8 @@ async def save_temporal_profile(
             await session.commit()
         except profiles.ProfileInvalid as e:
             problems = [f"{path}: {message}" for path, message in e.errors]
+        except Exception:
+            return await _profile_write_failed(request, session, item_id)
     if problems:
         # Nothing was written: the service validates before it locks. No rollback,
         # which would expire ``item`` under the render (MissingGreenlet).
@@ -1989,8 +2006,11 @@ async def delete_temporal_profile(
     nothing on the wire, and must still be possible.
     """
     item = await _resolve_item(item_id, session)
-    await profiles.delete_temporal_profile(session, item.info_item_id)
-    await session.commit()
+    try:
+        await profiles.delete_temporal_profile(session, item.info_item_id)
+        await session.commit()
+    except Exception:
+        return await _profile_write_failed(request, session, item_id)
     return await _profile_response(request, session, item)
 
 

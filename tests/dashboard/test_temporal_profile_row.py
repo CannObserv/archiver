@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from src.core.models import InfoItem, TemporalProfile, WatchStatus
+from src.core.services import temporal_profiles
 
 _HEADERS = {"X-ExeDev-UserID": "ext-profile", "X-ExeDev-Email": "profile@example.com"}
 
@@ -138,3 +139,24 @@ async def test_delete_removes_the_profile(client, session, bind_source):
     assert r.status_code == 200
     assert "watcherUpdated" in r.headers["HX-Trigger"]
     assert await session.get(TemporalProfile, item.info_item_id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("suffix", ["", "/delete"])
+async def test_a_failed_write_degrades_the_panel_instead_of_a_500(
+    client, session, bind_source, monkeypatch, suffix
+):
+    """CR 1: the cadence editor's contract - roll back, flash, render degraded."""
+    item = await _watched(session, bind_source, f"row-fail{suffix.replace('/', '-')}")
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(temporal_profiles, "put_temporal_profile", _boom)
+    monkeypatch.setattr(temporal_profiles, "delete_temporal_profile", _boom)
+
+    r = await client.post(_url(item, suffix), headers=_HEADERS, data=_form())
+
+    assert r.status_code == 200
+    assert "showFlash" in r.headers["HX-Trigger"]
+    assert "Couldn't update this item" in r.text
