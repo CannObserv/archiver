@@ -13,12 +13,15 @@ and item scope. Archive, pause and host suspension filter nothing: Watcher
 checks none of those items, so no event arrives (#369 decides an in-flight one).
 """
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from ulid import ULID
 
 from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource, NotificationSubscription
+from src.core.services import domain_policy
 from src.core.services import notification_subscriptions as subs
 
 CHANNEL = "01M5APS9R7A0QEDB9522MRA4CT"
@@ -198,3 +201,36 @@ async def test_notified_by_lists_each_subscription_once_with_the_events_it_hears
     assert sorted((s.id, events) for s, events in heard) == sorted(
         [(g.id, ["change_detected", "watch_recovered"]), (d.id, ["watch_error"])]
     )
+
+
+@pytest.mark.asyncio
+async def test_create_waits_for_a_racing_domain_delete_and_then_refuses(
+    test_engine, committed_rows
+):
+    """CR 1: the ref is read FOR KEY SHARE, so a create racing a Domain delete
+    gets a clean refusal (no row), never a FK violation."""
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        domain = Domain(name="race363.example.com")
+        setup.add(domain)
+        await setup.commit()
+    committed_rows.append((Domain, domain.id))
+
+    async with factory() as deleter, factory() as creator:
+        assert await domain_policy.delete_domain(deleter, "race363.example.com") is True
+        create = asyncio.create_task(
+            subs.create_subscription(
+                creator,
+                title="racer",
+                scope="domain",
+                domain="race363.example.com",
+                events=["change_detected"],
+                remote_channel_id=CHANNEL,
+            )
+        )
+        await asyncio.sleep(0.3)
+        assert not create.done(), "the create should wait on the delete's row lock"
+        await deleter.commit()
+        with pytest.raises(subs.SubscriptionRefused, match="no Domain row"):
+            await create
+        await creator.rollback()

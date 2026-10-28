@@ -118,15 +118,28 @@ async def create_subscription(
     errors = _ref_errors(scope, domain, info_item_id)
     if errors:
         raise SubscriptionRefused(errors)
+    # FOR KEY SHARE (CR 1): a delete racing this create either waits for it
+    # and then counts the new row (409), or wins and leaves no row to find
+    # here (422) - never a FK violation on the insert.
     domain_id = None
     if domain is not None:
         domain_id = (
-            await session.execute(select(Domain.id).where(Domain.name == domain))
+            await session.execute(
+                select(Domain.id).where(Domain.name == domain).with_for_update(key_share=True)
+            )
         ).scalar_one_or_none()
         if domain_id is None:
             raise SubscriptionRefused([("/domain", f"no Domain row named {domain!r}")])
-    if info_item_id is not None and await session.get(InfoItem, info_item_id) is None:
-        raise SubscriptionRefused([("/info_item_id", "InfoItem not found")])
+    if info_item_id is not None:
+        found = (
+            await session.execute(
+                select(InfoItem.info_item_id)
+                .where(InfoItem.info_item_id == info_item_id)
+                .with_for_update(key_share=True)
+            )
+        ).scalar_one_or_none()
+        if found is None:
+            raise SubscriptionRefused([("/info_item_id", "InfoItem not found")])
     sub = NotificationSubscription(
         title=title,
         scope=scope,
