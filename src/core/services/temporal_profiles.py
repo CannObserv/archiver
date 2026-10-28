@@ -33,6 +33,10 @@ one transaction, and the item announces **once**, with the final state.
 ``fired_at``. A write whose window has already ended is refused, so a re-armed
 profile can never fire a second time on dates that have passed.
 
+**A row the boundary skips as malformed is frozen, not released**: its last
+``resolved_interval`` stays announced and its post-action does not fire until
+a write replaces it. The daily WARNING says so; a ``PUT`` is the repair.
+
 **Lock order: the item, then its host's Domain row**, the order every announce
 takes. Both paths lock the item ``FOR UPDATE`` before reading the profile, so a
 write and the job serialize and the second sees the first. The caller commits,
@@ -251,7 +255,8 @@ async def evaluate_at_boundary(
     errors = profile_errors(profile)
     if errors:
         logger.warning(
-            "TemporalProfile is malformed; skipped at the boundary",
+            "TemporalProfile is malformed; skipped at the boundary, its last result "
+            "stays announced until a write replaces it",
             extra={"info_item_id": str(item.info_item_id), "errors": errors},
         )
         return BoundaryOutcome(skipped=True)
