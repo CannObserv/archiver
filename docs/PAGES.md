@@ -32,7 +32,8 @@ row; this entry stays the inventory line for its routes.
 Registry badge links to: every stored document the current schemas reject, one row per
 document - kind (a source spec carries its list index), the row's id linked to its detail
 page, the validator's messages, and the remedy (`src/dashboard/stored_documents.py`; an
-assigned RepSpec's is "clone it", #83). Empty state "Every stored document validates."
+assigned RepSpec's is "clone it", #83; a domain cadence links to the Domains list, its id
+being the row's ULID). Every swept kind must be mapped there (guard test). Empty state "Every stored document validates."
 The same sweep the badge runs, once per load.
 
 **GET `/dashboard/bus-triage`** (`bus_triage/index.html` + `_outbox_section.html` /

@@ -15,6 +15,8 @@ _LABELS = {
     "watch_spec": "Watch spec",
     "rep_fields": "Rep Fields",
     "rep_spec": "RepSpec document",
+    "domain_watch_spec": "Domain cadence",
+    "notification_content": "Notification content options",
 }
 
 _PATHS = {
@@ -22,6 +24,9 @@ _PATHS = {
     "watch_spec": "/dashboard/info-items/{}",
     "rep_fields": "/dashboard/info-items/{}",
     "rep_spec": "/dashboard/rep-specs/{}",
+    # The finding names the Domain by its ULID; its page is keyed by hostname.
+    "domain_watch_spec": "/dashboard/domains/",
+    "notification_content": "/dashboard/notifications/{}/edit",
 }
 
 _REMEDIES = {
@@ -29,7 +34,14 @@ _REMEDIES = {
     "watch_spec": "Set the cadence again: the Watcher panel writes a fresh document.",
     "rep_fields": "Edit the Rep Fields and fix or remove the flagged keys.",
     "rep_spec": "Edit the document - it is still a draft.",
+    "domain_watch_spec": "Set the domain's default cadence again on its Fetch policy row.",
+    "notification_content": (
+        "Save the subscription's form again: it rewrites the content options. A Jinja "
+        "template that fails is fixed through the API (archiver#363)."
+    ),
 }
+"""Every kind in ``audit_stored_documents.KINDS`` needs a label, a page and a
+remedy: ``finding_view`` indexes all three (guard test in test_registry_audit)."""
 
 _FROZEN_REMEDY = (
     "Assigned, so the document is frozen (#83) and cannot gain new assignments. "
