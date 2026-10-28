@@ -55,6 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource, TemporalProfile
+from src.core.services import notification_subscriptions
 from src.core.services.cadence_resolution import domain_interval, resolve_interval
 from src.core.services.fetch_policy import (
     announce_domain,
@@ -262,19 +263,25 @@ def _active_follows_host(watch_active: bool | None, *, archived: bool) -> bool:
 
 
 class DomainInUse(Exception):
-    """The host still has InfoSources naming it; nothing was deleted."""
+    """InfoSources name the host, or subscriptions the row (#363); nothing was deleted."""
 
-    def __init__(self, count: int):
-        super().__init__(f"{count} InfoSource(s) reference the domain")
-        self.count = count
+    def __init__(self, *, sources: int, subscriptions: int):
+        super().__init__(
+            f"{sources} InfoSource(s) and {subscriptions} notification subscription(s)"
+            " reference the domain"
+        )
+        self.sources = sources
+        self.subscriptions = subscriptions
 
 
 async def delete_domain(session: AsyncSession, name: str) -> bool:
     """Delete the host's row and record its ``content.fetch-policy`` tombstone.
 
     Returns ``False`` when there is no row. Raises ``DomainInUse`` while any
-    InfoSource names the host. The row is locked **before** the tombstone's
-    generation is drawn (archiver#366): a write that holds it - an interval
+    InfoSource names the host or any notification subscription names the row
+    (its ``RESTRICT`` ref, archiver#363), active or not. The row is locked
+    **before** the tombstone's generation is drawn (archiver#366): a write that
+    holds it - an interval
     save mid-transaction - has drawn its own value by then and commits first,
     so the tombstone always orders above it. Drawn before the lock, it could
     land below that save's live frame, and every consumer would keep the
@@ -291,13 +298,14 @@ async def delete_domain(session: AsyncSession, name: str) -> bool:
     ).scalar_one_or_none()
     if domain is None:
         return False
-    count = (
+    sources = (
         await session.execute(
             select(func.count()).select_from(InfoSource).where(InfoSource.domain_name == name)
         )
     ).scalar_one()
-    if count:
-        raise DomainInUse(count)
+    subscriptions = await notification_subscriptions.count_for_domain(session, domain.id)
+    if sources or subscriptions:
+        raise DomainInUse(sources=sources, subscriptions=subscriptions)
     await announce_domain_deleted(session, name)
     await session.delete(domain)
     await session.flush()

@@ -17,6 +17,8 @@ defaults), validated at write time by ``src.api.schemas.notification_subscriptio
 subscription, never a new one. Nothing here sends: dispatch is #369.
 """
 
+from typing import Literal, get_args
+
 from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -24,10 +26,14 @@ from ulid import ULID
 
 from src.core.models.base import Base, TimestampMixin, ULIDType, generate_ulid
 
-NOTIFICATION_EVENTS = ("change_detected", "watch_error", "watch_recovered")
-"""Watcher's ``WatchEventType``, in its declaration order (the form's order too)."""
+NotificationEvent = Literal["change_detected", "watch_error", "watch_recovered"]
+NOTIFICATION_EVENTS: tuple[str, ...] = get_args(NotificationEvent)
+"""Watcher's ``WatchEventType``, in its declaration order (the form's order too).
 
-SCOPES = ("global", "domain", "item")
+Error reminders (#369) ride on ``watch_error``: there is no fourth event."""
+
+Scope = Literal["global", "domain", "item"]
+SCOPES: tuple[str, ...] = get_args(Scope)
 
 _ULID_PATTERN = "^[0-9A-HJKMNP-TV-Z]{26}$"
 

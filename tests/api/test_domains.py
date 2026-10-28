@@ -243,6 +243,37 @@ async def test_delete_domain_409_when_info_sources_exist(client):
     )
     resp = await client.delete("/api/v1/domains/nodelete.example.com", headers=HEADERS)
     assert resp.status_code == 409
+    assert resp.json()["detail"]["message"] == (
+        "Domain has 1 InfoSource(s) referencing it; deactivate them first."
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_domain_409_names_the_subscriptions_that_reference_it(client):
+    """archiver#363: a domain-scoped subscription holds the row too (RESTRICT)."""
+    await client.patch("/api/v1/domains/subscribed.example.com", headers=HEADERS, json={})
+    created = await client.post(
+        "/api/v1/notification-subscriptions",
+        headers=HEADERS,
+        json={
+            "title": "host",
+            "scope": "domain",
+            "domain": "subscribed.example.com",
+            "events": ["change_detected"],
+            "remote_channel_id": "01M5APS9R7A0QEDB9522MRA4CT",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    resp = await client.delete("/api/v1/domains/subscribed.example.com", headers=HEADERS)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["message"] == (
+        "Domain has 1 notification subscription(s) referencing it; delete them first."
+    )
+    assert (
+        await client.get("/api/v1/domains/subscribed.example.com", headers=HEADERS)
+    ).status_code == 200
 
 
 # ---------------------------------------------------------------------------
