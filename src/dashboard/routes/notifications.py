@@ -259,8 +259,10 @@ async def create_subscription_view(
         except subs.SubscriptionRefused as e:
             errors.extend(message for _, message in e.errors)
     if errors:
+        # CR 2: a content option that parsed is re-shown as posted, not reset.
+        shown = None if content_errors else content
         context = await _form_context(
-            session, sub=None, values=values, content=content, errors=errors
+            session, sub=None, values=values, content=shown, errors=errors
         )
         return _render(request, user, context, status_code=422)
     await session.commit()
@@ -303,9 +305,8 @@ async def update_subscription_view(
     content, content_errors = content_config_from_form(form, sub.content_config)
     errors += content_errors
     if errors:
-        context = await _form_context(
-            session, sub=sub, values=values, content=sub.content_config, errors=errors
-        )
+        shown = sub.content_config if content_errors else content  # CR 2
+        context = await _form_context(session, sub=sub, values=values, content=shown, errors=errors)
         return _render(request, user, context, status_code=422)
     subs.update_subscription(sub, {**cleaned, "content_config": content})
     await session.commit()

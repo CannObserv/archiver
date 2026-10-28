@@ -341,3 +341,21 @@ async def test_domain_page_lists_its_domain_scoped_subscriptions(client, session
     assert f'href="/dashboard/notifications/{mine.id}/edit"' in r.text
     assert "Theirs" not in r.text and "Everyone" not in r.text
     assert "/dashboard/notifications/new?scope=domain&amp;domain=domain-subs.example.com" in r.text
+
+
+@pytest.mark.asyncio
+async def test_a_refused_form_keeps_the_content_options_posted(client, session):
+    """CR 2: a refusal elsewhere on the form must not reset the content options."""
+    sub = await _sub(session, "Kept")
+    posted = _form(
+        title="",
+        default__include_domain="on",
+        override__watch_error="on",
+        watch_error__diff_snippet_lines="7",
+    )
+    for url in ("/dashboard/notifications/new", f"/dashboard/notifications/{sub.id}/edit"):
+        r = await client.post(url, headers=_HEADERS, data=posted)
+        assert r.status_code == 422, url
+        assert re.search(r'name="default__include_domain"[^>]*checked', r.text), url
+        assert re.search(r'name="override__watch_error"[^>]*checked', r.text), url
+        assert re.search(r'name="watch_error__diff_snippet_lines"[^>]*value="7"', r.text), url

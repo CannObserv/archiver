@@ -101,7 +101,7 @@ otherwise. `audit_stored_documents` sweeps the column as kind `notification_cont
   grouped Global, Domain, Item, with links to the domain or item. It paginates with the
   dashboard's clamped `limit`/`offset`.
 - **`/new` and `/{id}/edit`** are one form, `notifications/form.html`, a plain POST: 303 to the
-  list, or the form again with a 422 and the reasons.
+  list, or the form again with a 422 and the reasons, keeping what was posted.
   - `/new?scope=&domain=&info_item_id=` prefills it.
   - On edit, the scope and its ref show read-only.
   - Content options are one fieldset per block. Fields are named `<block>__<option>`, and
