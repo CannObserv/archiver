@@ -130,7 +130,10 @@ async def put_temporal_profile(
     unknown = set(fields) - set(WRITABLE_FIELDS)
     if unknown:
         raise ValueError(f"not writable on a TemporalProfile: {sorted(unknown)}")
-    candidate = TemporalProfile(**{name: fields.get(name) for name in WRITABLE_FIELDS})
+    missing = set(WRITABLE_FIELDS) - set(fields)
+    if missing:
+        raise ValueError(f"a TemporalProfile write needs every field; missing {sorted(missing)}")
+    candidate = TemporalProfile(**{name: fields[name] for name in WRITABLE_FIELDS})
     errors = _write_errors(candidate, today)
     if errors:
         raise ProfileInvalid(errors)

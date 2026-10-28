@@ -631,3 +631,14 @@ async def test_the_boundary_waits_for_a_profile_write_and_judges_the_committed_p
     payloads = await _committed_payloads(factory, committed_rows, item_id)
     # The setup put (silent on 03-01: nothing), then the racing write's 2h.
     assert [p["watch_spec"].get("interval") for p in payloads] == ["2h"]
+
+
+@pytest.mark.asyncio
+async def test_a_put_missing_a_field_is_refused_by_name(session):
+    """CR 2: a whole-document write; a missing field is a caller bug, never a NULL."""
+    item = await _item(session)
+    fields = _event()
+    del fields["is_active"]
+
+    with pytest.raises(ValueError, match="is_active"):
+        await put_temporal_profile(session, item.info_item_id, fields, today=date(2026, 4, 10))
