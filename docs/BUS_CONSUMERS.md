@@ -3,8 +3,8 @@
 **The streams Archiver takes off the bus - `content.revisions`,
 `content.artifacts`, `info.watch-status` - the naming contract its group
 consumers follow, and the triage of their two DLQs.** Split out of [BUS.md](BUS.md), which keeps the producing
-half: the outbox, the published streams, and the shared client every consumer
-loop here connects through.
+half: the outbox and the published streams. The shared client every consumer
+loop here connects through is [BUS_CLIENT.md](BUS_CLIENT.md).
 
 ## Change-bus consumer - `content.revisions` (archiver#139)
 
@@ -74,7 +74,7 @@ Field mapping, and the two traps in it:
 InfoSource's own specs, built with co-core's shared derivation
 (`co_core.pure.extract.spec_fingerprint_index`, cannobserv#309, since co-core 0.8.1 - the
 current floor is `pyproject.toml`'s, not this line). The outcome lands
-in `spec_match` / `spec_position` (see [docs/SCHEMA.md](SCHEMA.md) - they track the *most recent*
+in `spec_match` / `spec_position` (see [docs/SCHEMA_SOURCES.md](SCHEMA_SOURCES.md) - they track the *most recent*
 observation, refreshed on re-observation) and is **never** a rejection -
 archiver#140 makes spec delivery eventually consistent, so a producer one announcement behind is
 expected, and its observation is real. Two rules come from the contract rather than from registry
@@ -346,7 +346,7 @@ Per message: unknown or malformed `info_item_id` → drop (the registry is the
 authority on what exists); `revoked` → delete the cache row (idempotent);
 otherwise upsert, and when `last_observed_at` is present, write it through to
 `info_sources.last_observed_at` under the monotonic and binding-age guards
-([docs/SCHEMA.md](SCHEMA.md)). Consumer rules the panel enforces: `health ==
+([docs/SCHEMA_SOURCES.md](SCHEMA_SOURCES.md)). Consumer rules the panel enforces: `health ==
 "ok"` is the only healthy value (open vocabulary; unknown tokens render
 verbatim as non-healthy); next-due derives from `last_attempt_at` +
 `applied_interval`, announced `watch_spec.interval` as fallback; announced

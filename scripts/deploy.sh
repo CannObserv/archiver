@@ -602,7 +602,7 @@ note_units_not_in_release() {
     name="$(basename "$path")"
     [[ -f "$release/deploy/$name" ]] && continue
     note "$name is installed but not in this release's deploy/; it keeps running." \
-      "If it should not: sudo systemctl disable --now $name (docs/DEPLOYMENT.md § The drift check)"
+      "If it should not: sudo systemctl disable --now $name (docs/MONITORING.md § The drift check)"
   done
   return 0
 }

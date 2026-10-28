@@ -192,7 +192,7 @@ class Heartbeat:
         then come before the process had proven it stays up, and a crash loop
         slower than ``StartLimitBurst=`` would never go silent (archiver#297
         review). A deploy's worst silence is still inside the grace
-        (``docs/DEPLOYMENT.md`` § Liveness). Never raises: a tick that raises (a
+        (``docs/MONITORING.md`` § Liveness). Never raises: a tick that raises (a
         bug outside its own handlers) is logged with its traceback, and the next
         tick runs, so the heartbeat never ends silently.
         """

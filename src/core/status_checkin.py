@@ -67,7 +67,7 @@ def post_checkin(
     if not _KEY.fullmatch(key):
         raise CheckinFailed(
             f"the {CREDENTIAL_NAME} credential is not one token of printable ASCII; "
-            "reinstall it (docs/DEPLOYMENT.md § The drift check)"
+            "reinstall it (docs/MONITORING.md § The drift check)"
         )
     payload: dict[str, object] = {"status": status, "variables": variables}
     if metadata:

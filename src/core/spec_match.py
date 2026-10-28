@@ -35,7 +35,7 @@ from src.core.logging import get_logger
 logger = get_logger(__name__)
 
 # The ``spec_match`` vocabulary. Stored as text rather than an enum type so the
-# set can grow without a migration; the column is documented in docs/SCHEMA.md.
+# set can grow without a migration; the column is documented in docs/SCHEMA_SOURCES.md.
 CURRENT = "current"
 SUPERSEDED = "superseded"
 INCOMPARABLE = "incomparable"

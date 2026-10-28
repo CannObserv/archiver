@@ -354,3 +354,56 @@ docs/SCREENS.md :: success toast (see [HTMX.md](HTMX.md) § **Flash messages**).
 docs/COMPONENTS.md :: > The three document-level scripts (`flash.js`, `dark-mode.js`, `htmx-errors.js`)
 docs/COMPONENTS.md :: > are catalogued in [UI.md](UI.md) instead, so a change to one updates that file.
 docs/ARCHITECTURE.md :: HTMX.md + REP_SPEC_PAGES.md +
+
+# archiver#365 curation (2026-10-28): DEPLOYMENT -> MONITORING (drift, liveness),
+# SCHEMA -> SCHEMA_SOURCES (InfoSource, SourceRevision, InfoItemSource), PAGES ->
+# SOURCE_PAGES (source screens), BUS -> BUS_CLIENT (the shared client). Each hit
+# below was read: it names a section that did NOT move, names a topic rather than
+# a location, is a split notice pointing back at its parent, or is a heading moved
+# verbatim with its issue number. The seams that lied were fixed in the same
+# commit (ARCHITECTURE broker seam, BUS_CONSUMERS x2, spec_match.py, the drift and
+# liveness pointers in src/, scripts/, deploy/, BUS, ENVIRONMENT).
+docs/BUS_CLIENT.md :: The shared client's connection policy (archiver#193)
+docs/DEPLOYMENT.md :: TLS trust (archiver#418)
+docs/DEPLOYMENT.md :: Dependabot (archiver#192)
+docs/DEPLOYMENT.md :: Lock audit (archiver#420)
+docs/DOMAINS.md :: `content.fetch-policy` (#366) - live since F1 (#438)
+docs/MONITORING.md :: The drift check (archiver#338)
+docs/MONITORING.md :: Liveness (archiver#297)
+docs/ARCHITECTURE.md :: runtime and dev apart; archiver#420, DEPLOYMENT.md)
+docs/ARCHITECTURE.md :: (#420; DEPLOYMENT.md "Lock audit")
+docs/ARCHITECTURE.md :: (#192); see DEPLOYMENT.md "Dependabot"
+docs/MONITORING.md :: [DEPLOYMENT.md](DEPLOYMENT.md), which keeps releases, the units and th
+docs/ARCHITECTURE.md :: drift.py                     The drift check (archiver#338): does live
+docs/MONITORING.md :: `--test-alert` in § Turning it on (once) below.
+.github/dependabot.yml :: # on a red one. How one lands: docs/DEPLOYMENT.md -> "Dependabot".
+scripts/deploy.sh :: # --no-project env (#418, docs/DEPLOYMENT.md § TLS trust).
+src/core/drift.py :: """Does live lag origin/main in code that runs? The drift check (archi
+docs/API.md :: `GET`/`DELETE`, is a 404. The daily boundary and the post-actions: [SC
+docs/ORG_ROW.md :: [SCHEMA.md](SCHEMA.md)'s and the design doc's
+docs/SCHEMA_SOURCES.md :: [SCHEMA.md](SCHEMA.md), which keeps the items, specs and assignments;
+docs/BUS_TRIAGE.md :: `changes_outbox` rows and archiver's DLQs.** [PAGES.md](PAGES.md) keep
+docs/CONVENTIONS.md :: `docs/REP_SPEC_PAGES.md` instead, and the source screens (`info_source
+docs/CONVENTIONS.md :: `source_revisions/`) in `docs/SOURCE_PAGES.md`.
+docs/CONVENTIONS.md :: section, its states, a row action, its flash or the audit line. PAGES.
+docs/DOMAINS.md :: Routes and the SDK: [API.md](API.md). The dashboard rows: [PAGES.md](P
+docs/HEALTH_ROW.md :: **`/dashboard/registry-audit`** (PAGES.md), `aria-label` `Registry: N
+docs/PAGES.md :: The list and detail screens and their routes: [SOURCE_PAGES.md](SOURCE
+docs/SOURCE_PAGES.md :: [PAGES.md](PAGES.md), the per-page inventory, when that file passed it
+docs/SOURCE_PAGES.md :: **GET `/dashboard/source-revisions/`** - paginated list ordered by `ca
+docs/UI.md :: The RepSpec screens are [REP_SPEC_PAGES.md](REP_SPEC_PAGES.md), the so
+docs/UI.md :: [SOURCE_PAGES.md](SOURCE_PAGES.md).
+docs/API.md :: | List dead-lettered outbox rows | `GET /tools/outbox/dead-lettered` |
+docs/API.md :: first. The revert's `info_item_primary_changed` gets a fresh key: see
+docs/API.md :: interval (archiver#364, [BUS.md](BUS.md)). Invalid
+docs/ARCHITECTURE.md :: Central registry + authoring service for the Cannabis Observer informa
+docs/BUS_CLIENT.md :: broker boundary it connects across. Split out of [BUS.md](BUS.md), the
+docs/BUS_CONSUMERS.md :: consumers follow, and the triage of their two DLQs.** Split out of [BU
+docs/BUS_TRIAGE.md :: screen is a UI over the existing rules, not a new policy: [BUS.md](BUS
+docs/ENVIRONMENT.md :: - `ARCHIVER_OUTBOX_RETENTION_DAYS` — *optional*. Days a **published**
+docs/HEALTH_ROW.md :: `/api/v1/tools/outbox/dead-lettered` (archiver#191, runbook in [BUS.md
+docs/SCHEMA.md :: `changes_outbox`, `watch_status`, `bus_tail_cursors`: [SCHEMA_BUS.md](
+docs/SCHEMA_BUS.md :: `info.changes` row to the drain. See [BUS.md](BUS.md).
+src/api/main.py :: # trigger fires (docs/BUS.md, content.replicate).
+src/dashboard/bus_triage.py :: ``src/core/changes/outbox_triage.py`` (``docs/BUS.md``) and
+src/dashboard/templates/bus_triage/index.html :: asked. The rules are the runbooks' - <code>docs/BUS.md</code> for the
