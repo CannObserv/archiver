@@ -1074,3 +1074,89 @@ async def test_create_info_item_sends_pm_org_id(client):
         )
         await client.create_info_item(name="X", pm_org_id=_PM_ORG_ID)
     assert json.loads(route.calls.last.request.content)["pm_org_id"] == _PM_ORG_ID
+
+
+_PROFILE_URL = f"{_ITEM_URL}/temporal-profile"
+_PROFILE_BODY = {
+    "profile_type": "event",
+    "reference_date": "2026-11-15",
+    "rules": [{"days_before": 7, "interval": "1h"}],
+    "post_action": "deactivate",
+}
+
+
+def _profile_payload(**overrides) -> dict:
+    return {
+        "info_item_id": "01HZZ00000000000000000000A",
+        "date_range_start": None,
+        "date_range_end": None,
+        "is_active": True,
+        "resolved_interval": "1h",
+        "evaluated_on": "2026-11-10",
+        "fired_at": None,
+        "created_at": _TS,
+        "updated_at": _TS,
+        **_PROFILE_BODY,
+        **overrides,
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_temporal_profile_puts_the_whole_document(client):
+    """archiver#365: a create-or-replace; the response carries today's result."""
+    with respx.mock:
+        route = respx.put(_PROFILE_URL).mock(
+            return_value=httpx.Response(200, json=_profile_payload())
+        )
+        out = await client.set_temporal_profile("01HZZ00000000000000000000A", _PROFILE_BODY)
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["reference_date"] == "2026-11-15"
+    assert sent["rules"] == [{"days_before": 7, "interval": "1h"}]
+    assert out.resolved_interval == "1h"
+
+
+@pytest.mark.asyncio
+async def test_get_temporal_profile_returns_it(client):
+    with respx.mock:
+        respx.get(_PROFILE_URL).mock(return_value=httpx.Response(200, json=_profile_payload()))
+        out = await client.get_temporal_profile("01HZZ00000000000000000000A")
+    assert out.profile_type == "event"
+
+
+@pytest.mark.asyncio
+async def test_delete_temporal_profile_returns_none(client):
+    with respx.mock:
+        route = respx.delete(_PROFILE_URL).mock(return_value=httpx.Response(204))
+        assert await client.delete_temporal_profile("01HZZ00000000000000000000A") is None
+    assert route.called
+
+
+@pytest.mark.asyncio
+async def test_an_item_without_a_profile_raises_not_found(client):
+    with respx.mock:
+        respx.get(_PROFILE_URL).mock(
+            return_value=httpx.Response(
+                404, json={"detail": {"kind": "lookup", "message": "TemporalProfile not found"}}
+            )
+        )
+        with pytest.raises(NotFound):
+            await client.get_temporal_profile("01HZZ00000000000000000000A")
+
+
+@pytest.mark.asyncio
+async def test_a_refused_profile_raises_validation_error(client):
+    with respx.mock:
+        respx.put(_PROFILE_URL).mock(
+            return_value=httpx.Response(
+                422,
+                json={
+                    "detail": {
+                        "kind": "schema",
+                        "message": "temporal profile failed validation",
+                        "errors": [{"path": "reference_date", "message": "the window ended"}],
+                    }
+                },
+            )
+        )
+        with pytest.raises(ValidationError):
+            await client.set_temporal_profile("01HZZ00000000000000000000A", _PROFILE_BODY)
