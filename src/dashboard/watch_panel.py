@@ -47,6 +47,7 @@ from src.core.services.cadence_resolution import (
     resolve_interval,
 )
 from src.core.services.registry_announcement import domain_suspended, resolved_active
+from src.core.services.temporal_evaluation import MAX_INTERVAL_SECONDS
 from src.dashboard.cadence import CADENCE_LABELS
 
 if TYPE_CHECKING:
@@ -70,8 +71,9 @@ _UNIT_LABELS = {"s": "sec", "m": "min", "h": "hr", "d": "day"}
 # ``OverflowError`` out of the render (CR round 2, finding 11). The failure
 # would also have been sticky rather than transient: the value is persisted
 # before the panel ever reads it, so an unguarded raise breaks the page on
-# every subsequent load.
-_MAX_INTERVAL_SECONDS = 10 * 365 * 86400
+# every subsequent load. The constant is core's since #365, where profile writes
+# refuse past it too.
+_MAX_INTERVAL_SECONDS = MAX_INTERVAL_SECONDS
 
 
 def parse_interval_seconds(interval: str | None) -> int | None:

@@ -89,6 +89,11 @@ def evaluate(profile: Any, today: date) -> Evaluation:
 
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
+MAX_INTERVAL_SECONDS = 10 * 365 * 86400
+"""Ten years: past it a value is not a cadence. The grammar puts no ceiling on the
+digit run; Watcher's ``timedelta`` overflows on a long one, and it would not fit
+``resolved_interval``'s 32 characters (CR 8). The panel's parse shares it."""
+
 
 def interval_seconds(value: str) -> int:
     """A valid interval string's length in seconds (``interval_error`` is ``None``)."""
@@ -100,7 +105,7 @@ def interval_error(value: object) -> str | None:
 
     WatchSpec v1's grammar (``^[0-9]+[smhd]$``), and not zero: Watcher read a
     zero profile interval as no override (a falsy ``timedelta``), where Archiver
-    would announce it as a concrete one.
+    would announce it as a concrete one. Nor past ``MAX_INTERVAL_SECONDS``.
     """
     if not isinstance(value, str):
         return "must be a string such as '6h'"
@@ -109,6 +114,8 @@ def interval_error(value: object) -> str | None:
         return f"{value!r} is not an interval such as '30m', '6h' or '1d'"
     if int(value[:-1]) == 0:
         return "must be greater than zero"
+    if interval_seconds(value) > MAX_INTERVAL_SECONDS:
+        return "must not exceed ten years"
     return None
 
 

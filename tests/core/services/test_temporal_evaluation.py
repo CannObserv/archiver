@@ -276,3 +276,15 @@ def test_a_seasonal_is_refused_with_a_path(kwargs, path):
 
 def test_a_single_day_season_is_valid():
     assert profile_errors(_seasonal(date(2026, 6, 1), date(2026, 6, 1))) == []
+
+
+@pytest.mark.parametrize("interval", ["3651d", "315360001s", "9" * 40 + "d"])
+def test_an_interval_past_ten_years_is_refused(interval):
+    """CR 8: past the ceiling it is not a cadence - Watcher's timedelta overflows,
+    and a long digit run cannot fit ``resolved_interval``'s 32 characters."""
+    profile = _event(REF, [{"days_before": 7, "interval": interval}])
+    assert "rules/0/interval" in _paths(profile)
+
+
+def test_ten_years_exactly_is_accepted():
+    assert profile_errors(_event(REF, [{"days_before": 7, "interval": "3650d"}])) == []
