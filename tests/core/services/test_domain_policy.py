@@ -18,6 +18,7 @@ from src.core.models import (
     InfoItem,
     InfoItemSource,
     InfoSource,
+    NotificationSubscription,
     TemporalProfile,
 )
 from src.core.models.domain import Domain
@@ -891,10 +892,50 @@ async def test_delete_domain_refuses_a_host_sources_name(session):
     await _item_on(session)
     with pytest.raises(domain_policy.DomainInUse) as caught:
         await delete_domain(session, HOST)
-    assert caught.value.count == 1
+    assert (caught.value.sources, caught.value.subscriptions) == (1, 0)
     assert (
         await session.execute(select(FetchPolicyTombstone).where(FetchPolicyTombstone.host == HOST))
     ).scalar_one_or_none() is None
+
+
+def _domain_subscription(domain: Domain, **kw) -> NotificationSubscription:
+    return NotificationSubscription(
+        title="host watchers",
+        scope="domain",
+        domain_id=domain.id,
+        events=["change_detected"],
+        remote_channel_id="01M5APS9R7A0QEDB9522MRA4CT",
+        **kw,
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_domain_refuses_a_host_a_subscription_names(session):
+    """archiver#363 D1: the subscription's ref is RESTRICT, so the delete refuses
+    up front, naming the count, rather than failing on the FK. Inactive rows count."""
+    domain = Domain(name=HOST)
+    session.add(domain)
+    await session.flush()
+    session.add_all([_domain_subscription(domain), _domain_subscription(domain, is_active=False)])
+    await session.flush()
+    with pytest.raises(domain_policy.DomainInUse) as caught:
+        await delete_domain(session, HOST)
+    assert (caught.value.sources, caught.value.subscriptions) == (0, 2)
+    assert (
+        await session.execute(select(FetchPolicyTombstone).where(FetchPolicyTombstone.host == HOST))
+    ).scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_delete_domain_counts_sources_and_subscriptions_together(session):
+    domain = Domain(name=HOST)
+    session.add(domain)
+    await _item_on(session)
+    session.add(_domain_subscription(domain))
+    await session.flush()
+    with pytest.raises(domain_policy.DomainInUse) as caught:
+        await delete_domain(session, HOST)
+    assert (caught.value.sources, caught.value.subscriptions) == (1, 1)
 
 
 @pytest.mark.asyncio

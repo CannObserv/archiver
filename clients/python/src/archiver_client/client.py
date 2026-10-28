@@ -17,6 +17,7 @@ import datetime
 from types import TracebackType
 from typing import Any
 
+import attrs
 import httpx
 
 from archiver_client import tools as _tools
@@ -105,6 +106,21 @@ from archiver_client.generated.api.info_sources import (
 from archiver_client.generated.api.info_sources import (
     patch_info_source_specs_api_v1_info_sources_info_source_id_source_specs_patch as _patch_info_source_specs,
 )
+from archiver_client.generated.api.notification_subscriptions import (
+    create_notification_subscription_api_v1_notification_subscriptions_post as _create_subscription,
+)
+from archiver_client.generated.api.notification_subscriptions import (
+    delete_notification_subscription_api_v1_notification_subscriptions_subscription_id_delete as _delete_subscription,
+)
+from archiver_client.generated.api.notification_subscriptions import (
+    get_notification_subscription_api_v1_notification_subscriptions_subscription_id_get as _get_subscription,
+)
+from archiver_client.generated.api.notification_subscriptions import (
+    list_notification_subscriptions_api_v1_notification_subscriptions_get as _list_subscriptions,
+)
+from archiver_client.generated.api.notification_subscriptions import (
+    update_notification_subscription_api_v1_notification_subscriptions_subscription_id_patch as _update_subscription,
+)
 from archiver_client.generated.api.rep_specs import (
     create_rep_spec_route_api_v1_rep_specs_post as _create_rep_spec,
 )
@@ -163,9 +179,24 @@ from archiver_client.generated.models.info_source_patch import InfoSourcePatch
 from archiver_client.generated.models.info_source_patch_source_specs_item import (
     InfoSourcePatchSourceSpecsItem,
 )
+from archiver_client.generated.models.list_notification_subscriptions_api_v1_notification_subscriptions_get_scope_type_0 import (
+    ListNotificationSubscriptionsApiV1NotificationSubscriptionsGetScopeType0 as _SubscriptionScope,
+)
+from archiver_client.generated.models.notification_subscription_create import (
+    NotificationSubscriptionCreate,
+)
+from archiver_client.generated.models.notification_subscription_out import (
+    NotificationSubscriptionOut,
+)
+from archiver_client.generated.models.notification_subscription_patch import (
+    NotificationSubscriptionPatch,
+)
 from archiver_client.generated.models.page_domain_out import PageDomainOut
 from archiver_client.generated.models.page_info_item_out import PageInfoItemOut
 from archiver_client.generated.models.page_info_source_out import PageInfoSourceOut
+from archiver_client.generated.models.page_notification_subscription_out import (
+    PageNotificationSubscriptionOut,
+)
 from archiver_client.generated.models.page_rep_spec_out import PageRepSpecOut
 from archiver_client.generated.models.rep_spec_assignment_create import RepSpecAssignmentCreate
 from archiver_client.generated.models.rep_spec_create import RepSpecCreate
@@ -900,7 +931,8 @@ class ArchiverClient:
         return _unwrap(response)
 
     async def delete_domain(self, name: str) -> None:
-        """Delete a Domain. Raises ``Conflict`` (409) if InfoSources reference it."""
+        """Delete a Domain. Raises ``Conflict`` (409) while InfoSources or
+        notification subscriptions reference it."""
         response = await _delete_domain.asyncio_detailed(client=self._gen_client, name=name)
         _unwrap_no_content(response)
 
@@ -913,6 +945,102 @@ class ArchiverClient:
         """Clear archived_at on a Domain; resumes the host unless it is inactive."""
         response = await _restore_domain.asyncio_detailed(client=self._gen_client, name=name)
         return _unwrap(response)
+
+    # --- Notification subscriptions (archiver#363; v5.16.0+) ---
+
+    async def list_notification_subscriptions(
+        self,
+        *,
+        scope: str | None = None,
+        domain: str | None = None,
+        info_item_id: str | None = None,
+        is_active: bool | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> PageNotificationSubscriptionOut:
+        """List subscriptions, oldest first, as a paginated envelope.
+
+        ``scope`` is ``global``, ``domain`` or ``item``. ``domain`` (a hostname)
+        and ``info_item_id`` select that host's or item's own scoped rows, not
+        everything that would match. Server caps ``limit`` at 500.
+        """
+        response = await _list_subscriptions.asyncio_detailed(
+            client=self._gen_client,
+            scope=UNSET if scope is None else _SubscriptionScope(scope),
+            domain=UNSET if domain is None else domain,
+            info_item_id=UNSET if info_item_id is None else info_item_id,
+            is_active=UNSET if is_active is None else is_active,
+            limit=UNSET if limit is None else limit,
+            offset=UNSET if offset is None else offset,
+        )
+        return _unwrap(response)
+
+    async def get_notification_subscription(
+        self, subscription_id: str
+    ) -> NotificationSubscriptionOut:
+        """One subscription. Raises ``NotFound``."""
+        response = await _get_subscription.asyncio_detailed(
+            client=self._gen_client, subscription_id=subscription_id
+        )
+        return _unwrap(response)
+
+    async def create_notification_subscription(
+        self, subscription: dict[str, Any]
+    ) -> NotificationSubscriptionOut:
+        """Create a subscription from a ``NotificationSubscriptionCreate`` body.
+
+        ``title``, ``scope`` with exactly its ref (``domain``: a hostname with a
+        Domain row; ``item``: ``info_item_id``), ``events``, ``remote_channel_id``,
+        optional ``is_active``, ``content_config`` and ``imported_watcher_id``.
+        The scope and ref are fixed after create. Raises ``ValidationError``
+        (422, nothing stored) or ``Conflict`` (a duplicate ``imported_watcher_id``),
+        and ``ValueError`` before any call on a key the body does not have. Nothing
+        sends.
+        """
+        _refuse_unsendable(NotificationSubscriptionCreate, subscription, "create")
+        response = await _create_subscription.asyncio_detailed(
+            client=self._gen_client, body=NotificationSubscriptionCreate.from_dict(subscription)
+        )
+        return _unwrap(response)
+
+    async def update_notification_subscription(
+        self, subscription_id: str, changes: dict[str, Any]
+    ) -> NotificationSubscriptionOut:
+        """Change ``title``, ``events``, ``remote_channel_id``, ``is_active`` or
+        ``content_config`` - only the keys in ``changes``. ``content_config`` is
+        replaced whole; ``None`` returns it to all defaults. Raises ``NotFound``
+        or ``ValidationError``. A key it cannot send - ``scope`` or its ref, say:
+        re-scope by deleting and creating - raises ``ValueError`` before any call."""
+        _refuse_unsendable(NotificationSubscriptionPatch, changes, "update")
+        response = await _update_subscription.asyncio_detailed(
+            client=self._gen_client,
+            subscription_id=subscription_id,
+            body=NotificationSubscriptionPatch.from_dict(changes),
+        )
+        return _unwrap(response)
+
+    async def delete_notification_subscription(self, subscription_id: str) -> None:
+        """Delete a subscription. Raises ``NotFound``."""
+        response = await _delete_subscription.asyncio_detailed(
+            client=self._gen_client, subscription_id=subscription_id
+        )
+        _unwrap_no_content(response)
+
+
+def _refuse_unsendable(model: type, body: dict[str, Any], what: str) -> None:
+    """Raise ``ValueError`` on a key ``model`` would drop.
+
+    The generated ``from_dict`` ignores keys its model does not declare, so a
+    re-scope or a misspelt field would go out as a request that changes
+    nothing, and answer 200.
+    """
+    known = {field.name for field in attrs.fields(model)} - {"additional_properties"}
+    unknown = sorted(set(body) - known)
+    if unknown:
+        raise ValueError(
+            f"cannot {what} a notification subscription with {', '.join(unknown)};"
+            f" accepted: {', '.join(sorted(known))}"
+        )
 
 
 def _unwrap(response: Any) -> Any:

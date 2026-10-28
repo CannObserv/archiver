@@ -134,5 +134,6 @@ The operator's go is recorded on CannObserv/watcher#368.
 
 - Per-host fetch headers (#376) and a fetch timeout (#377) will get their own columns or table.
   Neither field above is a policy blob to extend.
-- `DELETE` stays legal: it's a 409 while any InfoSource names the host. The host's
+- `DELETE` stays legal: it's a 409 while any InfoSource names the host, or any notification
+  subscription the row ([NOTIFICATIONS.md](NOTIFICATIONS.md)). The host's
   `content.fetch-policy` tombstone is recorded in `fetch_policy_tombstones` (#366).

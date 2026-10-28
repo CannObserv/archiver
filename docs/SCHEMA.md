@@ -9,9 +9,9 @@ release must run on the new schema. Add tables and columns nullable or with a
 default; a drop, a rename or a new `NOT NULL` without a default ships as two
 deploys: stop using it, then remove it.
 
-**Stored documents satisfy the current schema** (archiver#164). The four authored
-documents - `source_specs`, `watch_spec`, `rep_fields`, RepSpec `document` - are
-validated on write only, so a schema tightening ships with a data migration or with
+**Stored documents satisfy the current schema** (archiver#164). The authored documents -
+`source_specs`, `watch_spec`, `rep_fields`, RepSpec `document`, Domain `default_watch_spec`
+(#360) and subscription `content_config` (#363) - are validated on write only, so a schema tightening ships with a data migration or with
 the sweep's "0 affected" in its PR; for an assigned (frozen) RepSpec, a recorded #83
 exception or #95. The rule and its RepSpec carve-out: [CONVENTIONS.md](CONVENTIONS.md)
 § Schema tightenings. `src/core/tools/audit_stored_documents.py` re-judges every stored
@@ -144,6 +144,8 @@ document; the dashboard's Registry badge reports the count
   - **No answer** → nothing changes. `succeeded_by`, `archived_at` and `active` are mirrored,
     never followed: re-linking to a successor is a human decision.
 - **`Domain`** (`domains`) — per-host policy (#360): [DOMAINS.md](DOMAINS.md).
+- **`NotificationSubscription`** (`notification_subscriptions`, archiver#363) — who hears which
+  events, and how: [NOTIFICATIONS.md](NOTIFICATIONS.md).
 - **`TemporalProfile`** (`temporal_profiles`, archiver#365) — an item's date-driven cadence, one
   per item (PK `info_item_id`). Intent: `profile_type`, its dates, `rules`, `post_action`,
   `is_active`. Result: `resolved_interval` for the UTC day `evaluated_on`, the cadence's top tier,

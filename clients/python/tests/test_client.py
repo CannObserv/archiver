@@ -1160,3 +1160,146 @@ async def test_a_refused_profile_raises_validation_error(client):
         )
         with pytest.raises(ValidationError):
             await client.set_temporal_profile("01HZZ00000000000000000000A", _PROFILE_BODY)
+
+
+# --- notification subscriptions (archiver#363) ---
+
+_SUBS_URL = f"{BASE_URL}/api/v1/notification-subscriptions"
+_SUB_ID = "01HZZ00000000000000000000S"
+_SUB_BODY = {
+    "title": "Ops",
+    "scope": "global",
+    "events": ["change_detected", "watch_error"],
+    "remote_channel_id": "01M5APS9R7A0QEDB9522MRA4CT",
+}
+
+
+def _subscription_payload(**overrides) -> dict:
+    return {
+        "id": _SUB_ID,
+        "domain_id": None,
+        "domain": None,
+        "info_item_id": None,
+        "content_config": None,
+        "is_active": True,
+        "imported_watcher_id": None,
+        "created_at": _TS,
+        "updated_at": _TS,
+        **_SUB_BODY,
+        **overrides,
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_notification_subscription_posts_the_body(client):
+    body = _SUB_BODY | {
+        "content_config": {"default": {"include_domain": True}},
+        "imported_watcher_id": "01KQN12MHJJHFETN2XMDF98GHA",
+    }
+    with respx.mock:
+        route = respx.post(_SUBS_URL).mock(
+            return_value=httpx.Response(
+                201,
+                json=_subscription_payload(
+                    content_config=body["content_config"],
+                    imported_watcher_id=body["imported_watcher_id"],
+                ),
+            )
+        )
+        out = await client.create_notification_subscription(body)
+    assert json.loads(route.calls.last.request.content) == body
+    assert out.id == _SUB_ID
+    assert out.imported_watcher_id == "01KQN12MHJJHFETN2XMDF98GHA"
+    assert out.content_config.to_dict() == {"default": {"include_domain": True}}
+
+
+@pytest.mark.asyncio
+async def test_list_notification_subscriptions_forwards_the_filters(client):
+    with respx.mock:
+        route = respx.get(_SUBS_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [_subscription_payload()],
+                    "has_more": False,
+                    "limit": 50,
+                    "offset": 0,
+                },
+            )
+        )
+        page = await client.list_notification_subscriptions(
+            scope="domain", domain="a.example.com", is_active=True, limit=50
+        )
+    params = route.calls.last.request.url.params
+    assert params["scope"] == "domain"
+    assert params["domain"] == "a.example.com"
+    assert params["is_active"] == "true"
+    assert params["limit"] == "50"
+    assert "info_item_id" not in params and "offset" not in params
+    assert [s.id for s in page.items] == [_SUB_ID]
+
+
+@pytest.mark.asyncio
+async def test_get_notification_subscription(client):
+    with respx.mock:
+        respx.get(f"{_SUBS_URL}/{_SUB_ID}").mock(
+            return_value=httpx.Response(200, json=_subscription_payload())
+        )
+        out = await client.get_notification_subscription(_SUB_ID)
+    assert out.title == "Ops"
+
+
+@pytest.mark.asyncio
+async def test_update_notification_subscription_sends_only_the_changes_null_included(client):
+    with respx.mock:
+        route = respx.patch(f"{_SUBS_URL}/{_SUB_ID}").mock(
+            return_value=httpx.Response(200, json=_subscription_payload(is_active=False))
+        )
+        out = await client.update_notification_subscription(
+            _SUB_ID, {"is_active": False, "content_config": None}
+        )
+    assert json.loads(route.calls.last.request.content) == {
+        "is_active": False,
+        "content_config": None,
+    }
+    assert out.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_delete_notification_subscription_returns_none(client):
+    with respx.mock:
+        route = respx.delete(f"{_SUBS_URL}/{_SUB_ID}").mock(return_value=httpx.Response(204))
+        assert await client.delete_notification_subscription(_SUB_ID) is None
+    assert route.called
+
+
+@pytest.mark.asyncio
+async def test_a_duplicate_import_key_raises_conflict(client):
+    with respx.mock:
+        respx.post(_SUBS_URL).mock(
+            return_value=httpx.Response(
+                409, json={"detail": {"kind": "conflict", "message": "already imported"}}
+            )
+        )
+        with pytest.raises(Conflict):
+            await client.create_notification_subscription(_SUB_BODY)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["scope", "domain", "imported_watcher_id", "titel"])
+async def test_update_notification_subscription_refuses_a_key_it_cannot_send(client, key):
+    """The generated model drops unknown keys, so a re-scope would 200 unchanged (#363)."""
+    with respx.mock:
+        route = respx.patch(f"{_SUBS_URL}/{_SUB_ID}")
+        with pytest.raises(ValueError, match=key):
+            await client.update_notification_subscription(_SUB_ID, {key: "x"})
+    assert not route.called
+
+
+@pytest.mark.asyncio
+async def test_create_notification_subscription_refuses_an_unknown_key(client):
+    with respx.mock:
+        route = respx.post(_SUBS_URL)
+        with pytest.raises(ValueError, match="channel_hint"):
+            await client.create_notification_subscription(_SUB_BODY | {"channel_hint": "#ops"})
+    assert not route.called

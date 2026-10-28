@@ -65,6 +65,12 @@
             Information Items
           </a>
         </li>
+        <li>
+          <a href="/dashboard/notifications/" class="sidebar__link{% if request.url.path.startswith('/dashboard/notifications') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/notifications') %}aria-current="page"{% endif %}>
+            Notifications
+          </a>
+        </li>
 
         <li class="sidebar__section-label">Sources</li>
         <li>

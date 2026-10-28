@@ -50,6 +50,21 @@
           <span class="detail-grid__value text-muted">{{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
         </div>
         {% include "info_items/_org_row.html" %}
+        {#- archiver#363 D5: who hears this item - subscriptions_for's answer per
+           event, so the union of global, its host's domain and its own rows.
+           Read-only; each links to the Notifications page. -#}
+        <div id="ii-notified-by" class="detail-grid__item detail-grid__item--full">
+          <span class="detail-grid__label">Notified by</span>
+          <span class="detail-grid__value text-sm">
+            {% for sub, labels in notified_by %}
+            <a href="/dashboard/notifications/{{ sub.id }}/edit">{{ sub.title }}</a>
+            <span class="text-muted">({{ sub.scope }}: {{ labels }})</span>{% if not loop.last %} · {% endif %}
+            {% else %}
+            <span class="text-muted">No subscription hears this item.</span>
+            <a href="{{ '/dashboard/notifications/new?scope=item&info_item_id=' ~ item.info_item_id }}">Add one</a>
+            {% endfor %}
+          </span>
+        </div>
       </div>
     </div>
   </section>

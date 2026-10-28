@@ -16,7 +16,7 @@ The Archiver exposes authoring helpers under `/api/v1/tools/*` and mutating sub-
 | List Domains | `GET /domains?is_active=&archived=&limit=&offset=` | `list_domains(is_active=None, archived=None, limit=None, offset=None)` |
 | Get a Domain | `GET /domains/{name}` | `get_domain(name)` |
 | Upsert a Domain | `PATCH /domains/{name}` | `upsert_domain(name, notes=None, is_active=None, min_interval_seconds=None, default_watch_spec=UNSET)` |
-| Delete a Domain | `DELETE /domains/{name}` | `delete_domain(name)` (409 if sources exist) |
+| Delete a Domain | `DELETE /domains/{name}` | `delete_domain(name)` (409 while sources or notification subscriptions reference it) |
 | Archive a Domain | `POST /domains/{name}/archive` | `archive_domain(name)` |
 | Restore a Domain | `POST /domains/{name}/restore` | `restore_domain(name)` |
 
@@ -79,6 +79,7 @@ which calls the same core functions without these routes.
 | Get an item's temporal profile | `GET /info-items/{id}/temporal-profile` | `get_temporal_profile(info_item_id)` (SDK 5.15.0, archiver#365) |
 | Create or replace it | `PUT /info-items/{id}/temporal-profile` | `set_temporal_profile(info_item_id, profile)` (SDK 5.15.0) |
 | Delete it | `DELETE /info-items/{id}/temporal-profile` | `delete_temporal_profile(info_item_id)` (SDK 5.15.0) |
+| Notification subscriptions | `GET`/`POST /notification-subscriptions`, `GET`/`PATCH`/`DELETE …/{id}` | `*_notification_subscription(s)` (SDK 5.16.0, archiver#363): [NOTIFICATIONS.md](NOTIFICATIONS.md) |
 | Record a SourceRevision (idempotent) | `POST /source-revisions` | `post_source_revision(...)` |
 | Clear cache fields | `PATCH /source-revisions/{id}` | `patch_source_revision_cache(id, content_cache_uri=None, content_cache_expires_at=None)` |
 

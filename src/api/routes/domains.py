@@ -161,21 +161,33 @@ async def delete_domain(
     name: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
-    """Delete a Domain. Returns 409 if InfoSources reference it."""
+    """Delete a Domain. Returns 409 while InfoSources or notification subscriptions
+    reference it."""
     # Records the host's content.fetch-policy tombstone in this transaction
     # (archiver#366). Not in the docstring: that is the OpenAPI description.
     try:
         deleted = await domain_policy.delete_domain(session, name)
     except domain_policy.DomainInUse as e:
-        raise_envelope(
-            409,
-            "conflict",
-            f"Domain has {e.count} InfoSource(s) referencing it; deactivate them first.",
-            source_exc=e,
-        )
+        raise_envelope(409, "conflict", _in_use_message(e), source_exc=e)
     if not deleted:
         raise_envelope(404, "lookup", "Domain not found")
     await session.commit()
+
+
+def _in_use_message(e: domain_policy.DomainInUse) -> str:
+    """Name each referrer and its remedy: sources deactivate, subscriptions delete (#363)."""
+    held = []
+    if e.sources:
+        held.append(f"{e.sources} InfoSource(s)")
+    if e.subscriptions:
+        held.append(f"{e.subscriptions} notification subscription(s)")
+    if not e.subscriptions:
+        remedy = "deactivate them first"
+    elif not e.sources:
+        remedy = "delete them first"
+    else:
+        remedy = "deactivate the sources and delete the subscriptions first"
+    return f"Domain has {' and '.join(held)} referencing it; {remedy}."
 
 
 @router.post("/{name}/archive", response_model=DomainOut)

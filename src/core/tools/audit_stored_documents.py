@@ -31,7 +31,15 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
-from src.core.models import Domain, InfoItem, InfoItemRepSpec, InfoSource, RepSpec
+from src.core.models import (
+    Domain,
+    InfoItem,
+    InfoItemRepSpec,
+    InfoSource,
+    NotificationSubscription,
+    RepSpec,
+)
+from src.core.notifications.content_config import validate_content_config
 from src.core.rep_fields_schema.validator import linked_org_key_errors, validate_rep_fields
 from src.core.rep_spec_schema.validator import validate_rep_spec
 from src.core.source_spec_schema.families import families_of
@@ -189,6 +197,11 @@ def _judge_domain_watch_spec(row_id: str, document: object, _flag: bool) -> list
     return [Finding("domain_watch_spec", row_id, None, errors)] if errors else []
 
 
+def _judge_notification_content(row_id: str, document: object, _flag: bool) -> list[Finding]:
+    errors = _errors(validate_content_config, document)
+    return [Finding("notification_content", row_id, None, errors)] if errors else []
+
+
 def _judge_rep_fields(row_id: str, bag: object, linked: bool) -> list[Finding]:
     return _rep_fields_findings(row_id, bag, linked=linked)
 
@@ -226,6 +239,16 @@ KINDS: tuple[DocumentKind, ...] = (
         .where(Domain.default_watch_spec.is_not(None))
         .order_by(Domain.id),
         _judge_domain_watch_spec,
+    ),
+    DocumentKind(
+        "notification_content",
+        NotificationSubscription.content_config,
+        (validate_content_config,),
+        # NULL is "all defaults", not a document to judge (archiver#363).
+        select(NotificationSubscription.id, NotificationSubscription.content_config, false())
+        .where(NotificationSubscription.content_config.is_not(None))
+        .order_by(NotificationSubscription.id),
+        _judge_notification_content,
     ),
     DocumentKind(
         "rep_fields",

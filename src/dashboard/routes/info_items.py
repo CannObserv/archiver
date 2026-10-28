@@ -33,7 +33,7 @@ from src.core.models import (
 from src.core.power_map import PowerMapClient, PowerMapUnavailableError
 from src.core.power_map.snapshots import OrgUnnamedError, load_org_values
 from src.core.rep_fields_schema.validator import validate_rep_fields
-from src.core.services import info_item_lifecycle
+from src.core.services import info_item_lifecycle, notification_subscriptions
 from src.core.services import temporal_profiles as profiles
 from src.core.services.registry_announcement import (
     announce_info_item,
@@ -100,6 +100,7 @@ from src.core.watch_spec_schema.validator import validate_watch_spec
 from src.dashboard.cadence import CADENCE_LABELS, CADENCE_OPTIONS
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
+from src.dashboard.notification_form import event_labels
 from src.dashboard.org_row import RECENT_DAYS as ORG_RECENT_DAYS
 from src.dashboard.org_row import build_org_row, local_org_options
 from src.dashboard.pagination import Pagination, pagination
@@ -518,6 +519,12 @@ async def detail_info_item(
             "revisions": revisions,
             "rev_sources_by_id": rev_sources_by_id,
             "stored_findings": finding_views(info_item_findings(item)),
+            "notified_by": [
+                (sub, event_labels(events))
+                for sub, events in await notification_subscriptions.notified_by(
+                    session, item.info_item_id
+                )
+            ],
             "now": datetime.now(UTC),
         },
     )

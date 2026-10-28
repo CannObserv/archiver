@@ -18,6 +18,41 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.39.0 (2026-10-28)
+
+[both] **Notification subscriptions: who hears which events, and how (archiver#363, design D3/D5, item A7).** Migration `c4d81f6a2e07` adds `information.notification_subscriptions`. SDK 5.16.0. Nothing sends or publishes yet: composition is #367, dispatch #369.
+
+- **`notification_subscriptions`** replaces Watcher's `notification_templates`. Each row holds:
+  - `title` (≤100);
+  - `scope` (`global`/`domain`/`item`), with a CHECK that ties it to exactly its ref: `domain_id` (FK `domains.id`, **`RESTRICT`**) or `info_item_id` (FK, `CASCADE`);
+  - `events` (a non-empty subset of `change_detected`, `watch_error`, `watch_recovered`);
+  - `content_config` (JSONB; `NULL` means all defaults);
+  - `remote_channel_id` (ULID-shaped, `NOT NULL`);
+  - `is_active`;
+  - `imported_watcher_id` (unique; the importer's key).
+
+  Watcher's `channel_hint` is dropped. The migration is expand-only and creates an empty table.
+- **Matching** is `subscriptions_for(session, info_item_id, event)` in `src/core/services/notification_subscriptions.py`. It follows Watcher's rule: every active subscription whose events hold the event, across the **union** of global scope, the announcing source's host's Domain row, and the item itself. There is no override and no channel dedup.
+  - An item with no active binding, or on a host with no Domain row, hears only global and item scope.
+  - Archive, pause and suspension filter nothing.
+- **`GET`/`POST /notification-subscriptions`, `GET`/`PATCH`/`DELETE /notification-subscriptions/{id}`.**
+  - The list filters on `scope`, `domain` (a hostname), `info_item_id` and `is_active`, and keeps the usual page shape, with a 422 over 500.
+  - The scope and its ref are fixed after create. `PATCH` refuses them, and also refuses `imported_watcher_id`.
+  - `PATCH` replaces `content_config` whole; `null` restores the defaults.
+  - A ref that doesn't fit the scope, or that names no row, is a 422 on that field. A duplicate `imported_watcher_id` is a 409.
+- **Validation is at write time and stricter than Watcher's:**
+  - `ContentConfig` refuses unknown keys at every level, including Watcher's two retired ones;
+  - override keys must be known events;
+  - `diff_snippet_lines` must be 1-200, and the toggles must be strict booleans;
+  - `title_template`/`body_template` must parse in Jinja's `SandboxedEnvironment` (syntax only). A failure is a 422 naming the field and the error.
+- **`DELETE /domains/{name}`** also 409s while subscriptions name the Domain row, and the message names their count beside any InfoSources.
+- **SDK 5.16.0** adds `list_notification_subscriptions`, `get_notification_subscription`, `create_notification_subscription`, `update_notification_subscription` and `delete_notification_subscription`. The create and update wrappers raise `ValueError` before any call when a key isn't in the body model, because the generated `from_dict` would drop it silently and a re-scope would answer 200 unchanged. `delete_domain`'s docstring names the new 409. All additive.
+- **`audit_stored_documents`** sweeps `content_config` as kind `notification_content`.
+- **Importer** (operator-run): `python -m src.core.tools.import_watcher_notification_templates` works through the SDK.
+  - It is keyed by Watcher's template id: it creates a subscription if absent and reports `differs` without overwriting.
+  - `--channel-map WATCHER_ID=ARCHIVER_ID` is repeatable, and `--dry-run` is available.
+  - It refuses the whole file on an unmapped or null channel, an unknown domain or item, or any unknown content key other than the two retired ones, which it drops.
+
 ## v4.38.0 (2026-10-28)
 
 [both] **Temporal profiles: one per InfoItem, executed by Archiver (archiver#365, design D5/D7).** Migration `b7e3c95a1f20` adds `information.temporal_profiles`. SDK 5.15.0.

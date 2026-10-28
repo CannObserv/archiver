@@ -173,6 +173,23 @@
   <p class="text-muted">No Information Sources registered for this domain yet.</p>
   {% endif %}
 
+  {#- archiver#363 D5: this host's domain-scoped subscriptions, active or not.
+     They hold the row: Domain delete refuses (409) while any exists. -#}
+  <h2 class="section-heading">Notification subscriptions ({{ subscriptions | length }})</h2>
+  {% if subscriptions %}
+  <ul class="text-sm" style="margin:0 0 var(--space-2);">
+    {% for sub in subscriptions %}
+    <li>
+      <a href="/dashboard/notifications/{{ sub.id }}/edit">{{ sub.title }}</a>
+      {% if not sub.is_active %}<span class="badge badge--muted">inactive</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-muted">No subscriptions on this domain. Global subscriptions hear its items too.</p>
+  {% endif %}
+  <p class="text-sm"><a href="{{ '/dashboard/notifications/new?scope=domain&domain=' ~ domain.name }}">Add a subscription for this domain</a></p>
+
   {# Danger zone — archive only (destructive). Restore is hoisted to the Status
      badge in the header, so once archived there is nothing here to show (#82). #}
   {% if not domain.archived_at %}

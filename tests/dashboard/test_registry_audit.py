@@ -12,7 +12,16 @@ import pytest
 from markupsafe import escape
 from sqlalchemy.exc import OperationalError
 
-from src.core.models import InfoItem, InfoItemRepSpec, InfoSource, RepSpec
+from src.core.models import (
+    Domain,
+    InfoItem,
+    InfoItemRepSpec,
+    InfoSource,
+    NotificationSubscription,
+    RepSpec,
+)
+from src.core.tools.audit_stored_documents import KINDS
+from src.dashboard import stored_documents
 from src.dashboard.routes import index as index_routes
 
 _HEADERS = {"X-ExeDev-UserID": "ext-registry", "X-ExeDev-Email": "registry@example.com"}
@@ -155,6 +164,48 @@ async def test_list_page_gives_a_frozen_rep_spec_the_clone_remedy(client, sessio
 
     assert f'href="/dashboard/rep-specs/{spec.rep_spec_id}"' in r.text
     assert "clone" in r.text.lower()
+
+
+def test_every_swept_kind_has_a_label_a_page_and_a_remedy():
+    """CR 7: ``finding_view`` indexes three dicts by kind; a kind added to KINDS
+    without them turned the list page into a KeyError (archiver#363, #360)."""
+    for kind in KINDS:
+        for table in (
+            stored_documents._LABELS,
+            stored_documents._PATHS,
+            stored_documents._REMEDIES,
+        ):
+            assert kind.name in table, kind.name
+
+
+@pytest.mark.asyncio
+async def test_list_page_names_a_notification_content_finding(client, session):
+    sub = NotificationSubscription(
+        title="stale",
+        scope="global",
+        events=["watch_error"],
+        remote_channel_id="01M5APS9R7A0QEDB9522MRA4CT",
+        content_config={"default": {"include_significance": True}},
+    )
+    session.add(sub)
+    await session.flush()
+
+    r = await client.get("/dashboard/registry-audit", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert f'href="/dashboard/notifications/{sub.id}/edit"' in r.text
+    assert "include_significance" in r.text
+
+
+@pytest.mark.asyncio
+async def test_list_page_names_a_domain_cadence_finding(client, session):
+    session.add(Domain(name="cadence-audit.example.com", default_watch_spec={"schema_version": 1}))
+    await session.flush()
+
+    r = await client.get("/dashboard/registry-audit", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "Domain cadence" in r.text
 
 
 @pytest.mark.asyncio
