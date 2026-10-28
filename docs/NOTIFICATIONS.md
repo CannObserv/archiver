@@ -99,7 +99,7 @@ otherwise. `audit_stored_documents` sweeps the column as kind `notification_cont
 
 - **`/dashboard/notifications/`** (sidebar: Registry → Notifications) lists every row,
   grouped Global, Domain, Item, with links to the domain or item. It paginates with the
-  dashboard's clamped `limit`/`offset`.
+  dashboard's clamped `limit`/`offset`; each heading counts every row of its scope.
 - **`/new` and `/{id}/edit`** are one form, `notifications/form.html`, a plain POST: 303 to the
   list, or the form again with a 422 and the reasons, keeping what was posted.
   - `/new?scope=&domain=&info_item_id=` prefills it.

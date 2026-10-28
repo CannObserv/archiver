@@ -18,7 +18,7 @@
 
   {% set headings = {"global": "Global", "domain": "Domain", "item": "Item"} %}
   {% for scope, rows in groups.items() %}
-  <h2 class="section-heading">{{ headings[scope] }} ({{ rows | length }})</h2>
+  <h2 class="section-heading">{{ headings[scope] }} ({{ totals[scope] }})</h2>
   {% if rows %}
   <div class="table-scroll" tabindex="0" role="region" aria-label="{{ headings[scope] }} subscriptions">
     <table class="data-table" aria-label="{{ headings[scope] }} subscriptions">

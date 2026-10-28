@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import case, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -124,12 +124,24 @@ async def list_subscriptions(
     has_more = len(rows) > page.limit
     rows = rows[: page.limit]
     groups = {scope: [s for s in rows if s.scope == scope] for scope in SCOPES}
+    # Headings count every row, not the page (SCREENS.md, #82; CR 4).
+    counted = dict(
+        (
+            await session.execute(
+                select(NotificationSubscription.scope, func.count()).group_by(
+                    NotificationSubscription.scope
+                )
+            )
+        ).all()
+    )
+    totals = {scope: counted.get(scope, 0) for scope in SCOPES}
     return _templates.TemplateResponse(
         request,
         "notifications/list.html",
         {
             "user": user,
             "groups": groups,
+            "totals": totals,
             "has_more": has_more,
             "limit": page.limit,
             "offset": page.offset,

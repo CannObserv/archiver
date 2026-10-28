@@ -359,3 +359,15 @@ async def test_a_refused_form_keeps_the_content_options_posted(client, session):
         assert re.search(r'name="default__include_domain"[^>]*checked', r.text), url
         assert re.search(r'name="override__watch_error"[^>]*checked', r.text), url
         assert re.search(r'name="watch_error__diff_snippet_lines"[^>]*value="7"', r.text), url
+
+
+@pytest.mark.asyncio
+async def test_group_headings_count_every_row_not_the_page(client, session):
+    """CR 4: SCREENS.md (#82) - a heading counts from a route COUNT, never |length."""
+    for n in range(3):
+        await _sub(session, f"Paged {n}")
+
+    r = await client.get("/dashboard/notifications/?limit=1", headers=_HEADERS)
+
+    assert "Global (3)" in r.text
+    assert "Domain (0)" in r.text
