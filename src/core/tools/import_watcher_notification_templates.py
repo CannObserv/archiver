@@ -276,9 +276,11 @@ def differences(body: Mapping[str, Any], existing: Mapping[str, Any]) -> list[st
     fields = [f for f in _COMPARED if body.get(f) != existing.get(f)]
     if body["is_active"] != existing.get("is_active"):
         fields.append("is_active")
-    if normalize_content_config(body["content_config"]) != normalize_content_config(
-        existing.get("content_config")
-    ):
+    try:
+        have = normalize_content_config(existing.get("content_config"))
+    except ValidationError:  # stored before a tightening: kept, and reported (CR 6)
+        have = None
+    if normalize_content_config(body["content_config"]) != have:
         fields.append("content_config")
     return fields
 

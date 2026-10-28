@@ -426,3 +426,25 @@ def test_no_api_key_is_an_error():
 def test_base_url_is_required():
     with pytest.raises(SystemExit):
         main([], stdin=io.StringIO("{}"), environ={"ARCHIVER_API_KEY": "k"})
+
+
+def test_an_existing_row_whose_stored_config_no_longer_validates_differs():
+    """CR 6: a stored config that fails today's schema is reported, not a traceback."""
+    existing = {
+        "id": "01SUBEXISTING0000000000000",
+        "title": "secret-title",
+        "scope": "global",
+        "domain": None,
+        "info_item_id": None,
+        "events": ["change_detected", "watch_error"],
+        "remote_channel_id": A_SLACK,
+        "is_active": True,
+        "content_config": {"default": {"retired_since": True}},
+        "imported_watcher_id": T1,
+    }
+    client = FakeClient(subs=[existing])
+
+    code, out, _err = _run(_export([_template(T1)]), client)
+
+    assert (code, client.writes) == (EXIT_OK, [])
+    assert f"differs on {T1} (as 01SUBEXISTING0000000000000): kept Archiver's content_config" in out
