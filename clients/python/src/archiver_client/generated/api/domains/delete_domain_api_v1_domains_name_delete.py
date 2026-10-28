@@ -90,7 +90,8 @@ def sync_detailed(
 ) -> Response[Any | EnvelopeResponse]:
     """Delete Domain
 
-     Delete a Domain. Returns 409 if InfoSources reference it.
+     Delete a Domain. Returns 409 while InfoSources or notification subscriptions
+    reference it.
 
     Args:
         name (str):
@@ -121,7 +122,8 @@ def sync(
 ) -> Any | EnvelopeResponse | None:
     """Delete Domain
 
-     Delete a Domain. Returns 409 if InfoSources reference it.
+     Delete a Domain. Returns 409 while InfoSources or notification subscriptions
+    reference it.
 
     Args:
         name (str):
@@ -147,7 +149,8 @@ async def asyncio_detailed(
 ) -> Response[Any | EnvelopeResponse]:
     """Delete Domain
 
-     Delete a Domain. Returns 409 if InfoSources reference it.
+     Delete a Domain. Returns 409 while InfoSources or notification subscriptions
+    reference it.
 
     Args:
         name (str):
@@ -176,7 +179,8 @@ async def asyncio(
 ) -> Any | EnvelopeResponse | None:
     """Delete Domain
 
-     Delete a Domain. Returns 409 if InfoSources reference it.
+     Delete a Domain. Returns 409 while InfoSources or notification subscriptions
+    reference it.
 
     Args:
         name (str):
