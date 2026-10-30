@@ -1,22 +1,34 @@
-"""The read-only Notifier adapter (archiver#368): it lists channels, and nothing else.
+"""The Notifier adapter (archiver#368, #367): it lists channels and makes one kind of dispatch.
 
 Notifier is respx here, for every test: never the network, never a real key.
-The adapter's one call is ``GET /api/v1/channels``. Everything that is not a
-channel list (a rejected key, a 5xx, a refused connection, a body that is not
-channels) raises ``NotifierUnavailable``, whose text never carries the key.
+The adapter's calls are ``GET /api/v1/channels`` and, since #367,
+``POST /api/v1/dispatch`` through ``dispatch_composed`` alone. Everything that
+is not the answer asked for (a rejected key, a 5xx, a refused connection, a
+body that is not channels) raises ``NotifierUnavailable``, whose text never
+carries the key.
 """
 
+import json
 import logging
 
 import httpx
+import jinja2
 import pytest
 
-from src.core.notifier.client import Channel, Notifier, NotifierUnavailable, announce
+from src.core.notifier.client import (
+    Channel,
+    Dispatched,
+    Notifier,
+    NotifierUnavailable,
+    announce,
+)
 from src.core.notifier.gate import NotifierConfig
 
 BASE = "http://notifier.test:9001"
 KEY = "nk_test-0123456789abcdef"
 CHANNELS = f"{BASE}/api/v1/channels"
+DISPATCH = f"{BASE}/api/v1/dispatch"
+CHANNEL_ID = "01M5APS9R7A0QEDB9522MRA4CT"
 
 
 def _channel(cid: str, name: str, masked: str, **extra) -> dict:
@@ -137,3 +149,94 @@ def test_configured_names_the_url_and_the_key_source_never_the_key(caplog) -> No
         announce(config)
     assert f"Notifier configured at {BASE} (key: environment)" in caplog.text
     assert KEY not in caplog.text
+
+
+# --- dispatch_composed (archiver#367, D3) ------------------------------------
+
+
+def _dispatch_out(status: str = "succeeded", **extra) -> dict:
+    return {
+        "id": "01M5DISPATCH0000000000000A",
+        "tenant_id": "01M5APS4GQBN671G050RD82Y44",
+        "template_id": None,
+        "idempotency_key": "archiver:test:x:y",
+        "metadata": {"test": True},
+        "rendered_title": "t",
+        "rendered_body": "b",
+        "status": status,
+        "attempts": [],
+        "created_at": "2026-10-30T00:00:00Z",
+        **extra,
+    }
+
+
+async def _dispatch(notifier, **overrides) -> Dispatched:
+    kwargs = {
+        "channel_id": CHANNEL_ID,
+        "title": "[Test] title",
+        "body": "body",
+        "idempotency_key": "archiver:test:x:y",
+        "metadata": {"test": True},
+    } | overrides
+    return await notifier.dispatch_composed(**kwargs)
+
+
+async def test_composed_text_reaches_notifier_as_variables_never_as_the_template(
+    respx_mock, notifier
+) -> None:
+    """D3: Notifier renders both ``*_template`` fields as Jinja, so text holding
+    ``{{`` or ``{%`` (a watched page's diff can) must travel as a variable."""
+    route = respx_mock.post(DISPATCH).mock(return_value=httpx.Response(201, json=_dispatch_out()))
+    title = "[Test] {{ x }}"
+    body = "a page said {{ x }} and {% if %} and {#"
+    await _dispatch(notifier, title=title, body=body)
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["title_template"] == "{{ title }}"
+    assert sent["body_template"] == "{{ body }}"
+    assert sent["variables"] == {"title": title, "body": body}
+    assert sent["channel_ids"] == [CHANNEL_ID]
+    assert sent["idempotency_key"] == "archiver:test:x:y"
+    assert sent["metadata"] == {"test": True}
+    assert "template_id" not in sent
+
+
+async def test_the_variables_render_back_to_the_text_under_notifiers_rules() -> None:
+    """Notifier's renderer (notifier 2450bc8 render.py): StrictUndefined, no escaping."""
+    env = jinja2.Environment(undefined=jinja2.StrictUndefined, autoescape=False)
+    text = "{{ x }} {% if %} <b>&amp;</b>\n\n```diff\n+ y\n```"
+    assert env.from_string("{{ body }}").render(body=text) == text
+
+
+async def test_a_dispatch_returns_its_id_and_status(respx_mock, notifier) -> None:
+    respx_mock.post(DISPATCH).mock(return_value=httpx.Response(201, json=_dispatch_out("failed")))
+    assert await _dispatch(notifier) == Dispatched(id="01M5DISPATCH0000000000000A", status="failed")
+
+
+async def test_a_dispatch_is_one_attempt(respx_mock, notifier) -> None:
+    route = respx_mock.post(DISPATCH).mock(return_value=httpx.Response(503))
+    with pytest.raises(NotifierUnavailable, match="HTTP 503"):
+        await _dispatch(notifier)
+    assert route.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        (401, "Notifier rejected archiver's key (HTTP 401)"),
+        (404, "Notifier has no such channel in this tenant (HTTP 404)"),
+        (422, "Notifier refused the dispatch (HTTP 422)"),
+    ],
+)
+async def test_a_refused_dispatch_says_why(respx_mock, notifier, status, message) -> None:
+    respx_mock.post(DISPATCH).mock(
+        return_value=httpx.Response(status, json={"detail": f"no {KEY}"})
+    )
+    with pytest.raises(NotifierUnavailable) as excinfo:
+        await _dispatch(notifier)
+    assert str(excinfo.value) == message
+
+
+async def test_a_dispatch_transport_error_is_unavailable_by_type(respx_mock, notifier) -> None:
+    respx_mock.post(DISPATCH).mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(NotifierUnavailable, match="ReadTimeout"):
+        await _dispatch(notifier)
