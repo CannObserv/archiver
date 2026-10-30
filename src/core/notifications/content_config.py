@@ -9,8 +9,9 @@ at ``ebd1be5``); the validation is stricter:
   because the importer drops them (``RETIRED_CONTENT_KEYS``) and refuses any other;
 - an override key must be a known event;
 - ``title_template`` / ``body_template`` must **parse** in Jinja's
-  ``SandboxedEnvironment``. Only syntax: the variables are #367's render
-  context, which does not exist yet. #367 renders in the sandbox too.
+  ``SandboxedEnvironment``. Only syntax: a variable may be defined for some
+  events only. The dashboard's preview, which shares this validator, also names
+  undefined ones; ``content.py`` renders every template in a bounded sandbox (#367).
 
 ``include_tags`` is stored and inert until tags exist (#362).
 """
@@ -59,9 +60,9 @@ class ContentOptions(BaseModel):
     include_tags: StrictBool = False
     include_description: StrictBool = False
     title_template: JinjaTemplate = None
-    """Replaces the default title. Not editable on the dashboard until #367's preview."""
+    """Replaces the default title; edited on the dashboard beside the preview (#367)."""
     body_template: JinjaTemplate = None
-    """Replaces the default body. Not editable on the dashboard until #367's preview."""
+    """Replaces the default body and its toggles; edited beside the preview (#367)."""
 
 
 class ContentConfig(BaseModel):
