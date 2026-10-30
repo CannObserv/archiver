@@ -87,8 +87,9 @@ SetCredential=status-checkin-key:\n
 # unit's own lines, never /etc/archiver/.env, which three timer units load whole.
 # The key is a credential, in no environment and never logged, and with NO
 # SetCredential= fallback, unlike Status's: a missing file fails the start
-# (243/CREDENTIALS) and deploy.sh switches back. Notifying is this unit's job, so
-# a lost key is loud. The file goes in before the deploy (docs/NOTIFICATIONS.md).
+# (243/CREDENTIALS). Notifying is this unit's job, so a lost key is loud.
+# deploy.sh refuses, before CI or a build, a deploy of this unit to a host
+# without the file, so it goes in first (docs/NOTIFICATIONS.md).
 Environment=ARCHIVER_NOTIFIER_BASE_URL=http://notifier:9000
 Environment=ARCHIVER_NOTIFIER_ENABLED=1
 LoadCredential=notifier-key:/etc/archiver/notifier.key

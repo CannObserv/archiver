@@ -187,7 +187,7 @@ three things at startup, before any resource is built:
 | Where | What |
 |---|---|
 | `deploy/archiver.service` | `Environment=ARCHIVER_NOTIFIER_BASE_URL=http://notifier:9000`, `Environment=ARCHIVER_NOTIFIER_ENABLED=1`, and `LoadCredential=notifier-key:/etc/archiver/notifier.key`, with **no** `SetCredential=` fallback. No other unit holds any of it (`tests/deploy/test_archiver_unit_notifier.py`) |
-| `/etc/archiver/notifier.key` | `root:root 0600`, the raw key alone. **Missing, the start fails** (243/CREDENTIALS) and `deploy.sh` switches back, so it goes in before the first deploy that carries the unit |
+| `/etc/archiver/notifier.key` | `root:root 0600`, the raw key alone. **Missing, the start fails** (243/CREDENTIALS), so `deploy.sh` refuses, before CI or a build, a deploy to a host without it. It goes in first |
 | repo `.env` | `ARCHIVER_DEV_NOTIFIER_BASE_URL=http://notifier:9001` and `ARCHIVER_DEV_NOTIFIER_API_KEY`. `scripts/dev_server.sh` maps the pair onto the gate's variables, sets the flag only beside both, and refuses a dev URL on :9000 |
 | `tests/conftest.py` | clears every `ARCHIVER_NOTIFIER_*`, `ARCHIVER_DEV_NOTIFIER_*` and `CREDENTIALS_DIRECTORY` |
 

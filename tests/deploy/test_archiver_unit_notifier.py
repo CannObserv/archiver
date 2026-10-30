@@ -2,10 +2,11 @@
 
 Operator decision D1: the production key is a systemd credential,
 ``LoadCredential=notifier-key:/etc/archiver/notifier.key``, with **no**
-``SetCredential=`` fallback. A missing key fails the start (243/CREDENTIALS), and
-``deploy.sh`` switches back: notifying is this unit's job, so a lost key must be
-loud. The URL and the flag are the unit's own ``Environment=`` lines. Never
-``/etc/archiver/.env``: three timer units load that file whole.
+``SetCredential=`` fallback. A missing key fails the start (243/CREDENTIALS):
+notifying is this unit's job, so a lost key must be loud. ``deploy.sh`` refuses a
+deploy to a host without the file (``TestUnitCredentials``). The URL and the flag
+are the unit's own ``Environment=`` lines. Never ``/etc/archiver/.env``: three
+timer units load that file whole.
 """
 
 from pathlib import Path

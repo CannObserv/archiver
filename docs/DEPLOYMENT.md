@@ -56,7 +56,9 @@ cutover: for older code, revert it on `main` and deploy that.
 
 **So is a commit whose units name a `User=` or `Group=` this host lacks** (#339), read from
 the commit itself, also before CI is asked or anything is built, a reused release too. The
-refusal prints the `useradd` it needs.
+refusal prints the `useradd` it needs. **So is one whose units load a credential with no
+`SetCredential=` fallback that is missing or empty here** (#368), checked by size, no `sudo`:
+otherwise the start fails after the switch, and the switch back costs a second restart.
 
 In order, each step refusing before anything switches:
 
