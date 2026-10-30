@@ -55,6 +55,7 @@ The other parts of this reference, under the same living-doc rule:
 /dashboard/rep-specs/{id}            Replication Specification detail
 /dashboard/rep-specs/new             Create Replication Specification
 /dashboard/settings/api-keys         API Keys management
+/dashboard/settings/notifier         Notifier - the tenant's channels, read-only
 ```
 
 ---

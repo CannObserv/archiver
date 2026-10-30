@@ -1,4 +1,4 @@
-"""Cross-implementation parity for the production-database guard.
+"""Cross-implementation parity for the production-database guard, and the Notifier one.
 
 The ``_test``/``_dev`` suffix rule is enforced twice, in two languages:
 
@@ -21,6 +21,15 @@ from pathlib import Path
 import pytest
 
 from src.core.db_safety import is_non_production_database
+from src.core.notifier.gate import (
+    API_KEY_ENV,
+    BASE_URL_ENV,
+    ENABLED_ENV,
+    TARGET_PATTERN,
+    NotifierRefused,
+    is_allowed_dev_target,
+    resolve,
+)
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "dev_server.sh"
 
@@ -110,3 +119,111 @@ def test_both_implementations_agree(url: str, bash_verdicts: dict[str, bool]) ->
     tests above still pass. This one fails unless *both* moved together.
     """
     assert is_non_production_database(url) is bash_verdicts[url]
+
+
+# --- The Notifier target guard (archiver#368) -------------------------------
+#
+# The same discipline for a second guard. src/core/notifier/gate.py refuses an
+# environment key (the dev path) aimed at production Notifier's port, and
+# scripts/dev_server.sh refuses a dev URL there. Both judge a URL with one small
+# grammar (gate.TARGET_PATTERN, the script's NOTIFIER_TARGET_RE) rather than
+# urlsplit, so they can agree on every URL; this corpus is where they must.
+# accepted=True means "a dev key may be sent here".
+
+NOTIFIER_CORPUS: list[tuple[str, bool]] = [
+    # The dev deployment, and spellings of it.
+    ("http://notifier:9001", True),
+    ("http://notifier:9001/", True),
+    ("http://100.64.0.7:9001/api/v1?x=1#f", True),
+    ("http://[::1]:9001", True),
+    ("http://127.0.0.1:09001", True),
+    # A scheme's default port is not 9000.
+    ("http://notifier", True),
+    ("https://notifier.example", True),
+    ("HTTPS://notifier.example", True),
+    # Production, however written.
+    ("http://notifier:9000", False),
+    ("http://notifier:9000/", False),
+    ("http://notifier:09000", False),
+    ("HTTP://Notifier:9000", False),
+    ("http://[::1]:9000", False),
+    ("https://notifier.taild0fb76.ts.net:9000/api?x#y", False),
+    # Unusable: fail closed, both.
+    ("notifier:9001", False),
+    ("ftp://notifier:9001", False),
+    ("http://", False),
+    ("http://:9001", False),
+    ("http://notifier:abc", False),
+    ("http://notifier:0", False),
+    ("http://notifier:65536", False),
+    ("http://notifier:000009001", False),  # past five digits: bash would overflow
+    ("http://u@notifier:9001", False),  # userinfo
+    ("http://u:9000@notifier:9001", False),
+    ("http://notifier:9001:9000", False),
+    ("http://[::1]x:9001", False),
+    ("http://[::1:9001", False),
+    ("http://notifier:9001/a b", False),  # whitespace
+    ("http://notifier:9001/é", False),  # non-ASCII
+    ("http://notifier:9001/\nx", False),  # bash's '.' matches a newline
+]
+
+
+def _bash_notifier_accepts(url: str) -> bool:
+    """True when scripts/dev_server.sh would map this dev Notifier URL."""
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "ARCHIVER_DEV_SERVER_DRY_RUN": "1",
+            "ARCHIVER_DEV_SERVER_SKIP_ENV_FILES": "1",
+            "TEST_DATABASE_URL": "postgresql://u:p@host/archiver_test",
+            "ARCHIVER_DEV_NOTIFIER_BASE_URL": url,
+            "ARCHIVER_DEV_NOTIFIER_API_KEY": "nk_dev-parity",
+        },
+        text=True,
+        capture_output=True,
+    )
+    mapped = f"NOTIFIER={url} (dev key)" in result.stdout.splitlines()
+    assert mapped is (result.returncode == 0), (result.stdout, result.stderr)
+    return mapped
+
+
+def _gate_accepts(url: str) -> bool:
+    """True when the Python gate starts with *url* and a key from the environment."""
+    try:
+        resolve({BASE_URL_ENV: url, ENABLED_ENV: "1", API_KEY_ENV: "nk_dev-parity"})
+    except NotifierRefused:
+        return False
+    return True
+
+
+@pytest.fixture(scope="module")
+def bash_notifier_verdicts() -> dict[str, bool]:
+    return {url: _bash_notifier_accepts(url) for url, _ in NOTIFIER_CORPUS}
+
+
+_IDS = [repr(c[0]) for c in NOTIFIER_CORPUS]
+
+
+@pytest.mark.parametrize(("url", "accepted"), NOTIFIER_CORPUS, ids=_IDS)
+def test_notifier_python_guard_matches_corpus(url: str, accepted: bool) -> None:
+    assert is_allowed_dev_target(url) is accepted
+    assert _gate_accepts(url) is accepted
+
+
+@pytest.mark.parametrize(("url", "accepted"), NOTIFIER_CORPUS, ids=_IDS)
+def test_notifier_bash_guard_matches_corpus(
+    url: str, accepted: bool, bash_notifier_verdicts: dict[str, bool]
+) -> None:
+    assert bash_notifier_verdicts[url] is accepted
+
+
+@pytest.mark.parametrize("url", [c[0] for c in NOTIFIER_CORPUS], ids=_IDS)
+def test_notifier_implementations_agree(url: str, bash_notifier_verdicts: dict[str, bool]) -> None:
+    assert is_allowed_dev_target(url) is bash_notifier_verdicts[url]
+
+
+def test_the_two_grammars_are_one_string() -> None:
+    """The cheap half of parity: the pattern is copied, not paraphrased."""
+    (line,) = [ln for ln in SCRIPT.read_text().splitlines() if ln.startswith("NOTIFIER_TARGET_RE=")]
+    assert line == f"NOTIFIER_TARGET_RE='^{TARGET_PATTERN.pattern}$'"

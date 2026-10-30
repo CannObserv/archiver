@@ -43,6 +43,8 @@ from src.core.db_safety import (
     assert_production_db_allowed,
 )
 from src.core.logging import configure_logging, get_logger
+from src.core.notifier.client import notifier_from_env
+from src.core.notifier.gate import NotifierRefused
 from src.core.power_map import power_map_from_env
 from src.core.services import fetch_policy
 from src.dashboard.main import register_dashboard
@@ -118,6 +120,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       ``CO_ARCHIVER_LIVE_MONITOR_ID`` and the ``status-checkin-key`` credential
       are both present, which only ``deploy/archiver.service`` provides. It
       checks in to Status only while every expected bus loop is progressing.
+    - Builds the one Notifier client (archiver#368) when the gate allows, and
+      refuses to start on any half-configuration. See ``src.core.notifier.gate``.
     """
     # Before any resource is built or any request is served.
     try:
@@ -129,6 +133,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Log before re-raising: under systemd the bare exception surfaces in
         # journalctl as a lifespan traceback, burying the actionable text.
         logger.critical("Refusing to start: %s", e)
+        raise
+
+    # --- The Notifier gate (archiver#368) ---
+    # Also before any resource is built: a URL without ARCHIVER_NOTIFIER_ENABLED=1,
+    # or the flag without a URL or key, refuses startup. Neither is dormant. No
+    # Notifier call here: an outage must not stop the registry.
+    try:
+        app.state.notifier = notifier_from_env(os.environ)
+    except NotifierRefused as e:
+        logger.critical("Notifier: %s", e)
         raise
 
     app.state.fetch_driver = AsyncFetchDriver()
@@ -564,6 +578,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.fetch_driver.aclose()
         if app.state.power_map is not None:
             await app.state.power_map.aclose()
+        if app.state.notifier is not None:
+            await app.state.notifier.aclose()
 
 
 app = FastAPI(title="archiver", version=_package_version("archiver"), lifespan=lifespan)

@@ -192,6 +192,10 @@ A blank label - spaces, which pass the input's `required` attribute - returns th
 
 Partial template: `settings/_api_key_row.html` - reusable `<tr x-data="apiKeyRow">` used both in the list render and as the PATCH response. Starts in view mode (`editing: false`); Edit switches to edit mode, Save sends the PATCH, Cancel reverts with no server call.
 
+## Settings - Notifier (`/dashboard/settings/notifier`)
+
+**GET** - read-only (archiver#368). One `list_channels` call to Notifier per view, then a table: Name, Type (the masked URL's scheme), Channel id. Above it, the base URL and where the key came from, never the key. Dormant (`data-notifier-status="dormant"`) says the process has no Notifier; unavailable is a 200 with an `alert--error` naming the reason. No form, no button: test-send is #367's. Gate and key: [NOTIFICATIONS.md](NOTIFICATIONS.md) § The credential.
+
 ## Error pages (no route of their own)
 
 Rendered by the exception handlers in `src/dashboard/errors.py`, not by a route,

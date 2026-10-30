@@ -1,4 +1,4 @@
-"""Dashboard settings - API key management.
+"""Dashboard settings - API key management, and the read-only Notifier card.
 
 **A refusal is a 200 with a flash, never a 4xx** - the rule `docs/STYLE.md`
 states and `src/dashboard/replication_actions.py` explains. Both label checks
@@ -16,8 +16,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.api.deps import get_db_session
+from src.api.deps import get_db_session, get_notifier
 from src.core.models import ApiKey, AppUser
+from src.core.notifier.client import Notifier, NotifierUnavailable
 from src.dashboard.deps import generate_api_key, get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 
@@ -145,3 +146,37 @@ async def settings_rename_api_key(
     await session.commit()
 
     return _templates.TemplateResponse(request, "settings/_api_key_row.html", {"key": api_key})
+
+
+@router.get("/notifier", response_class=HTMLResponse)
+async def settings_notifier(
+    request: Request,
+    user: AppUser = Depends(get_dashboard_user),
+    notifier: Notifier | None = Depends(get_notifier),
+) -> HTMLResponse:
+    """The tenant's channels, read from Notifier: proof of the credential, no send (#368).
+
+    One ``list_channels`` call per view. Dormant and unavailable are 200s with a
+    status, so the page says what is wrong instead of failing.
+    """
+    channels = None
+    reason = None
+    if notifier is None:
+        status = "dormant"
+    else:
+        try:
+            channels = await notifier.list_channels()
+            status = "ok"
+        except NotifierUnavailable as e:
+            status, reason = "unavailable", str(e)
+    return _templates.TemplateResponse(
+        request,
+        "settings/notifier.html",
+        {
+            "user": user,
+            "notifier": notifier,
+            "status": status,
+            "channels": channels,
+            "reason": reason,
+        },
+    )

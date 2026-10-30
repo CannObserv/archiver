@@ -133,8 +133,21 @@ _OUTBOUND_SERVICE_ENV_VARS = (
     # The Watcher domain import's credential (#360): its --base-url has no
     # default, but a test that forgot to inject ``environ`` must not hold a key.
     "ARCHIVER_API_KEY",
+    # Notifier (#368), the watcher#277 incident itself: a lifespan holding these
+    # would build a real client, and a notification cannot be recalled. The dev
+    # pair too, so nothing a test runs can map it. CREDENTIALS_DIRECTORY is above.
+    "ARCHIVER_NOTIFIER_BASE_URL",
+    "ARCHIVER_NOTIFIER_API_KEY",
+    "ARCHIVER_NOTIFIER_ENABLED",
+    "ARCHIVER_DEV_NOTIFIER_BASE_URL",
+    "ARCHIVER_DEV_NOTIFIER_API_KEY",
 )
 for _var in _OUTBOUND_SERVICE_ENV_VARS:
+    os.environ.pop(_var, None)
+# And by prefix (#368): a Notifier variable added later is cleared before anyone
+# remembers to list it. The names above stay, so the audit can see them.
+NOTIFIER_ENV_PREFIXES = ("ARCHIVER_NOTIFIER_", "ARCHIVER_DEV_NOTIFIER_")
+for _var in [name for name in os.environ if name.startswith(NOTIFIER_ENV_PREFIXES)]:
     os.environ.pop(_var, None)
 
 # Behaviour switches a sourced env file may carry. Not outbound themselves, but

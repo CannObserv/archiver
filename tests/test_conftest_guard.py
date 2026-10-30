@@ -4,7 +4,11 @@ import os
 
 import pytest
 
-from tests.conftest import _OUTBOUND_SERVICE_ENV_VARS, _check_test_url_safety
+from tests.conftest import (
+    _OUTBOUND_SERVICE_ENV_VARS,
+    NOTIFIER_ENV_PREFIXES,
+    _check_test_url_safety,
+)
 from tests.outbound_env_audit import (
     _OUTBOUND_ENV_ALLOWLIST,
     SCANNED_ROOTS,
@@ -101,6 +105,12 @@ def test_outbound_service_env_is_scrubbed():
             f"{var} leaked into the test process — the conftest scrub is the only "
             f"thing between a test run and production (#157)"
         )
+
+
+def test_no_notifier_variable_survives_by_prefix():
+    """Every ``ARCHIVER_NOTIFIER_*`` and ``ARCHIVER_DEV_NOTIFIER_*`` is cleared, listed or
+    not (#368): a notification reaches real people and cannot be recalled."""
+    assert not [name for name in os.environ if name.startswith(NOTIFIER_ENV_PREFIXES)]
 
 
 # --- Outbound env-var registry drift (#157) -------------------------------
