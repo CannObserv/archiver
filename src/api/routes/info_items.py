@@ -1,6 +1,5 @@
 """InfoItem CRUD + sub-resource assignment endpoints."""
 
-import os
 from datetime import UTC, datetime
 from typing import NoReturn
 
@@ -49,6 +48,7 @@ from src.core.power_map.snapshots import (
     load_orgs,
     org_values,
 )
+from src.core.public_base_url import public_base_url
 from src.core.rep_fields_schema.validator import (
     ValidationError,
     linked_org_key_errors,
@@ -313,7 +313,7 @@ async def create_info_item(
         item,
         sources=new_sources,
         rep_specs=new_rep_specs,
-        base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+        base_url=public_base_url(),
         org=org_row,
     )
 
@@ -389,7 +389,7 @@ async def list_info_items(
                 item,
                 sources=sources_by_item.get(item.info_item_id, []),
                 rep_specs=rep_specs_by_item.get(item.info_item_id, []),
-                base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+                base_url=public_base_url(),
                 org=orgs.get(item.pm_org_id) if item.pm_org_id else None,
             )
             for item in rows
@@ -447,7 +447,7 @@ async def get_info_item(
         item,
         sources=sources,
         rep_specs=rep_specs,
-        base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+        base_url=public_base_url(),
         org=await _org_row(session, item),
     )
 
@@ -867,7 +867,7 @@ async def _item_out_with_active_relations(session: AsyncSession, item: InfoItem)
         item,
         sources=sources,
         rep_specs=rep_specs,
-        base_url=os.environ.get("ARCHIVER_PUBLIC_BASE_URL"),
+        base_url=public_base_url(),
         org=await _org_row(session, item),
     )
 
