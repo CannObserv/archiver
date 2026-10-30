@@ -420,7 +420,9 @@ async def test_item_delete_cascades_its_subscriptions_and_still_tombstones(clien
         )
     ).scalars()
     mine = [p for p in payloads if p["info_item_id"] == item_id]
-    assert mine and mine[-1]["revoked"] is True
+    # The SELECT has no ORDER BY, so the newest announcement is the highest
+    # generation, not the last row: CI returned generation 2 before 1 (#368 deploy).
+    assert mine and max(mine, key=lambda p: p["generation"])["revoked"] is True
 
 
 @pytest.mark.asyncio
