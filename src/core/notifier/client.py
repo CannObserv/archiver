@@ -16,14 +16,13 @@ page is the retry, and dispatch's retry policy is #369's to choose.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 
 import httpx
 from notifier_client import AuthError, NotifierClient, NotifierError, RetryConfig
 
 from src.core.logging import get_logger
-from src.core.notifier.gate import NotifierConfig, resolve
+from src.core.notifier.gate import NotifierConfig
 
 logger = get_logger(__name__)
 
@@ -89,15 +88,9 @@ def _kind(masked: str) -> str:
     return scheme if sep and scheme.isalnum() else "unknown"
 
 
-def notifier_from_env(environ: Mapping[str, str]) -> Notifier | None:
-    """The process's client, ``None`` when dormant; a gate refusal propagates.
-
-    Says which, once: the URL and where the key came from, never the key. Makes
-    no call: a Notifier outage must not stop the registry from starting.
-    """
-    config = resolve(environ)
+def announce(config: NotifierConfig | None) -> None:
+    """Say once, at startup, which: the URL and where the key came from, never the key."""
     if config is None:
         logger.info("Notifier not configured")
-        return None
+        return
     logger.info("Notifier configured at %s (key: %s)", config.base_url, config.key_source)
-    return Notifier(config)

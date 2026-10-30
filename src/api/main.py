@@ -43,8 +43,8 @@ from src.core.db_safety import (
     assert_production_db_allowed,
 )
 from src.core.logging import configure_logging, get_logger
-from src.core.notifier.client import notifier_from_env
-from src.core.notifier.gate import NotifierRefused
+from src.core.notifier.client import Notifier, announce
+from src.core.notifier.gate import NotifierRefused, resolve
 from src.core.power_map import power_map_from_env
 from src.core.services import fetch_policy
 from src.dashboard.main import register_dashboard
@@ -137,13 +137,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # --- The Notifier gate (archiver#368) ---
     # Also before any resource is built: a URL without ARCHIVER_NOTIFIER_ENABLED=1,
-    # or the flag without a URL or key, refuses startup. Neither is dormant. No
-    # Notifier call here: an outage must not stop the registry.
+    # or the flag without a URL or key, refuses startup. Neither is dormant. The
+    # client itself is built last, just before serving, so a failure in between
+    # leaves no pool open (CR 5). No Notifier call: an outage must not stop the
+    # registry.
     try:
-        app.state.notifier = notifier_from_env(os.environ)
+        notifier_config = resolve(os.environ)
     except NotifierRefused as e:
         logger.critical("Notifier: %s", e)
         raise
+    announce(notifier_config)
 
     app.state.fetch_driver = AsyncFetchDriver()
 
@@ -537,6 +540,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ).run()
         )
     app.state.liveness_task = liveness_task
+    app.state.notifier = Notifier(notifier_config) if notifier_config is not None else None
 
     try:
         yield

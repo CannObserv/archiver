@@ -11,19 +11,8 @@ import logging
 import httpx
 import pytest
 
-from src.core.notifier.client import (
-    Channel,
-    Notifier,
-    NotifierUnavailable,
-    notifier_from_env,
-)
-from src.core.notifier.gate import (
-    API_KEY_ENV,
-    BASE_URL_ENV,
-    ENABLED_ENV,
-    NotifierConfig,
-    NotifierNotEnabled,
-)
+from src.core.notifier.client import Channel, Notifier, NotifierUnavailable, announce
+from src.core.notifier.gate import NotifierConfig
 
 BASE = "http://notifier.test:9001"
 KEY = "nk_test-0123456789abcdef"
@@ -136,22 +125,15 @@ async def test_the_client_never_shows_its_key(notifier) -> None:
     assert notifier.key_source == "environment"
 
 
-async def test_dormant_is_none_and_says_so(caplog) -> None:
+def test_dormant_says_so(caplog) -> None:
     with caplog.at_level(logging.INFO, logger="src.core.notifier.client"):
-        assert notifier_from_env({}) is None
+        announce(None)
     assert "Notifier not configured" in caplog.text
 
 
-async def test_configured_names_the_url_and_the_key_source_never_the_key(caplog) -> None:
-    environ = {BASE_URL_ENV: BASE, ENABLED_ENV: "1", API_KEY_ENV: KEY}
+def test_configured_names_the_url_and_the_key_source_never_the_key(caplog) -> None:
+    config = NotifierConfig(base_url=BASE, api_key=KEY, key_source="environment")
     with caplog.at_level(logging.INFO, logger="src.core.notifier.client"):
-        client = notifier_from_env(environ)
-    assert client is not None
-    await client.aclose()
+        announce(config)
     assert f"Notifier configured at {BASE} (key: environment)" in caplog.text
     assert KEY not in caplog.text
-
-
-async def test_a_refusal_propagates() -> None:
-    with pytest.raises(NotifierNotEnabled):
-        notifier_from_env({BASE_URL_ENV: BASE})

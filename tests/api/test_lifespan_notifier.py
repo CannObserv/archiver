@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from src.api import main
 from src.api.main import app, lifespan
 from src.core.notifier.client import Notifier
 from src.core.notifier.gate import (
@@ -75,3 +76,25 @@ async def test_a_half_configuration_refuses_startup_loudly(
     (record,) = [r for r in caplog.records if r.levelno == logging.CRITICAL]
     assert record.getMessage().startswith("Notifier: refusing to start: ")
     assert KEY not in caplog.text
+
+
+async def test_a_setup_failure_after_the_gate_builds_no_client(
+    monkeypatch, tmp_path: Path, test_engine, respx_mock
+) -> None:
+    """The gate is judged first, the client built last before serving (CR 5): a
+    failure in between can't leave an httpx pool unclosed."""
+    (tmp_path / CREDENTIAL_NAME).write_text(f"{KEY}\n")
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(tmp_path))
+    monkeypatch.setenv(BASE_URL_ENV, "http://notifier.test:9000")
+    monkeypatch.setenv(ENABLED_ENV, "1")
+    built: list[object] = []
+    monkeypatch.setattr(main, "Notifier", lambda config: built.append(config))
+
+    def _broken() -> None:
+        raise RuntimeError("setup failed")
+
+    monkeypatch.setattr(main, "AsyncFetchDriver", _broken)
+    with pytest.raises(RuntimeError, match="setup failed"):
+        async with lifespan(app):
+            pytest.fail("served")
+    assert built == []
