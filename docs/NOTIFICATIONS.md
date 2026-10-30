@@ -206,17 +206,31 @@ URL's scheme) and id, or why there is no list. It has no send control.
 ### Installing the key (operator, as root, once)
 
 Nothing below prints a key, and none of it goes in argv. The staged files hold four lines:
-`tenant_id=`, `key_id=`, `raw_key=`, `environment=`.
+`tenant_id=`, `key_id=`, `raw_key=`, `environment=`. Paste the block whole: it stops at the
+first failed check, before anything is written or shredded. Each check is its own line,
+since `set -e` ignores the left side of `&&` and a `!` command.
 
 ```bash
+(
+set -euo pipefail
+trap 'echo "stopped at: $BASH_COMMAND" >&2' ERR
 F=/root/notifier-117/archiver-production.env D=/root/notifier-117/archiver-development.env
-sudo grep -qx 'environment=production' "$F" && sudo grep -qx 'environment=development' "$D"
-sudo sh -c "umask 077; sed -n 's/^raw_key=//p' $F > /etc/archiver/notifier.key"
-sudo test -s /etc/archiver/notifier.key && sudo stat -c '%U:%G %a %s' /etc/archiver/notifier.key
-# expect root:root 600 and a size; then the dev pair, into the repo .env (exedev's)
-sudo sed -n 's/^raw_key=/ARCHIVER_DEV_NOTIFIER_API_KEY=/p' "$D" >> /home/exedev/archiver/.env
-echo 'ARCHIVER_DEV_NOTIFIER_BASE_URL=http://notifier:9001' >> /home/exedev/archiver/.env
-sudo shred -u "$F" "$D" && sudo rmdir /root/notifier-117
+E=/home/exedev/archiver/.env K=/etc/archiver/notifier.key
+sudo grep -qx 'environment=production' "$F"
+sudo grep -qx 'environment=development' "$D"
+[ "$(sudo grep -c '^raw_key=' "$F")" = 1 ]
+[ "$(sudo grep -c '^raw_key=' "$D")" = 1 ]
+if grep -q '^ARCHIVER_DEV_NOTIFIER_' "$E"; then echo "dev pair already in $E" >&2; exit 1; fi
+sudo sh -c "umask 077; sed -n 's/^raw_key=//p' $F > $K"
+sudo test -s "$K"
+[ "$(sudo stat -c '%U:%G %a' "$K")" = 'root:root 600' ]
+[ -z "$(tail -c1 "$E")" ] || echo >> "$E"   # a last line without its newline
+sudo sed -n 's/^raw_key=/ARCHIVER_DEV_NOTIFIER_API_KEY=/p' "$D" >> "$E"
+echo 'ARCHIVER_DEV_NOTIFIER_BASE_URL=http://notifier:9001' >> "$E"
+sudo shred -u "$F" "$D"
+sudo rmdir /root/notifier-117
+echo "installed $K; staged files shredded"
+)
 ```
 
 To rotate, mint the new key in Notifier, overwrite the file the same way, and
