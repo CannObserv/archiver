@@ -21,6 +21,7 @@ before any dashboard code ran (``test_no_dashboard_route_declares_a_coercible_pa
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -384,7 +385,8 @@ async def preview_subscription(
     Local: no Notifier call, no database. Shares the save path's validator.
     """
     form = await request.form()
-    view = render_preview(form, str(form.get("preview_event") or ""))
+    # A worker thread: an operator's template must not block the loop (CR 1).
+    view = await asyncio.to_thread(render_preview, form, str(form.get("preview_event") or ""))
     return _templates.TemplateResponse(
         request,
         "notifications/_preview.html",
@@ -419,7 +421,8 @@ async def test_send_subscription(
             request, "error", "Notifier is not configured in this process: nothing was sent."
         )
     event = preview_event(TEST_SEND_EVENT)
-    composed = compose(
+    composed = await asyncio.to_thread(  # off the loop, as the preview (CR 1)
+        compose,
         event,
         PREVIEW_ITEM,
         resolve_options(sub.content_config, TEST_SEND_EVENT),

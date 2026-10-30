@@ -351,6 +351,29 @@ class TestSandbox:
             with pytest.raises(TemplateError):
                 render("{{ unclosed", {})
 
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "{{ 'x' * 10**6 }}",
+            "{{ 10**6 * 'x' }}",
+            "{{ [1] * 200000 }}",
+            "{{ 2 ** 1000 }}",
+            "{{ 'x' * (10 ** 3) * 1000 }}",
+        ],
+    )
+    def test_a_resource_bomb_is_refused(self, source):
+        """CR 1: an escape is not the only harm. One render must not allocate a
+        gigabyte or a number with a million digits in the one process serving
+        everything."""
+        for render in (render_template, render_template_strict):
+            with pytest.raises(SecurityError):
+                render(source, {})
+
+    def test_ordinary_arithmetic_still_works(self):
+        assert render_template("{{ 'ab' * 3 }} {{ 2 ** 10 }} {{ 3 * 4 }} {{ 1.5 ** 2 }}", {}) == (
+            "ababab 1024 12 2.25"
+        )
+
     def test_a_value_is_never_evaluated(self):
         assert render_template("{{ body }}", {"body": "{{ x }}{% if %}"}) == "{{ x }}{% if %}"
 

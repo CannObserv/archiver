@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 
 import pytest
 from sqlalchemy import func, select
@@ -28,6 +29,7 @@ from src.core.models import (
     NotificationSubscription,
 )
 from src.core.notifier.client import Dispatched, NotifierUnavailable
+from src.dashboard.routes import notifications as routes
 from tests.core.notifier.fake import DEV_SINK, FakeNotifier
 
 _HEADERS = {"X-ExeDev-UserID": "ext-notif", "X-ExeDev-Email": "notif@example.com"}
@@ -563,3 +565,28 @@ async def test_a_test_send_needs_a_login_and_a_row(client, session):
     r = await client.get(f"/dashboard/notifications/{sub.id}/test-send", headers=_HEADERS)
     assert r.status_code in (404, 405)
     assert notifier.dispatches == []
+
+
+@pytest.mark.asyncio
+async def test_preview_and_test_send_render_off_the_event_loop(client, session, monkeypatch):
+    """CR 1: an operator's template renders in a worker thread, so a slow one
+    can't block the loop that serves the API and the consumers."""
+    threads = []
+    real_preview, real_compose = routes.render_preview, routes.compose
+
+    def spy_preview(*a, **k):
+        threads.append(threading.current_thread())
+        return real_preview(*a, **k)
+
+    def spy_compose(*a, **k):
+        threads.append(threading.current_thread())
+        return real_compose(*a, **k)
+
+    monkeypatch.setattr(routes, "render_preview", spy_preview)
+    monkeypatch.setattr(routes, "compose", spy_compose)
+    app.dependency_overrides[get_notifier] = lambda: FakeNotifier(DEV_SINK)
+    sub = await _sub(session, "Threaded")
+    await client.post("/dashboard/notifications/preview", headers=_HEADERS, data=_form())
+    await client.post(f"/dashboard/notifications/{sub.id}/test-send", headers=_HEADERS)
+    assert len(threads) == 2
+    assert all(t is not threading.main_thread() for t in threads)

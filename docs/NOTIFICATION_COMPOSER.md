@@ -32,6 +32,11 @@ diff block and caps, so #369's shadow comparison reads like for like.
   - `compose()`, the send path, renders **that event's default** for the failed field instead;
   - a WARNING names the subscription, the field and the error's type. It never carries the
     template, or the error's text, which can quote the template.
+- **The sandbox is bounded** (CR 1): one `*` builds at most 100 000 items and one `**` takes
+  an exponent of at most 100, so a template can't allocate a gigabyte in the one process.
+  The preview and the test-send render in a worker thread, off the event loop. Nested loops
+  can still burn CPU. A render budget is #369's to choose before saved templates render on
+  every event.
 - **At send an undefined variable renders empty** (lenient, as in Watcher), and only a raised
   error falls back. The preview renders strict.
 - **Links point at Archiver's item page:** `app_url` is the origin

@@ -35,6 +35,7 @@ from co_core.pure.models.changes import (
     WatchRecoveredEvent,
 )
 from jinja2 import StrictUndefined
+from jinja2.exceptions import SecurityError
 from jinja2.sandbox import SandboxedEnvironment
 
 from src.core.logging import get_logger
@@ -54,8 +55,38 @@ logger = get_logger(__name__)
 WatchEvent = ChangeDetectedEvent | WatchErrorEvent | WatchRecoveredEvent
 """The three ``info.watch-events`` facts a subscription can hear, as co-core models them."""
 
-_SANDBOX = SandboxedEnvironment(autoescape=False)
-_SANDBOX_STRICT = SandboxedEnvironment(autoescape=False, undefined=StrictUndefined)
+#: The longest string or list one ``*`` may build in a template (CR 1).
+MAX_REPEAT_LENGTH = 100_000
+#: The largest exponent one ``**`` may take in a template (CR 1).
+MAX_EXPONENT = 100
+
+
+class _BoundedSandbox(SandboxedEnvironment):
+    """The sandbox, with ``*`` and ``**`` bounded (CR 1).
+
+    ``SandboxedEnvironment`` stops attribute escapes and caps ``range``, but
+    ``'x' * 10**9`` still allocates a gigabyte in the one process that serves
+    the API, the consumers and the dashboard. Jinja routes these two operators
+    through :meth:`call_binop` once they are intercepted, and doesn't fold them
+    at compile time, so every template pays the check.
+    """
+
+    intercepted_binops = frozenset({"*", "**"})
+
+    def call_binop(self, context, operator: str, left: Any, right: Any) -> Any:
+        if operator == "**":
+            if isinstance(right, int | float) and abs(right) > MAX_EXPONENT:
+                raise SecurityError(f"exponent over {MAX_EXPONENT}")
+        elif operator == "*":
+            for seq, n in ((left, right), (right, left)):
+                if isinstance(seq, str | list | tuple) and isinstance(n, int):
+                    if len(seq) * n > MAX_REPEAT_LENGTH:
+                        raise SecurityError(f"repetition over {MAX_REPEAT_LENGTH} items")
+        return super().call_binop(context, operator, left, right)
+
+
+_SANDBOX = _BoundedSandbox(autoescape=False)
+_SANDBOX_STRICT = _BoundedSandbox(autoescape=False, undefined=StrictUndefined)
 
 # The ``diff_snippet`` variable's cap when a template names it: the field's default.
 _DEFAULT_DIFF_SNIPPET_CAP: int = ContentOptions.model_fields["diff_snippet_lines"].default
