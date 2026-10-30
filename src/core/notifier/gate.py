@@ -31,7 +31,6 @@ the same URLs with the same grammar (:data:`TARGET_PATTERN`), and
 This module imports no SDK: the gate is judged before any client exists.
 """
 
-import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -196,14 +195,3 @@ def _checked(key: str) -> str:
             f"reinstall it ({CREDENTIAL_FILE} for the unit, docs/NOTIFICATIONS.md)"
         )
     return key
-
-
-def resolve_from_process() -> NotifierConfig | None:
-    """:func:`resolve` over ``os.environ``, read by name so the outbound-env audit sees them."""
-    environ = {
-        BASE_URL_ENV: os.environ.get(BASE_URL_ENV),
-        API_KEY_ENV: os.environ.get(API_KEY_ENV),
-        ENABLED_ENV: os.environ.get(ENABLED_ENV),
-        "CREDENTIALS_DIRECTORY": os.environ.get("CREDENTIALS_DIRECTORY"),
-    }
-    return resolve({name: value for name, value in environ.items() if value is not None})
