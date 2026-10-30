@@ -148,10 +148,10 @@ with `psql -At` instead. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Reading pro
   reopens the hole for every sourcing process.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.
-- `ARCHIVER_DEV_REDIS_URL` - unset means bus-dormant; prod's URL is never
-  inherited. A scratch bus is a local throwaway broker, never a DB index (#240).
 - `ARCHIVER_NOTIFIER_ENABLED` - same rule, beside its URL; the key is a credential
   ([docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md)).
+- `ARCHIVER_DEV_REDIS_URL` - unset means bus-dormant; prod's URL is never
+  inherited. A scratch bus is a local throwaway broker, never a DB index (#240).
 
 ## Common Commands
 
