@@ -77,7 +77,9 @@ def test_the_key_is_a_credential_with_an_empty_fallback() -> None:
     assert [v for v in _values("Service", "LoadCredential") if v.startswith(CREDENTIAL_NAME)] == [
         f"{CREDENTIAL_NAME}:/etc/archiver/status-checkin.key"
     ]
-    assert _values("Service", "SetCredential") == [f"{CREDENTIAL_NAME}:\\n"]
+    assert [v for v in _values("Service", "SetCredential") if v.startswith(CREDENTIAL_NAME)] == [
+        f"{CREDENTIAL_NAME}:\\n"
+    ]
 
 
 def test_the_unit_names_the_monitor() -> None:

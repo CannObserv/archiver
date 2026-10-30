@@ -94,6 +94,23 @@ Environment=ARCHIVER_NOTIFIER_BASE_URL=http://notifier:9000
 Environment=ARCHIVER_NOTIFIER_ENABLED=1
 LoadCredential=notifier-key:/etc/archiver/notifier.key
 
+# The processor-text reader (archiver#367 D4): change diffs read the two stored
+# texts from the processor bucket. Its own service account, objectViewer on
+# gs://co-gcs-processor alone, so this identity cannot read raw blobs
+# (content.blobs). The key is a credential, in no environment and never logged,
+# WITH the empty fallback, like Status's: a missing key starts the service with
+# every diff unavailable and one WARNING, and deploy.sh's preflight passes it.
+# Never GOOGLE_APPLICATION_CREDENTIALS here: that would make the identity ambient
+# for every GCS call this process makes. The client is built from this file.
+Environment=ARCHIVER_PROCESSOR_TEXT_BUCKET=co-gcs-processor
+LoadCredential=processor-text-reader:/etc/archiver/processor-text-reader.json
+SetCredential=processor-text-reader:\n
+
+# Where notification and API links point (archiver#367): the origin people open,
+# never an internal address. A line in /etc/archiver/.env would override this one
+# (EnvironmentFile= wins), so that file must not carry it.
+Environment=ARCHIVER_PUBLIC_BASE_URL=https://co-registrar.exe.xyz
+
 # No wheelhouse sync here any more: the private wheels are fetched into the
 # release at deploy time (archiver#330 D10), so a start never depends on GCS.
 

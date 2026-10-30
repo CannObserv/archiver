@@ -24,7 +24,7 @@ from src.core.notifications.diff_loader import (
     read_stored_text,
     text_reader_from_environ,
 )
-from tests.core.notifications.builders import make_event
+from tests.core.notifications.builders import FakeStorage, make_event
 
 BUCKET = "co-gcs-processor"
 PREVIOUS = b"Hours\nMon-Fri: 9:00 - 17:00\nContact us"
@@ -37,49 +37,6 @@ def address(text: bytes) -> str:
 
 def uri(text: bytes, bucket: str = BUCKET) -> str:
     return f"gs://{bucket}/blobs/{address(text).removeprefix('sha256:')}.bin"
-
-
-class FakeBlob:
-    def __init__(self, data: bytes, size: int | None = None):
-        self.data = data
-        self.size = len(data) if size is None else size
-        self.downloads: list[dict] = []
-
-    def download_as_bytes(self, **kwargs) -> bytes:
-        self.downloads.append(kwargs)
-        end = kwargs.get("end")
-        return self.data if end is None else self.data[: end + 1]
-
-
-class FakeBucket:
-    def __init__(self, store: "FakeStorage", name: str):
-        self.store, self.name = store, name
-
-    def get_blob(self, name: str, **kwargs):
-        self.store.gets.append((self.name, name))
-        if self.store.error is not None:
-            raise self.store.error
-        return self.store.objects.get((self.name, name))
-
-
-class FakeStorage:
-    """Duck-types the slice of ``google.cloud.storage.Client`` the reader uses."""
-
-    def __init__(self, *texts: bytes, bucket: str = BUCKET):
-        self.objects = {
-            (bucket, u.removeprefix(f"gs://{bucket}/")): FakeBlob(t)
-            for t in texts
-            for u in [uri(t, bucket)]
-        }
-        self.gets: list[tuple[str, str]] = []
-        self.error: Exception | None = None
-        self.closed = False
-
-    def bucket(self, name: str) -> FakeBucket:
-        return FakeBucket(self, name)
-
-    def close(self) -> None:
-        self.closed = True
 
 
 def change(previous: bytes | None = PREVIOUS, current: bytes = CURRENT, **fields):
