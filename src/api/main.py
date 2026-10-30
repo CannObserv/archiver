@@ -43,9 +43,11 @@ from src.core.db_safety import (
     assert_production_db_allowed,
 )
 from src.core.logging import configure_logging, get_logger
+from src.core.notifications.diff_loader import announced_text_reader
 from src.core.notifier.client import Notifier, announce
 from src.core.notifier.gate import NotifierRefused, resolve
 from src.core.power_map import power_map_from_env
+from src.core.public_base_url import PUBLIC_BASE_URL_ENV, public_base_url
 from src.core.services import fetch_policy
 from src.dashboard.main import register_dashboard
 
@@ -541,6 +543,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     app.state.liveness_task = liveness_task
     app.state.notifier = Notifier(notifier_config) if notifier_config is not None else None
+    # The processor-text reader (archiver#367 D4): built last, like the Notifier
+    # client, and degrade-don't-refuse. No GCS request here.
+    app.state.text_reader = announced_text_reader(os.environ)
+    _announce_links()
 
     try:
         yield
@@ -584,6 +590,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.power_map.aclose()
         if app.state.notifier is not None:
             await app.state.notifier.aclose()
+        if app.state.text_reader is not None:
+            app.state.text_reader.close()
+
+
+def _announce_links() -> None:
+    """Which origin notification and API links point at, or that there are none (#367)."""
+    base = public_base_url()
+    if base:
+        logger.info("links point at %s", base)
+    else:
+        logger.info("%s unset or not an origin: no links", PUBLIC_BASE_URL_ENV)
 
 
 app = FastAPI(title="archiver", version=_package_version("archiver"), lifespan=lifespan)

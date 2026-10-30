@@ -1,7 +1,8 @@
 """Tests for dashboard_url field on InfoItem API responses.
 
 dashboard_url is None when ARCHIVER_PUBLIC_BASE_URL is not set, and points to
-the Archiver dashboard detail page when the env var is configured.
+the Archiver dashboard detail page, ``{origin}/dashboard/info-items/{id}``, when the
+env var holds an origin (archiver#367 Q1).
 """
 
 import pytest
@@ -32,7 +33,10 @@ async def test_get_info_item_dashboard_url_points_to_dashboard(client, monkeypat
     item_id = await _make_item(client)
     resp = await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)
     assert resp.status_code == 200
-    assert resp.json()["dashboard_url"] == f"https://archiver.example.com/info-items/{item_id}"
+    assert (
+        resp.json()["dashboard_url"]
+        == f"https://archiver.example.com/dashboard/info-items/{item_id}"
+    )
 
 
 @pytest.mark.asyncio
@@ -41,7 +45,10 @@ async def test_get_info_item_dashboard_url_strips_trailing_slash(client, monkeyp
     monkeypatch.setenv("ARCHIVER_PUBLIC_BASE_URL", "https://archiver.example.com/")
     item_id = await _make_item(client)
     resp = await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)
-    assert resp.json()["dashboard_url"] == f"https://archiver.example.com/info-items/{item_id}"
+    assert (
+        resp.json()["dashboard_url"]
+        == f"https://archiver.example.com/dashboard/info-items/{item_id}"
+    )
 
 
 @pytest.mark.asyncio
@@ -52,7 +59,7 @@ async def test_list_info_items_dashboard_url(client, monkeypatch):
     resp = await client.get("/api/v1/info-items", headers=HEADERS)
     assert resp.status_code == 200
     match = next(i for i in resp.json()["items"] if i["info_item_id"] == item_id)
-    assert match["dashboard_url"] == f"https://archiver.example.com/info-items/{item_id}"
+    assert match["dashboard_url"] == f"https://archiver.example.com/dashboard/info-items/{item_id}"
 
 
 @pytest.mark.asyncio
@@ -63,7 +70,8 @@ async def test_create_info_item_returns_dashboard_url(client, monkeypatch):
     assert resp.status_code == 201
     body = resp.json()
     assert (
-        body["dashboard_url"] == f"https://archiver.example.com/info-items/{body['info_item_id']}"
+        body["dashboard_url"]
+        == f"https://archiver.example.com/dashboard/info-items/{body['info_item_id']}"
     )
 
 
@@ -78,4 +86,13 @@ async def test_find_info_items_dashboard_url(client, monkeypatch):
     assert resp.status_code == 200
     results = resp.json()
     match = next(i for i in results if i["info_item_id"] == item_id)
-    assert match["dashboard_url"] == f"https://archiver.example.com/info-items/{item_id}"
+    assert match["dashboard_url"] == f"https://archiver.example.com/dashboard/info-items/{item_id}"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_url_none_when_the_base_is_not_an_origin(client, monkeypatch):
+    """archiver#367 Q1: a path would double ``/dashboard``; no link beats a wrong one."""
+    monkeypatch.setenv("ARCHIVER_PUBLIC_BASE_URL", "https://archiver.example.com/dashboard")
+    item_id = await _make_item(client)
+    resp = await client.get(f"/api/v1/info-items/{item_id}", headers=HEADERS)
+    assert resp.json()["dashboard_url"] is None

@@ -31,10 +31,11 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # tests/fixtures/diff/ holds captured page text, byte-exact (archiver#367).
       - id: trailing-whitespace
-        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/)
+        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/|tests/fixtures/diff/)
       - id: end-of-file-fixer
-        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/)
+        exclude: ^(skills-vendor/|clients/python/src/archiver_client/generated/|tests/fixtures/diff/)
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict

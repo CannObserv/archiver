@@ -141,6 +141,9 @@ _OUTBOUND_SERVICE_ENV_VARS = (
     "ARCHIVER_NOTIFIER_ENABLED",
     "ARCHIVER_DEV_NOTIFIER_BASE_URL",
     "ARCHIVER_DEV_NOTIFIER_API_KEY",
+    # The processor-text reader (#367): with a bucket and CREDENTIALS_DIRECTORY
+    # (above), a lifespan test would build a real GCS client.
+    "ARCHIVER_PROCESSOR_TEXT_BUCKET",
 )
 for _var in _OUTBOUND_SERVICE_ENV_VARS:
     os.environ.pop(_var, None)

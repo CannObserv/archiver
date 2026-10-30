@@ -9,3 +9,9 @@
 # still names the module as `src/core/db_safety.py`.
 # (pruned 2026-09-09 round 2: the atom is present again at this base,
 #  so the round-1 warrant is spent - prove-no-loss.sh reported it matched nothing)
+
+# archiver#367 D7 (2026-10-30): ARCHIVER_PUBLIC_BASE_URL is now an origin; the item page is
+# /dashboard/info-items/{id} (src/core/public_base_url.py item_page_url), set in deploy/archiver.service.
+docs/ENVIRONMENT.md :: disproven :: https://archiver.example.com
+docs/ENVIRONMENT.md :: disproven :: https://archiver.example.com`
+docs/ENVIRONMENT.md :: disproven :: {ARCHIVER_PUBLIC_BASE_URL}/info-items/{id}

@@ -2,9 +2,11 @@
 
 **Who hears which events, and how** (archiver#363; design D3: "Watcher monitors and
 reports; Archiver decides who hears; Notifier delivers"). Subscriptions replace Watcher's
-`notification_templates`. **Nothing sends yet.** This is the model, the API, the dashboard
-and the import. Composition, preview and test-send are #367. The `info.watch-events`
-consumer, shadow mode and dispatch are #369. The Notifier credential is #368 (§ The credential).
+`notification_templates`. This is the model, the API, the dashboard and the import.
+Composition, the preview and the test-send, **the one send so far**, are #367's:
+[NOTIFICATION_COMPOSER.md](NOTIFICATION_COMPOSER.md). The `info.watch-events` consumer,
+shadow mode and dispatch on events are #369's. The Notifier credential is #368's
+(§ The credential).
 
 ## The table: `information.notification_subscriptions`
 
@@ -28,8 +30,8 @@ the row and create another. Mutable fields are `title`, `events`, `remote_channe
 ## Who hears: `subscriptions_for`
 
 `src/core/services/notification_subscriptions.py`, `subscriptions_for(session,
-info_item_id, event)`, is **the** matcher. #367's preview and #369's dispatch call it, and
-the item page shows its answer. It follows Watcher's rule (`notify.py` at `ebd1be5`):
+info_item_id, event)`, is **the** matcher. #369's dispatch calls it, and the item page shows
+its answer. The preview doesn't: it renders fixtures, not an item. It follows Watcher's rule (`notify.py` at `ebd1be5`):
 every active subscription whose `events` hold the event, across the **union** of three
 scopes, each row once and in id order.
 
@@ -66,9 +68,10 @@ event; it doesn't merge with them.
 - an override key must be a known event;
 - the toggles are strict booleans;
 - each template must **parse** in `jinja2.sandbox.SandboxedEnvironment`. Only syntax is
-  checked, because the variables are #367's render context. **#367 renders in the sandbox
-  too:** Watcher's plain `Environment` lets a template reach Python attributes, and here a
-  template arrives through an API key.
+  checked at write time; the dashboard's preview also names undefined variables.
+  **Every render is sandboxed too** ([NOTIFICATION_COMPOSER.md](NOTIFICATION_COMPOSER.md)):
+  Watcher's plain `Environment` lets a template reach Python attributes, and here a template
+  arrives through an API key.
 
 The API stores what was sent (`exclude_unset`), and the dashboard stores only what differs
 from the defaults. Either way, a later default change still reaches rows that never chose
@@ -107,12 +110,12 @@ otherwise. `audit_stored_documents` sweeps the column as kind `notification_cont
   - Content options are one fieldset per block. Fields are named `<block>__<option>`, and
     `override__<event>` turns an event's block on (`src/dashboard/notification_form.py`).
 - **`/{id}/delete`** sits in a danger zone with a static confirm.
-- **The Jinja fields stay API-only** until #367 ships the preview beside them. Without a
-  preview, an edit couldn't be checked before something sends. The form therefore **carries
-  stored templates over**, and refuses to turn off an override that holds one rather than
-  erase it.
-- **No send or test control.** When #367 adds one, a test-send to a production channel is an
-  operator action.
+- **Each block has its Jinja title and body fields, with a live preview beside them** (#367
+  D5): `POST /dashboard/notifications/preview` renders the posted form in the sandbox against
+  canned fixtures, with no Notifier call. A cleared field clears its template.
+- **The edit page's test-send** (#367 D6) makes one dispatch of the saved options to the row's
+  channel, behind a static confirm. It's dashboard-only, and on 8000 it's an operator action.
+  Both: [NOTIFICATION_COMPOSER.md](NOTIFICATION_COMPOSER.md).
 - **The item page's "Notified by" row** (`#ii-notified-by`, a full-width cell in the
   Overview grid) shows `notified_by`: each subscription that hears the item, its scope and
   its events. Each links to its edit page. With none, it links to `/new` with the item
@@ -179,10 +182,11 @@ three things at startup, before any resource is built:
 | all three | one client, `Notifier configured at <url> (key: credential)`. Never the key |
 
 - **The lifespan makes no Notifier call.** An outage must not stop the registry.
-- **The adapter is read-only.** `src/core/notifier/client.py` is the only importer of
+- **The adapter is narrow.** `src/core/notifier/client.py` is the only importer of
   `notifier-client` (a git tag, `v0.3.2`; upgrade as for Power Map,
-  [DEPLOYMENT.md](DEPLOYMENT.md) § Power Map SDK). It lists channels and nothing else, and a
-  guard test pins that. Test-send is #367's and dispatch #369's.
+  [DEPLOYMENT.md](DEPLOYMENT.md) § Power Map SDK). It lists channels and makes one kind of
+  dispatch, `dispatch_composed`, which passes composed text as variables (#367 D3). A guard
+  test pins both, and bans `send_test`, `redeliver` and the channel writes.
 
 | Where | What |
 |---|---|
@@ -201,7 +205,8 @@ three things at startup, before any resource is built:
 
 **Settings → Notifier** (`/dashboard/settings/notifier`) proves the key end to end with zero
 sends: one `GET /api/v1/channels` per view, then each channel's name, type (the masked
-URL's scheme) and id, or why there is no list. It has no send control.
+URL's scheme) and id, or why there is no list. It has no send control: the test-send is on a
+subscription's edit page.
 
 ### Installing the key (operator, as root, once)
 

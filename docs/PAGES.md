@@ -167,7 +167,11 @@ that screen. The entries below stay the inventory line for each route.
 
 ## Notifications (`/dashboard/notifications/`)
 
-The list grouped by scope, `GET`/`POST /new`, `GET`/`POST /{id}/edit` and `POST /{id}/delete` (archiver#363): full-page POST→303, a refusal re-renders with 422. Templates `notifications/list.html`, `notifications/form.html`. Contract: [NOTIFICATIONS.md](NOTIFICATIONS.md).
+The list grouped by scope, `GET`/`POST /new`, `GET`/`POST /{id}/edit` and `POST /{id}/delete` (archiver#363): full-page POST→303, a refusal re-renders with 422 and keeps what was typed. Templates `notifications/list.html`, `notifications/form.html`. Each content block has Jinja title and body fields (archiver#367).
+
+**POST `/preview`** - the live preview beside those fields: the form's `hx-post` panel (`load`, then `input`/`change` from the form, 500 ms delay, `hx-sync="this:replace"`) swaps `#notif-preview` (`outerHTML`) with `notifications/_preview.html`. Strict render against canned fixtures, no Notifier call, no DB; errors show in an `alert--error`. An Event select picks which event it previews. Two `<details>` beneath list the template variables and the default templates.
+
+**POST `/{id}/test-send`** - edit page only, a `.btn--secondary` with a static `hx-confirm` naming the channel id. One dispatch of the saved options; the outcome swaps into `#test-send-result` (`notifications/_test_send_result.html`, `role="status"`) and flashes at `success`, `warning` (delivery not succeeded) or `error` (refused, or no Notifier). Contract: [NOTIFICATIONS.md](NOTIFICATIONS.md), [NOTIFICATION_COMPOSER.md](NOTIFICATION_COMPOSER.md).
 
 ## Information Sources and Revisions (`/dashboard/info-sources/`, `/dashboard/source-revisions/`)
 
@@ -194,7 +198,7 @@ Partial template: `settings/_api_key_row.html` - reusable `<tr x-data="apiKeyRow
 
 ## Settings - Notifier (`/dashboard/settings/notifier`)
 
-**GET** - read-only (archiver#368). One `list_channels` call to Notifier per view, then a table: Name, Type (the masked URL's scheme), Channel id. Above it, the base URL and where the key came from, never the key. Dormant (`data-notifier-status="dormant"`) says the process has no Notifier; unavailable is a 200 with an `alert--error` naming the reason. No form, no button: test-send is #367's. Gate and key: [NOTIFICATIONS.md](NOTIFICATIONS.md) § The credential.
+**GET** - read-only (archiver#368). One `list_channels` call to Notifier per view, then a table: Name, Type (the masked URL's scheme), Channel id. Above it, the base URL and where the key came from, never the key. Dormant (`data-notifier-status="dormant"`) says the process has no Notifier; unavailable is a 200 with an `alert--error` naming the reason. No form, no button: the test-send is on a subscription's edit page (archiver#367). Gate and key: [NOTIFICATIONS.md](NOTIFICATIONS.md) § The credential.
 
 ## Error pages (no route of their own)
 

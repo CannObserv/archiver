@@ -7,7 +7,6 @@ controls: the registry republish trigger, DLQ triage (archiver#238), and
 dead-lettered outbox triage (archiver#191).
 """
 
-import os
 from typing import TYPE_CHECKING
 
 from co_core_aio.fetch import AsyncFetchDriver
@@ -72,6 +71,7 @@ from src.core.changes.outbox_triage import (
     rearm_dead_lettered,
 )
 from src.core.power_map.snapshots import load_orgs
+from src.core.public_base_url import public_base_url
 from src.core.rep_fields import effective_rep_fields
 from src.core.rep_fields_schema.validator import (
     validate_rep_fields,
@@ -193,7 +193,7 @@ async def find_info_items_route(
     Information Item. Returns up to ``limit`` matches, newest first.
     """
     items = await find_info_item(session, q, limit=limit)
-    base_url = os.environ.get("ARCHIVER_PUBLIC_BASE_URL")
+    base_url = public_base_url()
     orgs = await load_orgs(session, items)
     return [
         info_item_to_out(

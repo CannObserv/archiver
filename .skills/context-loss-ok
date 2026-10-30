@@ -100,3 +100,14 @@ AGENTS.md :: tighten :: the temporal-profile boundary, #365) and
 AGENTS.md :: tighten :: `root:root 0600`: read by systemd for the units and by `deploy.sh` via sudo, never by an agent shell (#339).
 AGENTS.md :: tighten :: never 8000. Why the script exists, its knobs, and the 2026-07-18
 AGENTS.md :: tighten :: production-write incident: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
+
+# archiver#367 D7 (2026-10-30): scoped ENVIRONMENT.md pass to fit the #368/#367 entries.
+# Broker rationale moved verbatim to docs/BUS_CLIENT.md § The broker boundary; these are
+# the lines rewritten in place.
+docs/ENVIRONMENT.md :: disproven :: `AGENTS.md` keeps the four variables that carry safety rules; the reference
+docs/ENVIRONMENT.md :: tighten :: > D5), so the fallback is no longer the normal case on this host. The knob had
+docs/ENVIRONMENT.md :: tighten :: > always been honoured; there was simply never a database for it to name, so
+docs/ENVIRONMENT.md :: tighten :: > every dev server and every test run shared one and raced. Provisioning a
+docs/ENVIRONMENT.md :: tighten :: > dedicated VM was the moment to close that rather than port it.
+docs/ENVIRONMENT.md :: tighten :: Note the fourth mover: the repo-root `.env` loads **after** `/etc/archiver/.env` and overrides it
+docs/ENVIRONMENT.md :: disproven :: - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance

@@ -213,7 +213,7 @@ tests/test_conftest_guard.py :: docs/DEPLOYMENT.md and the failure message both 
 docs/CONVENTIONS.md :: holds no transaction open (CLAUDE.md § Reading production).
 docs/CONVENTIONS.md :: the rule sits in the file a tightening edits rather than in AGENTS.md.
 docs/DEPLOYMENT.md :: (CLAUDE.md § Environment & Tooling, the `using-git-worktrees` override). Until #341 it was in
-docs/ENVIRONMENT.md :: `AGENTS.md` keeps the four variables that carry safety rules; the reference
+docs/ENVIRONMENT.md :: `AGENTS.md` keeps the five variables that carry safety rules; the reference
 scripts/sync_wheelhouse.py :: A checkout runs it by hand (AGENTS.md, Environment & Tooling).
 src/dashboard/org_row.py :: ``pm_organizations``, never Power Map (CLAUDE.md's edge rule).
 tests/alembic/test_env_db_safety.py :: ``alembic upgrade`` or ``downgrade`` against production, and CLAUDE.md told
@@ -407,3 +407,16 @@ docs/SCHEMA_BUS.md :: `info.changes` row to the drain. See [BUS.md](BUS.md).
 src/api/main.py :: # trigger fires (docs/BUS.md, content.replicate).
 src/dashboard/bus_triage.py :: ``src/core/changes/outbox_triage.py`` (``docs/BUS.md``) and
 src/dashboard/templates/bus_triage/index.html :: asked. The rules are the runbooks' - <code>docs/BUS.md</code> for the
+
+# archiver#367 D7 (2026-10-30), --file docs/ENVIRONMENT.md: broker rationale moved to
+# BUS_CLIENT.md § The broker boundary. Each pointer below names a variable entry, the
+# outbound-env-var steps or the dev-server material ENVIRONMENT.md still holds.
+docs/BUS.md :: - **Off unless `ARCHIVER_PERSIST_ISSUANCE` is set** ([ENVIRONMENT.md](
+docs/BUS_CLIENT.md :: `ARCHIVER_REDIS_STREAM_MAXLEN` ([ENVIRONMENT.md](ENVIRONMENT.md)) move
+docs/BUS_CLIENT.md :: `ARCHIVER_REGISTRY_STREAM_MAXLEN` ([ENVIRONMENT.md](ENVIRONMENT.md)) m
+docs/BUS_CLIENT.md :: `ARCHIVER_DEV_REDIS_URL` ([ENVIRONMENT.md](ENVIRONMENT.md)) is dormant
+docs/DEPLOYMENT.md :: variable reference and the dev server's internals are [ENVIRONMENT.md]
+docs/DEPLOYMENT.md :: `scripts/dev_server.sh` exists: [ENVIRONMENT.md](ENVIRONMENT.md).
+scripts/dev_server.sh :: # throwaway, see docs/ENVIRONMENT.md) or runs bus-dormant. And a dev o
+src/core/changes/registry_snapshot.py :: env var can move it with no commit in either repo. ``docs/ENVIRONMENT.
+tests/test_conftest_guard.py :: docs/ENVIRONMENT.md and the failure message both advertise.
