@@ -153,6 +153,25 @@ def text_reader_from_environ(
     return TextReader(client, bucket, max_input_bytes=_max_input_bytes(environ)), None
 
 
+def announced_text_reader(environ: Mapping[str, str] = os.environ) -> TextReader | None:
+    """The process's reader, or ``None``, saying which once: the lifespan's call.
+
+    A bucket without a usable key is a WARNING: the unit meant to read and can't,
+    so every change diff is unavailable. No bucket at all (a dev server, the
+    suite) is the dormant INFO.
+    """
+    reader, reason = text_reader_from_environ(environ)
+    if reader is not None:
+        logger.info("processor text reader configured (bucket %s)", reader.bucket)
+    elif environ.get(BUCKET_ENV, "").strip():
+        logger.warning(
+            "processor text reader not configured: %s; change diffs are unavailable", reason
+        )
+    else:
+        logger.info("processor text reader not configured: %s", reason)
+    return reader
+
+
 async def read_stored_text(
     reader: TextReader, uri: str, fingerprint: str
 ) -> tuple[bytes | None, str | None]:

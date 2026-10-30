@@ -43,8 +43,7 @@ from src.core.db_safety import (
     assert_production_db_allowed,
 )
 from src.core.logging import configure_logging, get_logger
-from src.core.notifications.diff_loader import BUCKET_ENV as TEXT_BUCKET_ENV
-from src.core.notifications.diff_loader import text_reader_from_environ
+from src.core.notifications.diff_loader import announced_text_reader
 from src.core.notifier.client import Notifier, announce
 from src.core.notifier.gate import NotifierRefused, resolve
 from src.core.power_map import power_map_from_env
@@ -546,7 +545,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.notifier = Notifier(notifier_config) if notifier_config is not None else None
     # The processor-text reader (archiver#367 D4): built last, like the Notifier
     # client, and degrade-don't-refuse. No GCS request here.
-    app.state.text_reader = _text_reader()
+    app.state.text_reader = announced_text_reader(os.environ)
     _announce_links()
 
     try:
@@ -593,25 +592,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.notifier.aclose()
         if app.state.text_reader is not None:
             app.state.text_reader.close()
-
-
-def _text_reader():
-    """The process's processor-text reader, or ``None``; says which, once (#367 D4).
-
-    A bucket without a usable key is a WARNING: the unit meant to read and can't,
-    so every change diff is unavailable. No bucket at all (a dev server, the
-    suite) is the dormant INFO.
-    """
-    reader, reason = text_reader_from_environ(os.environ)
-    if reader is not None:
-        logger.info("processor text reader configured (bucket %s)", reader.bucket)
-    elif os.environ.get(TEXT_BUCKET_ENV, "").strip():
-        logger.warning(
-            "processor text reader not configured: %s; change diffs are unavailable", reason
-        )
-    else:
-        logger.info("processor text reader not configured: %s", reason)
-    return reader
 
 
 def _announce_links() -> None:
