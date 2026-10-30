@@ -1,20 +1,24 @@
-"""The Notifications page, and the item and domain pages' views of it (archiver#363, D5).
+"""The Notifications page, and the item and domain pages' views of it (archiver#363, #367).
 
-A list grouped by scope, and create/edit/delete for everything but the Jinja
-fields, which stay API-only until #367's preview - an edit carries them over.
-The item page's "Notified by" row is ``subscriptions_for``'s answer; the domain
-page lists its domain-scoped rows. Nothing here sends: there is no send or test
-control, and no write leaves a ``changes_outbox`` row.
+A list grouped by scope, and create/edit/delete, the Jinja fields included since
+#367 put a live preview beside them (D5). The item page's "Notified by" row is
+``subscriptions_for``'s answer; the domain page lists its domain-scoped rows.
+The one send is the edit page's test-send (D6), an operator action through the
+adapter's one dispatch. No write leaves a ``changes_outbox`` row.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 
 import pytest
 from sqlalchemy import func, select
 from ulid import ULID
 
+from src.api.deps import get_notifier
+from src.api.main import app
 from src.core.models import (
     ChangesOutboxRow,
     Domain,
@@ -23,6 +27,8 @@ from src.core.models import (
     InfoSource,
     NotificationSubscription,
 )
+from src.core.notifier.client import Dispatched, NotifierUnavailable
+from tests.core.notifier.fake import DEV_SINK, FakeNotifier
 
 _HEADERS = {"X-ExeDev-UserID": "ext-notif", "X-ExeDev-Email": "notif@example.com"}
 CHANNEL = "01M5APS9R7A0QEDB9522MRA4CT"
@@ -124,8 +130,10 @@ async def test_new_form_prefills_from_the_query(client, session):
     assert r.status_code == 200
     assert re.search(r'value="domain"[^>]*checked', r.text)
     assert re.search(r'value="prefill.example.com"[^>]*selected', r.text)
-    # D5: the Jinja fields are not on the form until #367's preview.
-    assert "title_template" not in r.text and "body_template" not in r.text
+    # #367 D5: the Jinja fields are on the form, with the live preview beside them.
+    assert 'name="default__title_template"' in r.text
+    assert 'name="watch_error__body_template"' in r.text
+    assert 'hx-post="/dashboard/notifications/preview"' in r.text
 
 
 @pytest.mark.asyncio
@@ -210,7 +218,7 @@ async def test_edit_form_fixes_the_scope_and_shows_the_options(client, session):
 
 
 @pytest.mark.asyncio
-async def test_edit_saves_and_carries_the_api_set_templates_over(client, session):
+async def test_edit_saves_the_templates_on_the_form(client, session):
     sub = await _sub(
         session,
         "Before",
@@ -227,6 +235,7 @@ async def test_edit_saves_and_carries_the_api_set_templates_over(client, session
             "remote_channel_id": CHANNEL,
             **_CONTENT_DEFAULTS,
             "default__include_domain": "on",
+            "default__body_template": "up: {{ item_name }}",
         },
         follow_redirects=False,
     )
@@ -234,28 +243,53 @@ async def test_edit_saves_and_carries_the_api_set_templates_over(client, session
     assert r.status_code == 303, r.text
     await session.refresh(sub)
     assert (sub.title, sub.events, sub.is_active) == ("After", ["watch_recovered"], False)
+    # No carry-over: the cleared title field cleared the stored title template.
     assert sub.content_config == {
-        "default": {"include_domain": True, "title_template": "{{ item_name }}"}
+        "default": {"include_domain": True, "body_template": "up: {{ item_name }}"}
     }
     assert sub.scope == "global"
     assert await _outbox(session) == before
 
 
 @pytest.mark.asyncio
-async def test_edit_refuses_to_drop_an_override_holding_a_template(client, session):
-    stored = {"overrides": {"watch_error": {"body_template": "down"}}}
-    sub = await _sub(session, "Kept", content_config=stored)
+async def test_the_edit_form_shows_the_stored_templates(client, session):
+    sub = await _sub(
+        session, "Shown", content_config={"overrides": {"watch_error": {"body_template": "x<y"}}}
+    )
+    r = await client.get(f"/dashboard/notifications/{sub.id}/edit", headers=_HEADERS)
+    assert re.search(r'name="watch_error__body_template"[^>]*>x&lt;y</textarea>', r.text)
 
+
+@pytest.mark.asyncio
+async def test_an_override_holding_a_template_can_be_turned_off(client, session):
+    sub = await _sub(
+        session, "Kept", content_config={"overrides": {"watch_error": {"body_template": "down"}}}
+    )
     r = await client.post(
         f"/dashboard/notifications/{sub.id}/edit",
         headers=_HEADERS,
         data=_form(title="Changed"),
+        follow_redirects=False,
     )
-
-    assert r.status_code == 422
-    assert "holds a Jinja template" in r.text
+    assert r.status_code == 303
     await session.refresh(sub)
-    assert (sub.title, sub.content_config) == ("Kept", stored)
+    assert (sub.title, sub.content_config) == ("Changed", None)
+
+
+@pytest.mark.asyncio
+async def test_a_template_that_does_not_parse_is_refused_on_save(client, session):
+    sub = await _sub(session, "Kept")
+    r = await client.post(
+        f"/dashboard/notifications/{sub.id}/edit",
+        headers=_HEADERS,
+        data=_form(default__body_template="{% if %}"),
+    )
+    assert r.status_code == 422
+    assert "Default: body template: not a valid Jinja template" in r.text
+    # What was typed stays in the field.
+    assert "{% if %}</textarea>" in r.text
+    await session.refresh(sub)
+    assert sub.content_config is None
 
 
 @pytest.mark.asyncio
@@ -282,16 +316,19 @@ async def test_delete_redirects_and_removes_the_row(client, session):
 
 
 @pytest.mark.asyncio
-async def test_no_page_offers_a_send_or_test_control(client, session):
+async def test_only_the_edit_page_offers_a_test_send(client, session):
+    """D6: the edit page's one button; the list and the create form have none."""
     sub = await _sub(session, "Quiet")
-    for url in (
-        "/dashboard/notifications/",
-        "/dashboard/notifications/new",
-        f"/dashboard/notifications/{sub.id}/edit",
-    ):
+    for url in ("/dashboard/notifications/", "/dashboard/notifications/new"):
         text = (await client.get(url, headers=_HEADERS)).text
-        actions = re.findall(r'action="([^"]+)"', text)
-        assert not [a for a in actions if "send" in a or "test" in a], url
+        assert "test-send" not in text, url
+    text = (await client.get(f"/dashboard/notifications/{sub.id}/edit", headers=_HEADERS)).text
+    assert text.count("test-send") >= 1
+    assert re.findall(r'hx-post="([^"]*test-send)"', text) == [
+        f"/dashboard/notifications/{sub.id}/test-send"
+    ]
+    # A static confirm that names the channel.
+    assert re.search(rf'hx-confirm="[^"]*{CHANNEL}[^"]*"', text)
 
 
 # --- the item and domain pages --------------------------------------------
@@ -371,3 +408,158 @@ async def test_group_headings_count_every_row_not_the_page(client, session):
 
     assert "Global (3)" in r.text
     assert "Domain (0)" in r.text
+
+
+# --- the preview (archiver#367, D5) ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_preview_renders_the_posted_form_without_notifier(client, session):
+    notifier = FakeNotifier(DEV_SINK)
+    app.dependency_overrides[get_notifier] = lambda: notifier
+    r = await client.post(
+        "/dashboard/notifications/preview",
+        headers=_HEADERS,
+        data=_form(
+            preview_event="watch_error",
+            default__title_template="down: {{ item_name }} <b>",
+        ),
+    )
+    assert r.status_code == 200
+    assert 'id="notif-preview"' in r.text
+    assert "down: Example item &lt;b&gt;" in r.text
+    assert "returned HTTP 503" in r.text
+    assert notifier.calls == []
+
+
+@pytest.mark.asyncio
+async def test_the_preview_shows_the_error(client, session):
+    r = await client.post(
+        "/dashboard/notifications/preview",
+        headers=_HEADERS,
+        data=_form(preview_event="change_detected", default__body_template="{{ status_code }}"),
+    )
+    assert r.status_code == 200
+    assert "UndefinedError" in r.text
+    assert "status_code" in r.text
+
+
+@pytest.mark.asyncio
+async def test_the_preview_needs_a_login(client):
+    r = await client.post("/dashboard/notifications/preview", data=_form(), follow_redirects=False)
+    assert r.status_code in (303, 307)
+
+
+# --- the test-send (archiver#367, D6) -------------------------------------
+
+
+def _flash(response) -> dict:
+    return json.loads(response.headers["HX-Trigger"])["showFlash"]
+
+
+@pytest.mark.asyncio
+async def test_a_test_send_dispatches_the_rows_options_once(client, session, caplog):
+    notifier = FakeNotifier(DEV_SINK)
+    app.dependency_overrides[get_notifier] = lambda: notifier
+    sub = await _sub(
+        session,
+        "Ops",
+        content_config={"default": {"title_template": "{{ event_label }} on {{ item_name }}"}},
+    )
+    before = await _outbox(session)
+
+    with caplog.at_level(logging.INFO, logger="src.dashboard.routes.notifications"):
+        r = await client.post(
+            f"/dashboard/notifications/{sub.id}/test-send",
+            headers=_HEADERS | {"HX-Request": "true"},
+        )
+
+    assert r.status_code == 200
+    assert notifier.calls == ["dispatch_composed"]
+    (sent,) = notifier.dispatches
+    assert sent["channel_id"] == CHANNEL
+    assert sent["title"] == "[Test] Change on Example item"
+    assert sent["body"].startswith("- Example item\n")
+    assert re.fullmatch(
+        rf"archiver:test:{sub.id}:[0-9A-HJKMNP-TV-Z]{{26}}", sent["idempotency_key"]
+    )
+    assert sent["metadata"] == {"test": True, "subscription_id": str(sub.id)}
+    flash = _flash(r)
+    assert flash["level"] == "success"
+    assert "01M5DISPATCH0000000000000A" in flash["body"]
+    assert "01M5DISPATCH0000000000000A" in r.text
+    (line,) = [
+        rec
+        for rec in caplog.records
+        if rec.name == "src.dashboard.routes.notifications" and "test-send" in rec.getMessage()
+    ]
+    assert (line.subscription_id, line.channel_id, line.dispatch_id) == (
+        str(sub.id),
+        CHANNEL,
+        "01M5DISPATCH0000000000000A",
+    )
+    assert "Example item" not in str(line.__dict__)
+    assert sent["idempotency_key"] not in str(line.__dict__)
+    assert await _outbox(session) == before
+
+
+@pytest.mark.asyncio
+async def test_each_test_send_has_its_own_key(client, session):
+    notifier = FakeNotifier(DEV_SINK)
+    app.dependency_overrides[get_notifier] = lambda: notifier
+    sub = await _sub(session, "Twice")
+    for _ in range(2):
+        await client.post(f"/dashboard/notifications/{sub.id}/test-send", headers=_HEADERS)
+    keys = {d["idempotency_key"] for d in notifier.dispatches}
+    assert len(keys) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_failed_dispatch_status_is_a_warning(client, session):
+    notifier = FakeNotifier(DEV_SINK)
+    notifier.dispatched = Dispatched(id="01M5DISPATCH0000000000000B", status="failed")
+    app.dependency_overrides[get_notifier] = lambda: notifier
+    sub = await _sub(session, "Failing")
+    r = await client.post(f"/dashboard/notifications/{sub.id}/test-send", headers=_HEADERS)
+    flash = _flash(r)
+    assert flash["level"] == "warning"
+    assert "failed" in flash["body"] and "01M5DISPATCH0000000000000B" in flash["body"]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_test_send_shows_the_reason(client, session):
+    notifier = FakeNotifier(
+        unavailable=NotifierUnavailable("Notifier has no such channel in this tenant (HTTP 404)")
+    )
+    app.dependency_overrides[get_notifier] = lambda: notifier
+    sub = await _sub(session, "Nowhere")
+    r = await client.post(f"/dashboard/notifications/{sub.id}/test-send", headers=_HEADERS)
+    assert r.status_code == 200
+    flash = _flash(r)
+    assert flash["level"] == "error"
+    assert "no such channel" in flash["body"]
+
+
+@pytest.mark.asyncio
+async def test_a_dormant_notifier_sends_nothing(client, session):
+    app.dependency_overrides[get_notifier] = lambda: None
+    sub = await _sub(session, "Dormant")
+    r = await client.post(f"/dashboard/notifications/{sub.id}/test-send", headers=_HEADERS)
+    assert r.status_code == 200
+    flash = _flash(r)
+    assert flash["level"] == "error"
+    assert "not configured" in flash["body"]
+
+
+@pytest.mark.asyncio
+async def test_a_test_send_needs_a_login_and_a_row(client, session):
+    notifier = FakeNotifier(DEV_SINK)
+    app.dependency_overrides[get_notifier] = lambda: notifier
+    sub = await _sub(session, "Guarded")
+    r = await client.post(f"/dashboard/notifications/{sub.id}/test-send", follow_redirects=False)
+    assert r.status_code in (303, 307)
+    r = await client.post(f"/dashboard/notifications/{ULID()}/test-send", headers=_HEADERS)
+    assert r.status_code == 404
+    r = await client.get(f"/dashboard/notifications/{sub.id}/test-send", headers=_HEADERS)
+    assert r.status_code in (404, 405)
+    assert notifier.dispatches == []

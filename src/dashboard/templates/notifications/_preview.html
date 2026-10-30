@@ -1,0 +1,27 @@
+{#- The live preview (archiver#367, D5): the form's options for one event, rendered
+   strict in the sandbox against the canned fixtures. Local: no Notifier call.
+   `preview` is notification_form.render_preview's view. Swapped in as #notif-preview. -#}
+<div id="notif-preview" data-preview-event="{{ preview.event }}">
+  {% if preview.errors %}
+  <div class="alert alert--error" role="alert">
+    <ul style="margin:0;padding-left:var(--space-4);">
+      {% for e in preview.errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if preview.block %}
+  <p class="text-sm text-muted" style="margin:0 0 var(--space-1);">
+    {{ labels[preview.event] }}, from the
+    {% if preview.block == "override" %}{{ labels[preview.event] }} options{% else %}Default options{% endif %},
+    against a canned example item.
+  </p>
+  {% endif %}
+  {% if preview.title is not none %}
+  <p class="form-label" style="margin:0;">Title</p>
+  <pre class="code-block" style="white-space:pre-wrap;margin:0 0 var(--space-2);">{{ preview.title }}</pre>
+  {% endif %}
+  {% if preview.body is not none %}
+  <p class="form-label" style="margin:0;">Body <span class="text-muted text-sm">(Markdown, as Notifier receives it)</span></p>
+  <pre class="code-block" style="white-space:pre-wrap;margin:0;">{{ preview.body }}</pre>
+  {% endif %}
+</div>

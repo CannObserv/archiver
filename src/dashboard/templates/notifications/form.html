@@ -1,16 +1,18 @@
 {% extends "base.html" %}
 {% block title %}{% if sub %}Edit {{ sub.title }}{% else %}New subscription{% endif %}{% endblock %}
 
-{#- Create and edit a notification subscription (archiver#363, D5). One form for
-   both: `sub` is the row on edit, none on create.
+{#- Create and edit a notification subscription (archiver#363 D5, #367 D5-D6). One
+   form for both: `sub` is the row on edit, none on create.
 
    - The scope and its ref are chosen on create only; on edit they show
      read-only (re-scope = delete + create, as on the API).
    - Content options: one fieldset per block, named `<block>__<option>`, with
      `override__<event>` turning that event's block on (notification_form.py).
-   - The Jinja title/body templates are not here: they stay API-only until
-     #367's preview sits beside them, and an edit carries them over.
-   - No send or test control (#367). -#}
+     Each block has its Jinja title and body; a cleared field clears it.
+   - The live preview (#367 D5) re-renders the posted form on every edit:
+     hx-post /preview, local, no Notifier call.
+   - Edit only: the test-send (#367 D6), one dispatch of the saved options
+     behind a static confirm naming the channel. -#}
 {% macro option_block(prefix, opts, legend) %}
 <div style="display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);">
   {% for name, label in toggles %}
@@ -25,6 +27,15 @@
            value="{{ opts.diff_snippet_lines if opts else 25 }}" class="form-input form-input--sm"
            style="width:5rem;" aria-label="{{ legend }}: diff snippet lines">
   </label>
+</div>
+<div style="display:flex;flex-direction:column;gap:var(--space-1);margin-top:var(--space-2);">
+  <label class="text-sm" for="{{ prefix }}-title-template">Title template <span class="text-muted">(Jinja; empty uses the default)</span></label>
+  <input id="{{ prefix }}-title-template" type="text" name="{{ prefix }}__title_template"
+         value="{{ opts.title_template or '' if opts else '' }}" class="form-input"
+         autocomplete="off" spellcheck="false">
+  <label class="text-sm" for="{{ prefix }}-body-template">Body template <span class="text-muted">(Jinja; empty uses the default and the toggles above)</span></label>
+  <textarea id="{{ prefix }}-body-template" name="{{ prefix }}__body_template" rows="4"
+            class="form-textarea" spellcheck="false">{{ opts.body_template or '' if opts else '' }}</textarea>
 </div>
 {% endmacro %}
 
@@ -143,13 +154,47 @@
           </div>
         </div>
         {% endfor %}
-        {% if options.templates %}
-        <p class="text-sm text-muted" style="margin:0;">
-          This subscription has a custom title or body template, set through the API. It is kept as is:
-          templates are edited through the API until the preview arrives (#367).
-        </p>
-        {% endif %}
       </fieldset>
+
+      <section aria-labelledby="notif-preview-heading" style="display:flex;flex-direction:column;gap:var(--space-2);">
+        <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;">
+          <h2 id="notif-preview-heading" class="form-label" style="margin:0;">Preview</h2>
+          <label class="text-sm" style="display:flex;flex-direction:row;align-items:center;gap:var(--space-1);font-weight:normal;">
+            Event
+            <select name="preview_event" class="form-select form-select--sm">
+              {% for value, label in events %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <span class="text-sm text-muted">Rendered here, from this form as it stands. Nothing is sent.</span>
+        </div>
+        <div hx-post="/dashboard/notifications/preview"
+             hx-trigger="load, input changed delay:500ms from:closest form, change from:closest form"
+             hx-target="#notif-preview" hx-swap="outerHTML" hx-sync="this:replace">
+          <div id="notif-preview"><p class="text-sm text-muted" style="margin:0;">Rendering the preview…</p></div>
+        </div>
+        <details>
+          <summary class="text-sm">Template variables</summary>
+          <table class="data-table text-sm">
+            <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Events</th><th scope="col">Meaning</th></tr></thead>
+            <tbody>
+              {% for v in template_variables %}
+              <tr><td><code>{{ v.name }}</code></td><td>{{ v.type }}</td>
+                  <td>{{ "every" if v.scope == "always" else event_labels_map[v.scope] }}</td><td>{{ v.description }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+        <details>
+          <summary class="text-sm">Default templates, to copy from</summary>
+          {% for label, title_t, body_t in default_templates %}
+          <p class="text-sm" style="margin:var(--space-2) 0 0;"><strong>{{ label }}</strong></p>
+          <pre class="code-block" style="white-space:pre-wrap;margin:0;">{{ title_t }}
+
+{{ body_t }}</pre>
+          {% endfor %}
+          <p class="text-sm text-muted">The Change body's default also adds the toggled lines and the diff.</p>
+        </details>
+      </section>
 
       <div style="display:flex;justify-content:flex-end;gap:var(--space-2);">
         <a href="/dashboard/notifications/" class="btn btn--ghost">Cancel</a>
@@ -159,6 +204,22 @@
   </div>
 
   {% if sub %}
+  <div class="filter-card" style="margin-top:var(--space-4);">
+    <h2 class="form-label" style="margin-top:0;">Test-send</h2>
+    <p class="text-sm" style="margin:0 0 var(--space-2);">
+      Renders this subscription's <strong>saved</strong> options against the canned Change (unsaved edits
+      don't count), titles it <code>[Test]</code>, and sends it to channel
+      <code>{{ sub.remote_channel_id }}</code>. On production it reaches that channel's people.
+    </p>
+    <button type="button" class="btn btn--secondary btn--sm"
+            hx-post="/dashboard/notifications/{{ sub.id }}/test-send"
+            hx-target="#test-send-result" hx-swap="innerHTML"
+            hx-confirm="Send a test notification to channel {{ sub.remote_channel_id }}? It reaches whoever that channel reaches.">
+      Send a test
+    </button>
+    <p id="test-send-result" class="text-sm" role="status" style="margin:var(--space-2) 0 0;"></p>
+  </div>
+
   <div class="danger-zone" style="margin-top:var(--space-4);">
     <h3 style="margin-top:0;">Delete subscription</h3>
     <p class="text-sm text-muted">Its channel stops hearing these events once dispatch is live.</p>
