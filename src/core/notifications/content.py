@@ -312,7 +312,9 @@ def compose(
     return Composed(title=title, body=body)
 
 
-def _warn_fallback(field: str, error: Exception, event: WatchEvent, subscription_id) -> None:
+def _warn_fallback(
+    field: str, error: Exception, event: WatchEvent, subscription_id: str | None
+) -> None:
     logger.warning(
         "custom notification %s failed to render; sending the default",
         field,
