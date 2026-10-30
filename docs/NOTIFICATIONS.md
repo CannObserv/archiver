@@ -4,7 +4,7 @@
 reports; Archiver decides who hears; Notifier delivers"). Subscriptions replace Watcher's
 `notification_templates`. **Nothing sends yet.** This is the model, the API, the dashboard
 and the import. Composition, preview and test-send are #367. The `info.watch-events`
-consumer, shadow mode and dispatch are #369. The Notifier credential is #368.
+consumer, shadow mode and dispatch are #369. The Notifier credential is #368 (§ The credential).
 
 ## The table: `information.notification_subscriptions`
 
@@ -17,7 +17,7 @@ consumer, shadow mode and dispatch are #369. The Notifier credential is #368.
 | `info_item_id` | FK `info_items`, `CASCADE`, like every child of an item. Item delete still records its `revoked` tombstone. |
 | `events` | A non-empty subset of `change_detected`, `watch_error` and `watch_recovered`. Enforced by a CHECK and stored in that order. Error reminders (#369) ride on `watch_error`. |
 | `content_config` | JSONB. `NULL` means all defaults (see below). |
-| `remote_channel_id` | A Notifier channel in **Archiver's** tenant, ULID-shaped and `NOT NULL`. Only the shape is checked until #368. |
+| `remote_channel_id` | A Notifier channel in **Archiver's** tenant, ULID-shaped and `NOT NULL`. Only the shape is checked; Settings → Notifier lists the real ids (§ The credential). |
 | `is_active` | An inactive row matches nothing. |
 | `imported_watcher_id` | The Watcher template the row came from. It is unique, set on create only, and keys the importer. |
 
@@ -160,3 +160,64 @@ sudo cat /root/<dir>/watcher-export-YYYY-MM-DD.json \
 
 Then run the same without `--dry-run`. At the 2026-10-14 export, it creates 2 global rows
 and refuses 0. A re-run reports 2 unchanged.
+
+## The credential
+
+**`archiver.service` alone may notify the production tenant** (archiver#368). Watcher's
+#277/#278 pattern:
+its key sat in an env file that agent shells sourced, and ~1289 fixture notifications
+reached production. A notification can't be recalled. `src/core/notifier/gate.py` judges
+three things at startup, before any resource is built:
+
+| The process holds | Outcome |
+|---|---|
+| neither `ARCHIVER_NOTIFIER_BASE_URL` nor `ARCHIVER_NOTIFIER_ENABLED=1` | dormant, `Notifier not configured` |
+| the URL, without the flag exactly `"1"` | **refuses to start** |
+| the flag, without the URL or without a key | **refuses to start** |
+| a key from `ARCHIVER_NOTIFIER_API_KEY` aimed at port 9000 | **refuses to start**: production's key is a credential only |
+| both the credential and `ARCHIVER_NOTIFIER_API_KEY` | **refuses to start** |
+| all three | one client, `Notifier configured at <url> (key: credential)`. Never the key |
+
+- **The lifespan makes no Notifier call.** An outage must not stop the registry.
+- **The adapter is read-only.** `src/core/notifier/client.py` is the only importer of
+  `notifier-client` (a git tag, `v0.3.2`; upgrade as for Power Map,
+  [DEPLOYMENT.md](DEPLOYMENT.md) § Power Map SDK). It lists channels and nothing else, and a
+  guard test pins that. Test-send is #367's and dispatch #369's.
+
+| Where | What |
+|---|---|
+| `deploy/archiver.service` | `Environment=ARCHIVER_NOTIFIER_BASE_URL=http://notifier:9000`, `Environment=ARCHIVER_NOTIFIER_ENABLED=1`, and `LoadCredential=notifier-key:/etc/archiver/notifier.key`, with **no** `SetCredential=` fallback. No other unit holds any of it (`tests/deploy/test_archiver_unit_notifier.py`) |
+| `/etc/archiver/notifier.key` | `root:root 0600`, the raw key alone. **Missing, the start fails** (243/CREDENTIALS) and `deploy.sh` switches back, so it goes in before the first deploy that carries the unit |
+| repo `.env` | `ARCHIVER_DEV_NOTIFIER_BASE_URL=http://notifier:9001` and `ARCHIVER_DEV_NOTIFIER_API_KEY`. `scripts/dev_server.sh` maps the pair onto the gate's variables, sets the flag only beside both, and refuses a dev URL on :9000 |
+| `tests/conftest.py` | clears every `ARCHIVER_NOTIFIER_*`, `ARCHIVER_DEV_NOTIFIER_*` and `CREDENTIALS_DIRECTORY` |
+
+**The tenants** (CannObserv/notifier#117). Each key gets 401 on the other port.
+
+| | Production, `:9000` | Development, `:9001` |
+|---|---|---|
+| tenant `archiver` | `01M5AR46KXYEPMMBVMZ5HQTM66` | `01M5APS4GQBN671G050RD82Y44` |
+| key | `archiver-prod` `01M5AR46M4GYRHJFGM4NGSPA8V` | `archiver-dev` `01M5APS4GV1BJPE51B9D6W6WJS` |
+| channels | `archiver-slack` `01M5AX8CE8PBMQZMQ5TBBB9RAP`, `archiver-mailgun` `01M5AX8CEAEKPM7JJ3D0VY20AF` | `dev-sink` `01M5APS9R7A0QEDB9522MRA4CT` (syslog, reaches nobody), `dev-sink-failing` `01M5APS9R7A0QEDB9522MRA4CV` |
+
+**Settings → Notifier** (`/dashboard/settings/notifier`) proves the key end to end with zero
+sends: one `GET /api/v1/channels` per view, then each channel's name, type (the masked
+URL's scheme) and id, or why there is no list. It has no send control.
+
+### Installing the key (operator, as root, once)
+
+Nothing below prints a key, and none of it goes in argv. The staged files hold four lines:
+`tenant_id=`, `key_id=`, `raw_key=`, `environment=`.
+
+```bash
+F=/root/notifier-117/archiver-production.env D=/root/notifier-117/archiver-development.env
+sudo grep -qx 'environment=production' "$F" && sudo grep -qx 'environment=development' "$D"
+sudo sh -c "umask 077; sed -n 's/^raw_key=//p' $F > /etc/archiver/notifier.key"
+sudo test -s /etc/archiver/notifier.key && sudo stat -c '%U:%G %a %s' /etc/archiver/notifier.key
+# expect root:root 600 and a size; then the dev pair, into the repo .env (exedev's)
+sudo sed -n 's/^raw_key=/ARCHIVER_DEV_NOTIFIER_API_KEY=/p' "$D" >> /home/exedev/archiver/.env
+echo 'ARCHIVER_DEV_NOTIFIER_BASE_URL=http://notifier:9001' >> /home/exedev/archiver/.env
+sudo shred -u "$F" "$D" && sudo rmdir /root/notifier-117
+```
+
+To rotate, mint the new key in Notifier, overwrite the file the same way, and
+`sudo systemctl restart archiver`.

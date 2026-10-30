@@ -176,7 +176,9 @@ root. What `exedev` can no longer do without `sudo`:
 The units can't read `~exedev` either (`ProtectHome=yes`; the repo `.env` holds the PATs).
 `exedev` keeps `dev.env`, `deploy.env` and `co-pypi-reader.json` (`root:exedev 0640`): the
 deploy's rehearsal and wheel fetch run as `exedev`. `status-checkin.key` was already
-`root:root 0600`. `exedev` still has passwordless `sudo`, so this is a boundary that
+`root:root 0600`, and so is `notifier.key` (archiver#368), loaded by `archiver.service` alone
+and with no fallback: install it before the deploy that adds it
+([NOTIFICATIONS.md](NOTIFICATIONS.md) § The credential). `exedev` still has passwordless `sudo`, so this is a boundary that
 journals, not one that cannot be crossed.
 
 **The guards stop depending on the production URL.** An agent shell no longer holds
@@ -292,6 +294,9 @@ Only `src/core/power_map/client.py` imports it (a guard test enforces that).
 Upgrade: bump `tag` to the new release, read that release's diff of `clients/python/openapi.json`
 in Power Map for changed status codes or fields the adapter maps, `uv sync`, run the adapter tests
 (`tests/core/power_map/`).
+
+`notifier-client` (archiver#368) resolves the same way from `CannObserv/notifier`, tag `v0.3.2`.
+Only `src/core/notifier/client.py` imports it; upgrade the same way, against `tests/core/notifier/`.
 
 ## Environment variables
 

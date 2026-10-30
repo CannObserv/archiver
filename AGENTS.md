@@ -105,8 +105,8 @@ bash scripts/dev_server.sh
 ```
 
 Anything that writes - curl, SDK scripts, manual verification - targets 8001,
-never 8000. Why the script exists, its knobs, and the 2026-07-18
-production-write incident: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
+never 8000. Why, its knobs, and the 2026-07-18 incident:
+[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
 exception is DLQ discard and reprocess (#238): the queues exist only on prod's
 broker, so they go to 8000, and only when the operator asks
 ([docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)). Outbox discard and rearm
@@ -119,7 +119,7 @@ agent there too.
 Two env files load in order (later overrides earlier):
 
 1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`); managed manually on the VM.
-   `root:root 0600`: read by systemd for the units and by `deploy.sh` via sudo, never by an agent shell (#339).
+   `root:root 0600`: never read by an agent shell (#339).
 2. `.env` (repo root, git-ignored) - dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit; no unit reads it (#330).
 
 ```bash
@@ -137,21 +137,21 @@ It is `SELECT`-only, withholds the PII columns, and logs every query (#348). Don
 transaction open: it blocks deploy migrations. Never give Python a production URL; export
 with `psql -At` instead. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Reading production.
 
-**Four variables carry safety rules; the rest are reference
+**Five variables carry safety rules; the rest are reference
 ([docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)).**
 
 - `TEST_DATABASE_URL` - **must not equal** `ARCHIVER_DATABASE_URL` or
   `DATABASE_URL`; teardown drops the entire `information` schema. Name must end in
   `_test`.
-- `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
-  (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305;
-  the temporal-profile boundary, #365) and
+- `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units and
   `scripts/deploy.sh`'s migration (#330). **Never in an env file** - it
   reopens the hole for every sourcing process.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.
 - `ARCHIVER_DEV_REDIS_URL` - unset means bus-dormant; prod's URL is never
   inherited. A scratch bus is a local throwaway broker, never a DB index (#240).
+- `ARCHIVER_NOTIFIER_ENABLED` - same rule, beside its URL; the key is a credential
+  ([docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md)).
 
 ## Common Commands
 
