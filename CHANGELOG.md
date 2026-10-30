@@ -18,6 +18,25 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.40.0 (2026-10-30)
+
+[service] **Notification composer, preview and test-send (archiver#367, epic #359).** SDK unchanged (5.16.0): no route or schema is added or reshaped. The only API change is the **value** of `dashboard_url`.
+
+- **`dashboard_url` now points at the dashboard page:** `{ARCHIVER_PUBLIC_BASE_URL}/dashboard/info-items/{id}`. Before, it was `…/info-items/{id}`, a 404 under the configured origin.
+  - `ARCHIVER_PUBLIC_BASE_URL` is now read as an **origin**, `http(s)://host[:port]`, with any trailing `/` dropped.
+  - A value with a path, query, fragment or userinfo yields `null`, the same as unset.
+  - `deploy/archiver.service` sets `https://co-registrar.exe.xyz`.
+- **The composer** (`src/core/notifications/`) is ported from Watcher `3ba20be`, with the default text word for word.
+  - Every render is sandboxed, with bounded `*`/`**`. The context is built only from documented variables.
+  - A failing custom template falls back to the event's default, never to raw template source.
+- **The change diff** reads both texts from `gs://co-gcs-processor` only, through the `processor-text-reader` unit credential. Each read is capped and hash-checked. A missing key leaves diffs unavailable and refuses nothing.
+- **Dashboard:**
+  - the subscription form gains per-block Jinja title/body fields with a live strict preview;
+  - the edit page gains a test-send that makes one Notifier dispatch, with the composed text passed as variables;
+  - neither has an API route.
+
+Nothing dispatches on events yet: that's #369. Details: [docs/NOTIFICATION_COMPOSER.md](docs/NOTIFICATION_COMPOSER.md).
+
 ## v4.39.0 (2026-10-28)
 
 [both] **Notification subscriptions: who hears which events, and how (archiver#363, design D3/D5, item A7).** Migration `c4d81f6a2e07` adds `information.notification_subscriptions`. SDK 5.16.0. Nothing sends or publishes yet: composition is #367, dispatch #369.
