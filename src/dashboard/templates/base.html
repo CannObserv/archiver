@@ -96,9 +96,15 @@
 
         <li class="sidebar__section-label">Settings</li>
         <li>
-          <a href="/dashboard/settings/api-keys" class="sidebar__link{% if request.url.path.startswith('/dashboard/settings') %} sidebar__link--active{% endif %}"
-             {% if request.url.path.startswith('/dashboard/settings') %}aria-current="page"{% endif %}>
+          <a href="/dashboard/settings/api-keys" class="sidebar__link{% if request.url.path.startswith('/dashboard/settings/api-keys') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/settings/api-keys') %}aria-current="page"{% endif %}>
             API Keys
+          </a>
+        </li>
+        <li>
+          <a href="/dashboard/settings/notifier" class="sidebar__link{% if request.url.path.startswith('/dashboard/settings/notifier') %} sidebar__link--active{% endif %}"
+             {% if request.url.path.startswith('/dashboard/settings/notifier') %}aria-current="page"{% endif %}>
+            Notifier
           </a>
         </li>
       </ul>

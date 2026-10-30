@@ -5,7 +5,7 @@
 # section is the check.
 AGENTS.md :: enumerated :: Three databases:
 AGENTS.md :: enumerated :: Two env files load in order
-AGENTS.md :: enumerated :: **Four variables carry safety rules
+AGENTS.md :: enumerated :: **Five variables carry safety rules
 
 # Same run. This line was 378 chars of accreted per-doc clauses; it is now one
 # link per dashboard doc and one clause naming UI.md as the index to the rest.

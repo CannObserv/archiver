@@ -24,6 +24,7 @@ dependencies = [
     "co-core-aio[bus]>=0.38,<0.39",
     "archiver-client",
     "power-map-client",
+    "notifier-client",
     "google-cloud-storage>=2,<4",  # the nightly backup's bucket (archiver#233)
 ]
 
@@ -124,3 +125,6 @@ archiver-client = { path = "clients/python", editable = true }
 # Power Map's SDK (archiver#304): a git tag on a public repo, not the wheelhouse.
 # Client and server share one version; upgrade path in docs/DEPLOYMENT.md.
 power-map-client = { git = "https://github.com/CannObserv/power-map.git", subdirectory = "clients/python", tag = "v0.59.0" }
+# Notifier's SDK (archiver#368): the same pattern. Async, lockstep with the server.
+# Only src/core/notifier/ imports it, and it lists channels and nothing else.
+notifier-client = { git = "https://github.com/CannObserv/notifier.git", subdirectory = "clients/python", tag = "v0.3.2" }

@@ -33,6 +33,8 @@
 #   ARCHIVER_DEV_SERVER_SKIP_ENV_FILES=1  skip sourcing env files (tests)
 #   ARCHIVER_DEV_POWER_MAP_API_KEY        Power Map read key for dev; unset → dormant
 #   ARCHIVER_DEV_POWER_MAP_BASE_URL       Power Map base URL for dev (default: production)
+#   ARCHIVER_DEV_NOTIFIER_BASE_URL        dev Notifier (:9001); with the key → enabled
+#   ARCHIVER_DEV_NOTIFIER_API_KEY         dev tenant key; either unset → dormant
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -237,6 +239,75 @@ else
   POWER_MAP_REPORT="(dormant)"
 fi
 
+# --- Notifier credential isolation (archiver#368) ---
+# Only archiver.service may notify the production tenant: it alone sets
+# ARCHIVER_NOTIFIER_BASE_URL and ARCHIVER_NOTIFIER_ENABLED=1, and hands the key over
+# as a credential (CREDENTIALS_DIRECTORY, already dropped above). A notification
+# reaches real people and cannot be recalled (watcher#277/#278), so whatever this
+# shell inherited is dropped, and the dev pair is mapped onto the gate's variables
+# with the flag set only beside both. A dev URL on :9000, production Notifier, is
+# refused outright, the ARCHIVER_DEV_REDIS_URL rule: the dev key gets 401 there,
+# so a dev URL on :9000 means a production key was pasted in.
+#
+# notifier_port <url> — the port a Notifier URL reaches, or nothing when it is not
+# a usable http(s) URL. src/core/notifier/gate.py's TARGET_PATTERN and
+# target_port(), character for character; tests/scripts/test_db_guard_parity.py
+# feeds both one corpus. LC_ALL=C: a bracket range is locale-dependent otherwise.
+NOTIFIER_TARGET_RE='^([A-Za-z]+)://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._~%-]+)(:([0-9]*))?([/?#][!-~]*)?$'
+notifier_port() {
+  local LC_ALL=C url="$1" scheme port default
+  [[ "$url" =~ $NOTIFIER_TARGET_RE ]] || return 0
+  scheme="${BASH_REMATCH[1],,}"
+  port="${BASH_REMATCH[4]}"
+  case "$scheme" in
+    http) default=80 ;;
+    https) default=443 ;;
+    *) return 0 ;;
+  esac
+  if [[ -z "$port" ]]; then
+    echo "$default"
+    return 0
+  fi
+  ((${#port} > 5)) && return 0 # bash arithmetic would overflow; the gate refuses too
+  port=$((10#$port))
+  ((port >= 1 && port <= 65535)) || return 0
+  echo "$port"
+}
+
+DEV_NOTIFIER_URL="${ARCHIVER_DEV_NOTIFIER_BASE_URL:-}"
+DEV_NOTIFIER_KEY="${ARCHIVER_DEV_NOTIFIER_API_KEY:-}"
+unset ARCHIVER_NOTIFIER_BASE_URL ARCHIVER_NOTIFIER_API_KEY ARCHIVER_NOTIFIER_ENABLED
+unset ARCHIVER_DEV_NOTIFIER_BASE_URL ARCHIVER_DEV_NOTIFIER_API_KEY
+if [[ -n "$DEV_NOTIFIER_URL" ]]; then
+  DEV_NOTIFIER_PORT="$(notifier_port "$DEV_NOTIFIER_URL")"
+  if [[ -z "$DEV_NOTIFIER_PORT" ]]; then
+    echo "dev_server: refusing — ARCHIVER_DEV_NOTIFIER_BASE_URL is not an" >&2
+    echo "  http(s)://host[:port] URL. The dev Notifier is http://notifier:9001." >&2
+    exit 1
+  fi
+  if [[ "$DEV_NOTIFIER_PORT" == "9000" ]]; then
+    echo "dev_server: refusing — ARCHIVER_DEV_NOTIFIER_BASE_URL is on port 9000," >&2
+    echo "  production Notifier. Only archiver.service notifies production, with its" >&2
+    echo "  credential. The dev Notifier is http://notifier:9001, with the dev key." >&2
+    exit 1
+  fi
+fi
+if [[ -n "$DEV_NOTIFIER_URL" && -n "$DEV_NOTIFIER_KEY" ]]; then
+  export ARCHIVER_NOTIFIER_BASE_URL="$DEV_NOTIFIER_URL"
+  export ARCHIVER_NOTIFIER_API_KEY="$DEV_NOTIFIER_KEY"
+  export ARCHIVER_NOTIFIER_ENABLED=1
+elif [[ -n "$DEV_NOTIFIER_URL" || -n "$DEV_NOTIFIER_KEY" ]]; then
+  echo "dev_server: Notifier dormant — set both ARCHIVER_DEV_NOTIFIER_BASE_URL and" >&2
+  echo "  ARCHIVER_DEV_NOTIFIER_API_KEY, or neither." >&2
+fi
+unset DEV_NOTIFIER_KEY
+# From what is exported, not from the inputs: the report shows what uvicorn gets.
+if [[ "${ARCHIVER_NOTIFIER_ENABLED:-}" == "1" ]]; then
+  NOTIFIER_REPORT="$ARCHIVER_NOTIFIER_BASE_URL (dev key)"
+else
+  NOTIFIER_REPORT="(dormant)"
+fi
+
 # pytest teardown drops the `information` schema from TEST_DATABASE_URL, so the
 # dev database is frequently schema-less at launch. Migrating here keeps the
 # safe path usable; an operator who finds it broken tends to reach for the old
@@ -259,6 +330,7 @@ if [[ "${ARCHIVER_DEV_SERVER_DRY_RUN:-}" == "1" ]]; then
   echo "MIGRATE=$MIGRATE_REPORT"
   echo "REDIS=$REDIS_REPORT"
   echo "POWER_MAP=$POWER_MAP_REPORT"
+  echo "NOTIFIER=$NOTIFIER_REPORT"
   echo "LIVENESS=$LIVENESS_REPORT"
   exit 0
 fi

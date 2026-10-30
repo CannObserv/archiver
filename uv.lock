@@ -81,6 +81,7 @@ dependencies = [
     { name = "jinja2" },
     { name = "jsonschema" },
     { name = "lxml" },
+    { name = "notifier-client" },
     { name = "power-map-client" },
     { name = "python-json-logger" },
     { name = "python-multipart" },
@@ -119,6 +120,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1.0,<4" },
     { name = "jsonschema", specifier = ">=4.21.0,<5" },
     { name = "lxml", specifier = ">=5.0,<7" },
+    { name = "notifier-client", git = "https://github.com/CannObserv/notifier.git?subdirectory=clients%2Fpython&tag=v0.3.2" },
     { name = "power-map-client", git = "https://github.com/CannObserv/power-map.git?subdirectory=clients%2Fpython&tag=v0.59.0" },
     { name = "python-json-logger", specifier = ">=4.0.0,<5" },
     { name = "python-multipart", specifier = ">=0.0.9,<1" },
@@ -1299,6 +1301,16 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/24/bf/d1bda4f6168e0b2e9e5958945e01910052158313224ada5ce1fb2e1113b8/nodeenv-1.10.0.tar.gz", hash = "sha256:996c191ad80897d076bdfba80a41994c2b47c68e224c542b48feba42ba00f8bb", size = 55611, upload-time = "2025-12-20T14:08:54.006Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl", hash = "sha256:5bb13e3eed2923615535339b3c620e76779af4cb4c6a90deccc9e36b274d3827", size = 23438, upload-time = "2025-12-20T14:08:52.782Z" },
+]
+
+[[package]]
+name = "notifier-client"
+version = "0.3.2"
+source = { git = "https://github.com/CannObserv/notifier.git?subdirectory=clients%2Fpython&tag=v0.3.2#8e7c020b52e3c2d4b8cea9fa1bbe0e9be2e86e4f" }
+dependencies = [
+    { name = "attrs" },
+    { name = "httpx" },
+    { name = "python-ulid" },
 ]
 
 [[package]]

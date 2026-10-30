@@ -785,6 +785,62 @@ class TestTheServiceUser:
         assert (world.release(world.main[-1]) / "REVISION").exists(), "the built release stays"
 
 
+def _loading(credential: str, *, fallback: bool = False) -> dict[str, str]:
+    body = (
+        "[Service]\nExecStart=/srv/archiver/live/.venv/bin/uvicorn src.api.main:app\n"
+        f"LoadCredential={credential}\n"
+    )
+    if fallback:
+        body += f"SetCredential={credential.split(':', 1)[0]}:\\n\n"
+    return {"archiver.service": body}
+
+
+class TestUnitCredentials:
+    """A credential a unit loads with no ``SetCredential=`` fallback must be on the host
+    (archiver#368, CR 4). Missing, the start fails (243/CREDENTIALS) after the switch
+    and the deploy switches back: two restarts for nothing. So it is refused first,
+    before CI or a build, by size alone, which needs no sudo. ``/etc/archiver/`` paths
+    are looked for in the env dir, where the host keeps them."""
+
+    def test_a_missing_credential_is_refused_before_anything(self, world):
+        world.push_deploy(_loading("notifier-key:/etc/archiver/notifier.key"))
+        result = world.run()
+        assert result.returncode == 1
+        assert "/etc/archiver/notifier.key" in result.stderr
+        assert "nothing switched" in result.stderr
+        assert world.live() is None
+        assert not world.github_calls(), "before CI is asked"
+        assert not world.release(world.main[-1]).exists(), "before anything is built"
+
+    def test_an_empty_credential_is_refused_too(self, world):
+        (world.etc / "notifier.key").write_text("")
+        world.push_deploy(_loading("notifier-key:/etc/archiver/notifier.key"))
+        result = world.run()
+        assert result.returncode == 1
+        assert "notifier.key" in result.stderr
+
+    def test_a_present_credential_deploys(self, world):
+        (world.etc / "notifier.key").write_text("nk_x\n")
+        (world.etc / "notifier.key").chmod(0o000)  # root's alone: a size needs no read
+        world.push_deploy(_loading("notifier-key:/etc/archiver/notifier.key"))
+        assert_ok(world.run())
+
+    def test_a_credential_with_a_fallback_may_be_missing(self, world):
+        """Status's key: an empty fallback, so its absence degrades and never fails."""
+        world.push_deploy(
+            _loading("status-checkin-key:/etc/archiver/status-checkin.key", fallback=True)
+        )
+        assert_ok(world.run())
+
+    def test_spaces_around_the_equals_sign_are_still_a_credential(self, world):
+        world.push_deploy(
+            {"archiver.service": "[Service]\nLoadCredential = gcs:/etc/archiver/x.json\n"}
+        )
+        result = world.run()
+        assert result.returncode == 1
+        assert "/etc/archiver/x.json" in result.stderr
+
+
 class TestTheDeployLogic:
     """CR 10: the script that deploys is reviewed code too.
 

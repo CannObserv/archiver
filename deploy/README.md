@@ -15,7 +15,7 @@ user](../docs/DEPLOYMENT.md#the-service-user-archiver339)). `/etc/archiver/.env`
 
 | Unit / file | Type | Purpose |
 |---|---|---|
-| `archiver.service` | service | The live API on port 8000 (see CLAUDE.md -> Server Lifecycle). Its `ExecStartPre` asserts the Redis >=7.0 floor when the bus is active. It checks in to co-status's `co-archiver-live` while its bus loops progress, and bounds restarts at 5 in 300 s (`docs/MONITORING.md` § Liveness). |
+| `archiver.service` | service | The live API on port 8000 (see CLAUDE.md -> Server Lifecycle). Its `ExecStartPre` asserts the Redis >=7.0 floor when the bus is active. It checks in to co-status's `co-archiver-live` while its bus loops progress, and bounds restarts at 5 in 300 s (`docs/MONITORING.md` § Liveness). The one Notifier client (#368): its URL and opt-in are the unit's own `Environment=` lines, the key a `LoadCredential=` with no fallback, so `scripts/deploy.sh` refuses a host without `/etc/archiver/notifier.key` (`docs/NOTIFICATIONS.md` § The credential). |
 | `archiver-bus-health.service` | service (oneshot) | One WARN-only tick of the **outbox** probe: depth, oldest-unpublished age, dead-lettered count (#130, reduced by #193). Never blocks anything; see *Outbox health timer* below. |
 | `archiver-bus-health.timer` | timer | Runs the probe every 10 min. Enable with `systemctl enable --now archiver-bus-health.timer`. |
 | `archiver-pm-org-refresh.service` | service (oneshot) | One sweep of the Power Map org follower: a conditional GET per linked org, applying renames, merges and misses to `pm_organizations` (#305). Exits 0 with no database access when `ARCHIVER_POWER_MAP_API_KEY` is unset. See *Power Map org follower* below. |

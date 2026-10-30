@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Notifier{% endblock %}
+
+{# Read-only (archiver#368): the tenant's channels, as proof the credential works.
+   No send and no test send here. The first send is archiver#367's. #}
+{% block content %}
+<div class="entity-section" data-notifier-status="{{ status }}">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Notifier</h1>
+  </div>
+
+  {% if status == "dormant" %}
+  <p class="text-muted">
+    Notifier is not configured in this process. Only <code>archiver.service</code>
+    notifies production; a dev server needs <code>ARCHIVER_DEV_NOTIFIER_BASE_URL</code>
+    and <code>ARCHIVER_DEV_NOTIFIER_API_KEY</code> (docs/NOTIFICATIONS.md).
+  </p>
+  {% else %}
+  <p class="text-muted">
+    <code>{{ notifier.base_url }}</code>, key from the {{ notifier.key_source }}.
+  </p>
+  {% if status == "unavailable" %}
+  <div class="alert alert--error" role="alert">
+    <p class="alert__title">Notifier gave no channel list</p>
+    <p>{{ reason }}</p>
+  </div>
+  {% elif channels %}
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Notifier channels">
+    <table class="data-table" aria-label="Notifier channels">
+      <thead>
+        <tr>
+          <th class="data-table__th">Name</th>
+          <th class="data-table__th">Type</th>
+          <th class="data-table__th">Channel id</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for channel in channels %}
+        <tr>
+          <td class="data-table__cell">{{ channel.name }}</td>
+          <td class="data-table__cell"><span class="badge badge--muted">{{ channel.kind }}</span></td>
+          <td class="data-table__cell"><code>{{ channel.id }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">This tenant has no channels.</p>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

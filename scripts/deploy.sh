@@ -228,6 +228,30 @@ while read -r kind name; do
   fi
 done < <(unit_identities)
 
+# Each credential a unit loads with no SetCredential= fallback must be here too,
+# or that unit's start fails (243/CREDENTIALS) after the switch, and the switch
+# back costs a second restart (archiver#368: notifier.key goes in before the
+# deploy that adds it). A size, never a read: stat needs no sudo, so this stays
+# before the CI gate. A path under /etc/archiver/ is looked for in $ENV_DIR.
+unit_credentials() {
+  local unit text name path
+  while read -r unit; do
+    [[ "$unit" == *.service ]] || continue
+    text="$(git -C "$SRC" show "$sha:$unit")"
+    while read -r name path; do
+      grep -qE "^[[:space:]]*SetCredential[[:space:]]*=[[:space:]]*${name}:" <<<"$text" ||
+        echo "${unit#deploy/} $path"
+    done < <(sed -nE 's/^[[:space:]]*LoadCredential[[:space:]]*=[[:space:]]*([^:[:space:]]+):([^[:space:]]+)[[:space:]]*$/\1 \2/p' <<<"$text")
+  done < <(git -C "$SRC" ls-tree --name-only "$sha" deploy/)
+}
+while read -r unit path; do
+  [[ -n "$path" ]] || continue
+  [[ -s "${path/#\/etc\/archiver\//$ENV_DIR/}" ]] ||
+    die "$unit loads the credential $path, with no fallback, and this host lacks it or it is" \
+      "empty: the start would fail after the switch. Install it first (root:root 0600; for" \
+      "notifier.key, docs/NOTIFICATIONS.md § The credential); nothing was built, nothing switched"
+done < <(unit_credentials)
+
 # --- CI (status#11) --------------------------------------------------------
 
 # Unauthenticated: the repo is public, and 60 requests an hour per address

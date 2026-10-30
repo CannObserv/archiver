@@ -89,3 +89,14 @@ docs/ARCHITECTURE.md :: duplicate :: COMPONENTS.md + STYLE.md
 docs/ARCHITECTURE.md :: tighten :: docs/                          Live reference docs — ARCHITECTURE.md, API.md,
 docs/ARCHITECTURE.md :: tighten :: dashboard living docs
 docs/ARCHITECTURE.md :: tighten :: (see "Dashboard living docs").
+
+# archiver#368 D5 (2026-10-30): paying for the ARCHIVER_NOTIFIER_ENABLED bullet.
+# The holder list lives in docs/ENVIRONMENT.md (ARCHIVER_ALLOW_PRODUCTION_DB, now
+# carrying #130 too); the .env readers in docs/DEPLOYMENT.md § The service user.
+AGENTS.md :: tighten :: **Four variables carry safety rules; the rest are reference
+AGENTS.md :: tighten :: - `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units
+AGENTS.md :: tighten :: (`archiver.service`; the outbox probe, #130; the Power Map org follower, #305;
+AGENTS.md :: tighten :: the temporal-profile boundary, #365) and
+AGENTS.md :: tighten :: `root:root 0600`: read by systemd for the units and by `deploy.sh` via sudo, never by an agent shell (#339).
+AGENTS.md :: tighten :: never 8000. Why the script exists, its knobs, and the 2026-07-18
+AGENTS.md :: tighten :: production-write incident: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one

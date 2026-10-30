@@ -74,7 +74,7 @@ def test_no_on_failure_handler() -> None:
 def test_the_key_is_a_credential_with_an_empty_fallback() -> None:
     """Without the fallback a missing key fails the start (243/CREDENTIALS), and
     ``deploy.sh`` switches back: the service must run unmonitored instead."""
-    assert _values("Service", "LoadCredential") == [
+    assert [v for v in _values("Service", "LoadCredential") if v.startswith(CREDENTIAL_NAME)] == [
         f"{CREDENTIAL_NAME}:/etc/archiver/status-checkin.key"
     ]
     assert _values("Service", "SetCredential") == [f"{CREDENTIAL_NAME}:\\n"]

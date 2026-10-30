@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.api.errors import raise_envelope
 from src.core.database import get_session_factory
 from src.core.models import ApiKey
+from src.core.notifier.client import Notifier
 from src.core.power_map import PowerMapClient
 
 if TYPE_CHECKING:
@@ -63,6 +64,15 @@ async def get_power_map(request: Request) -> PowerMapClient | None:
     ``lambda: None``; CI never calls live Power Map.
     """
     return getattr(request.app.state, "power_map", None)
+
+
+async def get_notifier(request: Request) -> Notifier | None:
+    """The lifespan-scoped Notifier client, or ``None`` when dormant (archiver#368).
+
+    Tests override it with a fake (``tests/core/notifier/fake.py``) or
+    ``lambda: None``; CI never calls live Notifier.
+    """
+    return getattr(request.app.state, "notifier", None)
 
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
