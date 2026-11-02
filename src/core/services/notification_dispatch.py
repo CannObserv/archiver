@@ -80,7 +80,7 @@ def parse_item_id(event: WatchEvent) -> ULID:
 
 
 @dataclass(frozen=True, slots=True)
-class _Match:
+class SubscriptionMatch:
     """One subscription that hears the fact, read as plain values."""
 
     subscription_id: ULID
@@ -122,7 +122,7 @@ async def record_fact(
         if item is None:
             raise UnknownInfoItemError(event.info_item_id)
         matches = [
-            _Match(
+            SubscriptionMatch(
                 sub.id, sub.remote_channel_id, resolve_options(sub.content_config, event.event_type)
             )
             for sub in await subscriptions_for(session, item_id, event.event_type)
@@ -138,7 +138,7 @@ async def record_fact(
             idempotency_key=idempotency_key(
                 event.event_type, match.subscription_id, event.event_id
             ),
-            **await _compose(event, item, match, diff=diff),
+            **await compose_row(event, item, match, diff=diff),
         )
         for match in matches
     ]
@@ -162,7 +162,7 @@ async def _already_recorded(session: AsyncSession, event_id: str) -> bool:
 
 
 async def _diff_for(
-    event: WatchEvent, matches: Sequence[_Match], text_reader: TextReader | None
+    event: WatchEvent, matches: Sequence[SubscriptionMatch], text_reader: TextReader | None
 ) -> ChangeDiff | None:
     """One diff per fact, and only when a change has a row that would show it."""
     if event.event_type != "change_detected":
@@ -172,10 +172,10 @@ async def _diff_for(
     return await load_change_diff(text_reader, event)
 
 
-async def _compose(
+async def compose_row(
     event: WatchEvent,
     item: ItemFacts,
-    match: _Match,
+    match: SubscriptionMatch,
     *,
     diff: ChangeDiff | None,
     previously_notified_at: datetime | None = None,
