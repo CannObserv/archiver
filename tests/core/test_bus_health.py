@@ -23,6 +23,7 @@ from co_core.pure.adapters.bus.streams import (
     CONTENT_REPLICATE,
     CONTENT_REVISIONS,
     INFO_REGISTRY,
+    INFO_WATCH_EVENTS,
     StreamKind,
     dlq_name,
     stream_kind,
@@ -109,6 +110,7 @@ def test_inventory_covers_exactly_the_groups_archiver_consumes() -> None:
     assert {(g.topic, g.group) for g in OWNED_GROUPS} == {
         (CONTENT_REVISIONS, "archiver.revisions"),
         (CONTENT_ARTIFACTS, "archiver.artifacts"),
+        (INFO_WATCH_EVENTS, "archiver.watch-events"),
     }
 
 
