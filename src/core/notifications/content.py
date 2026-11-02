@@ -59,19 +59,33 @@ WatchEvent = ChangeDetectedEvent | WatchErrorEvent | WatchRecoveredEvent
 MAX_REPEAT_LENGTH = 100_000
 #: The largest exponent one ``**`` may take in a template (CR 1).
 MAX_EXPONENT = 100
+#: The longest ``range()`` a template may build (#369 D7). Jinja's own cap is 100 000.
+MAX_RANGE = 1_000
+#: The most one render may produce, counted while it renders (#369 D7).
+MAX_RENDERED_BYTES = 64 * 1024
 
 
 class _BoundedSandbox(SandboxedEnvironment):
-    """The sandbox, with ``*`` and ``**`` bounded (CR 1).
+    """The sandbox, with ``*``, ``**`` and ``range`` bounded (CR 1, #369 D7).
 
-    ``SandboxedEnvironment`` stops attribute escapes and caps ``range``, but
-    ``'x' * 10**9`` still allocates a gigabyte in the one process that serves
-    the API, the consumers and the dashboard. Jinja routes these two operators
-    through :meth:`call_binop` once they are intercepted, and doesn't fold them
-    at compile time, so every template pays the check.
+    ``SandboxedEnvironment`` stops attribute escapes and caps ``range`` at
+    100 000, but ``'x' * 10**9`` still allocates a gigabyte in the one process
+    that serves the API, the consumers and the dashboard. Jinja routes these two
+    operators through :meth:`call_binop` once they are intercepted, and doesn't
+    fold them at compile time, so every template pays the check.
+
+    Saved templates render on every fact, inside the consumer (#369), so
+    ``range`` is held to :data:`MAX_RANGE` and :func:`_render` stops at
+    :data:`MAX_RENDERED_BYTES`. **Residual:** loops nested under both caps can
+    still burn CPU (1 000 × 1 000 iterations). Templates come from operators and
+    API-key holders.
     """
 
     intercepted_binops = frozenset({"*", "**"})
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.globals["range"] = _bounded_range
 
     def call_binop(self, context, operator: str, left: Any, right: Any) -> Any:
         if operator == "**":
@@ -83,6 +97,14 @@ class _BoundedSandbox(SandboxedEnvironment):
                     if len(seq) * n > MAX_REPEAT_LENGTH:
                         raise SecurityError(f"repetition over {MAX_REPEAT_LENGTH} items")
         return super().call_binop(context, operator, left, right)
+
+
+def _bounded_range(*args: int) -> range:
+    """``range``, refused past :data:`MAX_RANGE` items (#369 D7)."""
+    span = range(*args)
+    if len(span) > MAX_RANGE:
+        raise SecurityError(f"range over {MAX_RANGE} items")
+    return span
 
 
 _SANDBOX = _BoundedSandbox(autoescape=False)
@@ -146,12 +168,28 @@ def _iso_or_empty(dt: datetime | None) -> str:
 
 def render_template(source: str, context: Mapping[str, Any]) -> str:
     """Render in the sandbox; an undefined variable is empty. Raises on any error."""
-    return _SANDBOX.from_string(source).render(context)
+    return _render(_SANDBOX, source, context)
 
 
 def render_template_strict(source: str, context: Mapping[str, Any]) -> str:
     """Render in the sandbox; an undefined variable raises too. The preview's render."""
-    return _SANDBOX_STRICT.from_string(source).render(context)
+    return _render(_SANDBOX_STRICT, source, context)
+
+
+def _render(env: SandboxedEnvironment, source: str, context: Mapping[str, Any]) -> str:
+    """Render chunk by chunk, refusing once the output passes :data:`MAX_RENDERED_BYTES`.
+
+    Counted as it goes, so an oversized render stops early instead of building
+    the whole string first (#369 D7).
+    """
+    chunks: list[str] = []
+    size = 0
+    for chunk in env.from_string(source).generate(context):
+        size += len(chunk.encode())
+        if size > MAX_RENDERED_BYTES:
+            raise SecurityError(f"output over {MAX_RENDERED_BYTES} bytes")
+        chunks.append(chunk)
+    return "".join(chunks)
 
 
 def resolve_options(

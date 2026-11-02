@@ -23,6 +23,8 @@ from jinja2 import TemplateError, UndefinedError
 from jinja2.exceptions import SecurityError
 
 from src.core.notifications.content import (
+    MAX_RANGE,
+    MAX_RENDERED_BYTES,
     MAX_RENDERED_DIFF_BYTES,
     SPEC_CHANGED_NOTE,
     Composed,
@@ -376,6 +378,45 @@ class TestSandbox:
 
     def test_a_value_is_never_evaluated(self):
         assert render_template("{{ body }}", {"body": "{{ x }}{% if %}"}) == "{{ x }}{% if %}"
+
+
+class TestRenderBudget:
+    """#369 D7: saved templates render on every fact, inside the consumer, so one
+    render is bounded in work and in output, not only in a single operator's reach."""
+
+    def test_range_is_capped(self):
+        for render in (render_template, render_template_strict):
+            assert render(f"{{{{ range({MAX_RANGE}) | list | length }}}}", {}) == str(MAX_RANGE)
+            with pytest.raises(SecurityError):
+                render(f"{{% for i in range({MAX_RANGE + 1}) %}}{{% endfor %}}", {})
+
+    def test_nested_ranges_are_each_capped(self):
+        with pytest.raises(SecurityError):
+            render_template(
+                "{% for i in range(10) %}{% for j in range(5000) %}{% endfor %}{% endfor %}", {}
+            )
+
+    def test_output_is_capped(self):
+        """Stopped while rendering, before the whole string exists."""
+        source = "{% for i in range(1000) %}{{ 'x' * 100 }}{% endfor %}"
+        for render in (render_template, render_template_strict):
+            with pytest.raises(SecurityError):
+                render(source, {})
+
+    def test_output_at_the_cap_renders(self):
+        source = f"{{{{ 'é' * {MAX_RENDERED_BYTES // 2} }}}}"
+        assert len(render_template(source, {}).encode()) == MAX_RENDERED_BYTES
+
+    def test_an_over_budget_template_falls_back_to_the_default(self, caplog):
+        options = ContentOptions(
+            title_template="{% for i in range(1001) %}{% endfor %}",
+            body_template="{% for i in range(1000) %}{{ 'x' * 100 }}{% endfor %}",
+        )
+        with caplog.at_level(logging.WARNING):
+            composed = compose(make_event("watch_error"), ITEM, options, subscription_id="sub-1")
+        assert composed.title == build_title(make_event("watch_error"), ITEM, ContentOptions())
+        assert composed.body == build_body(make_event("watch_error"), ITEM, ContentOptions())
+        assert [r.error_type for r in caplog.records] == ["SecurityError", "SecurityError"]
 
 
 class TestBuildTemplateContext:
