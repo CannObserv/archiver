@@ -90,7 +90,7 @@ src/core/                      Domain logic
   changes/                     The background asyncio tasks and their shared
                                pacing. group_consumer.py owns the consumer-group
                                loop — read, claim, quarantine, ack, back off,
-                               re-arm — and is SHARED by both group consumers
+                               re-arm — and is SHARED by every group consumer
                                rather than copied: nearly every line encodes an
                                incident or a review finding, and a copy inherits
                                those once and then drifts. artifacts_consumer.py
@@ -116,7 +116,7 @@ src/core/                      Domain logic
                                and that string is the whole diagnostic a
                                dead-lettered row or a quarantined message leaves
                                (#141). dlq_triage.py lists, discards and
-                               reprocesses the two DLQs archiver drains
+                               reprocesses the three DLQs archiver drains
                                (archiver#238) - XDEL by id, never XTRIM;
                                reprocess runs the consumer's own
                                handle_message on owned entries only.
@@ -236,6 +236,7 @@ src/core/                      Domain logic
                                an identity source, not a sibling in the content
                                pipeline.
   notifications/               Content options (#363); composer, text reader (#367): docs/NOTIFICATION_COMPOSER.md.
+                               Cutover, drain, error reminders (#369): docs/NOTIFICATIONS.md.
   notifier/                    Notifier gate + adapter, one dispatch (#368, #367): docs/NOTIFICATIONS.md.
   tools/                       Authoring helpers (assign_rep_spec + lock_rep_specs,
                                set_rep_fields + the rep_fields_gate they share,

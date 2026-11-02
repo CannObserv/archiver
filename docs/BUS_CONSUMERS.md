@@ -1,8 +1,8 @@
 # archiver - change-bus consumers
 
 **The streams Archiver takes off the bus - `content.revisions`,
-`content.artifacts`, `info.watch-status` - the naming contract its group
-consumers follow, and the triage of their two DLQs.** Split out of [BUS.md](BUS.md), which keeps the producing
+`content.artifacts`, `info.watch-events`, `info.watch-status` - the naming contract its group
+consumers follow, and the triage of their three DLQs.** Split out of [BUS.md](BUS.md), which keeps the producing
 half: the outbox and the published streams. The shared client every consumer
 loop here connects through is [BUS_CLIENT.md](BUS_CLIENT.md).
 
@@ -193,10 +193,32 @@ at most `MAX_REISSUES` (3) times per digest. A duplicate persist
 is a no-op success on a content-addressed key, which is why re-issue is safe here
 and not for replication. Past the cap the digest waits for a re-observation.
 
-## Triaging the two DLQs (archiver#238)
+## Change-bus consumer - `info.watch-events` (archiver#369)
 
-Both group consumers quarantine into `<topic>.dlq`, and archiver is the named
-drainer of both queues (CannObserv/broker#1 Phase 5). Broker detects a
+Watcher's observed edges (`change_detected`, `watch_error`, `watch_recovered`), the design's
+"Watcher reports; Archiver decides who hears". Group **`archiver.watch-events`**, consumer
+**`archiver-watch-events-1`**, created at `0`, same two gates as `archiver.revisions`.
+`src/core/changes/watch_events_consumer.py`; the write is
+`services/notification_dispatch.record_fact`. Per fact:
+
+- **One row per matching subscription** in `notification_dispatches`, composed at consume
+  ([SCHEMA_BUS.md](SCHEMA_BUS.md)), acked after the commit. A fact that already has rows is
+  acked without composing.
+- **An archived, paused or host-suspended item still gets its fact**: it happened before the
+  state changed.
+- Unknown or revoked `info_item_id` → ack + WARNING. A non-ULID one → handler poison.
+  `check_rejected` → ack, nothing (check-now's). Another decoded type → ack + WARNING. A type
+  co-core can't decode → `undecodable`, reprocessed after an upgrade.
+- T and the text reader are bound by the lifespan (`bind_context`), so reprocess decides a
+  fact exactly as the loop does.
+
+Shadow, the drain, reminders and T: [NOTIFICATIONS.md](NOTIFICATIONS.md#dispatch-on-events-archiver369).
+
+## Triaging the three DLQs (archiver#238, #399)
+
+Every group consumer quarantines into `<topic>.dlq`, and archiver is the named
+drainer of all three queues (CannObserv/broker#1 Phase 5; `info.watch-events.dlq` since
+CannObserv/broker#93). Broker detects a
 non-resting queue, dumps its entries under `dlq-evidence/` on the broker node,
 and names archiver; archiver reads the payloads and decides. The resting depth
 is 0, and the dashboard bus panel shows each queue's depth.
@@ -232,7 +254,7 @@ screen - and they are not verification the 8001 rule covers.
   line (`Quarantining unusable message` / `Dead-lettering undecodable frame`),
   while retention lasts.
 - **What the disposition is.** `handler_poison` (`InvalidFingerprintError`,
-  `InvalidInfoSourceIdError`, revisions only) is deterministic producer data:
+  `InvalidInfoSourceIdError` on revisions, `InvalidFactError` on watch-events) is deterministic producer data:
   discard it and file on the producer. `undecodable` with `decodes: true` is
   **version skew**: a producer shipped an `event_type` or schema before archiver
   upgraded co-core. Reprocess it. `undecodable` that still does not decode is
@@ -278,7 +300,7 @@ screen - and they are not verification the 8001 rule covers.
 
 ## Consumer names are a monitoring contract (archiver#156)
 
-Both group consumers name themselves from their group -
+Each group consumer names itself from its group -
 `resolve_consumer_name("archiver.revisions")` -> **`archiver-revisions-1`**,
 `archiver.artifacts` -> **`archiver-artifacts-1`**. The name is broker-visible in
 `XINFO CONSUMERS`, so it is as fixed as the group name and derived in one place

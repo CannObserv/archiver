@@ -18,6 +18,21 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.41.0 (2026-11-02)
+
+[service] **`info.watch-events` consumer, shadow log, drain and error reminders (archiver#369, epic #359; carries #399).** Migration `01193055fc9c` adds `information.notification_dispatches`. SDK unchanged (5.16.0): no route or schema is added or reshaped; the dead-letter routes' regenerated docstrings name the third queue. **Ships dark:** `ARCHIVER_NOTIFY_CUTOVER_AT` is unset, so every row is shadow and nothing is sent until F3.
+
+- **`notification_dispatches`**: one row per (fact, matching subscription), plus one per error reminder; both the shadow log and the dispatch outbox. Unique on (`event_id`, `subscription_id`, `reminder`) and on `idempotency_key` (`archiver:{event}:{subscription_id}:{event_id}`). `subscription_id` is `SET NULL`; `info_item_id` has no FK. Expand-only, empty on creation; no `changes_outbox` rows.
+- **Group `archiver.watch-events`** (consumer `archiver-watch-events-1`, created at `0`, behind the same gates as `archiver.revisions`) composes each fact per subscription at consume and acks after the commit. Unknown item → ack + WARNING; `check_rejected` → ack; malformed item id → `info.watch-events.dlq`.
+- **The cutover instant T** decides `shadow` vs `send` by the fact's `occurred_at`. T without the Notifier gate, or not a UTC instant, refuses startup.
+- **The drain** sends `pending` rows through `dispatch_composed`, retries only what Notifier may not have recorded, under the same key, and never redelivers. A deleted or inactive subscription's row is `skipped`.
+- **Error reminders** every 15 min, timed from the episode's rows (`ARCHIVER_ERROR_RENOTIFY_INTERVAL`, default 24h); retention prunes terminal rows past 90 days.
+- **#399:** `bus_health.OWNED_GROUPS` gains the group, so `TRIAGE_DLQS` is three queues; the pin test is renamed `test_triage_dlqs_are_the_three_queues_broker_grants_xdel_on`.
+- **D7:** the sandbox caps `range()` at 1 000 and a render at 64 KiB.
+- **Dashboard:** `/dashboard/notifications/log`.
+
+Details: [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md#dispatch-on-events-archiver369).
+
 ## v4.40.0 (2026-10-30)
 
 [service] **Notification composer, preview and test-send (archiver#367, epic #359).** SDK unchanged (5.16.0): no route or schema is added or reshaped. The only API change is the **value** of `dashboard_url`.
