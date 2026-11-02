@@ -7,7 +7,7 @@ is respx here, for every test: never the network, never the real monitor or key.
 Covers:
 1. No monitor id: off, no task, the service starts
 2. A monitor without its key: off at ERROR, the service starts
-3. On, with the bus and the consumer gate: one check-in naming all four loops
+3. On, with the bus and the consumer gate: one check-in naming all five loops
 4. On, bus-dormant: the publisher is still expected, so silence
 5. The heartbeat is cancelled first at shutdown
 6. An unreadable REVISION still starts the service
@@ -139,6 +139,7 @@ async def test_on_checks_in_for_every_expected_loop(
         "watch_status_tail_age_s",
         "revisions_consumer_age_s",
         "artifacts_consumer_age_s",
+        "watch_events_consumer_age_s",
         "backing_off",
     }
 
