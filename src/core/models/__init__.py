@@ -10,6 +10,7 @@ from src.core.models.info_item import InfoItem
 from src.core.models.info_item_rep_spec import InfoItemRepSpec
 from src.core.models.info_item_source import InfoItemSource
 from src.core.models.info_source import InfoSource
+from src.core.models.notification_dispatch import NotificationDispatch
 from src.core.models.notification_subscription import NotificationSubscription
 from src.core.models.persist_command import PersistCommand
 from src.core.models.pm_organization import PmOrganization
@@ -32,6 +33,7 @@ __all__ = [
     "InfoItemRepSpec",
     "InfoItemSource",
     "InfoSource",
+    "NotificationDispatch",
     "NotificationSubscription",
     "PersistCommand",
     "PmOrganization",
