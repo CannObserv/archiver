@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Notification log{% endblock %}
+
+{% block content %}
+{#- The dispatch log (archiver#369, D6): every row the info.watch-events consumer
+   and the reminder timer composed, newest first. Shadow rows are what Archiver
+   would have sent while Watcher still sends; F3's parity join reads them. Read
+   only: no Notifier call. -#}
+{% set badge = {"shadow": "muted", "pending": "info", "sent": "success", "failed": "danger", "skipped": "warning"} %}
+<div class="entity-section">
+  <div class="entity-section__header">
+    <h1 class="entity-section__title">Notification log</h1>
+    <a href="/dashboard/notifications/" class="btn btn--ghost">Subscriptions</a>
+  </div>
+  <p class="text-sm text-muted">
+    One row per fact and subscription that hears it, plus one per error reminder.
+    <strong>Shadow</strong> rows are recorded, never sent: Watcher sends those facts.
+    <strong>Send</strong> rows go to Notifier from the cutover instant on.
+  </p>
+
+  <form class="filter-card" method="GET" action="/dashboard/notifications/log"
+        aria-label="Filter the notification log">
+    <div style="display:flex;gap:var(--space-2);align-items:flex-end;flex-wrap:wrap;width:100%;">
+      <label class="text-sm">Mode
+        <select name="mode" class="form-select" style="width:auto;">
+          <option value="">All</option>
+          {% for m in modes %}<option value="{{ m }}" {% if filters.mode == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="text-sm">Status
+        <select name="status" class="form-select" style="width:auto;">
+          <option value="">All</option>
+          {% for s in statuses %}<option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="text-sm">Event
+        <select name="event" class="form-select" style="width:auto;">
+          <option value="">All</option>
+          {% for value, label in events %}<option value="{{ value }}" {% if filters.event == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="text-sm">Item id
+        <input type="search" name="item" value="{{ filters.item or '' }}" class="form-input"
+               placeholder="ULID" style="width:18rem;">
+      </label>
+      <button type="submit" class="btn">Filter</button>
+      {% if filters %}<a href="/dashboard/notifications/log" class="btn btn--ghost">Clear</a>{% endif %}
+    </div>
+  </form>
+
+  <h2 class="section-heading">{{ total }} row{{ "" if total == 1 else "s" }}</h2>
+  {% if rows %}
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Notification log">
+    <table class="data-table" aria-label="Notification log">
+      <thead>
+        <tr>
+          <th class="data-table__th">Recorded (UTC)</th>
+          <th class="data-table__th">Event</th>
+          <th class="data-table__th">Item</th>
+          <th class="data-table__th">Subscription</th>
+          <th class="data-table__th">Mode</th>
+          <th class="data-table__th">Status</th>
+          <th class="data-table__th">Notification</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="data-table__cell data-table__cell--muted text-sm">
+            {{ row.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+            <div>occurred {{ row.occurred_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>
+          </td>
+          <td class="data-table__cell text-sm">
+            {{ event_labels_map[row.event_type] }}{% if row.reminder %} · reminder {{ row.reminder }}{% endif %}
+            <div class="data-table__cell--muted"><code>{{ row.event_id }}</code></div>
+          </td>
+          <td class="data-table__cell text-sm">
+            <a href="/dashboard/info-items/{{ row.info_item_id }}">{{ item_names.get(row.info_item_id, row.info_item_id) }}</a>
+          </td>
+          <td class="data-table__cell text-sm">
+            {% if row.subscription_id %}
+            <a href="/dashboard/notifications/{{ row.subscription_id }}/edit"><code>{{ row.subscription_id }}</code></a>
+            {% else %}
+            <span class="badge badge--muted">deleted</span>
+            {% endif %}
+            <div class="data-table__cell--muted">channel <code>{{ row.remote_channel_id }}</code></div>
+          </td>
+          <td class="data-table__cell"><span class="badge badge--neutral">{{ row.mode }}</span></td>
+          <td class="data-table__cell">
+            <span class="badge badge--{{ badge.get(row.status, 'neutral') }}">{{ row.status }}</span>
+            {% if row.attempts %}<div class="text-sm data-table__cell--muted">{{ row.attempts }} attempt{{ "" if row.attempts == 1 else "s" }}</div>{% endif %}
+            {% if row.notifier_dispatch_id %}<div class="text-sm"><code>{{ row.notifier_dispatch_id }}</code></div>{% endif %}
+            {% if row.reason %}<div class="text-sm">{{ row.reason }}</div>{% endif %}
+          </td>
+          <td class="data-table__cell text-sm">
+            <details>
+              <summary>{{ row.title }}</summary>
+              <pre style="white-space:pre-wrap;max-width:60ch;">{{ row.body }}</pre>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No rows{% if filters %} match{% endif %}{% if offset %} on this page{% endif %}.</p>
+  {% endif %}
+
+  {% if has_more or offset > 0 %}
+  {% set extra = ("&" ~ query) if query else "" %}
+  <nav class="pagination" aria-label="Notification log pagination">
+    {% if offset > 0 %}
+    <a href="{{ '?limit=' ~ limit ~ '&offset=' ~ ([offset - limit, 0] | max) ~ extra }}" class="btn btn--ghost">← Previous</a>
+    {% endif %}
+    {% if has_more %}
+    <a href="{{ '?limit=' ~ limit ~ '&offset=' ~ (offset + limit) ~ extra }}" class="btn btn--ghost">Next →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}
