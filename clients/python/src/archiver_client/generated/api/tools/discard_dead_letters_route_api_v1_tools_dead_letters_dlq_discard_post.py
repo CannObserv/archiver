@@ -112,7 +112,7 @@ def sync_detailed(
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -154,7 +154,7 @@ def sync(
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -191,7 +191,7 @@ async def asyncio_detailed(
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -231,7 +231,7 @@ async def asyncio(
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 

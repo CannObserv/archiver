@@ -114,7 +114,7 @@ def sync_detailed(
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -156,7 +156,7 @@ def sync(
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -193,7 +193,7 @@ async def asyncio_detailed(
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 
@@ -233,7 +233,7 @@ async def asyncio(
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         limit (int | Unset):  Default: 100.
         offset (int | Unset):  Default: 0.
 

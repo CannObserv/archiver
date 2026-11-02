@@ -35,6 +35,7 @@
 #   ARCHIVER_DEV_POWER_MAP_BASE_URL       Power Map base URL for dev (default: production)
 #   ARCHIVER_DEV_NOTIFIER_BASE_URL        dev Notifier (:9001); with the key → enabled
 #   ARCHIVER_DEV_NOTIFIER_API_KEY         dev tenant key; either unset → dormant
+#   ARCHIVER_DEV_NOTIFY_CUTOVER_AT        dev T (ISO 8601 UTC), only beside the pair
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -308,6 +309,24 @@ else
   NOTIFIER_REPORT="(dormant)"
 fi
 
+# --- The notify cutover instant (archiver#369 D3) ---
+# ARCHIVER_NOTIFY_CUTOVER_AT is archiver.service's own line: never inherited. A
+# dev T is mapped only beside the dev Notifier pair above, so it only ever
+# reaches the dev tenant; without the pair the gate would refuse it, so it is
+# dropped and the server stays shadow.
+DEV_CUTOVER="${ARCHIVER_DEV_NOTIFY_CUTOVER_AT:-}"
+unset ARCHIVER_NOTIFY_CUTOVER_AT ARCHIVER_DEV_NOTIFY_CUTOVER_AT
+if [[ -n "$DEV_CUTOVER" && "${ARCHIVER_NOTIFIER_ENABLED:-}" == "1" ]]; then
+  export ARCHIVER_NOTIFY_CUTOVER_AT="$DEV_CUTOVER"
+  CUTOVER_REPORT="$DEV_CUTOVER"
+else
+  if [[ -n "$DEV_CUTOVER" ]]; then
+    echo "dev_server: ARCHIVER_DEV_NOTIFY_CUTOVER_AT ignored — no dev Notifier pair;" >&2
+    echo "  the dev server stays shadow." >&2
+  fi
+  CUTOVER_REPORT="(shadow)"
+fi
+
 # pytest teardown drops the `information` schema from TEST_DATABASE_URL, so the
 # dev database is frequently schema-less at launch. Migrating here keeps the
 # safe path usable; an operator who finds it broken tends to reach for the old
@@ -331,6 +350,7 @@ if [[ "${ARCHIVER_DEV_SERVER_DRY_RUN:-}" == "1" ]]; then
   echo "REDIS=$REDIS_REPORT"
   echo "POWER_MAP=$POWER_MAP_REPORT"
   echo "NOTIFIER=$NOTIFIER_REPORT"
+  echo "NOTIFY_CUTOVER=$CUTOVER_REPORT"
   echo "LIVENESS=$LIVENESS_REPORT"
   exit 0
 fi
