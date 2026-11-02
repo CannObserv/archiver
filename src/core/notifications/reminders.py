@@ -70,7 +70,7 @@ logger = get_logger(__name__)
 
 RENOTIFY_INTERVAL_ENV = "ARCHIVER_ERROR_RENOTIFY_INTERVAL"
 DEFAULT_RENOTIFY_INTERVAL = timedelta(hours=24)
-RETENTION_ENV = "ARCHIVER_NOTIFY_RETENTION_DAYS"
+NOTIFY_RETENTION_ENV = "ARCHIVER_NOTIFY_RETENTION_DAYS"
 DEFAULT_RETENTION_DAYS = 90
 #: How often the timer looks (D5).
 TIMER_SECONDS = 900.0
@@ -114,7 +114,7 @@ def resolve_retention_days(raw: str | None) -> int | None:
     except ValueError:
         logger.warning(
             "Invalid %s; falling back to default",
-            RETENTION_ENV,
+            NOTIFY_RETENTION_ENV,
             extra={"value": raw, "default": DEFAULT_RETENTION_DAYS},
         )
         return DEFAULT_RETENTION_DAYS

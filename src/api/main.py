@@ -48,8 +48,7 @@ from src.core.notifications import drain as notification_drain
 from src.core.notifications import reminders as notification_reminders
 from src.core.notifications.cutover import CutoverRefused, announce_cutover, resolve_cutover
 from src.core.notifications.diff_loader import announced_text_reader
-from src.core.notifications.reminders import RENOTIFY_INTERVAL_ENV
-from src.core.notifications.reminders import RETENTION_ENV as NOTIFY_RETENTION_ENV
+from src.core.notifications.reminders import NOTIFY_RETENTION_ENV, RENOTIFY_INTERVAL_ENV
 from src.core.notifier.client import Notifier, announce
 from src.core.notifier.gate import NotifierRefused, resolve
 from src.core.power_map import power_map_from_env
