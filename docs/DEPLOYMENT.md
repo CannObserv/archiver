@@ -36,7 +36,7 @@ tailnet-only bind - is [reference/tailscale.md](reference/tailscale.md).
 ### `scripts/deploy.sh`
 
 Run as `exedev`, from the checkout, after the PR merges. It reads `/etc/archiver/.env`
-through `sudo` (root's alone, #339), `dev.env` and `deploy.env` without. It fetches `origin` itself, then
+through `sudo -n` (root's alone, #339), `dev.env` and `deploy.env` without. It fetches `origin` itself, then
 **refuses unless it is itself byte-identical to `origin/main:scripts/deploy.sh`** (CR 10): the
 deploy logic is reviewed code like what it deploys, so a branch or an uncommitted edit to the
 script cannot decide how production deploys. `git switch main && git pull --ff-only` first.
@@ -47,6 +47,11 @@ scripts/deploy.sh <build>               # an earlier build since the cutover, gr
 scripts/deploy.sh --skip-ci [<build>]   # without asking CI: an emergency, logged
 journalctl -t archiver-deploy -n 20     # "CI passed for <build>", "live -> <build> (was ...)"
 ```
+
+**`shipping-work` offers it** (#457): `.skills/deploy_command` is `setsid -w scripts/deploy.sh`,
+so the post-merge "ship it" offers the deploy once, at the merge commit, and runs it only on a
+yes. Its stdin is `/dev/null`, which is why the first `sudo` is `-n`: it fails rather than
+prompts ([SKILLS.md](SKILLS.md) § Ship gate).
 
 **A commit from before releases is refused**, before CI is asked (CR 14): one whose
 `deploy/*.service` runs anywhere but `/srv/archiver/live`, or that has no `src/core/build.py`.

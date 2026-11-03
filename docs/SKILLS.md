@@ -144,8 +144,9 @@ checkout's `.venv` holds two path-bound editable installs: `archiver` and
 SDK, and its first `uv run` re-points both installs at the worktree. From then on
 every checkout imports that branch, and once the worktree is destroyed `import
 archiver_client` fails everywhere until the next `uv sync`. The vendored Phase 3
-tells a harness-made worktree (the Agent tool's `isolation: "worktree"`) to
-symlink main's `.venv` by hand. **Not here:** provision instead.
+has a harness-made worktree (the Agent tool's `isolation: "worktree"`) symlink
+main's `.venv` by hand. `none` exempts it, so **don't link it by hand either:**
+provision the venv.
 
 **Phase 3, in order:**
 
