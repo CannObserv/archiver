@@ -376,7 +376,7 @@ async def list_dead_letters_route(
     offset: int = Query(default=0, ge=0, le=2**63 - 1),
     redis: "RedisAsync | None" = Depends(get_redis_client),
 ) -> Page[DeadLetterOut]:
-    """List one of archiver's two DLQs, oldest first, for triage (archiver#238).
+    """List one of archiver's three DLQs, oldest first, for triage (archiver#238).
 
     Each entry is tried against the running co-core, so ``decodes`` answers the
     version-skew question. 503 when the broker cannot be read, distinct from an
@@ -401,11 +401,12 @@ async def discard_dead_letters_route(
     body: DiscardDeadLettersRequest,
     redis: "RedisAsync | None" = Depends(get_redis_client),
 ) -> DiscardDeadLettersResponse:
-    """Delete the named entries from one of archiver's two DLQs (archiver#238).
+    """Delete the named entries from one of archiver's three DLQs (archiver#238, #399).
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless. A broker failure part-way through is a 503 whose
+    retried discard is harmless; such an id is answered from the read, and no
+    ``XDEL`` is sent for it. A broker failure part-way through is a 503 whose
     ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
     delete was in flight, or null): the progress a retry could not reconstruct.
     """

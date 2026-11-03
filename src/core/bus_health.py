@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 from co_core.pure.adapters.bus.streams import (
     CONTENT_ARTIFACTS,
     CONTENT_REVISIONS,
+    INFO_WATCH_EVENTS,
     dlq_name,
     stream_kind,
 )
@@ -53,6 +54,7 @@ from src.core.changes.outbox_stats import (
     OutboxStats,
     collect_outbox_stats,
 )
+from src.core.changes.watch_events_consumer import CONSUMER_GROUP as WATCH_EVENTS_GROUP
 from src.core.database import get_database_url, get_engine, get_session_factory
 from src.core.db_safety import ALLOW_PRODUCTION_DB_ENV, assert_production_db_allowed
 from src.core.logging import configure_logging, get_logger
@@ -161,6 +163,7 @@ class OwnedGroup:
 OWNED_GROUPS: tuple[OwnedGroup, ...] = (
     OwnedGroup(CONTENT_REVISIONS, REVISIONS_GROUP),
     OwnedGroup(CONTENT_ARTIFACTS, ARTIFACTS_GROUP),
+    OwnedGroup(INFO_WATCH_EVENTS, WATCH_EVENTS_GROUP),
 )
 """The groups archiver consumes, and only those.
 

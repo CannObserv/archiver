@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from src.core.notifications.cutover import CUTOVER_ENV
 from src.core.notifier.gate import BASE_URL_ENV, CREDENTIAL_FILE, CREDENTIAL_NAME, ENABLED_ENV
 from tests.deploy.test_archiver_unit_liveness import _values
 
@@ -52,3 +53,19 @@ def test_no_other_unit_holds_notifier_config(unit: Path) -> None:
     text = unit.read_text()
     assert "NOTIFIER" not in text.upper()
     assert CREDENTIAL_NAME not in text
+
+
+# --- The notify cutover instant (archiver#369, D3) ---
+
+
+def test_the_unit_ships_dark_until_f3() -> None:
+    """No T: every fact is shadow-recorded and nothing sends. F3 adds the line,
+    with the same instant on Watcher (CannObserv/watcher#376), and flips this test."""
+    assert CUTOVER_ENV not in (DEPLOY / "archiver.service").read_text()
+
+
+@pytest.mark.parametrize("unit", OTHER_UNITS, ids=[p.name for p in OTHER_UNITS])
+def test_no_other_unit_holds_the_cutover(unit: Path) -> None:
+    """T is archiver.service's own Environment= line, never an env file another
+    unit loads: a T beside a Notifier client sends."""
+    assert CUTOVER_ENV not in unit.read_text()

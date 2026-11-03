@@ -16,6 +16,8 @@ import jinja2
 import pytest
 
 from src.core.notifier.client import (
+    DISPATCH_TIMEOUT_SECONDS,
+    TIMEOUT_SECONDS,
     Channel,
     Dispatched,
     Notifier,
@@ -209,7 +211,9 @@ async def test_the_variables_render_back_to_the_text_under_notifiers_rules() -> 
 
 async def test_a_dispatch_returns_its_id_and_status(respx_mock, notifier) -> None:
     respx_mock.post(DISPATCH).mock(return_value=httpx.Response(201, json=_dispatch_out("failed")))
-    assert await _dispatch(notifier) == Dispatched(id="01M5DISPATCH0000000000000A", status="failed")
+    assert await _dispatch(notifier) == Dispatched(
+        id="01M5DISPATCH0000000000000A", status="failed", reason=None
+    )
 
 
 async def test_a_dispatch_is_one_attempt(respx_mock, notifier) -> None:
@@ -240,3 +244,80 @@ async def test_a_dispatch_transport_error_is_unavailable_by_type(respx_mock, not
     respx_mock.post(DISPATCH).mock(side_effect=httpx.ReadTimeout("slow"))
     with pytest.raises(NotifierUnavailable, match="ReadTimeout"):
         await _dispatch(notifier)
+
+
+# --- #369 D4: what the drain may retry, and why a delivery failed ---
+
+
+@pytest.mark.parametrize(
+    ("response", "retryable"),
+    [
+        (httpx.Response(503), True),
+        (httpx.Response(500), True),
+        (httpx.Response(429), True),
+        (httpx.Response(401, json={"detail": "x"}), True),
+        (httpx.Response(403, json={"detail": "x"}), True),
+        (httpx.Response(201, json={"not": "a dispatch"}), True),
+        (httpx.Response(404, json={"detail": "x"}), False),
+        (httpx.Response(422, json={"detail": "x"}), False),
+        (httpx.Response(400, json={"detail": "x"}), False),
+        (httpx.Response(409, json={"detail": "x"}), False),
+    ],
+)
+async def test_a_failure_says_whether_the_same_key_may_retry(
+    respx_mock, notifier, response, retryable
+) -> None:
+    """Notifier dedupes on the key, so any answer it may not have recorded retries.
+    A refusal of the request itself would refuse it again."""
+    respx_mock.post(DISPATCH).mock(return_value=response)
+    with pytest.raises(NotifierUnavailable) as excinfo:
+        await _dispatch(notifier)
+    assert excinfo.value.retryable is retryable
+
+
+@pytest.mark.parametrize("error", [httpx.ReadTimeout("slow"), httpx.ConnectError("refused")])
+async def test_a_transport_failure_is_retryable(respx_mock, notifier, error) -> None:
+    respx_mock.post(DISPATCH).mock(side_effect=error)
+    with pytest.raises(NotifierUnavailable) as excinfo:
+        await _dispatch(notifier)
+    assert excinfo.value.retryable is True
+
+
+def test_a_listing_failure_is_retryable_by_default() -> None:
+    assert NotifierUnavailable("x").retryable is True
+
+
+async def test_a_failed_delivery_carries_notifiers_reason(respx_mock, notifier) -> None:
+    attempt = {
+        "attempt": 1,
+        "channel_id": CHANNEL_ID,
+        "reason": "slack: HTTP 404 channel_not_found",
+        "started_at": "2026-10-30T00:00:00Z",
+        "status": "failed",
+    }
+    respx_mock.post(DISPATCH).mock(
+        return_value=httpx.Response(201, json=_dispatch_out("failed", attempts=[attempt]))
+    )
+    dispatched = await _dispatch(notifier)
+    assert dispatched.status == "failed"
+    assert dispatched.reason == "slack: HTTP 404 channel_not_found"
+
+
+async def test_a_success_has_no_reason(respx_mock, notifier) -> None:
+    respx_mock.post(DISPATCH).mock(return_value=httpx.Response(201, json=_dispatch_out()))
+    assert (await _dispatch(notifier)).reason is None
+
+
+async def test_dispatch_waits_longer_than_a_listing(respx_mock, notifier) -> None:
+    """Notifier delivers inline, so a dispatch outlasts the 5 s list timeout (D4)."""
+    dispatch = respx_mock.post(DISPATCH).mock(
+        return_value=httpx.Response(201, json=_dispatch_out())
+    )
+    listing = respx_mock.get(f"{BASE}/api/v1/channels").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    await _dispatch(notifier)
+    await notifier.list_channels()
+    assert dispatch.calls.last.request.extensions["timeout"]["read"] == DISPATCH_TIMEOUT_SECONDS
+    assert listing.calls.last.request.extensions["timeout"]["read"] == TIMEOUT_SECONDS
+    assert DISPATCH_TIMEOUT_SECONDS == 30.0

@@ -32,6 +32,7 @@ from src.core.changes import (
     outbox_prune,
     registry_snapshot,
     replication_reaper,
+    watch_events_consumer,
     watch_status_consumer,
 )
 from src.core.changes import consumer as revisions_consumer
@@ -43,7 +44,11 @@ from src.core.db_safety import (
     assert_production_db_allowed,
 )
 from src.core.logging import configure_logging, get_logger
+from src.core.notifications import drain as notification_drain
+from src.core.notifications import reminders as notification_reminders
+from src.core.notifications.cutover import CutoverRefused, announce_cutover, resolve_cutover
 from src.core.notifications.diff_loader import announced_text_reader
+from src.core.notifications.reminders import NOTIFY_RETENTION_ENV, RENOTIFY_INTERVAL_ENV
 from src.core.notifier.client import Notifier, announce
 from src.core.notifier.gate import NotifierRefused, resolve
 from src.core.power_map import power_map_from_env
@@ -87,7 +92,13 @@ def _bus_task_exit_logger(label: str, stop_event: asyncio.Event) -> Callable[[as
 
 #: The continuous bus loops the liveness heartbeat reads progress from
 #: (archiver#297). Which of them a process expects is decided in the lifespan.
-_LIVENESS_LOOPS = ("publisher", "revisions_consumer", "artifacts_consumer", "watch_status_tail")
+_LIVENESS_LOOPS = (
+    "publisher",
+    "revisions_consumer",
+    "artifacts_consumer",
+    "watch_events_consumer",
+    "watch_status_tail",
+)
 
 
 @asynccontextmanager
@@ -124,6 +135,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
       checks in to Status only while every expected bus loop is progressing.
     - Builds the one Notifier client (archiver#368) when the gate allows, and
       refuses to start on any half-configuration. See ``src.core.notifier.gate``.
+    - Notifications (archiver#369): resolves the cutover instant T
+      (``ARCHIVER_NOTIFY_CUTOVER_AT``; unset is shadow, and T without Notifier
+      refuses startup), then starts the ``archiver.watch-events`` consumer
+      (Redis + ``ARCHIVER_BUS_CONSUMER``), the error-reminder timer
+      (``ARCHIVER_BUS_CONSUMER``, the reaper's rule) and the drain (a Notifier
+      client). All three start last, after T and the text reader are bound.
     """
     # Before any resource is built or any request is served.
     try:
@@ -149,6 +166,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.critical("Notifier: %s", e)
         raise
     announce(notifier_config)
+    # The cutover instant (archiver#369 D3), judged beside the gate it needs.
+    try:
+        cutover = resolve_cutover(os.environ, notifier_configured=notifier_config is not None)
+    except CutoverRefused as e:
+        logger.critical("Notify cutover: %s", e)
+        raise
+    announce_cutover(cutover)
 
     app.state.fetch_driver = AsyncFetchDriver()
 
@@ -513,6 +537,85 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         app.state.replication_reaper_task = None
 
+    app.state.liveness_task = liveness_task
+    app.state.notifier = Notifier(notifier_config) if notifier_config is not None else None
+    # The processor-text reader (archiver#367 D4): built last, like the Notifier
+    # client, and degrade-don't-refuse. No GCS request here.
+    app.state.text_reader = announced_text_reader(os.environ)
+    _announce_links()
+
+    # --- Notifications (archiver#369): the consumer, the timer, the drain ---
+    # Last, after the Notifier client and the text reader: the consumer decides a
+    # fact with T and the reader, so both are bound before it reads anything.
+    watch_events_consumer.bind_context(
+        watch_events_consumer.DispatchContext(cutover=cutover, text_reader=app.state.text_reader)
+    )
+    consumers_gate = os.environ.get("ARCHIVER_BUS_CONSUMER")
+    # Their own stop event when the bus has none, as the reaper's.
+    notify_stop_event = stop_event or asyncio.Event()
+    watch_events_task: asyncio.Task | None = None
+    reminder_task: asyncio.Task | None = None
+    drain_task: asyncio.Task | None = None
+    if redis_client is not None and watch_events_consumer.consumer_enabled(consumers_gate):
+        try:
+            watch_events_task = asyncio.create_task(
+                watch_events_consumer.run(
+                    session_factory=async_sessionmaker(bind=get_engine(), expire_on_commit=False),
+                    consumer=watch_events_consumer.build_consumer(redis_client),
+                    stop_event=notify_stop_event,
+                    progress=stamps.get("watch_events_consumer"),
+                )
+            )
+            watch_events_task.add_done_callback(
+                _bus_task_exit_logger("watch_events_consumer", notify_stop_event)
+            )
+            logger.info(
+                "info.watch-events consumer task scheduled",
+                extra={"group": watch_events_consumer.CONSUMER_GROUP},
+            )
+        except Exception:
+            logger.exception("Failed to initialise info.watch-events consumer; skipping")
+            watch_events_task = None
+    if watch_events_consumer.consumer_enabled(consumers_gate):
+        try:
+            reminder_task = asyncio.create_task(
+                notification_reminders.run(
+                    session_factory=async_sessionmaker(bind=get_engine(), expire_on_commit=False),
+                    stop_event=notify_stop_event,
+                    cutover=cutover,
+                    interval=notification_reminders.resolve_renotify_interval(
+                        os.environ.get(RENOTIFY_INTERVAL_ENV)
+                    ),
+                    retention_days=notification_reminders.resolve_retention_days(
+                        os.environ.get(NOTIFY_RETENTION_ENV)
+                    ),
+                )
+            )
+            reminder_task.add_done_callback(
+                _bus_task_exit_logger("notification_reminders", notify_stop_event)
+            )
+        except Exception:
+            logger.exception("Failed to initialise the error reminder timer; skipping")
+            reminder_task = None
+    if app.state.notifier is not None:
+        try:
+            drain_task = asyncio.create_task(
+                notification_drain.run(
+                    session_factory=async_sessionmaker(bind=get_engine(), expire_on_commit=False),
+                    notifier=app.state.notifier,
+                    stop_event=notify_stop_event,
+                )
+            )
+            drain_task.add_done_callback(
+                _bus_task_exit_logger("notification_drain", notify_stop_event)
+            )
+        except Exception:
+            logger.exception("Failed to initialise the notification drain; skipping")
+            drain_task = None
+    app.state.watch_events_consumer_task = watch_events_task
+    app.state.notification_reminder_task = reminder_task
+    app.state.notification_drain_task = drain_task
+
     # --- Optional liveness heartbeat (archiver#297), part 2 ---
     # Last, so it reads every handle above. The publisher is expected whenever
     # liveness is on: only the unit turns it on, and production without a bus
@@ -532,6 +635,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             loops["revisions_consumer"] = (consumer_task, stamps["revisions_consumer"])
             loops["artifacts_consumer"] = (artifacts_task, stamps["artifacts_consumer"])
             tasks["replication_reaper"] = reaper_task
+            tasks["notification_reminders"] = reminder_task
+            if redis_url:
+                loops["watch_events_consumer"] = (
+                    watch_events_task,
+                    stamps["watch_events_consumer"],
+                )
+        if app.state.notifier is not None:
+            tasks["notification_drain"] = drain_task
         try:
             build = build_id() or "unknown"
         except OSError:  # informational only: never worth a failed start
@@ -542,11 +653,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ).run()
         )
     app.state.liveness_task = liveness_task
-    app.state.notifier = Notifier(notifier_config) if notifier_config is not None else None
-    # The processor-text reader (archiver#367 D4): built last, like the Notifier
-    # client, and degrade-don't-refuse. No GCS request here.
-    app.state.text_reader = announced_text_reader(os.environ)
-    _announce_links()
 
     try:
         yield
@@ -565,7 +671,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             stop_event.set()
         if reaper_stop_event is not None:
             reaper_stop_event.set()
+        if notify_stop_event is not stop_event:
+            notify_stop_event.set()
         for task in (
+            watch_events_task,
+            reminder_task,
+            drain_task,
             pub_task,
             consumer_task,
             snapshot_task,
@@ -590,6 +701,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.power_map.aclose()
         if app.state.notifier is not None:
             await app.state.notifier.aclose()
+        watch_events_consumer.bind_context(watch_events_consumer.DispatchContext())
         if app.state.text_reader is not None:
             app.state.text_reader.close()
 

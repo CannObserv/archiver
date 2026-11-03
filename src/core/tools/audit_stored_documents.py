@@ -288,6 +288,10 @@ EXEMPT_VALIDATORS: dict[str, str] = {
 
 EXEMPT_COLUMNS: dict[str, str] = {
     "changes_outbox.payload": "a wire record already published, not an authored document",
+    "notification_dispatches.fact": (
+        "an info.watch-events fact as received from Watcher, not an authored document "
+        "(archiver#369; #363 CR 7)"
+    ),
     "replication_commands.object_options": (
         "a copy of a RepSpec's object_options taken at issuance; a wire record"
     ),

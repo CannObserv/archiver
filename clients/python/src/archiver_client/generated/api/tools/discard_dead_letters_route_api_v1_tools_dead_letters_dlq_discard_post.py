@@ -102,17 +102,18 @@ def sync_detailed(
 ) -> Response[DiscardDeadLettersResponse | EnvelopeResponse]:
     """Discard Dead Letters Route
 
-     Delete the named entries from one of archiver's two DLQs (archiver#238).
+     Delete the named entries from one of archiver's three DLQs (archiver#238, #399).
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless. A broker failure part-way through is a 503 whose
+    retried discard is harmless; such an id is answered from the read, and no
+    ``XDEL`` is sent for it. A broker failure part-way through is a 503 whose
     ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
     delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -144,17 +145,18 @@ def sync(
 ) -> DiscardDeadLettersResponse | EnvelopeResponse | None:
     """Discard Dead Letters Route
 
-     Delete the named entries from one of archiver's two DLQs (archiver#238).
+     Delete the named entries from one of archiver's three DLQs (archiver#238, #399).
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless. A broker failure part-way through is a 503 whose
+    retried discard is harmless; such an id is answered from the read, and no
+    ``XDEL`` is sent for it. A broker failure part-way through is a 503 whose
     ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
     delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -181,17 +183,18 @@ async def asyncio_detailed(
 ) -> Response[DiscardDeadLettersResponse | EnvelopeResponse]:
     """Discard Dead Letters Route
 
-     Delete the named entries from one of archiver's two DLQs (archiver#238).
+     Delete the named entries from one of archiver's three DLQs (archiver#238, #399).
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless. A broker failure part-way through is a 503 whose
+    retried discard is harmless; such an id is answered from the read, and no
+    ``XDEL`` is sent for it. A broker failure part-way through is a 503 whose
     ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
     delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 
@@ -221,17 +224,18 @@ async def asyncio(
 ) -> DiscardDeadLettersResponse | EnvelopeResponse | None:
     """Discard Dead Letters Route
 
-     Delete the named entries from one of archiver's two DLQs (archiver#238).
+     Delete the named entries from one of archiver's three DLQs (archiver#238, #399).
 
     ``XDEL`` by id, each frame logged in full to journald first. Ids not in the
     queue come back in ``not_found`` rather than failing the request, so a
-    retried discard is harmless. A broker failure part-way through is a 503 whose
+    retried discard is harmless; such an id is answered from the read, and no
+    ``XDEL`` is sent for it. A broker failure part-way through is a 503 whose
     ``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose
     delete was in flight, or null): the progress a retry could not reconstruct.
 
     Args:
         dlq (str): The dead-letter queue, by its key as broker names it: `content.revisions.dlq`
-            or `content.artifacts.dlq`. Any other key is a 422.
+            or `content.artifacts.dlq` or `info.watch-events.dlq`. Any other key is a 422.
         body (DiscardDeadLettersRequest): Request body for POST /api/v1/tools/dead-
             letters/{dlq}/discard.
 

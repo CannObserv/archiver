@@ -12,14 +12,17 @@ and makes one kind of dispatch, nothing else.**
   templates ``{{ title }}`` and ``{{ body }}``. Notifier renders both
   ``*_template`` fields as Jinja, and a value is never evaluated, so text that
   holds ``{{`` or ``{%`` (a watched page's diff can) arrives as written. Its
-  caller today is the dashboard's test-send, an operator action; #369's dispatch
-  inherits it.
+  callers are the dashboard's test-send, an operator action, and #369's drain.
 
 ``tests/core/notifier/test_sdk_boundary.py`` pins both rules. Every failure (a
 rejected key, a refusal, a 5xx, a refused connection, an unreadable body) raises
 :class:`NotifierUnavailable`, whose text never carries the key. One attempt per
-call: a person pressing again is the retry, and dispatch's retry policy is
-#369's to choose.
+call: a person pressing again is the retry, and the drain retries by
+:attr:`NotifierUnavailable.retryable` (#369 D4).
+
+**A dispatch waits :data:`DISPATCH_TIMEOUT_SECONDS`**, longer than a listing,
+because Notifier delivers inline. A timeout is "unknown", not "failed": the same
+idempotency key makes the retry safe.
 """
 
 from __future__ import annotations
@@ -41,6 +44,8 @@ from src.core.notifier.gate import NotifierConfig
 logger = get_logger(__name__)
 
 TIMEOUT_SECONDS = 5.0
+#: Notifier delivers inline before it answers (#369 D4).
+DISPATCH_TIMEOUT_SECONDS = 30.0
 #: D3: Notifier's templates are these constants, never composed text.
 TITLE_TEMPLATE = "{{ title }}"
 BODY_TEMPLATE = "{{ body }}"
@@ -58,28 +63,45 @@ class Channel:
 
 @dataclass(frozen=True, slots=True)
 class Dispatched:
-    """A dispatch Notifier accepted: its id, and ``succeeded``, ``partial`` or ``failed``."""
+    """A dispatch Notifier accepted: its id, and ``succeeded``, ``partial`` or ``failed``.
+
+    ``reason`` is the last delivery attempt's, when it didn't succeed.
+    """
 
     id: str
     status: str
+    reason: str | None = None
 
 
 class NotifierUnavailable(Exception):
-    """Notifier didn't give the answer asked for: why, in words that never name the key."""
+    """Notifier didn't give the answer asked for: why, in words that never name the key.
+
+    ``retryable`` (#369 D4): whether re-sending the **same idempotency key** may
+    succeed. Notifier dedupes on it, so anything it may not have recorded
+    retries: a transport error or timeout, a 5xx, a 429, a rejected key (401/403,
+    a rotation mid-flight) and an unreadable answer. A refusal of the request
+    itself (404 no such channel, 422, any other 4xx) would be refused again.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 class Notifier:
     """A process's one Notifier client, built by the lifespan and closed by it."""
 
-    def __init__(self, config: NotifierConfig, *, timeout: float = TIMEOUT_SECONDS) -> None:
+    def __init__(
+        self,
+        config: NotifierConfig,
+        *,
+        timeout: float = TIMEOUT_SECONDS,
+        dispatch_timeout: float = DISPATCH_TIMEOUT_SECONDS,
+    ) -> None:
         self.base_url = config.base_url
         self.key_source = config.key_source
-        self._client = NotifierClient(
-            base_url=config.base_url,
-            api_key=config.api_key,
-            retry_config=RetryConfig(max_attempts=1),
-            timeout=timeout,
-        )
+        self._client = _sdk_client(config, timeout)
+        self._dispatch_client = _sdk_client(config, dispatch_timeout)
 
     def __repr__(self) -> str:
         return f"Notifier(base_url={self.base_url!r}, key_source={self.key_source!r})"
@@ -119,7 +141,7 @@ class Notifier:
         :data:`BODY_TEMPLATE` (D3), so Notifier delivers it exactly as written.
         """
         try:
-            out = await self._client.dispatch(
+            out = await self._dispatch_client.dispatch(
                 title_template=TITLE_TEMPLATE,
                 body_template=BODY_TEMPLATE,
                 variables={"title": title, "body": body},
@@ -133,22 +155,41 @@ class Notifier:
             ) from e
         except ValidationError as e:
             raise NotifierUnavailable(
-                f"Notifier refused the dispatch (HTTP {e.status_code})"
+                f"Notifier refused the dispatch (HTTP {e.status_code})", retryable=False
             ) from e
         except NotifierError as e:
             if e.status_code == 404:
                 raise NotifierUnavailable(
-                    "Notifier has no such channel in this tenant (HTTP 404)"
+                    "Notifier has no such channel in this tenant (HTTP 404)", retryable=False
                 ) from e
-            raise NotifierUnavailable(f"unexpected HTTP {e.status_code}") from e
+            raise NotifierUnavailable(
+                f"unexpected HTTP {e.status_code}", retryable=_retryable_status(e.status_code)
+            ) from e
         except httpx.HTTPError as e:
             raise NotifierUnavailable(f"transport error ({type(e).__name__})") from e
         except (KeyError, TypeError, ValueError, AttributeError) as e:
             raise NotifierUnavailable(f"unreadable dispatch answer ({type(e).__name__})") from e
-        return Dispatched(id=out.id, status=str(out.status.value))
+        status = str(out.status.value)
+        reason = out.attempts[-1].reason if status != "succeeded" and out.attempts else None
+        return Dispatched(id=out.id, status=status, reason=reason or None)
 
     async def aclose(self) -> None:
         await self._client.aclose()
+        await self._dispatch_client.aclose()
+
+
+def _sdk_client(config: NotifierConfig, timeout: float) -> NotifierClient:
+    return NotifierClient(
+        base_url=config.base_url,
+        api_key=config.api_key,
+        retry_config=RetryConfig(max_attempts=1),
+        timeout=timeout,
+    )
+
+
+def _retryable_status(status: int | None) -> bool:
+    """A 5xx or 429 may not have been recorded; any other status is a refusal."""
+    return status is None or status >= 500 or status == 429
 
 
 def _kind(masked: str) -> str:

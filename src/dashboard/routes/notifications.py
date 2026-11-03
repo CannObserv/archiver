@@ -9,7 +9,10 @@ POST→303 on success, the form again with a 422 on a refusal.
 - **The Jinja fields are on the form, with a live preview beside them** (#367
   D5): ``POST /preview`` renders the posted form strict against the canned
   fixtures, locally, with no Notifier call (``src.dashboard.notification_form``).
-- **The one send is the edit page's test-send** (#367 D6): ``POST
+- **The dispatch log** (#369 D6), ``GET /log``: every row the
+  ``info.watch-events`` consumer and the reminder timer composed, shadow or
+  sent, newest first. F3's parity evidence; it reads only.
+- **The one send by hand is the edit page's test-send** (#367 D6): ``POST
   /{id}/test-send`` renders the row's saved options against the canned change,
   titles it ``[Test]``, and makes one dispatch to the row's channel. Dashboard
   only: no API route and no SDK method, so an API key can't post to Slack or an
@@ -26,7 +29,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import case, func, select
@@ -35,7 +38,8 @@ from ulid import ULID
 
 from src.api.deps import get_db_session, get_notifier
 from src.core.logging import get_logger
-from src.core.models import Domain, InfoItem, NotificationSubscription
+from src.core.models import Domain, InfoItem, NotificationDispatch, NotificationSubscription
+from src.core.models.notification_dispatch import DISPATCH_MODES, DISPATCH_STATUSES
 from src.core.models.notification_subscription import NOTIFICATION_EVENTS, SCOPES
 from src.core.notifications.content import compose, resolve_options
 from src.core.notifications.default_templates import (
@@ -170,6 +174,105 @@ async def list_subscriptions(
             "offset": page.offset,
             "event_labels": event_labels,
             **await _refs(session, rows),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/notifications/log  (#369 D6)
+# ---------------------------------------------------------------------------
+
+
+def _known(value: str | None, allowed: tuple[str, ...]) -> str | None:
+    """A filter value the page knows, else none: the dashboard ignores, never 422s."""
+    return value if value in allowed else None
+
+
+def _item_key(value: str | None) -> ULID | None:
+    try:
+        return ULID.from_str(value) if value else None
+    except ValueError:
+        return None
+
+
+@router.get("/log", response_class=HTMLResponse)
+async def dispatch_log(
+    request: Request,
+    mode: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    event: str | None = Query(default=None),
+    item: str | None = Query(default=None),
+    page: Pagination = Depends(pagination),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Every composed notification row, newest first, filtered by mode, status, event, item."""
+    filters = {
+        "mode": _known(mode, DISPATCH_MODES),
+        "status": _known(status, DISPATCH_STATUSES),
+        "event": _known(event, NOTIFICATION_EVENTS),
+        "item": _item_key(item),
+    }
+    where = [
+        clause
+        for clause, value in (
+            (NotificationDispatch.mode == filters["mode"], filters["mode"]),
+            (NotificationDispatch.status == filters["status"], filters["status"]),
+            (NotificationDispatch.event_type == filters["event"], filters["event"]),
+            (NotificationDispatch.info_item_id == filters["item"], filters["item"]),
+        )
+        if value is not None
+    ]
+    rows = list(
+        (
+            await session.execute(
+                select(NotificationDispatch)
+                .where(*where)
+                .order_by(NotificationDispatch.created_at.desc(), NotificationDispatch.id.desc())
+                .offset(page.offset)
+                .limit(page.limit + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    has_more = len(rows) > page.limit
+    rows = rows[: page.limit]
+    total = await session.scalar(
+        select(func.count()).select_from(NotificationDispatch).where(*where)
+    )
+    item_ids = {r.info_item_id for r in rows}
+    item_names = (
+        dict(
+            (
+                await session.execute(
+                    select(InfoItem.info_item_id, InfoItem.name).where(
+                        InfoItem.info_item_id.in_(item_ids)
+                    )
+                )
+            ).all()
+        )
+        if item_ids
+        else {}
+    )
+    query = {k: str(v) for k, v in filters.items() if v is not None}
+    return _templates.TemplateResponse(
+        request,
+        "notifications/log.html",
+        {
+            "user": user,
+            "rows": rows,
+            "total": total,
+            "item_names": item_names,
+            "filters": query,
+            "query": "&".join(f"{k}={v}" for k, v in query.items()),
+            "modes": DISPATCH_MODES,
+            "statuses": DISPATCH_STATUSES,
+            "events": [(e, EVENT_LABELS[e]) for e in NOTIFICATION_EVENTS],
+            "event_labels_map": EVENT_LABELS,
+            "has_more": has_more,
+            "limit": page.limit,
+            "offset": page.offset,
         },
     )
 

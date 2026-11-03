@@ -3,15 +3,16 @@
 CannObserv/broker#1 Phase 5 split the old drainer role in two. **Broker**
 detects a non-resting ``*.dlq``, dumps its entries on first sight and names the
 owner. **The stream's own consumer** reads the payloads, decides, and deletes.
-Archiver consumes ``content.revisions`` and ``content.artifacts`` with a group,
-so their two queues are archiver's to triage and no others are.
+Archiver consumes ``content.revisions``, ``content.artifacts`` and
+``info.watch-events`` (archiver#369) with a group, so their three queues are
+archiver's to triage and no others are.
 
 What lands in them, and the disposition it gets:
 
-- **Handler poison** (``content.revisions`` only: ``InvalidFingerprintError``,
-  ``InvalidInfoSourceIdError``). Deterministic producer data. Discard it, and
-  file on the producer.
-- **An undecodable frame** (both queues). Usually the same. The one exception
+- **Handler poison** (``content.revisions``: ``InvalidFingerprintError``,
+  ``InvalidInfoSourceIdError``; ``info.watch-events``: ``InvalidFactError``).
+  Deterministic producer data. Discard it, and file on the producer.
+- **An undecodable frame** (every queue). Usually the same. The one exception
   is *version skew*: a producer shipped an ``event_type`` or schema before
   archiver upgraded co-core, and after the upgrade the frame decodes.
 
@@ -33,7 +34,7 @@ left for its owner or for a discard.
 **Disposal is ``XDEL`` by id, never ``XTRIM``.** A cap discards entries whether
 or not anyone read them, and broker's detector rests on the resting depth being
 0, so an untriaged entry must stay visible. Broker's ACL matches: archiver
-holds ``+xdel`` on these two queues and, since CannObserv/broker#59 (live
+holds ``+xdel`` on these three queues (CannObserv/broker#93) and, since CannObserv/broker#59 (live
 2026-09-24), no ``+xtrim``.
 """
 
@@ -48,11 +49,16 @@ from typing import TYPE_CHECKING, Literal
 from co_core.pure.adapters.bus.dead_letter import DeadLetterProvenance, split_dead_letter
 from co_core.pure.adapters.bus.envelope import from_wire
 from co_core.pure.adapters.bus.exceptions import BusMessageAnomaly
-from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, CONTENT_REVISIONS, dlq_name
+from co_core.pure.adapters.bus.streams import (
+    CONTENT_ARTIFACTS,
+    CONTENT_REVISIONS,
+    INFO_WATCH_EVENTS,
+    dlq_name,
+)
 from redis.exceptions import RedisError
 
 from src.core.bus_health import OWNED_GROUPS
-from src.core.changes import artifacts_consumer
+from src.core.changes import artifacts_consumer, watch_events_consumer
 from src.core.changes import consumer as revisions_consumer
 from src.core.changes.diagnostics import error_text
 from src.core.changes.group_consumer import REASON_HANDLER_POISON, REASON_UNDECODABLE
@@ -79,7 +85,8 @@ TRIAGE_DLQS: tuple[str, ...] = tuple(_SOURCE_TOPIC_BY_DLQ)
 
 The drainer is the stream's consumer, so a group archiver runs is a queue it
 triages. **One decision with broker's** ``(+xdel ~content.revisions.dlq
-~content.artifacts.dlq)`` selector in ``deploy/redis-acl.conf``: a new owned
+~content.artifacts.dlq ~info.watch-events.dlq)`` selector in
+``deploy/redis-acl.conf`` (CannObserv/broker#93, archiver#399): a new owned
 group joins this set automatically, and its discard fails NOPERM until the
 grant follows."""
 
@@ -109,6 +116,11 @@ _REPROCESSORS: dict[str, _Reprocessor] = {
     # content.artifacts has no poison class: a frame decodes or it does not.
     dlq_name(CONTENT_ARTIFACTS): _Reprocessor(
         handle=artifacts_consumer.handle_message, poison_errors=()
+    ),
+    # Decided with the context the lifespan bound: the same T, the same reader.
+    dlq_name(INFO_WATCH_EVENTS): _Reprocessor(
+        handle=watch_events_consumer.handle_message,
+        poison_errors=watch_events_consumer.POISON_ERRORS,
     ),
 }
 """The handler each consumer loop runs, keyed by its DLQ - the same function, so

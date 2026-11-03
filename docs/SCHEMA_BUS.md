@@ -2,7 +2,7 @@
 
 Per-table contracts and invariants for the tables that record what archiver put on, or read
 from, the change bus: the revocation records, the replicate and persist command ledgers, the
-outbox, and the watch-status cache with its tail cursor. Split from [SCHEMA.md](SCHEMA.md), which
+outbox, the watch-status cache with its tail cursor, and the notification dispatches. Split from [SCHEMA.md](SCHEMA.md), which
 keeps the registry tables; identifiers are verbatim there and here.
 
 ## Entities
@@ -84,3 +84,19 @@ keeps the registry tables; identifiers are verbatim there and here.
   from the last-applied stream id instead of a full `0-0` replay. Advanced in the same
   transaction as the write it covers, so a crash between the two is impossible and redelivery
   re-applies an idempotent LWW upsert. One row per stream; today only `info.watch-status`.
+- **`NotificationDispatch`** (`notification_dispatches`) — one composed notification
+  (archiver#369 D1): a row per (`info.watch-events` fact, matching subscription), plus one per
+  error reminder. **Both the shadow log and the dispatch outbox**; nothing goes on
+  `changes_outbox`. Contract: [NOTIFICATIONS.md](NOTIFICATIONS.md#dispatch-on-events-archiver369).
+  - **Unique on (`event_id`, `subscription_id`, `reminder`)**, so a redelivered fact is a no-op;
+    `reminder` is 0 for the fact, *n* for the episode's *n*-th reminder, whose `event_id` is the
+    edge's. `idempotency_key` (Notifier's) is unique too.
+  - `mode` `shadow` ⇔ `status` `shadow` (a CHECK); a `send` row is `pending` → `sent` |
+    `failed` | `skipped`. `occurred_at` is the fact's (F3's parity key); `reminded_at` is set iff
+    `reminder > 0`. `fact` is the fact as received; a reminder rebuilds its event from it.
+  - **`subscription_id` is `SET NULL`**: a delete keeps the history, and a pending row ends
+    `skipped`. **`info_item_id` has no FK**: a revoked item keeps its rows, and its pending send
+    still goes.
+  - **Retention:** terminal rows past `ARCHIVER_NOTIFY_RETENTION_DAYS` (default 90) are pruned
+    by the reminder timer; `pending` never is. No operator-authored document, so no
+    `audit_stored_documents` kind.

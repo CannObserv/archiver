@@ -1,8 +1,8 @@
 # Notification composer, preview and test-send
 
 **What a notification says, and the one way to send one by hand** (archiver#367, epic #359;
-design D3/A8). Who hears what is [NOTIFICATIONS.md](NOTIFICATIONS.md). The consumer, dispatch on
-events, error reminders and shadow mode are #369's. It calls what this page describes.
+design D3/A8). Who hears what is [NOTIFICATIONS.md](NOTIFICATIONS.md), which also holds the
+consumer, shadow mode, the drain and error reminders (#369). They call what this page describes.
 
 ## The composer: `src/core/notifications/content.py`
 
@@ -34,9 +34,11 @@ diff block and caps, so #369's shadow comparison reads like for like.
     template, or the error's text, which can quote the template.
 - **The sandbox is bounded** (CR 1): one `*` builds at most 100 000 items and one `**` takes
   an exponent of at most 100, so a template can't allocate a gigabyte in the one process.
-  The preview and the test-send render in a worker thread, off the event loop. Nested loops
-  can still burn CPU. A render budget is #369's to choose before saved templates render on
-  every event.
+  **The render budget** (#369 D7): `range()` stops at 1 000 items and a render at 64 KiB of
+  output, counted as it renders. Over either is a raised error, so the send path falls back.
+  Every render (preview, test-send, consumer) runs in a worker thread, off the event loop.
+  **Residual:** loops nested under both caps can still burn CPU, and templates come from
+  operators and API-key holders.
 - **At send an undefined variable renders empty** (lenient, as in Watcher), and only a raised
   error falls back. The preview renders strict.
 - **Links point at Archiver's item page:** `app_url` is the origin
@@ -64,8 +66,8 @@ recipients filter on it, and #369 compares titles. Renaming it is an operator de
   Then the diff, as a fenced block. The fence outruns any backtick run in the page's text, and
   the whole block is capped at 32 KiB (`MAX_RENDERED_DIFF_BYTES`).
 - **Error:** `<url> returned HTTP <status|unknown>`. On a reminder, it adds "Still failing —
-  previously notified …". #369 passes `previously_notified_at`; the composer keeps no reminder
-  state.
+  previously notified …". The reminder timer passes `previously_notified_at` (#369); the
+  composer keeps no reminder state.
 - **Recovered:** `<url> is responding normally again`.
 
 **Variables with no Archiver source:**
@@ -214,6 +216,6 @@ static confirm that names the channel id. It does the following:
   `variables={"title": …, "body": …}`. Notifier renders both template fields as Jinja
   (StrictUndefined, no escaping) and never evaluates a variable's value, so text holding `{{`
   or `{%` arrives as written. `tests/core/notifier/test_sdk_boundary.py` pins the shape and
-  the single call site. #369 dispatches through the same function.
+  the single call site. #369's drain dispatches through the same function.
 - **On 8001** it reaches the dev tenant, whose channels (`dev-sink`) reach nobody. **On 8000 it
   reaches the Slack channel or the inbox. That's the operator's action, never an agent's.**

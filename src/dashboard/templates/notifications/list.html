@@ -4,16 +4,20 @@
 {% block content %}
 {#- The Notifications page (archiver#363, D5): every subscription, grouped by
    scope. Who hears a given item is its own page's "Notified by" row; this is
-   the list of what was declared. Nothing here sends (#367/#369). -#}
+   the list of what was declared. What was composed is the log (#369). -#}
 <div class="entity-section">
   <div class="entity-section__header">
     <h1 class="entity-section__title">Notifications</h1>
-    <a href="/dashboard/notifications/new" class="btn btn--primary">New subscription</a>
+    <div>
+      <a href="/dashboard/notifications/log" class="btn btn--ghost">Notification log</a>
+      <a href="/dashboard/notifications/new" class="btn btn--primary">New subscription</a>
+    </div>
   </div>
   <p class="text-sm text-muted">
     Each subscription sends the events it names to one Notifier channel. The scopes add up:
     an item hears every global subscription, its host's domain subscriptions and its own.
-    Nothing is sent yet; dispatch arrives with #369.
+    Until the cutover instant is set, each event is composed and recorded in the
+    notification log, and nothing is sent: Watcher still sends.
   </p>
 
   {% set headings = {"global": "Global", "domain": "Domain", "item": "Item"} %}

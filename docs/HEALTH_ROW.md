@@ -48,7 +48,7 @@ triaged - discarded or rearmed on that screen or through
 
 **GET `/dashboard/health/consumers`** - over
 `src/core/bus_health.collect_group_lag` (archiver#147). Liveness from
-`app.state.{revisions,artifacts}_consumer_task`, no broker call; depths from
+`app.state.{revisions,artifacts,watch_events}_consumer_task` (#369), no broker call; depths from
 `OWNED_GROUPS`, the same list archiver's own bus surface reads (broker-side
 alerting is CannObserv/broker's since #193). Ladder, first match wins - the
 no-client branch above / muted "gated off" (`ARCHIVER_BUS_CONSUMER` unset, the

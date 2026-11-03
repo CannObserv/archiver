@@ -162,6 +162,10 @@ os.environ.pop("ARCHIVER_PERSIST_ISSUANCE", None)
 # domain write a test makes would also queue an outbox row. Tests that need it
 # set it.
 os.environ.pop("ARCHIVER_FETCH_POLICY_PRODUCER", None)
+# And the notify cutover instant (archiver#369): set in a shell, every lifespan a
+# test runs would refuse to start without Notifier, or queue sends with it.
+os.environ.pop("ARCHIVER_NOTIFY_CUTOVER_AT", None)
+os.environ.pop("ARCHIVER_DEV_NOTIFY_CUTOVER_AT", None)
 
 
 def _run_alembic_upgrade() -> None:

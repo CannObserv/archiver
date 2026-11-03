@@ -1,4 +1,4 @@
-"""DLQ triage: listing and discarding the two queues archiver drains (archiver#238).
+"""DLQ triage: listing and discarding the queues archiver drains (archiver#238).
 
 Exercised against fakeredis so the stream commands (XRANGE / XDEL) are real,
 not mocked. Reprocess has its own file, ``test_dlq_triage_reprocess.py``,
@@ -30,6 +30,7 @@ from src.core.changes.dlq_triage import (
 
 REVISIONS_DLQ = "content.revisions.dlq"
 ARTIFACTS_DLQ = "content.artifacts.dlq"
+WATCH_EVENTS_DLQ = "info.watch-events.dlq"
 
 
 @pytest.fixture
@@ -75,12 +76,14 @@ def _parked(
 # --- the allowlist ---
 
 
-def test_triage_dlqs_are_the_two_queues_broker_grants_xdel_on():
-    """One decision with broker's ``(+xdel ~content.revisions.dlq ~content.artifacts.dlq)``
-    selector in ``deploy/redis-acl.conf``: widen one, widen the other. A new
-    consumer group joins this set by being added to ``OWNED_GROUPS``, and its
-    discard then needs the matching grant or it fails NOPERM."""
-    assert TRIAGE_DLQS == (REVISIONS_DLQ, ARTIFACTS_DLQ)
+def test_triage_dlqs_are_the_three_queues_broker_grants_xdel_on():
+    """One decision with broker's ``(+xdel ~content.revisions.dlq ~content.artifacts.dlq
+    ~info.watch-events.dlq)`` selector in ``deploy/redis-acl.conf`` (CannObserv/broker#93,
+    archiver#399): widen one, widen the other. A new consumer group joins this set by
+    being added to ``OWNED_GROUPS``, and its discard then needs the matching grant or it
+    fails NOPERM. Renamed from ``..._two_queues_...``; broker's
+    ``test_archiver_dead_letter_disposals_name_their_caller`` cites this name."""
+    assert TRIAGE_DLQS == (REVISIONS_DLQ, ARTIFACTS_DLQ, WATCH_EVENTS_DLQ)
 
 
 async def test_listing_a_queue_outside_the_allowlist_is_refused(fake_redis):

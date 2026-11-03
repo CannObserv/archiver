@@ -6,7 +6,11 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, CONTENT_REVISIONS
+from co_core.pure.adapters.bus.streams import (
+    CONTENT_ARTIFACTS,
+    CONTENT_REVISIONS,
+    INFO_WATCH_EVENTS,
+)
 from fakeredis import aioredis as fakeredis_aio
 
 from src.api.deps import get_redis_client
@@ -14,6 +18,7 @@ from src.api.main import app
 from src.core.bus_health import OWNED_GROUPS
 from src.core.changes.artifacts_consumer import CONSUMER_GROUP as ARTIFACTS_GROUP
 from src.core.changes.consumer import CONSUMER_GROUP as REVISIONS_GROUP
+from src.core.changes.watch_events_consumer import CONSUMER_GROUP as WATCH_EVENTS_GROUP
 from src.core.models import (
     ChangesOutboxRow,
     InfoItem,
@@ -340,18 +345,31 @@ def _dead_task(exc=RuntimeError("consumer crashed")):
     return task
 
 
-def _consumers(monkeypatch, redis, *, revisions, artifacts, gate="1"):
-    """Put the app in the state a given lifespan branch leaves behind."""
+_LIKE_REVISIONS = object()
+
+
+def _consumers(monkeypatch, redis, *, revisions, artifacts, watch_events=_LIKE_REVISIONS, gate="1"):
+    """Put the app in the state a given lifespan branch leaves behind.
+
+    The watch-events consumer (archiver#369) starts under the revisions consumer's
+    gates, so unless a test says otherwise it is in the same state."""
+    if watch_events is _LIKE_REVISIONS:
+        watch_events = revisions
     if gate is None:
         monkeypatch.delenv("ARCHIVER_BUS_CONSUMER", raising=False)
     else:
         monkeypatch.setenv("ARCHIVER_BUS_CONSUMER", gate)
     monkeypatch.setattr(app.state, "revisions_consumer_task", revisions, raising=False)
     monkeypatch.setattr(app.state, "artifacts_consumer_task", artifacts, raising=False)
+    monkeypatch.setattr(app.state, "watch_events_consumer_task", watch_events, raising=False)
     app.dependency_overrides[get_redis_client] = lambda: redis
 
 
-_GROUPS = ((CONTENT_REVISIONS, REVISIONS_GROUP), (CONTENT_ARTIFACTS, ARTIFACTS_GROUP))
+_GROUPS = (
+    (CONTENT_REVISIONS, REVISIONS_GROUP),
+    (CONTENT_ARTIFACTS, ARTIFACTS_GROUP),
+    (INFO_WATCH_EVENTS, WATCH_EVENTS_GROUP),
+)
 
 
 async def _provision_groups(redis):

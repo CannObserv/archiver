@@ -10,7 +10,11 @@ from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from co_core.pure.adapters.bus.streams import CONTENT_ARTIFACTS, CONTENT_REVISIONS
+from co_core.pure.adapters.bus.streams import (
+    CONTENT_ARTIFACTS,
+    CONTENT_REVISIONS,
+    INFO_WATCH_EVENTS,
+)
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -246,12 +250,13 @@ async def dashboard_registry_audit(
 
 
 # Each archiver-owned consumer, paired with the ``app.state`` handle its
-# lifespan branch sets and the topic its group reads. Both are gated by the
-# same ARCHIVER_BUS_CONSUMER, so one badge answers for both - and a badge blind
-# to half the consumers would reproduce the misleading green #147 closes.
+# lifespan branch sets and the topic its group reads. All are gated by the
+# same ARCHIVER_BUS_CONSUMER, so one badge answers for all - and a badge blind
+# to one of the consumers would reproduce the misleading green #147 closes.
 _CONSUMERS: tuple[tuple[str, str, str], ...] = (
     ("revisions", "revisions_consumer_task", CONTENT_REVISIONS),
     ("artifacts", "artifacts_consumer_task", CONTENT_ARTIFACTS),
+    ("watch-events", "watch_events_consumer_task", INFO_WATCH_EVENTS),  # archiver#369
 )
 
 

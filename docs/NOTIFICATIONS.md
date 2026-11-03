@@ -3,16 +3,16 @@
 **Who hears which events, and how** (archiver#363; design D3: "Watcher monitors and
 reports; Archiver decides who hears; Notifier delivers"). Subscriptions replace Watcher's
 `notification_templates`. This is the model, the API, the dashboard and the import.
-Composition, the preview and the test-send, **the one send so far**, are #367's:
+Composition, the preview and the test-send are #367's:
 [NOTIFICATION_COMPOSER.md](NOTIFICATION_COMPOSER.md). The `info.watch-events` consumer,
-shadow mode and dispatch on events are #369's. The Notifier credential is #368's
-(§ The credential).
+shadow mode, the drain and error reminders are #369's (§ Dispatch on events). The Notifier
+credential is #368's (§ The credential).
 
 ## The table: `information.notification_subscriptions`
 
 | Column | |
 |---|---|
-| `id` | ULID. #369's idempotency key is `archiver:{event}:{subscription_id}:{event_id}`, so ids must stay stable. |
+| `id` | ULID. Dispatch's idempotency key is `archiver:{event}:{subscription_id}:{event_id}`, so ids must stay stable. |
 | `title` | ≤100. It names the row. Watcher's `channel_hint` is dropped: nothing read it. |
 | `scope` | `global`, `domain` or `item`. A CHECK ties it to exactly one ref: `domain_id` for `domain`, `info_item_id` for `item`, neither for `global`. |
 | `domain_id` | FK `domains.id`, **`RESTRICT`**. `DELETE /domains/{name}` 409s while any subscription names the row, active or not, as it does for InfoSources ([DOMAINS.md](DOMAINS.md)). |
@@ -30,7 +30,7 @@ the row and create another. Mutable fields are `title`, `events`, `remote_channe
 ## Who hears: `subscriptions_for`
 
 `src/core/services/notification_subscriptions.py`, `subscriptions_for(session,
-info_item_id, event)`, is **the** matcher. #369's dispatch calls it, and the item page shows
+info_item_id, event)`, is **the** matcher. Dispatch calls it once per fact, and the item page shows
 its answer. The preview doesn't: it renders fixtures, not an item. It follows Watcher's rule (`notify.py` at `ebd1be5`):
 every active subscription whose `events` hold the event, across the **union** of three
 scopes, each row once and in id order.
@@ -45,8 +45,8 @@ scopes, each row once and in id order.
 
 No scope overrides another, nothing opts out, and there is no channel-level dedup: two
 rows on one channel both match (watcher #200 F2). **Archive, pause and host suspension
-filter nothing.** Watcher doesn't check those items, so no event arrives. What to do with
-an in-flight event is #369's call. `notified_by` runs the matcher once per event for the
+filter nothing.** Watcher doesn't check those items, so no event arrives, and one already
+in flight is still composed (#369 D2): it happened before the state changed. `notified_by` runs the matcher once per event for the
 item page.
 
 ## Content options: `ContentConfig`
@@ -122,6 +122,76 @@ otherwise. `audit_stored_documents` sweeps the column as kind `notification_cont
   prefilled.
 - **The domain page** lists its domain-scoped rows, inactive ones badged, above the danger
   zone, with an "Add a subscription for this domain" link.
+
+## Dispatch on events (archiver#369)
+
+Design D3 and C-a: Watcher outboxes each observed edge on `info.watch-events`; Archiver
+decides who hears and composes; Notifier delivers. **Ships dark: shadow until F3.**
+
+**Consume** (group `archiver.watch-events`, [BUS_CONSUMERS.md](BUS_CONSUMERS.md)). Per fact,
+`subscriptions_for` runs once, the diff is read once (only if a row shows one), and each
+subscription's text is composed in a worker thread. One row per subscription goes into
+`notification_dispatches` ([SCHEMA_BUS.md](SCHEMA_BUS.md)) in one short transaction, the
+subscriptions taken `FOR KEY SHARE`, then the ack. A template that fails or passes the render
+budget falls back to its event's default; a diff that can't be read names why.
+
+**The cutover instant T** (`ARCHIVER_NOTIFY_CUTOVER_AT`, ISO 8601 UTC) is the one switch. A
+row is `send` (`pending`) only when T is set and the fact's `occurred_at` (a reminder's own
+instant) is at or after T; otherwise `shadow`, never sent. Unset *is* shadow: the journal says
+`notify cutover: unset (shadow)`. T without the Notifier gate, or not an unambiguous UTC
+instant, refuses startup. It is `archiver.service`'s own `Environment=` line, absent until F3
+(`tests/deploy/test_archiver_unit_notifier.py`). A fact before T that arrives late is
+shadow-recorded: Watcher sent it.
+
+**The drain** (`src/core/notifications/drain.py`), a lifespan task wherever a Notifier client
+exists. It claims the oldest due `pending` row `FOR UPDATE SKIP LOCKED` and calls
+`dispatch_composed` with the row's key (30 s timeout: Notifier delivers inline). The row stays
+locked across the call, which is what makes a double send impossible; deleting its
+subscription (`SET NULL` on that row) waits for it, up to 30 s.
+
+| Outcome | Row |
+|---|---|
+| `succeeded` | `sent`, with Notifier's dispatch id |
+| any other `DispatchOut` | `failed`, with the last attempt's reason. **Final**: the key is permanent per tenant, so a re-POST returns the failed record. Nothing redelivers |
+| timeout, connection, 5xx, 429, 401/403, unreadable answer, any error the adapter didn't translate | still `pending` under the same key, retried at 30 s doubling to 1 h; the 8th attempt ends `failed` with the last reason |
+| 404 (no channel), 422, other 4xx | `failed` at once |
+| subscription deleted or now inactive | `skipped`, never sent |
+
+**Error reminders** (`src/core/notifications/reminders.py`): a lifespan timer every 15 min,
+under `ARCHIVER_BUS_CONSUMER`. For each item whose cached `health` is `error` and that Watcher
+still checks (not archived, paused or host-suspended), the episode is its newest `watch_error`
+row with no newer `watch_recovered` row. Each subscription that still hears `watch_error` and
+has a row in the episode is reminded once its newest row there (edge or last reminder) is
+`ARCHIVER_ERROR_RENOTIFY_INTERVAL` old (default `24h`), keyed
+`archiver:watch_error_reminder:{subscription_id}:{episode_event_id}:{n}` and composed with
+`previously_notified_at`. An item in error with no episode row is skipped with an INFO line.
+Unlike Watcher, nothing reminds a paused or archived item.
+**Residual:** episodes are known only from rows. An item that recovers while no subscription
+hears `watch_recovered`, then errors again, can be reminded once on the old episode if its
+`info.watch-status` level lands before the new edge fact: a window of one fact's delivery
+latency. No field orders the two. The same timer prunes terminal rows
+past `ARCHIVER_NOTIFY_RETENTION_DAYS` (90).
+
+**The log** is the dashboard's `/dashboard/notifications/log` ([PAGES.md](PAGES.md)).
+
+**Shadow parity before F3 (D6).** Evidence, not a tool. Archiver's side is a read-role export
+of the window's rows:
+
+```bash
+psql -d archiver -At -F $'\t' -c "SELECT info_item_id, event_type, reminder, occurred_at,
+  subscription_id, mode, status, title FROM information.notification_dispatches
+  WHERE created_at >= '<window start>' ORDER BY occurred_at"
+```
+
+Watcher's coordinator exports its `NOTIFICATION_DISPATCHED` audits for the same window. The
+join is on (`archiver_info_item_id`, event type, `occurred_at`), template id ↔
+`imported_watcher_id`, per fact and subscription for the three edges. Reminders compare by
+count per episode. Bodies compare less their links.
+
+**F3** (CannObserv/watcher#376): a one-line PR adds `Environment=ARCHIVER_NOTIFY_CUTOVER_AT=<T>`
+and flips the pin test; both services deploy before T. Expect up to one extra reminder per open
+episode in the first 24 h: Archiver can't see Watcher's reminders. On 8001,
+`ARCHIVER_DEV_NOTIFY_CUTOVER_AT` maps beside the dev Notifier pair only.
 
 ## Importing Watcher's templates
 
