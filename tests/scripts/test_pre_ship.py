@@ -128,7 +128,7 @@ def test_a_linked_worktree_reads_the_primary_checkouts_env(repo: Path, tmp_path:
     assert _seen(tmp_path)["TEST_DATABASE_URL"] == TEST_URL
 
 
-def test_the_callers_value_is_not_what_the_file_says(repo: Path, tmp_path: Path) -> None:
+def test_the_file_wins_over_an_inherited_value(repo: Path, tmp_path: Path) -> None:
     """The file wins over an inherited value, as in upstream's recipe."""
     (repo / ".env").write_text(ENV_TEXT)
     _run(repo, tmp_path, TEST_DATABASE_URL="postgresql:///archiver")
