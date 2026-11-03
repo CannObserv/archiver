@@ -302,7 +302,8 @@ screen - and they are not verification the 8001 rule covers.
 
 Each group consumer names itself from its group -
 `resolve_consumer_name("archiver.revisions")` -> **`archiver-revisions-1`**,
-`archiver.artifacts` -> **`archiver-artifacts-1`**. The name is broker-visible in
+`archiver.artifacts` -> **`archiver-artifacts-1`**, `archiver.watch-events` ->
+**`archiver-watch-events-1`** (#369). The name is broker-visible in
 `XINFO CONSUMERS`, so it is as fixed as the group name and derived in one place
 (`src/core/changes/group_consumer.py`) rather than written out per stream.
 
