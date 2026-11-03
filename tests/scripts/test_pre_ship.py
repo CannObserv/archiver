@@ -28,6 +28,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WRAPPER = REPO_ROOT / "scripts" / "pre-ship.sh"
+LIB = REPO_ROOT / "scripts" / "lib" / "env.sh"
 DELEGATE = Path("skills/shipping-work/scripts/pre-ship.sh")
 
 TEST_URL = "postgresql://u:p w@localhost/archiver_test"
@@ -41,13 +42,26 @@ ARCHIVER_DEV_DATABASE_URL=postgresql:///archiver_dev
 not a pair
 """
 
+
+def _recipe() -> str:
+    """The ``load_env`` recipe from the real gate's header, which
+    ``scripts/lib/env.sh`` lifts (#452)."""
+    lines = (REPO_ROOT / DELEGATE).read_text().splitlines()
+    start = lines.index("#   load_env() {                                  # parse, never source")
+    end = lines.index("#   }", start)
+    return "\n".join(lines[start : end + 1]) + "\n"
+
+
 # Records what the gate would see: every name with its value, then the argv.
-FAKE_DELEGATE = """\
-#!/usr/bin/env bash
+FAKE_DELEGATE = (
+    "#!/usr/bin/env bash\n"
+    + _recipe()
+    + """\
 env > "$PROBE/env"
 printf '%s\\n' "$@" > "$PROBE/args"
 exit "${FAKE_EXIT:-0}"
 """
+)
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -60,6 +74,8 @@ def repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
     shutil.copy2(WRAPPER, root / "scripts" / "pre-ship.sh")
+    (root / "scripts" / "lib").mkdir()
+    shutil.copy2(LIB, root / "scripts" / "lib" / "env.sh")
     delegate = root / DELEGATE
     delegate.parent.mkdir(parents=True)
     delegate.write_text(FAKE_DELEGATE)
