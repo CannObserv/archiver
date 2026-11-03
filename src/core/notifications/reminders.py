@@ -133,9 +133,18 @@ async def remind_once(
         item_ids = await _checked_items_in_error(session)
     inserted = 0
     for item_id in item_ids:
-        inserted += await _remind_item(
-            session_factory, item_id, now=now, cutover=cutover, interval=interval
-        )
+        # One item's failure (an unreadable episode fact, say) skips that item
+        # only; every other open episode is still reminded this tick (CR 2).
+        try:
+            inserted += await _remind_item(
+                session_factory, item_id, now=now, cutover=cutover, interval=interval
+            )
+        except Exception as e:
+            logger.warning(
+                "reminder sweep skipped an item",
+                extra={"info_item_id": str(item_id), "error_type": type(e).__name__},
+                exc_info=True,
+            )
     return inserted
 
 

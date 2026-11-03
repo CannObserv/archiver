@@ -305,3 +305,24 @@ async def test_an_invalid_stored_config_is_reminded_with_the_defaults(session_fa
     assert await _remind(session_factory, EDGE_AT + DAY) == 1
     [row] = await _reminders(session_factory)
     assert "Still failing" in row.body
+
+
+async def test_one_items_failure_does_not_stop_the_sweep(session_factory, caplog):
+    """CR 2: an unreadable episode fact skips its item, with a WARNING, and the rest go on."""
+    broken, _, broken_edge = await _episode(session_factory)
+    healthy, _, _ = await _episode(session_factory)
+    async with session_factory() as session:
+        await session.execute(
+            update(NotificationDispatch)
+            .where(NotificationDispatch.event_id == broken_edge.event_id)
+            .values(fact={"event_type": "watch_error"})
+        )
+        await session.commit()
+
+    with caplog.at_level(logging.WARNING):
+        # Both global subscriptions heard the second episode.
+        assert await _remind(session_factory, EDGE_AT + DAY) == 2
+
+    assert {r.info_item_id for r in await _reminders(session_factory)} == {healthy.info_item_id}
+    [record] = [r for r in caplog.records if "reminder sweep skipped an item" in r.getMessage()]
+    assert record.info_item_id == str(broken.info_item_id)
