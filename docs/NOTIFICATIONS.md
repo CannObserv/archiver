@@ -151,7 +151,7 @@ exists. It claims the oldest due `pending` row `FOR UPDATE SKIP LOCKED` and call
 |---|---|
 | `succeeded` | `sent`, with Notifier's dispatch id |
 | any other `DispatchOut` | `failed`, with the last attempt's reason. **Final**: the key is permanent per tenant, so a re-POST returns the failed record. Nothing redelivers |
-| timeout, connection, 5xx, 429, 401/403, unreadable answer | still `pending` under the same key, retried at 30 s doubling to 1 h; the 8th attempt ends `failed` with the last reason |
+| timeout, connection, 5xx, 429, 401/403, unreadable answer, any error the adapter didn't translate | still `pending` under the same key, retried at 30 s doubling to 1 h; the 8th attempt ends `failed` with the last reason |
 | 404 (no channel), 422, other 4xx | `failed` at once |
 | subscription deleted or now inactive | `skipped`, never sent |
 

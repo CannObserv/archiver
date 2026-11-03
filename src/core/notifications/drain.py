@@ -133,18 +133,36 @@ async def _settle(
             },
         )
     except NotifierUnavailable as e:
-        if e.retryable and row.attempts < MAX_ATTEMPTS:
-            row.reason = str(e)
-            row.next_attempt_at = now + backoff(row.attempts)
-            _log(row, "retrying")
-        else:
-            _finish(row, "failed", str(e))
+        _retry_or_fail(row, str(e), retryable=e.retryable, now=now)
+        return
+    except Exception as e:
+        # Not translated by the adapter: still an attempt, and retryable under
+        # the same key, so the row backs off instead of holding the head of the
+        # queue on every pass (CR 3). By type only: the text may quote anything.
+        logger.warning(
+            "notification dispatch raised an untranslated error",
+            extra={"dispatch_row_id": str(row.id), "error_type": type(e).__name__},
+            exc_info=True,
+        )
+        _retry_or_fail(row, f"unexpected error ({type(e).__name__})", retryable=True, now=now)
         return
     row.notifier_dispatch_id = dispatched.id
     if dispatched.status == "succeeded":
         _finish(row, "sent", None)
     else:
         _finish(row, "failed", dispatched.reason or f"delivery {dispatched.status}")
+
+
+def _retry_or_fail(
+    row: NotificationDispatch, reason: str, *, retryable: bool, now: datetime
+) -> None:
+    """Back off under the same key, or end ``failed`` once refused or capped."""
+    if retryable and row.attempts < MAX_ATTEMPTS:
+        row.reason = reason
+        row.next_attempt_at = now + backoff(row.attempts)
+        _log(row, "retrying")
+    else:
+        _finish(row, "failed", reason)
 
 
 async def _skip_reason(session: AsyncSession, row: NotificationDispatch) -> str | None:

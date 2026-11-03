@@ -244,3 +244,28 @@ async def test_the_loop_drains_and_stops(session_factory):
     stop.set()
     await asyncio.wait_for(task, timeout=2)
     assert (await _get(session_factory, row_id)).status == "sent"
+
+
+async def test_an_unexpected_error_backs_off_and_frees_the_queue(session_factory):
+    """CR 3: anything the adapter didn't translate counts as a retryable attempt, so
+    the row leaves the head of the queue instead of blocking every row behind it."""
+    sub = await seed_subscription(session_factory)
+    first, second = await _queue(session_factory, sub, n=2)
+
+    class Flaky(FakeNotifier):
+        async def dispatch_composed(self, **kwargs):
+            if kwargs["title"] == "title 0":
+                raise RuntimeError("not translated")
+            return await super().dispatch_composed(**kwargs)
+
+    notifier = Flaky()
+    assert await drain_once(session_factory, notifier, now=NOW) == 2
+
+    head = await _get(session_factory, first)
+    assert (head.status, head.attempts, head.reason) == (
+        "pending",
+        1,
+        "unexpected error (RuntimeError)",
+    )
+    assert head.next_attempt_at == NOW + backoff(1)
+    assert (await _get(session_factory, second)).status == "sent"
