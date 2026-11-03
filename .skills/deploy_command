@@ -1,0 +1,4 @@
+# Production runs releases (archiver#330): deploy.sh is the only way code reaches
+# a unit, and `systemctl restart` deploys nothing. -w waits, so the exit code is
+# the deploy's. run-deploy-command.sh appends the pushed SHA (archiver#457).
+setsid -w scripts/deploy.sh

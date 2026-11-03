@@ -139,9 +139,11 @@ trap 'rm -rf "$backup" || :' EXIT
 # .env is what the units read, root:root 0600: systemd reads it before it drops
 # to the units' user, and exedev reads it only through sudo (archiver#339).
 # dev.env names the rehearsal database (D2); deploy.env holds the wheelhouse
-# credential no unit needs (D10). Both stay exedev's to read.
+# credential no unit needs (D10). Both stay exedev's to read. -n: the first sudo
+# fails rather than prompts, since .skills/deploy_command runs this with stdin
+# on /dev/null (#457).
 read_env() { # <file>
-  if [[ "$1" == .env ]]; then sudo cat "$ENV_DIR/$1"; else cat "$ENV_DIR/$1"; fi
+  if [[ "$1" == .env ]]; then sudo -n cat "$ENV_DIR/$1"; else cat "$ENV_DIR/$1"; fi
 }
 # Only that it is there: nothing runs as root before the CI gate.
 [[ -f "$ENV_DIR/.env" ]] || die "$ENV_DIR/.env is missing (docs/DEPLOYMENT.md § Releases)"

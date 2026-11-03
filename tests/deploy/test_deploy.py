@@ -105,6 +105,7 @@ exit 0
 # through here opens it, so a write under the deploy root without sudo fails.
 STUB_SUDO = r"""#!/usr/bin/env bash
 echo "sudo $*" >> "$FAKE_LOG"
+[[ "$1" == -n ]] && shift # non-interactive: what run-deploy-command.sh's stdin needs
 [[ "$*" == "systemctl try-restart ${FAKE_TRY_RESTART_FAIL:-none}" ]] && exit 1
 [[ "$1" == chown && -n "${FAKE_CHOWN_FAIL:-}" ]] && exit 1
 as_root() {
@@ -727,9 +728,10 @@ class TestTheServiceUser:
     """archiver#339: the units run as ``archiver``, and only root reads ``.env``."""
 
     def test_the_production_url_is_read_through_sudo(self, world):
+        """``-n``: under ``.skills/deploy_command`` stdin is /dev/null (#457 D3)."""
         assert_ok(world.run())
         calls = world.calls()
-        assert f"sudo cat {world.etc}/.env" in calls
+        assert f"sudo -n cat {world.etc}/.env" in calls
         assert any(f"URL={LIVE_URL} " in c and "alembic upgrade" in c for c in calls), calls
 
     def test_a_sudo_that_cannot_read_env_says_so(self, world):
