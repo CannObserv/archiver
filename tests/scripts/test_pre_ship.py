@@ -162,3 +162,13 @@ def test_delegates_through_the_skill_symlink() -> None:
     text = WRAPPER.read_text()
     assert f'DELEGATE="{DELEGATE}"' in text
     assert "skills-vendor" not in text
+
+
+def test_outside_a_git_repository_exits_2(tmp_path: Path) -> None:
+    """Tooling failure is 2 in the gate's exit table, not git's 128."""
+    loose = tmp_path / "loose"
+    (loose / "scripts").mkdir(parents=True)
+    shutil.copy2(WRAPPER, loose / "scripts" / "pre-ship.sh")
+    result = _run(loose, tmp_path, GIT_CEILING_DIRECTORIES=str(tmp_path))
+    assert result.returncode == 2
+    assert "not inside a git repository" in result.stderr

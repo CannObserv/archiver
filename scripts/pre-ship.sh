@@ -14,7 +14,11 @@
 #
 # Usage: bash scripts/pre-ship.sh [--help]
 set -euo pipefail
-PROJECT_ROOT=$(git rev-parse --show-toplevel); cd "$PROJECT_ROOT"
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "ERROR: not inside a git repository" >&2
+  exit 2
+}
+cd "$PROJECT_ROOT"
 DELEGATE="skills/shipping-work/scripts/pre-ship.sh"
 [[ -f "$DELEGATE" ]] || {
   echo "ERROR: vendored gate missing at $DELEGATE" >&2
