@@ -97,6 +97,12 @@ pinned by `tests/scripts/test_ship_knobs.py`:
 | `.skills/merge_mode` | `pr` | Work lands through a PR merged on GitHub; the next "ship it" after the merge is the post-merge pass, which runs Step 8 |
 | `.skills/deploy_command` | `setsid -w scripts/deploy.sh` | Step 8 offers the deploy once, with the pushed SHA, and runs it only on a yes. An issue about what production runs gets `Refs #N` in the PR and closes after the deploy exits 0 |
 
+A deploy can wait up to 10 minutes for CI and then build, which outlasts a shell
+tool's timeout. Run `run-deploy-command.sh` in the background, or with the longest
+timeout. If the tool kills the shell, `setsid` keeps the deploy running, but its exit
+code is lost, so read the verdict from `journalctl -t archiver-deploy` before Step 6
+closes anything.
+
 No `.skills/test-workers`. pytest-xdist isn't installed, so the gate runs serially.
 Before adding it, run the suite shuffled under `-n auto --dist loadfile`: about 23 test
 files share one database or Redis, so the right value may be `off`.
