@@ -81,7 +81,7 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 
 `shipping-work` and `using-git-worktrees` are whole-directory symlinks since archiver#457: what their overrides carried is now `scripts/pre-ship.sh` and `.skills/` knobs (**Ship gate**, below) and **Worktrees**. `reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) - no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
 
-### Ship gate (`shipping-work`)
+## Ship gate (`shipping-work`)
 
 The skill resolves each script on its own, so the repo-root `scripts/pre-ship.sh`
 replaces only the gate (gregoryfoster/skills#301). It is upstream's wrapper recipe
