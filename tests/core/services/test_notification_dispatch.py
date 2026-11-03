@@ -5,6 +5,7 @@ occurred at or after it. A redelivered fact composes nothing and inserts
 nothing. An archived, paused or host-suspended item still gets its fact (D2).
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -240,3 +241,32 @@ async def test_a_custom_template_renders_and_a_broken_one_falls_back(session_fac
 def test_the_keys():
     assert idempotency_key("watch_error", "S", "E") == "archiver:watch_error:S:E"
     assert reminder_key("S", "E", 2) == "archiver:watch_error_reminder:S:E:2"
+
+
+async def test_an_invalid_stored_config_falls_back_without_stalling_the_fact(
+    session_factory, caplog
+):
+    """CR 1: a stored ``content_config`` today's validator refuses (the drift
+    ``audit_stored_documents`` sweeps for) must not stall every other row."""
+    item = await seed_item(session_factory)
+    good = await seed_subscription(session_factory)
+    async with session_factory() as session:
+        bad = NotificationSubscription(
+            title="Drifted",
+            scope="global",
+            events=["watch_error"],
+            remote_channel_id=DEV_SINK,
+            content_config={"default": {"include_diff_snipet": True}},
+        )
+        session.add(bad)
+        await session.commit()
+    event = make_event("watch_error", info_item_id=str(item.info_item_id))
+
+    with caplog.at_level(logging.WARNING):
+        assert await record_fact(session_factory, event, text_reader=None, cutover=None) == 2
+
+    titles = {r.subscription_id: r.title for r in await _rows(session_factory)}
+    assert titles[good.id] == titles[bad.id] == "[Watcher] Error: Licensing page"
+    [record] = [r for r in caplog.records if "stored content options" in r.getMessage()]
+    assert record.subscription_id == str(bad.id)
+    assert "include_diff_snipet" not in caplog.text

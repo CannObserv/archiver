@@ -290,3 +290,18 @@ async def test_retention_prunes_old_terminal_rows_and_keeps_pending(session_fact
 async def test_retention_off_prunes_nothing(session_factory):
     await _episode(session_factory)
     assert await prune_dispatches(session_factory, retention_days=None, now=EDGE_AT) == 0
+
+
+async def test_an_invalid_stored_config_is_reminded_with_the_defaults(session_factory):
+    """CR 1: drift in one row's options must not wedge the timer."""
+    _, [sub], _ = await _episode(session_factory)
+    async with session_factory() as session:
+        await session.execute(
+            update(NotificationSubscription)
+            .where(NotificationSubscription.id == sub.id)
+            .values(content_config={"default": {"include_diff_snipet": True}})
+        )
+        await session.commit()
+    assert await _remind(session_factory, EDGE_AT + DAY) == 1
+    [row] = await _reminders(session_factory)
+    assert "Still failing" in row.body

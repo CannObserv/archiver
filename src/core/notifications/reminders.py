@@ -50,7 +50,6 @@ from src.core.models import (
     WatchStatus,
 )
 from src.core.models.notification_dispatch import TERMINAL_STATUSES
-from src.core.notifications.content import resolve_options
 from src.core.notifications.cutover import mode_for
 from src.core.notifications.item_facts import load_item_facts
 from src.core.services.notification_dispatch import (
@@ -58,6 +57,7 @@ from src.core.services.notification_dispatch import (
     SubscriptionMatch,
     compose_row,
     insert_rows,
+    options_for,
     reminder_key,
 )
 from src.core.services.notification_subscriptions import subscriptions_for
@@ -193,7 +193,7 @@ async def _remind_item(
                 match = SubscriptionMatch(
                     sub.id,
                     sub.remote_channel_id,
-                    resolve_options(sub.content_config, "watch_error"),
+                    options_for(sub, "watch_error"),
                 )
                 due.append((match, reminded + 1, notified_at))
     if item is None or not due:

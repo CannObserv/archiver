@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
 from sqlalchemy import exists, select
 from sqlalchemy.dialects.postgresql import insert
 from ulid import ULID
@@ -37,6 +38,7 @@ from ulid import ULID
 from src.core.logging import get_logger
 from src.core.models import NotificationDispatch, NotificationSubscription
 from src.core.notifications.content import WatchEvent, compose, resolve_options
+from src.core.notifications.content_config import ContentOptions
 from src.core.notifications.cutover import mode_for
 from src.core.notifications.diff import ChangeDiff, diff_requested
 from src.core.notifications.diff_loader import load_change_diff
@@ -47,7 +49,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from src.core.notifications.content import ItemFacts
-    from src.core.notifications.content_config import ContentOptions
     from src.core.notifications.diff_loader import TextReader
 
 logger = get_logger(__name__)
@@ -77,6 +78,28 @@ def parse_item_id(event: WatchEvent) -> ULID:
         return ULID.from_str(event.info_item_id)
     except ValueError as e:
         raise InvalidFactError(f"info_item_id {event.info_item_id!r} is not a ULID") from e
+
+
+def options_for(sub: NotificationSubscription, event_type: str) -> ContentOptions:
+    """The row's options for ``event_type``, or the defaults if its stored document drifted.
+
+    A stored ``content_config`` today's validator refuses (what
+    ``audit_stored_documents`` sweeps for) must not stall the fact for every
+    other subscription, or wedge the reminder timer (CR 1). A WARNING names the
+    subscription and the error's type, never the document.
+    """
+    try:
+        return resolve_options(sub.content_config, event_type)
+    except ValidationError as e:
+        logger.warning(
+            "stored content options fail validation; composing with the defaults",
+            extra={
+                "subscription_id": str(sub.id),
+                "event_type": event_type,
+                "error_type": type(e).__name__,
+            },
+        )
+        return ContentOptions()
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,9 +145,7 @@ async def record_fact(
         if item is None:
             raise UnknownInfoItemError(event.info_item_id)
         matches = [
-            SubscriptionMatch(
-                sub.id, sub.remote_channel_id, resolve_options(sub.content_config, event.event_type)
-            )
+            SubscriptionMatch(sub.id, sub.remote_channel_id, options_for(sub, event.event_type))
             for sub in await subscriptions_for(session, item_id, event.event_type)
         ]
     if not matches:
