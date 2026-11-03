@@ -24,7 +24,7 @@ import pytest
 from tests.scripts._skills_lists import REPO_ROOT, read_list_file, tracked_files
 
 SECTIONS = REPO_ROOT / ".skills" / "doc-sections"
-SHIPPING_SKILL = REPO_ROOT / "skills" / "shipping-work-python-fastapi" / "SKILL.md"
+SHIPPING_SKILL = REPO_ROOT / "skills" / "shipping-work" / "SKILL.md"
 
 # A repo-relative file path, in one of three shapes: under a directory with any
 # extension (`deploy/archiver.service`); under a dot-directory with or without one
@@ -152,16 +152,20 @@ def test_quoted_heading_exists(doc: str, heading: str) -> None:
     )
 
 
+@pytest.mark.skipif(
+    not SHIPPING_SKILL.is_file(),
+    reason="skills-vendor/gregoryfoster-skills is not checked out",
+)
 @pytest.mark.parametrize("override", [".skills/doc-sensitive-paths", ".skills/doc-sections"])
 def test_shipping_skill_introduces_each_override(override: str) -> None:
-    """The forked Step 1.5 must name each file ``doc-check.sh`` reports on.
+    """The skill's Step 1.5 must name each file ``doc-check.sh`` reports on.
 
-    ``skills/shipping-work-python-fastapi/SKILL.md`` is a committed fork, not a
-    symlink, so upstream's own Step 1.5 never reaches it. #284's note names
-    ``.skills/doc-sections``; an agent following a fork that never mentions it
-    meets a file its instructions never introduced.
+    #284's note names ``.skills/doc-sections``; an agent whose instructions never
+    mention it meets a file nothing introduced. ``skills/shipping-work`` is a
+    symlink into ``skills-vendor/`` since #457, so this guards the vendor text a
+    bump brings in, and the day someone forks it again.
     """
     assert override in SHIPPING_SKILL.read_text(), (
         f"{SHIPPING_SKILL.relative_to(REPO_ROOT)} never mentions {override}; "
-        f"re-sync Step 1.5 from the vendored skill."
+        f"upstream's Step 1.5 dropped it (gregoryfoster/skills#284)."
     )

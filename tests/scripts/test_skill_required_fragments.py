@@ -7,14 +7,15 @@ the required fragments are the small set the vendor says is not optional, and a
 ``version:`` stamp cannot see them: gregoryfoster/skills#63 came back a second
 time under a version that matched exactly (#260).
 
-archiver#241 found two overrides missing one. ``skills/shipping-work-python-fastapi``
-had dropped the ``skill-scripts`` fragment outright, and
-``skills/using-git-worktrees`` carried the fence with a stale single-anchor body -
+archiver#241 found two overrides missing one. The ``shipping-work-python-fastapi``
+override had dropped the ``skill-scripts`` fragment outright, and the
+``using-git-worktrees`` one carried the fence with a stale single-anchor body -
 which reads as synced to anyone who greps for the marker. Both resolved one
 anchor script and reused its directory for the other five, the shape
-gregoryfoster/skills#301 fixed upstream. Neither was live here, because both
-override ``scripts/`` directories happen to hold every script; both were one
-moved file away from resolving five paths into the wrong directory.
+gregoryfoster/skills#301 fixed upstream. The worktrees override fell behind again
+when upstream added ``merge-mode.sh`` to the loop, and stayed red locally (CI
+skips this) until #457 replaced both with symlinks. ``brainstorming`` is the
+override left for this to check (#421).
 
 Nothing in this repo noticed for the twelve days between the vendor bump and
 that review. ``.skills/doctor.sh`` reports it, but only when a skill invokes the

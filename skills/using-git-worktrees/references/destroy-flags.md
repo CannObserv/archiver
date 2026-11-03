@@ -1,1 +1,0 @@
-../../../skills-vendor/gregoryfoster-skills/skills/using-git-worktrees/references/destroy-flags.md
