@@ -145,7 +145,9 @@ shadow-recorded: Watcher sent it.
 
 **The drain** (`src/core/notifications/drain.py`), a lifespan task wherever a Notifier client
 exists. It claims the oldest due `pending` row `FOR UPDATE SKIP LOCKED` and calls
-`dispatch_composed` with the row's key (30 s timeout: Notifier delivers inline).
+`dispatch_composed` with the row's key (30 s timeout: Notifier delivers inline). The row stays
+locked across the call, which is what makes a double send impossible; deleting its
+subscription (`SET NULL` on that row) waits for it, up to 30 s.
 
 | Outcome | Row |
 |---|---|
