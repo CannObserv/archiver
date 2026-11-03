@@ -29,9 +29,8 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if not TEST_DATABASE_URL:
     raise RuntimeError(
         "TEST_DATABASE_URL is not set. "
-        "Load env: set -a; "
-        "[ -r /etc/archiver/.env ] && . /etc/archiver/.env; "
-        "[ -f .env ] && . .env; set +a"
+        "It lives in the repo .env: load it as AGENTS.md § Environment Files "
+        "shows, or run bash scripts/pre-ship.sh, which loads it alone."
     )
 
 

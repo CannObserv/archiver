@@ -177,7 +177,7 @@ root. What `exedev` can no longer do without `sudo`:
 
 | What | How it is closed |
 |---|---|
-| Read the production secrets | `/etc/archiver/.env` is `root:root 0600`. systemd reads an `EnvironmentFile=` before it drops to `User=`, so not even `archiver` can read the file; `deploy.sh` reads it through `sudo` |
+| Read the production secrets | `/etc/archiver/.env` is `root:root 0600`, managed by hand on the VM. systemd reads an `EnvironmentFile=` before it drops to `User=`, so not even `archiver` can read the file; `deploy.sh` reads it through `sudo` |
 | Reach the production database | role `archiver` connects only to `archiver`, with a password only that file holds. Agents get `archiver_agent`, which owns `archiver_dev` and `archiver_test` and has no `CONNECT` on `archiver`; they read production as role `exedev` ([§ Reading production](#reading-production-archiver348)) |
 | Signal or trace the service | another uid |
 
@@ -194,7 +194,8 @@ journals, not one that cannot be crossed.
 pass. The rules that still hold are positive, as `src/core/db_safety.py`'s always was:
 `tests/conftest.py` refuses a `TEST_DATABASE_URL` whose name doesn't end in `_test`, and
 `scripts/dev_server.sh` refuses an `ARCHIVER_DEV_REDIS_URL` that isn't loopback or a socket.
-The recipes source `/etc/archiver/.env` only when it is readable (`[ -r … ]`).
+No recipe or script an agent runs reads `/etc/archiver/.env` (§ Parse env files, never
+source them).
 
 **No `uv` at run time.** `uv run`, even `--no-sync`, wants a writable cache under `$HOME`,
 and `archiver` has none, so every unit runs the release venv's own `uvicorn` or `python`.
@@ -325,6 +326,36 @@ logs: [deploy/README.md](../deploy/README.md).
 | `archiver-drift` | 1 h | `python -m src.core.drift` | nothing local; one check-in to co-status (#338) | never; no key or monitor id: logs it, exits 1 |
 | `archiver-backup` | 03:17 UTC | `python -m src.core.backup` as `archiver_backup` | one object in `gs://co-gcs-archiver-backup`; one check-in to co-status (#233) | never; no monitor id: logs it, exits on the backup's own result |
 
-## Sourcing env files — why not `export $(cat … | xargs)`
+## Parse env files, never source them
 
-> Use `set -a; . <file>; set +a` (POSIX-portable source via `.`) rather than `export $(cat <file> | xargs)`. The xargs form silently breaks for values containing spaces, quotes, newlines, or embedded `=` — and produces hard-to-diagnose failures later when those env vars are read.
+Sourcing a file runs it as shell code: a value that isn't a plain `KEY=value` executes or
+expands, and with every name exported the repo `.env`'s PATs, `ANTHROPIC_API_KEY` and
+`EXE_API_TOKEN` reach every child process (#452). So nothing here sources one. Each reader
+parses it with `load_env`, the recipe in `skills/shipping-work/scripts/pre-ship.sh`'s
+header, which stays the only parser (gregoryfoster/skills#517). It takes plain `KEY=value`
+lines, an optional `export ` prefix and matched quotes; nothing expands, and no value spans
+lines.
+
+| Reader | Loads | Exports |
+|---|---|---|
+| An agent shell (AGENTS.md § Environment Files) | the repo `.env` | every name: `gh` needs `GH_TOKEN` |
+| `scripts/pre-ship.sh` | the repo `.env` | `TEST_DATABASE_URL` |
+| `scripts/dev_server.sh` | the repo `.env` | `ARCHIVER_DEV_*`, `TEST_DATABASE_URL` |
+| The wheelhouse sync (AGENTS.md § Environment & Tooling) | `/etc/archiver/deploy.env` | nothing: one `sed`-read value on the command |
+
+The two scripts share `scripts/lib/env.sh`, which lifts `load_env` and adds
+`load_env_only`: `load_env` runs in a subshell, and only the names matching the allowlist
+come back. Both find a linked worktree's `.env` in the primary checkout. Neither reads
+`/etc/archiver/.env`: it is root's (§ The service user), and under `sudo` it would hand a
+dev process production's secrets. `tests/scripts/test_no_env_sourcing.py` fails on any
+tracked sourcing recipe outside `docs/plans/`, `CHANGELOG.md` and `skills-vendor/`.
+
+**The one exception is `scripts/deploy.sh`'s `env_value`.** It sources `/etc/archiver/.env`,
+read through `sudo -n cat`, in a subshell that exports nothing outward and prints one
+name's value. The file is root's, so nobody here can check that parsing it reads the same
+values as sourcing, and `deploy.sh` is the production path, driven by `tests/deploy/`. It
+stays, and the guard allows exactly that one.
+
+**Never `export $(cat <file> | xargs)` either.** It word-splits `PW=two words` into a wrong
+value with exit 0, mangles quotes, newlines and embedded `=`, and with no file at all
+degenerates to a bare `export` that prints every exported variable, secrets included.

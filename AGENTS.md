@@ -22,8 +22,7 @@ Python ≥3.12, uv, pytest, ruff. **Postgres 16 on archiver's own VM** (#193 D5)
 gitignored), not PyPI. Populate it before `uv sync`/`uv run` or resolution fails:
 
 ```bash
-set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS=co-pypi-reader key (#341)
-uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
+GOOGLE_APPLICATION_CREDENTIALS="$(sed -n 's/^GOOGLE_APPLICATION_CREDENTIALS=//p' /etc/archiver/deploy.env)" uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
 ```
 
 Reproducibility, the upgrade path, and the CI/deploy resolution: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -116,26 +115,20 @@ agent there too.
 
 ## Environment Files
 
-Two env files load in order (later overrides earlier):
-
-1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`); managed manually on the VM.
-   `root:root 0600`: never read by an agent shell (#339).
+1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`). `root:root 0600`: units only, never read by an agent shell (#339).
 2. `.env` (repo root, git-ignored) - dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit; no unit reads it (#330).
 
+**Parse `.env`, never source it**, in the command that needs it; `load_env` exports every name ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Parse env files):
+
 ```bash
-set -a
-[ -r /etc/archiver/.env ] && . /etc/archiver/.env
-[ -f .env ] && . .env
-set +a
+eval "$(sed -n 's/^#   //; /^load_env() [{]/,/^[}]/p' skills/shipping-work/scripts/pre-ship.sh)"
+ENV_FILE=.env; [ -r "$ENV_FILE" ] || ENV_FILE="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.env"
+load_env "$ENV_FILE"
 ```
 
-Source exactly that way - `export $(cat … | xargs)` silently corrupts values. Boundary:
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § The service user.
-
-**Reading production:** `psql -d archiver`, which logs in as role `exedev` over the socket.
-It is `SELECT`-only, withholds the PII columns, and logs every query (#348). Don't hold a
-transaction open: it blocks deploy migrations. Never give Python a production URL; export
-with `psql -At` instead. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Reading production.
+**Reading production:** `psql -d archiver`: `SELECT`-only, PII withheld, every query logged (#348).
+Never hold a transaction open (it blocks deploys) or give Python a production URL
+(export with `psql -At`). [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Reading production.
 
 **Five variables carry safety rules; the rest are reference
 ([docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)).**

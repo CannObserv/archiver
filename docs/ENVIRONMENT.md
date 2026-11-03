@@ -20,7 +20,9 @@ Domain, two InfoSources, and an AppUser into the production registry.
 `ARCHIVER_DEV_DATABASE_URL`, else `TEST_DATABASE_URL`; refuses to start if that
 resolution equals `ARCHIVER_DATABASE_URL` or `DATABASE_URL`; clears the
 `DATABASE_URL` fallback; refuses port 8000; and runs `alembic upgrade head`
-against the dev database before serving. This mirrors `_check_test_url_safety`
+against the dev database before serving. It takes only `ARCHIVER_DEV_*` and
+`TEST_DATABASE_URL` from the repo `.env`, never `/etc/archiver/.env`
+([DEPLOYMENT.md](DEPLOYMENT.md) § Parse env files, never source them). This mirrors `_check_test_url_safety`
 in `tests/conftest.py`, which guards pytest but not a hand-run server.
 
 ## Dev-server knobs
@@ -65,7 +67,7 @@ in `tests/conftest.py`, which guards pytest but not a hand-run server.
 
   **Setting this obliges a note to [CannObserv/broker](https://github.com/CannObserv/broker)**, for the same reason as the fact-stream cap above: their `REGISTRY_PRODUCER_MAXLEN` mirrors this knob's *default*, and an override moves **both** their ceiling and their shrink check ([BUS_CLIENT.md](BUS_CLIENT.md#the-broker-boundary)). Unset in production as of 2026-10-22 (#326).
 
-  Note one more mover: the repo-root `.env` loads **after** `/etc/archiver/.env` and overrides it, is gitignored, and is agent-owned — the likeliest place for a scratch value to be set and forgotten.
+  Note one more mover: the repo-root `.env` is gitignored and agent-owned, and an agent shell loads every name in it (AGENTS.md § Environment Files) — the likeliest place for a scratch value to be set and forgotten.
 - `ARCHIVER_REDIS_FLOOR_TIMEOUT` — *optional*. Seconds (default `5`) bounding **each** broker probe in `scripts/check_redis_floor.sh` — the version floor and the live-`maxmemory` check — at the `archiver.service` `ExecStartPre`. `redis-cli` has no connect-timeout flag, so each probe is wrapped in `timeout`; this prevents a `rediss://`-vs-plaintext (or unreachable) endpoint from hanging archiver startup — a timeout yields a soft-skip, never a block.
 - `ARCHIVER_FETCH_POLICY_PRODUCER` — *optional*, off unless `1`/`true`/`yes`/`on`. Makes this process the `content.fetch-policy` producer (archiver#366). **Only `deploy/archiver.service` sets it (since flip F1, #438); never in an env file**: no ACL refuses a second writer (broker#93). Unset (every dev and test process): generations advance, nothing is published. Contract and F1 runbook: [DOMAINS.md](DOMAINS.md).
 - `ARCHIVER_FETCH_POLICY_STREAM_MAXLEN` — *optional*. Cap on every `content.fetch-policy` publish (default `500`; invalid or `≤0` falls back), always floored at ten complete sets. Mirrored on the broker as `LWW_PRODUCER_MAXLEN`: setting it obliges a note to CannObserv/broker.
