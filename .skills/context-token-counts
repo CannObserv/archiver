@@ -3,31 +3,32 @@
 # The offline estimators prefer a file's own last exact measurement to the
 # repo-wide figure in .skills/context-token-ratio, falling back to it for a
 # file never counted exactly or since drifted far from the size recorded here.
-13274 5994 AGENTS.md
+13273 5994 AGENTS.md
 22208 9112 docs/API.md
-35017 9941 docs/ARCHITECTURE.md
+35153 9994 docs/ARCHITECTURE.md
 13588 5761 docs/BACKUP.md
 23885 9312 docs/BUS.md
-2368 904 docs/BUS_CLIENT.md
-23974 9139 docs/BUS_CONSUMERS.md
+6919 2736 docs/BUS_CLIENT.md
+25412 9733 docs/BUS_CONSUMERS.md
 4994 2060 docs/BUS_TRIAGE.md
 24158 9613 docs/COMPONENTS.md
 18895 7090 docs/CONVENTIONS.md
-21185 8788 docs/DEPLOYMENT.md
+21417 8864 docs/DEPLOYMENT.md
 8931 3485 docs/DOMAINS.md
-24113 9981 docs/ENVIRONMENT.md
-6836 2661 docs/HEALTH_ROW.md
+23741 10186 docs/ENVIRONMENT.md
+6856 2669 docs/HEALTH_ROW.md
 22239 8119 docs/HTMX.md
 6652 2415 docs/INFO_ITEM_ACTIONS.md
 26363 9956 docs/INFO_ITEM_DETAIL.md
 10897 4473 docs/MONITORING.md
-13943 5874 docs/NOTIFICATIONS.md
+19522 8281 docs/NOTIFICATIONS.md
+12194 4775 docs/NOTIFICATION_COMPOSER.md
 5874 2307 docs/ORG_ROW.md
-21649 8755 docs/PAGES.md
+23362 9411 docs/PAGES.md
 6133 2309 docs/REGISTER.md
 6317 2407 docs/REP_SPEC_PAGES.md
 18202 6928 docs/SCHEMA.md
-7260 2668 docs/SCHEMA_BUS.md
+8605 3248 docs/SCHEMA_BUS.md
 10204 3651 docs/SCHEMA_SOURCES.md
 21811 7874 docs/SCREENS.md
 16775 6620 docs/SKILLS.md
