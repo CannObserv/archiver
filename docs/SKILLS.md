@@ -134,8 +134,9 @@ satisfy such a test and make the advice worse.
 `using-git-worktrees` is the vendored skill, unmodified (#457). What archiver adds
 lives here. Worktrees land in `.worktrees/<branch-slug>`: archiver sets neither
 `WORKTREE_ROOT` nor `.skills/worktree_root`, and `.gitignore` covers the default.
-Nothing upstream checks that an overridden root is ignored, so an override must
-pass `git check-ignore -q <root>` first. That guard is
+Nothing upstream checks that an overridden root is ignored, so an override inside
+the repo must pass `git check-ignore -q <root>` first; one outside it needs no rule,
+and check-ignore fails there regardless. That guard is
 [gregoryfoster/skills#567](https://github.com/gregoryfoster/skills/issues/567).
 
 **No linked `.venv`: `.skills/worktree_venv` is `none`, committed.** The main
