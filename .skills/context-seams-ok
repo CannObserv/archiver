@@ -9,19 +9,6 @@ docs/BUS_CONSUMERS.md :: Change-bus consumer - `content.revisions` (archiver#139
 docs/BUS_CONSUMERS.md :: Change-bus consumer - `content.artifacts` (archiver#170)
 docs/BUS_CONSUMERS.md :: Change-bus tail - `info.watch-status` (archiver#151)
 
-
-# doc-check.sh:37 is the one entry here that is NOT accurate: DOC_SECTIONS says
-# AGENTS.md carries a route table and a skill inventory, and neither is true -
-# they live in docs/API.md and docs/SKILLS.md. Acknowledged rather than fixed
-# (archiver#185 CR round 1). The array is advisory output, printed verbatim when
-# the check exits 1; SENSITIVE_PATHS is what drives the matching and it is
-# correct. The file is a symlink into skills-vendor, so correcting one hint line
-# means forking a 117-line maintained script - a worse trade than the
-# imprecision. The real fix is upstream: make DOC_SECTIONS sourceable from a
-# project file, the way .skills/skills-pin and .skills/context-budget already
-# are.
-skills/shipping-work-python-fastapi/scripts/doc-check.sh :: project structure, conventions, skill inventory, route table
-
 # archiver#185 curation. Fifteen docs carry a back-reference naming what
 # AGENTS.md still holds - the auth rule, the never-rename rule, the safety-rule
 # split, the Code Exploration Policy, the living-doc enforcement banners, the
@@ -57,8 +44,8 @@ docs/UI.md :: **AGENTS.md enforcement:** a Jinja2 template change, a new or chan
 .socraticodecontextartifacts.json :: "path": "./AGENTS.md"
 pyproject.toml :: PLC0415 enforces the AGENTS.md "no inline module imports" convention
 scripts/dev_server.sh :: CLAUDE.md used to document a raw uvicorn recipe for the dev server
-skills/shipping-work-python-fastapi/scripts/doc-check.sh :: or structure is referenced from project docs
-skills/shipping-work-python-fastapi/scripts/doc-check.sh :: "AGENTS.md"
+skills/shipping-work/scripts/doc-check.sh :: or structure is referenced from project docs
+skills/shipping-work/scripts/doc-check.sh :: "AGENTS.md"
 src/core/db_safety.py :: Suffixes that mark a database as disposable
 tests/api/test_lifespan_bus_wiring.py :: safety control (`AGENTS.md`, "Four variables carry safety rules")
 tests/core/test_db_safety.py :: it matches the convention AGENTS.md already documents
@@ -156,7 +143,7 @@ docs/SOCRATICODE.md :: dependency questions go to `grep`; the `AGENTS.md` bloc
 docs/SOCRATICODE.md :: `AGENTS.md` → Code Exploration Policy carries the rule; the
 .claude/hooks/socraticode-health.sh :: repo's AGENTS.md. The graph is judged against the server answering the
 .claude/hooks/socraticode-health.sh :: them was told by AGENTS.md to prefer codebase_search over grep.
-skills/shipping-work-python-fastapi/scripts/doc-check.sh :: told, on every hit from then on, to check AGENTS.md and README.md, never the
+skills/shipping-work/scripts/doc-check.sh :: told, on every hit from then on, to check AGENTS.md and README.md, never the
 src/core/bus_health.py :: appeared in the probe - the role boundary is unqualified (CLAUDE.md): it does
 src/core/power_map/client.py :: snapshot. See CLAUDE.md.
 tests/core/test_bus_health.py :: (CLAUDE.md). The list must never grow a row for it.
@@ -212,7 +199,7 @@ tests/test_conftest_guard.py :: docs/DEPLOYMENT.md and the failure message both 
 # variables and the Power Map edge rule are all still inline.
 docs/CONVENTIONS.md :: holds no transaction open (CLAUDE.md § Reading production).
 docs/CONVENTIONS.md :: the rule sits in the file a tightening edits rather than in AGENTS.md.
-docs/DEPLOYMENT.md :: (CLAUDE.md § Environment & Tooling, the `using-git-worktrees` override). Until #341 it was in
+docs/DEPLOYMENT.md :: (CLAUDE.md § Environment & Tooling, SKILLS.md § Worktrees). Until #341 it was in
 docs/ENVIRONMENT.md :: `AGENTS.md` keeps the five variables that carry safety rules; the reference
 scripts/sync_wheelhouse.py :: A checkout runs it by hand (AGENTS.md, Environment & Tooling).
 src/dashboard/org_row.py :: ``pm_organizations``, never Power Map (CLAUDE.md's edge rule).
@@ -420,3 +407,6 @@ docs/DEPLOYMENT.md :: `scripts/dev_server.sh` exists: [ENVIRONMENT.md](ENVIRONME
 scripts/dev_server.sh :: # throwaway, see docs/ENVIRONMENT.md) or runs bus-dormant. And a dev o
 src/core/changes/registry_snapshot.py :: env var can move it with no commit in either repo. ``docs/ENVIRONMENT.
 tests/test_conftest_guard.py :: docs/ENVIRONMENT.md and the failure message both advertise.
+
+# archiver#457: SKILLS.md § Worktrees points at the wheelhouse recipe AGENTS.md still holds.
+docs/SKILLS.md :: CLAUDE.md § Environment & Tooling.

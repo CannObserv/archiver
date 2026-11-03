@@ -1,0 +1,3 @@
+# shipping-work's import check (archiver#457). [project] name is "archiver", but
+# no archiver/ or src/archiver/ exists, so without this the check is skipped.
+src.api.main

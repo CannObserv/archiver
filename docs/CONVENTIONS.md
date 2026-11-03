@@ -318,12 +318,13 @@ formatting - with two trees held out in the root `[tool.ruff] exclude`:
   Ask which of the two a document is before adding it here.
 - `skills/` - overrides quoting vendor skill text, where keeping the two
   byte-comparable is what makes a re-sync merge (archiver#243) reviewable. It
-  is also where a file-level symlink into `skills-vendor/` lives, and the main
-  CI workflow checks out no submodules: ruff reading a link that dangles there
-  is `io: No such file or directory` and a red build, no formatting opinion
-  involved. `tests/scripts/test_ruff_config.py` re-derives that set of symlinks
-  from `.gitmodules` rather than naming the one path, so the next vendored
-  reference file cannot repeat it.
+  is also where file-level symlinks into `skills-vendor/` lived until
+  archiver#457 made every vendored skill a directory link, which ruff does not
+  follow. The main CI workflow checks out no submodules: ruff reading a file
+  link that dangles there is `io: No such file or directory` and a red build,
+  no formatting opinion involved. `tests/scripts/test_ruff_config.py`
+  re-derives that set of symlinks from `.gitmodules` rather than naming one
+  path, so the next vendored reference file cannot repeat it.
 
 **A nested `[tool.ruff]` table governs everything beneath it.** The root
 `exclude` never reached `clients/python/src/archiver_client/generated/`,

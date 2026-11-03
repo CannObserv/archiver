@@ -243,7 +243,7 @@ Data model identifiers (table names, FastAPI route paths, Redis Stream topics) s
 - [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) - full env-var reference, dev-server internals
 - [docs/BACKUP.md](docs/BACKUP.md) - the nightly dump to GCS, its provisioning, the restore runbook
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) - changelog trigger, journald contract, error envelope, living-docs rule, `PLC0415` scope
-- [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, overrides, trigger table, SessionStart hook mechanics
+- [docs/SKILLS.md](docs/SKILLS.md) - skill inventory, overrides, trigger table, SessionStart hooks, worktrees
 - [docs/SOCRATICODE.md](docs/SOCRATICODE.md) - tool map, `co-index` traps, cross-repo search
 - [docs/reference/tailscale.md](docs/reference/tailscale.md) - this node on the tailnet: the ACL, the bind decision, the two-names-one-host trap
 - The dashboard docs - [docs/UI.md](docs/UI.md) shared mechanics and the index to the rest: [docs/HTMX.md](docs/HTMX.md), [docs/PAGES.md](docs/PAGES.md), [docs/REP_SPEC_PAGES.md](docs/REP_SPEC_PAGES.md), [docs/SCREENS.md](docs/SCREENS.md), [docs/INFO_ITEM_DETAIL.md](docs/INFO_ITEM_DETAIL.md), [docs/INFO_ITEM_ACTIONS.md](docs/INFO_ITEM_ACTIONS.md), [docs/ORG_ROW.md](docs/ORG_ROW.md), [docs/REGISTER.md](docs/REGISTER.md), [docs/HEALTH_ROW.md](docs/HEALTH_ROW.md), [docs/BUS_TRIAGE.md](docs/BUS_TRIAGE.md), [docs/COMPONENTS.md](docs/COMPONENTS.md), [docs/STYLE.md](docs/STYLE.md)

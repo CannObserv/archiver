@@ -77,15 +77,39 @@ A committed directory in `skills/` completely supersedes the vendor version (no 
 
 | Skill | Override reason |
 |---|---|
-| `shipping-work-python-fastapi` | Thin override - sources `/etc/archiver/.env` + `$PROJECT_ROOT/.env` via `set -a; source; set +a` before delegating to upstream pre-ship; other scripts symlinked back to vendor. Step 1.5 documents archiver's `.skills/doc-sensitive-paths` and `.skills/doc-sections` (below) |
 | `brainstorming` | Project conventions (docs/plans/ path, commit format); invokes using-git-worktrees after design approval; FastAPI stack context; proactive-suggestion mode |
-| `using-git-worktrees` | Archiver-specific Phase 3 only; scripts and `references/` symlinked back to vendor. Own `ARCHIVER_DEV_PORT` per worktree recorded in `.port` (8001 is *main's*, 8000 systemd's) via `scripts/dev_server.sh`, never hand-rolled uvicorn; `.skills/worktree_venv` is `none` (main's `.venv` holds editable installs bound to the main checkout's path) |
 
-`reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) - no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
+`shipping-work` and `using-git-worktrees` are whole-directory symlinks since archiver#457: what their overrides carried is now `scripts/pre-ship.sh` and `.skills/` knobs (**Ship gate**, below) and **Worktrees**. `reviewing-code` is consumed via a symlink to upstream `reviewing-code-python-fastapi` (FastAPI stack variant) - no override needed. `writing-plans` is consumed via a direct symlink to upstream (vendor now defaults to `docs/plans/`, so the historical override-reason no longer applies).
+
+## Ship gate (`shipping-work`)
+
+The skill resolves each script on its own, so the repo-root `scripts/pre-ship.sh`
+replaces only the gate (gregoryfoster/skills#301). It is upstream's wrapper recipe
+with two departures (archiver#457). It never reads `/etc/archiver/.env`, which is
+root's alone (#339) and would hand a sudo'd test run production's URL. From the repo
+`.env`, falling back to the primary checkout's, it exports only `TEST_DATABASE_URL`,
+not the PATs beside it (#452). `tests/scripts/test_pre_ship.py` pins both. The knobs,
+pinned by `tests/scripts/test_ship_knobs.py`:
+
+| Knob | Value | Why |
+|---|---|---|
+| `.skills/import-targets` | `src.api.main` | `[project] name` is `archiver`, which names no package; without the knob the import check is skipped |
+| `.skills/merge_mode` | `pr` | Work lands through a PR merged on GitHub; the next "ship it" after the merge is the post-merge pass, which runs Step 8 |
+| `.skills/deploy_command` | `setsid -w scripts/deploy.sh` | Step 8 offers the deploy once, with the pushed SHA, and runs it only on a yes. An issue about what production runs gets `Refs #N` in the PR and closes after the deploy exits 0 |
+
+A deploy can wait up to 10 minutes for CI and then build, which outlasts a shell
+tool's timeout. Run `run-deploy-command.sh` in the background, or with the longest
+timeout. If the tool kills the shell, `setsid` keeps the deploy running, but its exit
+code is lost, so read the verdict from `journalctl -t archiver-deploy` before Step 6
+closes anything.
+
+No `.skills/test-workers`. pytest-xdist isn't installed, so the gate runs serially.
+Before adding it, run the suite shuffled under `-n auto --dist loadfile`: about 23 test
+files share one database or Redis, so the right value may be `off`.
 
 ### Sensitive paths and advice (`doc-check.sh`)
 
-`.skills/doc-sensitive-paths` is archiver's list for the `shipping-work-python-fastapi`
+`.skills/doc-sensitive-paths` is archiver's list for the `shipping-work`
 Step 1.5 doc spot-check. Committing it **replaces** the skill's built-in defaults
 wholesale (one path per line, `#`-comments ignored) rather than extending them, which
 is the supported alternative to forking `doc-check.sh` (gregoryfoster/skills#252,
@@ -111,6 +135,49 @@ tracked, on any `doc "Heading"` pair whose heading is gone, and on a line naming
 Whether a line routes a given list entry stays unchecked: pasting paths in would
 satisfy such a test and make the advice worse.
 
+## Worktrees
+
+`using-git-worktrees` is the vendored skill, unmodified (#457). What archiver adds
+lives here. Worktrees land in `.worktrees/<branch-slug>`: archiver sets neither
+`WORKTREE_ROOT` nor `.skills/worktree_root`, and `.gitignore` covers the default.
+Nothing upstream checks that an overridden root is ignored, so an override inside
+the repo must pass `git check-ignore -q <root>` first; one outside it needs no rule,
+and check-ignore fails there regardless. That guard is
+[gregoryfoster/skills#567](https://github.com/gregoryfoster/skills/issues/567).
+
+**No linked `.venv`: `.skills/worktree_venv` is `none`, committed.** The main
+checkout's `.venv` holds two path-bound editable installs: `archiver` and
+`archiver-client` (`clients/python/src`). A worktree linked to it imports main's
+SDK, and its first `uv run` re-points both installs at the worktree. From then on
+every checkout imports that branch, and once the worktree is destroyed `import
+archiver_client` fails everywhere until the next `uv sync`. The vendored Phase 3
+has a harness-made worktree (the Agent tool's `isolation: "worktree"`) symlink
+main's `.venv` by hand. `none` exempts it, so **don't link it by hand either:**
+provision the venv.
+
+**Phase 3, in order:**
+
+1. `uv sync`, after populating the gitignored `./.wheelhouse` by the recipe in
+   CLAUDE.md § Environment & Tooling.
+2. Copy `.env` from the primary checkout. `scripts/dev_server.sh` reads it from the
+   worktree, not just the tests. `scripts/pre-ship.sh` falls back to the primary's
+   own copy, but the dev server doesn't.
+3. If the branch serves, pick its own port (any free one in 3000-9999, never 8000,
+   which is systemd's, or 8001, the main checkout's) and record it in `.port` so
+   Phase 5 frees it:
+   `echo 8002 > .port; ARCHIVER_DEV_PORT=8002 bash scripts/dev_server.sh &`.
+   Never hand-roll uvicorn: on 2026-07-18 a worktree server that did inherited
+   production's URL and wrote to the live registry
+   ([ENVIRONMENT.md](ENVIRONMENT.md)).
+
+**Phase 4 is a PR** (`.skills/merge_mode` is `pr`): no local merge.
+
+**Phase 5: `--force` only on git's refusal** (`working trees containing submodules
+cannot be moved or removed`). Git refuses once the SessionStart doctor has checked
+out submodule content in the worktree, which happens in any worktree a session ran
+in. `--force` also discards uncommitted changes, and the merged-branch gate never
+checks for them, so confirm `git -C <worktree> status --porcelain` is empty first.
+
 ## SocratiCode (Codebase Search)
 
 Workflow, tool map, the shared index on `co-index`, and cross-repo search:
@@ -134,7 +201,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 | `reviewing-code-python-fastapi` | CR, code review |
 | `reviewing-architecture` | AR, architecture review |
 | `enforcing-architecture` | add a fitness function, enforce this contract, lock this rule (delegated to by `reviewing-architecture` on a `fitness` directive) |
-| `shipping-work-python-fastapi` | ship it, push GH, close GH, wrap up |
+| `shipping-work` | ship it, push GH, close GH, wrap up |
 | `brainstorming` | brainstorm, design this, let's design |
 | `writing-plans` | write plan, implementation plan |
 | `writing-skills` | write skill, new skill, author skill |
@@ -144,7 +211,7 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 | `executing-plans` | execute approved plan from docs/plans/ |
 | `subagent-driven-development` | dispatch agents for plan execution |
 | `dispatching-parallel-agents` | 2+ independent tasks in parallel |
-| `using-git-worktrees` | feature work needing isolation (own dev port, not 8001) |
+| `using-git-worktrees` | feature work needing isolation (**Worktrees** above) |
 | `finishing-a-development-branch` | merge/ship a feature branch |
 | `requesting-code-review` / `receiving-code-review` | CR handoff between agents |
 | `managing-skills` | add skill repo, manage external skills |

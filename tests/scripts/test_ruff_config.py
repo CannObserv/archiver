@@ -8,11 +8,13 @@ rather than a default it can inherit again:
    adds ``*.md``, so ``ruff format`` now formats the ``python`` fences inside
    documentation. Kept, except for ``docs/plans/`` - dated snapshots of what was
    proposed, not maintained source - and ``skills/``, below.
-2. **A vendored symlink must not be in ruff's path.** ``skills/`` overrides carry
-   file-level symlinks into the ``skills-vendor/`` submodules, which the main CI
-   workflow's ``actions/checkout`` does not check out. 0.16 reading a ``*.md``
-   link that dangles there is an ``io: No such file or directory`` and a red
-   build - no formatting opinion involved.
+2. **A vendored symlink must not be in ruff's path.** A file-level symlink into
+   the ``skills-vendor/`` submodules dangles under the main CI workflow, whose
+   ``actions/checkout`` checks out none. 0.16 reading a ``*.md`` link that
+   dangles there is an ``io: No such file or directory`` and a red build - no
+   formatting opinion involved. Since #457 every vendored skill is a
+   whole-directory link, which ruff does not follow (0.16.8, checked by hand), so
+   no such file link is tracked; the per-link check below catches the next one.
 3. **The SDK selects its own rules.** ``clients/python/pyproject.toml`` carries a
    ``[tool.ruff]`` table, which makes it - not the root config - the one that
    governs every file beneath it. With no ``select`` it inherited ruff's
@@ -102,11 +104,6 @@ def _vendored_symlinks() -> list[str]:
         if any(relative.startswith(f"{sub}/") for sub in _submodule_paths()):
             found.append(path)
     return found
-
-
-def test_the_guard_has_something_to_guard() -> None:
-    """A vendored symlink in ruff's formats still exists; otherwise this gate is inert."""
-    assert _vendored_symlinks(), "no vendored symlink found - has the layout changed?"
 
 
 @pytest.mark.parametrize("path", _vendored_symlinks())

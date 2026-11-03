@@ -1,6 +1,6 @@
 # doc-check.sh sensitive paths for archiver (archiver#190).
 #
-# Replaces the shipping-work-python-fastapi defaults wholesale - one path per
+# Replaces the shipping-work skill's defaults wholesale - one path per
 # line, `#`-comments and blank lines ignored. Entries match whole path
 # SEGMENTS at any depth, so `pyproject.toml` covers clients/python/'s too.
 #
