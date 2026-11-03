@@ -163,7 +163,11 @@ has a row in the episode is reminded once its newest row there (edge or last rem
 `ARCHIVER_ERROR_RENOTIFY_INTERVAL` old (default `24h`), keyed
 `archiver:watch_error_reminder:{subscription_id}:{episode_event_id}:{n}` and composed with
 `previously_notified_at`. An item in error with no episode row is skipped with an INFO line.
-Unlike Watcher, nothing reminds a paused or archived item. The same timer prunes terminal rows
+Unlike Watcher, nothing reminds a paused or archived item.
+**Residual:** episodes are known only from rows. An item that recovers while no subscription
+hears `watch_recovered`, then errors again, can be reminded once on the old episode if its
+`info.watch-status` level lands before the new edge fact: a window of one fact's delivery
+latency. No field orders the two. The same timer prunes terminal rows
 past `ARCHIVER_NOTIFY_RETENTION_DAYS` (90).
 
 **The log** is the dashboard's `/dashboard/notifications/log` ([PAGES.md](PAGES.md)).
