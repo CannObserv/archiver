@@ -106,7 +106,7 @@ def sync_detailed(
 ) -> Response[EnvelopeResponse | PageDeadLetterOut]:
     """List Dead Letters Route
 
-     List one of archiver's two DLQs, oldest first, for triage (archiver#238).
+     List one of archiver's three DLQs, oldest first, for triage (archiver#238).
 
     Each entry is tried against the running co-core, so ``decodes`` answers the
     version-skew question. 503 when the broker cannot be read, distinct from an
@@ -148,7 +148,7 @@ def sync(
 ) -> EnvelopeResponse | PageDeadLetterOut | None:
     """List Dead Letters Route
 
-     List one of archiver's two DLQs, oldest first, for triage (archiver#238).
+     List one of archiver's three DLQs, oldest first, for triage (archiver#238).
 
     Each entry is tried against the running co-core, so ``decodes`` answers the
     version-skew question. 503 when the broker cannot be read, distinct from an
@@ -185,7 +185,7 @@ async def asyncio_detailed(
 ) -> Response[EnvelopeResponse | PageDeadLetterOut]:
     """List Dead Letters Route
 
-     List one of archiver's two DLQs, oldest first, for triage (archiver#238).
+     List one of archiver's three DLQs, oldest first, for triage (archiver#238).
 
     Each entry is tried against the running co-core, so ``decodes`` answers the
     version-skew question. 503 when the broker cannot be read, distinct from an
@@ -225,7 +225,7 @@ async def asyncio(
 ) -> EnvelopeResponse | PageDeadLetterOut | None:
     """List Dead Letters Route
 
-     List one of archiver's two DLQs, oldest first, for triage (archiver#238).
+     List one of archiver's three DLQs, oldest first, for triage (archiver#238).
 
     Each entry is tried against the running co-core, so ``decodes`` answers the
     version-skew question. 503 when the broker cannot be read, distinct from an

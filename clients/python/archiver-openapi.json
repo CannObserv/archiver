@@ -7941,7 +7941,7 @@
     },
     "/api/v1/tools/dead-letters/{dlq}": {
       "get": {
-        "description": "List one of archiver's two DLQs, oldest first, for triage (archiver#238).\n\nEach entry is tried against the running co-core, so ``decodes`` answers the\nversion-skew question. 503 when the broker cannot be read, distinct from an\nempty page.",
+        "description": "List one of archiver's three DLQs, oldest first, for triage (archiver#238).\n\nEach entry is tried against the running co-core, so ``decodes`` answers the\nversion-skew question. 503 when the broker cannot be read, distinct from an\nempty page.",
         "operationId": "list_dead_letters_route_api_v1_tools_dead_letters__dlq__get",
         "parameters": [
           {
@@ -8075,7 +8075,7 @@
     },
     "/api/v1/tools/dead-letters/{dlq}/discard": {
       "post": {
-        "description": "Delete the named entries from one of archiver's two DLQs (archiver#238).\n\n``XDEL`` by id, each frame logged in full to journald first. Ids not in the\nqueue come back in ``not_found`` rather than failing the request, so a\nretried discard is harmless. A broker failure part-way through is a 503 whose\n``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose\ndelete was in flight, or null): the progress a retry could not reconstruct.",
+        "description": "Delete the named entries from one of archiver's three DLQs (archiver#238, #399).\n\n``XDEL`` by id, each frame logged in full to journald first. Ids not in the\nqueue come back in ``not_found`` rather than failing the request, so a\nretried discard is harmless; such an id is answered from the read, and no\n``XDEL`` is sent for it. A broker failure part-way through is a 503 whose\n``data`` carries ``discarded``, ``not_found`` and ``in_doubt`` (the id whose\ndelete was in flight, or null): the progress a retry could not reconstruct.",
         "operationId": "discard_dead_letters_route_api_v1_tools_dead_letters__dlq__discard_post",
         "parameters": [
           {
