@@ -104,8 +104,10 @@ exit 0
 # answers from it. What root owns is kept unwritable, and only a command run
 # through here opens it, so a write under the deploy root without sudo fails.
 STUB_SUDO = r"""#!/usr/bin/env bash
+# Every call is -n (#457): under .skills/deploy_command there is no terminal.
+[[ "$1" == -n ]] || { echo "stub sudo: bare sudo $*" >&2; exit 1; }
+shift
 echo "sudo $*" >> "$FAKE_LOG"
-[[ "$1" == -n ]] && shift # non-interactive: what run-deploy-command.sh's stdin needs
 [[ "$*" == "systemctl try-restart ${FAKE_TRY_RESTART_FAIL:-none}" ]] && exit 1
 [[ "$1" == chown && -n "${FAKE_CHOWN_FAIL:-}" ]] && exit 1
 as_root() {
@@ -728,10 +730,9 @@ class TestTheServiceUser:
     """archiver#339: the units run as ``archiver``, and only root reads ``.env``."""
 
     def test_the_production_url_is_read_through_sudo(self, world):
-        """``-n``: under ``.skills/deploy_command`` stdin is /dev/null (#457 D3)."""
         assert_ok(world.run())
         calls = world.calls()
-        assert f"sudo -n cat {world.etc}/.env" in calls
+        assert f"sudo cat {world.etc}/.env" in calls
         assert any(f"URL={LIVE_URL} " in c and "alembic upgrade" in c for c in calls), calls
 
     def test_a_sudo_that_cannot_read_env_says_so(self, world):
@@ -740,6 +741,20 @@ class TestTheServiceUser:
         assert result.returncode == 1
         assert f"cannot read {world.etc}/.env" in result.stderr
         assert world.live() is None
+
+    def test_every_sudo_call_is_non_interactive(self):
+        """``-n`` on every call (#457): ``.skills/deploy_command`` runs the deploy with no
+        terminal, so a password prompt must fail at once. The stub refuses a bare call
+        on every path the suite drives; this covers the rest. A ``sudo`` inside a quoted
+        message is a remedy the operator types, so it stays bare."""
+        bare = []
+        for number, line in enumerate(DEPLOY.read_text().splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            for match in re.finditer(r"\bsudo\b(?! -n )", line):
+                if line[: match.start()].count('"') % 2 == 0:
+                    bare.append(f"{number}: {line.strip()}")
+        assert not bare, "bare sudo in scripts/deploy.sh:\n" + "\n".join(bare)
 
     def test_dev_and_deploy_env_are_read_without_sudo(self, world):
         """exedev keeps those two (root:exedev 0640): no sudo where none is needed."""

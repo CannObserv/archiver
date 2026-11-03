@@ -50,9 +50,9 @@ journalctl -t archiver-deploy -n 20     # "CI passed for <build>", "live -> <bui
 
 **`shipping-work` offers it** (#457): `.skills/deploy_command` is `setsid -w scripts/deploy.sh`,
 so the post-merge "ship it" offers the deploy once, at the merge commit, and runs it only on a
-yes. It runs with no terminal and stdin on `/dev/null`, so a `sudo` that needs a password
-fails rather than prompts. The `.env` read uses `sudo -n` so it fails by name
-([SKILLS.md](SKILLS.md) § Ship gate).
+yes. It runs with no terminal and stdin on `/dev/null`, so every `sudo` in it is `sudo -n`: one
+that needs a password fails at once rather than prompts. `tests/deploy/test_deploy.py`
+refuses a bare one ([SKILLS.md](SKILLS.md) § Ship gate).
 
 **A commit from before releases is refused**, before CI is asked (CR 14): one whose
 `deploy/*.service` runs anywhere but `/srv/archiver/live`, or that has no `src/core/build.py`.

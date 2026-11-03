@@ -139,10 +139,9 @@ trap 'rm -rf "$backup" || :' EXIT
 # .env is what the units read, root:root 0600: systemd reads it before it drops
 # to the units' user, and exedev reads it only through sudo (archiver#339).
 # dev.env names the rehearsal database (D2); deploy.env holds the wheelhouse
-# credential no unit needs (D10). Both stay exedev's to read. -n: under
-# .skills/deploy_command (#457) there is no terminal, so a sudo that needs a
-# password fails here as "cannot read", never as a prompt. Not the first sudo:
-# a build's install and rm run before it, bare, and they fail without one too.
+# credential no unit needs (D10). Both stay exedev's to read. Every sudo here is
+# -n (#457): .skills/deploy_command runs this with no terminal, so a sudo that
+# needs a password fails at once, by name, never at a prompt.
 read_env() { # <file>
   if [[ "$1" == .env ]]; then sudo -n cat "$ENV_DIR/$1"; else cat "$ENV_DIR/$1"; fi
 }
@@ -370,12 +369,12 @@ entry_paths() {
 
 build_release() {
   local creds modules heads path
-  [[ ! -e "$release" ]] || sudo rm -rf "$release"
+  [[ ! -e "$release" ]] || sudo -n rm -rf "$release"
   note "building $build"
-  [[ -d "$ROOT/releases" ]] || sudo install -d -m 755 "$ROOT/releases" ||
+  [[ -d "$ROOT/releases" ]] || sudo -n install -d -m 755 "$ROOT/releases" ||
     die "cannot make $ROOT/releases; nothing switched"
   # Built where it runs: a uv venv embeds its absolute path in its scripts.
-  sudo install -d -m 755 -o "$(id -un)" -g "$(id -gn)" "$release" ||
+  sudo -n install -d -m 755 -o "$(id -un)" -g "$(id -gn)" "$release" ||
     die "cannot make releases/$build for $(id -un) to build in; nothing switched"
   git -C "$SRC" archive "$sha" | tar -x -C "$release"
   # D10: the release's own sync_wheelhouse.py fetches the private wheels into
@@ -417,9 +416,9 @@ build_release() {
   in_release python -m compileall -q src scripts alembic >/dev/null ||
     die "compileall failed for $build; nothing switched"
   chmod -R a-w "$release" || die "cannot make $build read-only; nothing switched"
-  sudo chown -R root:root "$release" || die "cannot hand $build to root; nothing switched"
+  sudo -n chown -R root:root "$release" || die "cannot hand $build to root; nothing switched"
   # REVISION last, by root: a release without one is an interrupted build (R4).
-  { echo "$build" | sudo tee "$release/REVISION" >/dev/null && sudo chmod 444 "$release/REVISION"; } ||
+  { echo "$build" | sudo -n tee "$release/REVISION" >/dev/null && sudo -n chmod 444 "$release/REVISION"; } ||
     die "cannot write $build's REVISION; nothing switched"
 }
 
@@ -453,7 +452,7 @@ else
   [[ "$why" == "not built" ]] || note "release $build is $why; rebuilding"
   build_release
 fi
-sudo touch "$release" # prune by last deploy, not first build
+sudo -n touch "$release" # prune by last deploy, not first build
 
 # --- the databases ---------------------------------------------------------
 
@@ -574,13 +573,13 @@ install_units() {
       added+=("$name")
     fi
     [[ "$name" != *.timer ]] || timers+=("$name")
-    sudo install -m 644 "$release/deploy/$name" "$unit" ||
+    sudo -n install -m 644 "$release/deploy/$name" "$unit" ||
       { note "installing $name in $UNIT_DIR failed"; return 1; }
   done < <(units_of_release)
   ((${#changed[@]} + ${#added[@]})) || return 0
-  sudo systemctl daemon-reload || { note "systemctl daemon-reload failed"; return 1; }
+  sudo -n systemctl daemon-reload || { note "systemctl daemon-reload failed"; return 1; }
   for name in "${timers[@]}"; do
-    sudo systemctl try-restart "$name" ||
+    sudo -n systemctl try-restart "$name" ||
       { note "systemctl try-restart $name failed: systemctl status $name"; return 1; }
   done
   local list="${changed[*]}"
@@ -599,20 +598,20 @@ restore_units() {
   for path in "$backup/units"/*; do
     [[ -f "$path" ]] || continue
     name="$(basename "$path")"
-    sudo install -m 644 "$path" "$UNIT_DIR/$name" || note "restoring $name failed: $path"
+    sudo -n install -m 644 "$path" "$UNIT_DIR/$name" || note "restoring $name failed: $path"
     [[ "$name" != *.timer ]] || timers+=("$name")
     any=1
   done
   if [[ -f "$backup/added" ]]; then
     while read -r name; do
-      sudo rm -f "$UNIT_DIR/$name" || note "removing $UNIT_DIR/$name failed"
+      sudo -n rm -f "$UNIT_DIR/$name" || note "removing $UNIT_DIR/$name failed"
       any=1
     done <"$backup/added"
   fi
   ((any)) || return 0
-  sudo systemctl daemon-reload || note "systemctl daemon-reload failed"
+  sudo -n systemctl daemon-reload || note "systemctl daemon-reload failed"
   for name in "${timers[@]}"; do
-    sudo systemctl try-restart "$name" || note "systemctl try-restart $name failed"
+    sudo -n systemctl try-restart "$name" || note "systemctl try-restart $name failed"
   done
   journal "live units restored"
 }
@@ -651,8 +650,8 @@ compare_host_configs() {
 # --- switch and verify -----------------------------------------------------
 
 swap() { # <target path>: rename(2) over the old link, so there is never no link
-  sudo ln -sfn "$1" "$ROOT/live.new"
-  sudo mv -Tf "$ROOT/live.new" "$ROOT/live"
+  sudo -n ln -sfn "$1" "$ROOT/live.new"
+  sudo -n mv -Tf "$ROOT/live.new" "$ROOT/live"
 }
 
 # What a link's tree reports as build_id: its REVISION, else null, as
@@ -694,10 +693,10 @@ schema_serves() {
 }
 
 restart_and_verify() { # <want>
-  sudo systemctl reset-failed "$API" || true
-  sudo systemctl restart "$API" || { note "systemctl restart $API failed"; return 1; }
+  sudo -n systemctl reset-failed "$API" || true
+  sudo -n systemctl restart "$API" || { note "systemctl restart $API failed"; return 1; }
   wait_for_idle_probe || return 1
-  sudo systemctl start "$PROBE" ||
+  sudo -n systemctl start "$PROBE" ||
     { note "the $PROBE pass failed on $build: journalctl -u ${PROBE%.service} -n 50"; return 1; }
   verify_health "$1" && schema_serves
 }
@@ -708,9 +707,9 @@ restart_and_verify() { # <want>
 first_deploy_failed() {
   units_replaced || dead "live failed on $build, and there is nothing to switch back to"
   restore_units
-  sudo rm -f "$ROOT/live" || note "removing $ROOT/live failed"
-  sudo systemctl reset-failed "$API" || true
-  sudo systemctl restart "$API" || true
+  sudo -n rm -f "$ROOT/live" || note "removing $ROOT/live failed"
+  sudo -n systemctl reset-failed "$API" || true
+  sudo -n systemctl restart "$API" || true
   if verify_health "*"; then
     journal "live failed on $build; the units it replaced are back, answering"
     die "live failed on $build; the units it replaced are back, and archiver is answering on them"
@@ -745,9 +744,9 @@ else
     swap "$previous_link"
   fi
   restore_units
-  sudo systemctl reset-failed "$API" || true
-  sudo systemctl restart "$API" || true
-  if wait_for_idle_probe && sudo systemctl start "$PROBE" && verify_health "$old"; then
+  sudo -n systemctl reset-failed "$API" || true
+  sudo -n systemctl restart "$API" || true
+  if wait_for_idle_probe && sudo -n systemctl start "$PROBE" && verify_health "$old"; then
     journal "live rolled back to $previous after $build failed ($back)"
     die "live failed on $build; $back, which is answering"
   fi
@@ -764,6 +763,6 @@ linked=" $(release_of live) "
 ls -1t "$ROOT/releases" | tail -n +$((KEEP + 1)) | while read -r old; do
   [[ "$linked" == *" $old "* ]] && continue
   note "pruning release $old"
-  { sudo rm -f "$ROOT/releases/$old/REVISION" && sudo rm -rf "${ROOT:?}/releases/$old"; } ||
+  { sudo -n rm -f "$ROOT/releases/$old/REVISION" && sudo -n rm -rf "${ROOT:?}/releases/$old"; } ||
     note "prune failed for $old; remove it by hand: sudo rm -rf $ROOT/releases/$old"
 done
