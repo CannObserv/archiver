@@ -142,11 +142,11 @@ Then prove the point: `git switch` the checkout to any branch, `sudo systemctl r
 archiver` and start both timers' services; `build_id` is unchanged. Done on this VM
 2026-10-09 (`e68f1389771b`). `.skills/worktree_venv` stays `none`: the checkout's `.venv` is
 no longer production's, but it holds editable installs bound to the checkout's path, which a
-linked worktree would re-point (the `using-git-worktrees` override, CR 20).
+linked worktree would re-point ([SKILLS.md](SKILLS.md) § Worktrees).
 
 **`GOOGLE_APPLICATION_CREDENTIALS` belongs in `/etc/archiver/deploy.env` alone** (#341). No
 unit needs it: `deploy.sh` reads it from there, and so do the checkout's wheelhouse recipes
-(CLAUDE.md § Environment & Tooling, the `using-git-worktrees` override). Until #341 it was in
+(CLAUDE.md § Environment & Tooling, SKILLS.md § Worktrees). Until #341 it was in
 `/etc/archiver/.env` too, which put it in every unit's environment. On a VM that still has it
 there, delete the line, then restart: `sudo sed -i '/^GOOGLE_APPLICATION_CREDENTIALS=/d'
 /etc/archiver/.env`, then `scripts/deploy.sh` or `sudo systemctl restart archiver`.
