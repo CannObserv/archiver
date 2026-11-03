@@ -139,9 +139,10 @@ trap 'rm -rf "$backup" || :' EXIT
 # .env is what the units read, root:root 0600: systemd reads it before it drops
 # to the units' user, and exedev reads it only through sudo (archiver#339).
 # dev.env names the rehearsal database (D2); deploy.env holds the wheelhouse
-# credential no unit needs (D10). Both stay exedev's to read. -n: the first sudo
-# fails rather than prompts, since .skills/deploy_command runs this with stdin
-# on /dev/null (#457).
+# credential no unit needs (D10). Both stay exedev's to read. -n: under
+# .skills/deploy_command (#457) there is no terminal, so a sudo that needs a
+# password fails here as "cannot read", never as a prompt. Not the first sudo:
+# a build's install and rm run before it, bare, and they fail without one too.
 read_env() { # <file>
   if [[ "$1" == .env ]]; then sudo -n cat "$ENV_DIR/$1"; else cat "$ENV_DIR/$1"; fi
 }
