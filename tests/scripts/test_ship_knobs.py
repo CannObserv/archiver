@@ -17,7 +17,7 @@ Upstream's readers check each knob only when a ship runs; these pin the values.
 
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import os
 import subprocess
 
@@ -27,10 +27,11 @@ KNOBS = REPO_ROOT / ".skills"
 
 
 def test_each_import_target_is_importable() -> None:
+    """Imported, not just found: the gate executes the module, and so does this."""
     targets = read_list_file(KNOBS / "import-targets")
     assert targets, "no import target: the gate would skip its import check"
     for target in targets:
-        assert importlib.util.find_spec(target) is not None, target
+        importlib.import_module(target)
 
 
 def test_merge_mode_is_pr() -> None:
