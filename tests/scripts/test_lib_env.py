@@ -1,9 +1,9 @@
 """``scripts/lib/env.sh``: archiver's allowlist over upstream's ``load_env`` (#452).
 
-Sourcing an env file runs it as shell code and, under ``set -a``, exports every
-name in it. The repo ``.env`` holds PATs and API tokens, so archiver's two
-scripts that read it, ``scripts/pre-ship.sh`` and ``scripts/dev_server.sh``,
-parse it instead and export only the names they need.
+Sourcing an env file runs it as shell code and exports every name in it. The
+repo ``.env`` holds PATs and API tokens, so archiver's two scripts that read it,
+``scripts/pre-ship.sh`` and ``scripts/dev_server.sh``, parse it instead and
+export only the names they need.
 
 The parser is not copied here: the library lifts ``load_env`` from the recipe in
 the vendored gate's header, the one copy (gregoryfoster/skills#517), and adds

@@ -1,8 +1,8 @@
 # env.sh - parse-never-source env loading for archiver's scripts (#452).
 #
 # Sourced, not run, by scripts/pre-ship.sh and scripts/dev_server.sh. Sourcing
-# an env file runs it as shell code, and `set -a` exports every name in it; the
-# repo .env holds PATs and API tokens neither script's children need. So each
+# an env file runs it as shell code and exports every name in it; the repo
+# .env holds PATs and API tokens neither script's children need. So each
 # parses the file and exports only its own names.
 #
 # The parser is not copied here. load_env is lifted from the recipe in the

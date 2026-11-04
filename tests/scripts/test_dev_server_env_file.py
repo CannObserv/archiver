@@ -1,7 +1,7 @@
 """The dev-server launcher parses the repo ``.env`` and keeps its own names (#452).
 
-It used to source ``/etc/archiver/.env`` and the repo ``.env`` under ``set -a``,
-so uvicorn inherited every PAT, ``ANTHROPIC_API_KEY`` and ``EXE_API_TOKEN`` in
+It used to source ``/etc/archiver/.env`` and the repo ``.env``, exporting all of
+both, so uvicorn inherited every PAT, ``ANTHROPIC_API_KEY`` and ``EXE_API_TOKEN`` in
 the developer's file. Its only inputs there are ``ARCHIVER_DEV_*`` and the
 ``TEST_DATABASE_URL`` fallback, so those are all it exports, through
 ``scripts/lib/env.sh``. ``/etc/archiver/.env`` is not read at all: root's alone
