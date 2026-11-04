@@ -24,6 +24,11 @@ _ENV_RECIPE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/skills/shipping
   exit 2
 }
 eval "$(sed -n 's/^#   //; /^load_env() [{]/,/^[}]/p' "$_ENV_RECIPE")"
+declare -F load_env >/dev/null || { # else the subshell below hides it
+  echo "ERROR: no load_env recipe in $_ENV_RECIPE's header" >&2
+  echo "       fix: git submodule update --init --recursive" >&2
+  exit 2
+}
 unset _ENV_RECIPE
 
 env_file() { # <root>

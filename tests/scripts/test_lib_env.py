@@ -174,6 +174,19 @@ def test_a_missing_recipe_names_the_fix(tmp_path: Path) -> None:
     assert "git submodule update --init --recursive" in result.stderr
 
 
+def test_a_recipe_without_load_env_names_the_fix(tmp_path: Path) -> None:
+    """Upstream moving the recipe must fail here, not later as a missing URL."""
+    tree = tmp_path / "tree"
+    (tree / "scripts" / "lib").mkdir(parents=True)
+    shutil.copy2(LIB, tree / "scripts" / "lib" / "env.sh")
+    (tree / RECIPE).parent.mkdir(parents=True)
+    (tree / RECIPE).write_text("#!/usr/bin/env bash\n# no recipe in this header\n")
+    result = _run(tree, "true", tmp_path)
+    assert result.returncode == 2
+    assert "no load_env recipe" in result.stderr
+    assert "git submodule update --init --recursive" in result.stderr
+
+
 def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
 
