@@ -9,11 +9,12 @@ are the unit's own ``Environment=`` lines. Never ``/etc/archiver/.env``: three
 timer units load that file whole.
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from src.core.notifications.cutover import CUTOVER_ENV
+from src.core.notifications.cutover import CUTOVER_ENV, resolve_cutover
 from src.core.notifier.gate import BASE_URL_ENV, CREDENTIAL_FILE, CREDENTIAL_NAME, ENABLED_ENV
 from tests.deploy.test_archiver_unit_liveness import _values
 
@@ -58,10 +59,20 @@ def test_no_other_unit_holds_notifier_config(unit: Path) -> None:
 # --- The notify cutover instant (archiver#369, D3) ---
 
 
-def test_the_unit_ships_dark_until_f3() -> None:
-    """No T: every fact is shadow-recorded and nothing sends. F3 adds the line,
-    with the same instant on Watcher (CannObserv/watcher#376), and flips this test."""
-    assert CUTOVER_ENV not in (DEPLOY / "archiver.service").read_text()
+F3_CUTOVER = "2026-11-06T21:00:00Z"
+
+
+def test_the_unit_holds_f3s_cutover() -> None:
+    """F3 (CannObserv/watcher#376): T is the instant Watcher holds too, chosen by
+    the operator. Facts before it are Watcher's, facts at or after it Archiver's."""
+    assert _values("Service", "Environment").count(f"{CUTOVER_ENV}={F3_CUTOVER}") == 1
+    assert (DEPLOY / "archiver.service").read_text().count(CUTOVER_ENV) == 1
+
+
+def test_f3s_cutover_parses_under_the_gate() -> None:
+    """The unit's T is one the lifespan accepts, not one it refuses at the restart."""
+    cutover = resolve_cutover({CUTOVER_ENV: F3_CUTOVER}, notifier_configured=True)
+    assert cutover == datetime(2026, 11, 6, 21, tzinfo=UTC)
 
 
 @pytest.mark.parametrize("unit", OTHER_UNITS, ids=[p.name for p in OTHER_UNITS])
