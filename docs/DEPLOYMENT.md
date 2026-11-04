@@ -343,6 +343,9 @@ lines.
 | `scripts/dev_server.sh` | the repo `.env` | `ARCHIVER_DEV_*`, `TEST_DATABASE_URL` |
 | The wheelhouse sync (AGENTS.md § Environment & Tooling) | `/etc/archiver/deploy.env` | one value, `sed`-read, to that command only |
 
+The wheelhouse line reads its value with `sed`, so the value stays unquoted in
+`deploy.env` by design: `sed` keeps quotes that `load_env` would strip.
+
 The two scripts share `scripts/lib/env.sh`, which lifts `load_env` and adds
 `load_env_only`: `load_env` runs in a subshell, and only the names matching the allowlist
 come back. Both find a linked worktree's `.env` in the primary checkout. Neither reads
