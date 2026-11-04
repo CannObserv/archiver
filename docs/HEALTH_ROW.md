@@ -73,6 +73,15 @@ a `TypeError` out of the probe is a bug here and is left to 500 rather than
 dressed up as a broker condition (finding 2). A timeout titles itself `probe
 exceeded <N>s` rather than the bare `TimeoutError()` an empty `str()` produced,
 so a wedged broker reads differently from a refused one (round 2, finding 11).
+A broker ACL denial (`NOPERM`, redis-py's `NoPermissionError`) on `XPENDING` is
+"lag unknown" too, titled `lag probe failed: NOPERM <reason>` with the
+`Consumer lag probe failed` WARNING - never "group missing", which reads as
+unprovisioned and sends the operator to the wrong system (archiver#459). Only NOGROUP
+(and fakeredis's `IndexError`) means "group missing". The denial ends the probe's loop
+over `OWNED_GROUPS`, so **one denied group makes the whole badge "lag unknown"**, and the
+other groups' pending counts are dropped with it: a denial is a broker fault the
+operator should see, and a per-group "denied" state would be a separate change.
+fakeredis enforces no ACL, so 8001 cannot show this; the tests stub the denial.
 
 **GET `/dashboard/health/registry`** - over
 `src/core/tools/audit_stored_documents.py` (archiver#164): every authored document

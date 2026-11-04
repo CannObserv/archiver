@@ -44,7 +44,7 @@ from co_core.pure.adapters.bus.streams import (
     dlq_name,
     stream_kind,
 )
-from redis.exceptions import ResponseError
+from redis.exceptions import NoPermissionError, ResponseError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.changes.artifacts_consumer import CONSUMER_GROUP as ARTIFACTS_GROUP
@@ -247,6 +247,12 @@ async def collect_group_lag(client: Redis) -> list[GroupLag]:
     for owned in OWNED_GROUPS:
         try:
             summary = await client.xpending(owned.topic, owned.group)
+        except NoPermissionError:
+            # NOPERM is a ResponseError subclass, but a denied XPENDING is the
+            # broker's ACL, not an unprovisioned group: read as None it sent the
+            # operator to provisioning (archiver#459). It ends the loop, so one
+            # denied group makes the caller's whole reading unknown.
+            raise
         except (ResponseError, IndexError):
             # Real Redis raises NOGROUP (a ResponseError); fakeredis's reply
             # for a missing group instead crashes redis-py's parse_xpending

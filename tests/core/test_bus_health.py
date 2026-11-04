@@ -29,6 +29,7 @@ from co_core.pure.adapters.bus.streams import (
     stream_kind,
 )
 from fakeredis import aioredis as fakeredis_aio
+from redis.exceptions import NoPermissionError, ResponseError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core import bus_health
@@ -171,6 +172,53 @@ async def test_group_lag_propagates_an_unreachable_broker() -> None:
 
     with pytest.raises(ConnectionError):
         await bus_health.collect_group_lag(DownRedis())
+
+
+class _DeniedXpending:
+    """fakeredis with a broker ACL bolted on: ``XPENDING`` on one topic answers
+    NOPERM. fakeredis enforces no ACL, which is how #369 shipped the gap
+    archiver#459 fixes. The message is redis-py's, which strips the ``NOPERM``
+    prefix while choosing the exception class."""
+
+    def __init__(self, inner, denied_topic: str) -> None:
+        self._inner = inner
+        self._denied_topic = denied_topic
+
+    async def xpending(self, topic, group):
+        if topic == self._denied_topic:
+            raise NoPermissionError(f"User archiver has no permissions to access the '{topic}' key")
+        return await self._inner.xpending(topic, group)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+async def test_group_lag_propagates_a_denied_xpending(fake_redis) -> None:
+    """archiver#459. NOPERM is a ResponseError subclass, but a denial is the
+    broker's ACL, not an unprovisioned group: reading it as ``pending=None``
+    sent the operator to provisioning for a fault that lives on broker."""
+    for owned in OWNED_GROUPS:
+        await fake_redis.xgroup_create(owned.topic, owned.group, id="0", mkstream=True)
+
+    with pytest.raises(NoPermissionError):
+        await bus_health.collect_group_lag(_DeniedXpending(fake_redis, INFO_WATCH_EVENTS))
+
+
+async def test_group_lag_reads_a_real_nogroup_as_missing() -> None:
+    """Real Redis answers a missing group with NOGROUP, a plain ResponseError -
+    unlike fakeredis's IndexError above. It keeps its meaning after #459."""
+
+    class NoGroupRedis:
+        async def xpending(self, topic, group):
+            raise ResponseError(f"NOGROUP No such key '{topic}' or consumer group '{group}'")
+
+        async def xlen(self, name):
+            return 0
+
+    lags = await bus_health.collect_group_lag(NoGroupRedis())
+
+    assert lags
+    assert all(lag.pending is None for lag in lags)
 
 
 # --- schema (archiver#330 D3) ---
