@@ -136,6 +136,11 @@ jobs:
       - name: uv sync
         run: uv sync --group dev
 
+      # scripts/lib/env.sh lifts load_env from the vendored gate's header, so the
+      # loader's tests need this one submodule; shallow, and public (#452).
+      - name: fetch the vendored skills
+        run: git submodule update --init --depth 1 skills-vendor/gregoryfoster-skills
+
       # Independent migration smoke-check; conftest also runs upgrade inside
       # the session fixture (idempotent at head).
       - name: alembic upgrade head
