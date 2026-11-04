@@ -88,7 +88,8 @@ replaces only the gate (gregoryfoster/skills#301). It is upstream's wrapper reci
 with two departures (archiver#457). It never reads `/etc/archiver/.env`, which is
 root's alone (#339) and would hand a sudo'd test run production's URL. From the repo
 `.env`, falling back to the primary checkout's, it exports only `TEST_DATABASE_URL`,
-not the PATs beside it (#452). `tests/scripts/test_pre_ship.py` pins both. The knobs,
+not the PATs beside it (#452), through `scripts/lib/env.sh`, which `dev_server.sh`
+shares. `tests/scripts/test_pre_ship.py` pins both. The knobs,
 pinned by `tests/scripts/test_ship_knobs.py`:
 
 | Knob | Value | Why |
@@ -159,9 +160,8 @@ provision the venv.
 
 1. `uv sync`, after populating the gitignored `./.wheelhouse` by the recipe in
    CLAUDE.md § Environment & Tooling.
-2. Copy `.env` from the primary checkout. `scripts/dev_server.sh` reads it from the
-   worktree, not just the tests. `scripts/pre-ship.sh` falls back to the primary's
-   own copy, but the dev server doesn't.
+2. No `.env` to copy: `scripts/dev_server.sh` and `scripts/pre-ship.sh` both fall
+   back to the primary checkout's (`scripts/lib/env.sh`, #452).
 3. If the branch serves, pick its own port (any free one in 3000-9999, never 8000,
    which is systemd's, or 8001, the main checkout's) and record it in `.port` so
    Phase 5 frees it:

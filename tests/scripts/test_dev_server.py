@@ -31,8 +31,8 @@ DEV_URL = "postgresql+asyncpg://archiver:archiver@localhost:5432/archiver_dev"
 def run(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     """Invoke the script in dry-run mode with a hermetic environment.
 
-    ``ARCHIVER_DEV_SERVER_SKIP_ENV_FILES`` stops the script sourcing the real
-    ``/etc/archiver/.env`` and ``.env``, so tests control resolution entirely.
+    ``ARCHIVER_DEV_SERVER_SKIP_ENV_FILES`` stops the script reading the real
+    ``.env``, so tests control resolution entirely.
     """
     return subprocess.run(
         ["bash", str(SCRIPT)],
@@ -158,21 +158,27 @@ def test_accepts_test_and_dev_suffixed_names(suffix: str) -> None:
     assert f"ARCHIVER_DATABASE_URL={url}" in result.stdout
 
 
-def test_sources_env_files_when_not_skipped(tmp_path: Path) -> None:
-    """CR finding 7: cover the env-file sourcing path, not just the skip flag.
+def test_reads_the_repo_env_file_when_not_skipped(tmp_path: Path) -> None:
+    """CR finding 7: cover the env-file path, not just the skip flag.
 
     ``ARCHIVER_DEV_SERVER_SKIP_ENV_FILES`` exists only for tests, so without
-    this case the real-world resolution path — read .env, then guard — is never
+    this case the real-world resolution path — parse .env, then guard — is never
     exercised. Runs the script against a throwaway repo root whose .env
-    supplies TEST_DATABASE_URL.
+    supplies TEST_DATABASE_URL, with the loader library and the vendored recipe
+    it lifts ``load_env`` from (#452).
     """
-    (tmp_path / "scripts").mkdir()
-    script_copy = tmp_path / "scripts" / "dev_server.sh"
-    script_copy.write_bytes(SCRIPT.read_bytes())
+    repo = SCRIPT.parents[1]
+    for rel in (
+        "scripts/dev_server.sh",
+        "scripts/lib/env.sh",
+        "skills/shipping-work/scripts/pre-ship.sh",
+    ):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes((repo / rel).read_bytes())
     (tmp_path / ".env").write_text(f"TEST_DATABASE_URL={TEST_URL}\n")
 
     result = subprocess.run(
-        ["bash", str(script_copy)],
+        ["bash", str(tmp_path / "scripts" / "dev_server.sh")],
         env={"PATH": "/usr/bin:/bin", "ARCHIVER_DEV_SERVER_DRY_RUN": "1"},
         text=True,
         capture_output=True,

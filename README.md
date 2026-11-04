@@ -22,14 +22,14 @@ Extracted from the in-tree `src/information/` of watcher in 2026-05 (watcher#149
 ```bash
 # co-core / co-core-aio resolve from a wheelhouse mirrored from the private GCS
 # index (see AGENTS.md → Environment & Tooling); populate it before uv sync:
-set -a; . /etc/archiver/deploy.env; set +a   # GOOGLE_APPLICATION_CREDENTIALS (#341)
-uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
+GOOGLE_APPLICATION_CREDENTIALS="$(sed -n 's/^GOOGLE_APPLICATION_CREDENTIALS=//p' /etc/archiver/deploy.env)" \
+  uv run --no-project --with 'google-cloud-storage>=2,<4' --with 'certifi>=2026.10.19' python scripts/sync_wheelhouse.py
 uv sync
 bash scripts/dev_server.sh
 ```
 
 `scripts/dev_server.sh` is the only sanctioned way to start a dev server. It
-sources the env files, resolves a **non-production** database
+parses the repo `.env` for its own names, resolves a **non-production** database
 (`ARCHIVER_DEV_DATABASE_URL`, else `TEST_DATABASE_URL`), refuses to start
 unless that database name ends in `_test`/`_dev`, runs `alembic upgrade head`,
 and serves on 8001.
@@ -41,7 +41,7 @@ and serves on 8001.
 registry. The application now also refuses to serve a production database
 unless `ARCHIVER_ALLOW_PRODUCTION_DB=1` is set, which only units in `deploy/`
 do - `archiver.service`, the read-only `archiver-bus-health.service` probe
-(#130), and the `archiver-pm-org-refresh.service` Power Map org follower (#305). Never an env file: those are sourced by every process that loads them,
+(#130), and the `archiver-pm-org-refresh.service` Power Map org follower (#305). Never an env file: every process that loads the file would get the flag,
 which is the hole the guard closes.
 
 Production listens on **port 8000** under `archiver.service`. The dev server uses 8001 to leave 8000 alone for systemd.
@@ -49,10 +49,9 @@ Production listens on **port 8000** under `archiver.service`. The dev server use
 ## Tests
 
 ```bash
-set -a
-[ -r /etc/archiver/.env ] && . /etc/archiver/.env
-[ -f .env ] && . .env
-set +a
+eval "$(sed -n 's/^#   //; /^load_env() [{]/,/^[}]/p' skills/shipping-work/scripts/pre-ship.sh)"
+ENV_FILE=.env; [ -r "$ENV_FILE" ] || ENV_FILE="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.env"
+load_env "$ENV_FILE"   # parse, never source: AGENTS.md § Environment Files
 uv run pytest
 ```
 

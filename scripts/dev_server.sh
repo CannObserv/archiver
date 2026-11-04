@@ -30,7 +30,8 @@
 #   ARCHIVER_DEV_PORT                     default 8001 (8000 is systemd's, refused)
 #   ARCHIVER_DEV_SKIP_MIGRATE=1           skip the alembic upgrade
 #   ARCHIVER_DEV_SERVER_DRY_RUN=1         print resolution, do not exec uvicorn
-#   ARCHIVER_DEV_SERVER_SKIP_ENV_FILES=1  skip sourcing env files (tests)
+#   ARCHIVER_DEV_SERVER_SKIP_ENV_FILES=1  skip the env file (tests)
+#   ARCHIVER_DEV_SERVER_ENV_FILE          parse this file instead of .env (tests)
 #   ARCHIVER_DEV_POWER_MAP_API_KEY        Power Map read key for dev; unset → dormant
 #   ARCHIVER_DEV_POWER_MAP_BASE_URL       Power Map base URL for dev (default: production)
 #   ARCHIVER_DEV_NOTIFIER_BASE_URL        dev Notifier (:9001); with the key → enabled
@@ -40,13 +41,18 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Parse, never source (#452). The repo .env is the developer's file, PATs and
+# API tokens included, and uvicorn needs none of them: only this script's own
+# inputs leave it. /etc/archiver/.env is not read at all. It is root's alone
+# (#339), and under sudo it would hand the dev server production's secrets.
 if [[ "${ARCHIVER_DEV_SERVER_SKIP_ENV_FILES:-}" != "1" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  [ -r /etc/archiver/.env ] && . /etc/archiver/.env
-  # shellcheck disable=SC1091
-  [ -f "$REPO_ROOT/.env" ] && . "$REPO_ROOT/.env"
-  set +a
+  # shellcheck source=lib/env.sh
+  . "$REPO_ROOT/scripts/lib/env.sh"
+  load_env_only "ARCHIVER_DEV_* TEST_DATABASE_URL" \
+    "${ARCHIVER_DEV_SERVER_ENV_FILE:-$(env_file "$REPO_ROOT")}"
+  ENV_REPORT="${ENV_NAMES:-(none)}"
+else
+  ENV_REPORT="(skipped)"
 fi
 
 PORT="${ARCHIVER_DEV_PORT:-8001}"
@@ -352,6 +358,7 @@ if [[ "${ARCHIVER_DEV_SERVER_DRY_RUN:-}" == "1" ]]; then
   echo "NOTIFIER=$NOTIFIER_REPORT"
   echo "NOTIFY_CUTOVER=$CUTOVER_REPORT"
   echo "LIVENESS=$LIVENESS_REPORT"
+  echo "ENV_NAMES=$ENV_REPORT"
   exit 0
 fi
 
