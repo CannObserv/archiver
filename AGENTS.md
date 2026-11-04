@@ -138,7 +138,7 @@ Never hold a transaction open (it blocks deploys) or give Python a production UR
   `_test`.
 - `ARCHIVER_ALLOW_PRODUCTION_DB` - set only by `deploy/` units and
   `scripts/deploy.sh`'s migration (#330). **Never in an env file** - it
-  reopens the hole for every sourcing process.
+  reopens the hole for every process loading it.
 - `ARCHIVER_BUS_CONSUMER` - same rule; gates the `archiver.revisions` group;
   only `archiver.service` holds it.
 - `ARCHIVER_NOTIFIER_ENABLED` - same rule, beside its URL; the key is a credential
