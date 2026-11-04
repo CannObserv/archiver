@@ -47,8 +47,9 @@ def _recipe() -> str:
     """The ``load_env`` recipe from the real gate's header, which
     ``scripts/lib/env.sh`` lifts (#452)."""
     lines = (REPO_ROOT / DELEGATE).read_text().splitlines()
-    start = lines.index("#   load_env() {                                  # parse, never source")
-    end = lines.index("#   }", start)
+    # The library's sed range, /^load_env() [{]/,/^[}]/ once '#   ' is stripped.
+    start = next(i for i, line in enumerate(lines) if line.startswith("#   load_env() {"))
+    end = next(i for i in range(start, len(lines)) if lines[i].startswith("#   }"))
     return "\n".join(lines[start : end + 1]) + "\n"
 
 
