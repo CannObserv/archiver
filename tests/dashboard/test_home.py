@@ -1,6 +1,7 @@
 """Tests for /dashboard/ home page (Epic 7 + #49 redesign)."""
 
 import asyncio
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
@@ -12,6 +13,7 @@ from co_core.pure.adapters.bus.streams import (
     INFO_WATCH_EVENTS,
 )
 from fakeredis import aioredis as fakeredis_aio
+from redis.exceptions import NoPermissionError, ResponseError
 
 from src.api.deps import get_redis_client
 from src.api.main import app
@@ -495,6 +497,71 @@ async def test_health_consumers_warns_when_the_broker_cannot_be_probed(client, m
     assert r.status_code == 200
     assert "badge--warning" in r.text
     assert "lag unknown" in r.text
+
+
+class _DeniedXpending:
+    """fakeredis plus the broker ACL it does not enforce: ``XPENDING`` on one
+    topic answers NOPERM, as co-broker did for ``info.watch-events`` after #369
+    (archiver#459). The message is redis-py's, which strips the ``NOPERM``
+    prefix while choosing the exception class."""
+
+    def __init__(self, inner, denied_topic: str) -> None:
+        self._inner = inner
+        self._denied_topic = denied_topic
+
+    async def xpending(self, topic, group):
+        if topic == self._denied_topic:
+            raise NoPermissionError(f"User archiver has no permissions to access the '{topic}' key")
+        return await self._inner.xpending(topic, group)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_reads_a_denied_xpending_as_lag_unknown(
+    client, monkeypatch, fake_redis, caplog
+):
+    """archiver#459. A broker ACL denial is a broker fault: it badges "lag
+    unknown" with the NOPERM text and logs the WARNING, never "group missing",
+    which sends the operator to provisioning. One denied group takes the whole
+    badge - the other groups' pending counts go with it."""
+    caplog.set_level(logging.WARNING)
+    await _provision_groups(fake_redis)
+    denied = _DeniedXpending(fake_redis, INFO_WATCH_EVENTS)
+    _consumers(monkeypatch, denied, revisions=_live_task(), artifacts=_live_task())
+
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "badge--warning" in r.text
+    assert "lag unknown" in r.text
+    assert "lag probe failed: NOPERM User archiver has no permissions" in r.text
+    assert "group missing" not in r.text
+    assert "pending=0" not in r.text
+    assert [rec for rec in caplog.records if rec.getMessage() == "Consumer lag probe failed"]
+
+
+@pytest.mark.asyncio
+async def test_health_consumers_reads_a_real_nogroup_as_group_missing(client, monkeypatch):
+    """Real Redis's NOGROUP (a plain ResponseError, not fakeredis's IndexError)
+    still reads "group missing" after #459 narrows the catch."""
+
+    class NoGroupRedis:
+        async def xpending(self, topic, group):
+            raise ResponseError(f"NOGROUP No such key '{topic}' or consumer group '{group}'")
+
+        async def xlen(self, name):
+            return 0
+
+    _consumers(monkeypatch, NoGroupRedis(), revisions=_live_task(), artifacts=_live_task())
+
+    r = await client.get("/dashboard/health/consumers", headers=_HEADERS)
+
+    assert r.status_code == 200
+    assert "badge--warning" in r.text
+    assert "group missing" in r.text
+    assert "lag unknown" not in r.text
 
 
 @pytest.mark.asyncio

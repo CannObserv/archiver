@@ -18,7 +18,7 @@ from co_core.pure.adapters.bus.streams import (
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from redis.exceptions import RedisError
+from redis.exceptions import NoPermissionError, RedisError
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -359,6 +359,10 @@ async def dashboard_health_consumers(
         # builtins.ConnectionError is an OSError subclass, so naming it too
         # only implied a distinction that does not exist (round 2, finding 12).
         lag_error = str(exc) or repr(exc)
+        if isinstance(exc, NoPermissionError):
+            # redis-py strips the reply's NOPERM prefix while choosing the
+            # class; restore it so the title names the broker ACL (#459).
+            lag_error = f"NOPERM {lag_error}"
         logger.warning("Consumer lag probe failed", extra={"error": lag_error})
 
     parts = []
