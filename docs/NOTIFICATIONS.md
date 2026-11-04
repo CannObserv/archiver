@@ -139,7 +139,7 @@ budget falls back to its event's default; a diff that can't be read names why.
 row is `send` (`pending`) only when T is set and the fact's `occurred_at` (a reminder's own
 instant) is at or after T; otherwise `shadow`, never sent. Unset *is* shadow: the journal says
 `notify cutover: unset (shadow)`. T without the Notifier gate, or not an unambiguous UTC
-instant, refuses startup. It is `archiver.service`'s own `Environment=` line, absent until F3
+instant, refuses startup. It is `archiver.service`'s own `Environment=` line, set at F3
 (`tests/deploy/test_archiver_unit_notifier.py`). A fact before T that arrives late is
 shadow-recorded: Watcher sent it.
 
@@ -188,8 +188,8 @@ join is on (`archiver_info_item_id`, event type, `occurred_at`), template id ↔
 `imported_watcher_id`, per fact and subscription for the three edges. Reminders compare by
 count per episode. Bodies compare less their links.
 
-**F3** (CannObserv/watcher#376): a one-line PR adds `Environment=ARCHIVER_NOTIFY_CUTOVER_AT=<T>`
-and flips the pin test; both services deploy before T. Expect up to one extra reminder per open
+**F3** (CannObserv/watcher#376): T = `2026-11-06T21:00:00Z`, the operator's, merged on the parity
+go; Archiver deploys first, then Watcher, both before T. Expect up to one extra reminder per open
 episode in the first 24 h: Archiver can't see Watcher's reminders. On 8001,
 `ARCHIVER_DEV_NOTIFY_CUTOVER_AT` maps beside the dev Notifier pair only.
 
