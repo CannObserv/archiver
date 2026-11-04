@@ -341,7 +341,7 @@ lines.
 | An agent shell (AGENTS.md § Environment Files) | the repo `.env` | every name: `gh` needs `GH_TOKEN` |
 | `scripts/pre-ship.sh` | the repo `.env` | `TEST_DATABASE_URL` |
 | `scripts/dev_server.sh` | the repo `.env` | `ARCHIVER_DEV_*`, `TEST_DATABASE_URL` |
-| The wheelhouse sync (AGENTS.md § Environment & Tooling) | `/etc/archiver/deploy.env` | nothing: one `sed`-read value on the command |
+| The wheelhouse sync (AGENTS.md § Environment & Tooling) | `/etc/archiver/deploy.env` | one value, `sed`-read, to that command only |
 
 The two scripts share `scripts/lib/env.sh`, which lifts `load_env` and adds
 `load_env_only`: `load_env` runs in a subshell, and only the names matching the allowlist
