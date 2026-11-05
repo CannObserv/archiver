@@ -56,6 +56,8 @@ def _value(env: Path, name: str = "GH_TOKEN") -> subprocess.CompletedProcess:
         ('GH_TOKEN="a b"\n', "a b"),
         ("GH_TOKEN='a b'\n", "a b"),
         ("GH_TOKEN=abc\r\n", "abc"),
+        ('GH_TOKEN="a b"\r\n', "a b"),
+        ("GH_TOKEN='a b'\r\n", "a b"),
         ("GH_TOKEN=old\nGH_TOKEN=new\n", "new"),
         ("GH_TOKEN_BROKER=no\nGH_TOKEN=yes\nGH_TOKEN_X=no\n", "yes"),
         ("# GH_TOKEN=commented\nGH_TOKEN=live\n", "live"),

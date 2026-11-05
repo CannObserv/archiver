@@ -8,8 +8,9 @@
 #
 # The parser is scripts/lib/env.sh's load_env_only over upstream's load_env, the
 # one copy (#452, gregoryfoster/skills#517), so this reads what pre-ship.sh and
-# dev_server.sh read. On top of it: NAME must be one name, not a glob, and one
-# trailing CR is dropped from the value. Nothing is expanded; the last match wins.
+# dev_server.sh read. On top of it: NAME must be one name, not a glob, and each
+# line's trailing CR is dropped before parsing, so quotes on a CRLF line are still
+# stripped. Nothing is expanded; the last match wins.
 # An inherited NAME is ignored: the file's value or nothing.
 #
 # Exit 0 printing the value (no newline); 1 printing nothing when the file or the
@@ -33,7 +34,6 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 file=${2:-$(env_file "$root")}
 [[ -f "$file" && -r "$file" ]] || exit 1
 
-load_env_only "$name" "$file"
+load_env_only "$name" <(sed 's/\r$//' "$file")
 [[ " $ENV_NAMES " == *" $name "* ]] || exit 1
-value=${!name}
-printf %s "${value%$'\r'}"
+printf %s "${!name}"
