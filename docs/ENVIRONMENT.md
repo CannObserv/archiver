@@ -22,7 +22,8 @@ resolution equals `ARCHIVER_DATABASE_URL` or `DATABASE_URL`; clears the
 `DATABASE_URL` fallback; refuses port 8000; and runs `alembic upgrade head`
 against the dev database before serving. It takes only `ARCHIVER_DEV_*` and
 `TEST_DATABASE_URL` from the repo `.env`, never `/etc/archiver/.env`
-([DEPLOYMENT.md](DEPLOYMENT.md) § Parse env files, never source them). This mirrors `_check_test_url_safety`
+([DEPLOYMENT.md](DEPLOYMENT.md) § Parse env files, never source them), and
+unsets the `GH_TOKEN` an agent session inherits from `gh-env.sh` (#466). This mirrors `_check_test_url_safety`
 in `tests/conftest.py`, which guards pytest but not a hand-run server.
 
 ## Dev-server knobs
