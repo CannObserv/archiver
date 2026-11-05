@@ -14,9 +14,10 @@
 # An inherited NAME is ignored: the file's value or nothing.
 #
 # Exit 0 printing the value (no newline); 1 printing nothing when the file or the
-# name is absent; 2 on a bad NAME or a missing parser. Same interface as
-# CannObserv/processor's scripts/env-value.sh (processor#115); retired when
-# gregoryfoster/skills#334 ships its loader.
+# name is absent; 2 on a bad NAME or a missing parser. The NAME [FILE] usage and
+# the 0/1 meanings match CannObserv/processor's scripts/env-value.sh
+# (processor#115); exit 2 is archiver's. Retired when gregoryfoster/skills#334
+# ships its loader.
 set -euo pipefail
 
 name=${1-}
