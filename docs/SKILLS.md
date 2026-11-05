@@ -325,7 +325,9 @@ agree, so that state fails a test instead of going unnoticed (archiver#163).
   hook, to become its symlink when that ships. Appends `export GH_TOKEN=<%q>` to
   `$CLAUDE_ENV_FILE`, read as data by `scripts/env-value.sh` (over
   `scripts/lib/env.sh`, so `load_env` stays the one parser, #452). Only
-  `GH_TOKEN`; `GH_TOKEN_<REPO>` and every other name stay per command. Leaves a set
+  `GH_TOKEN`; `GH_TOKEN_<REPO>` and every other name stay per command. The trade,
+  chosen in #466: the token reaches every child of an agent's Bash call (pytest,
+  `pre-ship.sh`, git hooks), bar `dev_server.sh`, which unsets it. Leaves a set
   token alone, never prints it, and always exits 0. It says so on stdout when
   `.env` has no token, when the parser is missing (submodules not checked out),
   when `CLAUDE_ENV_FILE` is unset, or when `gh` is missing or older than 2.78.0.
