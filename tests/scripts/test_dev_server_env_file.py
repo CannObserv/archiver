@@ -107,6 +107,35 @@ def test_uvicorn_inherits_no_token(env_file: Path, tmp_path: Path) -> None:
     assert SECRET not in result.stdout + result.stderr
 
 
+@pytest.mark.parametrize("skip_env_files", ["0", "1"])
+def test_uvicorn_does_not_inherit_the_sessions_gh_token(
+    env_file: Path, tmp_path: Path, skip_env_files: str
+) -> None:
+    """#466: ``gh-env.sh`` exports ``GH_TOKEN`` to every agent Bash call, so the
+    launcher inherits it whether or not it reads an env file; it never passes it on."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "uv").write_text(FAKE_UV)
+    (bin_dir / "uv").chmod(0o755)
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    result = _run(
+        {
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "PROBE": str(probe),
+            "GH_TOKEN": f"{SECRET}-session",
+            "ARCHIVER_DEV_SKIP_MIGRATE": "1",
+            "ARCHIVER_DEV_SERVER_ENV_FILE": str(env_file),
+            "ARCHIVER_DEV_SERVER_SKIP_ENV_FILES": skip_env_files,
+            "ARCHIVER_DEV_DATABASE_URL": DEV_URL,
+        }
+    )
+    assert result.returncode == 0, result.stderr
+    seen = (probe / "env").read_text()
+    assert "GH_TOKEN=" not in seen
+    assert SECRET not in seen + result.stdout + result.stderr
+
+
 def test_never_names_the_production_env_file() -> None:
     """Not behavioural, since a test cannot plant ``/etc/archiver/.env``: no line
     of code may name an ``/etc`` path (comments may, to say why)."""
