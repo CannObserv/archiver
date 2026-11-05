@@ -370,7 +370,8 @@ scripts/                       deploy.sh (build a release from a pushed main com
                                audit_lock.sh (report-only uv audit of both locks,
                                runtime and dev apart; archiver#420, DEPLOYMENT.md) +
                                pre-ship.sh (ship gate; SKILLS.md) +
-                               lib/env.sh (their env allowlist; DEPLOYMENT.md)
+                               lib/env.sh (their env allowlist; DEPLOYMENT.md) +
+                               env-value.sh (one .env name, as data; #466)
 deploy/                        README.md (install instructions) + systemd units, all
                                running /srv/archiver/live and installed by deploy.sh:
                                archiver.service +

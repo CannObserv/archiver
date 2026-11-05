@@ -338,7 +338,8 @@ lines.
 
 | Reader | Loads | Exports |
 |---|---|---|
-| An agent shell (AGENTS.md § Environment Files) | the repo `.env` | every name: `gh` needs `GH_TOKEN` |
+| `gh-env.sh` hook; refresh-hook registration (#466) | the repo `.env`, via `scripts/env-value.sh` | `GH_TOKEN`: to the session, to that hook |
+| An agent shell (AGENTS.md § Environment Files) | the repo `.env` | what the command needs |
 | `scripts/pre-ship.sh` | the repo `.env` | `TEST_DATABASE_URL` |
 | `scripts/dev_server.sh` | the repo `.env` | `ARCHIVER_DEV_*`, `TEST_DATABASE_URL` |
 | The wheelhouse sync (AGENTS.md § Environment & Tooling) | `/etc/archiver/deploy.env` | one value, `sed`-read, to that command only |
