@@ -118,7 +118,7 @@ agent there too.
 1. `/etc/archiver/.env` - production secrets (`ARCHIVER_DATABASE_URL`). `root:root 0600`: units only, never read by an agent shell (#339).
 2. `.env` (repo root, git-ignored) - dev/agent secrets (`TEST_DATABASE_URL`, `GH_TOKEN`). Never commit; no unit reads it (#330).
 
-**Parse `.env`, never source it**, in the command that needs it; `load_env` exports every name ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Parse env files):
+**Parse `.env`, never source it**, per command; hook `gh-env.sh` pre-exports `GH_TOKEN` (#466; [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) § Parse env files):
 
 ```bash
 eval "$(sed -n 's/^#   //; /^load_env() [{]/,/^[}]/p' skills/shipping-work/scripts/pre-ship.sh)"

@@ -54,6 +54,9 @@ if [[ "${ARCHIVER_DEV_SERVER_SKIP_ENV_FILES:-}" != "1" ]]; then
 else
   ENV_REPORT="(skipped)"
 fi
+# The gh-env.sh SessionStart hook exports GH_TOKEN to every agent Bash call
+# (#466), so it arrives inherited, not from the file. uvicorn needs it no more.
+unset GH_TOKEN
 
 PORT="${ARCHIVER_DEV_PORT:-8001}"
 

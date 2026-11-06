@@ -25,8 +25,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/skills-submodule-update.sh\"",
+            "command": "GH_TOKEN=\"${GH_TOKEN:-$(bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/env-value.sh\" GH_TOKEN)}\" bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/skills-submodule-update.sh\"",
             "timeout": 120
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/gh-env.sh\" # gh-env",
+            "timeout": 5
           }
         ]
       }

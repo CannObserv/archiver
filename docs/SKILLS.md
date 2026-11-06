@@ -225,7 +225,8 @@ Which skill fires on which phrase. Invoke by name via the Skill tool.
 
 ## SessionStart Hooks
 
-Wired in `.claude/settings.json`; each script is a symlink into `skills-vendor/`.
+Wired in `.claude/settings.json`; each script is a symlink into `skills-vendor/`,
+bar `gh-env.sh`, a local replica until gregoryfoster/skills#334 ships.
 Never re-copy one, never symlink the committed `.skills/doctor.sh`, and never
 un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
 `tests/scripts/test_claude_hooks_registered.py` fails when a script and
@@ -255,7 +256,7 @@ un-wire a hook to hold a submodule - pin it in `.skills/skills-pin`.
 > passes `--merge`, which git documents as overriding that setting (verified
 > empirically; a pathspec alone does not override it either).
 
-`.claude/settings.json` wires three `SessionStart` hooks (see `.claude/hooks/`).
+`.claude/settings.json` wires four `SessionStart` hooks (see `.claude/hooks/`).
 Both halves are load-bearing: a script sitting in `.claude/hooks/` that
 `settings.json` does not name never runs, and looks identical to one that
 works. `tests/scripts/test_claude_hooks_registered.py` asserts the two halves
@@ -312,7 +313,25 @@ agree, so that state fails a test instead of going unnoticed (archiver#163).
   before stamping the lock - so only the `.skills/doctor.sh` self-heal above it
   runs there. Network failures are logged and don't block session start.
   Descended from watcher's hook
-  (CannObserv/watcher#153 → CannObserv/archiver#8).
+  (CannObserv/watcher#153 → CannObserv/archiver#8). Under `.skills/merge_mode pr`
+  it proposes the bump as a PR from `skills/submodule-refresh` with `gh`, so its
+  registration hands it `GH_TOKEN`: the `GH_TOKEN="${GH_TOKEN:-$(bash
+  …/scripts/env-value.sh GH_TOKEN)}"` prefix, byte-identical to processor's
+  (archiver#466, gregoryfoster/skills#576). Parallel SessionStart hooks never see
+  each other's exports, so `gh-env.sh` cannot supply it. Retire the prefix when
+  #576 gives the hook its own token source.
+- `gh-env.sh` - **local file**, the same hook as CannObserv/processor's
+  (processor#115): a replica of gregoryfoster/skills#334's `using-github-cli`
+  hook, to become its symlink when that ships. Appends `export GH_TOKEN=<%q>` to
+  `$CLAUDE_ENV_FILE`, read as data by `scripts/env-value.sh` (over
+  `scripts/lib/env.sh`, so `load_env` stays the one parser, #452). Only
+  `GH_TOKEN`; `GH_TOKEN_<REPO>` and every other name stay per command. The trade,
+  chosen in #466: the token reaches every child of an agent's Bash call (pytest,
+  `pre-ship.sh`, git hooks), bar `dev_server.sh`, which unsets it. Leaves a set
+  token alone, never prints it, and always exits 0. It says so on stdout when
+  `.env` has no token, when the parser is missing (submodules not checked out),
+  when `CLAUDE_ENV_FILE` is unset, or when `gh` is missing or older than 2.78.0.
+  Tests: `tests/scripts/test_gh_env.py`.
 
 **`.skills/doctor.sh` is committed** (archiver#126). It is a real file copy, not
 a symlink - deliberately, since a symlink would dangle in exactly the
