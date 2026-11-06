@@ -94,6 +94,13 @@ Environment=ARCHIVER_NOTIFIER_BASE_URL=http://notifier:9000
 Environment=ARCHIVER_NOTIFIER_ENABLED=1
 LoadCredential=notifier-key:/etc/archiver/notifier.key
 
+# The notify cutover instant T (archiver#369 D3; F3, CannObserv/watcher#376):
+# facts that occurred before it are Watcher's to send, at or after it this
+# unit's. Watcher holds the same instant, and both restart before it arrives,
+# so nothing is sent twice or not at all. Without the Notifier gate above, T
+# refuses startup. Never an env file. Removing the line reverts to shadow.
+Environment=ARCHIVER_NOTIFY_CUTOVER_AT=2026-11-06T21:00:00Z
+
 # The processor-text reader (archiver#367 D4): change diffs read the two stored
 # texts from the processor bucket. Its own service account, objectViewer on
 # gs://co-gcs-processor alone, so this identity cannot read raw blobs
