@@ -111,3 +111,7 @@ docs/ENVIRONMENT.md :: tighten :: > every dev server and every test run shared o
 docs/ENVIRONMENT.md :: tighten :: > dedicated VM was the moment to close that rather than port it.
 docs/ENVIRONMENT.md :: tighten :: Note the fourth mover: the repo-root `.env` loads **after** `/etc/archiver/.env` and overrides it
 docs/ENVIRONMENT.md :: disproven :: - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance
+AGENTS.md :: retarget :: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
+docs/ENVIRONMENT.md :: retarget :: - `ARCHIVER_POWER_MAP_API_KEY` — *optional*. Archiver's **read-only** Power Map key (archiver#304)
+AGENTS.md :: retarget :: ([docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)). Outbox discard and rearm
+AGENTS.md :: retarget :: (#191) follow the same rule on 8000 ([docs/BUS.md](docs/BUS.md)). The operator

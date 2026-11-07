@@ -410,3 +410,28 @@ tests/test_conftest_guard.py :: docs/ENVIRONMENT.md and the failure message both
 
 # archiver#457: SKILLS.md § Worktrees points at the wheelhouse recipe AGENTS.md still holds.
 docs/SKILLS.md :: CLAUDE.md § Environment & Tooling.
+
+# curate-context-2026-11-07: each points at an AGENTS.md section that still holds what it cites; headings predate this run
+docs/BUS_TRIAGE.md :: Anything that writes targets 8001, never 8000 ([AGENTS.md](../AGENTS.m
+docs/DEPLOYMENT.md :: | An agent shell (AGENTS.md § Environment Files) | the repo `.env` |
+docs/DEPLOYMENT.md :: | The wheelhouse sync (AGENTS.md § Environment & Tooling) | `/etc/arc
+docs/ENVIRONMENT_BUS.md :: Note one more mover: the repo-root `.env` is gitignored and agent-owne
+docs/BUS_CONSUMERS.md :: ## Change-bus consumer - `info.watch-events` (archiver#369)
+docs/BUS_CONSUMERS.md :: ## Triaging the three DLQs (archiver#238, #399)
+docs/NOTIFICATIONS.md :: ## Dispatch on events (archiver#369)
+.github/dependabot.yml :: # CLAUDE.md's no-issue form: "chore: bump actions/checkout from 5.1.0
+alembic/env.py :: "sets it explicitly. See AGENTS.md § Environment Files."
+scripts/audit_lock.sh :: # wheelhouse (CLAUDE.md, Environment & Tooling), which this job has no
+scripts/audit_lock.sh :: fix="Sync the wheelhouse, then uv lock --upgrade-package <name> (CLAUD
+scripts/lib/env.sh :: # eval line upstream's AGENTS.md template uses. On top of it:
+src/core/database.py :: "sets it explicitly. See AGENTS.md § Environment Files."
+src/core/notifications/content.py :: """ISO 8601 with a ``Z`` (AGENTS.md); naive is read as UTC; microsecon
+tests/ci/test_dependabot.py :: * **Commits match CLAUDE.md's no-issue form**, ``<type>: <description>
+tests/ci/test_dependabot.py :: # CLAUDE.md → Conventions → Commit Messages.
+tests/ci/test_dependabot.py :: f"matches none of CLAUDE.md's types {sorted(COMMIT_TYPES)}"
+tests/conftest.py :: "It lives in the repo .env: load it as AGENTS.md § Environment Files
+tests/core/test_database.py :: assert "AGENTS.md § Environment Files" in message
+tests/scripts/test_no_env_sourcing.py :: assert "AGENTS.md § Environment Files" in text
+docs/ENVIRONMENT_BUS.md :: The bus half of [ENVIRONMENT.md](ENVIRONMENT.md#environment-variable-r
+docs/SKILLS.md :: ([ENVIRONMENT.md](ENVIRONMENT.md)).
+docs/CONVENTIONS.md :: [ARCHITECTURE.md](ARCHITECTURE.md#project-layout)):

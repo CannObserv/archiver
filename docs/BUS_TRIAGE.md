@@ -63,3 +63,13 @@ action` journald line: `app_user_id` (never the email), `action`, `queue`
 (`changes_outbox` or the DLQ), `ids`, `outcome` (`interrupted` for a mid-way broker
 failure, `error` when the core call raised - the crash itself still reaches the error
 handler).
+
+## Which port: 8000, on the operator's ask
+
+Anything that writes targets 8001, never 8000 ([AGENTS.md](../AGENTS.md) § Server Lifecycle). The one
+exception is DLQ discard and reprocess (#238): the queues exist only on prod's
+broker, so they go to 8000, and only when the operator asks
+([BUS_CONSUMERS.md](BUS_CONSUMERS.md)). Outbox discard and rearm
+(#191) follow the same rule on 8000 ([BUS.md](BUS.md)). The operator
+can do both on the dashboard's `/dashboard/bus-triage` (#271); the rule binds an
+agent there too.

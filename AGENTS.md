@@ -105,13 +105,8 @@ bash scripts/dev_server.sh
 
 Anything that writes - curl, SDK scripts, manual verification - targets 8001,
 never 8000. Why, its knobs, and the 2026-07-18 incident:
-[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
-exception is DLQ discard and reprocess (#238): the queues exist only on prod's
-broker, so they go to 8000, and only when the operator asks
-([docs/BUS_CONSUMERS.md](docs/BUS_CONSUMERS.md)). Outbox discard and rearm
-(#191) follow the same rule on 8000 ([docs/BUS.md](docs/BUS.md)). The operator
-can do both on the dashboard's `/dashboard/bus-triage` (#271); the rule binds an
-agent there too.
+[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one exception, DLQ and outbox
+triage on the operator's ask: [docs/BUS_TRIAGE.md](docs/BUS_TRIAGE.md#which-port-8000-on-the-operators-ask).
 
 ## Environment Files
 
