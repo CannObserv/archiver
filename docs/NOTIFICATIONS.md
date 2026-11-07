@@ -126,7 +126,7 @@ otherwise. `audit_stored_documents` sweeps the column as kind `notification_cont
 ## Dispatch on events (archiver#369)
 
 Design D3 and C-a: Watcher outboxes each observed edge on `info.watch-events`; Archiver
-decides who hears and composes; Notifier delivers. **Ships dark: shadow until F3.**
+decides who hears and composes; Notifier delivers. **Shadow until F3, Archiver's since T.**
 
 **Consume** (group `archiver.watch-events`, [BUS_CONSUMERS.md](BUS_CONSUMERS.md)). Per fact,
 `subscriptions_for` runs once, the diff is read once (only if a row shows one), and each
@@ -175,23 +175,32 @@ past `ARCHIVER_NOTIFY_RETENTION_DAYS` (90).
 **The log** is the dashboard's `/dashboard/notifications/log` ([PAGES.md](PAGES.md)).
 
 **Shadow parity before F3 (D6).** Evidence, not a tool. Archiver's side is a read-role export
-of the window's rows:
+of the facts in the window, with each row's Watcher template id:
 
 ```bash
-psql -d archiver -At -F $'\t' -c "SELECT info_item_id, event_type, reminder, occurred_at,
-  subscription_id, mode, status, title FROM information.notification_dispatches
-  WHERE created_at >= '<window start>' ORDER BY occurred_at"
+psql -d archiver -At -F $'\t' -c "SELECT d.info_item_id, d.event_type, d.reminder,
+  to_char(d.occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
+  s.imported_watcher_id, d.mode, d.status, d.subscription_id
+  FROM information.notification_dispatches d
+  LEFT JOIN information.notification_subscriptions s ON s.id = d.subscription_id
+  WHERE d.occurred_at >= '<window start>' ORDER BY d.occurred_at, s.imported_watcher_id"
 ```
 
-Watcher's coordinator exports its `NOTIFICATION_DISPATCHED` audits for the same window. The
-join is on (`archiver_info_item_id`, event type, `occurred_at`), template id ↔
-`imported_watcher_id`, per fact and subscription for the three edges. Reminders compare by
-count per episode. Bodies compare less their links.
+Filter on `occurred_at`, the fact's instant, never `created_at`: a replayed fact's row is
+written later than the fact. Watcher's coordinator exports its `NOTIFICATION_DISPATCHED`
+audits for the same window, one row per template. The join is per fact and subscription for
+the three edges: same `archiver_info_item_id`, event type, and template id ↔
+`imported_watcher_id`, with Watcher's `created_at` 0–120 s after Archiver's `occurred_at`
+(one-sided: Watcher dispatches after the fact). A Watcher row with zero or several candidates
+is reported as such, never resolved by nearest. Reminders compare by count per episode. Bodies
+compare less their links.
 
-**F3** (CannObserv/watcher#376): T = `2026-11-06T21:00:00Z`, the operator's, merged on the parity
-go; Archiver deploys first, then Watcher, both before T. Expect up to one extra reminder per open
-episode in the first 24 h: Archiver can't see Watcher's reminders. On 8001,
-`ARCHIVER_DEV_NOTIFY_CUTOVER_AT` maps beside the dev Notifier pair only.
+**F3** (CannObserv/watcher#376), done 2026-11-06. Parity was 20/20, lag 0.8–1.7 s. T =
+`2026-11-06T21:00:00Z`, the operator's: Archiver went live with it in `6f204b7af9bb` at
+20:16Z (#465), then Watcher at 20:18Z. Facts before T are Watcher's, at or after it Archiver's.
+Expect up to one extra reminder per open episode in the first 24 h: Archiver can't see
+Watcher's reminders. Removing T reverts to shadow, and without Watcher's T also coming off,
+nobody sends. On 8001, `ARCHIVER_DEV_NOTIFY_CUTOVER_AT` maps beside the dev Notifier pair only.
 
 ## Importing Watcher's templates
 
