@@ -195,7 +195,7 @@ the three edges: same `archiver_info_item_id`, event type, and template id ↔
 is reported as such, never resolved by nearest. Reminders compare by count per episode. Bodies
 compare less their links.
 
-**F3** (CannObserv/watcher#376), done 2026-11-06. Parity was 20/20, lag 0.8–1.7 s. T =
+**F3** (CannObserv/watcher#376), cut over 2026-11-06. Parity was 20/20, lag 0.8–1.7 s. T =
 `2026-11-06T21:00:00Z`, the operator's: Archiver went live with it in `6f204b7af9bb` at
 20:16Z (#465), then Watcher at 20:18Z. Facts before T are Watcher's, at or after it Archiver's.
 Expect up to one extra reminder per open episode in the first 24 h: Archiver can't see
