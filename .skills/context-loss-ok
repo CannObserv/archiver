@@ -112,4 +112,4 @@ docs/ENVIRONMENT.md :: tighten :: > dedicated VM was the moment to close that ra
 docs/ENVIRONMENT.md :: tighten :: Note the fourth mover: the repo-root `.env` loads **after** `/etc/archiver/.env` and overrides it
 docs/ENVIRONMENT.md :: disproven :: - `ARCHIVER_PUBLIC_BASE_URL` — *optional*. Public-facing base URL of this Archiver instance
 AGENTS.md :: retarget :: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The one
-docs/ENVIRONMENT.md :: retarget :: lives here.
+docs/ENVIRONMENT.md :: retarget :: - `ARCHIVER_POWER_MAP_API_KEY` — *optional*. Archiver's **read-only** Power Map key (archiver#304)
