@@ -5,7 +5,7 @@
 when that file reached twice its context budget; DEPLOYMENT.md keeps releases,
 the drift check, the service user, reading production and the timers.
 `AGENTS.md` keeps the five variables that carry safety rules; the reference
-lives here.
+lives here, the change-bus ones in [ENVIRONMENT_BUS.md](ENVIRONMENT_BUS.md).
 
 ## Why `scripts/dev_server.sh` exists
 
