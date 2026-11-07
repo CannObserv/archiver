@@ -343,3 +343,35 @@ regen.sh must never generate on its own (#272).
 The `rev:` in `.pre-commit-config.yaml` and the `ruff` pin in `pyproject.toml`
 move together; a skew means the commit-time hook and CI disagree about what is
 an error. The same test fails when they drift apart.
+
+## CI and pre-commit - what runs where
+
+The checks behind every rule above, by file (moved from the layout tree in
+[ARCHITECTURE.md](ARCHITECTURE.md#project-layout)):
+
+```
+.github/workflows/             CI (ci.yml) — lint job (ruff check + ruff format --check
+                               + check_version_lockstep.py),
+                               test job (Postgres service container, alembic upgrade,
+                               pytest), client-drift job (regen vendored clients
+                               from committed OpenAPI snapshots, fail on diff;
+                               then the SDK's own pytest suite under its lockfile),
+                               and changelog job (changes under
+                               alembic/versions/, src/api/routes/,
+                               src/api/schemas/, or clients/python/ must touch
+                               CHANGELOG.md — path-triggered, not commit-type;
+                               opt out via `no-changelog` PR label).
+                               Triggers on push/PR to main.
+                               audit.yml — scripts/audit_lock.sh on push, PR, weekly
+                               and dispatch; report-only, outside deploy.sh's gate
+                               (#420; DEPLOYMENT.md "Lock audit")
+.github/dependabot.yml         Weekly github-actions bumps of the workflows' SHA pins
+                               (#192); see DEPLOYMENT.md "Dependabot"
+.pre-commit-config.yaml        ruff check + ruff format + standard pre-commit-hooks
+                               + test_check_changelog.sh (pre-commit stage), plus a pre-push guard
+                               (scripts/check_changelog_on_push.sh) that mirrors
+                               the CI changelog check before the push leaves the
+                               clone. Run `uv run pre-commit install` once per
+                               clone — installs both pre-commit and pre-push
+                               hook types via default_install_hook_types.
+```
