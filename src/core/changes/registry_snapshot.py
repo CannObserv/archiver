@@ -116,8 +116,9 @@ margin**, neither fires. Do not delete the pointer above on the strength of
 
 And the mirror's real hazard is not this literal, it is
 ``ARCHIVER_REGISTRY_STREAM_MAXLEN`` below: naming a source is not enough when an
-env var can move it with no commit in either repo. ``docs/ENVIRONMENT.md`` carries
-the operator's side of that - setting the override obliges a note to broker.
+env var can move it with no commit in either repo. Archiver's
+``docs/ENVIRONMENT_BUS.md`` carries the operator's side of that - setting the
+override obliges a note to broker.
 
 Derived from key count x sets retained, never from the fact stream's number:
 at O(10^3) items on the 1-hour period that is ~24k entries/day, so 50k covers
