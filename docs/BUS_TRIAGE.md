@@ -69,7 +69,7 @@ handler).
 Anything that writes targets 8001, never 8000 ([AGENTS.md](../AGENTS.md) § Server Lifecycle). The one
 exception is DLQ discard and reprocess (#238): the queues exist only on prod's
 broker, so they go to 8000, and only when the operator asks
-([docs/BUS_CONSUMERS.md](BUS_CONSUMERS.md)). Outbox discard and rearm
-(#191) follow the same rule on 8000 ([docs/BUS.md](BUS.md)). The operator
+([BUS_CONSUMERS.md](BUS_CONSUMERS.md)). Outbox discard and rearm
+(#191) follow the same rule on 8000 ([BUS.md](BUS.md)). The operator
 can do both on the dashboard's `/dashboard/bus-triage` (#271); the rule binds an
 agent there too.
