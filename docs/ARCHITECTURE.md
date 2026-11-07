@@ -408,7 +408,8 @@ skills-vendor/                 Git submodules for external skill repos
 .skills/doctor.sh              Committed skill-symlink doctor (real file, not a
                                symlink) — see SKILLS.md "SessionStart Hooks"
 .claude/skills/                Claude Code skill discovery (symlinks → ../../skills/<name>)
-.github/, .pre-commit-config.yaml   CI jobs, Dependabot, pre-commit hooks: CONVENTIONS.md
+.github/, .pre-commit-config.yaml
+                               CI jobs, Dependabot, pre-commit hooks: CONVENTIONS.md
                                "CI and pre-commit - what runs where"
 ```
 
