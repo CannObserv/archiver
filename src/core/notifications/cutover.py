@@ -8,7 +8,7 @@ makes the flip free of gaps and double sends (CannObserv/watcher#376).
 
 **One switch.** ``ARCHIVER_NOTIFY_CUTOVER_AT`` unset *is* shadow mode: there is
 no separate mode flag to disagree with it. It is ``archiver.service``'s own
-``Environment=`` line, never an env file, and absent until F3.
+``Environment=`` line, never an env file, set since F3 (2026-11-06).
 
 **Refuse, don't degrade.** A T that isn't an unambiguous UTC instant, or a T in
 a process without the Notifier gate (archiver#368), refuses startup. A misread
