@@ -224,6 +224,9 @@ async def test_a_rejection_for_an_unknown_command_is_acked_with_a_warning(
     assert await fake_redis.xlen(DLQ) == 0
     [call] = warning.call_args_list
     assert call.kwargs["extra"]["command_id"] == "cmd-x"
+    # Commands cascade with their item, so "unknown" also covers one Archiver
+    # issued before the item was deleted (#370 CR 3): the message says both.
+    assert "its item was deleted" in call.args[0]
 
 
 async def test_a_foreign_payload_is_acked_with_a_warning(fake_redis, session_factory):
