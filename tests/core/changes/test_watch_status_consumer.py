@@ -324,12 +324,11 @@ async def test_open_vocabulary_health_token_applies(fake_redis, session_factory,
         await _cleanup_cursor(session_factory)
 
 
-async def test_co_core_037_status_fields_parse_and_are_ignored(fake_redis, session_factory, item):
-    """A 0.37 frame's three new optional fields (cannobserv#565) neither wedge the
-    consumer nor reach the cache: ``apply_watch_status`` reads none of them (#397).
+async def test_c_c_status_fields_reach_the_cache(fake_redis, session_factory, item):
+    """A frame's three C-c levels (cannobserv#565) are stored end to end (archiver#370 D1).
 
-    The frame is patched by hand so it is what Watcher sends, whatever co-core
-    this side has installed. Adopting the fields is #371's.
+    Before #370 they parsed and were ignored (#397). The frame is patched by
+    hand so it is what Watcher sends, whatever co-core this side has installed.
     """
     frame = _status(str(item.info_item_id))
     payload = json.loads(frame["payload"])
@@ -349,9 +348,8 @@ async def test_co_core_037_status_fields_parse_and_are_ignored(fake_redis, sessi
         )
         row = await _get_row(session_factory, item.info_item_id)
         assert (row.applied_generation, row.applied_active, row.health) == (1, True, "ok")
-        assert not {"last_full_fetch_at", "health_reason", "health_status_code"} & set(
-            WatchStatus.__table__.columns.keys()
-        )
+        assert row.last_full_fetch_at == OCCURRED_AT
+        assert (row.health_reason, row.health_status_code) == ("http_status", 503)
     finally:
         await _cleanup_cursor(session_factory)
 

@@ -1,0 +1,64 @@
+{#
+  Check-now block (archiver#370) - one of the Watcher panel's fields, on the
+  cadence editor's gate (has_active_source) and the F4 switch, in the
+  `watching` and `no_status` branches. Also the response of its own poll,
+  GET /dashboard/info-items/{id}/watch-check.
+
+  Requires `item_id`, `check_enabled`, `check` and `check_poll_seconds`, all
+  from `_watch_template_context`, the section's one builder: a site that omits
+  `check` renders a block that never polls. `check` is None for an item never
+  checked, else `src/dashboard/watch_check_view.py`'s fields for the latest
+  command's rung: rejected → done → no answer → pending (D2).
+
+  The button follows the Watcher-POST contract (docs/INFO_ITEM_ACTIONS.md):
+  hx-swap="none", the response fires `watcherUpdated` and the section re-renders
+  itself, a refusal is a `showFlash`, and focus moves to #watcher-heading.
+  Disabled while pending - one open command per item (D4).
+
+  While pending the block re-reads itself every `check_poll_seconds`: the
+  outcome arrives on the bus, a round trip after the click. Its poll fires
+  nothing (docs/HTMX.md § Blocks that share a section), and the swap that lands
+  a terminal rung is the swap that stops it. The button syncs on the block with
+  `drop`, so a poll never beats a click (archiver#220).
+#}
+{% if check_enabled %}
+<div id="watch-check" class="field-row-group"
+     {% if check and check.open %}hx-get="/dashboard/info-items/{{ item_id }}/watch-check"
+     hx-trigger="every {{ check_poll_seconds }}s" hx-swap="outerHTML"
+     hx-sync="this:abort" hx-disinherit="hx-sync"{% endif %}>
+  <span class="field-row__label">Check now</span>
+  <div class="field-row">
+    <div class="field-row__readout" aria-live="polite">
+      {#- One span: the readout is a flex row, which would drop the spaces between a
+          bare text run and the muted span beside it. -#}
+      <span>
+      {% if check is none %}
+      <span class="text-muted">Not checked from here yet</span>
+      {% elif check.kind == "pending" %}
+      Check pending <span class="text-sm text-muted">· requested {{ check.requested_ago }}</span>
+      {% elif check.kind == "done" %}
+      Checked {{ check.completed_ago }}:
+      <span class="badge badge--{{ 'success' if check.health_ok else 'danger' }}"
+            style="font-size:0.7rem;">{{ (check.health or "unknown").upper() }}</span>
+      {% if check.health_reason %}
+      <span class="text-sm text-muted">{{ check.health_reason }}{% if check.health_status_code %} {{ check.health_status_code }}{% endif %}</span>
+      {% endif %}
+      {% elif check.kind == "rejected" %}
+      Check rejected: <code>{{ check.reason }}</code>
+      <span class="text-sm text-muted">· requested {{ check.requested_ago }}</span>
+      {% else %}{# no_answer: not a verdict (D5) - a later completion still lands here #}
+      No answer yet <span class="text-sm text-muted">· requested {{ check.requested_ago }}, past
+      {{ check.timeout_minutes }} min. Watcher may have dead-lettered it
+      (<code>{{ check.dlq }}</code>), be down, or still be waiting on the fetch.</span>
+      {% endif %}
+      </span>
+    </div>
+    <form hx-post="/dashboard/info-items/{{ item_id }}/check-now"
+          hx-swap="none"
+          hx-sync="closest #watch-check:drop"
+          hx-on::after-request="var h=document.getElementById('watcher-heading'); if (h) { h.focus(); }">
+      <button type="submit" class="btn btn--secondary btn--sm"{% if check and check.open %} disabled{% endif %}>Check now</button>
+    </form>
+  </div>
+</div>
+{% endif %}

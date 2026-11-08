@@ -139,6 +139,52 @@ class TestApply:
         assert row.health == "error"
         assert row.applied_interval is None
 
+    async def test_stores_the_three_c_c_levels(self, session: AsyncSession):
+        """archiver#370 D1: ``last_full_fetch_at``, ``health_reason`` and
+        ``health_status_code`` are stored - check-now's completion reads the first."""
+        item = await make_item(session)
+        state = make_status(
+            str(item.info_item_id),
+            health="error",
+            last_full_fetch_at=T0 - timedelta(minutes=2),
+            health_reason="http_status",
+            health_status_code=503,
+        )
+
+        await apply_watch_status(session, state)
+        await session.commit()
+
+        row = await get_row(session, item.info_item_id)
+        assert row.last_full_fetch_at == T0 - timedelta(minutes=2)
+        assert row.health_reason == "http_status"
+        assert row.health_status_code == 503
+
+    async def test_absent_c_c_levels_overwrite_to_null(self, session: AsyncSession):
+        """Each is a level: a later frame that reports none clears them (recovery
+        clears the reason). An older producer omitting the keys reads the same."""
+        item = await make_item(session)
+        await apply_watch_status(
+            session,
+            make_status(
+                str(item.info_item_id),
+                health="error",
+                last_full_fetch_at=T0,
+                health_reason="fetch_timeout",
+                health_status_code=None,
+            ),
+        )
+        await session.commit()
+
+        await apply_watch_status(
+            session, make_status(str(item.info_item_id), occurred_at=T0 + timedelta(minutes=1))
+        )
+        await session.commit()
+
+        row = await get_row(session, item.info_item_id)
+        assert row.last_full_fetch_at is None
+        assert row.health_reason is None
+        assert row.health_status_code is None
+
     async def test_tombstone_deletes_and_is_idempotent(self, session: AsyncSession):
         item = await make_item(session)
         await apply_watch_status(session, make_status(str(item.info_item_id)))

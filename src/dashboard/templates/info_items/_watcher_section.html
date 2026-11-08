@@ -2,7 +2,8 @@
    Renders from LOCAL state (watch_status cache + item.watch_spec - archiver#151) and
    reaches Watcher not at all (archiver#142): the SDK actions retired with the HTTP edge.
    What is left is Archiver's own control plane - pause/resume, cadence and the watch
-   lifecycle (archive/restore, archiver#361) - which write locally and announce.
+   lifecycle (archive/restore, archiver#361) - which write locally and announce, and
+   check-now (archiver#370), which commands Watcher over info.watch-check.
    Root div carries hx-trigger="watcherUpdated from:body" so a pause/resume or cadence
    response (which sends HX-Trigger: {"watcherUpdated":{}}) causes this section to
    self-refresh without an explicit swap target.
@@ -76,6 +77,8 @@
     {% if has_active_source %}
     {% include "info_items/_cadence_editor.html" %}
     {% include "info_items/_temporal_profile.html" %}
+    {# archiver#370: check-now, dark until F4 (renders nothing while off). #}
+    {% include "info_items/_watch_check.html" %}
     {% endif %}
     {# archiver#361: archive stores state before Watcher has ever reported, too. #}
     <div>{% include "info_items/_watch_lifecycle.html" %}</div>
@@ -206,6 +209,8 @@
     {% if has_active_source %}
     {% include "info_items/_cadence_editor.html" %}
     {% include "info_items/_temporal_profile.html" %}
+    {# archiver#370: check-now, dark until F4 (renders nothing while off). #}
+    {% include "info_items/_watch_check.html" %}
     {% endif %}
     {# Archived items carry Restore in the header instead (archiver#361). #}
     {% if not watch.archived %}

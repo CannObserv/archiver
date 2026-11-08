@@ -48,6 +48,14 @@ from src.core.services.replication_issuance import (
 )
 from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.services.temporal_evaluation import utc_today
+from src.core.services.watch_check import (
+    CheckAlreadyOpen,
+    CheckNowDisabled,
+    check_enabled,
+    check_timeout,
+    current_state,
+    request_check,
+)
 from src.core.tools.assign_rep_spec import (
     DuplicateAssignmentError,
     RepFieldsIncompleteError,
@@ -120,6 +128,8 @@ from src.dashboard.replication_actions import (
 )
 from src.dashboard.stored_documents import finding_views
 from src.dashboard.temporal_profile_form import fields_from_form, profile_view
+from src.dashboard.watch_check_view import POLL_SECONDS as WATCH_CHECK_POLL_SECONDS
+from src.dashboard.watch_check_view import check_view
 from src.dashboard.watch_panel import build_watch_context
 
 router = APIRouter(prefix="/dashboard/info-items")
@@ -1728,6 +1738,7 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
     ).scalar_one_or_none()
     # The cadence's top tier (archiver#365): its stored result, never the clock.
     profile = await session.get(TemporalProfile, item.info_item_id, populate_existing=True)
+    now = datetime.now(UTC)
     watch = build_watch_context(
         host=host,
         profile=profile,
@@ -1735,8 +1746,15 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
         item=item,
         status=status,
         last_changed_at=last_changed_at,
-        now=datetime.now(UTC),
+        now=now,
     )
+    # Check-now (archiver#370): read only while F4's switch is on.
+    enabled = check_enabled()
+    check = None
+    if enabled:
+        timeout = check_timeout()
+        state = await current_state(session, item.info_item_id, now=now, timeout=timeout)
+        check = check_view(state, now=now, timeout=timeout)
     return {
         "item_id": str(item.info_item_id),
         "state": watch["state"],
@@ -1757,6 +1775,12 @@ async def _watch_template_context(session: AsyncSession, item: InfoItem) -> dict
         "cadence_value": (item.watch_spec or {}).get("interval") or "",
         # The Temporal profile row (archiver#365), on the cadence editor's gate.
         "profile": profile_view(profile),
+        # The check-now block (archiver#370), on the same gate plus the F4 switch.
+        # Every render site of the section and of the block's poll reads these
+        # from here: a site without `check` would render a block that never polls.
+        "check_enabled": enabled,
+        "check": check,
+        "check_poll_seconds": WATCH_CHECK_POLL_SECONDS,
     }
 
 
@@ -1896,6 +1920,73 @@ async def toggle_watch_active(
 
     response = await _render_status_partial(request, session=session, item=item)
     response.headers["HX-Trigger"] = _watcher_hx_trigger()
+    return response
+
+
+# ---------------------------------------------------------------------------
+# POST /{item_id}/check-now, GET /{item_id}/watch-check  (archiver#370)
+# ---------------------------------------------------------------------------
+
+_CHECK_OPEN_FLASH = "A check is already pending for this item - wait for its answer."
+_CHECK_WRITE_FAILED_FLASH = "Couldn't request the check - nothing was sent."
+
+
+def _require_check_now() -> None:
+    """404 while F4's switch is off (D6): the routes do not exist until then."""
+    if not check_enabled():
+        raise DashboardNotFound("Not found")
+
+
+@router.get("/{item_id}/watch-check", response_class=HTMLResponse)
+async def watch_check_block(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX partial: the check-now block, re-read by its own poll while pending."""
+    _require_check_now()
+    item = await _resolve_item(item_id, session)
+    context = await _watch_template_context(session, item)
+    return _templates.TemplateResponse(request, "info_items/_watch_check.html", context)
+
+
+@router.post("/{item_id}/check-now", response_class=HTMLResponse)
+async def check_now(
+    item_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Ask Watcher to check the item now: one ``info.watch-check`` command, outboxed.
+
+    The Watcher-POST contract (docs/INFO_ITEM_ACTIONS.md): the form swaps
+    nothing, ``watcherUpdated`` re-renders the section - whose block then shows
+    *pending* and polls - and a refusal rides ``showFlash``. A click while the
+    item's latest command is pending writes nothing (D4). Not gated on
+    announceability: Watcher's pre-flight is the authority on what it will run,
+    and its ``check_rejected`` reason is the answer the block shows.
+    """
+    _require_check_now()
+    item = await _resolve_item(item_id, session)
+    try:
+        await request_check(session, item.info_item_id, requested_by=user.id)
+        await session.commit()
+    except CheckAlreadyOpen:
+        await session.rollback()
+        flash = ("warning", _CHECK_OPEN_FLASH)
+    except CheckNowDisabled as e:
+        # The switch flipped between the gate and the write.
+        await session.rollback()
+        raise DashboardNotFound("Not found") from e
+    except Exception:
+        await session.rollback()
+        logger.exception("Check-now request failed for InfoItem %s", item_id)
+        flash = ("error", _CHECK_WRITE_FAILED_FLASH)
+    else:
+        flash = None
+    response = Response(status_code=200)
+    response.headers["HX-Trigger"] = _watcher_hx_trigger(flash)
     return response
 
 
