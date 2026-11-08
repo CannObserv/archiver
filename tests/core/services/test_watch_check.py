@@ -245,7 +245,7 @@ class TestRequest:
         assert second.requested_at >= first.requested_at
         assert (await session.execute(select(func.count(ChangesOutboxRow.id)))).scalar() == 2
 
-    async def test_a_new_click_after_no_answer_is_allowed(self, session: AsyncSession, monkeypatch):
+    async def test_a_new_click_after_no_answer_is_allowed(self, session: AsyncSession):
         item = await _item(session)
         session.add(
             CommandRow(
