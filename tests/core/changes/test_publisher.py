@@ -1568,6 +1568,46 @@ async def test_registry_topic_publish_carries_its_own_maxlen(session_factory, fa
 
 
 @pytest.mark.asyncio
+async def test_a_watch_check_command_publishes_uncapped(session_factory, fake_redis):
+    """info.watch-check is never capped by its producer (archiver#370).
+
+    broker's STREAMS.md: "never XTRIMmed". Archiver's ``+xadd ~info.watch-check``
+    would admit ``XADD ... MAXLEN``, so only the code keeps a cap off it: the
+    publish carries none even when the drain holds caps for other topics.
+    """
+    captured: list = []
+    real = AsyncBusPublisher(fake_redis)
+
+    class SpyPublisher:
+        async def execute(self, effect):
+            captured.append(effect)
+            return await real.execute(effect)
+
+    await _insert_row(
+        session_factory,
+        payload={
+            "schema_version": 1,
+            "event_type": "watch_check",
+            "occurred_at": _OCCURRED_AT,
+            "command_id": "cmd-uncapped",
+            "info_item_id": "item-wc",
+            "requested_at": _OCCURRED_AT,
+        },
+        topic="info.watch-check",
+    )
+
+    n = await drain_once(
+        session_factory=session_factory,
+        publisher=SpyPublisher(),
+        topic_maxlen={"info.registry": 50_000},
+    )
+    assert n == 1
+    [effect] = captured
+    assert effect.topic == "info.watch-check"
+    assert effect.maxlen is None
+
+
+@pytest.mark.asyncio
 async def test_run_trims_exactly_the_allowlist(session_factory, publisher, fake_redis, monkeypatch):
     """The loop trims ``trim_topics`` and nothing else, whatever it published.
 

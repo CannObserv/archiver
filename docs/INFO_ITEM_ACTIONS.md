@@ -12,7 +12,7 @@ route; a behaviour change updates both, in the same commit.
 Moved here from [PAGES.md](PAGES.md), which keeps the inventory line for each of
 these routes. This is the behaviour behind them.
 
-**The two Watcher action POSTs share a contract.** `toggle-watch-active` and
+**The Watcher action POSTs share a contract.** `toggle-watch-active` and
 `watch-cadence` each re-render a Watcher partial and set `HX-Trigger:
 {"watcherUpdated":{}}`. Their forms use `hx-swap="none"`, so the rendered body is
 discarded and the trigger is what refreshes `#watcher-section` - swapping the
@@ -24,7 +24,7 @@ thing that survives it, living in `detail.html` outside the swapped region. The
 focus-script-in-the-response trick the domain notes row uses cannot work here -
 `hx-swap="none"` discards the body a script would ride in.
 
-**There were five.** `begin-watching`, `check-now`, and `resync-watcher` were
+**There were five.** `begin-watching`, the SDK's `check-now`, and `resync-watcher` were
 SDK-backed and retired with it in archiver#142, along with the stale-link
 reconcile they triggered (a `WatcherNotFound` NULLed `watcher_item_id` so the
 panel could re-offer "Begin Watching"). Nothing replaces them individually:
@@ -34,6 +34,17 @@ The two survivors are *local* writes
 that announce and let Watcher converge; the route entries in [PAGES.md](PAGES.md) name only what each adds.
 
 **`toggle-watch-active`.** The re-render still shows applied state, so the button flips only once Watcher reports back on `info.watch-status` - the lag window is the announcement round-trip and stays visible as generation drift. The affordance is gated on `has_active_source` - as the cadence editor is, and as the panel's own state now is (archiver#142): mutating policy on an item that cannot announce live would emit a *tombstone* and burn a generation for nothing. **The route enforces the same gate** (archiver#167), for a stale tab whose binding was deactivated after render, or a script: on an unannounceable item it writes nothing, flashes "no active source with extraction specs", and re-renders, which shows `not_watching` and corrects the tab. `watch-cadence` does the same, before its vocabulary check. A failed local write rolls back, flashes "the change was not saved", and renders `degraded` **from the path id** - reading through the rolled-back ORM object would emit IO from the template and raise `MissingGreenlet`.
+
+**`check-now`** (archiver#370, epic #359 A11). The Watcher-POST contract, with an empty body: the form swaps nothing, `watcherUpdated` re-renders the section, and focus moves to `#watcher-heading`. It commands rather than announces: `request_check` (`src/core/services/watch_check.py`) locks the item, then outboxes one `WatchCheckCommandEmit` on `info.watch-check` beside a `watch_check_commands` row, `requested_at` stamped at that write. **Dark until F4:** with `ARCHIVER_WATCH_CHECK_ENABLED` unset the button is absent and this route and `GET …/watch-check` 404, enqueueing nothing. **One open command per item** (D4): a click while the latest is pending writes nothing and flashes a warning, sparing the round trip to Watcher's `fetch_open`. A failed write flashes an error. **Not gated on announceability:** Watcher's pre-flight is the authority, and its `check_rejected` reason is the answer the block shows.
+
+The block's state is derived at render, never stored as success (D2), first match wins:
+
+1. a rejection recorded on the command → **Check rejected: `<reason>`**, verbatim (the vocabulary is Watcher's, opaque here);
+2. `watch_status.last_full_fetch_at` > `requested_at` → **Checked**, plus `health` and `health_reason`/`health_status_code`. A 200 whose extraction then failed is done + ERROR;
+3. older than `ARCHIVER_WATCH_CHECK_TIMEOUT_SECONDS` (15 min) → **No answer yet**, naming `info.watch-check.dlq`;
+4. otherwise **Check pending**: the button is disabled and the block polls.
+
+Rungs 1 to 3 re-enable the button, and the next click mints a fresh `command_id` and `requested_at`. **No answer is not a verdict** (D5): a later completion still flips it to done. Three causes reach it: Watcher dead-lettered the command (5 failed attempts, no `check_rejected`), Watcher is down, or the fetch is silent on Replicator's side. Watcher reaps a silent fetch at 1800 s and errors the item only after 3 re-issues, about 2 h. A click after no answer separates the cases: Watcher rejects it `fetch_open` while the first fetch is still open, and accepts it after a dead letter. **Any full fetch after `requested_at` completes the check**, a scheduled one included: the content is fresh either way. **The clocks differ:** `requested_at` is Archiver's and `last_full_fetch_at` is Watcher's, on separate VMs, compared with no slack. A revoked item's `watch_status` row is deleted, so its command ends `rejected: unknown_item` or as no answer. `check_rejected` is never a notification.
 
 **`archive` / `restore`** (archiver#361). Not HTMX actions: plain POST→303 to the detail page, so the Overview's `archived` badge re-renders with the panel - the Domain archive's shape (SCREENS.md § *Allowed variant*). Both call `src/core/services/info_item_lifecycle.py`, which locks the item `FOR UPDATE`, writes only on a real transition (archive keeps its first timestamp) and announces through `announce_policy_change`, so an unannounceable item stores the state and emits nothing (#167). **Not gated on `has_active_source`**, unlike the toggle: archiving an unannounceable item burns no generation, and the next binding announces with the archive in place. `toggle-watch-active` is not refused on an archived item (D3): it stores intent, which restore applies.
 

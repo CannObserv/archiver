@@ -16,8 +16,11 @@ with ``content.revisions`` and ``content.artifacts``. What is this stream's:
   the registry is the authority on what exists.
 - **A malformed ``info_item_id`` is poison** (``content.revisions``'
   precedent), parked on ``info.watch-events.dlq``.
-- **``check_rejected`` is acked and left alone**: it is check-now's outcome
-  (A11), not a notification.
+- **``check_rejected`` closes its check-now command** (archiver#370 D3), by
+  ``command_id``, first write wins: a redelivered command can mint a second
+  ``event_id`` for one rejection. It is check-now's outcome, never a
+  notification. An unknown ``command_id`` is ack + WARNING (only Archiver
+  issues commands, so one is a fault worth seeing), never a dead letter.
 - **Another decoded type is acked** with a WARNING, the ``content.artifacts``
   fall-through. A type co-core doesn't know never reaches here: the shared loop
   parks it as ``undecodable``, and it is reprocessed after a co-core upgrade.
@@ -56,6 +59,7 @@ from src.core.services.notification_dispatch import (
     UnknownInfoItemError,
     record_fact,
 )
+from src.core.services.watch_check import record_rejection
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -121,6 +125,7 @@ async def handle_message(
     """
     payload = message.payload
     if isinstance(payload, CheckRejectedEvent):
+        await _close_check(session_factory, payload, message.message_id)
         return True
     if not isinstance(payload, _WATCH_EVENTS):
         logger.warning(
@@ -159,6 +164,27 @@ async def handle_message(
         },
     )
     return True
+
+
+async def _close_check(
+    session_factory: async_sessionmaker[AsyncSession], fact: CheckRejectedEvent, message_id: str
+) -> None:
+    """Record a check-now rejection on its command (archiver#370 D3)."""
+    async with session_factory() as session:
+        disposition = await record_rejection(session, fact)
+        await session.commit()
+    extra = {
+        "disposition": disposition,
+        "command_id": fact.command_id,
+        "info_item_id": fact.info_item_id,
+        "reason": fact.reason,
+        "event_id": fact.event_id,
+        "message_id": message_id,
+    }
+    if disposition == "unknown_command":
+        logger.warning("Watch check rejected for a command Archiver never issued", extra=extra)
+    else:
+        logger.info("Watch check rejection applied", extra=extra)
 
 
 def _handler(session_factory: async_sessionmaker[AsyncSession]) -> group_consumer.MessageHandler:

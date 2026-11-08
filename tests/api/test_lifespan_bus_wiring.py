@@ -250,6 +250,28 @@ async def test_per_publish_cap_is_info_registry_only(bus_env, bus_client_calls, 
 
 
 @pytest.mark.asyncio
+async def test_watch_check_is_neither_trimmed_nor_capped(bus_env, bus_client_calls, test_engine):
+    """info.watch-check is a command stream Archiver issues (archiver#370).
+
+    Named explicitly beside the two literal pins above: neither the XTRIM
+    allowlist nor the per-publish cap may ever name it (broker STREAMS.md,
+    "never XTRIMmed"), whatever else joins them.
+    """
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+
+    with patch("src.core.changes.publisher.run", side_effect=_capture):
+        async with lifespan(app):
+            pass
+
+    assert "info.watch-check" not in captured["trim_topics"]
+    assert "info.watch-check" not in captured["topic_maxlen"]
+
+
+@pytest.mark.asyncio
 async def test_artifacts_consumer_and_reaper_start_behind_the_gate(
     bus_env, bus_client_calls, test_engine
 ):

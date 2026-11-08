@@ -107,6 +107,10 @@ async def apply_watch_status(session: AsyncSession, state: WatchStatusState) -> 
         "last_attempt_at": state.last_attempt_at,
         "last_observed_at": state.last_observed_at,
         "health": state.health,
+        # C-c (archiver#370 D1): levels, so a frame without them clears them.
+        "last_full_fetch_at": state.last_full_fetch_at,
+        "health_reason": state.health_reason,
+        "health_status_code": state.health_status_code,
         "occurred_at": state.occurred_at,
         "updated_at": datetime.now(UTC),
     }

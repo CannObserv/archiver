@@ -1,7 +1,7 @@
 # archiver — Schema: bus-state tables
 
 Per-table contracts and invariants for the tables that record what archiver put on, or read
-from, the change bus: the revocation records, the replicate and persist command ledgers, the
+from, the change bus: the revocation records, the replicate, persist and watch-check command ledgers, the
 outbox, the watch-status cache with its tail cursor, and the notification dispatches. Split from [SCHEMA.md](SCHEMA.md), which
 keeps the registry tables; identifiers are verbatim there and here.
 
@@ -79,6 +79,17 @@ keeps the registry tables; identifiers are verbatim there and here.
   it) — "no row" is the panel's "no status yet" state, distinct from paused and from healthy.
   FK `ON DELETE CASCADE`; a status for an item the registry does not hold is dropped unrecorded.
   **A stale or absent row degrades the panel and must never fail a mutation, route, or publish.**
+  The three C-c levels (archiver#370 D1): `last_full_fetch_at` (bytes arrived - a 200, never a
+  304, stamped before extraction; check-now's completion reading), `health_reason` (an open
+  token, verbatim) and `health_status_code` (for `http_status`). Levels: a frame without them
+  writes `NULL`. Rows from before the migration fill on Watcher's next periodic republish.
+- **`WatchCheckCommand`** (`watch_check_commands`) — one check-now click (archiver#370 D2):
+  `command_id` (PK), `info_item_id` (FK `CASCADE`), `requested_at` (Archiver's clock, stamped at
+  the outbox write), `requested_by` (`app_users.id`, `SET NULL`; an id, so the read role needs no
+  column allowlist), `created_at`, and the only outcome stored, `rejected_reason` /
+  `rejected_at` (the fact's `occurred_at`), first write wins. Success is not stored: it is read
+  at render from `watch_status.last_full_fetch_at > requested_at`. Written with its
+  `info.watch-check` outbox row in one transaction. Ladder: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 - **`BusTailCursor`** (`bus_tail_cursors`) — resume point per tailed stream (archiver#151). A
   groupless tail reader has no server-side delivery cursor; this row makes a restart a delta
   from the last-applied stream id instead of a full `0-0` replay. Advanced in the same

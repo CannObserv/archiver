@@ -5,7 +5,8 @@ Group ``archiver.watch-events``, consumer ``archiver-watch-events-1``. Per fact:
 1. A change, error or recovery → one row per matching subscription, acked
    after the commit; redelivered → no new row
 2. An unknown or revoked ``info_item_id`` → ack, WARNING, no rows
-3. ``check_rejected`` → ack, nothing (check-now's, A11)
+3. ``check_rejected`` → recorded on its command, first write wins; an
+   unknown ``command_id`` → ack, WARNING (archiver#370 D3)
 4. A decoded payload that isn't a watch event → ack, WARNING
 5. A malformed ``info_item_id`` → handler poison, ``info.watch-events.dlq``
 6. A frame co-core can't decode, an unknown ``event_type`` included → DLQ as
@@ -31,7 +32,7 @@ from sqlalchemy import select
 
 from src.core.changes import watch_events_consumer
 from src.core.changes.watch_events_consumer import CONSUMER_GROUP, DispatchContext
-from src.core.models import NotificationDispatch
+from src.core.models import NotificationDispatch, WatchCheckCommand
 from tests.core.changes._fakeredis_xautoclaim import with_redis_cursor
 from tests.core.notifications.builders import make_event
 from tests.core.services._dispatch_seed import (
@@ -135,18 +136,44 @@ async def test_an_unknown_item_is_acked_and_dropped(fake_redis, session_factory)
     assert call.kwargs["extra"]["info_item_id"] == "01HV0000000000000000000999"
 
 
-async def test_check_rejected_is_acked_and_left_to_check_now(fake_redis, session_factory):
-    item = await seed_item(session_factory)
-    await seed_subscription(session_factory)
-    event = CheckRejectedEvent(
+def _check_rejected(item_id: str, command_id: str, **overrides) -> CheckRejectedEvent:
+    values = dict(
         occurred_at=datetime.now(UTC),
         event_id="01HV0000000000000000000004",
-        info_item_id=str(item.info_item_id),
+        info_item_id=item_id,
         info_source_id=None,
-        command_id="cmd-1",
+        command_id=command_id,
         reason="paused",
     )
-    await _publish(fake_redis, to_wire(event))
+    values.update(overrides)
+    return CheckRejectedEvent(**values)
+
+
+async def _seed_command(session_factory, item) -> str:
+    command_id = "01HV00000000000000000C0MND"
+    async with session_factory() as session:
+        session.add(
+            WatchCheckCommand(
+                command_id=command_id,
+                info_item_id=item.info_item_id,
+                requested_at=datetime.now(UTC),
+            )
+        )
+        await session.commit()
+    return command_id
+
+
+async def _command(session_factory, command_id: str) -> WatchCheckCommand:
+    async with session_factory() as session:
+        return await session.get(WatchCheckCommand, command_id)
+
+
+async def test_check_rejected_closes_its_command(fake_redis, session_factory):
+    """archiver#370 D3: the rejection is recorded by command_id; no notification."""
+    item = await seed_item(session_factory)
+    await seed_subscription(session_factory)
+    command_id = await _seed_command(session_factory, item)
+    await _publish(fake_redis, to_wire(_check_rejected(str(item.info_item_id), command_id)))
 
     with patch.object(watch_events_consumer.logger, "warning") as warning:
         assert await _consume(fake_redis, session_factory) == 1
@@ -154,6 +181,49 @@ async def test_check_rejected_is_acked_and_left_to_check_now(fake_redis, session
     assert await _pending(fake_redis) == 0
     assert await _rows(session_factory) == []
     assert warning.call_args_list == []
+    command = await _command(session_factory, command_id)
+    assert command.rejected_reason == "paused"
+
+
+async def test_a_second_rejection_for_one_command_is_a_no_op(fake_redis, session_factory):
+    """A redelivered command can be pre-flighted again under a new event_id."""
+    item = await seed_item(session_factory)
+    command_id = await _seed_command(session_factory, item)
+    await _publish(fake_redis, to_wire(_check_rejected(str(item.info_item_id), command_id)))
+    await _publish(
+        fake_redis,
+        to_wire(
+            _check_rejected(
+                str(item.info_item_id),
+                command_id,
+                event_id="01HV0000000000000000000005",
+                reason="fetch_open",
+            )
+        ),
+    )
+
+    with patch.object(watch_events_consumer.logger, "warning") as warning:
+        assert await _consume(fake_redis, session_factory) == 1
+        assert await _consume(fake_redis, session_factory) == 1
+
+    assert await _pending(fake_redis) == 0
+    assert warning.call_args_list == []
+    assert (await _command(session_factory, command_id)).rejected_reason == "paused"
+
+
+async def test_a_rejection_for_an_unknown_command_is_acked_with_a_warning(
+    fake_redis, session_factory
+):
+    """Only Archiver issues commands, so an unknown one is a fault worth seeing - never a DLQ."""
+    await _publish(fake_redis, to_wire(_check_rejected("01HV0000000000000000000999", "cmd-x")))
+
+    with patch.object(watch_events_consumer.logger, "warning") as warning:
+        assert await _consume(fake_redis, session_factory) == 1
+
+    assert await _pending(fake_redis) == 0
+    assert await fake_redis.xlen(DLQ) == 0
+    [call] = warning.call_args_list
+    assert call.kwargs["extra"]["command_id"] == "cmd-x"
 
 
 async def test_a_foreign_payload_is_acked_with_a_warning(fake_redis, session_factory):

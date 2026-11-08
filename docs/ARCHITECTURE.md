@@ -32,6 +32,7 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                watch_panel.py — pure watched-item panel context from local
                                state: states, health rule, next-due, drift, archiver#151;
                                temporal_profile_form.py — the profile row, #365;
+                               watch_check_view.py — the check-now block, #370;
                                replication_actions.py — the manual-replication outcome→flash
                                translation shared by both screens that offer the action, and
                                the one place that records why a refusal is a 200 rather than
@@ -53,7 +54,8 @@ src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,
                                changes_outbox, replication_command,
-                               persist_command, pm_organization)
+                               persist_command, watch_check_command,
+                               pm_organization)
   source_spec_schema/          SourceSpec JSON Schema v1 + validator
   rep_spec_schema/             RepSpec envelope + per-provider sub-schemas
                                (providers/{gcs,gdrive,ia}/v1.json)
@@ -198,6 +200,11 @@ src/core/                      Domain logic
                                ARCHIVER_FETCH_POLICY_PRODUCER is set (unit-only,
                                live since F1), and records a deleted host's
                                tombstone.
+                               watch_check.py is check-now (#370): outboxes
+                               info.watch-check while
+                               ARCHIVER_WATCH_CHECK_ENABLED is set (unit-only,
+                               F4), records check_rejected, and derives the
+                               state ladder at read time.
   spec_match.py                Compares an observed spec_fingerprint against the
                                InfoSource's own source_specs via co-core's shared
                                derivation (cannobserv#309). Every uncertain branch

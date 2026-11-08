@@ -18,7 +18,7 @@ recreates it (re-announcement at a higher generation).
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
 
@@ -65,6 +65,17 @@ class WatchStatus(Base, TimestampMixin):
     this vocabulary is *documented as expected to grow*, so a bounded column
     would let a future token stall the stream (CR round 1, finding 1a).
     """
+    last_full_fetch_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    """Bytes arrived: a 200, never a 304, stamped before extraction (C-c,
+    archiver#370 D1). Check-now's completion reading: a commanded check is done
+    once this passes the command's ``requested_at``."""
+    health_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Why the item is in error now - an open ``WatchHealthReason`` token, rendered
+    verbatim. ``None`` outside error, and may be ``None`` in it."""
+    health_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    """The origin's HTTP status, for ``health_reason == "http_status"``."""
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     """Watcher's publish-time stamp on the message that last wrote this row."""
 

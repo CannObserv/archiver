@@ -138,6 +138,8 @@ that screen. The entries below stay the inventory line for each route.
 
 **POST `/dashboard/info-items/{id}/watch-cadence`** - replaces `info_items.watch_spec` and announces it (archiver#158). Form field `interval`; empty means *delegate* (document keeps only `schema_version`, consumer applies its own default). Refused like `toggle-watch-active` on an unannounceable item (archiver#167). Replace-vs-merge reasoning and the vocabulary gate: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
+**POST `/dashboard/info-items/{id}/check-now`**, **GET `…/watch-check`** - check-now (archiver#370): the POST outboxes one `info.watch-check` command and answers `watcherUpdated`, a click while one is pending a warning flash and no write; the GET is the block's own poll while pending. Both 404 while `ARCHIVER_WATCH_CHECK_ENABLED` is off. [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
+
 **POST `/dashboard/info-items/{id}/temporal-profile`**, **`…/temporal-profile/delete`** - save or delete the item's temporal profile through the API's service (archiver#365); answer with the section and `watcherUpdated`, a refusal as a flash. [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
 **POST `/dashboard/info-items/{id}/swap-primary-source`** - inline primary-source swap: creates a new InfoSource (form fields: `url`, `source_specs` JSON array), then runs `swap_primary_source`, the core tool behind `PUT /api/v1/info-items/{id}/primary-source` (archiver#45). It deactivates the old active binding, binds the new source, emits `info_item_primary_changed` and announces the whole swap as one `info.registry` frame. 204 + `HX-Redirect` to detail on success; 422 with a `<div id="swap-error">` fragment on validation error. Template: `info_items/_swap_primary.html`.

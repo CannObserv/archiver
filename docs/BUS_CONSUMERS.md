@@ -207,7 +207,10 @@ Watcher's observed edges (`change_detected`, `watch_error`, `watch_recovered`), 
 - **An archived, paused or host-suspended item still gets its fact**: it happened before the
   state changed.
 - Unknown or revoked `info_item_id` → ack + WARNING. A non-ULID one → handler poison.
-  `check_rejected` → ack, nothing (check-now's). Another decoded type → ack + WARNING. A type
+  `check_rejected` → closes its check-now command (#370 D3): `rejected_reason` and
+  `rejected_at` on `watch_check_commands` by `command_id`, first write wins (a redelivered
+  command can mint a second `event_id`); never a notification. An unknown `command_id` → ack +
+  WARNING (only Archiver issues commands), never the DLQ. Another decoded type → ack + WARNING. A type
   co-core can't decode → `undecodable`, reprocessed after an upgrade.
 - T and the text reader are bound by the lifespan (`bind_context`), so reprocess decides a
   fact exactly as the loop does.

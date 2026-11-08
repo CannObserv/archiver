@@ -68,6 +68,12 @@ Environment=ARCHIVER_BUS_CONSUMER=1
 # process that sources it becomes a second producer.
 Environment=ARCHIVER_FETCH_POLICY_PRODUCER=1
 
+# Check-now (archiver#370): the Watcher panel's button, which commands Watcher on
+# info.watch-check. Flip F4 uncomments this, after the operator's go is recorded on
+# CannObserv/watcher#368; until then the button is absent, its routes 404 and
+# nothing is enqueued. Same rule as above: never in an env file.
+#Environment=ARCHIVER_WATCH_CHECK_ENABLED=1
+
 # The liveness heartbeat (archiver#297): checks in `ok` to co-archiver-live
 # (tenant co-archiver, CannObserv/status#47) every 5 min while every expected
 # bus loop is progressing; silence past the grace pages. Same rule again: the

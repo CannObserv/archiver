@@ -18,6 +18,15 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.42.0 (2026-11-08)
+
+[service] **Check-now via `info.watch-check` (archiver#370, epic #359 A11).** Migration `3f57fd148898` adds three columns to `information.watch_status` and the table `information.watch_check_commands`. SDK unchanged (5.16.0): no API route or schema is added (D7, dashboard only). **Ships dark:** `ARCHIVER_WATCH_CHECK_ENABLED` is commented out in `deploy/archiver.service` until flip F4, so there is no button, both routes 404 and nothing is enqueued.
+
+- **`watch_status` stores the C-c levels** (D1): `last_full_fetch_at`, `health_reason`, `health_status_code`, written by `apply_watch_status` as levels (a frame without them writes `NULL`). Existing rows fill on Watcher's next periodic republish. Nullable, no backfill; expand-only.
+- **`watch_check_commands`** (D2): one row per click (`command_id` PK, `info_item_id` FK `CASCADE`, `requested_at`, `requested_by` → `app_users.id` `SET NULL`, `created_at`, `rejected_reason`, `rejected_at`). Written in the transaction that outboxes the command. Empty on creation.
+- **`check_rejected`** on `info.watch-events` now closes its command by `command_id`, first write wins (D3); an unknown `command_id` is ack + WARNING, never the DLQ. It was acked and dropped.
+- **Dashboard:** `POST /dashboard/info-items/{id}/check-now` and `GET …/watch-check` (the block's poll). One open command per item (D4); the state ladder rejected → done → no answer yet → pending (D2). `ARCHIVER_WATCH_CHECK_TIMEOUT_SECONDS` (default 900) sets "no answer yet" (D5). `info.watch-check` is never capped or trimmed.
+
 ## v4.41.0 (2026-11-02)
 
 [service] **`info.watch-events` consumer, shadow log, drain and error reminders (archiver#369, epic #359; carries #399).** Migration `01193055fc9c` adds `information.notification_dispatches`. SDK unchanged (5.16.0): no route or schema is added or reshaped; the dead-letter routes' regenerated docstrings name the third queue. **Ships dark:** `ARCHIVER_NOTIFY_CUTOVER_AT` is unset, so every row is shadow and nothing is sent until F3.

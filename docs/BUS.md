@@ -1,10 +1,11 @@
 # archiver - change-bus contracts
 
 Everything Archiver puts on the Redis bus: the outbox producer and
-the five streams it publishes - `info.changes`, `info.registry`,
-`content.replicate`, `content.persist` and, since flip F1 (#438),
-`content.fetch-policy`. What it takes off - `content.revisions`,
-`content.artifacts`, `info.watch-status` - and the naming contract its group
+the six streams it publishes - `info.changes`, `info.registry`,
+`content.replicate`, `content.persist`, since flip F1 (#438)
+`content.fetch-policy`, and, dark until flip F4, `info.watch-check` (#370). What it
+takes off - `content.revisions`, `content.artifacts`, `info.watch-status`,
+`info.watch-events` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
 both connect through is [BUS_CLIENT.md](BUS_CLIENT.md). HTTP routes and their SDK wrappers live in [API.md](API.md);
 these two files are the wire side of the same surface.
@@ -110,7 +111,7 @@ outside it: the drainer (archiver#238) disposes with `XDEL` by id, never
 (CannObserv/broker#59, live 2026-09-24). A DLQ never joins `trim_topics` - a
 MAXLEN cap ignores triage: past it, the oldest dead letters go whether or not
 anyone read them.
-Why `info.registry`, `content.replicate` and `content.persist` are absent: their sections below.
+Why `info.registry`, `content.replicate`, `content.persist` and `info.watch-check` are absent: their sections below.
 
 **Published-row retention (archiver#189)** - `src/core/changes/outbox_prune.py`
 deletes rows whose `published_at` is older than `ARCHIVER_OUTBOX_RETENTION_DAYS`
@@ -331,6 +332,27 @@ contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
 live since flip F1 (#438) behind `ARCHIVER_FETCH_POLICY_PRODUCER`, which only
 `archiver.service` sets: outbox deltas plus a 300 s full set, cap on the `XADD`
 (`+xadd`-only grant, broker#93). Contract and F1 runbook: [DOMAINS.md](DOMAINS.md).
+
+**`info.watch-check` - check-now (archiver#370, epic #359 A11).** The sixth producer
+surface, *command* kind: one `WatchCheckCommandEmit` per click on the Watcher panel's
+**Check now**, a forced full fetch, to Watcher's one group `watcher.watch-check`;
+idempotency key the bare `command_id`. `src/core/services/watch_check.py`.
+
+- **Off unless `ARCHIVER_WATCH_CHECK_ENABLED` is set** - flip F4, unit-only
+  ([ENVIRONMENT_BUS.md](ENVIRONMENT_BUS.md)). Off: no button, the routes 404, nothing enqueued.
+- **Producer posture:** outboxed with its `watch_check_commands` row in one transaction,
+  drained in commit order, retried indefinitely, **one message per click**. One open command
+  per item: a click while the latest is pending writes nothing.
+- **`requested_at` is stamped at the outbox write** (Archiver's clock), equal to `occurred_at`;
+  a new click mints a fresh `command_id` and `requested_at`.
+- **Never capped, never trimmed:** out of `trim_topics` and `topic_maxlen`
+  (`tests/api/test_lifespan_bus_wiring.py`, `tests/core/changes/test_publisher.py`). broker's
+  STREAMS.md: "never XTRIMmed". The grant is `+xadd ~info.watch-check` alone, which would
+  admit `XADD … MAXLEN`, so only the code keeps a cap off it.
+- **No ack path.** Done is a level on `info.watch-status` (`last_full_fetch_at` passing
+  `requested_at`); a refusal is `check_rejected` on `info.watch-events`
+  ([BUS_CONSUMERS.md](BUS_CONSUMERS.md)); a dead-lettered command (`info.watch-check.dlq`,
+  Watcher's) gets no answer at all. The state ladder: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
 
 `source_revision_captured` schema_version is now **2** - `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 
