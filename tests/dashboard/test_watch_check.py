@@ -143,6 +143,9 @@ async def test_the_button_follows_the_watcher_post_contract(client, session, bin
     assert "Check now" in block
     # Never checked: no poll.
     assert "every " not in block
+    # #watcher-section is the live region; the block swaps itself whole, and a
+    # region inserted fresh is not reliably announced (#370 CR 4).
+    assert "aria-live" not in block
 
 
 @pytest.mark.asyncio

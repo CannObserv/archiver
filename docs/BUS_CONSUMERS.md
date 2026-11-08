@@ -210,7 +210,7 @@ Watcher's observed edges (`change_detected`, `watch_error`, `watch_recovered`), 
   `check_rejected` → closes its check-now command (#370 D3): `rejected_reason` and
   `rejected_at` on `watch_check_commands` by `command_id`, first write wins (a redelivered
   command can mint a second `event_id`); never a notification. An unknown `command_id` → ack +
-  WARNING (only Archiver issues commands), never the DLQ. Another decoded type → ack + WARNING. A type
+  WARNING, never the DLQ: never issued, or its item was deleted (commands cascade). Another decoded type → ack + WARNING. A type
   co-core can't decode → `undecodable`, reprocessed after an upgrade.
 - T and the text reader are bound by the lifespan (`bind_context`), so reprocess decides a
   fact exactly as the loop does.

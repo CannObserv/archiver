@@ -19,8 +19,9 @@ with ``content.revisions`` and ``content.artifacts``. What is this stream's:
 - **``check_rejected`` closes its check-now command** (archiver#370 D3), by
   ``command_id``, first write wins: a redelivered command can mint a second
   ``event_id`` for one rejection. It is check-now's outcome, never a
-  notification. An unknown ``command_id`` is ack + WARNING (only Archiver
-  issues commands, so one is a fault worth seeing), never a dead letter.
+  notification. An unknown ``command_id`` is ack + WARNING, never a dead
+  letter: only Archiver issues commands, so one is a fault worth seeing -
+  unless its item was deleted after the click, since commands cascade with it.
 - **Another decoded type is acked** with a WARNING, the ``content.artifacts``
   fall-through. A type co-core doesn't know never reaches here: the shared loop
   parks it as ``undecodable``, and it is reprocessed after a co-core upgrade.
@@ -182,7 +183,10 @@ async def _close_check(
         "message_id": message_id,
     }
     if disposition == "unknown_command":
-        logger.warning("Watch check rejected for a command Archiver never issued", extra=extra)
+        logger.warning(
+            "Watch check rejected for an unknown command (never issued, or its item was deleted)",
+            extra=extra,
+        )
     else:
         logger.info("Watch check rejection applied", extra=extra)
 
