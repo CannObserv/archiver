@@ -37,7 +37,7 @@ that announce and let Watcher converge; the route entries in [PAGES.md](PAGES.md
 
 **`check-now`** (archiver#370, epic #359 A11). The Watcher-POST contract, with an empty body: the form swaps nothing, `watcherUpdated` re-renders the section, and focus moves to `#watcher-heading`. It commands rather than announces: `request_check` (`src/core/services/watch_check.py`) locks the item, then outboxes one `WatchCheckCommandEmit` on `info.watch-check` beside a `watch_check_commands` row, `requested_at` stamped at that write. **Dark until F4:** with `ARCHIVER_WATCH_CHECK_ENABLED` unset the button is absent and this route and `GET …/watch-check` 404, enqueueing nothing. **One open command per item** (D4): a click while the latest is pending writes nothing and flashes a warning, sparing the round trip to Watcher's `fetch_open`. A failed write flashes an error. **Not gated on announceability:** Watcher's pre-flight is the authority, and its `check_rejected` reason is the answer the block shows.
 
-The block's state is derived at render, never stored as success (D2), first match wins:
+**The block** (`info_items/_watch_check.html`, `#watch-check`) sits below the Temporal profile row, on the cadence editor's gate (`has_active_source`), in `watching` and `no_status`. Its poll swaps only itself, so the panel's other cells, Health included, refresh on the next `watcherUpdated`. Its state is derived at render, never stored as success (D2), first match wins:
 
 1. a rejection recorded on the command → **Check rejected: `<reason>`**, verbatim (the vocabulary is Watcher's, opaque here);
 2. `watch_status.last_full_fetch_at` > `requested_at` → **Checked**, plus `health` and `health_reason`/`health_status_code`. A 200 whose extraction then failed is done + ERROR;
