@@ -69,10 +69,11 @@ Environment=ARCHIVER_BUS_CONSUMER=1
 Environment=ARCHIVER_FETCH_POLICY_PRODUCER=1
 
 # Check-now (archiver#370): the Watcher panel's button, which commands Watcher on
-# info.watch-check. Flip F4 uncomments this, after the operator's go is recorded on
-# CannObserv/watcher#368; until then the button is absent, its routes 404 and
-# nothing is enqueued. Same rule as above: never in an env file.
-#Environment=ARCHIVER_WATCH_CHECK_ENABLED=1
+# info.watch-check, since flip F4 (archiver#482), after the operator's go was
+# recorded on CannObserv/watcher#368. Off, the button is absent, its routes 404
+# and nothing is enqueued; rollback re-comments this line and redeploys. Same
+# rule as above: never in an env file.
+Environment=ARCHIVER_WATCH_CHECK_ENABLED=1
 
 # The liveness heartbeat (archiver#297): checks in `ok` to co-archiver-live
 # (tenant co-archiver, CannObserv/status#47) every 5 min while every expected
