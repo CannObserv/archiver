@@ -21,6 +21,7 @@ from src.api.schemas.info_item import (
     InfoItemRepSpecPublicUrlPatch,
     InfoItemSourceCreate,
     InfoItemSourceOut,
+    InfoItemTagsPut,
     InfoItemWatchActivePut,
     InfoItemWatchSpecPut,
 )
@@ -54,7 +55,7 @@ from src.core.rep_fields_schema.validator import (
     linked_org_key_errors,
     validate_rep_fields,
 )
-from src.core.services import info_item_lifecycle
+from src.core.services import info_item_lifecycle, info_item_tags
 from src.core.services.registry_announcement import (
     announce_info_item,
     announce_info_item_revoked,
@@ -1032,6 +1033,44 @@ async def put_watch_active(
     item.watch_active = body.active
     await session.flush()
     await announce_policy_change(session, item.info_item_id)
+    await session.commit()
+    await session.refresh(item)
+    return await _item_out_with_active_relations(session, item)
+
+
+@router.put(
+    "/{info_item_id}/tags",
+    response_model=InfoItemOut,
+    dependencies=[Depends(require_api_key)],
+)
+async def put_tags(
+    info_item_id: ULIDStr,
+    body: InfoItemTagsPut,
+    session: AsyncSession = Depends(get_db_session),
+) -> InfoItemOut:
+    """Replace an InfoItem's tags (archiver#362).
+
+    The whole set, so ``[]`` clears it and two writers race to last-writer-wins,
+    by design; the dashboard's add and remove lock instead. A tag breaking the
+    rule (``info_item_tags.normalize_tags``) is a 422 naming each by its path,
+    and nothing is stored. Allowed on an archived item: archive is watch-only.
+    Announces nothing - tags never go on the bus.
+    """
+    try:
+        item = await info_item_tags.set_tags(session, ULID.from_str(info_item_id), body.tags)
+    except info_item_tags.TagError as e:
+        raise_422(
+            "tags failed validation",
+            errors=[
+                FieldError(
+                    path="/tags" if p.index is None else f"/tags/{p.index}", message=p.message
+                )
+                for p in e.problems
+            ],
+            source_exc=e,
+        )
+    except info_item_tags.InfoItemNotFoundError as e:
+        raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
     await session.commit()
     await session.refresh(item)
     return await _item_out_with_active_relations(session, item)

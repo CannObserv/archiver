@@ -359,6 +359,52 @@ async def test_set_watch_spec_refusal_raises_validation_error(client):
 _ITEM_URL = f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A"
 
 
+_TAGS_URL = f"{BASE_URL}/api/v1/info-items/01HZZ00000000000000000000A/tags"
+
+
+@pytest.mark.asyncio
+async def test_set_tags_puts_the_whole_set_and_returns_the_item(client):
+    """archiver#362 D3: the tag import's write path."""
+    with respx.mock:
+        route = respx.put(_TAGS_URL).mock(
+            return_value=httpx.Response(200, json={**_info_item_payload(), "tags": ["a", "b"]})
+        )
+        out = await client.set_tags("01HZZ00000000000000000000A", ["b", "a"])
+    assert json.loads(route.calls.last.request.content) == {"tags": ["b", "a"]}
+    assert out.tags == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_set_tags_refusal_raises_validation_error(client):
+    with respx.mock:
+        respx.put(_TAGS_URL).mock(
+            return_value=httpx.Response(
+                422,
+                json={
+                    "detail": {
+                        "kind": "schema",
+                        "message": "tags failed validation",
+                        "errors": [{"path": "/tags/0", "message": "holds a comma"}],
+                    }
+                },
+            )
+        )
+        with pytest.raises(ValidationError):
+            await client.set_tags("01HZZ00000000000000000000A", ["a,b"])
+
+
+@pytest.mark.asyncio
+async def test_set_tags_on_a_missing_item_raises_not_found(client):
+    with respx.mock:
+        respx.put(_TAGS_URL).mock(
+            return_value=httpx.Response(
+                404, json={"detail": {"kind": "lookup", "message": "InfoItem not found"}}
+            )
+        )
+        with pytest.raises(NotFound):
+            await client.set_tags("01HZZ00000000000000000000A", ["a"])
+
+
 @pytest.mark.asyncio
 async def test_archive_info_item_posts_and_returns_the_item(client):
     """archiver#361: the watch lifecycle's archive; ``archived_at`` rides the item."""
