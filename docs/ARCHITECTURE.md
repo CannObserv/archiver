@@ -185,7 +185,8 @@ src/core/                      Domain logic
                                PATCH/archive/restore and the dashboard's
                                archive/restore/fetch-policy, announcing the
                                host's items whose resolved state moved.
-                               info_item_lifecycle.py: archive/restore (#361).
+                               info_item_lifecycle.py: archive/restore (#361);
+                               info_item_tags.py: the tag rule, writes (#362).
                                cadence_resolution.py (resolve_interval) is the
                                announced interval: the profile's stored result
                                (#365), item, domain default (#364).
@@ -266,7 +267,9 @@ src/core/                      Domain logic
                                domains export through the API (#360, design
                                D4): operator-run, --dry-run first, idempotent.
                                import_watcher_item_cadence.py does the same for
-                               the items' own cadence, fill-if-absent (#364).
+                               the items' own cadence, fill-if-absent (#364);
+                               import_watcher_item_tags.py for their tags,
+                               fill-if-empty (#362).
                                temporal_boundary.py: the boundary timer (#365).
   logging.py                   Structured logging config (configure_logging at
                                entry points). Service-local — Watcher keeps its

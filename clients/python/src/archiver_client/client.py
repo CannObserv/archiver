@@ -86,6 +86,9 @@ from archiver_client.generated.api.info_items import (
     put_rep_fields_api_v1_info_items_info_item_id_rep_fields_put as _put_rep_fields,
 )
 from archiver_client.generated.api.info_items import (
+    put_tags_api_v1_info_items_info_item_id_tags_put as _put_tags,
+)
+from archiver_client.generated.api.info_items import (
     put_temporal_profile_api_v1_info_items_info_item_id_temporal_profile_put as _put_temporal_profile,
 )
 from archiver_client.generated.api.info_items import (
@@ -166,6 +169,7 @@ from archiver_client.generated.models.info_item_rep_spec_public_url_patch import
 )
 from archiver_client.generated.models.info_item_source_create import InfoItemSourceCreate
 from archiver_client.generated.models.info_item_source_out import InfoItemSourceOut
+from archiver_client.generated.models.info_item_tags_put import InfoItemTagsPut
 from archiver_client.generated.models.info_item_watch_spec_put import InfoItemWatchSpecPut
 from archiver_client.generated.models.info_item_watch_spec_put_document import (
     InfoItemWatchSpecPutDocument,
@@ -394,6 +398,21 @@ class ArchiverClient:
         body = InfoItemWatchSpecPut(document=InfoItemWatchSpecPutDocument.from_dict(document))
         response = await _put_watch_spec.asyncio_detailed(
             client=self._gen_client, info_item_id=info_item_id, body=body
+        )
+        return _unwrap(response)
+
+    async def set_tags(self, info_item_id: str, tags: list[str]) -> InfoItemOut:
+        """Replace an InfoItem's whole tag set (archiver#362); ``[]`` clears it.
+
+        Stored stripped, exactly de-duplicated and sorted, so the returned
+        ``tags`` may differ from what was sent. Raises ``NotFound``, or
+        ``ValidationError`` (422: an empty tag, one over 255 characters or
+        holding a comma or control character, or over 32 tags; nothing stored).
+        """
+        response = await _put_tags.asyncio_detailed(
+            client=self._gen_client,
+            info_item_id=info_item_id,
+            body=InfoItemTagsPut(tags=list(tags)),
         )
         return _unwrap(response)
 

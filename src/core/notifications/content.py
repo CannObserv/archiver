@@ -143,7 +143,7 @@ class ItemFacts:
     domain_name: str = ""
     description: str = ""
     check_interval: str = ""
-    #: Inert until tags exist (#362).
+    #: The item's tags, stored sorted (archiver#362).
     tags: tuple[str, ...] = ()
 
 

@@ -250,7 +250,6 @@ class TestDescriptionAndTagsSlots:
         assert "TAGS: cannabis, license" in body
 
     def test_tags_omitted_when_toggle_off_or_none(self):
-        """Inert until tags exist (#362): no item has any yet."""
         assert "TAGS" not in build_body(make_event(), FULL_ITEM, ContentOptions())
         assert "TAGS" not in build_body(make_event(), ITEM, ContentOptions(include_tags=True))
 

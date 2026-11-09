@@ -25,8 +25,8 @@ focus-script-in-the-response trick the domain notes row uses cannot work here -
 `hx-swap="none"` discards the body a script would ride in.
 
 **There were five.** `begin-watching`, the SDK's `check-now`, and `resync-watcher` were
-SDK-backed and retired with it in archiver#142, along with the stale-link
-reconcile they triggered (a `WatcherNotFound` NULLed `watcher_item_id` so the
+SDK-backed outbound HTTP calls and retired with it in archiver#142, along with
+the 409-adoption recovery and the stale-link reconcile they triggered (a `WatcherNotFound` NULLed `watcher_item_id` so the
 panel could re-offer "Begin Watching"). Nothing replaces them individually:
 reconciliation is level-triggered off `info.registry`, so there is no per-item
 push to retry, no remote id to go stale, and no provisioning gesture to repeat.

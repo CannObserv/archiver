@@ -3,8 +3,8 @@
 import json
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ulid import ULID
 
@@ -63,6 +63,16 @@ class InfoItem(Base, TimestampMixin):
     distinction is Archiver-local - the wire carries only ``active``. Written
     only by ``src.core.services.info_item_lifecycle``. Watch-only: authoring,
     bindings, rep specs and replication ignore it.
+    """
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'::text[]"), default=list
+    )
+    """The item's tags (archiver#362), replacing Watcher's ``default_tags``.
+
+    Stored de-duplicated and sorted; ``[]`` is the one way to say "no tags".
+    Written only through ``src.core.services.info_item_tags``, which holds the
+    one tag rule. Read by the notification composer (``ItemFacts.tags``); never
+    announced. Allowed on an archived item: archive is watch-only.
     """
     announcement_generation: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default="0", default=0

@@ -142,6 +142,23 @@ class InfoItemWatchActivePut(BaseModel):
     )
 
 
+class InfoItemTagsPut(BaseModel):
+    """Request body for PUT /info-items/{id}/tags (archiver#362).
+
+    The whole set, replacing what is stored: ``[]`` clears it. ``tags`` is
+    required, so clearing is said, never implied by an omitted field.
+    """
+
+    model_config = {"extra": "forbid"}
+    tags: list[str] = Field(
+        description=(
+            "The item's new tag set. Each tag is stripped, then must be non-empty, at "
+            "most 255 characters, and free of commas and control characters. Case is "
+            "kept; exact duplicates are dropped; at most 32 distinct tags. Stored sorted."
+        )
+    )
+
+
 class InfoItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
@@ -302,6 +319,14 @@ class InfoItemOut(BaseModel):
             "item is announced inactive whatever its watch_active, which it keeps: "
             "restore returns it to that state. Watch-only - the item stays listed and "
             "editable. Written via POST /info-items/{id}/archive and /restore."
+        ),
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The item's tags (archiver#362), de-duplicated and sorted; [] when it has "
+            "none. Case-sensitive. Written via PUT /info-items/{id}/tags. Never "
+            "announced; read by the notification composer."
         ),
     )
     created_at: datetime = Field(description="UTC timestamp when the InfoItem was created.")

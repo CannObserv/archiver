@@ -51,6 +51,8 @@ class InfoItemOut:
         org (InfoItemOrgOut | None | Unset): The linked org's local snapshot, or null when unlinked.
         pm_org_id (None | str | Unset): The linked Power Map org's id, or null when unlinked. Written via PUT /info-
             items/{id}/org.
+        tags (list[str] | Unset): The item's tags (archiver#362), de-duplicated and sorted; [] when it has none. Case-
+            sensitive. Written via PUT /info-items/{id}/tags. Never announced; read by the notification composer.
         watch_active (bool | None | Unset): Per-item pause state. True schedules, false is registered-but-paused, and
             null means the registry has no opinion yet (not imported from Watcher). A sibling of watch_spec rather than a
             key inside it: a policy document shared across items could not carry per-item pause state. Written via PUT
@@ -71,6 +73,7 @@ class InfoItemOut:
     info_item_sources: list[InfoItemSourceOut] | Unset = UNSET
     org: InfoItemOrgOut | None | Unset = UNSET
     pm_org_id: None | str | Unset = UNSET
+    tags: list[str] | Unset = UNSET
     watch_active: bool | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -137,6 +140,10 @@ class InfoItemOut:
         else:
             pm_org_id = self.pm_org_id
 
+        tags: list[str] | Unset = UNSET
+        if not isinstance(self.tags, Unset):
+            tags = self.tags
+
         watch_active: bool | None | Unset
         if isinstance(self.watch_active, Unset):
             watch_active = UNSET
@@ -169,6 +176,8 @@ class InfoItemOut:
             field_dict["org"] = org
         if pm_org_id is not UNSET:
             field_dict["pm_org_id"] = pm_org_id
+        if tags is not UNSET:
+            field_dict["tags"] = tags
         if watch_active is not UNSET:
             field_dict["watch_active"] = watch_active
 
@@ -281,6 +290,8 @@ class InfoItemOut:
 
         pm_org_id = _parse_pm_org_id(d.pop("pm_org_id", UNSET))
 
+        tags = cast(list[str], d.pop("tags", UNSET))
+
         def _parse_watch_active(data: object) -> bool | None | Unset:
             if data is None:
                 return data
@@ -305,6 +316,7 @@ class InfoItemOut:
             info_item_sources=info_item_sources,
             org=org,
             pm_org_id=pm_org_id,
+            tags=tags,
             watch_active=watch_active,
         )
 

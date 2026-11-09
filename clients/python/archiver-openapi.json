@@ -1171,6 +1171,14 @@
             "title": "Rep Fields",
             "type": "object"
           },
+          "tags": {
+            "description": "The item's tags (archiver#362), de-duplicated and sorted; [] when it has none. Case-sensitive. Written via PUT /info-items/{id}/tags. Never announced; read by the notification composer.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
           "updated_at": {
             "description": "UTC timestamp of the last update to the InfoItem.",
             "format": "date-time",
@@ -1409,6 +1417,25 @@
           "created_at"
         ],
         "title": "InfoItemSourceOut",
+        "type": "object"
+      },
+      "InfoItemTagsPut": {
+        "additionalProperties": false,
+        "description": "Request body for PUT /info-items/{id}/tags (archiver#362).\n\nThe whole set, replacing what is stored: ``[]`` clears it. ``tags`` is\nrequired, so clearing is said, never implied by an omitted field.",
+        "properties": {
+          "tags": {
+            "description": "The item's new tag set. Each tag is stripped, then must be non-empty, at most 255 characters, and free of commas and control characters. Case is kept; exact duplicates are dropped; at most 32 distinct tags. Stored sorted.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tags"
+        ],
+        "title": "InfoItemTagsPut",
         "type": "object"
       },
       "InfoItemWatchActivePut": {
@@ -3232,7 +3259,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.42.0"
+    "version": "4.43.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5562,6 +5589,124 @@
           }
         ],
         "summary": "Restore Info Item",
+        "tags": [
+          "info-items"
+        ]
+      }
+    },
+    "/api/v1/info-items/{info_item_id}/tags": {
+      "put": {
+        "description": "Replace an InfoItem's tags (archiver#362).\n\nThe whole set, so ``[]`` clears it and two writers race to last-writer-wins,\nby design; the dashboard's add and remove lock instead. A tag breaking the\nrule (``info_item_tags.normalize_tags``) is a 422 naming each by its path,\nand nothing is stored. Allowed on an archived item: archive is watch-only.\nAnnounces nothing - tags never go on the bus.",
+        "operationId": "put_tags_api_v1_info_items__info_item_id__tags_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "info_item_id",
+            "required": true,
+            "schema": {
+              "title": "Info Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoItemTagsPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Bad request (envelope)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Auth required (envelope)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Forbidden (envelope)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Not found (envelope)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Conflict (envelope)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Validation failed (envelope)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeResponse"
+                }
+              }
+            },
+            "description": "Internal error (envelope)."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Tags",
         "tags": [
           "info-items"
         ]

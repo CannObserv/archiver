@@ -76,6 +76,7 @@ which calls the same core functions without these routes.
 | Pause / resume an item | `PUT /info-items/{id}/watch-active` | generated only (no hand-written wrapper — no SDK consumer yet) |
 | Archive an item's watch | `POST /info-items/{id}/archive` | `archive_info_item(info_item_id)` (SDK 5.14.0, archiver#361) |
 | Restore an item's watch | `POST /info-items/{id}/restore` | `restore_info_item(info_item_id)` (SDK 5.14.0, archiver#361) |
+| Replace an item's tags (whole set; `[]` clears) | `PUT /info-items/{id}/tags` | `set_tags(info_item_id, tags)` (SDK 5.17.0, archiver#362); rule: [SCHEMA.md](SCHEMA.md) `info_items.tags` |
 | Get an item's temporal profile | `GET /info-items/{id}/temporal-profile` | `get_temporal_profile(info_item_id)` (SDK 5.15.0, archiver#365) |
 | Create or replace it | `PUT /info-items/{id}/temporal-profile` | `set_temporal_profile(info_item_id, profile)` (SDK 5.15.0) |
 | Delete it | `DELETE /info-items/{id}/temporal-profile` | `delete_temporal_profile(info_item_id)` (SDK 5.15.0) |

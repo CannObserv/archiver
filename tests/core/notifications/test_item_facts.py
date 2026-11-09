@@ -3,7 +3,7 @@
 The name and description are the InfoItem's. The URL and ``domain_name`` are
 its **announcing** source's (the active binding), the rule ``subscriptions_for``
 uses. ``check_interval`` is the resolved cadence, the value Watcher is told.
-Tags stay empty until #362.
+``tags`` are the item's own, as stored (archiver#362).
 """
 
 from datetime import UTC, datetime
@@ -12,8 +12,10 @@ from sqlalchemy import update
 from ulid import ULID
 
 from src.core.models import Domain, InfoItem, InfoItemSource, InfoSource
-from src.core.notifications.content import ItemFacts
+from src.core.notifications.content import ItemFacts, build_body
+from src.core.notifications.content_config import ContentOptions
 from src.core.notifications.item_facts import load_item_facts
+from tests.core.notifications.builders import make_event
 
 _SPECS = [{"schema_version": 1, "extraction": {"algorithm": "css", "selector": "body"}}]
 
@@ -79,3 +81,25 @@ async def test_a_deactivated_binding_is_not_the_announcing_source(session):
     facts = await load_item_facts(session, item.info_item_id)
     assert facts.url == ""
     assert facts.domain_name == ""
+
+
+async def test_the_items_tags_are_its_facts(session):
+    """archiver#362 D5: in the column's order - the tag service stores them sorted."""
+    item = await _item(session, tags=["license", "cannabis"])
+    facts = await load_item_facts(session, item.info_item_id)
+    assert facts.tags == ("license", "cannabis")
+
+
+async def test_an_untagged_item_has_no_tags(session):
+    item = await _item(session)
+    assert (await load_item_facts(session, item.info_item_id)).tags == ()
+
+
+async def test_include_tags_puts_the_items_tags_on_the_tags_line(session):
+    """The composer's TAGS line, from the registry rather than a canned item."""
+    item = await _item(session, tags=["cannabis", "license"])
+    facts = await load_item_facts(session, item.info_item_id)
+    event = make_event()
+
+    assert "TAGS: cannabis, license" in build_body(event, facts, ContentOptions(include_tags=True))
+    assert "TAGS" not in build_body(event, facts, ContentOptions())

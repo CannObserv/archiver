@@ -78,6 +78,13 @@ def test_a_variable_of_another_event_is_an_error_in_the_preview() -> None:
         render_template_strict("{{ status_code }}", {})
 
 
-def test_the_item_has_no_tags() -> None:
-    """Fidelity: no item has tags until #362, so the preview shows none either."""
-    assert PREVIEW_ITEM.tags == ()
+def test_the_item_has_tags_so_the_preview_shows_the_tags_line() -> None:
+    """Items carry tags since archiver#362 (D5), so the preview shows ``TAGS:``."""
+    assert PREVIEW_ITEM.tags
+    body = build_body(
+        preview_event("change_detected"),
+        PREVIEW_ITEM,
+        ContentOptions(include_tags=True),
+        strict=True,
+    )
+    assert f"TAGS: {', '.join(PREVIEW_ITEM.tags)}" in body

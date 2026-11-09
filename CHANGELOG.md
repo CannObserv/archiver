@@ -18,6 +18,17 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.43.0 (2026-11-09)
+
+[both] **InfoItem tags (archiver#362, epic #359 A6).** Migration `1dfb05407e1e` adds `information.info_items.tags text[] NOT NULL DEFAULT '{}'`; every existing row reads `'{}'`. Expand-only. SDK **5.17.0**. Nothing announces: tags never go on the bus, so the deploy writes no `changes_outbox` rows.
+
+- **One tag rule** (D2), `normalize_tags` in `src/core/services/info_item_tags.py`, used by the API, the dashboard and the importer: strip; refuse an empty tag, one over 255 characters, or one holding a comma or control character; keep case; de-duplicate exactly; at most 32 per item. Stored sorted.
+- **API** (D3): `InfoItemOut.tags` (a list, `[]` when none; defaulted, so an older server's response still parses). `PUT /api/v1/info-items/{id}/tags` with `{"tags": [...]}` replaces the whole set and answers with `InfoItemOut`; a rule violation is a 422 naming each tag by `/tags/<i>` (`/tags` for the count), an unknown item a 404. Allowed on an archived item. `POST /info-items` and list filtering are unchanged.
+- **SDK 5.17.0:** `set_tags(info_item_id, tags)`.
+- **Dashboard** (D4): a Tags row in the InfoItem Overview, with removable chips and a comma-separated add (`POST /dashboard/info-items/{id}/tags`, `…/tags/remove`). Add and remove lock the item row `FOR NO KEY UPDATE`.
+- **Composer** (D5): `load_item_facts` fills `ItemFacts.tags`, so a subscription with `include_tags` gains a `TAGS:` line. The preview's canned item carries tags.
+- **Importer** (D6): `python -m src.core.tools.import_watcher_item_tags --base-url … [--dry-run]` reads Watcher's export on stdin and fills `default_tags` through `set_tags` where Archiver's item has none. An item already tagged in Archiver is `differs`; one Archiver lacks is `missing`. Any tag breaking the rule refuses the file. Prints item ids and counts only. The real import waits for Watcher's re-export after CannObserv/watcher#377 and #378 (D7).
+
 ## v4.42.0 (2026-11-08)
 
 [service] **Check-now via `info.watch-check` (archiver#370, epic #359 A11).** Migration `3f57fd148898` adds three columns to `information.watch_status` and the table `information.watch_check_commands`. SDK unchanged (5.16.0): no API route or schema is added (D7, dashboard only). **Ships dark:** `ARCHIVER_WATCH_CHECK_ENABLED` is commented out in `deploy/archiver.service` until flip F4, so there is no button, both routes 404 and nothing is enqueued.

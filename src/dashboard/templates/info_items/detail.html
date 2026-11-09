@@ -50,6 +50,7 @@
           <span class="detail-grid__value text-muted">{{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
         </div>
         {% include "info_items/_org_row.html" %}
+        {% include "info_items/_tags_row.html" %}
         {#- archiver#363 D5: who hears this item - subscriptions_for's answer per
            event, so the union of global, its host's domain and its own rows.
            Read-only; each links to the Notifications page. -#}

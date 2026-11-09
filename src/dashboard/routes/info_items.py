@@ -33,7 +33,7 @@ from src.core.models import (
 from src.core.power_map import PowerMapClient, PowerMapUnavailableError
 from src.core.power_map.snapshots import OrgUnnamedError, load_org_values
 from src.core.rep_fields_schema.validator import validate_rep_fields
-from src.core.services import info_item_lifecycle, notification_subscriptions
+from src.core.services import info_item_lifecycle, info_item_tags, notification_subscriptions
 from src.core.services import temporal_profiles as profiles
 from src.core.services.registry_announcement import (
     announce_info_item,
@@ -717,6 +717,73 @@ async def put_org(
         ),
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# The Overview's Tags row  (archiver#362)
+# ---------------------------------------------------------------------------
+#
+# Chips with ×, and a comma-separated add, through the tag service's locked
+# read-modify-write (D4) - D2's rule is the API's. Its own swap target,
+# `#ii-tags`; a refusal is a 422 into `#ii-tags-error`. Nothing announces.
+
+
+def _tags_row(request: Request, item: InfoItem, swapped: str) -> HTMLResponse:
+    return _templates.TemplateResponse(
+        request, "info_items/_tags_row.html", {"item": item, "swapped": swapped}
+    )
+
+
+def _tags_refused(request: Request, message: str) -> HTMLResponse:
+    return _templates.TemplateResponse(
+        request, "info_items/_tags_error.html", {"message": message}, status_code=422
+    )
+
+
+@router.post("/{item_id}/tags", response_class=HTMLResponse)
+async def add_tags(
+    item_id: str,
+    request: Request,
+    tags: str = Form(default=""),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX: add the comma-separated ``tags`` to the item's set (archiver#362).
+
+    Blank pieces are dropped, as Watcher's editor did; nothing left is a 422.
+    A tag breaking the rule, or a set past 32, is a 422 naming it by position,
+    and nothing is stored. Success re-renders the row, focus back in the input.
+    """
+    item = await _resolve_item(item_id, session)
+    wanted = info_item_tags.split_tags(tags)
+    if not wanted:
+        return _tags_refused(request, "No tags given: separate tags with commas.")
+    try:
+        item = await info_item_tags.add_tags(session, item.info_item_id, wanted)
+    except info_item_tags.TagError as e:
+        await session.rollback()
+        return _tags_refused(request, f"Not added: {e}.")
+    await session.commit()
+    return _tags_row(request, item, "add")
+
+
+@router.post("/{item_id}/tags/remove", response_class=HTMLResponse)
+async def remove_tag(
+    item_id: str,
+    request: Request,
+    tag: str = Form(default=""),
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX: remove exactly ``tag`` from the item's set (archiver#362).
+
+    One the item lacks (a stale tab) changes nothing. Success re-renders the
+    row, focus on its label: the × that was clicked is gone.
+    """
+    item = await _resolve_item(item_id, session)
+    item = await info_item_tags.remove_tag(session, item.info_item_id, tag)
+    await session.commit()
+    return _tags_row(request, item, "remove")
 
 
 # ---------------------------------------------------------------------------
