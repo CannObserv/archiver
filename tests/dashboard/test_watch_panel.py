@@ -14,6 +14,7 @@ import pytest
 
 from src.core.models.domain import Domain
 from src.dashboard.watch_panel import (
+    FULL_FETCH_SAME_CYCLE,
     build_watch_context,
     format_interval,
     parse_interval_seconds,
@@ -226,11 +227,31 @@ class TestFullFetchBehind:
         ctx = _watching(last_full_fetch_at=None)
         assert ctx["full_fetch_behind_ago"] is None
 
-    def test_compares_datetimes_not_rendered_ages(self):
-        """Both render "2 hr ago", but the bytes are a minute older: still behind."""
+    def test_same_cycle_stamps_show_nothing(self):
+        """Watcher stamps the bytes before extraction and the observation after
+        it, so a plain 200 leaves the full fetch ~1-2 s older (production,
+        2026-11-09: 0.9-1.8 s on all 12 rows). That is not a 304."""
+        ctx = _watching(
+            last_observed_at=NOW - timedelta(hours=4),
+            last_full_fetch_at=NOW - timedelta(hours=4, seconds=1.43),
+        )
+        assert ctx["full_fetch_behind_ago"] is None
+
+    def test_at_the_slack_shows_nothing(self):
         ctx = _watching(
             last_observed_at=NOW - timedelta(hours=2),
-            last_full_fetch_at=NOW - timedelta(hours=2, minutes=1),
+            last_full_fetch_at=NOW - timedelta(hours=2) - FULL_FETCH_SAME_CYCLE,
+        )
+        assert ctx["full_fetch_behind_ago"] is None
+
+    def test_past_the_slack_compares_datetimes_not_rendered_ages(self):
+        """Both render "2 hr ago", but the bytes are a cycle older: behind."""
+        ctx = _watching(
+            last_observed_at=NOW - timedelta(hours=2),
+            last_full_fetch_at=NOW
+            - timedelta(hours=2)
+            - FULL_FETCH_SAME_CYCLE
+            - timedelta(seconds=1),
         )
         assert ctx["full_fetch_behind_ago"] == "2 hr ago"
 

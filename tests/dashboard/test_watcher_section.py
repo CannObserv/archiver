@@ -912,6 +912,20 @@ async def test_full_fetch_equal_to_observed_adds_nothing(client, session, bind_s
 
 
 @pytest.mark.asyncio
+async def test_full_fetch_from_the_same_cycle_adds_nothing(client, session, bind_source):
+    """Bytes stamped before extraction, the observation after: ~1.4 s apart on
+    a plain 200 (production, 2026-11-09). Not a 304."""
+    r = await _watching_with(
+        client,
+        session,
+        bind_source,
+        "fetch-same-cycle",
+        last_full_fetch_at=_STATUS_TS - timedelta(seconds=1.43),
+    )
+    assert "304s since" not in _observed_cell(r.text)
+
+
+@pytest.mark.asyncio
 async def test_full_fetch_null_adds_nothing(client, session, bind_source):
     r = await _watching_with(client, session, bind_source, "fetch-null")
     assert "304s since" not in _observed_cell(r.text)
