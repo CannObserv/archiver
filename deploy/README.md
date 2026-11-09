@@ -351,10 +351,10 @@ the cohort charter, CannObserv/cannobserv
 
 - **One item: pause, or archive its watch, on Archiver's dashboard** (or
   `PUT /api/v1/info-items/{id}/watch-active`,
-  `POST /api/v1/info-items/{id}/archive`). Either announces
-  `active = false` on `info.registry`; Watcher applies `active` unconditionally on
-  reconcile, so a Watcher-local pause is **not sticky** - the next announcement
-  reverts it. One control plane, level-triggered: intended, not a bug.
+  `POST /api/v1/info-items/{id}/archive`). Either announces `active = false` on
+  `info.registry` when the item is announceable (#167); Watcher applies `active`
+  unconditionally on reconcile, so a Watcher-local pause is **not sticky** - the
+  next announcement reverts it. One control plane, level-triggered: intended, not a bug.
 
 - **One host: archive the Domain on Archiver's dashboard** (or
   `PATCH /api/v1/domains/{name}` with `is_active: false`, or
