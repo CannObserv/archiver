@@ -32,8 +32,8 @@ is pending is refused here, rather than sent for Watcher to reject as
 ``fetch_open``. After done, rejected or no answer, a click mints a fresh
 ``command_id`` and ``requested_at``.
 
-**Off unless switched on** (D6). ``ARCHIVER_WATCH_CHECK_ENABLED`` is flip F4: set
-only in ``deploy/archiver.service``, never in an env file. Off, nothing is
+**Off unless switched on** (D6). ``ARCHIVER_WATCH_CHECK_ENABLED`` is set since flip F4
+(#482), only in ``deploy/archiver.service``, never in an env file. Off, nothing is
 enqueued; the dashboard hides the button and its routes 404.
 
 **Never capped.** ``info.watch-check`` is a command stream: it stays out of the
