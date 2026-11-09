@@ -203,8 +203,8 @@ src/core/                      Domain logic
                                watch_check.py is check-now (#370): outboxes
                                info.watch-check while
                                ARCHIVER_WATCH_CHECK_ENABLED is set (unit-only,
-                               F4), records check_rejected, and derives the
-                               state ladder at read time.
+                               live since F4), records check_rejected,
+                               and derives the state ladder at read time.
   spec_match.py                Compares an observed spec_fingerprint against the
                                InfoSource's own source_specs via co-core's shared
                                derivation (cannobserv#309). Every uncertain branch

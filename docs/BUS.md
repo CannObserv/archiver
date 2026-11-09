@@ -3,7 +3,7 @@
 Everything Archiver puts on the Redis bus: the outbox producer and
 the six streams it publishes - `info.changes`, `info.registry`,
 `content.replicate`, `content.persist`, since flip F1 (#438)
-`content.fetch-policy`, and, dark until flip F4, `info.watch-check` (#370). What it
+`content.fetch-policy`, and, since flip F4 (#482), `info.watch-check` (#370). What it
 takes off - `content.revisions`, `content.artifacts`, `info.watch-status`,
 `info.watch-events` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
@@ -338,7 +338,7 @@ surface, *command* kind: one `WatchCheckCommandEmit` per click on the Watcher pa
 **Check now**, a forced full fetch, to Watcher's one group `watcher.watch-check`;
 idempotency key the bare `command_id`. `src/core/services/watch_check.py`.
 
-- **Off unless `ARCHIVER_WATCH_CHECK_ENABLED` is set** - flip F4, unit-only
+- **Off unless `ARCHIVER_WATCH_CHECK_ENABLED` is set** - since flip F4 (#482), unit-only
   ([ENVIRONMENT_BUS.md](ENVIRONMENT_BUS.md)). Off: no button, the routes 404, nothing enqueued.
 - **Producer posture:** outboxed with its `watch_check_commands` row in one transaction,
   drained in commit order, retried indefinitely, **one message per click**. One open command

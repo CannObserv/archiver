@@ -78,7 +78,7 @@
     {% if has_active_source %}
     {% include "info_items/_cadence_editor.html" %}
     {% include "info_items/_temporal_profile.html" %}
-    {# archiver#370: check-now, dark until F4 (renders nothing while off). #}
+    {# archiver#370: check-now, live since F4 #482 (renders nothing while off). #}
     {% include "info_items/_watch_check.html" %}
     {% endif %}
     {# archiver#361: archive stores state before Watcher has ever reported, too. #}
@@ -208,7 +208,7 @@
     {% if has_active_source %}
     {% include "info_items/_cadence_editor.html" %}
     {% include "info_items/_temporal_profile.html" %}
-    {# archiver#370: check-now, dark until F4 (renders nothing while off). #}
+    {# archiver#370: check-now, live since F4 #482 (renders nothing while off). #}
     {% include "info_items/_watch_check.html" %}
     {% endif %}
     {# Archived items carry Restore in the header instead (archiver#361). #}
