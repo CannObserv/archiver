@@ -22,7 +22,9 @@ show them is the ``watch_health`` macro's rule (archiver#371).
 **Full fetch behind** (archiver#371, #172): a 304 advances
 ``last_observed_at`` exactly as a re-read does, so ``full_fetch_behind_ago``
 is the age of ``last_full_fetch_at`` *only* when it is older than the
-observation - compared as datetimes, never as rendered ages - else None.
+observation by more than ``FULL_FETCH_SAME_CYCLE`` - compared as datetimes,
+never as rendered ages - else None. The slack exists because one cycle stamps
+the two apart: the bytes before extraction, the observation after it.
 
 **Next due** derives from ``last_attempt_at`` (a failing item attempts on
 schedule while ``last_observed_at`` stands still) plus ``applied_interval``
@@ -65,6 +67,13 @@ if TYPE_CHECKING:
 # to an alert. Delta propagation is seconds and the snapshot repair is hourly,
 # so 15 minutes of lag means the announcement path is genuinely stuck, not slow.
 DRIFT_ALERT_THRESHOLD = timedelta(minutes=15)
+
+# One fetch cycle stamps ``last_full_fetch_at`` when the bytes arrive and
+# ``last_observed_at`` after extraction, so a plain 200 leaves the full fetch a
+# little older (0.9-1.8 s on all 12 production rows, 2026-11-09). A 304 lands a
+# cadence later, and the shortest the editor offers is an hour; bytes under five
+# minutes older than the observation say nothing worth a line either way.
+FULL_FETCH_SAME_CYCLE = timedelta(minutes=5)
 
 _INTERVAL_RE = re.compile(r"^(\d+)([smhd])$")
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -212,9 +221,10 @@ def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContex
 
 
 def _full_fetch_behind(status: WatchStatus, *, now: datetime) -> str | None:
-    """Age of the last 200, only while it trails the last observation (#172)."""
+    """Age of the last 200, only while it trails the last observation by more
+    than one cycle's own stamping gap (#172, ``FULL_FETCH_SAME_CYCLE``)."""
     fetched, observed = status.last_full_fetch_at, status.last_observed_at
-    if fetched is None or observed is None or fetched >= observed:
+    if fetched is None or observed is None or observed - fetched <= FULL_FETCH_SAME_CYCLE:
         return None
     return format_age(fetched, now=now)
 
