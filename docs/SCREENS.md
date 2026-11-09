@@ -100,6 +100,13 @@ Used for every external URL (source URLs, RepSpec `public_url`, http(s)
 intentionally exempt - the carve-out currently has no instance, its one example
 having been the InfoItem "Watcher ↗" `<h2>` that retired with archiver#142.
 
+**Watcher health affordance.** `watch_health(health, reason, code)` from
+`_macros.html` (archiver#371) renders the health badge (`ok` → success,
+anything else verbatim on danger). When the health is not `ok` it adds the
+reason verbatim, then ` · <code>`, or a muted "reason not reported". A `None`
+health renders `-`. The Watch panel's Health cell and the check-now block both
+use it, so the two cannot drift. Rules: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
+
 **Replication state affordance.** `replication_state(command)` from
 `_macros.html` - the latest `replication_commands` row for one assignment,
 rendered as a state badge (`complete`→success, `requested`→info, `failed`→danger,
