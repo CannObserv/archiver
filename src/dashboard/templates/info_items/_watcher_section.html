@@ -17,6 +17,7 @@
    narrows), then the editable fields one per row. The rows are authored rather than auto-filled
    because grouping by meaning is the whole point: an operator reading the panel
    asks "healthy, how often, when next" before asking anything else. #}
+{% from "_macros.html" import watch_health %}
 <div id="watcher-section"
      class="watch-panel"
      aria-live="polite" aria-atomic="false"
@@ -132,12 +133,7 @@
     <div class="detail-grid__item">
       <span class="detail-grid__label">Health</span>
       <span class="detail-grid__value">
-        {% if watch.health %}
-        <span class="badge badge--{{ 'success' if watch.health_ok else 'danger' }}"
-              style="font-size:0.7rem;">{{ watch.health.upper() }}</span>
-        {% else %}
-        <span class="text-sm text-muted">-</span>
-        {% endif %}
+        {{ watch_health(watch.health, watch.health_reason, watch.health_status_code) }}
         {% if watch.archived %}
         <span class="badge badge--warning" style="font-size:0.7rem;margin-left:var(--space-1);">Archived</span>
         {% elif watch.applied_active is false %}
@@ -183,7 +179,10 @@
 
     <div class="detail-grid__item">
       <span class="detail-grid__label">Last observed</span>
-      <span class="detail-grid__value text-sm text-muted">{{ watch.last_observed_ago or "-" }}</span>
+      <span class="detail-grid__value text-sm text-muted">{{ watch.last_observed_ago or "-" }}
+        {#- archiver#371 D1 (#172): a 304 advances Last observed as a re-read
+            does; when the bytes are older, say how old. -#}
+        {% if watch.full_fetch_behind_ago %}<span style="display:block;">bytes {{ watch.full_fetch_behind_ago }} (304s since)</span>{% endif %}</span>
     </div>
 
     <div class="detail-grid__item">

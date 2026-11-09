@@ -42,7 +42,10 @@ def make_status(**overrides):
         applied_interval=None,
         last_attempt_at=NOW - timedelta(hours=2),
         last_observed_at=NOW - timedelta(hours=2),
+        last_full_fetch_at=None,
         health="ok",
+        health_reason=None,
+        health_status_code=None,
         occurred_at=NOW - timedelta(minutes=1),
     )
     defaults.update(overrides)
@@ -164,6 +167,76 @@ class TestHealthRule:
         )
         assert ctx["state"] == "watching"
         assert ctx["applied_active"] is False
+
+
+def _watching(**status_overrides):
+    return build_watch_context(
+        host=None,
+        profile=None,
+        is_announceable=True,
+        item=make_item(),
+        status=make_status(**status_overrides),
+        last_changed_at=None,
+        now=NOW,
+    )
+
+
+class TestHealthReason:
+    """archiver#371: the reason and code ride through as stored; the template
+    decides when to show them (cannobserv's rule, `watch_health` macro)."""
+
+    def test_reason_and_code_pass_through(self):
+        ctx = _watching(health="error", health_reason="http_status", health_status_code=503)
+        assert ctx["health_reason"] == "http_status"
+        assert ctx["health_status_code"] == 503
+
+    def test_unreported_is_none(self):
+        ctx = _watching(health="error")
+        assert ctx["health_reason"] is None
+        assert ctx["health_status_code"] is None
+
+    def test_no_status_has_none(self):
+        ctx = build_watch_context(
+            host=None,
+            profile=None,
+            is_announceable=True,
+            item=make_item(),
+            status=None,
+            last_changed_at=None,
+            now=NOW,
+        )
+        assert ctx["health_reason"] is None
+        assert ctx["health_status_code"] is None
+        assert ctx["full_fetch_behind_ago"] is None
+
+
+class TestFullFetchBehind:
+    """archiver#371 D1 (#172): a 304 advances `last_observed_at` as a re-read
+    does, so the bytes' own age shows only when it lags the observation."""
+
+    def test_older_than_observed_shows_its_age(self):
+        ctx = _watching(last_full_fetch_at=NOW - timedelta(days=6))
+        assert ctx["full_fetch_behind_ago"] == "6 days ago"
+
+    def test_equal_to_observed_shows_nothing(self):
+        ctx = _watching(last_full_fetch_at=NOW - timedelta(hours=2))
+        assert ctx["full_fetch_behind_ago"] is None
+
+    def test_null_shows_nothing(self):
+        ctx = _watching(last_full_fetch_at=None)
+        assert ctx["full_fetch_behind_ago"] is None
+
+    def test_compares_datetimes_not_rendered_ages(self):
+        """Both render "2 hr ago", but the bytes are a minute older: still behind."""
+        ctx = _watching(
+            last_observed_at=NOW - timedelta(hours=2),
+            last_full_fetch_at=NOW - timedelta(hours=2, minutes=1),
+        )
+        assert ctx["full_fetch_behind_ago"] == "2 hr ago"
+
+    def test_null_observed_shows_nothing(self):
+        ctx = _watching(last_observed_at=None, last_full_fetch_at=NOW - timedelta(days=1))
+        assert ctx["full_fetch_behind_ago"] is None
 
 
 class TestNextDue:

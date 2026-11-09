@@ -14,7 +14,7 @@ that expects a watched state - an unbound item is `not_watching` by definition.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -799,3 +799,119 @@ async def test_an_inheriting_item_flags_drift_against_the_domain_default(client,
 
     assert r.status_code == 200
     assert "announced Every 6 hours" in r.text
+
+
+# ---------------------------------------------------------------------------
+# archiver#371 - health reason (D2) and the full fetch behind observed (D1)
+# ---------------------------------------------------------------------------
+
+
+async def _watching_with(client, session, bind_source, slug: str, **status):
+    """A `watching` panel whose status row carries ``status``'s overrides."""
+    item = InfoItem(name=slug)
+    session.add(item)
+    await session.flush()
+    await bind_source(session, item, slug=slug)
+    _seed_status(session, item, **status)
+    await session.flush()
+    r = await _section(client, item)
+    assert r.status_code == 200
+    return r
+
+
+def _health_cell(html: str) -> str:
+    row_one, _ = _rows(html)
+    return row_one.split("Cadence")[0]
+
+
+def _observed_cell(html: str) -> str:
+    _, row_two = _rows(html)
+    return row_two.split("Last observed")[1].split("Announcement")[0]
+
+
+@pytest.mark.asyncio
+async def test_health_ok_shows_no_reason_line(client, session, bind_source):
+    """cannobserv's rule: reason and code only when health != ok, even if set."""
+    r = await _watching_with(
+        client, session, bind_source, "reason-ok", health_reason="stale", health_status_code=200
+    )
+    cell = _health_cell(r.text)
+    assert "OK" in cell
+    assert "stale" not in cell
+    assert "not reported" not in cell
+
+
+@pytest.mark.asyncio
+async def test_error_shows_reason_and_code(client, session, bind_source):
+    r = await _watching_with(
+        client,
+        session,
+        bind_source,
+        "reason-code",
+        health="error",
+        health_reason="http_status",
+        health_status_code=503,
+    )
+    cell = _health_cell(r.text)
+    assert "ERROR" in cell
+    assert "http_status · 503" in cell
+
+
+@pytest.mark.asyncio
+async def test_error_shows_reason_alone_without_a_code(client, session, bind_source):
+    r = await _watching_with(
+        client, session, bind_source, "reason-only", health="error", health_reason="timeout"
+    )
+    cell = _health_cell(r.text)
+    assert "timeout" in cell
+    assert "timeout ·" not in cell
+
+
+@pytest.mark.asyncio
+async def test_error_without_a_reason_says_not_reported(client, session, bind_source):
+    """Absent (older co-core) and null read the same: "reason not reported"."""
+    r = await _watching_with(client, session, bind_source, "reason-none", health="error")
+    assert "reason not reported" in _health_cell(r.text)
+
+
+@pytest.mark.asyncio
+async def test_unknown_health_token_renders_verbatim_with_its_reason(client, session, bind_source):
+    """Open vocabulary: never test health != "error"."""
+    r = await _watching_with(
+        client,
+        session,
+        bind_source,
+        "reason-future",
+        health="some_future_token",
+        health_reason="novel",
+    )
+    cell = _health_cell(r.text)
+    assert "SOME_FUTURE_TOKEN" in cell
+    assert "novel" in cell
+
+
+@pytest.mark.asyncio
+async def test_full_fetch_older_than_observed_shows_a_second_line(client, session, bind_source):
+    """#172: a 304 advances last_observed_at; the bytes are older."""
+    r = await _watching_with(
+        client,
+        session,
+        bind_source,
+        "fetch-behind",
+        last_full_fetch_at=_STATUS_TS - timedelta(days=6),
+    )
+    assert "(304s since)" in _observed_cell(r.text)
+
+
+@pytest.mark.asyncio
+async def test_full_fetch_equal_to_observed_adds_nothing(client, session, bind_source):
+    r = await _watching_with(
+        client, session, bind_source, "fetch-equal", last_full_fetch_at=_STATUS_TS
+    )
+    assert "304s since" not in _observed_cell(r.text)
+
+
+@pytest.mark.asyncio
+async def test_full_fetch_null_adds_nothing(client, session, bind_source):
+    r = await _watching_with(client, session, bind_source, "fetch-null")
+    assert "304s since" not in _observed_cell(r.text)

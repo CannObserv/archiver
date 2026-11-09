@@ -40,7 +40,7 @@ that announce and let Watcher converge; the route entries in [PAGES.md](PAGES.md
 **The block** (`info_items/_watch_check.html`, `#watch-check`) sits below the Temporal profile row, on the cadence editor's gate (`has_active_source`), in `watching` and `no_status`. Its poll swaps only itself, so the panel's other cells, Health included, refresh on the next `watcherUpdated`. Its state is derived at render, never stored as success (D2), first match wins:
 
 1. a rejection recorded on the command → **Check rejected: `<reason>`**, verbatim (the vocabulary is Watcher's, opaque here);
-2. `watch_status.last_full_fetch_at` > `requested_at` → **Checked**, plus `health` and `health_reason`/`health_status_code`. A 200 whose extraction then failed is done + ERROR;
+2. `watch_status.last_full_fetch_at` > `requested_at` → **Checked**, plus the `watch_health` macro (`_macros.html`, archiver#371), which the panel's Health cell shares so the two cannot drift: the badge, then only when `health != "ok"` the `health_reason` verbatim and ` · <health_status_code>` when set, or muted "reason not reported" when the reason is None (absent and null alike, cannobserv's rule). A 200 whose extraction then failed is done + ERROR;
 3. older than `ARCHIVER_WATCH_CHECK_TIMEOUT_SECONDS` (15 min) → **No answer yet**, naming `info.watch-check.dlq`;
 4. otherwise **Check pending**: the button is disabled and the block polls.
 

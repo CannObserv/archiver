@@ -16,6 +16,13 @@ path itself cannot degrade).
 **Health.** Open vocabulary: ``"ok"`` is the only value that means healthy.
 Every other value — ``"error"``, a future ``"degraded"``, one never seen —
 is non-healthy and renders verbatim. Never test ``health != "error"``.
+``health_reason`` / ``health_status_code`` pass through as stored; when to
+show them is the ``watch_health`` macro's rule (archiver#371).
+
+**Full fetch behind** (archiver#371, #172): a 304 advances
+``last_observed_at`` exactly as a re-read does, so ``full_fetch_behind_ago``
+is the age of ``last_full_fetch_at`` *only* when it is older than the
+observation - compared as datetimes, never as rendered ages - else None.
 
 **Next due** derives from ``last_attempt_at`` (a failing item attempts on
 schedule while ``last_observed_at`` stands still) plus ``applied_interval``
@@ -151,6 +158,8 @@ class WatchPanelContext(TypedDict):
     state: str
     health: str | None
     health_ok: bool
+    health_reason: str | None
+    health_status_code: int | None
     applied_active: bool | None
     desired_active: bool | None
     archived: bool
@@ -164,6 +173,7 @@ class WatchPanelContext(TypedDict):
     cadence_drift: bool
     last_attempt_ago: str | None
     last_observed_ago: str | None
+    full_fetch_behind_ago: str | None
     last_changed_ago: str | None
     next_due: str | None
     overdue: bool
@@ -199,6 +209,14 @@ def _drift(item: InfoItem, status: WatchStatus, *, now: datetime) -> DriftContex
         and age_seconds > DRIFT_ALERT_THRESHOLD.total_seconds(),
         age=_format_span(age_seconds) if age_seconds is not None else None,
     )
+
+
+def _full_fetch_behind(status: WatchStatus, *, now: datetime) -> str | None:
+    """Age of the last 200, only while it trails the last observation (#172)."""
+    fetched, observed = status.last_full_fetch_at, status.last_observed_at
+    if fetched is None or observed is None or fetched >= observed:
+        return None
+    return format_age(fetched, now=now)
 
 
 def inherit_label(host: Domain | None, resolved: ResolvedInterval) -> str:
@@ -289,6 +307,8 @@ def build_watch_context(
             state=state,
             health=None,
             health_ok=False,
+            health_reason=None,
+            health_status_code=None,
             applied_active=None,
             desired_active=desired_active,
             archived=archived,
@@ -302,6 +322,7 @@ def build_watch_context(
             cadence_drift=False,
             last_attempt_ago=None,
             last_observed_ago=None,
+            full_fetch_behind_ago=None,
             last_changed_ago=format_age(last_changed_at, now=now),
             next_due=None,
             overdue=False,
@@ -339,6 +360,8 @@ def build_watch_context(
         state="watching",
         health=status.health,
         health_ok=status.health == "ok",
+        health_reason=status.health_reason,
+        health_status_code=status.health_status_code,
         applied_active=status.applied_active,
         desired_active=desired_active,
         archived=archived,
@@ -352,6 +375,7 @@ def build_watch_context(
         cadence_drift=cadence_drift,
         last_attempt_ago=format_age(status.last_attempt_at, now=now),
         last_observed_ago=format_age(status.last_observed_at, now=now),
+        full_fetch_behind_ago=_full_fetch_behind(status, now=now),
         last_changed_ago=format_age(last_changed_at, now=now),
         next_due=next_due,
         overdue=overdue,

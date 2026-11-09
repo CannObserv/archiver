@@ -104,3 +104,20 @@
 </div>
 {% endif %}
 {%- endmacro %}
+
+{# Watcher health: the badge, then - only when health != "ok" - the reason
+   verbatim (open vocabulary) and " · <code>" when a status code is set, or a
+   muted "reason not reported" when it is None (archiver#371; cannobserv's
+   rule: absent and null mean the same). "ok" is the only healthy value; never
+   test health != "error". One macro for the Watch panel's Health cell and the
+   check-now block, so the two cannot drift (D3). A None health is "-". #}
+{% macro watch_health(health, reason=none, code=none) -%}
+{%- if health -%}
+<span class="badge badge--{{ 'success' if health == 'ok' else 'danger' }}" style="font-size:0.7rem;">{{ health.upper() }}</span>
+{%- if health != "ok" %}
+<span class="text-sm{% if not reason %} text-muted{% endif %}">{{ reason or "reason not reported" }}{% if code is not none %} · {{ code }}{% endif %}</span>
+{%- endif -%}
+{%- else -%}
+<span class="text-sm text-muted">-</span>
+{%- endif -%}
+{%- endmacro %}
