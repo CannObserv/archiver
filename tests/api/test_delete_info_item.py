@@ -9,10 +9,11 @@ every consumer keeps the key forever. The snapshot does not correct it:
 ``revoked`` is an explicit tombstone precisely because absence-from-a-full-set
 is *not* the delete signal in this design.
 
-So the route exists to give the tombstone a transactional home. It emits nothing
-yet — the announcement service does not exist — but the emit site does, and the
-alternative (declaring InfoItems undeletable in docs/SCHEMA.md) does not actually
-stop anyone from reaching for psql.
+So the route exists to give the tombstone a transactional home: it writes the
+``revoked`` announcement in the deletion's own transaction, and Watcher deletes
+the WatchedItem on it (archiver#372). The alternative (declaring InfoItems
+undeletable in docs/SCHEMA.md) does not actually stop anyone from reaching for
+psql.
 
 **Scope of the cascade is deliberate.** The item's own bindings and rep-spec
 assignments go with it (both FKs are ``ondelete="CASCADE"``). The InfoSource and
