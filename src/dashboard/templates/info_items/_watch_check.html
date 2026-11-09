@@ -21,6 +21,7 @@
   a terminal rung is the swap that stops it. The button syncs on the block with
   `drop`, so a poll never beats a click (archiver#220).
 #}
+{% from "_macros.html" import watch_health %}
 {% if check_enabled %}
 <div id="watch-check" class="field-row-group"
      {% if check and check.open %}hx-get="/dashboard/info-items/{{ item_id }}/watch-check"
@@ -38,11 +39,7 @@
       Check pending <span class="text-sm text-muted">· requested {{ check.requested_ago }}</span>
       {% elif check.kind == "done" %}
       Checked {{ check.completed_ago }}:
-      <span class="badge badge--{{ 'success' if check.health_ok else 'danger' }}"
-            style="font-size:0.7rem;">{{ (check.health or "unknown").upper() }}</span>
-      {% if check.health_reason %}
-      <span class="text-sm text-muted">{{ check.health_reason }}{% if check.health_status_code %} {{ check.health_status_code }}{% endif %}</span>
-      {% endif %}
+      {{ watch_health(check.health, check.health_reason, check.health_status_code) }}
       {% elif check.kind == "rejected" %}
       Check rejected: <code>{{ check.reason }}</code>
       <span class="text-sm text-muted">· requested {{ check.requested_ago }}</span>

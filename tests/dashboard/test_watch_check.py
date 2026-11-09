@@ -242,8 +242,44 @@ async def test_done_with_an_error_shows_the_reason_and_code(client, session, bin
 
     assert "Checked" in r.text
     assert "ERROR" in r.text
-    assert "http_status" in r.text
-    assert "503" in r.text
+    assert "http_status · 503" in r.text
+
+
+@pytest.mark.asyncio
+async def test_done_with_an_error_and_no_reason_says_not_reported(
+    client, session, bind_source, check_on
+):
+    """archiver#371 D3: the panel's rule, through the same macro."""
+    item = await _watched(
+        session, bind_source, last_full_fetch_at=datetime.now(UTC), health="error"
+    )
+    session.add(_command(item, ago=timedelta(minutes=1)))
+    await session.flush()
+
+    r = await _block(client, item)
+
+    assert "ERROR" in r.text
+    assert "reason not reported" in r.text
+
+
+@pytest.mark.asyncio
+async def test_done_ok_hides_a_stored_reason(client, session, bind_source, check_on):
+    """archiver#371 D3: reason and code show only when health != ok."""
+    item = await _watched(
+        session,
+        bind_source,
+        last_full_fetch_at=datetime.now(UTC),
+        health_reason="http_status",
+        health_status_code=200,
+    )
+    session.add(_command(item, ago=timedelta(minutes=1)))
+    await session.flush()
+
+    r = await _block(client, item)
+
+    assert "OK" in r.text
+    assert "http_status" not in r.text
+    assert "not reported" not in r.text
 
 
 @pytest.mark.asyncio

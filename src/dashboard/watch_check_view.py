@@ -27,7 +27,6 @@ class CheckView(TypedDict):
     completed_ago: str | None
     reason: str | None
     health: str | None
-    health_ok: bool
     health_reason: str | None
     health_status_code: int | None
     timeout_minutes: int
@@ -45,7 +44,6 @@ def check_view(state: CheckState | None, *, now: datetime, timeout: timedelta) -
         completed_ago=format_age(state.completed_at, now=now),
         reason=state.reason,
         health=state.health,
-        health_ok=state.health_ok,
         health_reason=state.health_reason,
         health_status_code=state.health_status_code,
         timeout_minutes=max(1, int(timeout.total_seconds() // 60)),
