@@ -63,7 +63,9 @@ TEMPLATE_VARIABLES: list[TemplateVariable] = [
     TemplateVariable(
         "last_changed_at", "str", "On a change, this change's time; empty otherwise", "always"
     ),
-    TemplateVariable("tags", "list[str]", "The item's tags (none until tags exist)", "always"),
+    TemplateVariable(
+        "tags", "list[str]", "The item's tags, sorted; empty when it has none", "always"
+    ),
     TemplateVariable("description", "str", "The item's description", "always"),
     TemplateVariable(
         "previous_fingerprint", "str", "sha256 of the previous text", "change_detected"

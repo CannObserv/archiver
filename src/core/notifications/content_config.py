@@ -13,7 +13,7 @@ at ``ebd1be5``); the validation is stricter:
   events only. The dashboard's preview, which shares this validator, also names
   undefined ones; ``content.py`` renders every template in a bounded sandbox (#367).
 
-``include_tags`` is stored and inert until tags exist (#362).
+``include_tags`` adds the item's tags (archiver#362) as a ``TAGS:`` line.
 """
 
 from typing import Annotated, Any

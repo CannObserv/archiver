@@ -8,7 +8,7 @@ D1's rules, in one place so #369 doesn't re-derive them:
   so a notification names the host it was routed by;
 - ``check_interval`` is ``resolve_interval`` (profile, then item, then domain):
   the cadence Watcher is told;
-- ``tags`` is empty until #362.
+- ``tags`` are the item's own, in stored (sorted) order (archiver#362).
 """
 
 from sqlalchemy import select
@@ -47,4 +47,5 @@ async def load_item_facts(session: AsyncSession, info_item_id: ULID | str) -> It
         domain_name=host or "",
         description=item.description or "",
         check_interval=interval or "",
+        tags=tuple(item.tags or ()),
     )

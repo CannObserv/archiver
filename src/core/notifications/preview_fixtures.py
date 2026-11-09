@@ -6,8 +6,8 @@ two canned texts whose diff is computed by the real algorithm.
 
 **Fidelity (Watcher #221).** The preview must show no variable a real send
 lacks. The fixtures are co-core's own event models, rendered through the
-composer's own context, so the variables match by construction. The item has no
-tags, as no item does until #362.
+composer's own context, so the variables match by construction. The item has
+tags, as items may since archiver#362, so ``include_tags`` shows its ``TAGS:`` line.
 
 **The diff** is never on the event: a send reads the two stored texts the
 fingerprints name. The preview names its canned texts by their real digests and
@@ -37,6 +37,7 @@ PREVIEW_ITEM = ItemFacts(
     domain_name="example.com",
     description="Tracks regulatory filings page",
     check_interval="1h",
+    tags=("licensing", "rules"),
 )
 
 # Canonical extracted text: chunk texts joined by "\n" (cannobserv#486), the shape
