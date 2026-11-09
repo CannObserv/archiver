@@ -341,30 +341,61 @@ up green while `check_redis_floor.sh` - this unit's own `ExecStartPre` - goes
 silently blind on the >=7.0 floor (archiver#195).
 
 
-## Stopping a fetch - the operator runbook (archiver#142)
+## Stopping a fetch - the operator runbook (archiver#142, archiver#372)
 
-With the Watcher SDK gone, the item-level control plane is Archiver's alone.
-Recorded here because it is an operational fact that no longer has a second
-route, and because the coarser fallback is not obvious from the dashboard.
+Archiver is the control plane: every lever below but the last is Archiver's, and
+only the last works with Archiver down. Which service owns which lever:
+the cohort charter, CannObserv/cannobserv
+[`docs/BOUNDARIES.md`](https://github.com/CannObserv/cannobserv/blob/main/docs/BOUNDARIES.md)
+(placement rule 2: break-glass stays host-local).
 
-- **Item-level pause is Archiver's dashboard, and only Archiver's dashboard.**
-  Pause/resume writes `info_items.watch_active` and announces it; Watcher applies
-  `active` unconditionally on reconcile. A Watcher-local pause is therefore
-  **not sticky** - it is reverted on the next announcement. That is the design
-  working as intended (one control plane, level-triggered), not a bug, and
-  CannObserv/watcher#254 removes or 409s the affordance on that side so the
-  question stops being askable by pressing a button.
+- **One item: pause, or archive its watch, on Archiver's dashboard** (or
+  `PUT /api/v1/info-items/{id}/watch-active`, `POST …/archive`). Either announces
+  `active = false` on `info.registry`; Watcher applies `active` unconditionally on
+  reconcile, so a Watcher-local pause is **not sticky** - the next announcement
+  reverts it. One control plane, level-triggered: intended, not a bug.
 
-- **Host-level break-glass is `domain_suspended`,** set in Watcher. Reconciliation
-  does not touch it because it is *mechanism* rather than *policy* - the same
-  reason an archived WatchedItem is Watcher's business and not the registry's.
-  Use it when a whole host must stop being fetched, or when Archiver is
-  unreachable and an item cannot be paused the normal way.
+- **One host: archive the Domain on Archiver's dashboard** (or
+  `PATCH /api/v1/domains/{name}` with `is_active: false`, or `POST …/archive`; the
+  dashboard has no `is_active` toggle). Every item on the host announces
+  `active = false`, and the host's `content.fetch-policy` frame goes `revoked`
+  ([docs/DOMAINS.md](../docs/DOMAINS.md)). Restore (or `is_active: true`) resumes it.
 
-- **Archiver is now a single point of operational dependency for stopping one
-  item.** This is the accepted price of a single control plane. `domain_suspended`
-  is the coarser fallback; there is no finer one, so an Archiver outage means
-  item-level pause is unavailable until it returns.
+- **Break-glass, Archiver down: Watcher's `suspend_domain` CLI**, run as the
+  operator on `co-watcher` (handed over on archiver#372 by Watcher, from
+  CannObserv/watcher#372):
+
+  ```bash
+  cd ~/watcher
+  source scripts/load-env.sh
+  # suspend: every item on the host stops being checked from the service's next tick
+  WATCHER_ALLOW_PRODUCTION_DB=1 .venv/bin/python -m src.ops.suspend_domain <host>
+  # resume
+  WATCHER_ALLOW_PRODUCTION_DB=1 .venv/bin/python -m src.ops.suspend_domain <host> --resume
+  ```
+
+  - **`.venv/bin/python`, not `uv run`:** `uv run` syncs `watcher.service`'s own
+    `.venv` from Watcher's wheelhouse without the service's sha256 check
+    (CannObserv/watcher#393). The interpreter doesn't sync, so a break-glass run
+    can't change what the service imports. The `uv run` form still works.
+  - **`<host>`** is the bare hostname as Watcher stores it: no scheme, no path,
+    lowercased (`lcb.wa.gov`).
+  - **Exit codes:** `0` done, or already in that state (it says which); `1` unknown
+    or archived host; `2` couldn't run (environment not loaded, production opt-in
+    missing, database unreachable), one line on stderr.
+  - **Depends on Watcher's database only.** Archiver and the broker may be down.
+  - **What it stops:** Watcher's checks only. `schedule_tick` stops enqueuing the
+    host's items and a queued check no-ops; a `content.fetch` already issued still
+    completes. Since F1 (CannObserv/watcher#374) it publishes nothing:
+    Replicator's pacing for the host stays Archiver's.
+  - **It outlives Archiver's announcements.** Reconcile doesn't touch it, so
+    nothing Archiver does resumes it: run `--resume` on `co-watcher`. Archiver
+    sees it only as `applied_active = false` on each item's panel ("Resume
+    pending" where the item is announced active). Once Archiver is back, archive
+    the Domain there too if the stop should last.
+
+There is no finer fallback than the host: an Archiver outage means item-level
+pause is unavailable until it returns - the accepted price of one control plane.
 
 The divergence between what was announced and what Watcher is actually running
 stays visible either way: `applied_active` and `applied_interval` come back on

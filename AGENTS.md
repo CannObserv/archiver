@@ -4,7 +4,7 @@ Be terse. Prefer fragments over full sentences; sacrifice grammar for density. S
 
 ## Project Overview
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Tables and streams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Tables and streams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Who owns what: [cohort charter](https://github.com/CannObserv/cannobserv/blob/main/docs/BOUNDARIES.md). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 **Archiver makes no outbound HTTP call to Watcher (archiver#142).** The edge is bus-only in both directions: policy goes out on `info.registry`, status comes back on `info.watch-status`. There is no Watcher SDK, no `WATCHER_BASE_URL`, and no provisioning push. Do not reintroduce one - a synchronous call to a sibling service is the coupling the decoupling epic (#137) exists to remove.
 
@@ -52,8 +52,7 @@ Full tool table, prefetch hook, per-tool guidance: [`docs/SOCRATICODE.md`](docs/
 
 ## Architecture
 
-Full layout tree: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The boundaries an
-`ls` will not explain:
+The boundaries an `ls` will not explain (layout tree: Detail Docs):
 
 - `src/api/` is the HTTP contract, `src/dashboard/` the HTMX admin UI, `src/core/`
   the domain. The dashboard **clamps** paginated `limit`/`offset` where the API

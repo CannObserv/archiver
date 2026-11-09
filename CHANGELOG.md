@@ -18,6 +18,10 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.43.1 (2026-11-09)
+
+[service] **`DELETE /info-items/{id}` stops telling operators to remove the WatchedItem by hand** (archiver#372, epic #359). Watcher deletes the WatchedItem on the `revoked` tombstone, and its own DELETE 409s on a reconciled item, so the advice was stale and impossible. The route's WARNING on deleting an item Watcher reported on is gone with it; status code and behaviour are unchanged. `archiver-client` stays at 5.17.0: only the generated delete function's docstring and the OpenAPI snapshot's description and `info.version` change.
+
 ## v4.43.0 (2026-11-09)
 
 [both] **InfoItem tags (archiver#362, epic #359 A6).** Migration `1dfb05407e1e` adds `information.info_items.tags text[] NOT NULL DEFAULT '{}'`; every existing row reads `'{}'`. Expand-only. SDK **5.17.0**. Nothing announces: tags never go on the bus, so the deploy writes no `changes_outbox` rows.
