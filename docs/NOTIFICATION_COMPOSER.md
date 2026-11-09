@@ -73,7 +73,6 @@ recipients filter on it, and #369 compares titles. Renaming it is an operator de
 **Variables with no Archiver source:**
 
 - `last_changed_at` is this change on a change, and empty on the other events.
-- `tags` is empty until #362.
 - A null `status_code` is left **undefined**, so `| default('unknown')` works.
 - Every other absent value is `""`, never `None`.
 
@@ -85,7 +84,8 @@ recipients filter on it, and #369 compares titles. Renaming it is an operator de
 - the URL and `domain_name` from the **announcing** source (the active binding), the rule
   `subscriptions_for` routes domain scope by;
 - `check_interval` from `resolve_interval` (profile, then item, then domain), the cadence
-  Watcher is told.
+  Watcher is told;
+- `tags` from `info_items.tags`, sorted (archiver#362).
 
 It returns `None` for an unknown item.
 

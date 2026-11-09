@@ -167,6 +167,8 @@ that screen. The entries below stay the inventory line for each route.
 
 **PUT `…/{id}/org`**, **GET `/dashboard/power-map/orgs`** - Organization row Link / Unlink and type-ahead: [ORG_ROW.md](ORG_ROW.md) (archiver#306).
 
+**POST `…/{id}/tags`**, **`…/{id}/tags/remove`** - Tags row add (comma-separated) and remove: [TAGS_ROW.md](TAGS_ROW.md) (archiver#362).
+
 ## Notifications (`/dashboard/notifications/`)
 
 The list grouped by scope, `GET`/`POST /new`, `GET`/`POST /{id}/edit` and `POST /{id}/delete` (archiver#363): full-page POST→303, a refusal re-renders with 422 and keeps what was typed. Templates `notifications/list.html`, `notifications/form.html`. Each content block has Jinja title and body fields (archiver#367).

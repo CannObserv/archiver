@@ -58,7 +58,7 @@ event; it doesn't merge with them.
 - `include_diff_snippet` (default on) with `diff_snippet_lines` (1-200, default 25), and
   `include_diff_full`, which wins when both are on.
 - `include_temporal_context`, `include_domain`, `include_last_changed_at`,
-  `include_description`, and `include_tags`, which stays inert until tags exist (#362).
+  `include_description`, and `include_tags`, the item's tags as a `TAGS:` line (#362).
 - `title_template` and `body_template`: Jinja.
 
 **Validated at write time, and stricter than Watcher:**

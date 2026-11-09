@@ -226,7 +226,7 @@ applicable doc is a CR blocker.
   inventory line for those routes, so a behaviour change updates both.
 - `docs/ORG_ROW.md` - required when the change alters the InfoItem
   Organization row: its notices, the `orgCombobox` keyboard model, or the link
-  flow's refusals.
+  flow's refusals. `docs/TAGS_ROW.md` likewise for the Tags row.
 - `docs/HEALTH_ROW.md` and `docs/REGISTER.md` - required when the change alters
   the health row (a badge added or removed, its states, or the lag-probe bound),
   or the register wizard's summary bar, Step 1 Case B choice or Step 3 controls. PAGES.md keeps only

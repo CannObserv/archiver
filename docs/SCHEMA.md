@@ -75,6 +75,14 @@ document; the dashboard's Registry badge reports the count
   - **Boundary:** a WatchSpec is *per-item cadence*. `content.fetch-policy` (cannobserv#285) is
     *per-host spacing* — different key, stream, owner, and consumer. They are not the same knob.
 
+  `tags TEXT[] NOT NULL DEFAULT '{}'` (archiver#362) — operator tags, replacing Watcher's
+  `default_tags`. Stored stripped, exactly de-duplicated (case kept) and sorted; `'{}'` is the one
+  "no tags". One rule, `normalize_tags` in `src/core/services/info_item_tags.py`: non-empty, ≤255
+  chars, no comma or control character, ≤32 per item. Written by `PUT /info-items/{id}/tags`
+  (whole set, last writer wins) and the dashboard's add/remove (row locked `FOR NO KEY UPDATE`).
+  Never announced; read by the composer (`ItemFacts.tags`). Allowed while archived. An array, not
+  a JSON document, so `audit_stored_documents` has no kind for it.
+
   `announcement_generation BIGINT NOT NULL DEFAULT 0` (archiver#141) — the LWW ordering token
   for `info.registry`. Bumped **only** via the atomic `UPDATE … SET announcement_generation =
   announcement_generation + 1 RETURNING` in `src/core/services/registry_announcement.py` — never
