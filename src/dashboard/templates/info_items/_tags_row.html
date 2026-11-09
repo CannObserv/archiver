@@ -1,0 +1,49 @@
+{#- The Overview's Tags row (archiver#362, D4) - included by info_items/detail.html
+   inside its .detail-grid, and returned by a successful add or remove.
+
+   Requires `item`. `swapped` is the caller's: "add" refocuses the input for the
+   next tag, "remove" the row's label, since the × that was clicked is gone.
+
+   Chips, each removable with ×, and an "Add tag(s), comma-separated" input, as
+   Watcher's editor had. Both POST through the tag service's locked
+   read-modify-write, so D2's rule is the API's. A refusal is a 422 into
+   #ii-tags-error, leaving the typed input on screen. Contract: docs/TAGS_ROW.md. -#}
+<div id="ii-tags" class="detail-grid__item detail-grid__item--full">
+  <span class="detail-grid__label" id="ii-tags-heading" tabindex="-1">Tags</span>
+  <div class="detail-grid__value">
+    {% if item.tags %}
+    <ul class="tag-chips" aria-labelledby="ii-tags-heading">
+      {% for tag in item.tags %}
+      <li class="badge badge--muted tag-chip">
+        <span>{{ tag }}</span>
+        <form hx-post="/dashboard/info-items/{{ item.info_item_id }}/tags/remove"
+              hx-target="#ii-tags" hx-swap="outerHTML">
+          <input type="hidden" name="tag" value="{{ tag }}">
+          <button type="submit" class="tag-chip__remove" aria-label="Remove tag {{ tag }}">×</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <span class="text-muted">No tags</span>
+    {% endif %}
+    <form class="tag-add"
+          hx-post="/dashboard/info-items/{{ item.info_item_id }}/tags"
+          hx-target="#ii-tags" hx-swap="outerHTML"
+          hx-target-422="#ii-tags-error">
+      <input id="ii-tags-input" type="text" name="tags" class="form-input form-input--sm"
+             aria-label="Add tag(s), comma-separated"
+             placeholder="Add tag(s), comma-separated" autocomplete="off">
+      <button type="submit" class="btn btn--sm btn--secondary">Add</button>
+      <div id="ii-tags-error" role="alert" aria-live="polite" aria-atomic="true"></div>
+    </form>
+  </div>
+  {% if swapped %}
+  <script>
+    (function () {
+      var el = document.getElementById({{ ("ii-tags-input" if swapped == "add" else "ii-tags-heading") | tojson }});
+      if (el) { el.focus(); }
+    }());
+  </script>
+  {% endif %}
+</div>
