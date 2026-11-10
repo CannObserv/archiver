@@ -292,3 +292,29 @@ async def test_validate_watch_spec_rejects_a_document_carrying_active(client):
     )
     assert response.status_code == 200
     assert response.json()["valid"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", [5, ["gcs"]])
+async def test_validate_rep_spec_non_string_provider_is_a_finding_not_a_500(client, provider):
+    """archiver#386: the type gate keeps the provider lookup from raising."""
+    response = await client.post(
+        "/api/v1/tools/validate-rep-spec",
+        headers=HEADERS,
+        json={"document": {**VALID_REP_SPEC, "provider": provider}},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["valid"] is False
+    assert any(e["path"] == "/provider" for e in body["errors"])
+
+
+@pytest.mark.asyncio
+async def test_validate_rep_spec_non_string_required_field_is_a_finding_not_a_500(client):
+    response = await client.post(
+        "/api/v1/tools/validate-rep-spec",
+        headers=HEADERS,
+        json={"document": {"path_template": "{", "required_fields": [1]}},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["valid"] is False

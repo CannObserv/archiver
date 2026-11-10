@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://watcher.exe.xyz/schemas/rep-fields/v1.json",
+  "$id": "https://cannabis.observer/schemas/archiver/rep-fields/v1.json",
   "title": "Replication Fields v1",
   "type": "object",
   "patternProperties": {

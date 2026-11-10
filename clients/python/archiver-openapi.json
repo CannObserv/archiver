@@ -1476,7 +1476,7 @@
         "description": "Request body for POST /info-sources.",
         "properties": {
           "source_specs": {
-            "description": "Ordered list of extraction specs. First element is the primary strategy; subsequent elements are cross-check alternatives. All must share a content-kind family (html_text: css, xpath; json: jsonpath); full_page pairs with either. Each element is a SourceSpec v1 document (schema_version, extraction, fingerprint \u2014 no target section).",
+            "description": "Ordered list of extraction specs. First element is the primary strategy; subsequent elements are fallbacks, tried in order; the first spec whose extraction is non-empty wins. spec_position > 0 means a fallback was used, the selector-rot signal. All must share a content-kind family (html_text: css, xpath; json: jsonpath); full_page pairs with either. Each element is a SourceSpec v1 document (schema_version, extraction, fingerprint \u2014 no target section).",
             "items": {
               "additionalProperties": true,
               "type": "object"
@@ -2307,7 +2307,7 @@
             "type": "string"
           },
           "provider": {
-            "description": "Provider key (e.g. 'gcs', 'gdrive', 'ia'). Validated via validate_rep_spec.",
+            "description": "Provider key. Only 'gcs' can be authored: 'gdrive' and 'ia' are in the envelope's enum but refused with a 422 provider_unwritable until Replicator has a writer for them. Validated via validate_rep_spec.",
             "maxLength": 50,
             "minLength": 1,
             "title": "Provider",
@@ -2353,7 +2353,7 @@
             "type": "string"
           },
           "schema_version": {
-            "description": "RepSpec envelope schema version; always 1 in the current implementation.",
+            "description": "RepSpec envelope schema version; always 1 in the current implementation. The RepSpec's only version: the document carries no schema_version key.",
             "title": "Schema Version",
             "type": "integer"
           },
@@ -2817,7 +2817,7 @@
                 "type": "null"
               }
             ],
-            "description": "Which source_specs index the producer extracted under; set only when spec_match is 'current'. 0 is the primary spec; anything higher means the primary stopped matching and a cross-check alternative was used. Refreshed with spec_match on re-observation.",
+            "description": "Which source_specs index the producer extracted under; set only when spec_match is 'current'. 0 is the primary spec; anything higher means a fallback was used: specs are tried in order and the first whose extraction is non-empty wins, so the primary stopped matching (selector rot). Refreshed with spec_match on re-observation.",
             "title": "Spec Position"
           }
         },
@@ -3259,7 +3259,7 @@
   },
   "info": {
     "title": "archiver",
-    "version": "4.43.1"
+    "version": "4.43.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -4102,7 +4102,7 @@
         ]
       },
       "post": {
-        "description": "Create an InfoItem.\n\nOptionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates\na primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates\neffective-dated RepSpec assignments). All writes are a single transaction; any\nvalidation or lookup failure rolls back the whole thing.\n\nWith ``initial_url``, emits ``info_item_primary_changed`` on the change bus\n(``old_info_source_id`` is ``null``: a first assignment).\n\n``pm_org_id`` links a Power Map org at create (archiver#304), fetched before\nanything is written: Power Map unreachable is a 503 and creates nothing.\n\nA listed RepSpec whose document fails validation is a 422\n(``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):\nassigning would freeze it (archiver#334).",
+        "description": "Create an InfoItem.\n\nOptionally accepts ``initial_url`` + ``initial_source_specs`` (atomically creates\na primary InfoSource binding) and ``initial_rep_spec_assignments`` (creates\neffective-dated RepSpec assignments). All writes are a single transaction; any\nvalidation or lookup failure rolls back the whole thing.\n\nWith ``initial_url``, emits ``info_item_primary_changed`` on the change bus\n(``old_info_source_id`` is ``null``: a first assignment).\n\n``pm_org_id`` links a Power Map org at create (archiver#304), fetched before\nanything is written: Power Map unreachable is a 503 and creates nothing.\n\nA listed RepSpec whose document fails validation is a 422\n(``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):\nassigning would freeze it (archiver#334). One whose provider Replicator\ncannot write is a 422 ``provider_unwritable`` at\n``/initial_rep_spec_assignments/<i>/rep_spec_id`` (archiver#153).",
         "operationId": "create_info_item_api_v1_info_items_post",
         "requestBody": {
           "content": {
@@ -5135,7 +5135,7 @@
     },
     "/api/v1/info-items/{info_item_id}/rep-spec-assignments": {
       "post": {
-        "description": "Assign a RepSpec to an InfoItem with effective dating.\n\nValidates that the InfoItem exists, the RepSpec exists, its document\npasses RepSpec validation, it is not already actively assigned to the item,\nand the InfoItem's rep_fields satisfies the RepSpec's required_fields and\nrenders its path_template. Returns 201 on success.\n\nError responses:\n- 404: InfoItem or RepSpec not found\n- 409: the RepSpec is already actively assigned to this InfoItem\n  (``data.existing_assignment_id``)\n- 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,\n  one error per problem, paths under ``/document``; assignment would freeze\n  it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per\n  missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path\n  ``/rep_fields``)",
+        "description": "Assign a RepSpec to an InfoItem with effective dating.\n\nValidates that the InfoItem exists, the RepSpec exists, its document\npasses RepSpec validation, it is not already actively assigned to the item,\nand the InfoItem's rep_fields satisfies the RepSpec's required_fields and\nrenders its path_template. Returns 201 on success.\n\nError responses:\n- 404: InfoItem or RepSpec not found\n- 409: the RepSpec is already actively assigned to this InfoItem\n  (``data.existing_assignment_id``)\n- 422: Replicator has no writer for the RepSpec's provider\n  (``code=\"provider_unwritable\"``, path ``/rep_spec_id``; archiver#153);\n  the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,\n  one error per problem, paths under ``/document``; assignment would freeze\n  it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per\n  missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path\n  ``/rep_fields``)",
         "operationId": "add_rep_spec_assignment_api_v1_info_items__info_item_id__rep_spec_assignments_post",
         "parameters": [
           {
@@ -7530,7 +7530,7 @@
         ]
       },
       "post": {
-        "description": "Author a new RepSpec.\n\n``schema_version`` is server-defaulted to 1. The ``document`` field is\nvalidated against the v1 envelope and the matching per-provider\nsub-schema. ``body.provider`` and ``document['provider']`` must agree.\n\nErrors use the standard envelope (see ``src/api/errors.py``); ``kind`` is\n``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level\nissues.",
+        "description": "Author a new RepSpec.\n\n``schema_version`` is server-defaulted to 1. The ``document`` field is\nvalidated against the v1 envelope and the matching per-provider\nsub-schema. ``body.provider`` and ``document['provider']`` must agree.\n\nErrors use the standard envelope (see ``src/api/errors.py``); ``kind`` is\n``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level\nissues. A provider Replicator cannot write yet (``gdrive``, ``ia``) is a 422\n``domain`` with code ``provider_unwritable`` at ``/provider`` (archiver#153).",
         "operationId": "create_rep_spec_route_api_v1_rep_specs_post",
         "requestBody": {
           "content": {

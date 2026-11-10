@@ -112,6 +112,10 @@ first. The revert's `info_item_primary_changed` gets a fresh key: see [BUS.md](B
 `old_info_source_id` is the item's latest closed tenure, `null` when it has none: so a PUT on an
 item whose primary was DELETEd names that primary, though the response is a 201.
 
+`POST /rep-specs` refuses `gdrive` and `ia` until Replicator writes them: **422** `kind="domain"`,
+`code="provider_unwritable"` at `/provider` (archiver#153). So do both assignment writers, at
+`/rep_spec_id` and `/initial_rep_spec_assignments/<i>/rep_spec_id`.
+
 `POST /info-items/{id}/rep-spec-assignments` refuses before the RepSpec document freezes (#83),
 because afterwards nothing can fix it: **422** `code="rep_spec_invalid"` when the document itself
 fails `validate_rep_spec` (one error per problem, path under `/document`, `data.rep_spec_id`;

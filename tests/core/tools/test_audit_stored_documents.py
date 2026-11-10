@@ -32,6 +32,7 @@ from src.core.models import (
 )
 from src.core.models.base import Base
 from src.core.models.pm_organization import PmOrganization
+from src.core.tools import audit_stored_documents as audit_module
 from src.core.tools.audit_stored_documents import (
     EXEMPT_COLUMNS,
     EXEMPT_VALIDATORS,
@@ -318,12 +319,17 @@ async def test_invalid_assigned_rep_spec_is_reported_frozen(session):
 
 
 @pytest.mark.asyncio
-async def test_a_document_the_validator_raises_on_is_a_finding_not_a_crash(session):
-    """``validate_rep_spec`` raises ``TypeError`` on a non-string ``provider``.
+async def test_a_document_the_validator_raises_on_is_a_finding_not_a_crash(session, monkeypatch):
+    """A validator that raises on a malformed row must not blind the sweep to the rest.
 
-    One such row must not blind the sweep to every other row - and the write
-    path would 500 on it, so it cannot round-trip either.
+    ``validate_rep_spec`` no longer raises on a non-string ``provider`` (archiver#386),
+    so a stand-in raises here: the guard is for whichever validator raises next.
     """
+
+    def raising(document: object) -> tuple[bool, list]:
+        raise TypeError("unsupported operand")
+
+    monkeypatch.setattr(audit_module, "validate_rep_spec", raising)
     bad = RepSpec(provider="gcs", name="raise164", schema_version=1, document={"provider": 5})
     legacy = InfoSource(url="https://example.com/c164", source_specs=[_legacy_spec()])
     session.add_all([bad, legacy])
@@ -334,6 +340,20 @@ async def test_a_document_the_validator_raises_on_is_a_finding_not_a_crash(sessi
     [finding] = _mine(report.findings, bad.rep_spec_id)
     assert finding.errors[0]["message"].startswith("validator raised TypeError")
     assert _mine(report.findings, legacy.info_source_id)
+
+
+@pytest.mark.asyncio
+async def test_a_non_string_provider_is_an_ordinary_finding(session):
+    """archiver#386: the validator reports the type, so the sweep's message is the envelope's."""
+    bad = RepSpec(provider="gcs", name="type386", schema_version=1, document={"provider": 5})
+    session.add(bad)
+    await session.flush()
+
+    report = await audit_stored_documents(session)
+
+    [finding] = _mine(report.findings, bad.rep_spec_id)
+    assert "/provider" in [e["path"] for e in finding.errors]
+    assert not any(e["message"].startswith("validator raised") for e in finding.errors)
 
 
 @pytest.mark.asyncio

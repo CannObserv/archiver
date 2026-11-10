@@ -14,8 +14,9 @@ class InfoSource(Base):
     """An InfoSource — a URL and how to extract content from it.
 
     ``source_specs`` is a mutable ordered list of extraction specs. The first
-    element is the primary strategy; subsequent elements are cross-check
-    alternatives for selector-rot detection. All specs must share a content-kind
+    element is the primary strategy; subsequent elements are fallbacks, tried in
+    order; the first spec whose extraction is non-empty wins. ``spec_position > 0``
+    means a fallback was used, the selector-rot signal. All specs must share a content-kind
     family; ``full_page`` pairs with any (validated at write time by
     ``create_info_source`` / ``update_info_source_specs``; ``families.py``).
 

@@ -18,6 +18,17 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.43.2 (2026-11-10)
+
+[service] **Schema hygiene: org-owned `$id`s, fallback wording, writer-less providers refused, no 500 on a malformed RepSpec** (archiver#373 items 1–3, #153, #386; epic #359). No migration. `archiver-client` stays at 5.17.0: the generated docstrings and the OpenAPI snapshot's descriptions and `info.version` change, no type or method does.
+
+- **`$id`** (D1): the seven schemas under `src/core/*_schema/` move from `https://watcher.exe.xyz/schemas/…` to `https://cannabis.observer/schemas/archiver/<kind>/v1.json`. An identifier only: nothing resolves it.
+- **RepSpec version** (D2): no `schema_version` key in the document. The version is `rep_specs.schema_version` (`RepSpecOut.schema_version`), and the envelope's `description` says so.
+- **SourceSpec wording** (D3): extra specs are fallbacks, tried in order; the first whose extraction is non-empty wins. `InfoSourceCreate.source_specs` and `SourceRevisionOut.spec_position` descriptions change; behaviour does not.
+- **#153, tightening:** `gdrive`'s `folder_id` and `ia`'s `collection` leave their v1 sub-schemas, edited in place: a provider sub-schema holds object options, never a destination container. Production held 0 `gdrive`/`ia` RepSpecs; the stored-document sweep read 0 invalid before and after.
+- **#153, refusal:** `POST /rep-specs` refuses `gdrive` and `ia` with a 422 `kind="domain"`, `code="provider_unwritable"` at `/provider`. Both assignment writers refuse a stored one the same way, at `/rep_spec_id` and `/initial_rep_spec_assignments/<i>/rep_spec_id`. One list, `UNWRITABLE_PROVIDERS` in `src/core/replication/providers.py`, for the API and the dashboard.
+- **#386:** a non-string `provider`, a non-string `required_fields` entry or a non-object document is a finding, not a raise. `POST /tools/validate-rep-spec` answers 200 `valid: false`, and create and PATCH a 422, where each was a 500.
+
 ## v4.43.1 (2026-11-09)
 
 [service] **`DELETE /info-items/{id}` stops telling operators to remove the WatchedItem by hand** (archiver#372, epic #359). Watcher deletes the WatchedItem on the `revoked` tombstone, and its own DELETE 409s on a reconciled item, so the advice was stale and impossible. The route's WARNING on deleting an item Watcher reported on is gone with it; status code and behaviour are unchanged. `archiver-client` stays at 5.17.0: only the generated delete function's docstring and the OpenAPI snapshot's description and `info.version` change.

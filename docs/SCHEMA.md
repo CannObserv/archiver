@@ -162,6 +162,11 @@ document; the dashboard's Registry badge reports the count
   their revisions and the item↔source bindings: [SCHEMA_SOURCES.md](SCHEMA_SOURCES.md).
 
 - **`RepSpec`** (`rep_specs`) — replication specification. JSONB `document` carries provider config, `credentials_alias`, `path_template`, `required_fields`. Per-provider sub-schemas under `src/core/rep_spec_schema/providers/`.
+  **The version is the row's** (archiver#373 D2): `rep_specs.schema_version`, on `RepSpecOut`; the
+  document has no `schema_version` key. **A provider sub-schema holds object options, never a
+  destination container** (archiver#153): bucket, Drive folder and IA collection are the alias's host
+  configuration. **`gdrive` and `ia` are refused** (422 `provider_unwritable`) on create and
+  assignment until Replicator writes them: `UNWRITABLE_PROVIDERS`, `src/core/replication/providers.py`.
   **`credentials_alias` rule** (archiver#276, replicator#114): `<provider>-<role>` per co-core's
   `co_core.pure.util.aliases` (e.g. `gcs-publication`), and the prefix must equal `provider`.
   Checked on save only, so a frozen assigned document is never re-judged. The pre-rule name

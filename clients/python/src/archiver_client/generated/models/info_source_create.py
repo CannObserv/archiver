@@ -18,9 +18,10 @@ class InfoSourceCreate:
 
     Attributes:
         source_specs (list[InfoSourceCreateSourceSpecsItem]): Ordered list of extraction specs. First element is the
-            primary strategy; subsequent elements are cross-check alternatives. All must share a content-kind family
-            (html_text: css, xpath; json: jsonpath); full_page pairs with either. Each element is a SourceSpec v1 document
-            (schema_version, extraction, fingerprint — no target section).
+            primary strategy; subsequent elements are fallbacks, tried in order; the first spec whose extraction is non-
+            empty wins. spec_position > 0 means a fallback was used, the selector-rot signal. All must share a content-kind
+            family (html_text: css, xpath; json: jsonpath); full_page pairs with either. Each element is a SourceSpec v1
+            document (schema_version, extraction, fingerprint — no target section).
         url (str): URL to fetch. Immutable after creation.
     """
 

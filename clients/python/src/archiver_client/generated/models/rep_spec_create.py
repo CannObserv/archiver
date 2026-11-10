@@ -25,7 +25,8 @@ class RepSpecCreate:
                 per-provider sub-schema at rep_spec_schema/providers/{provider}/v1.json. credentials_alias must be
                 <provider>-<role> with this provider as its prefix (e.g. 'gcs-publication').
             name (str): Operator-friendly label for this RepSpec. Not unique by design.
-            provider (str): Provider key (e.g. 'gcs', 'gdrive', 'ia'). Validated via validate_rep_spec.
+            provider (str): Provider key. Only 'gcs' can be authored: 'gdrive' and 'ia' are in the envelope's enum but
+                refused with a 422 provider_unwritable until Replicator has a writer for them. Validated via validate_rep_spec.
     """
 
     document: RepSpecCreateDocument

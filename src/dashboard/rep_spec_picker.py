@@ -24,8 +24,8 @@ from src.core.rep_fields_schema.validator import validate_rep_fields
 from src.core.rep_spec_schema.validator import ValidationError, validate_rep_spec
 from src.core.replication.destination import RenderOccasion, render_destination
 from src.core.replication.errors import ReplicationRenderError
+from src.core.replication.providers import UNWRITABLE_PROVIDERS
 from src.core.tools.rep_fields_gate import check_bag_against_spec
-from src.dashboard.providers import UNWRITABLE_PROVIDERS
 from src.dashboard.rep_fields_block import raw_keys
 
 

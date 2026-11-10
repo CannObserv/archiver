@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://watcher.exe.xyz/schemas/rep-spec/v1.json",
+  "$id": "https://cannabis.observer/schemas/archiver/rep-spec/v1.json",
   "title": "Replication Specification v1 (envelope)",
+  "description": "A RepSpec's version is not a document key: it is the rep_specs.schema_version column (RepSpecOut.schema_version), server-set to 1 while v1 is the only envelope. A v2 envelope bumps that column and adds a discriminator; the document stays additionalProperties: false.",
   "type": "object",
   "required": ["provider", "credentials_alias", "path_template", "required_fields"],
   "additionalProperties": false,

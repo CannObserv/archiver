@@ -1,5 +1,7 @@
 """RepSpec validator — envelope + provider dispatch tests."""
 
+import pytest
+
 from src.core.rep_spec_schema.validator import validate_rep_spec
 
 
@@ -24,7 +26,7 @@ def _valid_gdrive(**overrides):
         "credentials_alias": "gdrive-cannobserv",
         "path_template": "archive/{info_item.slug}/{source_revision.id}",
         "required_fields": ["info_item.slug"],
-        "object_options": {"folder_id": "abc123"},
+        "object_options": {"mime_type_override": "text/html"},
     }
     doc.update(overrides)
     return doc
@@ -36,7 +38,7 @@ def _valid_ia(**overrides):
         "credentials_alias": "ia-cannobserv",
         "path_template": "archive/{info_item.slug}/{source_revision.id}",
         "required_fields": ["info_item.slug"],
-        "object_options": {"collection": "cannabis-observer", "mediatype": "web"},
+        "object_options": {"mediatype": "web", "license": "CC0-1.0"},
     }
     doc.update(overrides)
     return doc
@@ -246,3 +248,46 @@ def test_alias_prefix_check_skipped_for_missing_provider():
     ok, errs = validate_rep_spec(doc)
     assert ok is False
     assert _alias_errors(errs) == []
+
+
+# --- archiver#153: a provider schema holds object options, never a destination ---
+
+
+def test_gdrive_folder_id_refused():
+    """The Drive folder is host configuration bound by the alias, as gcs's bucket is."""
+    ok, errs = validate_rep_spec(_valid_gdrive(object_options={"folder_id": "abc123"}))
+    assert ok is False
+    assert [e["path"] for e in errs] == ["/object_options/"]
+    assert "folder_id" in errs[0]["message"]
+
+
+def test_ia_collection_refused():
+    """The IA collection is host configuration bound by the alias."""
+    ok, errs = validate_rep_spec(_valid_ia(object_options={"collection": "cannabis-observer"}))
+    assert ok is False
+    assert [e["path"] for e in errs] == ["/object_options/"]
+    assert "collection" in errs[0]["message"]
+
+
+# --- archiver#386: a malformed document is (False, errors), never a raise ---
+
+
+@pytest.mark.parametrize("provider", [5, ["gcs"], {"x": 1}, True])
+def test_non_string_provider_reports_not_raises(provider):
+    ok, errs = validate_rep_spec(_valid_gcs(provider=provider))
+    assert ok is False
+    assert any(e["path"] == "/provider" for e in errs)
+
+
+def test_non_string_required_fields_entry_reports_not_raises():
+    ok, errs = validate_rep_spec({"path_template": "{", "required_fields": [1]})
+    assert ok is False
+    assert any(e["path"] == "/required_fields/0" for e in errs)
+
+
+@pytest.mark.parametrize("doc", ["x", None, [], 5])
+def test_non_object_document_reports_not_raises(doc):
+    ok, errs = validate_rep_spec(doc)
+    assert ok is False
+    assert [e["path"] for e in errs] == ["/"]
+    assert "object" in errs[0]["message"]

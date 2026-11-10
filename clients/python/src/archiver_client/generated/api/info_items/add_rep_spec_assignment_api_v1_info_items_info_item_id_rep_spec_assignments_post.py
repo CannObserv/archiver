@@ -113,7 +113,9 @@ def sync_detailed(
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
+    - 422: Replicator has no writer for the RepSpec's provider
+      (``code=\"provider_unwritable\"``, path ``/rep_spec_id``; archiver#153);
+      the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
       one error per problem, paths under ``/document``; assignment would freeze
       it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
       missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
@@ -162,7 +164,9 @@ def sync(
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
+    - 422: Replicator has no writer for the RepSpec's provider
+      (``code=\"provider_unwritable\"``, path ``/rep_spec_id``; archiver#153);
+      the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
       one error per problem, paths under ``/document``; assignment would freeze
       it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
       missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
@@ -206,7 +210,9 @@ async def asyncio_detailed(
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
+    - 422: Replicator has no writer for the RepSpec's provider
+      (``code=\"provider_unwritable\"``, path ``/rep_spec_id``; archiver#153);
+      the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
       one error per problem, paths under ``/document``; assignment would freeze
       it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
       missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path
@@ -253,7 +259,9 @@ async def asyncio(
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
+    - 422: Replicator has no writer for the RepSpec's provider
+      (``code=\"provider_unwritable\"``, path ``/rep_spec_id``; archiver#153);
+      the RepSpec's document fails validation (``code=\"rep_spec_invalid\"``,
       one error per problem, paths under ``/document``; assignment would freeze
       it), rep_fields incomplete (``code=\"rep_fields_incomplete\"``, one error per
       missing field) or unrenderable (``code=\"rep_fields_unrenderable\"``, path

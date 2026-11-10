@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.models import RepSpec
 from src.core.rep_spec_schema.validator import ValidationError, validate_rep_spec
+from src.core.replication.providers import check_provider_writable
 
 # Pinned to the envelope at src/core/rep_spec_schema/v1.json. When a v2.json
 # envelope ships, bump both in lockstep — the validator selects the envelope
@@ -46,7 +47,11 @@ async def create_rep_spec(
     sub-schema. If ``document['provider']`` disagrees with the request-level
     ``provider`` argument, the call is rejected — the two are redundant by
     design, and storing a disagreement would corrupt the index.
+
+    Raises ``ProviderUnwritableError`` first, before any document check, for a
+    provider Replicator cannot write (archiver#153): no document fixes that.
     """
+    check_provider_writable(provider)
     errors: list[ValidationError] = []
 
     doc_provider = document.get("provider")

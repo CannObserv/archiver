@@ -112,7 +112,9 @@ def sync_detailed(
 
     A listed RepSpec whose document fails validation is a 422
     (``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):
-    assigning would freeze it (archiver#334).
+    assigning would freeze it (archiver#334). One whose provider Replicator
+    cannot write is a 422 ``provider_unwritable`` at
+    ``/initial_rep_spec_assignments/<i>/rep_spec_id`` (archiver#153).
 
     Args:
         body (InfoItemCreate):
@@ -158,7 +160,9 @@ def sync(
 
     A listed RepSpec whose document fails validation is a 422
     (``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):
-    assigning would freeze it (archiver#334).
+    assigning would freeze it (archiver#334). One whose provider Replicator
+    cannot write is a 422 ``provider_unwritable`` at
+    ``/initial_rep_spec_assignments/<i>/rep_spec_id`` (archiver#153).
 
     Args:
         body (InfoItemCreate):
@@ -199,7 +203,9 @@ async def asyncio_detailed(
 
     A listed RepSpec whose document fails validation is a 422
     (``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):
-    assigning would freeze it (archiver#334).
+    assigning would freeze it (archiver#334). One whose provider Replicator
+    cannot write is a 422 ``provider_unwritable`` at
+    ``/initial_rep_spec_assignments/<i>/rep_spec_id`` (archiver#153).
 
     Args:
         body (InfoItemCreate):
@@ -243,7 +249,9 @@ async def asyncio(
 
     A listed RepSpec whose document fails validation is a 422
     (``code=\"rep_spec_invalid\"``, paths under ``/document``, ``data.rep_spec_id``):
-    assigning would freeze it (archiver#334).
+    assigning would freeze it (archiver#334). One whose provider Replicator
+    cannot write is a 422 ``provider_unwritable`` at
+    ``/initial_rep_spec_assignments/<i>/rep_spec_id`` (archiver#153).
 
     Args:
         body (InfoItemCreate):
