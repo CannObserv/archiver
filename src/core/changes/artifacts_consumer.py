@@ -32,9 +32,12 @@ ingest. What is specific to this stream:
   rather than loss.
 
 The reaper for the silent case — a command that produces *neither* fact — is
-``src.core.services.replication_writeback.reap_open_commands``, run on its own
-timer rather than from this loop: it must fire whether or not any message
-arrives, which is precisely the condition it exists to detect.
+``src.core.changes.replication_reaper``, run on its own timer rather than from
+this loop: it must fire whether or not any message arrives, which is precisely
+the condition it exists to detect. It sweeps all three command families:
+replication (``replication_writeback.reap_open_commands``), persist
+(``persist_issuance.reap_open_persists``) and capture
+(``capture.reap_open_captures``).
 """
 
 from __future__ import annotations
