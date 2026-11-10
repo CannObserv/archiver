@@ -1704,6 +1704,48 @@ async def test_run_never_trims_a_topic_with_publish_retention(
     assert spy.call_args.kwargs["extra"]["topics"] == ["info.registry"]
 
 
+@pytest.mark.asyncio
+async def test_the_trim_guard_holds_before_any_cap_is_known(
+    session_factory, publisher, fake_redis, monkeypatch
+):
+    """A retained topic is never trimmed, even while ``topic_maxlen`` is empty.
+
+    Since archiver#373 item 4 the lifespan seeds ``topic_maxlen`` empty and each
+    full-set task fills its own topic after its first set, so the guard cannot
+    learn the retained topics from that mapping at startup: they are declared
+    up front in ``retained_topics``.
+    """
+    trim_calls: set[tuple[str, int]] = set()
+    stop = asyncio.Event()
+
+    async def _fake_trim(client, topic, maxlen):
+        trim_calls.add((topic, maxlen))
+        stop.set()
+
+    spy = MagicMock()
+    monkeypatch.setattr(publisher_mod, "trim_stream", _fake_trim)
+    monkeypatch.setattr(publisher_mod.logger, "error", spy)
+
+    await asyncio.wait_for(
+        publisher_mod.run(
+            session_factory=session_factory,
+            publisher=publisher,
+            redis_client=fake_redis,
+            stream_maxlen=100,
+            trim_interval_iterations=1,
+            stop_event=stop,
+            trim_topics=frozenset({"info.changes", "info.registry"}),
+            topic_maxlen={},
+            retained_topics=frozenset({"info.registry", "content.fetch-policy"}),
+        ),
+        timeout=_RUN_TIMEOUT,
+    )
+
+    assert trim_calls == {("info.changes", 100)}
+    spy.assert_called_once()
+    assert spy.call_args.kwargs["extra"]["topics"] == ["info.registry"]
+
+
 # ---------------------------------------------------------------------------
 # Periodic outbox stats log (archiver#112)
 # ---------------------------------------------------------------------------

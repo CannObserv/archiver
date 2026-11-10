@@ -196,11 +196,11 @@ check fires at each trim at the real cap.
   `content.replicate` is absent from it by design - capping a command stream
   deletes commands the consumer group has not delivered and orphans the PEL
   entries naming them (#169) - and `info.registry` for the reason below.
-- **`ARCHIVER_REGISTRY_STREAM_MAXLEN`** (default 50000) caps `info.registry`
-  on **every publish** instead (#141), because consumers boot by replaying from
-  `0-0` and the floor is "at least one full snapshot plus the deltas since" - a
-  consumer contract, not operator housekeeping. Sized from key count x sets
-  retained, never from the `info.changes` number. Snapshot period:
+- **`ARCHIVER_REGISTRY_STREAM_MAXLEN`** (default 1000, floored at ten complete
+  sets, #373) caps `info.registry` on **every publish** instead (#141), because
+  consumers boot by replaying from `0-0` and the floor is "at least one full
+  snapshot plus the deltas since" - a consumer contract, not operator
+  housekeeping. Never sized from the `info.changes` number. Snapshot period:
   `ARCHIVER_REGISTRY_SNAPSHOT_INTERVAL` (default 3600s); operator
   republish-now: `POST /api/v1/tools/republish-registry-announcements`.
 

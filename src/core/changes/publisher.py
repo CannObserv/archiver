@@ -426,6 +426,7 @@ async def run(
     trim_interval_iterations: int = TRIM_INTERVAL_ITERATIONS,
     error_backoff_base: float = ERROR_BACKOFF_BASE_SECONDS,
     topic_maxlen: Mapping[str, int] | None = None,
+    retained_topics: frozenset[str] = frozenset(),
     stats_interval: float | None = STATS_LOG_INTERVAL_SECONDS,
     retention_days: int | None = None,
     prune_interval: float = PRUNE_INTERVAL_SECONDS,
@@ -456,10 +457,13 @@ async def run(
     and issues no ``XTRIM``, and they must never join ``trim_topics`` - a
     MAXLEN cap ignores triage: past it, the oldest dead letters go whether or
     not anyone read them.
-    A topic that also carries per-publish retention in ``topic_maxlen`` is
-    dropped from the trim set with one ERROR: its cap is a consumer contract
-    (archiver#141), and raising instead would kill this task and stop
-    ``info.changes`` with it.
+    A topic that also carries per-publish retention is dropped from the trim
+    set with one ERROR: its cap is a consumer contract (archiver#141), and
+    raising instead would kill this task and stop ``info.changes`` with it.
+    Such a topic is named in ``retained_topics`` or keyed in ``topic_maxlen``.
+    The lifespan seeds ``topic_maxlen`` empty and each full-set task fills its
+    own topic after its first set (archiver#366, #373), so at startup only
+    ``retained_topics`` can name them.
 
     Every ``stats_interval`` seconds (first iteration immediately, ``None``
     disables) the loop emits the periodic "Outbox stats" line via
@@ -478,7 +482,7 @@ async def run(
     the database, and the liveness heartbeat's silence is how a Postgres
     outage pages.
     """
-    both_capped = trim_topics & set(topic_maxlen or {})
+    both_capped = trim_topics & (retained_topics | set(topic_maxlen or {}))
     if both_capped:
         logger.error(
             "Trim allowlist names topics with per-publish retention; not trimming them",
