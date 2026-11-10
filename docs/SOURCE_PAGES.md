@@ -28,7 +28,7 @@ commit. Shared mechanics: [UI.md](UI.md), [HTMX.md](HTMX.md).
 
 **GET `/dashboard/info-sources/{id}/capture`** - the Viewport Capture card alone, the response of its own poll (`swapped` false, so a poll never moves focus). 404 while `ARCHIVER_CAPTURE_ENABLED` is off.
 
-**POST `/dashboard/info-sources/{id}/capture-now`** - outboxes one `content.capture` command with its `capture_commands` row (`requested_by` the operator) in one transaction ([BUS.md](BUS.md)). HTMX (`hx-target="#capture-card"`, `outerHTML`): the card swapped in place, `swapped` true so focus moves to `#capture-heading`; a click while one is pending writes nothing and rides `HX-Trigger: showFlash` (warning), a write failure likewise (error). Without JS: a plain POST → 303 to detail. 404 while the switch is off or for an unknown source. No request body.
+**POST `/dashboard/info-sources/{id}/capture-now`** - outboxes one `content.capture` command with its `capture_commands` row (`requested_by` the operator) in one transaction ([BUS.md](BUS.md)). HTMX (`hx-target="#capture-card"`, `outerHTML`): the card swapped in place, `swapped` true so focus moves to `#capture-heading`; a click while one is pending writes nothing and rides `HX-Trigger: showFlash` (warning), a write failure likewise (error). Without JS: a plain POST → 303 to detail; there a refusal is silent (no flash), and the re-rendered card shows the pending command. 404 while the switch is off or for an unknown source. No request body.
 
 ## Information Source Revisions (`/dashboard/source-revisions/`)
 
