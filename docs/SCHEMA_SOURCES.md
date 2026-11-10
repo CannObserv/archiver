@@ -10,7 +10,7 @@ and here.
 - **`InfoSource`** (`info_sources`) — physical layer. `url TEXT NOT NULL` (non-unique — multiple
   InfoSources may share the same URL for different extraction strategies). `source_specs JSONB`
   (mutable array): first element is the primary extraction spec; subsequent elements are
-  cross-check alternatives for selector-rot detection. Each spec: `{schema_version, extraction,
+  fallbacks, tried in order; the first spec whose extraction is non-empty wins. Each spec: `{schema_version, extraction,
   fingerprint}` — no `target` section; URL is on the InfoSource directly. `extraction.algorithm`
   is `css | xpath | jsonpath | full_page`; one list keeps to one family, `full_page` pairing
   with any (#356; `families.py`, `v1.json`). Which media type honours which is co-core's
@@ -63,8 +63,8 @@ and here.
     derivation tag, a malformed value, or specs of our own that have no canonical form. A false
     mismatch is indistinguishable from the real condition the field exists to detect, so "cannot
     compare" and "compared, and it differs" must never collapse. `spec_position > 0` is its own
-    signal: the primary spec stopped matching and the producer fell through to a cross-check
-    alternative — selector rot in progress. Both are logged at WARNING as well as stored.
+    signal: a fallback was used, so the primary spec stopped matching — selector rot in
+    progress. Both are logged at WARNING as well as stored.
     **All three `spec_*` columns describe the most recent observation of the pair, not the one
     that created the row.** A re-observation is an idempotent no-op for the revision itself, but
     it refreshes these three together (and emits no event — the identity is unchanged). Without

@@ -27,7 +27,8 @@ class RepSpecOut:
         name (str): Operator-friendly label for this RepSpec.
         provider (str): Provider key (e.g. 'gcs', 'gdrive', 'ia').
         rep_spec_id (str): ULID identifying this RepSpec.
-        schema_version (int): RepSpec envelope schema version; always 1 in the current implementation.
+        schema_version (int): RepSpec envelope schema version; always 1 in the current implementation. The RepSpec's
+            only version: the document carries no schema_version key.
         updated_at (datetime.datetime | None): UTC timestamp of the last edit, or null if the RepSpec has never been
             edited. Never backfilled from created_at. Always present in responses (required, nullable) — matching the other
             nullable projections.

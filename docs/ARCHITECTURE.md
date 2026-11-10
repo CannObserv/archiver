@@ -47,9 +47,7 @@ src/dashboard/                 HTML/HTMX admin dashboard (routes/, templates/, s
                                readiness and path preview per unassigned spec, archiver#308;
                                org_row.py — the Overview's Organization row: the linked
                                Power Map org's notices (pure) and the type-ahead's local
-                               suggestions; routes/power_map.py serves its search, archiver#306;
-                               providers.py — UNWRITABLE_PROVIDERS, shared by the RepSpec form
-                               and the picker, archiver#202/#308)
+                               suggestions; routes/power_map.py serves its search, archiver#306)
 src/core/                      Domain logic
   models/                      ORM (info_item, info_source, source_revision,
                                info_item_source, rep_spec, info_item_rep_spec,
@@ -81,6 +79,8 @@ src/core/                      Domain logic
                                (archiver#205, #206, #210, #303).
                                permanent_store.py derives a persisted
                                digest's gs://co-gcs-replicator URI (archiver#276).
+                               providers.py holds UNWRITABLE_PROVIDERS, the one
+                               list the API and the dashboard refuse (#153).
                                errors.py is the
                                single base both raise under, so archiver#169 can
                                record a skip by catching one class. Archiver

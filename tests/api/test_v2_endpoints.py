@@ -567,3 +567,23 @@ async def test_patch_rep_spec_assignment_missing_public_url_returns_422(
         json={},
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_add_rep_spec_assignment_refuses_an_unwritable_provider(client, session, info_item):
+    """archiver#153: the API's assign gate is the dashboard picker's, one list."""
+    spec = RepSpec(provider="ia", name="ia-spec", schema_version=1, document={"provider": "ia"})
+    session.add(spec)
+    await session.flush()
+
+    response = await client.post(
+        f"/api/v1/info-items/{info_item.info_item_id}/rep-spec-assignments",
+        headers=HEADERS,
+        json={"rep_spec_id": str(spec.rep_spec_id)},
+    )
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [
+        ("/rep_spec_id", "provider_unwritable")
+    ]

@@ -417,7 +417,7 @@ def _log_spec_comparison(facts: RevisionFacts, comparison: SpecComparison) -> No
         )
     elif comparison.is_fallback:
         # Selector rot in progress: the primary spec stopped matching and the
-        # producer fell through to a cross-check alternative.
+        # producer fell through to a fallback spec.
         logger.warning(
             "Revision extracted under a fallback spec, not the primary",
             extra={

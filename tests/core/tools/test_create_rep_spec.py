@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from src.core.models import RepSpec
+from src.core.replication.providers import ProviderUnwritableError
 from src.core.tools.create_rep_spec import (
     InvalidRepSpecError,
     create_rep_spec,
@@ -72,3 +73,14 @@ async def test_create_rep_spec_provider_mismatch_with_document_is_rejected(sessi
     assert mismatch_errors, "expected an error at path /provider"
     assert "'gcs'" in mismatch_errors[0]["message"]
     assert "'gdrive'" in mismatch_errors[0]["message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["gdrive", "ia"])
+async def test_unwritable_provider_refused_and_nothing_persisted(session, provider):
+    """No writer, no RepSpec: it would freeze and fail every occasion (archiver#153)."""
+    doc = _gcs_doc() | {"provider": provider, "credentials_alias": f"{provider}-prod"}
+    doc["object_options"] = {}
+    with pytest.raises(ProviderUnwritableError):
+        await create_rep_spec(session, provider=provider, name="nope", document=doc)
+    assert (await session.execute(RepSpec.__table__.select())).first() is None

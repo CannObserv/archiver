@@ -104,7 +104,8 @@ class SourceRevisionOut(BaseModel):
         description=(
             "Which source_specs index the producer extracted under; set only when "
             "spec_match is 'current'. 0 is the primary spec; anything higher means "
-            "the primary stopped matching and a cross-check alternative was used. "
+            "a fallback was used: specs are tried in order and the first whose "
+            "extraction is non-empty wins, so the primary stopped matching (selector rot). "
             "Refreshed with spec_match on re-observation."
         ),
     )

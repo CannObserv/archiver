@@ -11,6 +11,7 @@ from ulid import ULID
 from src.core.models import InfoItemRepSpec, RepSpec
 from src.core.power_map.snapshots import load_org_values
 from src.core.rep_spec_schema.validator import ValidationError, validate_rep_spec
+from src.core.replication.providers import check_provider_writable
 from src.core.tools.rep_fields_gate import check_bag_against_spec, lock_info_item
 
 
@@ -45,8 +46,10 @@ def check_document_assignable(spec: RepSpec) -> None:
     """Raise :class:`RepSpecInvalidError` if a new assignment would freeze an invalid document.
 
     One check for both writers that create assignments: :func:`assign_rep_spec`
-    and the atomic ``POST /info-items`` path.
+    and the atomic ``POST /info-items`` path. A provider Replicator cannot write
+    raises ``ProviderUnwritableError`` first (archiver#153): no document fixes it.
     """
+    check_provider_writable(spec.provider)
     ok, errors = validate_rep_spec(spec.document or {})
     if not ok:
         raise RepSpecInvalidError(str(spec.rep_spec_id), errors)
@@ -129,6 +132,7 @@ async def assign_rep_spec(
     Validates that:
     - the InfoItem exists
     - the RepSpec exists
+    - Replicator can write the RepSpec's provider (archiver#153)
     - the RepSpec's document passes ``validate_rep_spec`` (archiver#334)
     - the RepSpec is not already actively assigned to this InfoItem
     - the InfoItem.rep_fields satisfies the RepSpec.document.required_fields list

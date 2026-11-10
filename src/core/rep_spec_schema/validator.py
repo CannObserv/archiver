@@ -54,11 +54,14 @@ def _provider_validator(provider: str) -> Draft202012Validator | None:
     return Draft202012Validator(json.loads(candidate.read_text()))
 
 
-def validate_rep_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
+def validate_rep_spec(doc: object) -> tuple[bool, list[ValidationError]]:
     """Validate a RepSpec document against the envelope and provider sub-schema.
 
     Returns a (ok, errors) tuple where ok is True iff the document is valid,
     and errors is a list of ValidationError dicts with path and message keys.
+    Never raises on a malformed document (archiver#386): every check past the
+    envelope runs only on fields of the type it reads, so a wrong type reports
+    once, as the envelope's finding, rather than as a 500 from the lookup.
     """
     errors: list[ValidationError] = []
     for err in _envelope().iter_errors(doc):
@@ -68,6 +71,8 @@ def validate_rep_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
                 "message": err.message,
             }
         )
+    if not isinstance(doc, dict):
+        return (False, errors)
 
     # Run whenever the two fields the template rules read are themselves sound.
     # Suppressing on *any* envelope error would cost an author a round trip —
@@ -84,13 +89,16 @@ def validate_rep_spec(doc: dict) -> tuple[bool, list[ValidationError]]:
         not template_field_errors
         and isinstance(template, str)
         and isinstance(required_fields, list)
+        and all(isinstance(f, str) for f in required_fields)
     ):
         errors.extend(validate_path_template(template, required_fields=required_fields))
 
     errors.extend(_alias_errors(doc, envelope_errors=errors))
 
+    # A non-string provider is the envelope's enum finding already; the lookup
+    # below would raise on it (a Path operand, an lru_cache key).
     provider = doc.get("provider")
-    if provider:
+    if isinstance(provider, str) and provider:
         sub = _provider_validator(provider)
         if sub is None:
             errors.append(

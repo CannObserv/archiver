@@ -60,8 +60,8 @@ class SpecComparison:
     def is_fallback(self) -> bool:
         """Whether extraction used a spec *other than* the primary.
 
-        ``source_specs[0]`` is the primary strategy and the rest are cross-check
-        alternatives, so a match past position 0 means the primary stopped
+        ``source_specs[0]`` is the primary strategy and the rest are fallbacks,
+        tried in order, so a match past position 0 means the primary stopped
         working and the producer's fallback loop moved on — selector rot in
         progress, and arguably a more actionable signal than a mismatch.
         """

@@ -18,6 +18,7 @@ from src.core.models import (
     ReplicationCommand,
     RepSpec,
 )
+from src.core.replication.providers import UNWRITABLE_PROVIDERS
 from src.core.services.replication_issuance import ManualIssuanceError, issue_for_assignment
 from src.core.services.replication_status import latest_commands_by_assignment
 from src.core.tools.audit_stored_documents import rep_spec_findings
@@ -33,7 +34,6 @@ from src.core.tools.update_rep_spec import (
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
-from src.dashboard.providers import UNWRITABLE_PROVIDERS
 from src.dashboard.replication_actions import (
     POLL_INTERVAL_SECONDS,
     live_poll,

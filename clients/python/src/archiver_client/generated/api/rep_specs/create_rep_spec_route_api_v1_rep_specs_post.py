@@ -105,7 +105,8 @@ def sync_detailed(
 
     Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
     ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
-    issues.
+    issues. A provider Replicator cannot write yet (``gdrive``, ``ia``) is a 422
+    ``domain`` with code ``provider_unwritable`` at ``/provider`` (archiver#153).
 
     Args:
         body (RepSpecCreate): Request body for POST /rep-specs.
@@ -148,7 +149,8 @@ def sync(
 
     Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
     ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
-    issues.
+    issues. A provider Replicator cannot write yet (``gdrive``, ``ia``) is a 422
+    ``domain`` with code ``provider_unwritable`` at ``/provider`` (archiver#153).
 
     Args:
         body (RepSpecCreate): Request body for POST /rep-specs.
@@ -186,7 +188,8 @@ async def asyncio_detailed(
 
     Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
     ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
-    issues.
+    issues. A provider Replicator cannot write yet (``gdrive``, ``ia``) is a 422
+    ``domain`` with code ``provider_unwritable`` at ``/provider`` (archiver#153).
 
     Args:
         body (RepSpecCreate): Request body for POST /rep-specs.
@@ -227,7 +230,8 @@ async def asyncio(
 
     Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
     ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
-    issues.
+    issues. A provider Replicator cannot write yet (``gdrive``, ``ia``) is a 422
+    ``domain`` with code ``provider_unwritable`` at ``/provider`` (archiver#153).
 
     Args:
         body (RepSpecCreate): Request body for POST /rep-specs.

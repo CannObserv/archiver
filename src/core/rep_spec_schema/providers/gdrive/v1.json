@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://watcher.exe.xyz/schemas/rep-spec/providers/gdrive/v1.json",
+  "$id": "https://cannabis.observer/schemas/archiver/rep-spec/providers/gdrive/v1.json",
+  "description": "A provider schema holds object options, never a destination container: the bucket, folder or collection is host configuration bound by the credentials alias. A per-spec destination, if ever genuinely needed, comes back as an additive selector within the alias's allowed set (archiver#153). The Drive base folder is the alias's; there is no folder_id.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "folder_id": {"type": "string"},
     "mime_type_override": {"type": "string"}
   }
 }

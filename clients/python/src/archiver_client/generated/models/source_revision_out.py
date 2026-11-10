@@ -42,8 +42,9 @@ class SourceRevisionOut:
             unrecognised derivation or a malformed value, which is never treated as a mismatch). Reflects the most recent
             observation of this revision, not the one that created it. Null when no spec_fingerprint was reported.
         spec_position (int | None | Unset): Which source_specs index the producer extracted under; set only when
-            spec_match is 'current'. 0 is the primary spec; anything higher means the primary stopped matching and a cross-
-            check alternative was used. Refreshed with spec_match on re-observation.
+            spec_match is 'current'. 0 is the primary spec; anything higher means a fallback was used: specs are tried in
+            order and the first whose extraction is non-empty wins, so the primary stopped matching (selector rot).
+            Refreshed with spec_match on re-observation.
     """
 
     captured_at: datetime.datetime

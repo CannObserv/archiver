@@ -54,6 +54,7 @@ from src.core.rep_fields_schema.validator import (
     linked_org_key_errors,
     validate_rep_fields,
 )
+from src.core.replication.providers import ProviderUnwritableError
 from src.core.services import info_item_lifecycle, info_item_tags
 from src.core.services.registry_announcement import (
     announce_info_item,
@@ -148,7 +149,9 @@ async def create_info_item(
 
     A listed RepSpec whose document fails validation is a 422
     (``code="rep_spec_invalid"``, paths under ``/document``, ``data.rep_spec_id``):
-    assigning would freeze it (archiver#334).
+    assigning would freeze it (archiver#334). One whose provider Replicator
+    cannot write is a 422 ``provider_unwritable`` at
+    ``/initial_rep_spec_assignments/<i>/rep_spec_id`` (archiver#153).
     """
     # --- 0. The bag's shape, assignments or not (archiver#302), and with an
     # org, none of the keys it supplies (archiver#304) ---
@@ -200,6 +203,8 @@ async def create_info_item(
         # no bag can fix a bad document (archiver#334).
         try:
             check_document_assignable(rep_spec)
+        except ProviderUnwritableError as e:
+            _raise_provider_unwritable(e, path=f"/initial_rep_spec_assignments/{index}/rep_spec_id")
         except RepSpecInvalidError as e:
             _raise_rep_spec_invalid(e)
         # Two active rows for one spec collide on one destination; refused here
@@ -656,7 +661,9 @@ async def add_rep_spec_assignment(
     - 404: InfoItem or RepSpec not found
     - 409: the RepSpec is already actively assigned to this InfoItem
       (``data.existing_assignment_id``)
-    - 422: the RepSpec's document fails validation (``code="rep_spec_invalid"``,
+    - 422: Replicator has no writer for the RepSpec's provider
+      (``code="provider_unwritable"``, path ``/rep_spec_id``; archiver#153);
+      the RepSpec's document fails validation (``code="rep_spec_invalid"``,
       one error per problem, paths under ``/document``; assignment would freeze
       it), rep_fields incomplete (``code="rep_fields_incomplete"``, one error per
       missing field) or unrenderable (``code="rep_fields_unrenderable"``, path
@@ -707,6 +714,8 @@ async def add_rep_spec_assignment(
         raise_envelope(404, "lookup", "InfoItem not found", source_exc=e)
     except RepSpecNotFoundError as e:
         raise_envelope(404, "lookup", "RepSpec not found", source_exc=e)
+    except ProviderUnwritableError as e:
+        _raise_provider_unwritable(e, path="/rep_spec_id")
     except RepSpecInvalidError as e:
         _raise_rep_spec_invalid(e)
     except RepFieldsIncompleteError as e:
@@ -1258,6 +1267,16 @@ def _raise_org_unnamed(e: OrgUnnamedError) -> NoReturn:
                 path="/pm_org_id", message="org has no canonical name", code="pm_org_unnamed"
             )
         ],
+        source_exc=e,
+    )
+
+
+def _raise_provider_unwritable(e: ProviderUnwritableError, *, path: str) -> NoReturn:
+    """422 ``provider_unwritable``: Replicator has no writer for the RepSpec's provider (#153)."""
+    raise_422(
+        f"RepSpec provider {e.provider!r} cannot be assigned",
+        kind="domain",
+        errors=[FieldError(path=path, message=e.reason, code="provider_unwritable")],
         source_exc=e,
     )
 

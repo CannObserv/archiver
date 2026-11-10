@@ -24,12 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
-from src.api.errors import raise_422, raise_envelope
+from src.api.errors import FieldError, raise_422, raise_envelope
 from src.api.schemas.pagination import Page
 from src.api.schemas.rep_spec import RepSpecCreate, RepSpecOut, RepSpecPatch
 from src.api.schemas.types import ULIDStr
 from src.api.serializers import rep_spec_to_out
 from src.core.models import RepSpec
+from src.core.replication.providers import ProviderUnwritableError
 from src.core.tools.create_rep_spec import InvalidRepSpecError, create_rep_spec
 from src.core.tools.update_rep_spec import (
     InvalidRepSpecError as UpdateInvalidRepSpecError,
@@ -56,7 +57,8 @@ async def create_rep_spec_route(
 
     Errors use the standard envelope (see ``src/api/errors.py``); ``kind`` is
     ``schema`` for envelope/sub-schema validation, ``body`` for Pydantic-level
-    issues.
+    issues. A provider Replicator cannot write yet (``gdrive``, ``ia``) is a 422
+    ``domain`` with code ``provider_unwritable`` at ``/provider`` (archiver#153).
     """
     try:
         spec = await create_rep_spec(
@@ -64,6 +66,13 @@ async def create_rep_spec_route(
             provider=body.provider,
             name=body.name,
             document=body.document,
+        )
+    except ProviderUnwritableError as e:
+        raise_422(
+            f"provider {e.provider!r} cannot be authored",
+            kind="domain",
+            errors=[FieldError(path="/provider", message=e.reason, code="provider_unwritable")],
+            source_exc=e,
         )
     except InvalidRepSpecError as e:
         raise_422("invalid rep_spec", kind="schema", errors=e.errors, source_exc=e)

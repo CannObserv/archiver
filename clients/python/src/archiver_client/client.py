@@ -703,7 +703,8 @@ class ArchiverClient:
 
         ``url`` is the URL to fetch (immutable after creation). ``source_specs``
         is the ordered list of extraction specs; first element is primary,
-        subsequent elements are cross-check alternatives.
+        subsequent elements are fallbacks, tried in order; the first spec whose
+        extraction is non-empty wins.
         """
         body = InfoSourceCreate(
             url=url,

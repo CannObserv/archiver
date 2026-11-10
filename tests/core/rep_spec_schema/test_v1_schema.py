@@ -98,7 +98,7 @@ def test_envelope_accepts_ia_provider():
         "credentials_alias": "ia-cannobserv",
         "path_template": "archive/{info_item.slug}/{source_revision.id}",
         "required_fields": ["info_item.slug"],
-        "object_options": {"collection": "cannabis-observer", "mediatype": "web"},
+        "object_options": {"mediatype": "web"},
     }
     validator.validate(doc)
 
@@ -118,3 +118,37 @@ def test_gcs_sub_schema_rejects_unknown_property(gcs_validator):
     doc = {"storage_class": "STANDARD", "unexpected_key": "value"}
     with pytest.raises(jsonschema.ValidationError):
         gcs_validator.validate(doc)
+
+
+# --- archiver#373 item 2 (D2): the version lives on the row, not in the document ---
+
+
+def test_envelope_has_no_schema_version_and_says_where_it_lives(envelope_schema):
+    """``rep_specs.schema_version`` is the RepSpec's version; one fact, one home."""
+    assert "schema_version" not in envelope_schema["properties"]
+    assert envelope_schema["additionalProperties"] is False
+    assert "rep_specs.schema_version" in envelope_schema["description"]
+
+
+# --- archiver#153: object options only; the rule is written where the next author looks ---
+
+
+@pytest.mark.parametrize("path", [GCS_PATH, GDRIVE_PATH, IA_PATH], ids=["gcs", "gdrive", "ia"])
+def test_provider_schema_states_the_options_only_rule(path):
+    desc = json.loads(path.read_text())["description"]
+    assert "never a destination container" in desc
+    assert "selector within the alias's allowed set" in desc
+
+
+@pytest.mark.parametrize(
+    "path,kept,dropped",
+    [
+        (GDRIVE_PATH, {"mime_type_override"}, "folder_id"),
+        (IA_PATH, {"mediatype", "license"}, "collection"),
+    ],
+    ids=["gdrive", "ia"],
+)
+def test_provider_schema_drops_its_container_field(path, kept, dropped):
+    schema = json.loads(path.read_text())
+    assert set(schema["properties"]) == kept
+    assert dropped not in schema["properties"]

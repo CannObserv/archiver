@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://watcher.exe.xyz/schemas/rep-spec/providers/ia/v1.json",
+  "$id": "https://cannabis.observer/schemas/archiver/rep-spec/providers/ia/v1.json",
+  "description": "A provider schema holds object options, never a destination container: the bucket, folder or collection is host configuration bound by the credentials alias. A per-spec destination, if ever genuinely needed, comes back as an additive selector within the alias's allowed set (archiver#153). The identifier prefix and allowed collections are the alias's; there is no collection.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "collection": {"type": "string"},
     "mediatype": {"type": "string"},
     "license": {"type": "string"}
   }

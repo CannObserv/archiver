@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import pytest
 from ulid import ULID
 
-from src.core.models import InfoItem, InfoItemRepSpec
+from src.core.models import InfoItem, InfoItemRepSpec, RepSpec
 
 HEADERS = {"X-API-Key": "test-secret-key"}
 
@@ -193,17 +193,15 @@ async def test_list_returns_page_envelope(client):
 
 
 @pytest.mark.asyncio
-async def test_list_filters_by_provider(client):
+async def test_list_filters_by_provider(client, session):
     await client.post(
         "/api/v1/rep-specs",
         headers=HEADERS,
         json={"provider": "gcs", "name": "n-gcs", "document": _gcs_doc()},
     )
-    await client.post(
-        "/api/v1/rep-specs",
-        headers=HEADERS,
-        json={"provider": "gdrive", "name": "n-gd", "document": _gdrive_doc()},
-    )
+    # The API refuses gdrive (archiver#153); a stored one predates that or came by hand.
+    session.add(RepSpec(provider="gdrive", name="n-gd", schema_version=1, document=_gdrive_doc()))
+    await session.flush()
     resp = await client.get("/api/v1/rep-specs?provider=gdrive", headers=HEADERS)
     assert resp.status_code == 200
     body = resp.json()
@@ -505,3 +503,67 @@ async def test_patch_empty_body_is_a_no_op(client):
     body = resp.json()
     assert body["name"] == "untouched"
     assert body["updated_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# archiver#153: no writer, no RepSpec
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["gdrive", "ia"])
+async def test_post_refuses_a_provider_replicator_cannot_write(client, provider):
+    doc = _gdrive_doc() | {"provider": provider, "credentials_alias": f"{provider}-prod"}
+    resp = await client.post(
+        "/api/v1/rep-specs",
+        headers=HEADERS,
+        json={"provider": provider, "name": "no-writer", "document": doc},
+    )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["kind"] == "domain"
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [
+        ("/provider", "provider_unwritable")
+    ]
+    listed = await client.get(f"/api/v1/rep-specs?provider={provider}", headers=HEADERS)
+    assert listed.json()["items"] == []
+
+
+# ---------------------------------------------------------------------------
+# archiver#386: a malformed document is a 422, never a 500
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", [5, ["gcs"]])
+async def test_post_non_string_document_provider_is_422(client, provider):
+    resp = await client.post(
+        "/api/v1/rep-specs",
+        headers=HEADERS,
+        json={"provider": "gcs", "name": "bad", "document": _gcs_doc() | {"provider": provider}},
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"]["kind"] == "schema"
+
+
+@pytest.mark.asyncio
+async def test_post_non_string_required_field_is_422(client):
+    doc = _gcs_doc() | {"path_template": "{", "required_fields": [1]}
+    resp = await client.post(
+        "/api/v1/rep-specs",
+        headers=HEADERS,
+        json={"provider": "gcs", "name": "bad", "document": doc},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", [5, ["gcs"]])
+async def test_patch_non_string_document_provider_is_422(client, provider):
+    spec = await _create_spec(client)
+    resp = await client.patch(
+        f"/api/v1/rep-specs/{spec['rep_spec_id']}",
+        headers=HEADERS,
+        json={"document": _gcs_doc() | {"provider": provider}},
+    )
+    assert resp.status_code == 422, resp.text

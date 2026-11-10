@@ -25,7 +25,11 @@ class RepSpecCreate(BaseModel):
     provider: str = Field(
         min_length=1,
         max_length=50,
-        description="Provider key (e.g. 'gcs', 'gdrive', 'ia'). Validated via validate_rep_spec.",
+        description=(
+            "Provider key. Only 'gcs' can be authored: 'gdrive' and 'ia' are in the "
+            "envelope's enum but refused with a 422 provider_unwritable until "
+            "Replicator has a writer for them. Validated via validate_rep_spec."
+        ),
     )
     name: str = Field(
         min_length=1,
@@ -102,7 +106,10 @@ class RepSpecOut(BaseModel):
     provider: str = Field(description="Provider key (e.g. 'gcs', 'gdrive', 'ia').")
     name: str = Field(description="Operator-friendly label for this RepSpec.")
     schema_version: int = Field(
-        description="RepSpec envelope schema version; always 1 in the current implementation."
+        description=(
+            "RepSpec envelope schema version; always 1 in the current implementation. "
+            "The RepSpec's only version: the document carries no schema_version key."
+        )
     )
     document: dict[str, Any] = Field(
         description=(

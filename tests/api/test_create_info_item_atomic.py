@@ -396,3 +396,31 @@ async def test_create_with_an_invalid_rep_spec_document_returns_422_no_rows(clie
         )
     )
     assert item_count == 0
+
+
+@pytest.mark.asyncio
+async def test_create_refuses_an_unwritable_provider_no_rows(client, session):
+    """archiver#153: this path inserts assignments itself, so it carries the gate too."""
+    spec = RepSpec(provider="gdrive", name="gd", schema_version=1, document={"provider": "gdrive"})
+    session.add(spec)
+    await session.flush()
+
+    response = await client.post(
+        "/api/v1/info-items",
+        headers=HEADERS,
+        json={
+            "name": "unwritable-provider",
+            "initial_rep_spec_assignments": [{"rep_spec_id": str(spec.rep_spec_id)}],
+        },
+    )
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert [(e["path"], e["code"]) for e in detail["errors"]] == [
+        ("/initial_rep_spec_assignments/0/rep_spec_id", "provider_unwritable")
+    ]
+    assert (
+        await session.scalar(
+            select(func.count(InfoItem.info_item_id)).where(InfoItem.name == "unwritable-provider")
+        )
+        == 0
+    )

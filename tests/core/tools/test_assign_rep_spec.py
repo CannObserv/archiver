@@ -6,6 +6,7 @@ import pytest
 from ulid import ULID
 
 from src.core.models import InfoItem, PmOrganization, RepSpec
+from src.core.replication.providers import ProviderUnwritableError
 from src.core.tools.assign_rep_spec import (
     AssignmentError,
     DuplicateAssignmentError,
@@ -361,3 +362,21 @@ async def test_an_invalid_document_is_refused_before_the_rep_fields_gate(session
 
     with pytest.raises(RepSpecInvalidError):
         await assign_rep_spec(session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id)
+
+
+@pytest.mark.asyncio
+async def test_unwritable_provider_refused_before_the_document_is_judged(session):
+    """A stored ia RepSpec (pre-#153, or by hand) cannot gain an assignment (archiver#153)."""
+    item = _make_item()
+    spec = RepSpec(
+        provider="ia",
+        name="ia-spec",
+        schema_version=1,
+        document={"provider": "ia", "object_options": {"collection": "legacy"}},
+    )
+    session.add_all([item, spec])
+    await session.flush()
+
+    with pytest.raises(ProviderUnwritableError) as exc:
+        await assign_rep_spec(session, info_item_id=item.info_item_id, rep_spec_id=spec.rep_spec_id)
+    assert exc.value.provider == "ia"

@@ -7,7 +7,7 @@ from ulid import ULID
 
 from src.core.models import RepSpec
 from src.core.replication.destination import EXAMPLE_REVISION_ID, RenderOccasion, example_occasion
-from src.dashboard.providers import UNWRITABLE_PROVIDERS
+from src.core.replication.providers import UNWRITABLE_PROVIDERS
 from src.dashboard.rep_spec_picker import build_picker
 
 _ORG_PATH = "organizations/{org.title_slug}/{source_revision.id}.{source_revision.ext}"

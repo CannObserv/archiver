@@ -113,9 +113,9 @@ def _errors(validate: Callable[[object], tuple[bool, list[ValidationError]]], do
     """``validate``'s errors, or one error naming the exception it raised.
 
     A validator can raise on a document malformed enough - ``validate_rep_spec``
-    does on a non-string ``provider``. The write path would 500 on that row, so
-    it cannot round-trip either, and one such row must not blind the sweep to
-    the rest.
+    did on a non-string ``provider`` until archiver#386. The write path would 500
+    on such a row, so it cannot round-trip either, and one such row must not
+    blind the sweep to the rest.
     """
     try:
         return validate(document)[1]
