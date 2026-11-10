@@ -52,6 +52,9 @@
   {# Source Specification editor (Edit-toggle; HTMX in-place swap; extracted partial) #}
   {% include "info_sources/_source_specs_card.html" %}
 
+  {# Viewport Capture (archiver#380) - renders nothing while the switch is off. #}
+  {% include "info_sources/_capture_card.html" %}
+
   {# Other Sources at This URL - multiple InfoSources may share a URL (#8) #}
   {% if siblings %}
   <div style="margin-top:var(--space-3);">

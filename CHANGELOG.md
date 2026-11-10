@@ -18,6 +18,16 @@ with any notable release. SDK version in `clients/python/pyproject.toml` bumps
 only when the SDK surface changes (new methods, changed types, removals); a
 service-only patch does not require an SDK bump.
 
+## v4.44.0 (2026-11-10)
+
+[service] **Viewport capture, slice A: Capture now via `content.capture`** (archiver#380, closes the Archiver half of CannObserv/broker#116). Migration `b10b1ce04a49` adds the table `information.capture_commands`. SDK unchanged (5.17.0): no API route or schema is added (dashboard only). **Ships dark:** `ARCHIVER_CAPTURE_ENABLED` is commented out in `deploy/archiver.service` until its flip, so there is no card, both routes 404 and nothing is enqueued.
+
+- **`capture_commands`**: one row per command (`command_id` PK, `info_source_id` FK `CASCADE`, `requested_by` → `app_users.id` `SET NULL`). What was sent (`url`, viewport, `full_page`, `wait`) and, from the first `capture_stored`, what came back (`content_fingerprint`, `blob_uri`, `media_type`, `size_bytes`, image size, `final_url`, `captured_at`, `blob_expires_at`); `reason` / `detail` / `status_code` on failure. States `requested` → `stored` | `failed` | `abandoned`. Empty on creation; expand-only.
+- **Issuance**: `ContentCaptureCommandEmit` outboxed with its row, a fresh `command_id` per click, the fixed profile 1280×800, `full_page: true`, no wait. One open command per source. `content.capture` is never capped or trimmed.
+- **`capture_stored` / `capture_failed`** on `content.artifacts` now close their command by `command_id`: the first success is kept, a success outranks a failure, `reason` is opaque, an unknown `command_id` is ack + WARNING. They took the foreign-event ack since #397.
+- **Reaper**: a capture open past 1 h is `abandoned` (`no_fact_before_horizon`); nothing is re-issued.
+- **Dashboard**: the Viewport Capture card on InfoSource detail, `POST /dashboard/info-sources/{id}/capture-now` and `GET …/capture` (the card's poll). Metadata only, no image. Captures expire with Replicator's temp store; keeping them is slice B.
+
 ## v4.43.2 (2026-11-10)
 
 [service] **Schema hygiene: org-owned `$id`s, fallback wording, writer-less providers refused, no 500 on a malformed RepSpec** (archiver#373 items 1–3, #153, #386; epic #359). No migration. `archiver-client` stays at 5.17.0: the generated docstrings and the OpenAPI snapshot's descriptions and `info.version` change, no type or method does.

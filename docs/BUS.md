@@ -1,9 +1,10 @@
 # archiver - change-bus contracts
 
 Everything Archiver puts on the Redis bus: the outbox producer and
-the six streams it publishes - `info.changes`, `info.registry`,
+the seven streams it publishes - `info.changes`, `info.registry`,
 `content.replicate`, `content.persist`, since flip F1 (#438)
-`content.fetch-policy`, and, since flip F4 (#482), `info.watch-check` (#370). What it
+`content.fetch-policy`, since flip F4 (#482) `info.watch-check` (#370), and
+`content.capture` (#380, dark until its flip). What it
 takes off - `content.revisions`, `content.artifacts`, `info.watch-status`,
 `info.watch-events` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
@@ -111,7 +112,7 @@ outside it: the drainer (archiver#238) disposes with `XDEL` by id, never
 (CannObserv/broker#59, live 2026-09-24). A DLQ never joins `trim_topics` - a
 MAXLEN cap ignores triage: past it, the oldest dead letters go whether or not
 anyone read them.
-Why `info.registry`, `content.replicate`, `content.persist` and `info.watch-check` are absent: their sections below.
+Why `info.registry`, `content.replicate`, `content.persist`, `info.watch-check` and `content.capture` are absent: their sections below.
 
 **Published-row retention (archiver#189)** - `src/core/changes/outbox_prune.py`
 deletes rows whose `published_at` is older than `ARCHIVER_OUTBOX_RETENTION_DAYS`
@@ -357,6 +358,32 @@ idempotency key the bare `command_id`. `src/core/services/watch_check.py`.
   `requested_at`); a refusal is `check_rejected` on `info.watch-events`
   ([BUS_CONSUMERS.md](BUS_CONSUMERS.md)); a dead-lettered command (`info.watch-check.dlq`,
   Watcher's) gets no answer at all. The state ladder: [INFO_ITEM_ACTIONS.md](INFO_ITEM_ACTIONS.md).
+
+**`content.capture` - viewport capture (archiver#380 slice A).** The seventh producer
+surface, *command* kind: one `ContentCaptureCommandEmit` per click on InfoSource detail's
+**Capture now**, to Replicator's one group `replicator.capture` (CannObserv/replicator#138);
+idempotency key the bare `command_id`. `src/core/services/capture.py`. Normative obligations
+(C1-C5) and the `reason` registry: Replicator's
+[`content-capture-issuer-contract.md`](https://github.com/CannObserv/replicator/blob/main/docs/contracts/content-capture-issuer-contract.md).
+
+- **Off unless `ARCHIVER_CAPTURE_ENABLED` is set** - unit-only, commented out until its flip
+  ([ENVIRONMENT_BUS.md](ENVIRONMENT_BUS.md)). Off: no card, the routes 404, nothing enqueued.
+  Replicator created `replicator.capture` at `0` before Archiver's first write (C5,
+  CannObserv/broker#116).
+- **Producer posture:** outboxed with its `capture_commands` row in one transaction, **one
+  message per click**, a fresh ULID `command_id` each. One open command per source: a click
+  while the latest is `requested` writes nothing.
+- **Resolved values only (C4):** `url`, `info_source_id` (echoed, never routed on), the fixed
+  slice-A profile - viewport 1280×800, `full_page: true`, `wait: null` (after `load`). No
+  headers, no credential. The per-source policy is slice C.
+- **Never capped, never trimmed:** out of `trim_topics` and `topic_maxlen`
+  (`tests/api/test_lifespan_bus_wiring.py`, `tests/core/changes/test_publisher.py`). broker's
+  STREAMS.md: "never XTRIMmed". The grant is `+xadd ~content.capture` alone, with no read: an
+  `XLEN`/`XINFO` as `archiver` is denied and lands in broker's `ACL LOG`.
+- **The answer** is `capture_stored` or `capture_failed` on `content.artifacts`
+  ([BUS_CONSUMERS.md](BUS_CONSUMERS.md)); silence past 1 h is the reaper's `abandoned`, and a
+  dead-lettered command (`content.capture.dlq`, Replicator's) gets no answer at all. A capture
+  lives in the temp store until `blob_expires_at`; keeping it (`content.persist`) is slice B.
 
 `source_revision_captured` schema_version is now **2** - `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 

@@ -9,7 +9,7 @@ lives here.
 
 ## Current model (Phase 4 — Archiver v2)
 
-Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate`, `content.persist` and, since flip F1 (#438), `content.fetch-policy` (#366) via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](BUS.md) and [docs/BUS_CONSUMERS.md](BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
+Central registry + authoring service for the Cannabis Observer information layer. FastAPI + PostgreSQL. Owns five registry tables (`info_items`, `info_sources`, `source_revisions`, `rep_specs`, `info_item_rep_specs`) plus the join table `info_item_sources`; the dashboard adds `app_users` and `api_keys`. Consumed by Replicator and external callers via the `archiver-client` Python SDK - **not** by Watcher (watcher#254). Produces `info.changes`, `info.registry`, `content.replicate`, `content.persist`, since flip F1 (#438) `content.fetch-policy` (#366), since flip F4 (#482) `info.watch-check` (#370), and `content.capture` (#380, dark until its flip) via an internal outbox publisher; consumes `content.revisions`, `info.watch-status` and `content.artifacts` ([docs/BUS.md](BUS.md) and [docs/BUS_CONSUMERS.md](BUS_CONSUMERS.md) carry each stream's provenance). **Never `content.blobs`**: that role boundary is unqualified, with no read-only exception.
 
 Phase 4 (the current model — Archiver v2) shipped 2026-05-09 on branch `phase-4-archiver-v2`. Design + implementation plan:
 
@@ -206,6 +206,10 @@ src/core/                      Domain logic
                                ARCHIVER_WATCH_CHECK_ENABLED is set (unit-only,
                                live since F4), records check_rejected,
                                and derives the state ladder at read time.
+                               capture.py is viewport capture (#380): outboxes
+                               content.capture while ARCHIVER_CAPTURE_ENABLED
+                               is set (unit-only), applies capture_stored /
+                               capture_failed, and abandons silent commands.
   spec_match.py                Compares an observed spec_fingerprint against the
                                InfoSource's own source_specs via co-core's shared
                                derivation (cannobserv#309). Every uncertain branch

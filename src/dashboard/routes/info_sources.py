@@ -12,11 +12,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.api.deps import get_db_session
+from src.core.logging import get_logger
 from src.core.models import (
     InfoItem,
     InfoItemSource,
     InfoSource,
     SourceRevision,
+)
+from src.core.services.capture import (
+    DEFAULT_FULL_PAGE,
+    DEFAULT_REAP_HORIZON,
+    DEFAULT_VIEWPORT,
+    CaptureAlreadyOpen,
+    CaptureDisabled,
+    capture_enabled,
+    latest_capture,
+    request_capture,
 )
 from src.core.services.registry_announcement import announce_for_info_source
 from src.core.tools.audit_stored_documents import info_source_findings
@@ -36,10 +47,14 @@ from src.core.tools.update_info_source_specs import (
 from src.core.tools.update_info_source_specs import (
     update_info_source_specs,
 )
+from src.dashboard.capture_view import POLL_SECONDS as CAPTURE_POLL_SECONDS
+from src.dashboard.capture_view import capture_view
 from src.dashboard.deps import get_dashboard_user
 from src.dashboard.exceptions import DashboardNotFound
 from src.dashboard.pagination import Pagination, pagination
 from src.dashboard.stored_documents import finding_views
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/dashboard/info-sources")
 
@@ -137,6 +152,25 @@ async def _detail_context(
         "now": datetime.now(UTC),
         "specs_error": specs_error,
         "stored_findings": finding_views(info_source_findings(src)),
+    }
+
+
+async def _capture_context(src: InfoSource, session: AsyncSession) -> dict:
+    """Everything ``info_sources/_capture_card.html`` reads but ``swapped`` (#380).
+
+    The card's one builder: the detail page, its poll and the button's POST
+    all spread it, so no render site can omit ``capture`` and leave the card
+    unable to poll.
+    """
+    enabled = capture_enabled()
+    command = await latest_capture(session, src.info_source_id) if enabled else None
+    width, height = DEFAULT_VIEWPORT
+    return {
+        "src": src,
+        "capture_enabled": enabled,
+        "capture": capture_view(command, now=datetime.now(UTC), horizon=DEFAULT_REAP_HORIZON),
+        "capture_profile": {"width": width, "height": height, "full_page": DEFAULT_FULL_PAGE},
+        "capture_poll_seconds": CAPTURE_POLL_SECONDS,
     }
 
 
@@ -264,7 +298,10 @@ async def detail_info_source(
 ) -> HTMLResponse:
     """Detail page: URL, specs, bound items, revisions."""
     src = await _resolve_source(source_id, session)
-    ctx = await _detail_context(src, user, session)
+    ctx = {
+        **await _detail_context(src, user, session),
+        **await _capture_context(src, session),
+    }
     return _templates.TemplateResponse(request, "info_sources/detail.html", ctx)
 
 
@@ -306,7 +343,12 @@ async def update_info_source_specs_view(
                     "swapped": True,
                 },
             )
-        ctx = await _detail_context(src, user, session, specs_error=error, specs_input=source_specs)
+        ctx = {
+            **await _detail_context(
+                src, user, session, specs_error=error, specs_input=source_specs
+            ),
+            **await _capture_context(src, session),
+        }
         return _templates.TemplateResponse(
             request, "info_sources/detail.html", ctx, status_code=422
         )
@@ -354,3 +396,72 @@ async def update_info_source_specs_view(
         url=f"/dashboard/info-sources/{source_id}",
         status_code=303,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /{source_id}/capture, POST /{source_id}/capture-now  (archiver#380)
+# ---------------------------------------------------------------------------
+
+_CAPTURE_OPEN_FLASH = "A capture is already pending for this source - wait for its answer."
+_CAPTURE_WRITE_FAILED_FLASH = "Couldn't request the capture - nothing was sent."
+
+
+def _require_capture() -> None:
+    """404 while the switch is off: the routes do not exist until then."""
+    if not capture_enabled():
+        raise DashboardNotFound("Not found")
+
+
+@router.get("/{source_id}/capture", response_class=HTMLResponse)
+async def capture_card(
+    source_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """HTMX partial: the Viewport Capture card, re-read by its own poll while pending."""
+    _require_capture()
+    src = await _resolve_source(source_id, session)
+    context = await _capture_context(src, session)
+    return _templates.TemplateResponse(request, "info_sources/_capture_card.html", context)
+
+
+@router.post("/{source_id}/capture-now", response_model=None)
+async def capture_now(
+    source_id: str,
+    request: Request,
+    user=Depends(get_dashboard_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse | RedirectResponse:
+    """Ask Replicator to capture the source now: one ``content.capture`` command, outboxed.
+
+    HTMX: the card swaps in place (pending, polling); a click while one is
+    pending writes nothing and flashes. Without JS: a POST → 303 to detail.
+    """
+    _require_capture()
+    src = await _resolve_source(source_id, session)
+    flash: dict | None = None
+    try:
+        await request_capture(session, src.info_source_id, requested_by=user.id)
+        await session.commit()
+    except CaptureAlreadyOpen:
+        await session.rollback()
+        flash = {"level": "warning", "body": _CAPTURE_OPEN_FLASH}
+    except CaptureDisabled as e:
+        # The switch flipped between the gate and the write.
+        await session.rollback()
+        raise DashboardNotFound("Not found") from e
+    except Exception:
+        await session.rollback()
+        logger.exception("Capture request failed for InfoSource %s", source_id)
+        flash = {"level": "error", "body": _CAPTURE_WRITE_FAILED_FLASH}
+
+    if not request.headers.get("HX-Request"):
+        return RedirectResponse(url=f"/dashboard/info-sources/{source_id}", status_code=303)
+    # Re-read after a commit or rollback, which expire the row.
+    src = await _resolve_source(source_id, session)
+    context = {**await _capture_context(src, session), "swapped": True}
+    response = _templates.TemplateResponse(request, "info_sources/_capture_card.html", context)
+    if flash is not None:
+        response.headers["HX-Trigger"] = json.dumps({"showFlash": flash})
+    return response

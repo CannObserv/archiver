@@ -10,8 +10,9 @@ Covers, per-message:
 4. A non-terminal failure → command still open, acked
 5. An unknown command_id → ack and drop, nothing written
 6. A DB failure leaves the message un-acked (redelivery, not loss)
-7. Another event type on the stream → acked, ignored; the capture outcomes
-   (cannobserv#571) are one, until #380 handles them
+7. Another event type on the stream → acked, ignored
+7a. ``capture_stored`` / ``capture_failed`` (archiver#380) → applied to the
+   capture command, acked; unknown command → dropped
 8. ``blob_persisted`` / ``persist_failed`` (archiver#276) → applied to the persist
    command and its digest's revisions, acked; unknown command → dropped
 
@@ -43,6 +44,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.core.changes import artifacts_consumer, group_consumer
 from src.core.changes.artifacts_consumer import CONSUMER_GROUP
 from src.core.models import (
+    CaptureCommand,
     InfoItem,
     InfoItemRepSpec,
     InfoSource,
@@ -51,6 +53,9 @@ from src.core.models import (
     RepSpec,
     SourceRevision,
 )
+from src.core.services.capture import STATE_FAILED as CAPTURE_FAILED
+from src.core.services.capture import STATE_REQUESTED as CAPTURE_REQUESTED
+from src.core.services.capture import STATE_STORED as CAPTURE_STORED
 from src.core.services.persist_writeback import STATE_PERSISTED
 from src.core.services.replication_issuance import STATE_REQUESTED
 from src.core.services.replication_writeback import (
@@ -80,6 +85,7 @@ async def clean_tables(test_engine):
     """These tests commit for real — the consumer opens its own session, so the
     savepoint-isolated ``session`` fixture would be invisible to it."""
     statements = (
+        "TRUNCATE TABLE information.capture_commands CASCADE",
         "TRUNCATE TABLE information.persist_commands CASCADE",
         "TRUNCATE TABLE information.replication_commands CASCADE",
         "TRUNCATE TABLE information.info_item_rep_specs CASCADE",
@@ -311,7 +317,36 @@ async def test_foreign_event_type_is_acked_and_ignored(fake_redis, session_facto
     assert count == 1
 
 
-def _capture_frame(event_type: str, payload: dict) -> dict[str, str]:
+# --- the capture outcomes (archiver#380 slice A) ---
+#
+# co-core 0.37.1 decodes the pair; until #380 they took the foreign-event ack
+# (#397). Each now closes the capture command it names.
+
+CAPTURE_DIGEST = "e" * 64
+
+
+@pytest.fixture
+async def capture_command(session_factory) -> CaptureCommand:
+    """One source with one open capture command against it, committed for real."""
+    async with session_factory() as s:
+        source = InfoSource(url="https://example.com/artifacts", source_specs=[])
+        s.add(source)
+        await s.flush()
+        command = CaptureCommand(
+            command_id="ccmd-artifacts-1",
+            info_source_id=source.info_source_id,
+            url=source.url,
+            viewport_width=1280,
+            viewport_height=800,
+            full_page=True,
+            state=CAPTURE_REQUESTED,
+        )
+        s.add(command)
+        await s.commit()
+        return command
+
+
+def _capture_frame(event_type: str, payload: dict, *, command_id: str) -> dict[str, str]:
     """A capture outcome as Replicator would put it on the wire (cannobserv#571).
 
     Built by hand, not with ``to_wire``: it is the frame that arrives, whatever
@@ -322,13 +357,13 @@ def _capture_frame(event_type: str, payload: dict) -> dict[str, str]:
         "schema_version": 1,
         "event_type": event_type,
         "occurred_at": occurred_at,
-        "command_id": "cmd-capture-1",
+        "command_id": command_id,
         "url": "https://example.com/artifacts",
         "info_source_id": "01K2E0CCCCCCCCCCCCCCCCCCCC",
         **payload,
     }
     return {
-        "key": f"cmd-capture-1:{occurred_at}",
+        "key": f"{command_id}:{occurred_at}",
         "payload": json.dumps(body),
         "event_type": event_type,
         "schema_version": "1",
@@ -337,44 +372,92 @@ def _capture_frame(event_type: str, payload: dict) -> dict[str, str]:
     }
 
 
+_CAPTURE_STORED = {
+    "content_fingerprint": CAPTURE_DIGEST,
+    "blob_uri": f"gs://co-gcs-blobs/blobs/{CAPTURE_DIGEST}.bin",
+    "media_type": "image/png",
+    "size_bytes": 2048,
+    "image_width": 1280,
+    "image_height": 4096,
+    "final_url": "https://example.com/artifacts",
+    "captured_at": OCCURRED_AT.isoformat(),
+    "blob_expires_at": "2026-08-25T09:00:00+00:00",
+}
+
+
+async def _capture(session_factory, command: CaptureCommand) -> CaptureCommand:
+    async with session_factory() as s:
+        return await s.get(CaptureCommand, command.command_id)
+
+
+@pytest.mark.asyncio
+async def test_capture_stored_closes_the_command_and_acks(
+    fake_redis, session_factory, capture_command
+):
+    await _publish(
+        fake_redis,
+        _capture_frame("capture_stored", _CAPTURE_STORED, command_id=capture_command.command_id),
+    )
+
+    assert await _consume(fake_redis, session_factory) == 1
+    assert await _pending(fake_redis) == 0
+    assert await fake_redis.xlen(f"{CONTENT_ARTIFACTS}.dlq") == 0
+
+    row = await _capture(session_factory, capture_command)
+    assert row.state == CAPTURE_STORED
+    assert row.content_fingerprint == CAPTURE_DIGEST
+    assert row.image_height == 4096
+    assert row.blob_expires_at == datetime(2026, 8, 25, 9, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_capture_failed_is_recorded_and_acked(fake_redis, session_factory, capture_command):
+    await _publish(
+        fake_redis,
+        _capture_frame(
+            "capture_failed",
+            {"reason": "wait_timeout", "terminal": True, "detail": "load not reached"},
+            command_id=capture_command.command_id,
+        ),
+    )
+
+    assert await _consume(fake_redis, session_factory) == 1
+    assert await _pending(fake_redis) == 0
+
+    row = await _capture(session_factory, capture_command)
+    assert row.state == CAPTURE_FAILED
+    assert row.reason == "wait_timeout"
+    assert row.detail == "load not reached"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("event_type", "payload"),
     [
-        (
-            "capture_stored",
-            {
-                "content_fingerprint": "sha256:" + "e" * 64,
-                "blob_uri": "gs://co-blobs/e.png",
-                "media_type": "image/png",
-                "size_bytes": 2048,
-                "image_width": 1280,
-                "image_height": 800,
-                "final_url": "https://example.com/artifacts",
-                "captured_at": OCCURRED_AT.isoformat(),
-            },
-        ),
-        ("capture_failed", {"reason": "timeout", "terminal": True}),
+        ("capture_stored", _CAPTURE_STORED),
+        ("capture_failed", {"reason": "http_status", "terminal": True, "status_code": 404}),
     ],
 )
-async def test_capture_outcome_is_acked_not_dead_lettered(
-    fake_redis, session_factory, event_type, payload
+async def test_capture_outcome_for_unknown_command_is_dropped(
+    fake_redis, session_factory, capture_command, event_type, payload
 ):
-    """co-core 0.37.1 decodes the capture pair, so it takes the foreign-event ack.
+    """Only Archiver issues ``content.capture``: a fact about anything else is
+    ack-and-drop, never the foreign-event ack it took before #380."""
+    await _publish(fake_redis, _capture_frame(event_type, payload, command_id="ccmd-unknown"))
 
-    On 0.32 the same frame was an unknown event type: undecodable, dead-lettered.
-    Until #380 adds handlers, an outcome is acked and dropped (#397): #380's
-    branches turn this test red, which is the point.
-    """
-    await _publish(fake_redis, _capture_frame(event_type, payload))
-
-    with patch.object(artifacts_consumer.logger, "info") as info:
+    with (
+        patch.object(artifacts_consumer.logger, "info") as info,
+        patch.object(artifacts_consumer.logger, "warning") as warning,
+    ):
         assert await _consume(fake_redis, session_factory) == 1
 
     assert await _pending(fake_redis) == 0
     assert await fake_redis.xlen(f"{CONTENT_ARTIFACTS}.dlq") == 0
-    ignored = [c for c in info.call_args_list if c.args[0].startswith("Ignoring non-outcome")]
-    assert [c.kwargs["extra"]["event_type"] for c in ignored] == [event_type]
+    assert not [c for c in info.call_args_list if c.args[0].startswith("Ignoring non-outcome")]
+    dropped = [c for c in warning.call_args_list if "never issued" in c.args[0]]
+    assert [c.kwargs["extra"]["command_id"] for c in dropped] == ["ccmd-unknown"]
+    row = await _capture(session_factory, capture_command)
+    assert row.state == CAPTURE_REQUESTED
 
 
 # --- the persist outcomes (archiver#276) ---

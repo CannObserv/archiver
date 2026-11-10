@@ -16,6 +16,11 @@ same absence, and the persist contract's P3 asks for a reaper. There the answer
 is to re-issue, capped, because a duplicate persist is a no-op success on a
 content-addressed key — see ``persist_issuance.reap_open_persists``. A re-issue
 is an outbox row, so the publisher still does the publishing.
+
+**Capture commands ride it too** (archiver#380 slice A), past their own
+one-hour horizon (``capture.DEFAULT_REAP_HORIZON``). They are abandoned and
+not re-issued: in slice A every capture is a person's click, and the person
+re-issues.
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.changes.backoff import ERROR_BACKOFF_BASE_SECONDS, error_backoff_seconds
 from src.core.logging import get_logger
-from src.core.services import persist_issuance
+from src.core.services import capture, persist_issuance
 from src.core.services.replication_writeback import DEFAULT_REAP_HORIZON, reap_open_commands
 
 logger = get_logger(__name__)
@@ -84,14 +89,15 @@ async def sweep_once(
     *,
     horizon: timedelta,
     persist_horizon: timedelta = persist_issuance.DEFAULT_REAP_HORIZON,
+    capture_horizon: timedelta = capture.DEFAULT_REAP_HORIZON,
 ) -> int:
-    """One pass over both command families. Returns how many *replication*
-    commands were abandoned; the persist half logs its own counts.
+    """One pass over the three command families. Returns how many *replication*
+    commands were abandoned; the persist and capture halves log their own counts.
 
-    Two sessions, two transactions: a defect in the persist half must not roll
+    One session and transaction each: a defect in a newer half must not roll
     back, or block, replication's reaping, which is MUST-6's safety net. The
-    persist half's failure is logged and contained; replication's still raises
-    into ``run``'s backoff (CR 10).
+    persist and capture failures are logged and contained; replication's still
+    raises into ``run``'s backoff (CR 10).
     """
     async with session_factory() as session:
         reaped = await reap_open_commands(session, horizon=horizon)
@@ -101,7 +107,25 @@ async def sweep_once(
         await _sweep_persists(session_factory, horizon=persist_horizon)
     except Exception:
         logger.exception("Persist reaper sweep failed; replication reaping unaffected")
+    try:
+        await _sweep_captures(session_factory, horizon=capture_horizon)
+    except Exception:
+        logger.exception("Capture reaper sweep failed; replication reaping unaffected")
     return reaped
+
+
+async def _sweep_captures(
+    session_factory: async_sessionmaker[AsyncSession], *, horizon: timedelta
+) -> None:
+    async with session_factory() as session:
+        abandoned = await capture.reap_open_captures(session, horizon=horizon)
+        if abandoned:
+            await session.commit()
+    if abandoned:
+        logger.warning(
+            "Abandoned silent capture commands past the horizon",
+            extra={"abandoned": abandoned},
+        )
 
 
 async def _sweep_persists(

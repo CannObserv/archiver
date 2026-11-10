@@ -1367,10 +1367,10 @@ _UNION_CASES = [
     (_content_process_command("cmd-cp"), "content_process", "cmd-cp"),
     (_processing_complete_event("cmd-pc"), "processing_complete", f"cmd-pc:{_OCCURRED_AT}"),
     (_processing_failed_event("cmd-pfx"), "processing_failed", f"cmd-pfx:{_OCCURRED_AT}"),
-    # co-core 0.37: the capture pair (cannobserv#571) and headless Watcher's
-    # streams (cannobserv#563, cannobserv#564). Archiver emits none of them yet;
-    # they are here because the guard below pins this list to co-core's dispatch
-    # table.
+    # co-core 0.37: the capture trio (cannobserv#571) and headless Watcher's
+    # streams (cannobserv#563, cannobserv#564). Archiver emits content_capture
+    # (#380); all are here because the guard below pins this list to co-core's
+    # dispatch table.
     (
         _capture_payload(
             "content_capture",
@@ -1604,6 +1604,43 @@ async def test_a_watch_check_command_publishes_uncapped(session_factory, fake_re
     assert n == 1
     [effect] = captured
     assert effect.topic == "info.watch-check"
+    assert effect.maxlen is None
+
+
+@pytest.mark.asyncio
+async def test_a_capture_command_publishes_uncapped(session_factory, fake_redis):
+    """content.capture is never capped by its producer (archiver#380).
+
+    broker's STREAMS.md: "never XTRIMmed", and archiver holds ``+xadd`` on it
+    alone (CannObserv/broker#114), so only the code keeps a cap off it.
+    """
+    captured: list = []
+    real = AsyncBusPublisher(fake_redis)
+
+    class SpyPublisher:
+        async def execute(self, effect):
+            captured.append(effect)
+            return await real.execute(effect)
+
+    await _insert_row(
+        session_factory,
+        payload=_capture_payload(
+            "content_capture",
+            "cmd-capture-uncapped",
+            viewport={"width": 1280, "height": 800},
+            full_page=True,
+        ),
+        topic="content.capture",
+    )
+
+    n = await drain_once(
+        session_factory=session_factory,
+        publisher=SpyPublisher(),
+        topic_maxlen={"info.registry": 50_000},
+    )
+    assert n == 1
+    [effect] = captured
+    assert effect.topic == "content.capture"
     assert effect.maxlen is None
 
 

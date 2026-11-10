@@ -11,12 +11,13 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from co_core.pure.adapters.bus.streams import CONTENT_PERSIST
+from co_core.pure.adapters.bus.streams import CONTENT_CAPTURE, CONTENT_PERSIST
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.changes import replication_reaper
 from src.core.models import (
+    CaptureCommand,
     ChangesOutboxRow,
     InfoItem,
     InfoItemRepSpec,
@@ -26,7 +27,7 @@ from src.core.models import (
     RepSpec,
     SourceRevision,
 )
-from src.core.services import persist_issuance
+from src.core.services import capture, persist_issuance
 from src.core.services.replication_issuance import STATE_REQUESTED
 from src.core.services.replication_writeback import STATE_ABANDONED
 
@@ -39,6 +40,7 @@ def session_factory(test_engine):
 @pytest.fixture(autouse=True)
 async def clean_tables(test_engine):
     statements = (
+        "TRUNCATE TABLE information.capture_commands CASCADE",
         "TRUNCATE TABLE information.replication_commands CASCADE",
         "TRUNCATE TABLE information.persist_commands CASCADE",
         "TRUNCATE TABLE information.changes_outbox CASCADE",
@@ -268,6 +270,85 @@ async def test_a_failing_persist_sweep_does_not_cost_replication_its_reaping(
         raise RuntimeError("persist sweep defect")
 
     monkeypatch.setattr(persist_issuance, "reap_open_persists", _boom)
+
+    reaped = await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    assert reaped == 1
+    assert await _state(session_factory, command_id) == STATE_ABANDONED
+
+
+# --- capture commands (archiver#380 slice A) ---
+
+
+async def _open_capture(session_factory, *, age: timedelta) -> str:
+    async with session_factory() as s:
+        source = InfoSource(url="https://example.com/capture-reaper", source_specs=[])
+        s.add(source)
+        await s.flush()
+        command = CaptureCommand(
+            command_id="ccmd-reaper-1",
+            info_source_id=source.info_source_id,
+            url=source.url,
+            viewport_width=1280,
+            viewport_height=800,
+            full_page=True,
+            state=capture.STATE_REQUESTED,
+            issued_at=datetime.now(UTC) - age,
+        )
+        s.add(command)
+        await s.commit()
+        return command.command_id
+
+
+async def _capture_state(session_factory, command_id: str) -> tuple[str, str | None, int]:
+    async with session_factory() as s:
+        row = await s.get(CaptureCommand, command_id)
+        outbox = (
+            await s.execute(
+                select(func.count())
+                .select_from(ChangesOutboxRow)
+                .where(ChangesOutboxRow.topic == CONTENT_CAPTURE)
+            )
+        ).scalar_one()
+        return row.state, row.reason, outbox
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_abandons_a_silent_capture_and_commits(session_factory, monkeypatch):
+    """Captures ride the same timer; in slice A the reaper re-issues nothing."""
+    monkeypatch.setenv(capture.ENABLED_ENV, "1")
+    command_id = await _open_capture(session_factory, age=timedelta(hours=2))
+
+    await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    assert await _capture_state(session_factory, command_id) == (
+        capture.STATE_ABANDONED,
+        capture.REASON_NO_FACT,
+        0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_leaves_a_recent_capture_open(session_factory):
+    command_id = await _open_capture(session_factory, age=timedelta(minutes=10))
+
+    await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
+
+    state, _, _ = await _capture_state(session_factory, command_id)
+    assert state == capture.STATE_REQUESTED
+
+
+@pytest.mark.asyncio
+async def test_a_failing_capture_sweep_does_not_cost_replication_its_reaping(
+    session_factory, monkeypatch
+):
+    """The newest half is contained like persist's (CR 10)."""
+    command_id = await _open_command(session_factory, age=timedelta(hours=9))
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("capture sweep defect")
+
+    monkeypatch.setattr(capture, "reap_open_captures", _boom)
 
     reaped = await replication_reaper.sweep_once(session_factory, horizon=timedelta(hours=6))
 

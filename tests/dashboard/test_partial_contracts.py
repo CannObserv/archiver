@@ -44,8 +44,9 @@ import pytest
 from jinja2 import DictLoader, Environment, FileSystemLoader, meta, nodes
 from ulid import ULID
 
-from src.core.models import InfoItem, RepSpec
+from src.core.models import InfoItem, InfoSource, RepSpec
 from src.dashboard.routes import info_items as info_items_routes
+from src.dashboard.routes import info_sources as info_sources_routes
 from src.dashboard.routes import rep_specs as rep_specs_routes
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -109,6 +110,16 @@ _CONTRACTS: dict[str, _Contract] = {
             None,
         ),
         behaviour=frozenset({"org_row", "power_map_configured"}),
+        optional={"swapped": _SWAPPED},
+    ),
+    # archiver#380: without `capture` a pending capture's card never polls, and
+    # without `capture_enabled` it vanishes on a server where capture is on.
+    "info_sources/_capture_card.html": _Contract(
+        builder=info_sources_routes._capture_context,
+        empty_args=lambda: (
+            InfoSource(info_source_id=ULID(), url="https://example.com/probe", source_specs=[]),
+        ),
+        behaviour=frozenset({"capture", "capture_enabled", "capture_poll_seconds"}),
         optional={"swapped": _SWAPPED},
     ),
     "rep_specs/_assignments.html": _Contract(
