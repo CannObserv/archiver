@@ -20,7 +20,7 @@ service-only patch does not require an SDK bump.
 
 ## v4.44.0 (2026-11-10)
 
-[service] **Viewport capture, slice A: Capture now via `content.capture`** (archiver#380, closes the Archiver half of CannObserv/broker#116). Migration `b10b1ce04a49` adds the table `information.capture_commands`. SDK unchanged (5.17.0): no API route or schema is added (dashboard only). **Ships dark:** `ARCHIVER_CAPTURE_ENABLED` is commented out in `deploy/archiver.service` until its flip, so there is no card, both routes 404 and nothing is enqueued.
+[service] **Viewport capture, slice A: Capture now via `content.capture`** (archiver#380; its flip unblocks the Archiver half of CannObserv/broker#116). Migration `b10b1ce04a49` adds the table `information.capture_commands`. SDK unchanged (5.17.0): no API route or schema is added (dashboard only). **Ships dark:** `ARCHIVER_CAPTURE_ENABLED` is commented out in `deploy/archiver.service` until its flip, so there is no card, both routes 404 and nothing is enqueued.
 
 - **`capture_commands`**: one row per command (`command_id` PK, `info_source_id` FK `CASCADE`, `requested_by` → `app_users.id` `SET NULL`). What was sent (`url`, viewport, `full_page`, `wait`) and, from the first `capture_stored`, what came back (`content_fingerprint`, `blob_uri`, `media_type`, `size_bytes`, image size, `final_url`, `captured_at`, `blob_expires_at`); `reason` / `detail` / `status_code` on failure. States `requested` → `stored` | `failed` | `abandoned`. Empty on creation; expand-only.
 - **Issuance**: `ContentCaptureCommandEmit` outboxed with its row, a fresh `command_id` per click, the fixed profile 1280×800, `full_page: true`, no wait. One open command per source. `content.capture` is never capped or trimmed.
