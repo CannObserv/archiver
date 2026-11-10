@@ -40,7 +40,6 @@ from src.core.models import (
     InfoSource,
     PmOrganization,
     RepSpec,
-    WatchStatus,
 )
 from src.core.power_map import OrgSnapshot, PowerMapClient, PowerMapUnavailableError
 from src.core.power_map.snapshots import (
@@ -895,13 +894,13 @@ async def delete_info_item(
 ) -> None:
     """Delete an InfoItem. The registry's only exit for one (archiver#141).
 
-    Exists so that leaving the registry has a **transactional home**. Once the
-    announcement producer lands, ``revoked: true`` is the announced form of "gone
-    from the registry", and it must be written to ``changes_outbox`` in the same
-    transaction as the deletion. Raw SQL cannot do that: a psql ``DELETE`` skips
-    the tombstone, and every consumer keeps the key forever. The periodic full
-    republish does **not** repair it — ``revoked`` is an explicit tombstone
-    precisely because absence-from-a-full-set is not the delete signal here.
+    Exists so that leaving the registry has a **transactional home**.
+    ``revoked: true`` is the announced form of "gone from the registry", and it
+    must be written to ``changes_outbox`` in the same transaction as the deletion.
+    Raw SQL cannot do that: a psql ``DELETE`` skips the tombstone, and every
+    consumer keeps the key forever. The periodic full republish does **not**
+    repair it — ``revoked`` is an explicit tombstone precisely because
+    absence-from-a-full-set is not the delete signal here.
 
     The alternative considered was declaring InfoItems undeletable and saying so
     in ``docs/SCHEMA.md``. Rejected: it does not stop anyone reaching for psql,
@@ -916,44 +915,18 @@ async def delete_info_item(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
-    is announced on ``info.registry`` — that is the designed channel, and there is
-    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
-    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
-    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
+    **The tombstone is consumed.** Watcher deletes the WatchedItem on
+    ``revoked: true`` and records the generation, so a stale live announcement
+    cannot resurrect it (watcher ``docs/REGISTRY.md``). Nothing is left to remove
+    in Watcher by hand, and its own DELETE 409s on a reconciled item anyway
+    (archiver#372).
     """
     item = await _resolve_or_404(session, info_item_id)
-    # Read before the delete: the watch_status row is FK-CASCADEd away with it.
-    #
-    # Keyed on Watcher having *reported* on this item, not on the retired
-    # `watcher_item_id` (archiver#142) and not on `announcement_generation`. The
-    # column only ever covered items provisioned over the HTTP push, so every
-    # post-cutover item slipped through. The generation is too broad: `> 0` means
-    # announced at some point (exactly so since archiver#167 - before it, a bare
-    # create bumped to 1 without emitting), which takes in items revoked since
-    # and items Watcher never picked up, so it would warn about orphans that
-    # cannot exist. A `watch_status` row is evidence *from Watcher* that it is
-    # scheduling this item — the exact condition under which an orphan can exist.
-    #
-    # Known blind spot, in the quiet direction: an item announced but not yet
-    # reported on (the panel's `no_status` window) deletes silently. Narrow, and
-    # preferable to warning on every delete.
-    watcher_reported = (await session.get(WatchStatus, item.info_item_id)) is not None
     # Tombstone BEFORE the delete: the generation bump needs the row, and the
     # RevokedInfoItem record is what the snapshot republishes once it is gone.
     await announce_info_item_revoked(session, item)
     await session.delete(item)
     await session.commit()
-
-    if watcher_reported:
-        # The gap above, as a signal rather than only a paragraph: the operator who
-        # caused the orphan is the least likely person to be reading SCHEMA.md at
-        # that moment, and a 204 tells them nothing (CR round 1, finding 2).
-        logger.warning(
-            "Deleted an InfoItem that Watcher was scheduling; if the tombstone is "
-            "not consumed, remove the WatchedItem in Watcher by hand",
-            extra={"info_item_id": info_item_id},
-        )
 
 
 @router.put(

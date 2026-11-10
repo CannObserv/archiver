@@ -92,13 +92,13 @@ def sync_detailed(
 
      Delete an InfoItem. The registry's only exit for one (archiver#141).
 
-    Exists so that leaving the registry has a **transactional home**. Once the
-    announcement producer lands, ``revoked: true`` is the announced form of \"gone
-    from the registry\", and it must be written to ``changes_outbox`` in the same
-    transaction as the deletion. Raw SQL cannot do that: a psql ``DELETE`` skips
-    the tombstone, and every consumer keeps the key forever. The periodic full
-    republish does **not** repair it — ``revoked`` is an explicit tombstone
-    precisely because absence-from-a-full-set is not the delete signal here.
+    Exists so that leaving the registry has a **transactional home**.
+    ``revoked: true`` is the announced form of \"gone from the registry\", and it
+    must be written to ``changes_outbox`` in the same transaction as the deletion.
+    Raw SQL cannot do that: a psql ``DELETE`` skips the tombstone, and every
+    consumer keeps the key forever. The periodic full republish does **not**
+    repair it — ``revoked`` is an explicit tombstone precisely because
+    absence-from-a-full-set is not the delete signal here.
 
     The alternative considered was declaring InfoItems undeletable and saying so
     in ``docs/SCHEMA.md``. Rejected: it does not stop anyone reaching for psql,
@@ -113,11 +113,11 @@ def sync_detailed(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
-    is announced on ``info.registry`` — that is the designed channel, and there is
-    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
-    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
-    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
+    **The tombstone is consumed.** Watcher deletes the WatchedItem on
+    ``revoked: true`` and records the generation, so a stale live announcement
+    cannot resurrect it (watcher ``docs/REGISTRY.md``). Nothing is left to remove
+    in Watcher by hand, and its own DELETE 409s on a reconciled item anyway
+    (archiver#372).
 
     Args:
         info_item_id (str):
@@ -150,13 +150,13 @@ def sync(
 
      Delete an InfoItem. The registry's only exit for one (archiver#141).
 
-    Exists so that leaving the registry has a **transactional home**. Once the
-    announcement producer lands, ``revoked: true`` is the announced form of \"gone
-    from the registry\", and it must be written to ``changes_outbox`` in the same
-    transaction as the deletion. Raw SQL cannot do that: a psql ``DELETE`` skips
-    the tombstone, and every consumer keeps the key forever. The periodic full
-    republish does **not** repair it — ``revoked`` is an explicit tombstone
-    precisely because absence-from-a-full-set is not the delete signal here.
+    Exists so that leaving the registry has a **transactional home**.
+    ``revoked: true`` is the announced form of \"gone from the registry\", and it
+    must be written to ``changes_outbox`` in the same transaction as the deletion.
+    Raw SQL cannot do that: a psql ``DELETE`` skips the tombstone, and every
+    consumer keeps the key forever. The periodic full republish does **not**
+    repair it — ``revoked`` is an explicit tombstone precisely because
+    absence-from-a-full-set is not the delete signal here.
 
     The alternative considered was declaring InfoItems undeletable and saying so
     in ``docs/SCHEMA.md``. Rejected: it does not stop anyone reaching for psql,
@@ -171,11 +171,11 @@ def sync(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
-    is announced on ``info.registry`` — that is the designed channel, and there is
-    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
-    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
-    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
+    **The tombstone is consumed.** Watcher deletes the WatchedItem on
+    ``revoked: true`` and records the generation, so a stale live announcement
+    cannot resurrect it (watcher ``docs/REGISTRY.md``). Nothing is left to remove
+    in Watcher by hand, and its own DELETE 409s on a reconciled item anyway
+    (archiver#372).
 
     Args:
         info_item_id (str):
@@ -203,13 +203,13 @@ async def asyncio_detailed(
 
      Delete an InfoItem. The registry's only exit for one (archiver#141).
 
-    Exists so that leaving the registry has a **transactional home**. Once the
-    announcement producer lands, ``revoked: true`` is the announced form of \"gone
-    from the registry\", and it must be written to ``changes_outbox`` in the same
-    transaction as the deletion. Raw SQL cannot do that: a psql ``DELETE`` skips
-    the tombstone, and every consumer keeps the key forever. The periodic full
-    republish does **not** repair it — ``revoked`` is an explicit tombstone
-    precisely because absence-from-a-full-set is not the delete signal here.
+    Exists so that leaving the registry has a **transactional home**.
+    ``revoked: true`` is the announced form of \"gone from the registry\", and it
+    must be written to ``changes_outbox`` in the same transaction as the deletion.
+    Raw SQL cannot do that: a psql ``DELETE`` skips the tombstone, and every
+    consumer keeps the key forever. The periodic full republish does **not**
+    repair it — ``revoked`` is an explicit tombstone precisely because
+    absence-from-a-full-set is not the delete signal here.
 
     The alternative considered was declaring InfoItems undeletable and saying so
     in ``docs/SCHEMA.md``. Rejected: it does not stop anyone reaching for psql,
@@ -224,11 +224,11 @@ async def asyncio_detailed(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
-    is announced on ``info.registry`` — that is the designed channel, and there is
-    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
-    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
-    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
+    **The tombstone is consumed.** Watcher deletes the WatchedItem on
+    ``revoked: true`` and records the generation, so a stale live announcement
+    cannot resurrect it (watcher ``docs/REGISTRY.md``). Nothing is left to remove
+    in Watcher by hand, and its own DELETE 409s on a reconciled item anyway
+    (archiver#372).
 
     Args:
         info_item_id (str):
@@ -259,13 +259,13 @@ async def asyncio(
 
      Delete an InfoItem. The registry's only exit for one (archiver#141).
 
-    Exists so that leaving the registry has a **transactional home**. Once the
-    announcement producer lands, ``revoked: true`` is the announced form of \"gone
-    from the registry\", and it must be written to ``changes_outbox`` in the same
-    transaction as the deletion. Raw SQL cannot do that: a psql ``DELETE`` skips
-    the tombstone, and every consumer keeps the key forever. The periodic full
-    republish does **not** repair it — ``revoked`` is an explicit tombstone
-    precisely because absence-from-a-full-set is not the delete signal here.
+    Exists so that leaving the registry has a **transactional home**.
+    ``revoked: true`` is the announced form of \"gone from the registry\", and it
+    must be written to ``changes_outbox`` in the same transaction as the deletion.
+    Raw SQL cannot do that: a psql ``DELETE`` skips the tombstone, and every
+    consumer keeps the key forever. The periodic full republish does **not**
+    repair it — ``revoked`` is an explicit tombstone precisely because
+    absence-from-a-full-set is not the delete signal here.
 
     The alternative considered was declaring InfoItems undeletable and saying so
     in ``docs/SCHEMA.md``. Rejected: it does not stop anyone reaching for psql,
@@ -280,11 +280,11 @@ async def asyncio(
     404 on an already-deleted item rather than a silent 204 — an operator who
     deletes the wrong ULID twice should learn the second call did nothing.
 
-    **Known gap: nothing is confirmed to consume the tombstone.** The revocation
-    is announced on ``info.registry`` — that is the designed channel, and there is
-    no HTTP push left to add — but watcher#254 (the reconcile loop) does not
-    mention tombstone handling, so a deleted InfoItem's WatchedItem may need
-    removing in Watcher by hand until that is verified. See ``docs/SCHEMA.md``.
+    **The tombstone is consumed.** Watcher deletes the WatchedItem on
+    ``revoked: true`` and records the generation, so a stale live announcement
+    cannot resurrect it (watcher ``docs/REGISTRY.md``). Nothing is left to remove
+    in Watcher by hand, and its own DELETE 409s on a reconciled item anyway
+    (archiver#372).
 
     Args:
         info_item_id (str):

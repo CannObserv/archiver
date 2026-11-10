@@ -9,10 +9,11 @@ every consumer keeps the key forever. The snapshot does not correct it:
 ``revoked`` is an explicit tombstone precisely because absence-from-a-full-set
 is *not* the delete signal in this design.
 
-So the route exists to give the tombstone a transactional home. It emits nothing
-yet — the announcement service does not exist — but the emit site does, and the
-alternative (declaring InfoItems undeletable in docs/SCHEMA.md) does not actually
-stop anyone from reaching for psql.
+So the route exists to give the tombstone a transactional home: it writes the
+``revoked`` announcement in the deletion's own transaction, and Watcher deletes
+the WatchedItem on it (archiver#372). The alternative (declaring InfoItems
+undeletable in docs/SCHEMA.md) does not actually stop anyone from reaching for
+psql.
 
 **Scope of the cascade is deliberate.** The item's own bindings and rep-spec
 assignments go with it (both FKs are ``ondelete="CASCADE"``). The InfoSource and
@@ -228,18 +229,16 @@ async def test_delete_with_an_unknown_api_key_is_401(client, session):
 
 
 @pytest.mark.asyncio
-async def test_delete_warns_when_watcher_was_scheduling_the_item(client, session, monkeypatch):
-    """A possibly-orphaned WatchedItem gets a log line, not just a docs paragraph.
+async def test_delete_is_quiet_when_watcher_was_scheduling_the_item(client, session, monkeypatch):
+    """No warning, even for an item Watcher reported on (archiver#372).
 
-    Nothing is confirmed to consume the tombstone, so the deleted item may keep
-    being fetched until someone removes it in Watcher by hand. Prose in SCHEMA.md
-    is the right *record* of an accepted gap; it is not a signal the operator who
-    caused it will see (CR round 1, finding 2).
-
-    Keyed on a `watch_status` row since archiver#142 — evidence *from Watcher*
-    that it is scheduling this item. The old `watcher_item_id` key only covered
-    items provisioned over the retired HTTP push, so every post-cutover item
-    slipped through the warning it most needed.
+    The route used to WARN "remove the WatchedItem in Watcher by hand" here,
+    because nothing was confirmed to consume the tombstone. Watcher does: a
+    ``revoked: true`` frame on ``info.registry`` deletes the WatchedItem and
+    records the generation (watcher ``docs/REGISTRY.md``). The advice was also
+    impossible: Watcher's ``DELETE /api/v1/watched-items/{id}`` 409s once the
+    registry has reconciled the row. A line telling the operator to do what
+    cannot be done is noise, so it is gone.
 
     Spies the module logger rather than using caplog — ``configure_logging()``
     replaces ``root.handlers``, which defeats pytest's capture handler.
@@ -253,21 +252,6 @@ async def test_delete_warns_when_watcher_was_scheduling_the_item(client, session
         )
     )
     await session.commit()
-
-    spy = MagicMock()
-    monkeypatch.setattr(info_items_routes.logger, "warning", spy)
-
-    deleted = await client.delete(f"/api/v1/info-items/{item_id}", headers=HEADERS)
-    assert deleted.status_code == 204
-
-    spy.assert_called_once()
-    assert spy.call_args.kwargs["extra"]["info_item_id"] == item_id
-
-
-@pytest.mark.asyncio
-async def test_delete_is_quiet_when_watcher_never_reported(client, monkeypatch):
-    """No warning when Watcher was not scheduling it — otherwise it is noise."""
-    item_id = await _make_item(client)
 
     spy = MagicMock()
     monkeypatch.setattr(info_items_routes.logger, "warning", spy)

@@ -130,10 +130,9 @@ document; the dashboard's Registry badge reports the count
   precisely so that absence-from-a-full-set is *not* the delete signal. The route cascades the
   item's bindings and rep-spec assignments (both FKs are `ON DELETE CASCADE`); the InfoSource
   and its SourceRevisions survive, since the physical layer is shared and `source_revisions`
-  keys on `info_source_id`. The deletion **is** announced as a tombstone on `info.registry`, but
-  watcher#254 does not document tombstone handling, so an orphaned WatchedItem may still need
-  removing there by hand. The route logs a WARNING naming the InfoItem when the
-  deleted item had a `watch_status` row, so the pending cleanup shows up in journald.
+  keys on `info_source_id`. The deletion is announced as a tombstone on `info.registry`, and
+  Watcher deletes the WatchedItem on it (watcher `docs/REGISTRY.md`): nothing is left to remove
+  there by hand, and Watcher's own DELETE 409s on a reconciled item (archiver#372).
 
 - **`PmOrganization`** (`pm_organizations`, archiver#304) — snapshot of one linked Power Map org,
   PK Power Map's id; columns documented on the model. Written only by `apply_org_snapshot`, which
