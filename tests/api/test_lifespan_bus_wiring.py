@@ -34,6 +34,10 @@ from src.core.services import fetch_policy
 FAKE_REDIS_URL = "redis://localhost:6379/15"
 
 
+async def _noop(**_kwargs):
+    """Stand-in for a full-set task whose cap would race an assertion."""
+
+
 @pytest.fixture
 def bus_client_calls():
     """Make the lifespan's ``from_url`` hand back a FakeRedis, recording the call.
@@ -227,26 +231,63 @@ async def test_trim_allowlist_is_info_changes_only(bus_env, bus_client_calls, te
 
 
 @pytest.mark.asyncio
-async def test_per_publish_cap_is_info_registry_only(bus_env, bus_client_calls, test_engine):
-    """Only info.registry carries a ``MAXLEN`` on publish (archiver#141).
+async def test_per_publish_caps_start_empty(bus_env, bus_client_calls, test_engine):
+    """The lifespan seeds no per-publish cap; full-set tasks fill their own topic.
 
     The publish-side half of content.replicate's "never capped" (archiver#169,
     archiver#267), and the half broker cannot hold: the
     ``+xadd ~content.replicate`` grant admits ``XADD ... MAXLEN``, and an ACL
-    cannot tell a capped ``XADD`` from a plain one. Pinned as a literal so a
-    command stream joining this map is a failing test, not a silent cap.
+    cannot tell a capped ``XADD`` from a plain one. Pinned as the empty set so
+    a command stream seeded into this map is a failing test, not a silent cap.
+
+    Empty since archiver#373 item 4: info.registry's cap comes from its first
+    full set, as content.fetch-policy's does (CR 4, archiver#366), so no delta
+    drained before a complete set can trim the stream below its floor.
     """
     bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
+    seeded: dict = {}
+
+    async def _capture(**kwargs):
+        seeded["topics"] = set(kwargs["topic_maxlen"])
+
+    with (
+        patch("src.core.changes.publisher.run", side_effect=_capture),
+        patch("src.core.changes.registry_snapshot.run", side_effect=_noop),
+    ):
+        async with lifespan(app):
+            pass
+
+    assert seeded["topics"] == set()
+
+
+@pytest.mark.asyncio
+async def test_the_registry_snapshot_fills_the_drains_cap_map(
+    bus_env, bus_client_calls, test_engine
+):
+    """archiver#373 item 4: the snapshot computes info.registry's floored cap and
+    hands it to the drain through the very mapping the drain reads per row."""
+    bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
     captured: dict = {}
+    handed: dict = {}
 
     async def _capture(**kwargs):
         captured.update(kwargs)
 
-    with patch("src.core.changes.publisher.run", side_effect=_capture):
+    async def _snapshot(**kwargs):
+        handed.update(kwargs)
+
+    with (
+        patch("src.core.changes.publisher.run", side_effect=_capture),
+        patch("src.core.changes.registry_snapshot.run", side_effect=_snapshot),
+    ):
         async with lifespan(app):
             pass
 
-    assert set(captured["topic_maxlen"]) == {"info.registry"}
+    assert handed["topic_maxlen"] is captured["topic_maxlen"]
+    assert "maxlen" not in handed
+    # The drain's trim guard cannot read an empty map: the retained topics are
+    # declared up front instead (archiver#141, #366).
+    assert captured["retained_topics"] == frozenset({"info.registry", "content.fetch-policy"})
 
 
 @pytest.mark.asyncio
@@ -259,9 +300,11 @@ async def test_watch_check_is_neither_trimmed_nor_capped(bus_env, bus_client_cal
     """
     bus_env.setenv("ARCHIVER_REDIS_URL", FAKE_REDIS_URL)
     captured: dict = {}
+    seeded: dict = {}
 
     async def _capture(**kwargs):
         captured.update(kwargs)
+        seeded["topics"] = set(kwargs["topic_maxlen"])
 
     with patch("src.core.changes.publisher.run", side_effect=_capture):
         async with lifespan(app):
@@ -269,6 +312,7 @@ async def test_watch_check_is_neither_trimmed_nor_capped(bus_env, bus_client_cal
 
     assert "info.watch-check" not in captured["trim_topics"]
     assert "info.watch-check" not in captured["topic_maxlen"]
+    assert "info.watch-check" not in seeded["topics"]
 
 
 @pytest.mark.asyncio
@@ -643,11 +687,12 @@ async def test_fetch_policy_stays_dark_without_the_flag(
     with (
         caplog.at_level("INFO"),
         patch("src.core.changes.publisher.run", side_effect=_capture),
+        patch("src.core.changes.registry_snapshot.run", side_effect=_noop),
     ):
         async with lifespan(app):
             assert app.state.fetch_policy_task is None
 
-    assert set(captured["topic_maxlen"]) == {"info.registry"}
+    assert set(captured["topic_maxlen"]) == set()
     assert "content.fetch-policy producer is dark" in caplog.text
     # Since F1 (#438) Watcher produces nowhere; a dev server must not claim it does.
     assert "Watcher" not in caplog.text
@@ -670,6 +715,7 @@ async def test_fetch_policy_flag_starts_the_full_set_and_caps_the_deltas(
 
     with (
         patch("src.core.changes.publisher.run", side_effect=_capture),
+        patch("src.core.changes.registry_snapshot.run", side_effect=_noop),
         patch("src.core.changes.fetch_policy_snapshot.run", side_effect=_full_set),
     ):
         async with lifespan(app):
@@ -680,7 +726,7 @@ async def test_fetch_policy_flag_starts_the_full_set_and_caps_the_deltas(
     # CR 4: no cap until a complete set computes one. A delta drained before
     # the first set carries no MAXLEN, so it can never trim below the floor;
     # the full-set task fills the very mapping the drain reads.
-    assert set(captured["topic_maxlen"]) == {"info.registry"}
+    assert set(captured["topic_maxlen"]) == set()
     assert handed["topic_maxlen"] is captured["topic_maxlen"]
 
 

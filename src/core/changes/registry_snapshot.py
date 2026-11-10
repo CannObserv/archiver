@@ -41,6 +41,10 @@ stream's cap is a consumer contract, because consumers boot by replaying from
 ``0-0`` — the floor is "at least one full set plus the deltas since". The
 operator-side ``XTRIM`` loop in ``publisher.run`` explicitly excludes this
 topic; sizing it from the fact stream's knob would silently break that floor.
+Since archiver#373 item 4 the cap is ``content.fetch-policy``'s rule:
+``max(resolved, RETAINED_FULL_SETS × full set)``, tombstones counted, computed
+only by a complete set. ``run`` hands each set's cap to the outbox drain through
+``topic_maxlen``, so deltas carry the last set's cap and none before the first.
 
 The full set is: every announceable item (active binding, non-empty
 ``source_specs``) live; every previously-announced but currently
@@ -59,6 +63,9 @@ so it replays the interval the last delta announced, at that delta's generation.
 from __future__ import annotations
 
 import asyncio
+import os
+from collections.abc import MutableMapping
+from dataclasses import dataclass
 
 from co_core.effects.bus import BusPublish
 from co_core.pure.adapters.bus.envelope import to_wire
@@ -88,44 +95,49 @@ DEFAULT_SNAPSHOT_INTERVAL_SECONDS = 3600
 healthy delta — that is outbox latency, sub-second — it bounds the failure
 cases: a trimmed stream, a dead-lettered delta, a cold-starting consumer."""
 
-DEFAULT_REGISTRY_STREAM_MAXLEN = 50_000
-"""Approximate cap carried on every info.registry publish.
+DEFAULT_REGISTRY_STREAM_MAXLEN = 1_000
+"""The cap's default; the full-set floor raises it, never lowers it (archiver#373).
 
-Mirrored across the repo boundary (archiver#196), exactly as
-``DEFAULT_STREAM_MAXLEN`` in ``publisher.py`` is: CannObserv/broker's
-``src/broker/bus_health.py`` carries this number as ``REGISTRY_PRODUCER_MAXLEN``
-and names this constant as the source of truth, unable to import it. Index: that
-repo's ``docs/BUS-HEALTH.md``, "Mirrored constants".
+**Sized against the set, not the broker's comfort** (the watcher#292 lesson,
+``content.fetch-policy``'s ``DEFAULT_FETCH_POLICY_STREAM_MAXLEN``): Watcher
+replays this stream groupless from ``0-0`` at every boot, so every retained
+entry is read at every boot. At 2026-11-09's 21-entry set the stream gains about
+500 entries a day (an hourly set, one per deploy, the deltas), so 50,000 meant
+about 100 days of replay; 1,000 is about two days, still far above the "one full
+set plus the deltas since" floor a ``0-0`` consumer needs.
 
-**What that mirror feeds: two checks, not one.** It feeds the stream-too-*long*
-ceiling, ``REGISTRY_WARN_LENGTH = with_margin(REGISTRY_PRODUCER_MAXLEN)``. It
-also bounds the scope of the shrink check (``entries-removed``,
-CannObserv/broker#42). That check's trigger has no threshold:
-``entries-added - length`` rising between ticks, with ``max-deleted-entry-id``
-to tell an XTRIM from an XDEL. But it reports only while the stream is **under**
-the mirrored cap. ``MAXLEN ~`` never leaves fewer than the cap, so a removal
-under it cannot be the cap. Without that bound, every legitimate trim would be
-a finding once the stream reached the cap.
+**Mirrored on the broker node** (archiver#196, CannObserv/broker#139):
+``src/broker/bus_health.py`` carries this number as
+``REGISTRY_PRODUCER_MAXLEN``, ``RETAINED_FULL_SETS`` below as
+``REGISTRY_RETAINED_FULL_SETS`` and ``DEFAULT_SNAPSHOT_INTERVAL_SECONDS`` as
+``REGISTRY_REPUBLISH_PERIOD_SECONDS``, combined in ``REGISTRY_FULL_SET_FLOOR``.
+Its tests cite these three names in this module: rename none of them without a
+matching broker commit. Index: that repo's ``docs/BUS-HEALTH.md``, "Mirrored
+constants", and ``docs/LWW-CAP.md``.
 
-So a move of the cap here, unmirrored, is loud in both directions, with one
-exception: a raise inside the margin. **Lowered**, ``entries-removed`` fires at
-each trim at the real cap. **Raised past the 10% margin**, the ceiling goes
-stale-*low* and fires early, the safe direction, but fix it. **Within the
-margin**, neither fires. Do not delete the pointer above on the strength of
-#42: both checks depend on it.
+**What the mirror feeds** (broker ``38401ba``): the stream-too-long ceiling is
+``max(1,000, 10 × the set read off the stream)`` plus 10%, and the shrink
+check (``entries-removed``, CannObserv/broker#42) is scoped by this default, never
+by the floored cap. ``MAXLEN ~`` never leaves fewer than the cap in force, which
+is never under 1,000, so a removal that leaves fewer is a fault whatever the set.
+Broker's set reading counts deltas and each deploy's set, so it reads high, the
+safe side. **Lowered here** unmirrored, ``entries-removed`` fires at each trim.
+**Raised past the 10% margin**, the ceiling fires early.
 
-And the mirror's real hazard is not this literal, it is
-``ARCHIVER_REGISTRY_STREAM_MAXLEN`` below: naming a source is not enough when an
-env var can move it with no commit in either repo. Archiver's
-``docs/ENVIRONMENT_BUS.md`` carries the operator's side of that - setting the
-override obliges a note to broker.
+The mirror's real hazard is ``ARCHIVER_REGISTRY_STREAM_MAXLEN`` (``MAXLEN_ENV``):
+it moves the cap in force with no commit in either repo. Under the floor it can
+no longer drop the cap below ``RETAINED_FULL_SETS`` sets, but it can still raise
+it past broker's ceiling or lower it under this default, so setting it still
+obliges a note to broker (``docs/ENVIRONMENT_BUS.md``)."""
 
-Derived from key count x sets retained, never from the fact stream's number:
-at O(10^3) items on the 1-hour period that is ~24k entries/day, so 50k covers
-roughly two days of full sets plus deltas — comfortably above the "one full
-set plus the deltas since" floor a replay-from-0-0 consumer needs. Today's
-corpus is O(10), making the default effectively unbounded; revisit the knob
-(ARCHIVER_REGISTRY_STREAM_MAXLEN) as the corpus grows."""
+RETAINED_FULL_SETS = 10
+"""The floor's multiplier: the cap never drops below ten complete sets, so a
+set larger than the default cannot trim its own earlier entries. Broker's
+``REGISTRY_RETAINED_FULL_SETS``. The same value as
+``fetch_policy_snapshot.RETAINED_FULL_SETS``, deliberately not the same
+constant: either stream's owner moves its number alone."""
+
+MAXLEN_ENV = "ARCHIVER_REGISTRY_STREAM_MAXLEN"
 
 
 def resolve_snapshot_interval(raw: str | None) -> float:
@@ -143,19 +155,49 @@ def resolve_snapshot_interval(raw: str | None) -> float:
     return value if value > 0 else DEFAULT_SNAPSHOT_INTERVAL_SECONDS
 
 
-def resolve_registry_maxlen(raw: str | None) -> int:
-    """Parse ARCHIVER_REGISTRY_STREAM_MAXLEN defensively; never unbounded."""
+def resolve_registry_maxlen(raw: str | None, *, floor: int = 1) -> int:
+    """Parse ``ARCHIVER_REGISTRY_STREAM_MAXLEN`` defensively; never under ``floor``.
+
+    ``resolve_fetch_policy_maxlen``'s rule: an invalid or non-positive value
+    falls back to the default with a warning, and the floor wins over both. An
+    explicit value under the floor is the one misconfiguration the floor
+    overrides, so it is reported.
+    """
+    bounded = max(DEFAULT_REGISTRY_STREAM_MAXLEN, floor)
     if raw is None or not raw.strip():
-        return DEFAULT_REGISTRY_STREAM_MAXLEN
+        return bounded
     try:
         value = int(raw)
     except ValueError:
         logger.warning(
-            "Invalid ARCHIVER_REGISTRY_STREAM_MAXLEN; falling back to default",
-            extra={"value": raw, "default": DEFAULT_REGISTRY_STREAM_MAXLEN},
+            "Invalid %s; falling back to default",
+            MAXLEN_ENV,
+            extra={"value": raw, "floor": floor, "effective": bounded},
         )
-        return DEFAULT_REGISTRY_STREAM_MAXLEN
-    return value if value > 0 else DEFAULT_REGISTRY_STREAM_MAXLEN
+        return bounded
+    if value <= 0:
+        logger.warning(
+            "Non-positive %s; falling back to default",
+            MAXLEN_ENV,
+            extra={"value": raw, "floor": floor, "effective": bounded},
+        )
+        return bounded
+    if floor > value:
+        logger.warning(
+            "%s is below the full-set floor; using the floor",
+            MAXLEN_ENV,
+            extra={"value": raw, "floor": floor, "effective": floor},
+        )
+    return max(value, floor)
+
+
+@dataclass(frozen=True)
+class RegistrySetResult:
+    """What one full set did: entries published by kind, and the cap they carried."""
+
+    live: int
+    revoked: int
+    maxlen: int
 
 
 async def _collect_full_set(session: AsyncSession) -> tuple[list, list]:
@@ -215,9 +257,13 @@ async def publish_full_set(
     *,
     session_factory: async_sessionmaker[AsyncSession],
     publisher,
-    maxlen: int,
-) -> tuple[int, int]:
-    """Publish one full set directly to ``info.registry``; returns (live, revoked).
+) -> RegistrySetResult:
+    """Publish one full set directly to ``info.registry``, with its floored cap.
+
+    The cap is ``max(resolved, RETAINED_FULL_SETS × entries built)``: the floor
+    counts the set as collected, tombstones included, never the entries that
+    landed, so a failed publish cannot shrink it. This function collects the
+    whole set itself, so the floor is never computed from a partial batch.
 
     Per-entry failures are logged and skipped — no retry (the next period is
     the repair), no abort (a partial set costs nothing, since absence is not a
@@ -246,6 +292,9 @@ async def publish_full_set(
             for info_item_id, generation in revoked
         ]
 
+    maxlen = resolve_registry_maxlen(
+        os.environ.get(MAXLEN_ENV), floor=len(events) * RETAINED_FULL_SETS
+    )
     published_live = published_revoked = 0
     for event in events:
         try:
@@ -264,7 +313,7 @@ async def publish_full_set(
             published_revoked += 1
         else:
             published_live += 1
-    return published_live, published_revoked
+    return RegistrySetResult(live=published_live, revoked=published_revoked, maxlen=maxlen)
 
 
 async def run(
@@ -272,11 +321,15 @@ async def run(
     session_factory: async_sessionmaker[AsyncSession],
     publisher,
     interval: float,
-    maxlen: int,
+    topic_maxlen: MutableMapping[str, int],
     stop_event: asyncio.Event,
     trigger: asyncio.Event | None = None,
 ) -> None:
     """Publish a full set at startup, then every ``interval`` seconds.
+
+    After each set, ``topic_maxlen[INFO_REGISTRY_TOPIC]`` takes its cap: the
+    outbox drain reads that mapping per row, so deltas carry the last complete
+    set's floor, and none before the first set (archiver#373 item 4).
 
     The startup set means a service restart converges consumers without
     waiting a period. ``trigger`` is the operator's "republish now" — set it
@@ -287,12 +340,16 @@ async def run(
     trigger = trigger or asyncio.Event()
     while not stop_event.is_set():
         try:
-            live, revoked = await publish_full_set(
-                session_factory=session_factory, publisher=publisher, maxlen=maxlen
-            )
+            result = await publish_full_set(session_factory=session_factory, publisher=publisher)
+            topic_maxlen[INFO_REGISTRY_TOPIC] = result.maxlen
             logger.info(
                 "Registry snapshot published",
-                extra={"live": live, "revoked": revoked, "interval_seconds": interval},
+                extra={
+                    "live": result.live,
+                    "revoked": result.revoked,
+                    "maxlen": result.maxlen,
+                    "interval_seconds": interval,
+                },
             )
         except asyncio.CancelledError:
             raise

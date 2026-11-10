@@ -265,23 +265,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # it — the lifespan owns aclose below), and reuses it for the XTRIM.
             # info.registry retention is a consumer contract riding each publish
             # (replay-from-0-0 stream), so the topic is excluded from the global
-            # XTRIM loop and its deltas carry their own maxlen (archiver#141).
-            registry_maxlen = registry_snapshot.resolve_registry_maxlen(
-                os.environ.get("ARCHIVER_REGISTRY_STREAM_MAXLEN")
-            )
-            registry_topic = registry_snapshot.INFO_REGISTRY_TOPIC
+            # XTRIM loop and its deltas carry their own maxlen (archiver#141),
+            # set by its full-set task below (archiver#373 item 4).
             # Published-row retention (archiver#189), resolved with the same
             # defensiveness as the trim cap: a malformed window degrades to the
             # default rather than taking the publisher down with it.
             retention_days = outbox_prune.resolve_retention_days(
                 os.environ.get("ARCHIVER_OUTBOX_RETENTION_DAYS")
             )
-            # Per-publish caps, read by the drain per row. content.fetch-policy
-            # (archiver#366) gets its entry from its full-set task, after each
-            # complete set: only a complete set may compute the floor. A delta
-            # drained before the first one carries no MAXLEN - a few extra
-            # entries, never a trim below RETAINED_FULL_SETS sets (CR 4).
-            topic_maxlen: dict[str, int] = {registry_topic: registry_maxlen}
+            # Per-publish caps, read by the drain per row. info.registry
+            # (archiver#373 item 4) and content.fetch-policy (archiver#366) each
+            # get their entry from their full-set task, after each complete
+            # set: only a complete set may compute the floor. A delta drained
+            # before the first one carries no MAXLEN - a few extra entries,
+            # never a trim below RETAINED_FULL_SETS sets (CR 4).
+            topic_maxlen: dict[str, int] = {}
             pub_task = asyncio.create_task(
                 outbox_publisher.run(
                     session_factory=session_factory,
@@ -307,6 +305,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     # only (CannObserv/broker#93), so its cap rides the XADD.
                     trim_topics=frozenset({outbox_publisher.CHANGE_STREAM_TOPIC}),
                     topic_maxlen=topic_maxlen,
+                    # Declared, not read off topic_maxlen, which is empty until
+                    # each full-set task's first set: the trim guard above
+                    # needs them from the first pass (archiver#373 item 4).
+                    retained_topics=frozenset(
+                        {registry_snapshot.INFO_REGISTRY_TOPIC, fetch_policy.FETCH_POLICY_TOPIC}
+                    ),
                     retention_days=retention_days,
                     progress=stamps.get("publisher"),
                 )
@@ -336,7 +340,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     interval=registry_snapshot.resolve_snapshot_interval(
                         os.environ.get("ARCHIVER_REGISTRY_SNAPSHOT_INTERVAL")
                     ),
-                    maxlen=registry_maxlen,
+                    topic_maxlen=topic_maxlen,
                     stop_event=stop_event,
                     trigger=snapshot_trigger,
                 )

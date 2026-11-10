@@ -33,6 +33,9 @@ from src.core.changes import registry_snapshot
 from src.core.changes.registry_snapshot import (
     DEFAULT_REGISTRY_STREAM_MAXLEN,
     DEFAULT_SNAPSHOT_INTERVAL_SECONDS,
+    INFO_REGISTRY_TOPIC,
+    MAXLEN_ENV,
+    RETAINED_FULL_SETS,
     publish_full_set,
     resolve_registry_maxlen,
     resolve_snapshot_interval,
@@ -55,6 +58,12 @@ async def fake_redis():
     client = fakeredis_aio.FakeRedis()
     yield client
     await client.aclose()
+
+
+@pytest.fixture(autouse=True)
+def no_maxlen_override(monkeypatch):
+    """Production leaves the override unset; so does every case unless it sets it."""
+    monkeypatch.delenv(MAXLEN_ENV, raising=False)
 
 
 @pytest.fixture
@@ -112,11 +121,9 @@ async def _stream_payloads(fake_redis) -> list[dict]:
 async def test_full_set_covers_live_revoked_and_deleted(session_factory, publisher, fake_redis):
     ids = await _seed(session_factory)
 
-    live_count, revoked_count = await publish_full_set(
-        session_factory=session_factory, publisher=publisher, maxlen=1000
-    )
+    result = await publish_full_set(session_factory=session_factory, publisher=publisher)
 
-    assert (live_count, revoked_count) == (1, 2)
+    assert (result.live, result.revoked) == (1, 2)
     payloads = {p["info_item_id"]: p for p in await _stream_payloads(fake_redis)}
     assert set(payloads) == {ids["live"], ids["unbound"], ids["deleted"]}
 
@@ -168,7 +175,7 @@ async def test_full_set_resolves_each_items_host_through_the_shared_rule(
             ids[label] = str(item.info_item_id)
         await s.commit()
 
-    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+    await publish_full_set(session_factory=session_factory, publisher=publisher)
 
     active = {p["info_item_id"]: p["active"] for p in await _stream_payloads(fake_redis)}
     assert {label: active[i] for label, i in ids.items()} == {
@@ -196,7 +203,7 @@ async def test_full_set_announces_an_archived_item_inactive(session_factory, pub
         await s.commit()
         item_id = str(item.info_item_id)
 
-    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+    await publish_full_set(session_factory=session_factory, publisher=publisher)
 
     (payload,) = [p for p in await _stream_payloads(fake_redis) if p["info_item_id"] == item_id]
     assert payload["active"] is False
@@ -229,7 +236,7 @@ async def test_full_set_announces_the_resolved_cadence(session_factory, publishe
             ids[label] = str(item.info_item_id)
         await s.commit()
 
-    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+    await publish_full_set(session_factory=session_factory, publisher=publisher)
 
     specs = {p["info_item_id"]: p["watch_spec"] for p in await _stream_payloads(fake_redis)}
     assert {label: specs[i] for label, i in ids.items()} == {
@@ -269,7 +276,7 @@ async def test_full_set_replays_the_profiles_stored_result(session_factory, publ
         await s.commit()
         item_id = str(item.info_item_id)
 
-    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+    await publish_full_set(session_factory=session_factory, publisher=publisher)
 
     (payload,) = [p for p in await _stream_payloads(fake_redis) if p["info_item_id"] == item_id]
     assert payload["watch_spec"] == {"schema_version": 1, "interval": "1h"}
@@ -280,8 +287,8 @@ async def test_full_set_replays_the_profiles_stored_result(session_factory, publ
 async def test_snapshot_reads_generations_and_never_bumps(session_factory, publisher, fake_redis):
     ids = await _seed(session_factory)
 
-    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
-    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+    await publish_full_set(session_factory=session_factory, publisher=publisher)
+    await publish_full_set(session_factory=session_factory, publisher=publisher)
 
     async with session_factory() as s:
         gen = (
@@ -315,7 +322,7 @@ async def test_bound_item_with_empty_specs_republishes_as_revoked(
         await s.commit()
         item_id = str(item.info_item_id)
 
-    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+    await publish_full_set(session_factory=session_factory, publisher=publisher)
 
     (payload,) = await _stream_payloads(fake_redis)
     assert payload["info_item_id"] == item_id
@@ -339,30 +346,193 @@ async def test_one_failed_publish_does_not_abort_the_set(session_factory, fake_r
                 raise ConnectionError("broker blip")
             return await real.execute(effect)
 
-    live, revoked = await publish_full_set(
-        session_factory=session_factory, publisher=FlakyPublisher(), maxlen=1000
-    )
+    result = await publish_full_set(session_factory=session_factory, publisher=FlakyPublisher())
 
-    assert live + revoked == 2  # 3 entries attempted, 1 lost, 2 landed
+    assert result.live + result.revoked == 2  # 3 entries attempted, 1 lost, 2 landed
     assert len(await _stream_payloads(fake_redis)) == 2
 
 
-@pytest.mark.asyncio
-async def test_publishes_carry_the_registry_maxlen(session_factory, fake_redis):
-    """Retention rides the publish for a config/state stream (consumer contract,
-    replay-from-0-0) — the operator XTRIM loop explicitly excludes this topic."""
-    await _seed(session_factory)
-    captured = []
-    real = AsyncBusPublisher(fake_redis)
+class _SpyPublisher:
+    """Records every effect, then publishes it for real."""
 
-    class SpyPublisher:
+    def __init__(self, fake_redis):
+        self.captured: list = []
+        self._real = AsyncBusPublisher(fake_redis)
+
+    async def execute(self, effect):
+        self.captured.append(effect)
+        return await self._real.execute(effect)
+
+
+def test_the_cap_constants_are_the_ones_broker_mirrors():
+    """archiver#373 item 4: ``info.registry`` takes ``content.fetch-policy``'s rule.
+
+    CannObserv/broker#139 mirrors all three by these names in
+    ``src/broker/bus_health.py`` (``REGISTRY_PRODUCER_MAXLEN``,
+    ``REGISTRY_RETAINED_FULL_SETS``, ``REGISTRY_REPUBLISH_PERIOD_SECONDS``), and
+    its tests cite this module's names. Moving one is a commit there first.
+    """
+    assert DEFAULT_REGISTRY_STREAM_MAXLEN == 1_000
+    assert RETAINED_FULL_SETS == 10
+    assert DEFAULT_SNAPSHOT_INTERVAL_SECONDS == 3600
+    assert MAXLEN_ENV == "ARCHIVER_REGISTRY_STREAM_MAXLEN"
+
+
+@pytest.mark.asyncio
+async def test_a_small_set_carries_the_default_cap(session_factory, fake_redis):
+    """Three entries x 10 is under 1,000, so the default governs.
+
+    Retention rides the publish for a config/state stream (consumer contract,
+    replay-from-0-0); the operator XTRIM loop explicitly excludes this topic.
+    """
+    await _seed(session_factory)
+    spy = _SpyPublisher(fake_redis)
+
+    result = await publish_full_set(session_factory=session_factory, publisher=spy)
+
+    assert result.maxlen == DEFAULT_REGISTRY_STREAM_MAXLEN
+    assert len(spy.captured) == 3
+    assert all(e.maxlen == DEFAULT_REGISTRY_STREAM_MAXLEN for e in spy.captured)
+
+
+@pytest.mark.asyncio
+async def test_the_floor_counts_tombstones_and_raises_the_cap(
+    session_factory, fake_redis, monkeypatch
+):
+    """Cap = max(default, RETAINED_FULL_SETS x full set), tombstones included.
+
+    The seed is 1 live + 2 revoked. At x500 the floor is 1,500: counting live
+    entries alone would give 500 and leave the default in charge, so 1,500
+    proves the tombstones are counted. A tombstone that ages out of the stream
+    un-revokes its key for a ``0-0`` consumer.
+    """
+    await _seed(session_factory)
+    monkeypatch.setattr(registry_snapshot, "RETAINED_FULL_SETS", 500)
+    spy = _SpyPublisher(fake_redis)
+
+    result = await publish_full_set(session_factory=session_factory, publisher=spy)
+
+    assert result.maxlen == 1_500
+    assert all(e.maxlen == 1_500 for e in spy.captured)
+
+
+@pytest.mark.asyncio
+async def test_the_floor_counts_entries_built_not_entries_landed(session_factory, fake_redis):
+    """A publish that fails mid-set must not shrink the cap the set computed."""
+    await _seed(session_factory)
+    real = AsyncBusPublisher(fake_redis)
+    calls = {"n": 0}
+
+    class FlakyPublisher:
         async def execute(self, effect):
-            captured.append(effect)
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ConnectionError("broker blip")
             return await real.execute(effect)
 
-    await publish_full_set(session_factory=session_factory, publisher=SpyPublisher(), maxlen=777)
+    result = await publish_full_set(session_factory=session_factory, publisher=FlakyPublisher())
 
-    assert captured and all(e.maxlen == 777 for e in captured)
+    assert result.maxlen == DEFAULT_REGISTRY_STREAM_MAXLEN
+
+
+@pytest.mark.asyncio
+async def test_the_override_raises_the_cap(session_factory, fake_redis, monkeypatch):
+    await _seed(session_factory)
+    monkeypatch.setenv(MAXLEN_ENV, "5000")
+    spy = _SpyPublisher(fake_redis)
+
+    result = await publish_full_set(session_factory=session_factory, publisher=spy)
+
+    assert result.maxlen == 5_000
+    assert all(e.maxlen == 5_000 for e in spy.captured)
+
+
+@pytest.mark.asyncio
+async def test_the_override_never_drops_the_cap_below_the_floor(
+    session_factory, fake_redis, monkeypatch
+):
+    """Before archiver#373 the override could set any cap; now the floor wins."""
+    await _seed(session_factory)
+    monkeypatch.setattr(registry_snapshot, "RETAINED_FULL_SETS", 500)
+    monkeypatch.setenv(MAXLEN_ENV, "1200")
+
+    result = await publish_full_set(
+        session_factory=session_factory, publisher=_SpyPublisher(fake_redis)
+    )
+
+    assert result.maxlen == 1_500
+
+
+def test_resolve_registry_maxlen():
+    """Defensive parse, floored: never unbounded, never under the floor."""
+    assert resolve_registry_maxlen(None) == DEFAULT_REGISTRY_STREAM_MAXLEN
+    assert resolve_registry_maxlen("  ") == DEFAULT_REGISTRY_STREAM_MAXLEN
+    assert resolve_registry_maxlen(None, floor=2_000) == 2_000
+    assert resolve_registry_maxlen("5000", floor=2_000) == 5_000
+    assert resolve_registry_maxlen("1200", floor=2_000) == 2_000
+    assert resolve_registry_maxlen("nonsense") == DEFAULT_REGISTRY_STREAM_MAXLEN
+    assert resolve_registry_maxlen("nonsense", floor=2_000) == 2_000
+    assert resolve_registry_maxlen("0") == DEFAULT_REGISTRY_STREAM_MAXLEN
+    assert resolve_registry_maxlen("-5") == DEFAULT_REGISTRY_STREAM_MAXLEN
+
+
+def test_an_override_under_the_floor_is_reported(monkeypatch):
+    """The one misconfiguration the floor overrides, so it is said out loud.
+
+    Spies the module logger rather than using caplog: configure_logging()
+    replaces root.handlers, which defeats pytest's capture handler.
+    """
+    spy = MagicMock()
+    monkeypatch.setattr(registry_snapshot.logger, "warning", spy)
+
+    resolve_registry_maxlen("1200", floor=2_000)
+
+    spy.assert_called_once()
+    assert spy.call_args.kwargs["extra"] == {"value": "1200", "floor": 2_000, "effective": 2_000}
+
+
+@pytest.mark.asyncio
+async def test_run_hands_each_sets_cap_to_the_drain_and_logs_it(
+    session_factory, publisher, fake_redis, monkeypatch
+):
+    """Deltas carry the last complete set's cap, read off ``topic_maxlen``.
+
+    Only the snapshot computes the floor; the drain reads this mapping per
+    row, so a delta never trims below RETAINED_FULL_SETS sets. The log line
+    carries the cap: the deploy read-back for broker#139 is that line.
+    """
+    await _seed(session_factory)
+    monkeypatch.setattr(registry_snapshot, "RETAINED_FULL_SETS", 500)
+    info = MagicMock()
+    monkeypatch.setattr(registry_snapshot.logger, "info", info)
+    stop = asyncio.Event()
+    topic_maxlen: dict[str, int] = {}
+
+    task = asyncio.create_task(
+        registry_snapshot.run(
+            session_factory=session_factory,
+            publisher=publisher,
+            interval=3600,
+            topic_maxlen=topic_maxlen,
+            stop_event=stop,
+        )
+    )
+    for _ in range(200):
+        if topic_maxlen:
+            break
+        await asyncio.sleep(0.01)
+    stop.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    assert topic_maxlen == {INFO_REGISTRY_TOPIC: 1_500}
+    info.assert_called_once()
+    assert info.call_args.args[0] == "Registry snapshot published"
+    assert info.call_args.kwargs["extra"] == {
+        "live": 1,
+        "revoked": 2,
+        "maxlen": 1_500,
+        "interval_seconds": 3600,
+    }
 
 
 @pytest.mark.asyncio
@@ -380,7 +550,7 @@ async def test_run_publishes_at_start_on_trigger_and_on_stop(
             session_factory=session_factory,
             publisher=publisher,
             interval=3600,  # never fires within the test
-            maxlen=1000,
+            topic_maxlen={},
             stop_event=stop,
             trigger=trigger,
         )
@@ -425,7 +595,7 @@ async def test_run_survives_a_failing_publish_cycle(session_factory, fake_redis)
             session_factory=session_factory,
             publisher=FailsFirstCycle(),
             interval=3600,
-            maxlen=1000,
+            topic_maxlen={},
             stop_event=stop,
             trigger=trigger,
         )
@@ -477,11 +647,9 @@ async def test_a_live_entry_at_generation_zero_is_published_and_reported(
     spy = MagicMock()
     monkeypatch.setattr(registry_snapshot.logger, "warning", spy)
 
-    live, revoked = await publish_full_set(
-        session_factory=session_factory, publisher=publisher, maxlen=1000
-    )
+    result = await publish_full_set(session_factory=session_factory, publisher=publisher)
 
-    assert (live, revoked) == (1, 0)
+    assert (result.live, result.revoked) == (1, 0)
     (payload,) = await _stream_payloads(fake_redis)
     assert payload["info_item_id"] == item_id
     assert payload["revoked"] is False
@@ -500,16 +668,13 @@ async def test_a_healthy_full_set_reports_no_generation_anomaly(
     spy = MagicMock()
     monkeypatch.setattr(registry_snapshot.logger, "warning", spy)
 
-    await publish_full_set(session_factory=session_factory, publisher=publisher, maxlen=1000)
+    await publish_full_set(session_factory=session_factory, publisher=publisher)
 
     spy.assert_not_called()
 
 
-def test_interval_and_maxlen_env_parsing():
+def test_interval_env_parsing():
     assert resolve_snapshot_interval(None) == DEFAULT_SNAPSHOT_INTERVAL_SECONDS
     assert resolve_snapshot_interval("900") == 900
     assert resolve_snapshot_interval("nonsense") == DEFAULT_SNAPSHOT_INTERVAL_SECONDS
     assert resolve_snapshot_interval("-5") == DEFAULT_SNAPSHOT_INTERVAL_SECONDS
-    assert resolve_registry_maxlen(None) == DEFAULT_REGISTRY_STREAM_MAXLEN
-    assert resolve_registry_maxlen("123") == 123
-    assert resolve_registry_maxlen("0") == DEFAULT_REGISTRY_STREAM_MAXLEN

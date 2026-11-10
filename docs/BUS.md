@@ -209,11 +209,15 @@ Payload: `co_core.pure.models.changes.RegistryAnnouncementState`
   without bumping them, tombstones included (`revoked_info_items`). **No
   retry** - the next period is the repair. Operator republish-now:
   `POST /tools/republish-registry-announcements`.
-- **Retention rides the publish** (`BusPublish.maxlen`,
-  `ARCHIVER_REGISTRY_STREAM_MAXLEN`, default 50k): consumers replay from `0-0`,
-  so the floor is one full set plus the deltas since. The topic is absent
-  from the fact stream's `XTRIM` allowlist; listed there by mistake, `run`
-  logs an ERROR and skips it rather than trimming it.
+- **Retention rides the publish** (`BusPublish.maxlen`): consumers replay from
+  `0-0`, so the floor is one full set plus the deltas since. Since #373 item 4
+  the cap is `content.fetch-policy`'s rule: `max(1,000, 10 × full set)`,
+  tombstones counted (`ARCHIVER_REGISTRY_STREAM_MAXLEN` can raise it, never
+  under the floor). Only a complete set computes it; the snapshot hands it to
+  the drain through `topic_maxlen`, so deltas carry the last set's cap and none
+  before the first. Broker mirrors all three numbers (CannObserv/broker#139).
+  The topic is absent from the fact stream's `XTRIM` allowlist; listed there by
+  mistake, `run` logs an ERROR and skips it rather than trimming it.
 
 **`content.replicate` - the replication command channel (archiver#169).** A third
 producer surface, *command* kind: exactly one consumer group
