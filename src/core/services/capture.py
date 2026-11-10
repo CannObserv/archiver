@@ -235,7 +235,9 @@ async def apply_capture_failed(session: AsyncSession, fact: CaptureFailedEvent) 
     """Record ``capture_failed``; close the command only when ``terminal``.
 
     Never overrides a success, and never lets an older fact override a newer
-    one. Does not commit.
+    one. A non-terminal fact applies only to an open command; a terminal one
+    also closes an abandoned command ``failed``, Replicator's verdict being more
+    specific than the reaper's. Does not commit.
 
     Raises:
         UnknownCommandError: the registry never issued this command.
@@ -245,6 +247,14 @@ async def apply_capture_failed(session: AsyncSession, fact: CaptureFailedEvent) 
         logger.warning(
             "Ignoring a failure fact for an already-stored capture",
             extra={"command_id": fact.command_id, "reason": fact.reason},
+        )
+        return command
+    if not fact.terminal and command.state != STATE_REQUESTED:
+        # A still-trying fact says nothing about a closed command: it must not
+        # rewrite the verdict (an abandon's reason) or mark it non-terminal.
+        logger.info(
+            "Ignoring a non-terminal capture fact for a closed command",
+            extra={"command_id": fact.command_id, "state": command.state, "reason": fact.reason},
         )
         return command
     if command.last_fact_at is not None and fact.occurred_at < command.last_fact_at:

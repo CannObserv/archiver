@@ -381,6 +381,36 @@ async def test_an_older_failure_does_not_override_a_newer_one(session):
     assert command.last_fact_at == T0 + timedelta(minutes=5)
 
 
+@pytest.mark.asyncio
+async def test_a_non_terminal_failure_does_not_reopen_or_rewrite_a_closed_command(session):
+    """CR 4: once abandoned, a still-trying fact leaves the reaper's verdict whole."""
+    source = await _source(session)
+    command = await _issued(session, source)
+    command.issued_at = datetime.now(UTC) - timedelta(hours=2)
+    await reap_open_captures(session, horizon=timedelta(hours=1))
+
+    await apply_capture_failed(session, _failed(command, terminal=False, reason="still_trying"))
+
+    assert command.state == "abandoned"
+    assert command.reason == REASON_NO_FACT
+    assert command.terminal is not False
+
+
+@pytest.mark.asyncio
+async def test_a_terminal_failure_closes_an_abandoned_command_as_failed(session):
+    """Replicator's verdict is more specific than the reaper's guess at silence."""
+    source = await _source(session)
+    command = await _issued(session, source)
+    command.issued_at = datetime.now(UTC) - timedelta(hours=2)
+    await reap_open_captures(session, horizon=timedelta(hours=1))
+
+    await apply_capture_failed(session, _failed(command, reason="wait_timeout", status_code=None))
+
+    assert command.state == "failed"
+    assert command.reason == "wait_timeout"
+    assert command.terminal is True
+
+
 # --- 6. unknown command ---
 
 
