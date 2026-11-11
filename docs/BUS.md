@@ -4,7 +4,7 @@ Everything Archiver puts on the Redis bus: the outbox producer and
 the seven streams it publishes - `info.changes`, `info.registry`,
 `content.replicate`, `content.persist`, since flip F1 (#438)
 `content.fetch-policy`, since flip F4 (#482) `info.watch-check` (#370), and
-`content.capture` (#380, dark until its flip). What it
+`content.capture` (#380, since its flip). What it
 takes off - `content.revisions`, `content.artifacts`, `info.watch-status`,
 `info.watch-events` - and the naming contract its group
 consumers follow are [BUS_CONSUMERS.md](BUS_CONSUMERS.md); the shared client
@@ -366,7 +366,7 @@ idempotency key the bare `command_id`. `src/core/services/capture.py`. Normative
 (C1-C5) and the `reason` registry: Replicator's
 [`content-capture-issuer-contract.md`](https://github.com/CannObserv/replicator/blob/main/docs/contracts/content-capture-issuer-contract.md).
 
-- **Off unless `ARCHIVER_CAPTURE_ENABLED` is set** - unit-only, commented out until its flip
+- **Off unless `ARCHIVER_CAPTURE_ENABLED` is set** - unit-only, set since its flip
   ([ENVIRONMENT_BUS.md](ENVIRONMENT_BUS.md)). Off: no card, the routes 404, nothing enqueued.
   Replicator created `replicator.capture` at `0` before Archiver's first write (C5,
   CannObserv/broker#116).
