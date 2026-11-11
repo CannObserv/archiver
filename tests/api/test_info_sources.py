@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import pytest
 
+from src.core.models import InfoSource
+
 HEADERS = {"X-API-Key": "test-secret-key"}
 
 
@@ -417,3 +419,23 @@ async def test_patch_capture_policy_requires_api_key(client):
         f"/api/v1/info-sources/{src_id}/capture-policy", json={"capture_policy": None}
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_a_stored_policy_that_no_longer_validates_is_still_served(client, session):
+    """Output is the document as stored: a later-tightened schema must not 500 every read."""
+    stale = {"viewport": {"width": 9000, "height": 800}, "on_revision": True}
+    src = InfoSource(url="https://example.com/stale-policy", source_specs=[_spec()])
+    src.capture_policy = stale
+    session.add(src)
+    await session.commit()
+
+    one = await client.get(f"/api/v1/info-sources/{src.info_source_id}", headers=HEADERS)
+    listed = await client.get(
+        "/api/v1/info-sources", headers=HEADERS, params={"url": "https://example.com/stale-policy"}
+    )
+
+    assert one.status_code == 200
+    assert one.json()["capture_policy"] == stale
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["capture_policy"] == stale

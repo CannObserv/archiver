@@ -1624,13 +1624,15 @@
           "capture_policy": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CapturePolicy"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "What a viewport capture of this source sends (viewport, full_page, wait) and whether each new revision triggers one (on_revision). null = no policy: an on-demand capture uses 1280x800, full page, no wait, and no revision triggers one (archiver#380)."
+            "description": "What a viewport capture of this source sends (viewport, full_page, wait) and whether each new revision triggers one (on_revision). null = no policy: an on-demand capture uses 1280x800, full page, no wait, and no revision triggers one (archiver#380). As stored: a CapturePolicy with every default filled.",
+            "title": "Capture Policy"
           },
           "created_at": {
             "description": "UTC timestamp when the InfoSource was created.",

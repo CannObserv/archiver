@@ -849,8 +849,8 @@ async def test_set_capture_policy_patches_the_whole_policy(client):
     sent = json.loads(route.calls.last.request.content)
     assert sent["capture_policy"]["on_revision"] is True
     assert sent["capture_policy"]["wait"] == {"kind": "delay", "seconds": 2.5}
-    assert out.capture_policy.on_revision is True
-    assert out.capture_policy.viewport.width == 390
+    # Output is the stored document, a plain mapping (not re-validated).
+    assert out.capture_policy.to_dict() == stored
 
 
 @pytest.mark.asyncio

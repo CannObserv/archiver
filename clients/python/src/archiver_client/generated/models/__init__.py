@@ -56,6 +56,7 @@ from .info_source_capture_policy_patch import InfoSourceCapturePolicyPatch
 from .info_source_create import InfoSourceCreate
 from .info_source_create_source_specs_item import InfoSourceCreateSourceSpecsItem
 from .info_source_out import InfoSourceOut
+from .info_source_out_capture_policy_type_0 import InfoSourceOutCapturePolicyType0
 from .info_source_out_source_specs_item import InfoSourceOutSourceSpecsItem
 from .info_source_patch import InfoSourcePatch
 from .info_source_patch_source_specs_item import InfoSourcePatchSourceSpecsItem
@@ -186,6 +187,7 @@ __all__ = (
     "InfoSourceCreate",
     "InfoSourceCreateSourceSpecsItem",
     "InfoSourceOut",
+    "InfoSourceOutCapturePolicyType0",
     "InfoSourceOutSourceSpecsItem",
     "InfoSourcePatch",
     "InfoSourcePatchSourceSpecsItem",

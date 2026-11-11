@@ -66,4 +66,9 @@ class InfoSourceOut(BaseModel):
         description="Hostname derived from URL; references the domains table."
     )
     created_at: datetime = Field(description="UTC timestamp when the InfoSource was created.")
-    capture_policy: CapturePolicy | None = Field(default=None, description=_CAPTURE_POLICY_DOC)
+    # As stored, not re-validated: a schema tightened later must not 500 every
+    # read of a row the sweep would flag (the notification content_config rule).
+    capture_policy: dict[str, Any] | None = Field(
+        default=None,
+        description=_CAPTURE_POLICY_DOC + " As stored: a CapturePolicy with every default filled.",
+    )
