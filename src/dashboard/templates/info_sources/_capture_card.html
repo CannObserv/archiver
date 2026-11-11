@@ -87,7 +87,7 @@
       <span class="detail-grid__value">{{ copyable(capture.content_fingerprint) }}</span>
     </div>
     <div class="detail-grid__item detail-grid__item--full">
-      <span class="detail-grid__label">Stored at</span>
+      <span class="detail-grid__label">{% if capture.kept %}Kept at{% else %}Stored at{% endif %}</span>
       <span class="detail-grid__value">{{ copyable(capture.blob_uri) }}</span>
     </div>
   </div>

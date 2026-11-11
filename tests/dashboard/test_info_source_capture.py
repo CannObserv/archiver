@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from ulid import ULID
 
 from src.core.models import AppUser, CaptureCommand, ChangesOutboxRow, InfoSource
+from src.core.replication.permanent_store import permanent_blob_uri
 from src.core.services.capture import ENABLED_ENV
 from tests.dashboard.conftest import poll_sync_violations, read_flash
 
@@ -355,3 +356,7 @@ async def test_a_kept_capture_reads_kept_not_an_expiry(client, session, capture_
     assert "Kept" in card
     assert "2030-01-02 03:05 UTC" in card
     assert "expired" not in card
+    # CR 13: the temp URI goes with the temp store; the kept copy is addressed
+    # by its digest in the permanent store.
+    assert permanent_blob_uri(DIGEST) in card
+    assert "gs://x" not in card
