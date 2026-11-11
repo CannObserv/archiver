@@ -17,7 +17,9 @@ What is pinned here:
   is why re-issue is safe here and is not for replicate.
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from co_core.pure.adapters.bus.streams import CONTENT_PERSIST
@@ -570,3 +572,32 @@ async def test_the_reaper_does_not_reissue_a_capture_persist_from_a_revision(ses
 
     assert (abandoned, reissued) == (1, 0)
     assert command.state == STATE_ABANDONED
+
+
+async def _capped(session, *, closed_ago: timedelta) -> CaptureCommand:
+    capture = await _stored_capture(session)
+    for _ in range(1 + MAX_REISSUES):
+        command = await issue_capture_persist(session, capture)
+        command.state = STATE_FAILED
+        command.closed_at = datetime.now(UTC) - closed_ago
+        await session.flush()
+    return capture
+
+
+@pytest.mark.asyncio
+async def test_the_cap_warns_on_the_sweep_after_the_last_command_closed(session, enabled):
+    """CR 12: one WARNING when the cap is reached, not one per sweep until expiry."""
+    await _capped(session, closed_ago=timedelta(minutes=2))
+    with patch.object(persist_issuance.logger, "log") as log:
+        await persist_missing_captures(session)
+    assert [(c.args[0], c.args[1]) for c in log.call_args_list] == [
+        (logging.WARNING, "Capture persist cap reached; the capture expires with the temp store")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_cap_is_quiet_on_later_sweeps(session, enabled):
+    await _capped(session, closed_ago=timedelta(hours=2))
+    with patch.object(persist_issuance.logger, "log") as log:
+        assert await persist_missing_captures(session) == 0
+    assert [c.args[0] for c in log.call_args_list] == [logging.DEBUG]

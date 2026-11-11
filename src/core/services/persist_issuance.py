@@ -60,6 +60,7 @@ recorded" and "persist requested" land in one transaction, through the outbox.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -98,6 +99,12 @@ DEFAULT_REAP_HORIZON = timedelta(hours=6)
 # until a re-observation re-arms it: something is wrong that retrying on a
 # timer will not fix, and the WARNING says so.
 MAX_REISSUES = 3
+
+# The capture catch-up's cap WARNING fires only when the digest's newest command
+# closed within this window, so it is logged on the sweep after the last attempt
+# closes rather than on every sweep until expiry (CR 12). Matches the reaper's
+# default interval; a later sweep logs at DEBUG.
+CAP_WARN_WINDOW = timedelta(minutes=15)
 
 
 def issuance_enabled(raw: str | None = None) -> bool:
@@ -458,7 +465,10 @@ async def persist_missing_captures(session: AsyncSession) -> int:
         seen.add(digest)
         sent = await _count_commands_for(session, digest)
         if sent > MAX_REISSUES:
-            logger.warning(
+            last_closed = await _last_closed_for(session, digest)
+            fresh = last_closed is not None and now - last_closed <= CAP_WARN_WINDOW
+            logger.log(
+                logging.WARNING if fresh else logging.DEBUG,
                 "Capture persist cap reached; the capture expires with the temp store",
                 extra={
                     "capture_command_id": capture.command_id,
@@ -481,5 +491,15 @@ async def _count_commands_for(session: AsyncSession, digest: str) -> int:
             select(func.count())
             .select_from(PersistCommand)
             .where(PersistCommand.content_fingerprint == digest)
+        )
+    ).scalar_one()
+
+
+async def _last_closed_for(session: AsyncSession, digest: str) -> datetime | None:
+    return (
+        await session.execute(
+            select(func.max(PersistCommand.closed_at)).where(
+                PersistCommand.content_fingerprint == digest
+            )
         )
     ).scalar_one()
