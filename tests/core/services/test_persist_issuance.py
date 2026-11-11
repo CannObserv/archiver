@@ -601,3 +601,16 @@ async def test_the_cap_is_quiet_on_later_sweeps(session, enabled):
     with patch.object(persist_issuance.logger, "log") as log:
         assert await persist_missing_captures(session) == 0
     assert [c.args[0] for c in log.call_args_list] == [logging.DEBUG]
+
+
+@pytest.mark.asyncio
+async def test_a_revision_adopts_bytes_a_capture_already_kept(session, monkeypatch):
+    """CR 14: the digest owns the object, so adoption reads captures too."""
+    monkeypatch.setenv(persist_issuance.ISSUANCE_ENV, "1")
+    kept_at = datetime(2026, 11, 1, tzinfo=UTC)
+    await _stored_capture(session, digest=DIGEST, persisted_at=kept_at)
+    revision = await _revision(session)
+
+    assert await issue_persist(session, revision) is None
+    assert revision.persisted_at == kept_at
+    assert await _persist_outbox(session) == []

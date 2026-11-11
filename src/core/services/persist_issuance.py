@@ -133,16 +133,10 @@ async def _adopt_known_persist(session: AsyncSession, revision: SourceRevision) 
     revision carrying the digest when the fact lands. A revision arriving later
     with the same bytes missed that write; the existing minimum is the same
     answer, so it is adopted and no round trip is spent. Not gated by the
-    switch: it records what is known, and issues nothing (CR 11).
+    switch: it records what is known, and issues nothing (CR 11). A capture with
+    the same bytes counts too: the digest owns the object (archiver#380 CR 14).
     """
-    known = (
-        await session.execute(
-            select(func.min(SourceRevision.persisted_at)).where(
-                SourceRevision.blob_fingerprint == revision.blob_fingerprint,
-                SourceRevision.persisted_at.is_not(None),
-            )
-        )
-    ).scalar_one()
+    known = await _known_persisted_at(session, revision.blob_fingerprint)
     if known is None:
         return False
     revision.persisted_at = known
