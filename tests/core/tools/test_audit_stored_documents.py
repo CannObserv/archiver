@@ -242,6 +242,32 @@ async def test_sweep_judges_notification_content_as_its_write_path_does(session)
 
 
 @pytest.mark.asyncio
+async def test_sweep_judges_capture_policy_as_its_write_path_does(session):
+    """archiver#380 C: CapturePolicy refuses unknown keys and Replicator's out-of-range values;
+    NULL is "no policy"."""
+
+    def src(policy):
+        return InfoSource(
+            url=f"https://example.com/{ULID()}", source_specs=[_valid_spec()], capture_policy=policy
+        )
+
+    wide = src({"viewport": {"width": 5000, "height": 800}})
+    stray = src({"on_revision": True, "schedule": "hourly"})
+    good = src({"on_revision": True, "wait": {"kind": "networkidle"}})
+    unset = src(None)
+    session.add_all([wide, stray, good, unset])
+    await session.flush()
+
+    report = await audit_stored_documents(session)
+
+    ids = [s.info_source_id for s in (wide, stray, good, unset)]
+    found = {f.row_id: f for f in _mine(report.findings, *ids) if f.kind == "capture_policy"}
+    assert set(found) == {str(wide.info_source_id), str(stray.info_source_id)}
+    assert found[str(wide.info_source_id)].errors[0]["path"] == "/viewport/width"
+    assert found[str(stray.info_source_id)].errors[0]["path"] == "/schedule"
+
+
+@pytest.mark.asyncio
 async def test_sweep_finds_off_shape_rep_fields(session):
     item = InfoItem(name="r164", rep_fields={"slug": "flat-key"})
     session.add(item)
@@ -407,11 +433,15 @@ async def test_valid_documents_produce_no_findings_and_are_counted(session):
 
 
 def test_row_checks_agree_with_the_sweep_kinds():
-    src = InfoSource(url="https://example.com/x", source_specs=[_legacy_spec()])
+    src = InfoSource(
+        url="https://example.com/x",
+        source_specs=[_legacy_spec()],
+        capture_policy={"full_page": "yes"},
+    )
     item = InfoItem(name="x", watch_spec={"schema_version": 1, "active": True}, rep_fields={})
     spec = RepSpec(provider="gcs", name="x", schema_version=1, document=_gcs_doc(folder_id="x"))
 
-    assert [f.kind for f in info_source_findings(src)] == ["source_spec"]
+    assert [f.kind for f in info_source_findings(src)] == ["source_spec", "capture_policy"]
     assert [f.kind for f in info_item_findings(item)] == ["watch_spec"]
     assert [(f.kind, f.frozen) for f in rep_spec_findings(spec, frozen=True)] == [
         ("rep_spec", True)
@@ -513,6 +543,11 @@ async def _seed_one_invalid_of_each_kind(session) -> None:
         [
             InfoSource(
                 url="https://example.com/e164", source_specs=[_valid_spec(), _legacy_spec()]
+            ),
+            InfoSource(
+                url="https://example.com/e380",
+                source_specs=[_valid_spec()],
+                capture_policy={"viewport": {"width": 0, "height": 800}},
             ),
             RepSpec(provider="gcs", name="r164", schema_version=1, document={"provider": 5}),
             Domain(name="e164.example.test", default_watch_spec={"schema_version": 1}),
