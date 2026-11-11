@@ -49,7 +49,10 @@ rule. A capture has no re-observation to re-arm it, so the reaper's timer runs a
 catch-up instead (``persist_missing_captures``): a stored, unpersisted, unexpired
 capture with no open persist for its digest gets one, up to ``1 + MAX_REISSUES``
 commands per digest. That one rule covers a lost or failed persist, a capture
-stored while issuance was off, and every capture stored before slice B.
+stored while issuance was off, and every capture stored before slice B. It
+re-issues after *any* terminal ``persist_failed``, including ``invalid_source``
+that a retry cannot fix: ``reason`` is opaque (P3), and the cap bounds the waste
+at ``MAX_REISSUES`` commands per digest (archiver#380 CR 15).
 ``reap_open_persists`` abandons a silent capture persist like any other and finds
 no revision to re-issue from; the catch-up re-issues it from the capture's own
 ``blob_uri``.
