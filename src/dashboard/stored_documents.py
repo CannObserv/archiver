@@ -33,7 +33,10 @@ _PATHS = {
 
 _REMEDIES = {
     "source_spec": "Edit the Source Specification and fix or remove the flagged keys.",
-    "capture_policy": "Save the Viewport Capture policy again: the form writes a fresh document.",
+    "capture_policy": (
+        "Save the Capture Policy card again: the form writes a fresh document "
+        "(with capture switched off, PATCH /info-sources/{id}/capture-policy)."
+    ),
     "watch_spec": "Set the cadence again: the Watcher panel writes a fresh document.",
     "rep_fields": "Edit the Rep Fields and fix or remove the flagged keys.",
     "rep_spec": "Edit the document - it is still a draft.",
