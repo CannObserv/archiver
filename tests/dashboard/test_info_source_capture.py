@@ -326,3 +326,32 @@ async def test_only_the_latest_command_is_shown(client, session, capture_on):
     card = _card_html((await _card(client, source)).text)
     assert "new_reason" in card
     assert "old_reason" not in card
+
+
+@pytest.mark.asyncio
+async def test_a_kept_capture_reads_kept_not_an_expiry(client, session, capture_on):
+    """Slice B: once persisted, blob_expires_at no longer binds."""
+    source = await _source(session)
+    session.add(
+        _command(
+            source,
+            state="stored",
+            content_fingerprint=DIGEST,
+            blob_uri="gs://x",
+            media_type="image/png",
+            size_bytes=1,
+            image_width=1,
+            image_height=1,
+            final_url=source.url,
+            captured_at=datetime.now(UTC) - timedelta(days=8),
+            blob_expires_at=datetime.now(UTC) - timedelta(days=1),
+            persisted_at=datetime(2030, 1, 2, 3, 5, tzinfo=UTC),
+        )
+    )
+    await session.flush()
+
+    card = _card_html((await _card(client, source)).text)
+
+    assert "Kept" in card
+    assert "2030-01-02 03:05 UTC" in card
+    assert "expired" not in card

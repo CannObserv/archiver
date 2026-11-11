@@ -315,6 +315,15 @@ contract is Replicator's `docs/contracts/content-persist-issuer-contract.md`
   revision whose digest another revision has persisted takes that
   `persisted_at` and sends nothing. Persist runs before replication in
   `record_revision`, so such a revision's first replicate reads the permanent URI.
+- **A viewport capture is kept the same way** (archiver#380 slice B; Replicator's capture
+  contract C3). Applying `capture_stored` issues one persist, in that transaction, with the
+  fact's `content_fingerprint`, `blob_uri` and `media_type` verbatim; the row carries
+  `capture_command_id` in place of `source_revision_id` (exactly one is set). The same switch,
+  the same one-open-per-digest rule, and adoption across revisions and captures alike. Not
+  issued past `blob_expires_at`. A capture has no re-observation to re-arm it, so the reaper's
+  timer runs a catch-up (`persist_missing_captures`): every stored, unpersisted, unexpired
+  capture with no open persist for its digest gets one, up to `1 + MAX_REISSUES` commands
+  per digest.
 - **The pair goes out as recorded (P4):** `content_fingerprint` is
   `source_revisions.blob_fingerprint`, `blob_uri` its `content_cache_uri`, both
   from the same observation. A row with no digest is never issued.
@@ -383,7 +392,8 @@ idempotency key the bare `command_id`. `src/core/services/capture.py`. Normative
 - **The answer** is `capture_stored` or `capture_failed` on `content.artifacts`
   ([BUS_CONSUMERS.md](BUS_CONSUMERS.md)); silence past 1 h is the reaper's `abandoned`, and a
   dead-lettered command (`content.capture.dlq`, Replicator's) gets no answer at all. A capture
-  lives in the temp store until `blob_expires_at`; keeping it (`content.persist`) is slice B.
+  lives in the temp store until `blob_expires_at`, and slice B keeps it with a `content.persist`
+  (below, under `content.persist`).
 
 `source_revision_captured` schema_version is now **2** - `bindings[*].role` field removed. Consumers must branch on `schema_version` before destructuring. `info_item_primary_changed` carries `old_info_source_id` (null on first assignment, non-null on succession) and `new_info_source_id`. Subscribers use it to discover URL succession.
 

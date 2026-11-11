@@ -155,7 +155,8 @@ recorded; the command closes **only** when `terminal` is true.
 - **Correlate on `command_id` only.** Neither fact carries a revision or source
   id, because the stored object belongs to its digest. A success stamps
   `persisted_at` on **every** `source_revisions` row whose `blob_fingerprint`
-  matches.
+  matches, and on every `capture_commands` row whose `content_fingerprint` does
+  (archiver#380 slice B), whichever of them occasioned the command.
 - **`persisted_at` is a minimum.** `occurred_at` is a publish time, an upper
   bound on the write, and redeliveries or later commands re-emit with later
   stamps. Each success lowers it or leaves it; arrival order does not matter.
@@ -188,6 +189,9 @@ they decoded and took the foreign-event ack (#397).
 - **`content_fingerprint` is an address, not a change signal**: two renders of
   an unchanged page usually differ. Nothing compares it.
 - **An unknown `command_id`** is ack + WARNING, never the DLQ.
+- **A success is kept** (slice B, C3): applying `capture_stored` issues a
+  `content.persist` for the image in the same transaction
+  ([BUS.md](BUS.md), `content.persist`). A redelivered success issues nothing.
 
 **The reaper** (`src/core/changes/replication_reaper.py`) closes the silent case
 MUST-6 names: Replicator does not guarantee that every command either succeeds or
@@ -212,7 +216,10 @@ and not for replication. Past the cap the digest waits for a re-observation.
 deadline and paced per host) they close `abandoned` with `no_fact_before_horizon`,
 and **nothing is re-issued**: every capture is a person's click, and the person
 clicks again. The capped automatic re-issue C2 asks for arrives with slice C's
-unattended triggers. Each family sweeps in its own transaction; a defect in one
+unattended triggers. The capture half also runs slice B's persist catch-up
+(`persist_issuance.persist_missing_captures`) after the persist half has
+abandoned any silent persist: a stored capture still owed a persist gets one,
+capped per digest. Each family sweeps in its own transaction; a defect in one
 is logged and contained.
 
 ## Change-bus consumer - `info.watch-events` (archiver#369)

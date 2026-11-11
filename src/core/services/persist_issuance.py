@@ -40,6 +40,20 @@ reaper only abandons, because a re-issue can write a second artefact into a
 store nothing may delete from - a duplicate persist is a no-op success on a
 content-addressed key, so re-issuing is safe. It is capped per digest.
 
+**Captures persist too** (archiver#380 slice B, Replicator's capture contract
+C3). A stored viewport capture lives in the same temp store, so keeping it is a
+``content.persist`` with the ``capture_stored`` fact's ``content_fingerprint``,
+``blob_uri`` and ``media_type`` verbatim, issued when the fact is applied
+(``issue_capture_persist``) under the same switch and the same one-open-per-digest
+rule. A capture has no re-observation to re-arm it, so the reaper's timer runs a
+catch-up instead (``persist_missing_captures``): a stored, unpersisted, unexpired
+capture with no open persist for its digest gets one, up to ``1 + MAX_REISSUES``
+commands per digest. That one rule covers a lost or failed persist, a capture
+stored while issuance was off, and every capture stored before slice B.
+``reap_open_persists`` abandons a silent capture persist like any other and finds
+no revision to re-issue from; the catch-up re-issues it from the capture's own
+``blob_uri``.
+
 Nothing here commits: rows are added to the caller's session, so "revision
 recorded" and "persist requested" land in one transaction, through the outbox.
 """
@@ -57,8 +71,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.core.logging import get_logger
-from src.core.models import ChangesOutboxRow, PersistCommand, SourceRevision
+from src.core.models import CaptureCommand, ChangesOutboxRow, PersistCommand, SourceRevision
 from src.core.services.persist_writeback import STATE_ABANDONED, STATE_REQUESTED
+
+# capture.STATE_STORED, spelled here: capture.py imports this module.
+CAPTURE_STORED = "stored"
 
 logger = get_logger(__name__)
 
@@ -310,3 +327,159 @@ async def _freshest_carrier(session: AsyncSession, digest: str) -> SourceRevisio
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+def _capture_eligible(capture: CaptureCommand, now: datetime) -> bool:
+    return (
+        capture.state == CAPTURE_STORED
+        and capture.content_fingerprint is not None
+        and bool(capture.blob_uri)
+        and capture.persisted_at is None
+        and (capture.blob_expires_at is None or capture.blob_expires_at > now)
+    )
+
+
+async def _known_persisted_at(session: AsyncSession, digest: str) -> datetime | None:
+    """The digest's persisted_at minimum, over revisions and captures alike."""
+    revisions = select(func.min(SourceRevision.persisted_at)).where(
+        SourceRevision.blob_fingerprint == digest
+    )
+    captures = select(func.min(CaptureCommand.persisted_at)).where(
+        CaptureCommand.content_fingerprint == digest
+    )
+    known = [
+        value
+        for value in (
+            (await session.execute(revisions)).scalar_one(),
+            (await session.execute(captures)).scalar_one(),
+        )
+        if value is not None
+    ]
+    return min(known) if known else None
+
+
+async def issue_capture_persist(
+    session: AsyncSession, capture: CaptureCommand
+) -> PersistCommand | None:
+    """Enqueue one persist for a stored capture's image (C3), or ``None``.
+
+    ``None`` covers: not stored, no digest or URI, already persisted, past
+    ``blob_expires_at``, bytes already kept (adopted), switched off, or a command
+    for these bytes already open. Does not commit.
+    """
+    now = datetime.now(UTC)
+    if not _capture_eligible(capture, now):
+        return None
+    digest = capture.content_fingerprint
+    known = await _known_persisted_at(session, digest)
+    if known is not None:
+        capture.persisted_at = known
+        logger.info(
+            "Capture bytes already kept; adopting the digest's persisted_at",
+            extra={"capture_command_id": capture.command_id, "content_fingerprint": digest},
+        )
+        return None
+    if not issuance_enabled() or await _open_command_for(session, digest):
+        return None
+
+    command_id = str(ULID())
+    try:
+        emit = ContentPersistCommandEmit(
+            occurred_at=now,
+            command_id=command_id,
+            content_fingerprint=digest,
+            blob_uri=capture.blob_uri,
+            media_type=capture.media_type or DEFAULT_MEDIA_TYPE,
+        )
+    except ValidationError as e:
+        # A malformed digest on capture_stored; logged and skipped, so a persist
+        # never costs the transaction that recorded the capture.
+        logger.error(
+            "Capture does not produce a valid content.persist command; not issuing",
+            extra={"capture_command_id": capture.command_id, "error": str(e)},
+        )
+        return None
+
+    command = PersistCommand(
+        command_id=command_id,
+        capture_command_id=capture.command_id,
+        content_fingerprint=digest,
+        blob_uri=capture.blob_uri,
+        media_type=emit.media_type,
+        state=STATE_REQUESTED,
+    )
+    session.add(command)
+    session.add(ChangesOutboxRow(topic=CONTENT_PERSIST, payload=emit.model_dump(mode="json")))
+    await session.flush()
+    logger.info(
+        "Capture persist requested",
+        extra={
+            "command_id": command_id,
+            "capture_command_id": capture.command_id,
+            "content_fingerprint": digest,
+        },
+    )
+    return command
+
+
+async def persist_missing_captures(session: AsyncSession) -> int:
+    """The capture catch-up: issue for every stored capture still owed a persist.
+
+    Once per digest, while switched on, at most ``1 + MAX_REISSUES`` commands per
+    digest over its life. Returns how many were issued. Does not commit.
+    """
+    if not issuance_enabled():
+        return 0
+    now = datetime.now(UTC)
+    owed = list(
+        (
+            await session.execute(
+                select(CaptureCommand)
+                .where(
+                    CaptureCommand.state == CAPTURE_STORED,
+                    CaptureCommand.persisted_at.is_(None),
+                    CaptureCommand.content_fingerprint.is_not(None),
+                    CaptureCommand.blob_uri.is_not(None),
+                    (CaptureCommand.blob_expires_at.is_(None))
+                    | (CaptureCommand.blob_expires_at > now),
+                )
+                .order_by(CaptureCommand.captured_at, CaptureCommand.command_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    issued = 0
+    seen: set[str] = set()
+    for capture in owed:
+        digest = capture.content_fingerprint
+        if digest in seen:
+            continue
+        seen.add(digest)
+        sent = await _count_commands_for(session, digest)
+        if sent > MAX_REISSUES:
+            logger.warning(
+                "Capture persist cap reached; the capture expires with the temp store",
+                extra={
+                    "capture_command_id": capture.command_id,
+                    "content_fingerprint": digest,
+                    "commands": sent,
+                    "blob_expires_at": capture.blob_expires_at.isoformat()
+                    if capture.blob_expires_at
+                    else None,
+                },
+            )
+            continue
+        if await issue_capture_persist(session, capture) is not None:
+            issued += 1
+    return issued
+
+
+async def _count_commands_for(session: AsyncSession, digest: str) -> int:
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(PersistCommand)
+            .where(PersistCommand.content_fingerprint == digest)
+        )
+    ).scalar_one()

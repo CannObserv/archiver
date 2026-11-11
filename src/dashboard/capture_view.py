@@ -37,6 +37,7 @@ class CaptureView(TypedDict):
     blob_uri: str | None
     expires_at: datetime | None
     expired: bool
+    persisted_at: datetime | None
     horizon_minutes: int
     dlq: str
 
@@ -66,6 +67,7 @@ def capture_view(
         blob_uri=command.blob_uri,
         expires_at=expires,
         expired=expires is not None and expires <= now,
+        persisted_at=command.persisted_at,
         horizon_minutes=max(1, int(horizon.total_seconds() // 60)),
         dlq=DLQ,
     )

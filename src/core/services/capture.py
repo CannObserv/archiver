@@ -10,7 +10,10 @@ The normative obligations are Replicator's ``content-capture-issuer-contract.md`
 detail and one command goes out with the fixed default profile
 (``DEFAULT_VIEWPORT``, ``DEFAULT_FULL_PAGE``, no wait). The per-source policy
 and the per-revision trigger are slice C; keeping a capture past
-``blob_expires_at`` (``content.persist``) is slice B.
+``blob_expires_at`` is slice B: applying ``capture_stored`` issues a
+``content.persist`` for the image (``persist_issuance.issue_capture_persist``,
+under ``ARCHIVER_PERSIST_ISSUANCE``), and the reaper's catch-up re-issues one
+that was lost, failed or never sent.
 
 **Off unless switched on.** ``ARCHIVER_CAPTURE_ENABLED`` is set only in
 ``deploy/archiver.service``, never in an env file. Off, nothing is enqueued and
@@ -70,6 +73,7 @@ from ulid import ULID
 
 from src.core.logging import get_logger
 from src.core.models import CaptureCommand, ChangesOutboxRow, InfoSource
+from src.core.services.persist_issuance import issue_capture_persist
 from src.core.services.replication_writeback import UnknownCommandError
 
 logger = get_logger(__name__)
@@ -228,6 +232,9 @@ async def apply_capture_stored(session: AsyncSession, fact: CaptureStoredEvent) 
             "blob_expires_at": fact.blob_expires_at.isoformat() if fact.blob_expires_at else None,
         },
     )
+    # Keep it (C3): same transaction, so "stored" and "persist requested" land
+    # together. A redelivered success returned above, so it issues nothing.
+    await issue_capture_persist(session, command)
     return command
 
 

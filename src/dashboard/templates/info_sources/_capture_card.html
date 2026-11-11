@@ -21,7 +21,7 @@
   `drop`, so a poll never beats a click (archiver#220).
 
   Metadata only: the image itself waits on slice D (Archiver reads no stored
-  bytes).
+  bytes). A persisted capture (slice B) reads "Kept" in place of its expiry.
 #}
 {% from "_macros.html" import copyable, open_button %}
 {% if capture_enabled %}
@@ -60,6 +60,11 @@
       <span class="detail-grid__value text-muted">{{ capture.size_bytes | filesizeformat }}</span>
     </div>
     <div class="detail-grid__item">
+      {% if capture.persisted_at %}
+      {#- Slice B: in Replicator's permanent store, so the temp horizon no longer binds. -#}
+      <span class="detail-grid__label">Kept</span>
+      <span class="detail-grid__value">permanently, since {{ capture.persisted_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      {% else %}
       <span class="detail-grid__label">Expires</span>
       <span class="detail-grid__value">
         {% if capture.expires_at is none %}
@@ -71,6 +76,7 @@
         {{ capture.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}
         {% endif %}
       </span>
+      {% endif %}
     </div>
     <div class="detail-grid__item detail-grid__item--full">
       <span class="detail-grid__label">Landed on</span>
