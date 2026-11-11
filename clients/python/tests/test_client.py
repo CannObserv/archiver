@@ -819,6 +819,53 @@ async def test_update_info_source_specs(client):
     assert [spec.to_dict() for spec in out.source_specs] == new_specs
 
 
+_CAPTURE_POLICY_URL = f"{BASE_URL}/api/v1/info-sources/01HZZ00000000000000000000F/capture-policy"
+
+
+@pytest.mark.asyncio
+async def test_set_capture_policy_patches_the_whole_policy(client):
+    """archiver#380 slice C: the stored policy comes back with every default filled."""
+    stored = {
+        "viewport": {"width": 390, "height": 844},
+        "full_page": False,
+        "wait": {"kind": "delay", "selector": None, "seconds": 2.5},
+        "on_revision": True,
+    }
+    with respx.mock:
+        route = respx.patch(_CAPTURE_POLICY_URL).mock(
+            return_value=httpx.Response(
+                200, json={**_top_info_source_payload(), "capture_policy": stored}
+            )
+        )
+        out = await client.set_capture_policy(
+            "01HZZ00000000000000000000F",
+            {
+                "viewport": {"width": 390, "height": 844},
+                "full_page": False,
+                "wait": {"kind": "delay", "seconds": 2.5},
+                "on_revision": True,
+            },
+        )
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["capture_policy"]["on_revision"] is True
+    assert sent["capture_policy"]["wait"] == {"kind": "delay", "seconds": 2.5}
+    assert out.capture_policy.on_revision is True
+    assert out.capture_policy.viewport.width == 390
+
+
+@pytest.mark.asyncio
+async def test_set_capture_policy_none_sends_null(client):
+    with respx.mock:
+        route = respx.patch(_CAPTURE_POLICY_URL).mock(
+            return_value=httpx.Response(
+                200, json={**_top_info_source_payload(), "capture_policy": None}
+            )
+        )
+        out = await client.set_capture_policy("01HZZ00000000000000000000F", None)
+    assert json.loads(route.calls.last.request.content) == {"capture_policy": None}
+    assert out.capture_policy is None
+
+
 @pytest.mark.asyncio
 async def test_update_info_source_specs_not_found_raises(client):
     with respx.mock:

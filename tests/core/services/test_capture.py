@@ -32,6 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.core.capture_policy import CapturePolicy
 from src.core.models import (
     AppUser,
     CaptureCommand,
@@ -57,6 +58,7 @@ from src.core.services.capture import (
     latest_capture,
     reap_open_captures,
     request_capture,
+    set_capture_policy,
 )
 from src.core.services.replication_writeback import UnknownCommandError
 
@@ -767,3 +769,31 @@ async def test_no_reissue_when_a_newer_command_exists(session):
 
 def test_the_reissue_cap():
     assert MAX_CAPTURE_REISSUES == 2
+
+
+@pytest.mark.asyncio
+async def test_set_capture_policy_stores_the_normalized_document(session):
+    source = await _source(session)
+    stored = await set_capture_policy(
+        session, source.info_source_id, CapturePolicy.model_validate({"on_revision": True})
+    )
+    assert stored.capture_policy == {
+        "viewport": {"width": 1280, "height": 800},
+        "full_page": True,
+        "wait": None,
+        "on_revision": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_capture_policy_none_clears_it(session):
+    source = await _source(session)
+    source.capture_policy = POLICY
+    stored = await set_capture_policy(session, source.info_source_id, None)
+    assert stored.capture_policy is None
+
+
+@pytest.mark.asyncio
+async def test_set_capture_policy_on_an_unknown_source_raises(session):
+    with pytest.raises(LookupError):
+        await set_capture_policy(session, ULID(), None)

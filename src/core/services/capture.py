@@ -193,6 +193,28 @@ async def request_capture(
     )
 
 
+async def set_capture_policy(
+    session: AsyncSession, info_source_id: ULID, policy: CapturePolicy | None
+) -> InfoSource:
+    """Store ``policy`` on the source, every default filled; ``None`` clears it. Caller commits.
+
+    Raises :class:`LookupError` for an unknown source. Writes no command: a
+    policy takes effect at the next click or revision.
+    """
+    source = await session.get(InfoSource, info_source_id)
+    if source is None:
+        raise LookupError(f"no InfoSource {info_source_id}")
+    source.capture_policy = None if policy is None else policy.model_dump(mode="json")
+    logger.info(
+        "Capture policy set" if policy is not None else "Capture policy cleared",
+        extra={
+            "info_source_id": str(info_source_id),
+            "on_revision": policy.on_revision if policy is not None else None,
+        },
+    )
+    return source
+
+
 async def capture_for_revision(
     session: AsyncSession,
     revision: SourceRevision,

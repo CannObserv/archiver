@@ -55,6 +55,7 @@ def info_source_to_out(src: InfoSource) -> InfoSourceOut:
         source_specs=src.source_specs,
         domain_name=src.domain_name,
         created_at=src.created_at,
+        capture_policy=src.capture_policy,
     )
 
 

@@ -299,3 +299,121 @@ async def test_post_refused_algorithm_returns_422_schema(client):
     detail = resp.json()["detail"]
     assert detail["kind"] == "schema"
     assert [e["path"] for e in detail["errors"]] == ["/source_specs/0/extraction/algorithm"]
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/info-sources/{id}/capture-policy (archiver#380 slice C)
+# ---------------------------------------------------------------------------
+
+POLICY = {
+    "viewport": {"width": 390, "height": 844},
+    "full_page": False,
+    "wait": {"kind": "delay", "seconds": 2.5},
+    "on_revision": True,
+}
+
+
+async def _created(client, url: str = "https://example.com/capture-policy") -> str:
+    resp = await client.post(
+        "/api/v1/info-sources", headers=HEADERS, json={"url": url, "source_specs": [_spec()]}
+    )
+    return resp.json()["info_source_id"]
+
+
+@pytest.mark.asyncio
+async def test_a_new_source_has_no_capture_policy(client):
+    src_id = await _created(client)
+    resp = await client.get(f"/api/v1/info-sources/{src_id}", headers=HEADERS)
+    assert resp.json()["capture_policy"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_capture_policy_sets_it_with_every_default_filled(client):
+    src_id = await _created(client)
+    resp = await client.patch(
+        f"/api/v1/info-sources/{src_id}/capture-policy",
+        headers=HEADERS,
+        json={"capture_policy": POLICY},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["capture_policy"] == {
+        **POLICY,
+        "wait": {"kind": "delay", "selector": None, "seconds": 2.5},
+    }
+
+    got = await client.get(f"/api/v1/info-sources/{src_id}", headers=HEADERS)
+    assert got.json()["capture_policy"]["on_revision"] is True
+
+
+@pytest.mark.asyncio
+async def test_patch_capture_policy_takes_defaults_for_an_empty_policy(client):
+    src_id = await _created(client)
+    resp = await client.patch(
+        f"/api/v1/info-sources/{src_id}/capture-policy",
+        headers=HEADERS,
+        json={"capture_policy": {}},
+    )
+    assert resp.json()["capture_policy"] == {
+        "viewport": {"width": 1280, "height": 800},
+        "full_page": True,
+        "wait": None,
+        "on_revision": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_patch_capture_policy_null_clears_it(client):
+    src_id = await _created(client)
+    await client.patch(
+        f"/api/v1/info-sources/{src_id}/capture-policy",
+        headers=HEADERS,
+        json={"capture_policy": POLICY},
+    )
+    resp = await client.patch(
+        f"/api/v1/info-sources/{src_id}/capture-policy",
+        headers=HEADERS,
+        json={"capture_policy": None},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["capture_policy"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"capture_policy": {"viewport": {"width": 5000, "height": 800}}},
+        {"capture_policy": {"wait": {"kind": "delay", "seconds": 31}}},
+        {"capture_policy": {"wait": {"kind": "selector"}}},
+        {"capture_policy": {"schedule": "hourly"}},
+    ],
+    ids=["missing", "too-wide", "long-delay", "no-selector", "unknown-key"],
+)
+async def test_patch_capture_policy_refuses_an_invalid_policy(client, body):
+    src_id = await _created(client)
+    resp = await client.patch(
+        f"/api/v1/info-sources/{src_id}/capture-policy", headers=HEADERS, json=body
+    )
+    assert resp.status_code == 422
+    got = await client.get(f"/api/v1/info-sources/{src_id}", headers=HEADERS)
+    assert got.json()["capture_policy"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_capture_policy_not_found_returns_404(client):
+    resp = await client.patch(
+        "/api/v1/info-sources/01JZZZZZZZZZZZZZZZZZZZZZZZ/capture-policy",
+        headers=HEADERS,
+        json={"capture_policy": None},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_capture_policy_requires_api_key(client):
+    src_id = await _created(client)
+    resp = await client.patch(
+        f"/api/v1/info-sources/{src_id}/capture-policy", json={"capture_policy": None}
+    )
+    assert resp.status_code == 403
