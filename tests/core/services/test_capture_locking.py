@@ -13,7 +13,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from asyncpg.exceptions import LockNotAvailableError
 from sqlalchemy import delete, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.models import CaptureCommand, ChangesOutboxRow, InfoSource, SourceRevision
@@ -80,8 +82,10 @@ async def test_two_issuers_for_one_source_still_serialize(committed_source):
         await request_capture(first, source.info_source_id, requested_by=None, environ=ON)
         await second.execute(text("SET LOCAL lock_timeout = '500ms'"))
 
-        with pytest.raises(Exception, match="lock timeout"):
+        with pytest.raises(DBAPIError) as caught:
             await request_capture(second, source.info_source_id, requested_by=None, environ=ON)
+        # It waited on the row lock, not on anything else that times out.
+        assert isinstance(caught.value.orig.__cause__, LockNotAvailableError)
         await second.rollback()
 
         await first.commit()
