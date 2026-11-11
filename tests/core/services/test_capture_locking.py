@@ -10,14 +10,19 @@ issuers' one-open check and leaves revision inserts free.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from src.core.models import ChangesOutboxRow, InfoSource, SourceRevision
-from src.core.services.capture import ENABLED_ENV, CaptureAlreadyOpen, request_capture
+from src.core.models import CaptureCommand, ChangesOutboxRow, InfoSource, SourceRevision
+from src.core.services.capture import (
+    ENABLED_ENV,
+    CaptureAlreadyOpen,
+    reap_open_captures,
+    request_capture,
+)
 
 ON = {ENABLED_ENV: "1"}
 
@@ -83,3 +88,31 @@ async def test_two_issuers_for_one_source_still_serialize(committed_source):
         async with factory() as third:
             with pytest.raises(CaptureAlreadyOpen):
                 await request_capture(third, source.info_source_id, requested_by=None, environ=ON)
+
+
+@pytest.mark.asyncio
+async def test_the_reaper_skips_a_capture_whose_outcome_is_being_applied(committed_source):
+    """CR 1: never overwrite a concurrent ``stored`` with ``abandoned``, nor re-issue it."""
+    factory, source = committed_source
+    async with factory() as s:
+        command = await request_capture(s, source.info_source_id, requested_by=None, environ=ON)
+        command.issued_at = datetime.now(UTC) - timedelta(hours=2)
+        await s.commit()
+        command_id = command.command_id
+
+    async with factory() as storing, factory() as reaping:
+        row = await storing.get(CaptureCommand, command_id)
+        row.state = "stored"
+        await storing.flush()  # the consumer holds the row lock, uncommitted
+        await reaping.execute(text("SET LOCAL lock_timeout = '2s'"))
+
+        result = await reap_open_captures(reaping, horizon=timedelta(hours=1), environ=ON)
+
+        assert (result.abandoned, result.reissued) == (0, 0)
+        await reaping.rollback()
+        await storing.commit()
+
+    async with factory() as s:
+        result = await reap_open_captures(s, horizon=timedelta(hours=1), environ=ON)
+        assert (result.abandoned, result.reissued) == (0, 0)
+        assert (await s.get(CaptureCommand, command_id)).state == "stored"
