@@ -76,6 +76,11 @@ from ulid import ULID
 
 from src.core.logging import get_logger
 from src.core.models import CaptureCommand, ChangesOutboxRow, PersistCommand, SourceRevision
+from src.core.replication.permanent_store import (
+    in_captures_store,
+    stored_in_captures_bucket,
+    stored_outside_captures_bucket,
+)
 from src.core.services.persist_writeback import STATE_ABANDONED, STATE_REQUESTED
 
 # capture.STATE_STORED, spelled here: capture.py imports this module.
@@ -137,9 +142,10 @@ async def _adopt_known_persist(session: AsyncSession, revision: SourceRevision) 
     with the same bytes missed that write; the existing minimum is the same
     answer, so it is adopted and no round trip is spent. Not gated by the
     switch: it records what is known, and issues nothing (CR 11). A capture with
-    the same bytes counts too: the digest owns the object (archiver#380 CR 14).
+    the same bytes counts too, if it is in the revisions' store: the digest owns
+    the object within a store (archiver#380 CR 14, D4).
     """
-    known = await _known_persisted_at(session, revision.blob_fingerprint)
+    known = await _known_persisted_at(session, revision.blob_fingerprint, captures_store=False)
     if known is None:
         return False
     revision.persisted_at = known
@@ -154,17 +160,30 @@ async def _adopt_known_persist(session: AsyncSession, revision: SourceRevision) 
     return True
 
 
-async def _open_command_for(session: AsyncSession, digest: str) -> bool:
+async def _open_command_for(
+    session: AsyncSession, digest: str, *, captures_store: bool = False
+) -> bool:
+    """Whether a persist of ``digest`` into the same store is still open (#380 D4)."""
     result = await session.execute(
         select(PersistCommand.command_id)
         .where(
             PersistCommand.content_fingerprint == digest,
             PersistCommand.state == STATE_REQUESTED,
             PersistCommand.closed_at.is_(None),
+            _store_filter(PersistCommand.blob_uri, captures_store),
         )
         .limit(1)
     )
     return result.first() is not None
+
+
+def _store_filter(column, captures_store: bool):
+    """Rows whose ``column`` URI is in the captures bucket, or in the revisions' store."""
+    return (
+        stored_in_captures_bucket(column)
+        if captures_store
+        else stored_outside_captures_bucket(column)
+    )
 
 
 async def issue_persist(session: AsyncSession, revision: SourceRevision) -> PersistCommand | None:
@@ -343,22 +362,27 @@ def _capture_eligible(capture: CaptureCommand, now: datetime) -> bool:
     )
 
 
-async def _known_persisted_at(session: AsyncSession, digest: str) -> datetime | None:
-    """The digest's persisted_at minimum, over revisions and captures alike."""
-    revisions = select(func.min(SourceRevision.persisted_at)).where(
-        SourceRevision.blob_fingerprint == digest
-    )
-    captures = select(func.min(CaptureCommand.persisted_at)).where(
-        CaptureCommand.content_fingerprint == digest
-    )
-    known = [
-        value
-        for value in (
-            (await session.execute(revisions)).scalar_one(),
-            (await session.execute(captures)).scalar_one(),
+async def _known_persisted_at(
+    session: AsyncSession, digest: str, *, captures_store: bool
+) -> datetime | None:
+    """The digest's persisted_at minimum within one store (#380 D4).
+
+    The captures bucket holds captures only; the revisions' store holds the
+    revisions and the captures stored before the split.
+    """
+    queries = [
+        select(func.min(CaptureCommand.persisted_at)).where(
+            CaptureCommand.content_fingerprint == digest,
+            _store_filter(CaptureCommand.blob_uri, captures_store),
         )
-        if value is not None
     ]
+    if not captures_store:
+        queries.append(
+            select(func.min(SourceRevision.persisted_at)).where(
+                SourceRevision.blob_fingerprint == digest
+            )
+        )
+    known = [value for query in queries if (value := (await session.execute(query)).scalar_one())]
     return min(known) if known else None
 
 
@@ -375,7 +399,8 @@ async def issue_capture_persist(
     if not _capture_eligible(capture, now):
         return None
     digest = capture.content_fingerprint
-    known = await _known_persisted_at(session, digest)
+    own_bucket = in_captures_store(capture.blob_uri)
+    known = await _known_persisted_at(session, digest, captures_store=own_bucket)
     if known is not None:
         capture.persisted_at = known
         logger.info(
@@ -383,7 +408,9 @@ async def issue_capture_persist(
             extra={"capture_command_id": capture.command_id, "content_fingerprint": digest},
         )
         return None
-    if not issuance_enabled() or await _open_command_for(session, digest):
+    if not issuance_enabled() or await _open_command_for(
+        session, digest, captures_store=own_bucket
+    ):
         return None
 
     command_id = str(ULID())
@@ -454,15 +481,18 @@ async def persist_missing_captures(session: AsyncSession) -> int:
         .all()
     )
     issued = 0
-    seen: set[str] = set()
+    # Per digest *and store* (#380 D4): a static page re-captured after the split
+    # can render the very same PNG, which is then owed a copy in the new bucket.
+    seen: set[tuple[str, bool]] = set()
     for capture in owed:
         digest = capture.content_fingerprint
-        if digest in seen:
+        store = in_captures_store(capture.blob_uri)
+        if (digest, store) in seen:
             continue
-        seen.add(digest)
-        sent = await _count_commands_for(session, digest)
+        seen.add((digest, store))
+        sent = await _count_commands_for(session, digest, captures_store=store)
         if sent > MAX_REISSUES:
-            last_closed = await _last_closed_for(session, digest)
+            last_closed = await _last_closed_for(session, digest, captures_store=store)
             fresh = last_closed is not None and now - last_closed <= CAP_WARN_WINDOW
             logger.log(
                 logging.WARNING if fresh else logging.DEBUG,
@@ -482,21 +512,27 @@ async def persist_missing_captures(session: AsyncSession) -> int:
     return issued
 
 
-async def _count_commands_for(session: AsyncSession, digest: str) -> int:
+async def _count_commands_for(session: AsyncSession, digest: str, *, captures_store: bool) -> int:
     return (
         await session.execute(
             select(func.count())
             .select_from(PersistCommand)
-            .where(PersistCommand.content_fingerprint == digest)
+            .where(
+                PersistCommand.content_fingerprint == digest,
+                _store_filter(PersistCommand.blob_uri, captures_store),
+            )
         )
     ).scalar_one()
 
 
-async def _last_closed_for(session: AsyncSession, digest: str) -> datetime | None:
+async def _last_closed_for(
+    session: AsyncSession, digest: str, *, captures_store: bool
+) -> datetime | None:
     return (
         await session.execute(
             select(func.max(PersistCommand.closed_at)).where(
-                PersistCommand.content_fingerprint == digest
+                PersistCommand.content_fingerprint == digest,
+                _store_filter(PersistCommand.blob_uri, captures_store),
             )
         )
     ).scalar_one()
