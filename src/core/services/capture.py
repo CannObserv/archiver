@@ -272,10 +272,18 @@ def _policy_or_none(source: InfoSource) -> CapturePolicy | None:
 
 
 async def _lock_source(session: AsyncSession, info_source_id: ULID) -> InfoSource | None:
-    """The source, row-locked, so two issuers cannot both pass the one-open check."""
+    """The source, row-locked, so two issuers cannot both pass the one-open check.
+
+    ``FOR NO KEY UPDATE`` (``key_share=True``), not ``FOR UPDATE``: it still
+    conflicts with itself, but not with the ``FOR KEY SHARE`` a revision insert's
+    foreign key takes. ``record_revision`` inserts first and locks second, so
+    ``FOR UPDATE`` could deadlock two writers for one source.
+    """
     return (
         await session.execute(
-            select(InfoSource).where(InfoSource.info_source_id == info_source_id).with_for_update()
+            select(InfoSource)
+            .where(InfoSource.info_source_id == info_source_id)
+            .with_for_update(key_share=True)
         )
     ).scalar_one_or_none()
 
